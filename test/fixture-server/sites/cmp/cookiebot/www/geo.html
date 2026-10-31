@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Cookiebot-Simulator: außerhalb der Region</title>
+<script>
+  // Minimal TCF v2 stub of the simulated CMP: ping only.
+  window.__tcfapi = function (cmd, version, cb) {
+    if (cmd === 'ping') cb({ gdprApplies: false, cmpLoaded: true, cmpStatus: 'loaded', cmpId: 134 }, true);
+  };
+</script>
+<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="00000000-sim0-0000-0000-000000000000" data-sim-region="us"></script>
+</head>
+<body><main><h1>Beispiel GmbH</h1></main></body>
+</html>

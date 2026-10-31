@@ -1,0 +1,6 @@
+{
+  "hosts": {
+    "www.generic.test": "www",
+    "consent.unknown-cmp.test": "frame"
+  }
+}

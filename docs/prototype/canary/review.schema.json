@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["zone", "verdict", "findings"],
+  "properties": {
+    "zone": { "type": "string" },
+    "verdict": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "gid", "category", "severity", "file", "line", "title", "failureScenario", "evidence", "suggestedFix", "confidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "gid": { "type": "string" },
+          "category": { "type": "string", "enum": ["correctness", "privacy", "agents-rule", "incomplete-fix", "weak-test", "new-false-positive", "perf"] },
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "title": { "type": "string" },
+          "failureScenario": { "type": "string" },
+          "evidence": { "type": "string" },
+          "suggestedFix": { "type": "string" },
+          "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,297 @@
+# Legal-link lexicon (canary-2 triage G19, G20, G24, G25): the labels and path slugs under which sites publish the
+# Impressum and the privacy policy, the heading markers by which a fetched page is judged to be that document, and
+# the navigation keys of the intermediate hop (Kontakt / Rechtliches / Über uns, D09). One source for the collector
+# (src/collectors/browser/pages.ts, documents.ts) and for LEGAL-01 (via `data: ['legal']`).
+#
+# Matching (src/collectors/browser/legal-lexicon.ts): every text is normalised (NFKC, lower case, ä→ae ö→oe ü→ue
+# ß→ss, other diacritics dropped, everything that is not a letter or digit becomes a space) and split into words.
+# A phrase matches when its words start at word boundaries; the last word may continue (German compounds:
+# "datenschutz" matches "datenschutzerklaerung"). Path segments are matched the same way ("mentions-legales").
+#
+# Per language and document kind:
+#   labels   exact canonical link labels (the whole label equals one of them → best rank)
+#   keys     phrases that denote the document itself ("Datenschutzerklärung", "Politique de confidentialité")
+#   generic  bare topic words ("Datenschutz", "Privacy"): a link whose only match is generic is dropped when the label
+#            also names a settings dialog ("Datenschutz-Einstellungen"), see falseFriends
+#   weak     last resort (generic umbrella labels such as "Rechtliche Hinweise" or "DSGVO")
+#   markers  further phrases that count as a document marker in a title, h1 or heading (not as a link key)
+# Link keys and labels are also document markers; weak keys are not.
+legal:
+  version: "2026.10.1"
+
+  kinds:
+    impressum:
+      languages:
+        de:
+          labels:
+            [Impressum, Anbieterkennzeichnung, Anbieterinformation, Anbieterinformationen, Rechtliche Angaben]
+          keys: [impressum, anbieterkennzeichnung, anbieterinformation, pflichtangaben, rechtliche angaben]
+          weak: [rechtliche hinweise, herausgeber, herausgeberangaben]
+          # Headings that are typical of the page itself even when its title and h1 only say "Rechtliches".
+          markers:
+            [
+              angaben gemäß,
+              angaben nach,
+              5 ddg,
+              5 tmg,
+              haftung für inhalte,
+              haftungsausschluss,
+              streitschlichtung,
+              verantwortlich für den inhalt,
+              vertreten durch,
+            ]
+        en:
+          labels: [Imprint, Legal Notice, Legal Notices, Site Notice, Legal Disclosure]
+          keys: [imprint, legal notice, legal notices, site notice, legal disclosure, provider identification]
+          weak: [legal information]
+        fr:
+          labels: [Mentions légales, Mention légale]
+          keys: [mentions légales, mention légale, informations légales]
+        es:
+          labels: [Aviso legal, Avisos legales]
+          keys: [aviso legal, avisos legales, información legal, datos legales]
+        it:
+          labels: [Note legali, Informazioni legali]
+          keys: [note legali, nota legale, informazioni legali, avvertenze legali]
+        pt:
+          labels: [Aviso legal, Avisos legais]
+          keys: [aviso legal, avisos legais, informação legal, informações legais]
+          # "Termo de uso" is how some Portuguese-language sites label the page with the provider details.
+          weak: [termo de uso, termos de uso]
+        nl:
+          labels: [Colofon, Juridische informatie]
+          keys: [colofon, juridische informatie, wettelijke informatie, wettelijke vermeldingen]
+        da:
+          keys: [juridiske oplysninger, juridisk meddelelse]
+        no:
+          keys: [juridisk informasjon, juridisk merknad]
+        sv:
+          keys: [juridisk information, rättslig information, juridiska upplysningar]
+        fi:
+          keys: [oikeudellinen huomautus, oikeudelliset tiedot]
+        pl:
+          labels: [Nota prawna, Informacje prawne]
+          keys: [nota prawna, informacje prawne]
+
+    privacy:
+      # Labels of a cookie or consent settings dialog. They disqualify a link whose label has no key (a document
+      # phrase, not just a topic word): "Datenschutz-Einstellungen" is no policy, "Polityka prywatności i cookies" is.
+      falseFriends:
+        [
+          einstellung,
+          settings,
+          präferenz,
+          preferences,
+          cookie,
+          parametres,
+          configuracion,
+          impostazioni,
+          instellingen,
+        ]
+      languages:
+        de:
+          labels:
+            - Datenschutz
+            - Datenschutzerklärung
+            - Datenschutzhinweis
+            - Datenschutzhinweise
+            - Datenschutzrichtlinie
+            - Datenschutzrichtlinien
+            - Datenschutzbestimmungen
+            - Datenschutzinformation
+            - Datenschutzinformationen
+            - Hinweise zum Datenschutz
+            - Informationen zum Datenschutz
+            - Erklärung zum Datenschutz
+          generic: [datenschutz]
+          keys:
+            - datenschutzerklärung
+            - datenschutz erklärung
+            - datenschutzhinweis
+            - datenschutzrichtlinie
+            - datenschutzbestimmung
+            - datenschutzinformation
+            - hinweise zum datenschutz
+            - informationen zum datenschutz
+            - erklärung zum datenschutz
+          weak: [dsgvo]
+          markers:
+            [
+              personenbezogene daten,
+              datenschutz grundverordnung,
+              dsgvo,
+              betroffenenrechte,
+              rechte der betroffenen,
+              verantwortliche stelle,
+              rechtsgrundlage,
+              datenerfassung,
+              speicherdauer,
+            ]
+        en:
+          labels:
+            [
+              Privacy,
+              Privacy Policy,
+              Privacy Notice,
+              Privacy Statement,
+              Data Protection,
+              Data Privacy,
+              Privacy Information,
+            ]
+          generic: [privacy, data protection, data privacy]
+          keys:
+            [
+              privacy policy,
+              privacy notice,
+              privacy statement,
+              privacy information,
+              data protection policy,
+              data protection notice,
+              data privacy policy,
+            ]
+          weak: [gdpr]
+          markers: [personal data, gdpr, data subject rights, legal basis]
+        fr:
+          labels:
+            [Confidentialité, Politique de confidentialité, Protection des données, Données personnelles]
+          generic: [confidentialité, vie privée]
+          keys:
+            [
+              politique de confidentialité,
+              déclaration de confidentialité,
+              avis de confidentialité,
+              protection des données,
+              données personnelles,
+              politique de vie privée,
+            ]
+          weak: [rgpd]
+        es:
+          labels: [Privacidad, Política de privacidad, Aviso de privacidad, Protección de datos]
+          generic: [privacidad]
+          keys:
+            [
+              política de privacidad,
+              aviso de privacidad,
+              política de protección de datos,
+              protección de datos,
+            ]
+          weak: [rgpd]
+        it:
+          labels: [Informativa privacy, Informativa sulla privacy, Protezione dati, Protezione dei dati]
+          keys:
+            [
+              informativa privacy,
+              informativa sulla privacy,
+              informativa sul trattamento,
+              politica sulla privacy,
+              protezione dei dati,
+              protezione dati,
+              informativa sulla protezione,
+            ]
+          weak: [gdpr]
+        pt:
+          labels: [Privacidade, Aviso de privacidade, Política de privacidade, Proteção de dados]
+          generic: [privacidade]
+          keys:
+            [
+              aviso de privacidade,
+              política de privacidade,
+              proteção de dados,
+              proteção dos dados,
+              política de proteção,
+            ]
+        nl:
+          labels: [Privacyverklaring, Privacybeleid, Privacyreglement, Privacy verklaring]
+          keys:
+            [
+              privacyverklaring,
+              privacy verklaring,
+              privacybeleid,
+              privacyreglement,
+              privacyvoorwaarden,
+              gegevensbescherming,
+            ]
+        da:
+          labels: [Privatlivspolitik, Persondatapolitik, Databeskyttelse]
+          generic: [privatliv]
+          keys: [privatlivspolitik, politik om privatliv, persondatapolitik, databeskyttelse]
+        no:
+          labels: [Personvern, Personvernerklæring, Personvernpolicy]
+          generic: [personvern]
+          keys: [personvernerklæring, personvernpolicy, personvernpolitikk, personvern erklæring]
+        sv:
+          labels: [Integritetspolicy, Integritetspolitik, Personuppgifter, Dataskydd]
+          generic: [personuppgifter, integritet, dataskydd]
+          keys:
+            [
+              integritetspolicy,
+              integritetspolitik,
+              personuppgiftspolicy,
+              behandling av personuppgifter,
+              dataskyddspolicy,
+            ]
+        fi:
+          labels: [Tietosuoja, Tietosuojaseloste, Tietosuojakäytäntö]
+          generic: [tietosuoja]
+          keys: [tietosuojaseloste, tietosuojakäytäntö, rekisteriseloste]
+        is:
+          labels: [Persónuvernd, Persónuverndarstefna]
+          generic: [persónuvernd]
+          keys: [persónuverndarstefna, persónuverndaryfirlýsing]
+        pl:
+          labels: [Prywatność, Polityka prywatności, Ochrona danych osobowych]
+          generic: [prywatność]
+          keys:
+            [polityka prywatności, polityka ochrony danych, ochrona danych osobowych, klauzula informacyjna]
+          weak: [rodo]
+
+  # Intermediate pages on the way to the legal documents (D09, LEGAL-01 hop). Matched on word boundaries: "kontakt"
+  # and "kontaktlinsen" differ; a word may carry up to two more letters (kontakte). `hopStrict` keys count only as the
+  # exact label or the first path segment ("legal" must not match "illegal-…", "about" not "aboutique").
+  navigation:
+    contact:
+      - kontakt
+      - kontaktformular
+      - kontaktaufnahme
+      - contact
+      - contact us
+      - anfahrt
+      - anfahrtsplan
+      - anfahrtsbeschreibung
+      - standort
+      - so finden sie uns
+      - wegbeschreibung
+      - nous contacter
+      - contacto
+      - contatti
+      - contato
+    hop:
+      - rechtliches
+      - legal
+      - über uns
+      - ueber-uns
+      - about
+      - unternehmen
+    hopStrict: [legal, about]
+
+  # Phrases of an error page (title or h1); the number 404 counts as well.
+  notFound:
+    - "404"
+    - nicht gefunden
+    - not found
+    - seite existiert nicht
+    - page does not exist
+    - page doesn't exist
+    - fehlerseite
+    - page introuvable
+    - page non trouvée
+    - página no encontrada
+    - pagina non trovata
+    - página não encontrada
+    - pagina niet gevonden
+    - sidan hittades inte
+    - siden ble ikke funnet
+    - siden blev ikke fundet
+    - sivua ei löydy
+    - nie znaleziono strony
+    - strona nie istnieje

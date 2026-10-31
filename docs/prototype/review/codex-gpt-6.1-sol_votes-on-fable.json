@@ -1,0 +1,277 @@
+{
+  "votes": [
+    {
+      "id": "FC-01",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/core/gate.ts:97 весь strict-блок вложен в условие failOn !== 'none'; вызов с strict=true и sandboxOff=true воспроизвёл exitCode=0. Это прямо противоречит таблице §5.2 и не входит в упрощения прототипа."
+    },
+    {
+      "id": "FC-02",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/visit.ts:68 запросы привязываются к исходному URL, а src/collectors/browser/collector.ts:471 записывает в план финальный. Поэтому сравнение в src/checks/browser/consent-01.ts:125 теряет репликацию, а src/core/report.ts:110 создаёт две строки coverage."
+    },
+    {
+      "id": "FC-03",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/collector.ts:924 отметка клика ставится перед асинхронным действием; src/cmp/adapters/base.ts:292 ещё получает origin и выполняет locator.click. Запрос до фактического нажатия действительно может стать critical после отказа; исправлению нужен момент события клика, поскольку отметка после завершения locator.click тоже пропустит синхронные обработчики."
+    },
+    {
+      "id": "FC-04",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "classifyLabel действительно возвращает null для «Ablehnen und schließen» в src/cmp/lexicon.ts:132, что воспроизведено. Для RCB без vendorRoles (src/cmp/adapters/real-cookie-banner.ts:104) неопределённая кнопка приводит к blocking-no-reject с medium в src/cmp/classify.ts:82, то есть к ложному warning вопреки §5.5."
+    },
+    {
+      "id": "FC-05",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/scan.ts:662 глобальный timeout без fatal всегда формирует partial, независимо от завершения стартовой страницы. Поэтому уже собранная учитываемая находка даёт код 1 через src/core/gate.ts:118 вместо обязательного fatal timeout с кодом 2."
+    },
+    {
+      "id": "FC-06",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Повторный 429 безусловно превращается в fatal blocked в src/collectors/browser/collector.ts:418. Таблица §5.2 требует SCAN-THROTTLED и частичные результаты с кодом по остальным основаниям, а отдельного исключения для прототипа нет."
+    },
+    {
+      "id": "FC-07",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "В src/checks/browser/embed-01.ts:115 проверяется точная строка preconnect, тогда как src/collectors/browser/config.ts:131 объявляет preconnect-without-request. Поэтому предусмотренная limitation для реального коллектора не появляется."
+    },
+    {
+      "id": "FC-08",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/recorder.ts:214 любое имя из глобального списка превращается в identifierPresent, а src/derive/index.ts:266 использует этот boolean без различения устойчивости. Через src/checks/browser/consent-01.ts:47 это повышает per-load UUID до critical; устойчивый идентификатор прямо обязателен и для прототипа по §2а."
+    },
+    {
+      "id": "FC-09",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "В src/collectors/browser/collector.ts:903 результат verify1 сохраняется даже при успешном verify2, поэтому src/checks/browser/consent-04.ts:265 может выдать reject-ineffective после сохранённого отказа. Однако утверждение о подтверждении CONSENT-05 неверно: src/checks/browser/consent-05.ts:68 тоже требует verified=true и вернёт inconclusive."
+    },
+    {
+      "id": "FC-10",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Abort запускает закрытие без ожидания в src/collectors/browser/collector.ts:138, а src/scan.ts:325 продолжает обработку по завершении untilDeadline. Поскольку src/collectors/browser/launch.ts:88 выставляет closed до завершения очистки, повторный close не дождётся удаления профиля перед process.exit в src/cli.ts:50; сохранение временного каталога реально возможно."
+    },
+    {
+      "id": "FP-01",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/ssrf.ts:99 Fetch подключается только после события page, без остановки начальной навигации нового target. Popup не запрещён аргументами src/collectors/browser/launch.ts:51, поэтому возникает окно обхода именно обязательной границы документов верхнего уровня."
+    },
+    {
+      "id": "FP-02",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/ssrf.ts:56 unresolved явно разрешён, а ошибки lookup преобразуются в него и кешируются на строках 30–34. Независимое разрешение имени Chromium или прокси после ошибки Node проходит без проверки IP, нарушая даже ограниченную границу прототипа."
+    },
+    {
+      "id": "FP-03",
+      "verdict": "disagree",
+      "severity": "none",
+      "reason": "Обход локального lookup при upstream действительно есть в src/collectors/http/client.ts:194 и src/collectors/tls/index.ts:98. Однако CONNECT на проверенный IP относится к EgressPolicy §5.7, который явно перенесён за пределы ворот прототипа в консенсусе §2а и исключён в BRIEF, раздел «Упрощения»; это допустимое ограничение данного среза."
+    },
+    {
+      "id": "FP-04",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "src/core/net.ts:84 не исключает fec0::/10 и указанные переходные диапазоны; вызовы classifyAddress воспроизвели public для fec0::1 и NAT64-представления metadata-адреса. Как минимум site-local нужно блокировать; фактическая достижимость встроенных IPv4 через NAT64/6to4 зависит от сети и не доказана одним результатом классификатора."
+    },
+    {
+      "id": "FP-05",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Различие политик видно между src/scan.ts:229 и src/collectors/browser/ssrf.ts:28, а src/collectors/browser/collector.ts:404 ошибочно утверждает наличие редиректа. Сам отказ браузерного guard безопасен и оправдан: без привязки соединения к проверенному публичному IP браузер может выбрать приватный адрес; дефект здесь в поздней и неточной диагностике."
+    },
+    {
+      "id": "FP-06",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "src/core/url.ts:48 сохраняет любые значения параметров id/t/v независимо от сервиса и формата. Воспроизведено сохранение id=visitor-secret, а src/collectors/browser/features.ts:50 дополнительно переносит произвольное t в eventType; это реальная утечка вместо минимизации."
+    },
+    {
+      "id": "FP-07",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/jar.ts:116 сырой script передаётся в pushAttempted и записывается как setterUrl на строке 145. В отличие от пути принятых cookies на строке 165, редактирования URL здесь нет, поэтому query скрипта сохраняется целиком."
+    },
+    {
+      "id": "FP-08",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/collectors/browser/visit.ts:105 заголовки только обрезаются, поэтому Location, Refresh или Link с токеном в query сохраняются без редактирования. src/collectors/http/client.ts:123 исправляет лишь часть URL-заголовков; нарушение минимизации реально независимо от допустимости отдельных технических идентификаторов ответа."
+    },
+    {
+      "id": "FP-09",
+      "verdict": "unsure",
+      "severity": "minor",
+      "reason": "Неотредактированные сообщения действительно сохраняются в src/collectors/browser/collector.ts:285 и src/scan.ts:351. Однако обычная ошибка page.reload перехватывается в src/collectors/browser/visit.ts:81 и наружу передаётся как код; нужен L2-сценарий конкретного неперехваченного сбоя B/C, подтверждающий попадание сырого query именно в эти поля."
+    },
+    {
+      "id": "FP-10",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "data/texts/de/browser.yaml:163 и :178 утверждают отсутствие Einwilligung вместо наблюдаемого отсутствия взаимодействия с баннером. Черновой статус разрешён BRIEF, но не отменяет фактическую точность; test/unit/core/stopwords.test.ts:7 эти формулировки не проверяет."
+    },
+    {
+      "id": "FP-11",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "src/core/report.ts:23 строит дисклеймер только из статичного текста, без доступа к условиям скана. В data/texts/de/core.yaml:4 нет обязательного по D08 уведомления об IP в фазе C; отдельные отображаемые диагностики не заменяют это уведомление."
+    },
+    {
+      "id": "FP-12",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "action.yml:41 и templates/gitlab/dsgvo-check.gitlab-ci.yml:28 используют изменяемый тег образа. Это расходится с D24; рекомендация пользователю самостоятельно указать digest не обеспечивает воспроизводимость значения по умолчанию."
+    },
+    {
+      "id": "FP-13",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "canary/README.md:20 обещает запрос security.txt, которого нет в плане проб src/collectors/http/index.ts:226. SEC-01 исключён из объёма BRIEF, поэтому исправлять следует описание трафика, а не добавлять проверку."
+    },
+    {
+      "id": "FP-14",
+      "verdict": "disagree",
+      "severity": "none",
+      "reason": "src/collectors/dns/resolver.ts:119 действительно сохраняет адреса резолверов, но §5.3 предусматривает сведения о резолвере, а §5.7 требует прозрачности DNS-маршрута. Запрета сохранять адреса инфраструктуры оператора нет; resolverLabel=system сам по себе не доказывает намерение скрывать их из снимка."
+    },
+    {
+      "id": "FT-01",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "test/unit/core/gate.test.ts:292 прямо закрепляет неверное отключение strict, соответствующее src/core/gate.ts:97. Это тот же реальный дефект, что FC-01, дополнительно защищённый ошибочным ожидаемым результатом теста."
+    },
+    {
+      "id": "FT-02",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/integration/core/cli.test.ts:38 запускает обычный CLI без подмены резолвера, и src/core/net.ts:109 вызывает системный dns.lookup. Суффикс .invalid не обеспечивает локальность системного резолвера, поэтому закрытая сеть L2 кодом не гарантируется."
+    },
+    {
+      "id": "FT-03",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Защитный фильтр src/checks/browser/consent-05.ts:131 корректен, но test/unit/checks/browser/consent-05.test.ts:74 проверяет только принятую cookie. Контрпример с attempted/rejected после отказа нужен для защиты от ложного critical; текущего ложного срабатывания эта находка не демонстрирует."
+    },
+    {
+      "id": "FT-04",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "src/checks/browser/consent-02.ts:185 учитывает B до клика, но test/unit/checks/browser/consent-02.test.ts:97 проверяет B только после клика. Это реальный пробел покрытия отдельной предусмотренной фазы, а не ошибка текущего условия."
+    },
+    {
+      "id": "FT-05",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "В test/unit/checks/browser/consent-04.test.ts:170 проверен готовый granted после отказа, но нет отрицательного контроля для неготового verify и согласия после собственного действия. Условия src/checks/browser/consent-04.ts:108 и :265 предотвращают существенные ложные warning и заслуживают таких контрпримеров."
+    },
+    {
+      "id": "FT-06",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/unit/checks/browser/consent-03.test.ts:15 покрывает asserted-регион из снимка, но не независимую ветку ctx.options.assumeRegion в src/checks/browser/consent-03.ts:88. Нет также контрпримеров для cookieless при заявленном регионе и собственного tracking-endpoint; это пробелы защиты критического варианта, а не уже воспроизведённая регрессия."
+    },
+    {
+      "id": "FT-07",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/unit/checks/browser/consent-01.test.ts:79 проверяет unknown, но не известный CDN, а положительный сценарий репликации не проверяет пропущенную B. Отдельные контрпримеры для src/checks/browser/consent-01.ts:39, :84 и :98 уместны, поскольку защищают от неверной классификации и заявления о репликации."
+    },
+    {
+      "id": "FT-08",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "В test/unit/checks/http/tls-02.test.ts отсутствует not-yet-valid, а test/utils/completeness.ts:85 проверяет виды фикстур только на ID. Вариант при этом не мёртвый: он реализован в src/checks/http/tls-02.ts:62 и src/checks/http/shared.ts:16; подтверждается пробел покрытия, но не пропажа critical."
+    },
+    {
+      "id": "FT-09",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "Например, src/checks/browser/consent-01.ts:29 объявляет hit-with-identifier вместо tracking-completed из канонического реестра §2.1. test/unit/core/registry-completeness.test.ts:25 сверяет только внутренне согласованные данные, а BRIEF не разрешает собственный словарь вариантов прототипа."
+    },
+    {
+      "id": "FT-10",
+      "verdict": "agree",
+      "severity": "major",
+      "reason": "В src/core/errors.ts:13 отсутствует fatal timeout, и src/scan.ts:662 не различает таймаут до стартовой страницы и после неё. test/unit/core/scan.test.ts:345 проверяет код и диагностику, но не обязательный failed; это дублирует FC-05."
+    },
+    {
+      "id": "FT-11",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": ".github/workflows/ci.yml:70 не задаёт DSGVO_CHECK_TEST_SANDBOX, поэтому test/integration/browser/helpers.ts:38 выбирает off на Linux вопреки комментарию CI. Покрытие require через e2e остаётся, но заявленная проверка sandbox в L2 отсутствует."
+    },
+    {
+      "id": "FT-12",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/e2e/docker.e2e.test.ts:83 проверяет failed-скан, а сценарий Action на строке 169 получает только код 2. Учитывая требование D23 проверять 0/1/2 через доставляемые входы, отсутствие скана с находкой оставляет основной путь action.yml:196 непроверенным."
+    },
+    {
+      "id": "FT-13",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/unit/checks/browser/track-01.test.ts:85 проверяет только failed, оставляя blocked-by-browser без контрпримера для src/checks/browser/track-01.ts:42. При этом aborted отсутствует в RequestState, а предполагаемое влияние мутации TRACK-01 на PRIV-01 неверно: derived.services вычисляется независимо в src/derive/index.ts:442."
+    },
+    {
+      "id": "FT-14",
+      "verdict": "disagree",
+      "severity": "none",
+      "reason": "src/core/assess.ts:282 использует правильное строгое сравнение, а test/unit/core/assess.test.ts:204 уже проверяет дедупликацию и фактическое усечение. Ошибка при ровно 20 evidence существует только в намеренно изменённом коде; отсутствие ещё одного граничного теста само по себе не устанавливает дефект прототипа."
+    },
+    {
+      "id": "FT-15",
+      "verdict": "disagree",
+      "severity": "none",
+      "reason": "src/core/gate.ts:103 явно сортирует ошибки, а строка 104 правильно требует глобальный timedOut для причины timeout. Описаны возможные будущие регрессии после мутации, но ни неверный порядок, ни лишний timeout в текущем коде не воспроизводятся; обязательность именно этих дополнительных строк тестовой таблицы не установлена."
+    },
+    {
+      "id": "FT-16",
+      "verdict": "disagree",
+      "severity": "none",
+      "reason": "Установленный Vitest выделяет изолированные файлы с maxWorkers=1 в отдельную sequential-группу в node_modules/vitest/dist/chunks/index.1TqnEahn.js:6275. Группы исполняются с ожиданием завершения предыдущей на строках 6162–6178, поэтому заявленная одновременная конкуренция unit и integration из vitest.config.ts:28 не возникает."
+    },
+    {
+      "id": "FT-17",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Помимо изменяемого образа в action.yml:41, test/e2e/delivery-config.e2e.test.ts:86 явно исключает собственный Action из проверки SHA. Поэтому пример examples/github-failing/.github/workflows/dsgvo-check.yml:50 остаётся неприкреплённым к неизменяемому коммиту."
+    },
+    {
+      "id": "FT-18",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "test/unit/core/scan.test.ts:542 больше не создаёт ошибку HTML-репортёра и допускает успешную ветку. Следовательно, обязательный по §5.2 путь перезаписи JSON после ошибки другого репортёра этим тестом действительно не проверяется, хотя название обещает обратное."
+    },
+    {
+      "id": "FT-19",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Существенные контрпримеры действительно отсутствуют, например frame-ancestors * для src/checks/http/hdr-01.ts:84 и прерванное короткое тело для src/checks/http/tls-01.ts:152. Однако список мутаций нельзя целиком считать доказательством дефектов: часть условий избыточна на реально собираемых состояниях, например after-accept в B при штатном отказе."
+    },
+    {
+      "id": "FT-20",
+      "verdict": "agree",
+      "severity": "minor",
+      "reason": "Dockerfile:36 задаёт VERSION вручную, а .github/workflows/ci.yml:106 передаёт только REVISION. Сейчас версия совпадает с пакетом, но существующий процесс сборки не связывает метку с package.json и после обычного bump сохранит устаревшее значение."
+    }
+  ],
+  "missed": [
+    "major — Утечка исходного target: src/core/report.ts:167 записывает URL без sanitizeUrl, а src/core/snapshot.ts:152 сохраняет target целиком. Особенно опасен failed-путь src/scan.ts:532: вызов scan с отклонённым https://demo-user:demo-password@example.de/?sid=demo-session воспроизвёл credentials и sid в report.scan.target.",
+    "major — Повторные записи cookies/storage после отказа теряются: src/collectors/browser/jar.ts:103 дедуплицирует cookie по имени/domain/path/partition/state на всю фазу, а строка 202 аналогично подавляет повторный storage key. Две последовательные выборки с изменённой _ga до и после клика воспроизвели единственную запись afterClick=false, поэтому CONSENT-05 не увидит принятую повторную запись.",
+    "major — Глобальный timeout отбрасывает уже собранные браузерные факты: src/scan.ts:325 возвращается по abort, на строке 330 выдаёт null, а разделы browser/documents/cmp присоединяются только после полного результата на строке 425. Если A завершилась, но B зависла, находки завершённой A тоже исчезают вместо сохранения частичных результатов по §5.2.",
+    "major — Политика перегрузки отсутствует для навигаций после стартовой: src/collectors/browser/collector.ts:318 лишь сохраняет результат, а цикл на строке 575 и controlPages на строке 962 продолжают следующие навигации после 429/503. Счётчика таких ответов подресурсов тоже нет, поэтому обязательные Retry-After, один повтор и остановка по D09 не выполняются.",
+    "major — Контракт request evidence из §5.3 теряется при построении отчёта: src/checks/browser/shared.ts:242 не переносит даже уже собранные delivery/result/provenance, а src/core/report-schema.ts:60 не описывает их и features. Вместо монотонного tMs сохраняется сбрасываемый относительно навигации/клика tStartMs; §2а прямо требует эти поля уже в alpha-схеме прототипа.",
+    "major — TLS-02 не проверяет произвольный финальный хост редиректа: src/scan.ts:411 запускает TLS параллельно HTTP до определения finalHost, а src/collectors/tls/index.ts:229 выбирает только исходный host и его www/apex. При переходе на другой поддомен с плохим сертификатом браузер может завершиться tls-blocked, но обязательная critical-находка TLS-02 о конечном сертификате отсутствует.",
+    "major — TLS-01 считает достаточным любой промежуточный HTTPS-hop: src/checks/http/tls-01.ts:91 возвращает результат до проверки конечной HTTP-страницы и формы на строке 122. На цепочке http://example.de/ → https://example.de/ → http://example.de/form с формой воспроизведён пустой список наблюдений вместо critical form-on-http."
+  ]
+}

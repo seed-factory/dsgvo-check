@@ -1,0 +1,104 @@
+# Core UI strings, disclaimer and diagnostics (scaffold). Draft texts until reviewed (D22).
+draft: true
+ui:
+  disclaimer: >-
+    This report describes technical observations of an automated, passive scan at the stated time. It is not
+    legal advice and not a legal assessment. If a check has no finding, this does not mean that a requirement
+    is met. Results may depend on location, time, consent banner configuration and detection as an automated
+    visitor.
+  # Further paragraphs of the disclaimer (D22, wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
+  disclaimer.data: >-
+    Values of cookies, Web Storage entries and consent strings are stored neither in clear text nor as a checksum;
+    query parameters in URLs are replaced by “[redacted]” except for an allowlist.
+  disclaimer.screenshots: >-
+    Screenshots of the banner area were enabled (can be turned off with --no-screenshots). Only a section of the
+    first screen before any interaction is captured, and only when the banner area is unambiguous and takes up at
+    most half of the viewport. The images are stored as evidence in the report directory and may contain content of
+    the website.
+  disclaimer.bannerNotRecognized: >-
+    The consent banner could not be attributed to a supported provider. Checks that depend on recognition were not
+    fully evaluated. A banner that was not recognised is not the same as a missing banner.
+  disclaimer.botOrGeo: >-
+    The consent banner treated the scan as automated traffic or as a visit from outside its target region. The
+    affected checks ({checks}) are not assessable; the website may behave differently towards visitors.
+  disclaimer.egressUnknown: >-
+    The region from which the scan was run is not known. Websites can adapt their behaviour to the visitor's region;
+    observations of consent banners therefore apply only to the actual measurement environment.
+  disclaimer.egressAsserted: >-
+    The egress region “{region, select, eea {EEA} de {Germany} other {{region}}}” is based on a user statement
+    (--assume-region) and was not verified by the scanner.
+  disclaimer.proxy: >-
+    The scan ran through a proxy (--proxy). Location and region of the proxy were not verified by the scanner.
+  disclaimer.sandboxOff: >-
+    The browser ran without the Chromium sandbox (--sandbox off). This affects the isolation of the measurement
+    environment, not the results.
+  disclaimer.incomplete: >-
+    {status, select, failed {The scan was not performed} other {The scan was not completed}}{hasReasons, select, true
+    { (reasons: {reasons})} other {}}. Checks that did not complete are marked with their status in the report;
+    observations already collected are kept.
+  disclaimer.phaseC: >-
+    Phase C (acceptance in the consent banner) was performed: it discloses the scanning machine's IP address to the
+    third parties whose resources the website loads after acceptance.
+  disclaimer.draft: "Draft text – the texts of this report have not yet been legally reviewed."
+  disclaimer.usage: >-
+    dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
+    third-party websites are not intended for publication. The software is provided under the Apache License 2.0
+    without warranty.
+  # Usage notes for `--help` and the project README (wording guide §6, D08, D10, 5.7).
+  usageNotes.title: "Usage notes"
+  usageNotes: >-
+    dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
+    third-party websites are not intended for publication. HTTP requests of the scanner carry the User-Agent
+    "dsgvo-check/{version} (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)"; the browser
+    identifies as Chrome with the same token. TLS handshakes and DNS queries carry no User-Agent. Phase C discloses
+    the scanning machine's IP address to the third parties whose resources the website loads after acceptance
+    in the banner. With --proxy, DNS queries go directly to the resolver, not through the proxy.
+  console.title: "dsgvo-check {version} – report for {target}"
+  console.draftStamp: "Draft text"
+  console.status.complete: "Scan complete"
+  console.status.partial: "Scan partially completed"
+  console.failed: "Scan not performed: {message} ({code})"
+  # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts, G51).
+  failure.scan-timeout: "Global time limit (--timeout {seconds} s) reached before the start page was fully captured in phase A."
+  failure.browser-no-handover: "Global time limit (--timeout {seconds} s) reached. The browser collector handed over no data afterwards; whether the start page was captured is not known."
+  console.duration: "Duration: {seconds} s"
+  console.counts: "Findings: {critical} critical · {warning} warning · {info} info"
+  console.noFindings: "No findings observed. This does not confirm that requirements are met."
+  console.severity.critical: "CRITICAL"
+  console.severity.warning: "WARNING"
+  console.severity.info: "INFO"
+  console.pages: "Pages"
+  console.confidence.medium: "Medium-confidence match – please review manually"
+  console.confidence.low: "Low-confidence match – please review manually"
+  console.checks: "Checks: {total} · completed {completed} · partial {partial} · inconclusive {inconclusive} · not applicable {notApplicable} · skipped {skipped} · error {error}"
+  console.diagnostic: "Diagnostic"
+  console.exit: "Exit code {code} ({reasons})"
+  console.reportWritten: "Report saved: {path}"
+  console.reportWriteFailed: "Report could not be written: {path} ({message})"
+  console.sandboxOff: "Warning: Chromium sandbox is disabled (--sandbox off)."
+messages:
+  diagnostic.SCAN-BOTMODE:
+    title: "Consent banner behaves as towards a bot"
+    body: "The banner gave a direct bot signal ({signal}). Affected checks are inconclusive."
+  diagnostic.SCAN-GEO:
+    title: "Consent banner reports a location outside the EEA"
+    body: "The banner gave a location signal ({signal}). Affected checks are inconclusive."
+  diagnostic.SCAN-UNREACHABLE:
+    title: "Website not reachable"
+    body: "The start page could not be loaded."
+  diagnostic.SCAN-BLOCKED:
+    title: "Access blocked"
+    body: "{count, plural, one {Access to {page} was} other {Access to # pages ({pages}) was}} restricted by an access block or challenge; {count, plural, one {the page was} other {the pages were}} not evaluated for content."
+  diagnostic.SCAN-TIMEOUT:
+    title: "Time limit reached"
+    body: "{count, plural, =0 {The global time limit was reached; observations already collected remain in the report.} one {The global time limit was reached. One check was not completed in full; observations already collected remain in the report.} other {The global time limit was reached. # checks were not completed in full; observations already collected remain in the report.}}"
+  diagnostic.SCAN-SANDBOX-OFF:
+    title: "Chromium sandbox disabled"
+    body: "The browser ran without sandbox (--sandbox off)."
+  diagnostic.SCAN-THROTTLED:
+    title: "Requests throttled"
+    body: "The target host repeatedly answered with 429 or 503. The affected collection is incomplete."
+  diagnostic.SCAN-PRIVATE-REQUEST-BLOCKED:
+    title: "Navigation blocked by network rule"
+    body: "The scanner's network rule blocked {count, plural, one {one navigation} other {# navigations}}: {addressClass}.{unresolved, plural, =0 {} other { Name not resolvable: the local name resolution returned no address{hasLookupCodes, select, true {, resolver error: {lookupCodes}} other {}}.}}{nonPublic, plural, =0 {} other { Private address: the target is in a non-public address range.}} Affected documents were not fetched.{recovered, plural, =0 {} one { One more navigation was blocked at first and loaded after a retry.} other { # more navigations were blocked at first and loaded after a retry.}}"

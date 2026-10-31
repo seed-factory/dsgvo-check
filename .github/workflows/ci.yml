@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  # Node 25+ no longer bundles corepack; the same version is installed explicitly there.
+  COREPACK_VERSION: 0.36.0
+
+jobs:
+  test:
+    name: test (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24", "26"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: corepack
+        run: |
+          if ! command -v corepack > /dev/null; then npm install --global "corepack@${COREPACK_VERSION}"; fi
+          corepack --version
+          corepack pnpm --version
+
+      - name: pnpm store path
+        id: pnpm-store
+        run: echo "dir=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Install Chromium (Chrome for Testing, new headless)
+        run: node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
+
+      # Ubuntu 24.04 restricts unprivileged user namespaces via AppArmor; the Chromium sandbox needs them
+      # (L2 browser tests below and the e2e CLI run with --sandbox require). This only changes the throwaway CI VM.
+      - name: Allow unprivileged user namespaces for the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - run: corepack pnpm typecheck
+      - run: corepack pnpm lint
+      - run: corepack pnpm schema:check
+      - run: corepack pnpm test:unit
+      - name: Integration (real Chromium with its sandbox, local servers, fake DNS)
+        run: corepack pnpm test:integration
+        env:
+          # test/integration/browser/helpers.ts runs Chromium without its sandbox on Linux unless this is set.
+          DSGVO_CHECK_TEST_SANDBOX: require
+      - run: corepack pnpm build
+
+      - name: End-to-end (built CLI against local fixture sites)
+        run: corepack pnpm test:e2e
+        env:
+          DSGVO_E2E_SKIP_BUILD: "1"
+          DSGVO_E2E_STRICT: "1"
+
+      # No DNS here (FT-02): an unsupported scheme is rejected before any lookup. The unreachable case of the built
+      # CLI runs in test:e2e (cli.e2e.test.ts) behind the local test resolver.
+      - name: Packed CLI
+        run: |
+          node dist/cli.js --help > /dev/null
+          node dist/cli.js --version
+          set +e
+          node dist/cli.js ftp://example.de/ --out "$RUNNER_TEMP/invalid" --format json
+          code=$?
+          set -e
+          test "$code" = "2"
+          jq -e '.scan.status == "failed" and (.summary.exitReasons | index("invalid-input"))' \
+            "$RUNNER_TEMP/invalid/report.json"
+
+  docker:
+    name: docker image and action
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Allow unprivileged user namespaces for the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Build image (no push)
+        run: |
+          docker build --tag dsgvo-check:ci \
+            --build-arg VERSION="$(jq -r .version package.json)" --build-arg REVISION="$GITHUB_SHA" .
+
+      - name: Image smoke
+        run: |
+          docker run --rm dsgvo-check:ci --help > /dev/null
+          test "$(docker run --rm dsgvo-check:ci --version)" = "$(jq -r .version package.json)"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' dsgvo-check:ci)" \
+            = "$(jq -r .version package.json)"
+          docker run --rm dsgvo-check:ci seccomp-profile | cmp - docker/seccomp-chromium.json
+          test "$(docker run --rm --entrypoint id dsgvo-check:ci -u)" != "0"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: End-to-end in Docker (exit codes, hardened flags, Chromium sandbox with the seccomp profile)
+        run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
+        env:
+          DSGVO_E2E_IMAGE: dsgvo-check:ci
+
+      - name: Action (uses ./) against a host that cannot be resolved
+        id: action
+        uses: ./
+        continue-on-error: true
+        with:
+          url: https://does-not-exist.invalid/
+          image: dsgvo-check:ci
+          format: console,json,html
+          out: dsgvo-check-action
+          upload-artifact: "false"
+
+      - name: Check Action outputs
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          EXIT_CODE: ${{ steps.action.outputs.exit-code }}
+          JSON_PATH: ${{ steps.action.outputs.json-path }}
+          HTML_PATH: ${{ steps.action.outputs.html-path }}
+        run: |
+          test "$OUTCOME" = "failure"
+          test "$EXIT_CODE" = "2"
+          test -f "$HTML_PATH"
+          test -f dsgvo-check-action/summary.md
+          jq -e '.scan.status == "failed" and (.summary.exitReasons | index("unreachable"))' "$JSON_PATH"

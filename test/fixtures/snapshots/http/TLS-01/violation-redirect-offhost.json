@@ -1,0 +1,14 @@
+{
+  "$description": "Apex redirects with 301 to https on www (first hop to another host): info only",
+  "$expect": { "status": "completed", "variants": ["redirect-chain-detail"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      { "id": "chain-http", "hostVariant": "target", "host": "www.example.de", "scheme": "http", "startUrl": "http://www.example.de/", "hops": [ { "url": "http://www.example.de/", "status": 301, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "location": "https://www.example.de/", "bodyBytes": 0 }, { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" } ], "final": { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" }, "outcome": "ok" }, { "id": "chain-https", "hostVariant": "target", "host": "www.example.de", "scheme": "https", "startUrl": "https://www.example.de/", "hops": [ { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" } ], "final": { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" }, "outcome": "ok" }, { "id": "chain-apex-http", "hostVariant": "apex", "host": "example.de", "scheme": "http", "startUrl": "http://example.de/", "hops": [ { "url": "http://example.de/", "status": 301, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "location": "https://www.example.de/", "bodyBytes": 0 }, { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" } ], "final": { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" }, "outcome": "ok" }
+    ],
+    "documents": [],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

@@ -1,0 +1,343 @@
+# Befundtexte (de), Modul browser (Owner M3). ICU-ähnliche Vorlagen: {param}, plural, select.
+# Formulierungen: "beobachtet", "nicht gefunden in …", keine rechtlichen Bewertungen (Stoppwort-Test).
+# Textentwurf: alle Texte sind Entwürfe und müssen vom Auftraggeber geprüft werden (D22).
+draft: true
+messages:
+  # ---------------------------------------------------------------- CONSENT-01
+  CONSENT-01.tracking-completed:
+    title: "Anfrage mit dauerhafter Kennung an {service} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine abgeschlossene Anfrage an {service} ({host}) mit
+      einer dauerhaften Kennung beobachtet ({identifierKind, select, stored-match {Abgleich mit einem gespeicherten
+      Cookie oder Speichereintrag} persistent-param {Parameter laut Signatur im Dienstekatalog} user-supplied
+      {Nutzer- oder Klickkennung im Parameter} other {{identifierKind}}}; {requestCount, plural, one {# Anfrage}
+      other {# Anfragen}} auf {pageCount, plural, one {# Seite} other {# Seiten}}). Der Wert der Kennung wurde nicht
+      gespeichert.
+  CONSENT-01.cookieless-ping:
+    title: "Anfrage ohne dauerhafte Kennung an {service} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an {service} ({host}) beobachtet, für die
+      keine dauerhafte Kennung belegt ist ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
+      Speicherung abgelehnt} other {Kennung: {identifierKind, select, per-load {nicht als dauerhaft belegt} other
+      {keine erkannt}}}}; {pageCount, plural, one {# Seite} other {# Seiten}}). Ob eine solche Anfrage ein Zugriff
+      im Sinne von § 25 TDDDG ist, wurde nicht bewertet.
+  CONSENT-01.first-party-proxy:
+    title: "First-party-Endpunkt mit Tracking-Signatur von {service} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an den eigenen Host {host} beobachtet,
+      deren Pfad und Parameter der Signatur von {service} im Dienstekatalog entsprechen (z. B. serverseitiges Tagging
+      oder Tag-Gateway). Eine serverseitige Weiterleitung ist passiv nicht feststellbar.
+  CONSENT-01.library-loaded:
+    title: "{service} vor einer Interaktion geladen"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Bibliothek oder ein Inhalt von {service} ({host})
+      geladen ({pageCount, plural, one {# Seite} other {# Seiten}}). Ein zugehöriger Ereignisversand wurde in diesem
+      Beleg nicht festgestellt.
+  CONSENT-01.third-party-resource:
+    title: "Drittanbieter-Ressource von {service} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurden {requestCount, plural, one {# Anfrage} other
+      {# Anfragen}} an {service} ({host}) beobachtet (Kategorie laut Dienstekatalog: CDN, Zahlungsdienst,
+      Einwilligungsverwaltung oder Fehleranalyse). Die Erforderlichkeit wurde nicht bewertet.
+  CONSENT-01.unknown-host:
+    title: "Anfragen an nicht klassifizierten Host {service} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurden {requestCount, plural, one {# Anfrage} other
+      {# Anfragen}} an {host} beobachtet; die Domain {service} ist im Dienstekatalog nicht enthalten. Zweck und
+      Anbieter bitte manuell zuordnen.
+  CONSENT-01.request-not-completed:
+    title: "Anfrage an {service} vor einer Interaktion, Antwort nicht belegt"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an {service} ({host}) gestartet; eine
+      Antwort wurde nicht beobachtet (z. B. vom Browser blockiert oder abgebrochen). Ein beantworteter Austausch ist
+      damit nicht belegt.
+
+  # ---------------------------------------------------------------- CONSENT-02
+  CONSENT-02.tracking-identifier-stored:
+    title: "Bekannte Analyse- oder Marketing-Kennung {name} vor einer Interaktion gespeichert"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde die Speicherung von {name} ({storageKind}, {party})
+      beobachtet. Einordnung als Kennung der Kategorie Analyse/Marketing laut {dataset}. Werte wurden nicht
+      gespeichert.
+  CONSENT-02.unknown-third-party-persistent:
+    title: "Nicht klassifizierter dauerhafter Drittanbieter-Eintrag {name} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {name} ({storageKind})
+      durch {party} beobachtet. Der Eintrag ist in {dataset} nicht als bekannte Analyse- oder Marketing-Kennung
+      eingeordnet; Zweck bitte manuell prüfen.
+  CONSENT-02.unknown-first-party-persistent:
+    title: "Nicht klassifizierter dauerhafter Eintrag {name} vor einer Interaktion"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {name} ({storageKind},
+      eigene Domain) beobachtet. Der Eintrag ist in {dataset} nicht als bekannte Analyse- oder Marketing-Kennung
+      eingeordnet; Zweck bitte manuell prüfen.
+  CONSENT-02.cmp-cookie-with-uid:
+    title: "Cookie des Einwilligungsbanners {name} mit eindeutiger Kennung"
+    body: >-
+      Das Cookie {name} des Einwilligungsbanners ({storageKind}, {party}) enthält eine eindeutige Kennung. Der Wert
+      wurde nicht gespeichert. Ob die Kennung für den Nachweis der Auswahl benötigt wird, wurde nicht bewertet.
+  CONSENT-02.storage-rejected-or-attempted:
+    title: "Speicherversuch für {name} vor einer Interaktion nicht übernommen"
+    body: >-
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde ein Versuch beobachtet, {name} ({storageKind},
+      {party}) zu speichern; der Browser hat die Speicherung abgelehnt oder nicht bestätigt. Einordnung als Kennung
+      der Kategorie Analyse/Marketing laut {dataset}.
+
+  # ---------------------------------------------------------------- CONSENT-03
+  CONSENT-03.no-banner-strong-tracking:
+    title: "Kein Einwilligungsbanner erkannt; Analyse- oder Marketing-Kennung beobachtet"
+    body: >-
+      Auf {pageCount, plural, one {# auswertbaren geprüften Seite} other {# auswertbaren geprüften Seiten}} wurde
+      kein Einwilligungsbanner erkannt. Gleichzeitig wurden vor einer Interaktion Anfragen mit dauerhafter Kennung
+      oder gespeicherte Analyse- oder Marketing-Kennungen beobachtet: {services}. Egress-Region:
+      {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
+  CONSENT-03.no-banner-consent-services:
+    title: "Kein Einwilligungsbanner erkannt; Analyse-, Marketing- oder eingebettete Dienste geladen"
+    body: >-
+      Auf {pageCount, plural, one {# auswertbaren geprüften Seite} other {# auswertbaren geprüften Seiten}} wurde
+      kein Einwilligungsbanner erkannt. Gleichzeitig wurden vor einer Interaktion Dienste der Kategorien Analyse,
+      Marketing oder eingebettete Inhalte mit Speicherung beobachtet: {services}. Egress-Region:
+      {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
+
+  # ---------------------------------------------------------------- CONSENT-04
+  CONSENT-04.blocking-no-reject:
+    title: "Blockierender Dialog ohne Ablehnoption auf der ersten Ebene"
+    body: >-
+      Der Einwilligungsdialog ({cmp}) blockierte die Seitennutzung. Auf der ersten sichtbaren Ebene wurde eine
+      Zustimmungsoption, aber keine unmittelbar bedienbare Ablehnoption gefunden.
+  CONSENT-04.close-means-accept:
+    title: "Schließen des Dialogs gilt als Zustimmung"
+    body: "Laut ausgelesener Konfiguration von {cmp} führt das Schließen des Dialogs zur Zustimmung."
+  CONSENT-04.reject-not-actionable:
+    title: "Ablehnoption auf dem ersten Bildschirm nicht bedienbar"
+    body: >-
+      Eine Ablehnoption von {cmp} wurde gefunden, war auf dem ersten Bildschirm jedoch nicht unmittelbar bedienbar
+      (z. B. verdeckt oder außerhalb des sichtbaren Bereichs).
+  CONSENT-04.reject-ineffective:
+    title: "Ablehnung nicht bestätigt"
+    body: "Nach Betätigung der Ablehnoption von {cmp} wurde kein bestätigter Ablehnzustand festgestellt."
+  CONSENT-04.consent-without-action:
+    title: "CMP meldet Status „granted“ ohne Auswahl im Dialog"
+    body: >-
+      Ohne Auswahl im Dialog meldete {cmp} den Status „granted“ für optionale Kategorien (Herkunft laut CMP:
+      Ausgangszustand oder gespeicherter Zustand).
+  CONSENT-04.reject-as-link:
+    title: "Ablehnoption als Link gestaltet"
+    body: >-
+      Die Ablehnoption von {cmp} ist als Link gestaltet. Ob sie gleichwertig zur Zustimmung dargestellt ist, wurde
+      nicht automatisch bewertet; bitte manuell prüfen.
+  CONSENT-04.nonblocking-no-reject:
+    title: "Keine Ablehnoption auf der ersten Ebene (nicht blockierend)"
+    body: >-
+      Der Einwilligungsdialog ({cmp}) blockierte die Seite nicht; auf der ersten Ebene wurde keine Ablehnoption
+      gefunden. Bitte manuell prüfen.
+  CONSENT-04.no-choice-at-first-layer:
+    title: "Keine Auswahl auf der ersten Ebene"
+    body: >-
+      Der Einwilligungsdialog ({cmp}) blockierte die Seite; auf der ersten Ebene wurden weder eine Zustimmungs- noch
+      eine Ablehnoption gefunden, nur weitere Einstellungen. Bitte manuell prüfen.
+  CONSENT-04.pur-abo:
+    title: "Pur-Abo-Modell erkannt"
+    body: "Ein Modell aus Zustimmung oder kostenpflichtigem Abonnement ({cmp}) wurde erkannt. Bitte manuell prüfen."
+  CONSENT-04.banner-not-recognized:
+    title: "Banner nicht erkannt"
+    body: >-
+      Banner nicht erkannt. Die Gestaltung und Funktion der Optionen wurden nicht abschließend ausgewertet; die
+      gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.
+  CONSENT-04.cmp-not-supported:
+    title: "CMP {cmp} erkannt, nicht unterstützt"
+    body: "CMP {cmp} erkannt, nicht unterstützt. Die Gestaltung und Funktion der Optionen wurden nicht ausgewertet."
+
+  # ---------------------------------------------------------------- CONSENT-05
+  CONSENT-05.tracking-after-reject:
+    title: >-
+      {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert} other {Anfrage
+      mit dauerhafter Kennung an {service} nach bestätigter Ablehnung}}
+    body: >-
+      {kind, select, storage {Nach bestätigter Ablehnung wurde eine neue Speicherung von {name} ({service})
+      beobachtet; der Browser hat den Eintrag nach dem Klick angenommen. Werte wurden nicht gespeichert.} other {Nach
+      bestätigter Ablehnung und erneutem Laden wurde eine neue, nach dem Klick gestartete Anfrage an {service}
+      ({host}) mit einer dauerhaften Kennung beobachtet ({pageCount, plural, one {# Seite} other {# Seiten}}).
+      Anfragen des Einwilligungsbanners zur Aktualisierung des Status sind ausgenommen.}}
+  CONSENT-05.cookieless-ping-after-reject:
+    title: "Anfrage ohne dauerhafte Kennung an {service} nach Ablehnung"
+    body: >-
+      Nach bestätigter Ablehnung wurde eine nach dem Klick gestartete Anfrage an {service} ({host}) ohne belegte
+      dauerhafte Kennung beobachtet ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
+      Speicherung abgelehnt} other {Kennung nicht als dauerhaft belegt}}; {pageCount, plural, one {# Seite} other
+      {# Seiten}}).
+  CONSENT-05.connect-only-after-reject:
+    title: "Nur Verbindungsaufbau zu {host} nach Ablehnung"
+    body: >-
+      Nach bestätigter Ablehnung wurde ein Verbindungsaufbau zu {host} ({service}) protokolliert; ein konkreter
+      Ereignisversand wurde daraus nicht festgestellt.
+
+  # ---------------------------------------------------------------- TRACK-01
+  TRACK-01.service-inventory:
+    title: "{service} beobachtet (Inventar)"
+    body: >-
+      {service} wurde beobachtet. Zustand je Zeitpunkt: vor einer Interaktion: {stageBeforeInteraction, select,
+      loaded {geladen} initialised {initialisiert} event-sent {Ereignis gesendet} not-checked {nicht geprüft}
+      other {nicht gefunden}}; nach Ablehnung: {stageAfterReject, select, loaded {geladen} initialised
+      {initialisiert} event-sent {Ereignis gesendet} not-checked {nicht geprüft} other {nicht gefunden}}; nach
+      Zustimmung: {stageAfterAccept, select, loaded {geladen} initialised {initialisiert} event-sent
+      {Ereignis gesendet} not-checked {nicht geprüft} other {nicht gefunden}}. „Nicht geprüft“ steht für einen
+      Zeitpunkt, zu dem keine Interaktion mit dem Einwilligungsbanner stattfand. Die Bewertung des Zeitpunkts
+      erfolgt in den verknüpften Befunden.
+
+  # ---------------------------------------------------------------- EMBED-01
+  EMBED-01.fonts-loaded:
+    title: "Externe Schriftarten von {service} geladen"
+    body: >-
+      Schriftdateien oder Stylesheets von {service} wurden von einem externen Server geladen, Zeitpunkt:
+      {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {vor
+      einer Interaktion mit dem Einwilligungsbanner}} ({pageCount, plural, one {# Seite} other {# Seiten}}).
+  EMBED-01.preconnect-only:
+    title: "Nur Verbindungsvorbereitung zu {service}"
+    body: >-
+      Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
+      Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
+
+  # ---------------------------------------------------------------- EMBED-02
+  EMBED-02.maps-loaded:
+    title: "Externer Kartendienst {service} geladen"
+    body: >-
+      Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte
+      (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
+      geladen, Zeitpunkt: {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
+      Ablehnung} other {vor einer Interaktion mit dem Einwilligungsbanner}} ({pageCount, plural, one {# Seite} other
+      {# Seiten}}).
+
+  # ---------------------------------------------------------------- LEGAL-01
+  LEGAL-01.document-not-found:
+    title: "{documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht gefunden"
+    body: >-
+      {documentKind, select, impressum {Ein Impressum} other {Eine Datenschutzerklärung}} wurde auf
+      {pageTotal, plural, one {der # geprüften Seite} other {den # geprüften Seiten}} nicht per Link gefunden.
+      {hopChecked, select, true {Auch über eine geprüfte Zwischenseite (z. B. Kontakt) wurde {documentKind, select,
+      impressum {es} other {sie}} nicht gefunden.} other {Eine Zwischenseite (z. B. Kontakt) wurde nicht geprüft.}}{fallbackChecked,
+      select, true { Unter den üblichen Pfaden wurde {documentKind, select, impressum {es} other {sie}} ebenfalls nicht
+      gefunden.} other {}}
+  LEGAL-01.links-broken:
+    title: "Links auf {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} führen auf Fehlerseiten"
+    body: >-
+      Links auf {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} führen auf
+      Fehlerseiten (4xx, Soft-404 oder Seite ohne erkennbaren Inhalt). Über eine geprüfte Zwischenseite erreichbar:
+      {reachableViaHop, select, true {ja} other {nein}}.
+  LEGAL-01.link-missing-on-some-pages:
+    title: "Link auf {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht auf allen Seiten"
+    body: >-
+      Ein Link auf {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} wurde auf
+      {missingCount} von {pageTotal} geprüften Seiten nicht gefunden.
+  LEGAL-01.reachable-via-intermediate:
+    title: "{documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nur über Zwischenseite oder Standardpfad erreichbar"
+    body: >-
+      {documentKind, select, impressum {Das Impressum} other {Die Datenschutzerklärung}} wurde auf den geprüften
+      Seiten nicht per direktem Link gefunden, sondern nur {foundVia, select, hop {über eine Zwischenseite (z. B.
+      Kontakt)} fallback {über einen üblichen Pfad} other {auf anderem Weg}}.
+  LEGAL-01.footer-covered-by-banner:
+    title: "Seitenfuß vom Einwilligungsbanner verdeckt"
+    body: >-
+      Der Einwilligungsbanner verdeckte den Seitenfuß; im Banner selbst wurde kein Link auf
+      {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} gefunden.
+  LEGAL-01.unresolved:
+    title: "Linkziel für {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht aufgelöst"
+    body: >-
+      Das Linkziel für {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} konnte auf
+      {missingCount} von {pageTotal} geprüften Seiten nicht eindeutig aufgelöst werden (z. B. Link auf # oder
+      JavaScript ohne erkannten Inhalt). Bitte manuell prüfen.
+
+  # ---------------------------------------------------------------- PRIV-01
+  PRIV-01.not-named:
+    title: "{service} nicht gefunden in der Datenschutzerklärung"
+    body: >-
+      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl} ({partCount, plural, one {# Abschnitt} other
+      {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht vollständig}})
+      wurde keine Nennung von {service}, des Anbieters, der Domains oder einer passenden Kategoriebeschreibung
+      gefunden. Der Dienst wurde auf
+      {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im Text wurden nicht ausgewertet.
+  PRIV-01.category-only:
+    title: "Nur Kategoriebeschreibung für {service} gefunden"
+    body: >-
+      In der Datenschutzerklärung unter {policyUrl} wurde eine Beschreibung der Kategorie {category, select,
+      analytics {Webanalyse} ads {Werbung} session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management}
+      cdn {Content Delivery Network} payment {Zahlungsdienste} consent-provider {Einwilligungsverwaltung} fonts
+      {Schriftarten} maps {Kartendienste} video {Videoplattformen} captcha {Captcha-Dienste} widget {Widgets} social
+      {soziale Netzwerke} reviews {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other
+      {{category}}} gefunden; eine eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
+  PRIV-01.ambiguous-match:
+    title: "Nennung von {service} nur in nicht angezeigtem Text"
+    body: >-
+      {service} wurde in der Datenschutzerklärung unter {policyUrl} nur in einem auf der Seite nicht angezeigten
+      oder keinem Abschnitt zuordenbaren Textteil gefunden. Bitte manuell prüfen.
+
+legalNotes:
+  CONSENT-01:
+    text: >-
+      § 25 Abs. 1 TDDDG; Art. 6 DSGVO; EuGH C-673/17 (Planet49); VG Hannover 10 A 5385/22. Für Anfragen ohne
+      Speicherung oder Auslesen von Informationen auf dem Endgerät ist die Einordnung umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-02:
+    text: >-
+      § 25 Abs. 1 und Abs. 2 Nr. 2 TDDDG; EuGH C-673/17 (Planet49); BGH I ZR 7/16. Ob für eine Speicherung die
+      Ausnahme nach § 25 Abs. 2 Nr. 2 TDDDG greift, ist eine Frage des Einzelfalls; die Allowlist bedeutet keine
+      solche Einordnung.
+    status: authority-consensus
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-03:
+    text: >-
+      § 25 Abs. 1 TDDDG; Art. 6, 13 DSGVO. Ob Ausnahmen greifen oder ein Dienst erforderlich ist, wird nicht
+      automatisch festgestellt. Die Region beruht auf der Angabe der nutzenden Person.
+    status: authority-consensus
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-04:
+    text: >-
+      Art. 4 Nr. 11, Art. 7 DSGVO; § 25 TDDDG; DSK Orientierungshilfe Digitale Dienste; OLG Köln 6 U 80/23;
+      VG Hannover 10 A 5385/22. Für nicht blockierende Dialoge und Pur-Abo-Modelle ist die Einordnung umstritten.
+    status: court-appellate
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-05:
+    text: "§ 25 Abs. 1 TDDDG; Art. 7 Abs. 3, Art. 4 Nr. 11 DSGVO."
+    status: authority-consensus
+    reviewedAt: null
+    reviewBy: null
+  TRACK-01:
+    text: >-
+      § 25 TDDDG; Art. 6 Abs. 1 lit. a DSGVO; Art. 26 DSGVO (EuGH C-40/17, Fashion ID). Die Bestandsaufnahme enthält
+      keine rechtliche Bewertung; diese hängt von Funktion und Verarbeitung ab.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  EMBED-01:
+    text: >-
+      Art. 6 DSGVO; LG München I 3 O 17493/20 (Einzelentscheidung). Die Einordnung reiner Schriftabrufe unter § 25
+      TDDDG ist umstritten.
+    status: court-first-instance
+    reviewedAt: null
+    reviewBy: null
+  EMBED-02:
+    text: >-
+      § 25 TDDDG bei Speicherung auf dem Endgerät; Art. 6 DSGVO; DSK Orientierungshilfe Digitale Dienste. Für
+      statische Kartenkacheln ohne Speicherung ist die Einordnung umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  LEGAL-01:
+    text: >-
+      § 5 DDG; Art. 13 DSGVO; BGH I ZR 228/03 (Erreichbarkeit über zwei Klicks, auch über „Kontakt“). § 18 MStV
+      je nach Angebot.
+    status: court-appellate
+    reviewedAt: null
+    reviewBy: null
+  PRIV-01:
+    text: >-
+      Art. 13 Abs. 1 lit. e, f DSGVO. Die Angabe von Kategorien von Empfängern kann ausreichen; ob ein Dienst
+      namentlich zu nennen ist, ist umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null

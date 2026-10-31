@@ -1,0 +1,13 @@
+Файл `docs/legal/wording-guide.md` — Formulierungsleitfaden для текстов находок и дисклеймера. Аудитория: DSGVO-эксперт заказчика (вычитка и финальные тексты) и разработчики (lint-правила).
+
+Разделы:
+1. Принцип: факт, а не правовая оценка. Граница RDG (BGH Smartlaw), § 824 BGB, «отсутствие находки ≠ соответствие».
+2. Запрещённые слова и конструкции (de и en) с заменами — таблица, пригодная для lint.
+3. Разрешённые конструкции и шаблон находки: Beobachtung → Kontext → Hinweis zur manuellen Prüfung.
+4. Статусы правового якоря (authority-consensus, court-first-instance, court-appellate, contested, technical) — значение и отображение в отчёте.
+5. Черновики немецких текстов по каждому `checkId` и вариантам из консенсуса (ключ → Titel → Beschreibung → Hinweis), с пометкой DRAFT. Английский — по одной строке на ключ.
+6. Черновик дисклеймера (Hinweis / Haftungsausschluss) с условными абзацами.
+7. Блок «Rechtlicher Kontext (Stand …)» — что и как выводим о DPF, Digital Omnibus и т. п.
+8. Чек-лист вычитки для заказчика.
+
+Запиши файл инструментом Write в /Users/user/Documents/germany/coding-memes/docs/legal/wording-guide.md.

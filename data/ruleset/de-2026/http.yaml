@@ -1,0 +1,26 @@
+# Ruleset de-2026, module http (owner: M4). Severity per (checkId, variant); variant names and levels follow the
+# registry docs/03-checks.md §2.1, D19 and consensus §4. T3 codes stay at most `warning` (D19 lint).
+# Confidence caps apply on top (medium ≤ warning, low ≤ info).
+checks:
+  HDR-01:
+    gating: true
+    variants:
+      hsts-missing: { severity: warning }
+      anti-framing-missing: { severity: warning }
+      referrer-policy-permissive: { severity: warning }
+      header-missing: { severity: info }
+  TLS-01:
+    gating: true
+    variants:
+      https-unavailable: { severity: critical }
+      form-on-http-page: { severity: critical }
+      no-redirect: { severity: warning }
+      client-side-redirect-only: { severity: warning }
+      redirect-chain-detail: { severity: info }
+  TLS-02:
+    gating: true
+    variants:
+      certificate-invalid: { severity: critical }
+      chain-incomplete: { severity: warning }
+      certificate-expiring: { severity: warning }
+      certificate-expiry-approaching: { severity: info }

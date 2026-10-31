@@ -1,0 +1,226 @@
+name: dsgvo-check
+description: >-
+  Passive scan of a website for signs of DSGVO/TDDDG/DDG issues and basic security problems. Fails the job when
+  findings reach the threshold. Technical observations only, no legal advice.
+author: seed-factory
+branding:
+  icon: shield
+  color: blue
+
+# Composite action around `docker run` (D24): non-root, seccomp profile for the Chromium sandbox, all capabilities
+# dropped, read-only root filesystem, tmpfs for /tmp, memory/CPU/PID limits, no secrets, no docker.sock and no
+# runner environment inside the container. Only the report directory is mounted.
+
+inputs:
+  url:
+    description: Target URL (http:// or https://).
+    required: true
+  fail-on:
+    description: Threshold for exit code 1 (critical, warning or none).
+    required: false
+    default: critical
+  format:
+    description: >-
+      Report formats, comma-separated (console, json, html, summary). `summary` is added automatically when
+      `job-summary` is true.
+    required: false
+    default: console,json,html
+  out:
+    description: Report directory, relative to the workspace (or absolute inside the workspace or RUNNER_TEMP).
+    required: false
+    default: dsgvo-check-report
+  extra-args:
+    description: >-
+      Additional CLI options separated by spaces, e.g. `--max-pages 4 --lang en`. No shell quoting is interpreted.
+      `--out` is set by the action and not allowed here.
+    required: false
+    default: ""
+  image:
+    description: >-
+      Container image, by digest. Each release tag of this action pins the image built for it
+      (`ghcr.io/seed-factory/dsgvo-check@sha256:…`, D24); the version tag of the image (`:<version>`) is for
+      reference only. On the default branch the digest is a placeholder: use a release of the action or set this input.
+    required: false
+    # Written by .github/scripts/pin-image.sh in the release job; the all-zero digest marks an unreleased revision.
+    default: ghcr.io/seed-factory/dsgvo-check@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  memory:
+    description: Memory limit of the container (docker --memory).
+    required: false
+    default: 3g
+  cpus:
+    description: CPU limit of the container (docker --cpus).
+    required: false
+    default: "2"
+  pids-limit:
+    description: Process limit of the container (docker --pids-limit).
+    required: false
+    default: "1024"
+  job-summary:
+    description: Append the Markdown summary to the GitHub Job Summary.
+    required: false
+    default: "true"
+  upload-artifact:
+    description: Upload the report directory as a workflow artifact (also when the scan fails).
+    required: false
+    default: "true"
+  artifact-name:
+    description: Name of the uploaded artifact.
+    required: false
+    default: dsgvo-check-report
+  retention-days:
+    description: Retention of the uploaded artifact in days (D20 recommends 14).
+    required: false
+    default: "14"
+
+outputs:
+  exit-code:
+    description: Exit code of the scan (0 = below threshold, 1 = findings at or above the threshold, 2 = scan error).
+    value: ${{ steps.scan.outputs.exit-code }}
+  json-path:
+    description: Absolute path of report.json on the runner (empty if it was not written).
+    value: ${{ steps.scan.outputs.json-path }}
+  html-path:
+    description: Absolute path of report.html on the runner (empty if it was not written).
+    value: ${{ steps.scan.outputs.html-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: dsgvo-check scan
+      id: scan
+      shell: bash
+      # Inputs are passed only through env, never interpolated into the script (shell injection).
+      env:
+        DC_URL: ${{ inputs.url }}
+        DC_FAIL_ON: ${{ inputs.fail-on }}
+        DC_FORMAT: ${{ inputs.format }}
+        DC_OUT: ${{ inputs.out }}
+        DC_EXTRA_ARGS: ${{ inputs.extra-args }}
+        DC_IMAGE: ${{ inputs.image }}
+        DC_MEMORY: ${{ inputs.memory }}
+        DC_CPUS: ${{ inputs.cpus }}
+        DC_PIDS_LIMIT: ${{ inputs.pids-limit }}
+        DC_JOB_SUMMARY: ${{ inputs.job-summary }}
+      run: |
+        set -euo pipefail
+
+        fail() {
+          echo "::error title=dsgvo-check::$1"
+          echo "exit-code=2" >> "$GITHUB_OUTPUT"
+          exit 1
+        }
+        single_line() { [[ "$1" != *$'\n'* && "$1" != *$'\r'* ]]; }
+
+        for v in "$DC_URL" "$DC_FAIL_ON" "$DC_FORMAT" "$DC_OUT" "$DC_EXTRA_ARGS" "$DC_IMAGE"; do
+          single_line "$v" || fail "Inputs must not contain line breaks."
+        done
+        [[ "$DC_URL" =~ ^https?://[^[:space:]]+$ ]] || fail "Input 'url' must be an http:// or https:// URL."
+        case "$DC_FAIL_ON" in critical | warning | none) ;; *) fail "Input 'fail-on' must be critical, warning or none." ;; esac
+        [[ "$DC_FORMAT" =~ ^[a-z]+(,[a-z]+)*$ ]] || fail "Input 'format' must be a comma-separated list."
+        [[ "$DC_MEMORY" =~ ^[0-9]+[bkmg]?$ ]] || fail "Input 'memory' is not a docker memory size."
+        [[ "$DC_CPUS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail "Input 'cpus' is not a number."
+        [[ "$DC_PIDS_LIMIT" =~ ^[0-9]+$ ]] || fail "Input 'pids-limit' is not a number."
+        [[ "$DC_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || fail "Input 'image' is not a valid image reference."
+        if [[ "$DC_IMAGE" == *@sha256:0000000000000000000000000000000000000000000000000000000000000000 ]]; then
+          fail "This revision of the action is not a release, so no image digest is pinned. Use a release of the action or set the 'image' input."
+        fi
+
+        formats="$DC_FORMAT"
+        if [[ "$DC_JOB_SUMMARY" == "true" && ",$formats," != *",summary,"* ]]; then formats="$formats,summary"; fi
+
+        # Report directory: inside the workspace or RUNNER_TEMP only; the only host path mounted into the container.
+        workspace="$(realpath -m -- "${GITHUB_WORKSPACE:?}")"
+        runner_temp="$(realpath -m -- "${RUNNER_TEMP:?}")"
+        case "$DC_OUT" in
+          /*) out="$(realpath -m -- "$DC_OUT")" ;;
+          *) out="$(realpath -m -- "$workspace/$DC_OUT")" ;;
+        esac
+        case "$out/" in
+          "$workspace"/?*/ | "$runner_temp"/?*/) ;;
+          *) fail "Input 'out' must be a sub-directory of the workspace or RUNNER_TEMP." ;;
+        esac
+        mkdir -p -- "$out"
+
+        # extra-args: plain word splitting, no globbing, no eval.
+        read -r -a extra <<< "$DC_EXTRA_ARGS"
+        for a in ${extra[@]+"${extra[@]}"}; do
+          case "$a" in --out | --out=*) fail "Use the 'out' input instead of --out in extra-args." ;; esac
+        done
+
+        profile="${GITHUB_ACTION_PATH:?}/docker/seccomp-chromium.json"
+        [[ -f "$profile" ]] || fail "Seccomp profile not found: docker/seccomp-chromium.json"
+
+        if ! docker image inspect "$DC_IMAGE" > /dev/null 2>&1; then
+          [[ "$DC_IMAGE" == *@sha256:* ]] || echo "::warning title=dsgvo-check::The image $DC_IMAGE is not pinned by digest; a re-published tag changes the scanner without notice."
+          docker pull --quiet "$DC_IMAGE" > /dev/null || fail "Could not pull the image $DC_IMAGE."
+        fi
+
+        # Output of the scanned site is untrusted: stop workflow command processing while the container runs.
+        token="$(openssl rand -hex 16 2> /dev/null || date +%s%N | sha256sum | cut -c1-32)"
+        echo "::stop-commands::$token"
+        set +e
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --cap-drop=ALL \
+          --security-opt no-new-privileges \
+          --security-opt "seccomp=$profile" \
+          --read-only \
+          --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+          --shm-size=512m \
+          --memory="$DC_MEMORY" --memory-swap="$DC_MEMORY" \
+          --cpus="$DC_CPUS" \
+          --pids-limit="$DC_PIDS_LIMIT" \
+          --env HOME=/tmp \
+          --env NO_COLOR=1 \
+          --volume "$out:/out" \
+          --workdir /out \
+          "$DC_IMAGE" "$DC_URL" --fail-on "$DC_FAIL_ON" --format "$formats" --out /out ${extra[@]+"${extra[@]}"}
+        code=$?
+        set -e
+        echo "::$token::"
+
+        json=""
+        html=""
+        [[ -f "$out/report.json" ]] && json="$out/report.json"
+        [[ -f "$out/report.html" ]] && html="$out/report.html"
+        {
+          echo "exit-code=$code"
+          echo "json-path=$json"
+          echo "html-path=$html"
+          echo "out-dir=$out"
+        } >> "$GITHUB_OUTPUT"
+
+        if [[ "$DC_JOB_SUMMARY" == "true" && -f "$out/summary.md" ]]; then
+          cat -- "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # Exit reasons are a closed set written by the tool; strip anything else before printing them.
+        reasons=""
+        if [[ -n "$json" ]] && command -v jq > /dev/null; then
+          reasons="$(jq -r '(.summary.exitReasons // []) | join(", ")' "$json" 2> /dev/null | tr -cd 'a-zA-Z0-9:,. -' || true)"
+        fi
+        case "$code" in
+          0) echo "dsgvo-check: exit code 0 (fail-on: $DC_FAIL_ON)." ;;
+          1)
+            echo "::error title=dsgvo-check::Findings at or above the threshold (fail-on: $DC_FAIL_ON). Reasons: ${reasons:-threshold}. See the Job Summary and the report."
+            if [[ "$reasons" == *check-error* ]]; then
+              echo "::warning title=dsgvo-check::Some checks failed in addition to the findings; their results are missing from the report."
+            fi
+            ;;
+          *) echo "::error title=dsgvo-check::The scan did not complete (exit code $code). Reasons: ${reasons:-unknown}." ;;
+        esac
+
+    - name: Upload dsgvo-check report
+      if: inputs.upload-artifact == 'true' && steps.scan.outputs.out-dir != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.scan.outputs.out-dir }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn
+
+    - name: dsgvo-check result
+      shell: bash
+      env:
+        DC_EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+      run: exit "${DC_EXIT_CODE:-2}"

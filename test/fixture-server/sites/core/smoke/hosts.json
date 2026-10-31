@@ -1,0 +1,38 @@
+{
+  "hosts": {
+    "www.example.test": "www",
+    "www.google-analytics.com": "ga",
+    "fonts.googleapis.com": "fonts"
+  },
+  "tls": {
+    "expired.example.test": "expired",
+    "selfsigned.example.test": "self-signed",
+    "wrongname.example.test": "wrong-name"
+  },
+  "routes": [
+    {
+      "host": "example.test",
+      "scheme": "http",
+      "path": "/",
+      "status": 301,
+      "headers": {
+        "location": "https://www.example.test/"
+      }
+    },
+    {
+      "host": "www.example.test",
+      "path": "/set-cookie",
+      "status": 200,
+      "headers": {
+        "set-cookie": ["fixture_session=abc; Path=/; HttpOnly", "fixture_pref=1; Path=/; Max-Age=3600"],
+        "content-type": "text/plain"
+      },
+      "body": "ok"
+    },
+    {
+      "host": "www.google-analytics.com",
+      "path": "/g/collect",
+      "status": 204
+    }
+  ]
+}

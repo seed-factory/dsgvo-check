@@ -1,0 +1,27 @@
+# dependencies and build output
+node_modules/
+/dist/
+coverage/
+*.tsbuildinfo
+
+# scanner output
+dsgvo-check-report*/
+dsgvo-check-report*
+canary/results/
+
+# saved snapshots outside test fixtures
+*.snapshot.json
+!test/fixtures/**/*.snapshot.json
+
+# temporary browser profiles
+.tmp/
+tmp-profile*/
+dsgvo-check-profile-*/
+
+# env, os, logs
+.env
+.env.*
+.DS_Store
+*.log
+npm-debug.log*
+pnpm-debug.log*

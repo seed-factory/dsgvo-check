@@ -1,0 +1,13 @@
+{
+  "hosts": {
+    "www.example.test": "www",
+    "www.googletagmanager.com": "gtm"
+  },
+  "routes": [
+    {
+      "host": "www.google-analytics.com",
+      "path": "/g/collect",
+      "status": 204
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "hosts": {},
+  "tls": {
+    "expired.example.test": "expired"
+  },
+  "routes": [
+    {
+      "host": "blocked.example.test",
+      "path": "/",
+      "status": 403,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "cf-mitigated": "challenge",
+        "server": "cloudflare"
+      },
+      "body": "<!doctype html><html><head><title>Just a moment...</title></head><body><p>Checking your browser</p></body></html>"
+    },
+    {
+      "host": "down.example.test",
+      "path": "/",
+      "status": 503,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "body": "<!doctype html><title>503</title><p>Wartung</p>"
+    },
+    {
+      "host": "expired.example.test",
+      "path": "/",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "body": "<!doctype html><title>ok</title>"
+    },
+    {
+      "host": "throttled.example.test",
+      "path": "/",
+      "status": 429,
+      "headers": {
+        "retry-after": "0",
+        "content-type": "text/html; charset=utf-8"
+      },
+      "body": "<!doctype html><title>429</title><p>Zu viele Anfragen</p>"
+    },
+    {
+      "host": "slow.example.test",
+      "path": "/",
+      "status": 200,
+      "delayMs": 60000,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "body": "<!doctype html><title>slow</title>"
+    }
+  ]
+}

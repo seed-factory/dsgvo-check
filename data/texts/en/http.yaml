@@ -1,0 +1,129 @@
+# Finding texts (en), module http (owner: M4). ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
+# Keys follow the registry docs/03-checks.md §2.1. Wording: "observed", "not found in …" — no legal verdicts
+# (stop-word test). Draft until reviewed (D22).
+draft: true
+messages:
+  # ------------------------------------------------------------------ HDR-01
+  HDR-01.hsts-missing:
+    title: "HSTS header not found"
+    body: >-
+      {problem, select, absent {The Strict-Transport-Security (HSTS) header was not found in the HTTPS response of
+      {url}} other {A Strict-Transport-Security header without effect was observed in the HTTPS response of {url}
+      ({problem, select, max-age-zero {max-age=0} no-max-age {no valid max-age} other {invalid syntax}})}}{count,
+      plural, one {} other { (# pages affected)}}. Without effective HSTS a later visit via http:// can happen
+      unencrypted before the redirect to https applies. Recommendation: send Strict-Transport-Security with a
+      max-age of at least one year, e.g. max-age=31536000.
+  HDR-01.anti-framing-missing:
+    title: "No protection against framing by other sites (clickjacking)"
+    body: >-
+      Neither X-Frame-Options (DENY or SAMEORIGIN) nor the CSP directive frame-ancestors was found in the headers of
+      the response of {url}{count, plural, one {} other { (# pages affected)}}.{hint, select, meta-csp { The
+      frame-ancestors directive is only present in a meta tag, where browsers ignore it.} other {}}
+      Recommendation: send X-Frame-Options: SAMEORIGIN or Content-Security-Policy: frame-ancestors 'self' as an HTTP
+      header.
+  HDR-01.referrer-policy-permissive:
+    title: "Referrer-Policy passes on full URLs"
+    body: >-
+      The Referrer-Policy "{policy}" was observed in the response of {url}{count, plural, one {} other { (# pages
+      affected)}}. Full addresses of visited pages (including path and parameters) may be sent to third parties.
+      Recommendation: strict-origin-when-cross-origin or stricter.
+  HDR-01.header-missing:
+    title: "Header {header} not found"
+    body: >-
+      {mechanism, select, x-content-type-options {X-Content-Type-Options: nosniff} other {The header {header}}} was
+      not found in the response of {url}{count, plural, one {} other { (# pages affected)}}. {mechanism, select,
+      content-security-policy {A CSP limits which scripts and resources may be loaded. Recommendation: introduce a
+      CSP step by step, starting with Content-Security-Policy-Report-Only.} x-content-type-options
+      {Recommendation: send the header with the value nosniff.} permissions-policy {It limits access of embedded
+      content to camera, microphone or location. Recommendation: disable unused features, e.g. camera=(),
+      microphone=(), geolocation=().} referrer-policy {Browsers then apply their default (usually
+      strict-origin-when-cross-origin). Recommendation: set the policy explicitly.} other {Recommendation: review
+      the header configuration.}}
+  # ------------------------------------------------------------------ TLS-01
+  TLS-01.https-unavailable:
+    title: "Content only usable via http"
+    body: >-
+      {url} serves content unencrypted via http{downgrade, select, yes { (after a redirect via https back to
+      http)} other {}}. Via https, {host} was {reason, select, unavailable {not reachable} invalid {only reachable
+      with an invalid certificate} other {not usable}}. Page views and inputs are therefore transmitted
+      unencrypted. Recommendation: install a valid certificate and redirect http permanently (301 or 308) to https.
+  TLS-01.form-on-http-page:
+    title: "Form on an http page"
+    body: >-
+      A form served via unencrypted http was observed on {url}{downgrade, select, yes { (the redirect leads via
+      https back to http)} other {}}. The form was not filled in or submitted. Inputs may be transmitted
+      unencrypted. Recommendation: serve the page via https only and redirect http to https.
+  TLS-01.no-redirect:
+    title: "No redirect from http to https"
+    body: >-
+      {url} serves content via http {downgrade, select, yes {– the redirect leads via https back to http –} other
+      {and does not redirect to https,}} although {host} is reachable via https. Visitors opening the address with
+      http:// stay on the unencrypted page. Recommendation: redirect http permanently (301 or 308) to https on the
+      same host.
+  TLS-01.client-side-redirect-only:
+    title: "Redirect to https only in the page content"
+    body: >-
+      {url} does not redirect to https with an HTTP status code but only in the page content ({kind, select, meta
+      {meta refresh} js {JavaScript} other {page content}}). Until then the page is loaded unencrypted.
+      Recommendation: server-side redirect with 301 or 308.
+  TLS-01.redirect-chain-detail:
+    title: "Redirect to https via a detour"
+    body: >-
+      {reason, select, other-host {The first redirect of {url} leads to {location} (another host).}
+      other {The first redirect of {url} leads to {location}; https is only reached afterwards.}}
+      The HSTS preload list expects a direct redirect to https on the same host.
+  # ------------------------------------------------------------------ TLS-02
+  TLS-02.certificate-invalid:
+    title: "Certificate of {host} not valid"
+    body: >-
+      Certificate verification for {host} ({trustStore, select, node-bundled {Mozilla root store of the Node.js
+      version used} system {system certificate store} test {test certificate authority} other {{trustStore}}})
+      found:{expired, select, yes { The certificate expired on {notAfter}.} other {}}{notYetValid, select, yes { The
+      certificate was not yet valid at the time of the scan.} other {}}{nameMismatch, select, yes { The
+      certificate is not issued for {host} but for: {names}. This is typical for a default certificate of the
+      hosting provider.} other {}}{selfSigned, select, yes { The certificate is self-signed.} other
+      {}}{untrustedRoot, select, yes { The certificate chain (issuer: {issuer}) does not end at a known root
+      authority.} other {}}{otherError, select, yes { Verification failed ({error}).} other {}} Browsers usually
+      show a warning page or block the visit. Recommendation: install a valid certificate for {host} and check the
+      automatic renewal.
+  TLS-02.chain-incomplete:
+    title: "Certificate chain of {host} incomplete"
+    body: >-
+      {host} sends its certificate chain without the required intermediate certificate (issuer: {issuer}). Current
+      browsers usually complete the chain themselves; other clients such as older devices, apps or scripts abort the
+      connection. Recommendation: serve the full chain including all intermediate certificates.
+  TLS-02.certificate-expiring:
+    title: "Certificate of {host} expires soon"
+    body: >-
+      The TLS certificate of {host} expires on {notAfter} ({daysLeft, plural, one {# day left} other {# days left}}
+      of a lifetime of {lifetimeDays} days). Recommendation: check the automatic renewal.
+  TLS-02.certificate-expiry-approaching:
+    title: "Certificate of {host} expires shortly"
+    body: >-
+      The TLS certificate of {host} expires on {notAfter} ({daysLeft, plural, one {# day left} other {# days left}}
+      of a lifetime of {lifetimeDays} days). Recommendation: check the automatic renewal.
+legalNotes:
+  HDR-01:
+    text: >-
+      Art. 32 and Art. 25 GDPR require technical measures according to the state of the art; § 19 (4) TDDDG obliges
+      providers of digital services to take precautions against unauthorised access. Security headers are a
+      widespread technical standard. Which measure is appropriate in a given case depends on the risk.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  TLS-01:
+    text: >-
+      § 19 (4) sentence 3 TDDDG names the use of an encryption method recognised as secure as a precaution; Art. 32
+      (1)(a) GDPR names encryption as a measure. For purely static pages without inputs the assessment is
+      contested.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  TLS-02:
+    text: >-
+      Transport encryption in the sense of Art. 32 GDPR and § 19 (4) TDDDG only takes effect for visitors with a
+      valid certificate; with an invalid certificate browsers block the page or the visitor has to bypass a
+      warning.
+    status: technical
+    reviewedAt: null
+    reviewBy: null

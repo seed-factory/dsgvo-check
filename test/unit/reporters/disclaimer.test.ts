@@ -1,0 +1,310 @@
+/**
+ * Disclaimer with conditional paragraphs (D22, D08, D20; wording guide §6): each paragraph is rendered only when its
+ * condition holds in the report, in every human-readable format and in `disclaimer.text` of the JSON report.
+ * Every condition is tested in both states.
+ */
+import { describe, expect, it } from 'vitest';
+import { loadTexts } from '../../../src/core/data.ts';
+import { templateParams, uiText } from '../../../src/core/messages.ts';
+import type { FullReport, MessageParams, Report } from '../../../src/core/report-schema.ts';
+import type { ReporterContext } from '../../../src/core/reporter.ts';
+import { renderConsole } from '../../../src/reporters/console.ts';
+import { DISCLAIMER_KEYS, disclaimerParagraphs } from '../../../src/reporters/disclaimer.ts';
+import { renderHtml } from '../../../src/reporters/html.ts';
+import { renderJson } from '../../../src/reporters/json.ts';
+import { renderSummary } from '../../../src/reporters/summary.ts';
+import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
+
+const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => ({
+  texts: loadTexts(lang),
+  lang,
+  outDir: '/nonexistent-out',
+  color: false,
+});
+
+const para = (key: string, params: MessageParams = {}, lang: 'de' | 'en' = 'de') =>
+  uiText(loadTexts(lang), key, params);
+
+type Mutate = (r: FullReport) => void;
+
+interface Case {
+  key: string;
+  params?: MessageParams;
+  on: Mutate;
+  off: Mutate[];
+}
+
+const CASES: Case[] = [
+  {
+    key: 'disclaimer.screenshots',
+    on: (r) => {
+      r.scan.options!.screenshots = true;
+    },
+    off: [
+      (r) => {
+        r.scan.options!.screenshots = false;
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.bannerNotRecognized',
+    on: () => {}, // the sample has CONSENT-04 banner-not-recognized
+    off: [
+      (r) => {
+        r.findings = r.findings.filter((f) => f.variant !== 'banner-not-recognized');
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.botOrGeo',
+    params: { checks: 'CONSENT-01, CONSENT-03' },
+    on: (r) => {
+      r.diagnostics = [
+        { code: 'SCAN-GEO', affects: ['CONSENT-03', 'CONSENT-01'], evidenceIds: [] },
+        { code: 'SCAN-BOTMODE', affects: ['CONSENT-01'], evidenceIds: [] },
+      ];
+    },
+    off: [
+      (r) => {
+        r.diagnostics = [{ code: 'SCAN-TIMEOUT', affects: ['CONSENT-01'], evidenceIds: [] }];
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.egressUnknown',
+    on: (r) => {
+      r.scan.environment.egress = { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' };
+    },
+    off: [
+      (r) => {
+        r.scan.environment.egress = {
+          mode: 'direct',
+          region: 'asserted',
+          assertedRegion: 'de',
+          source: 'laut Nutzerangabe (--assume-region)',
+        };
+        r.scan.options!.assumeRegion = 'de';
+      },
+      // no active CONSENT check
+      (r) => {
+        r.checks = r.checks.filter((c) => !c.id.startsWith('CONSENT-'));
+      },
+      (r) => {
+        for (const c of r.checks) if (c.id.startsWith('CONSENT-')) c.status = 'skipped';
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.egressAsserted',
+    params: { region: 'de' },
+    on: (r) => {
+      r.scan.environment.egress = {
+        mode: 'direct',
+        region: 'asserted',
+        assertedRegion: 'de',
+        source: 'laut Nutzerangabe (--assume-region)',
+      };
+      r.scan.options!.assumeRegion = 'de';
+    },
+    off: [
+      (r) => {
+        r.scan.environment.egress = { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' };
+        r.scan.options!.assumeRegion = null;
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.proxy',
+    on: (r) => {
+      r.scan.options!.proxy = true;
+      r.scan.environment.egress.mode = 'proxy';
+    },
+    off: [
+      (r) => {
+        r.scan.options!.proxy = false;
+        r.scan.environment.egress.mode = 'direct';
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.sandboxOff',
+    on: (r) => {
+      r.scan.options!.sandbox = 'off';
+      r.scan.environment.sandbox = { mode: 'off', active: false };
+    },
+    off: [
+      (r) => {
+        r.scan.options!.sandbox = 'require';
+        r.scan.environment.sandbox = { mode: 'require', active: true };
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.incomplete',
+    params: { status: 'partial', hasReasons: true, reasons: 'threshold, check-error:MAIL-01' },
+    on: (r) => {
+      r.scan.status = 'partial';
+    },
+    off: [
+      (r) => {
+        r.scan.status = 'complete';
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.phaseC',
+    on: () => {}, // the start page of the sample was visited in phases A, B and C
+    off: [
+      (r) => {
+        for (const p of r.scan.coverage.pages) p.phases = p.phases.filter((ph) => ph !== 'C');
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.draft',
+    on: (r) => {
+      r.disclaimer.draft = true;
+    },
+    off: [
+      (r) => {
+        r.disclaimer.draft = false;
+      },
+    ],
+  },
+];
+
+function report(...mutations: Mutate[]): FullReport {
+  const r = sampleFullReport();
+  for (const m of mutations) m(r);
+  return r;
+}
+
+describe('disclaimer paragraphs: each condition in both states', () => {
+  it.each(CASES.map((c) => [c.key, c]))('%s', (_key, c) => {
+    const expected = para(c.key, c.params);
+    expect(disclaimerParagraphs(report(c.on), ctx().texts)).toContain(expected);
+    for (const off of c.off) {
+      const paragraphs = disclaimerParagraphs(report(c.on, off), ctx().texts);
+      expect(paragraphs.some((p) => p === expected || p.startsWith(expected.slice(0, 40)))).toBe(false);
+    }
+  });
+
+  it('always starts with the report text and ends with the usage note; data minimization is always stated', () => {
+    const r = sampleFullReport();
+    const paragraphs = disclaimerParagraphs(r, ctx().texts);
+    expect(paragraphs[0]).toBe(r.disclaimer.text);
+    expect(paragraphs).toContain(para('disclaimer.data'));
+    expect(paragraphs.at(-1)).toBe(para('disclaimer.usage'));
+  });
+
+  it('an unsupported CMP version counts as a banner that was not recognised', () => {
+    const r = report((x) => {
+      const f = x.findings.find((y) => y.variant === 'banner-not-recognized');
+      if (f) f.variant = 'cmp-not-supported';
+    });
+    expect(disclaimerParagraphs(r, ctx().texts)).toContain(para('disclaimer.bannerNotRecognized'));
+  });
+
+  it('a partial scan without exit reasons gets no empty parentheses', () => {
+    const r = report((x) => {
+      x.scan.status = 'partial';
+      x.summary.exitReasons = [];
+      x.summary.exitCode = 0;
+    });
+    const p = disclaimerParagraphs(r, ctx().texts).find((s) =>
+      s.startsWith(para('disclaimer.incomplete', { status: 'partial', hasReasons: false, reasons: '' })),
+    );
+    expect(p).toBeDefined();
+    expect(p).not.toContain('()');
+  });
+
+  it('failed report: incomplete with its reasons, nothing about screenshots, egress or phase C', () => {
+    const paragraphs = disclaimerParagraphs(sampleFailedReport(), ctx().texts);
+    expect(paragraphs).toContain(
+      para('disclaimer.incomplete', { status: 'failed', hasReasons: true, reasons: 'unreachable' }),
+    );
+    for (const key of ['disclaimer.screenshots', 'disclaimer.egressUnknown', 'disclaimer.phaseC']) {
+      expect(paragraphs).not.toContain(para(key));
+    }
+  });
+
+  it('is idempotent: a report whose text already carries the paragraphs is not extended again', () => {
+    const r = sampleFullReport();
+    const first = JSON.parse(renderJson(r, ctx())) as Report;
+    const second = JSON.parse(renderJson(first, ctx())) as Report;
+    expect(second.disclaimer.text).toBe(first.disclaimer.text);
+  });
+
+  it('every disclaimer key exists in de and en with the same parameters', () => {
+    const de = loadTexts('de').ui;
+    const en = loadTexts('en').ui;
+    for (const key of DISCLAIMER_KEYS) {
+      expect(de[key]?.text, `de ${key}`).toBeTypeOf('string');
+      expect(en[key]?.text, `en ${key}`).toBeTypeOf('string');
+      expect(templateParams(en[key]!.text).sort(), key).toEqual(templateParams(de[key]!.text).sort());
+    }
+    expect(DISCLAIMER_KEYS).toEqual(expect.arrayContaining(CASES.map((c) => c.key)));
+  });
+
+  it('English texts render in English', () => {
+    const paragraphs = disclaimerParagraphs(report(), ctx('en').texts);
+    expect(paragraphs).toContain(para('disclaimer.phaseC', {}, 'en'));
+    expect(para('disclaimer.phaseC', {}, 'en')).toMatch(/IP address/);
+  });
+});
+
+describe('disclaimer in every format', () => {
+  // Phase C ran and the sandbox was off: both paragraphs must reach every output.
+  const r = () =>
+    report((x) => {
+      x.scan.options!.sandbox = 'off';
+      x.scan.environment.sandbox = { mode: 'off', active: false };
+    });
+  const PHASE_C = /IP-Adresse des prüfenden Rechners/;
+
+  it('console', () => {
+    const out = renderConsole(r(), ctx());
+    expect(out).toMatch(PHASE_C);
+    expect(out).toContain(para('disclaimer.sandboxOff'));
+    expect(
+      renderConsole(report(CASES.find((c) => c.key === 'disclaimer.phaseC')!.off[0]!), ctx()),
+    ).not.toMatch(PHASE_C);
+  });
+
+  it('HTML (notice section and Messumgebung)', () => {
+    const html = renderHtml(r(), ctx());
+    const notice = html.slice(html.indexOf('<section id="hinweis">'));
+    expect(notice).toMatch(PHASE_C);
+    expect(notice).toContain(para('disclaimer.sandboxOff'));
+    const env = html.slice(
+      html.indexOf('<section id="messumgebung">'),
+      html.indexOf('<section id="abdeckung">'),
+    );
+    expect(env).toContain(uiText(loadTexts('de'), 'report.env.phaseC'));
+    const withoutC = renderHtml(report(CASES.find((c) => c.key === 'disclaimer.phaseC')!.off[0]!), ctx());
+    expect(withoutC).not.toMatch(PHASE_C);
+    expect(withoutC).not.toContain(uiText(loadTexts('de'), 'report.env.phaseC'));
+  });
+
+  it('Job Summary', () => {
+    const md = renderSummary(r(), ctx());
+    expect(md).toMatch(PHASE_C);
+    expect(md).toContain('Chromium-Sandbox');
+    expect(
+      renderSummary(report(CASES.find((c) => c.key === 'disclaimer.phaseC')!.off[0]!), ctx()),
+    ).not.toMatch(PHASE_C);
+  });
+
+  it('JSON: disclaimer.text carries the paragraphs, separated by blank lines', () => {
+    const json = JSON.parse(renderJson(r(), ctx())) as Report;
+    expect(json.disclaimer.text).toMatch(PHASE_C);
+    expect(json.disclaimer.text.split('\n\n')).toContain(para('disclaimer.sandboxOff'));
+    expect(json.disclaimer.text.startsWith(sampleFullReport().disclaimer.text)).toBe(true);
+  });
+
+  it('JSON without texts (minimal failed report written synchronously) keeps the base text', () => {
+    const failed = sampleFailedReport();
+    const json = JSON.parse(renderJson(failed, null as never)) as Report;
+    expect(json.disclaimer).toEqual(failed.disclaimer);
+  });
+});

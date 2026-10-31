@@ -1,0 +1,6 @@
+{
+  "hosts": {
+    "www.ccm19.test": "www",
+    "cloud.ccm19.de": "ccm"
+  }
+}

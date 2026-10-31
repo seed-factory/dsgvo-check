@@ -1,0 +1,5065 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "dsgvo-check"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ]
+        },
+        "ruleset": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "CalVer"
+            },
+            "rechtsstand": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string",
+              "const": "de-2026"
+            },
+            "draft": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "version",
+            "rechtsstand",
+            "profile"
+          ]
+        },
+        "datasets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "date": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "license": {
+                "type": "string"
+              },
+              "attribution": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fetchedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "version",
+              "license"
+            ]
+          }
+        },
+        "scan": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial"
+              ]
+            },
+            "target": {
+              "type": "string"
+            },
+            "finalUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "UTC timestamp, ISO 8601"
+            },
+            "durationMs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "failure": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ]
+            },
+            "environment": {
+              "type": "object",
+              "properties": {
+                "userAgent": {
+                  "type": "object",
+                  "properties": {
+                    "http": {
+                      "type": "string"
+                    },
+                    "browser": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "http",
+                    "browser"
+                  ]
+                },
+                "browser": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "engine": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "channel": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "headless": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "new",
+                                "shell"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "engine",
+                        "version",
+                        "channel",
+                        "headless"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sandbox": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "require",
+                        "off"
+                      ]
+                    },
+                    "active": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "active"
+                  ]
+                },
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "viewport": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "height"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                },
+                "egress": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "direct",
+                        "proxy"
+                      ]
+                    },
+                    "region": {
+                      "type": "string",
+                      "enum": [
+                        "unknown",
+                        "asserted"
+                      ]
+                    },
+                    "assertedRegion": {
+                      "type": "string",
+                      "enum": [
+                        "eea",
+                        "de"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "e.g. \"laut Nutzerangabe (--assume-region)\""
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "region",
+                    "source"
+                  ]
+                },
+                "disabledChromiumFeatures": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "quic": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "enabled"
+                  ]
+                },
+                "knownGaps": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "requestsIssued": {
+                  "type": "object",
+                  "properties": {
+                    "navigations": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "probes": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "dns": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "tls": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "navigations",
+                    "probes",
+                    "dns",
+                    "tls"
+                  ]
+                },
+                "node": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "userAgent",
+                "browser",
+                "sandbox",
+                "profile",
+                "viewport",
+                "locale",
+                "timezone",
+                "egress",
+                "disabledChromiumFeatures",
+                "quic",
+                "knownGaps",
+                "requestsIssued",
+                "node",
+                "platform"
+              ]
+            },
+            "coverage": {
+              "type": "object",
+              "properties": {
+                "pages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "planned": {
+                        "type": "boolean"
+                      },
+                      "observed": {
+                        "type": "boolean"
+                      },
+                      "evaluated": {
+                        "type": "boolean"
+                      },
+                      "phases": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Observation phase: A, B, C, http, tls, dns, …"
+                        }
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "role",
+                      "planned",
+                      "observed",
+                      "evaluated",
+                      "phases"
+                    ]
+                  }
+                },
+                "collectors": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "durationMs": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  }
+                },
+                "browserRequests": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "issued": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "issued",
+                    "truncated"
+                  ]
+                }
+              },
+              "required": [
+                "pages",
+                "collectors"
+              ]
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "failOn": {
+                  "type": "string",
+                  "enum": [
+                    "critical",
+                    "warning",
+                    "none"
+                  ]
+                },
+                "strict": {
+                  "type": "boolean"
+                },
+                "lang": {
+                  "type": "string",
+                  "enum": [
+                    "de",
+                    "en"
+                  ]
+                },
+                "formats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "maxPages": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "sandbox": {
+                  "type": "string",
+                  "enum": [
+                    "require",
+                    "off"
+                  ]
+                },
+                "screenshots": {
+                  "type": "boolean"
+                },
+                "checks": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "proxy": {
+                  "type": "boolean"
+                },
+                "assumeRegion": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "eea",
+                        "de"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fromSnapshot": {
+                  "type": "boolean"
+                },
+                "overrides": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "rule": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string",
+                        "enum": [
+                          "critical",
+                          "warning",
+                          "info"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "rule",
+                      "severity"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "failOn",
+                "strict",
+                "lang",
+                "formats",
+                "maxPages",
+                "timeoutMs",
+                "sandbox",
+                "screenshots",
+                "checks",
+                "proxy",
+                "assumeRegion",
+                "fromSnapshot",
+                "overrides"
+              ]
+            }
+          },
+          "required": [
+            "status",
+            "target",
+            "finalUrl",
+            "startedAt",
+            "durationMs",
+            "environment",
+            "coverage"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d{2}$"
+              },
+              "module": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "partial",
+                  "inconclusive",
+                  "not_applicable",
+                  "skipped",
+                  "error"
+                ]
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "coverage": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "planned": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "observed": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "evaluated": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "note": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "maxSeverity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              },
+              "gating": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "reason",
+              "limitations",
+              "coverage",
+              "durationMs"
+            ]
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "checkId": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d{2}$"
+              },
+              "variant": {
+                "type": "string",
+                "minLength": 1
+              },
+              "variantGroup": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "crmCode": {
+                "description": "interne Taxonomie des Auftraggebers, keine rechtliche Einordnung",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fingerprint": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1
+              },
+              "serviceId": {
+                "type": "string"
+              },
+              "phases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Observation phase: A, B, C, http, tls, dns, …"
+                }
+              },
+              "pages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "trigger": {
+                "type": "string"
+              },
+              "replicated": {
+                "type": "boolean"
+              },
+              "evidenceIds": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidenceTruncated": {
+                "type": "boolean"
+              },
+              "messageId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "params": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "legalNoteId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "related": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "checkId": {
+                      "type": "string",
+                      "pattern": "^[A-Z]+-\\d{2}$"
+                    },
+                    "fingerprint": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "relation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "checkId",
+                    "fingerprint"
+                  ]
+                }
+              },
+              "classification": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "datasetVersion": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "datasetVersion"
+                ]
+              },
+              "provider": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "country"
+                ]
+              },
+              "parent": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "country"
+                ]
+              },
+              "dpfEntity": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "listed": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "checkedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "listed",
+                  "checkedAt",
+                  "source"
+                ]
+              },
+              "suppression": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  },
+                  "expires": {
+                    "type": "string"
+                  },
+                  "owner": {
+                    "type": "string"
+                  },
+                  "expired": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "expires",
+                  "expired"
+                ]
+              },
+              "baselineStatus": {
+                "type": "string",
+                "enum": [
+                  "new",
+                  "unchanged",
+                  "severity-increased"
+                ]
+              },
+              "text": {
+                "description": "Rendered message (convenience copy of messageId + params)",
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "draft": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "lang",
+                  "title",
+                  "body",
+                  "draft"
+                ]
+              }
+            },
+            "required": [
+              "checkId",
+              "variant",
+              "variantGroup",
+              "severity",
+              "confidence",
+              "crmCode",
+              "fingerprint",
+              "subject",
+              "phases",
+              "pages",
+              "evidenceIds",
+              "messageId",
+              "params",
+              "legalNoteId",
+              "related",
+              "classification"
+            ]
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^SCAN-[A-Z0-9-]+$"
+              },
+              "affects": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]+-\\d{2}$"
+                }
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "code",
+              "affects",
+              "evidenceIds"
+            ]
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "request"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "method": {
+                    "type": "string"
+                  },
+                  "resourceType": {
+                    "type": "string"
+                  },
+                  "initiator": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  },
+                  "frameId": {
+                    "type": "string"
+                  },
+                  "frameUrl": {
+                    "type": "string"
+                  },
+                  "parentRequestId": {
+                    "description": "Request this one was redirected from",
+                    "type": "string"
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": [
+                      "attempted",
+                      "blocked-by-browser",
+                      "sent"
+                    ]
+                  },
+                  "result": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "response"
+                          },
+                          "status": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "status"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "failed"
+                          },
+                          "errorText": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "errorText"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "aborted"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "none"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    ]
+                  },
+                  "provenance": {
+                    "type": "string",
+                    "enum": [
+                      "network",
+                      "service-worker",
+                      "http-cache",
+                      "memory-cache"
+                    ]
+                  },
+                  "features": {
+                    "type": "object",
+                    "properties": {
+                      "identifier": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "stored-match",
+                              "persistent-param",
+                              "user-supplied",
+                              "per-load",
+                              "none"
+                            ]
+                          },
+                          "param": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      "matchesStoredIdentifier": {
+                        "type": "boolean"
+                      },
+                      "eventType": {
+                        "type": "string"
+                      },
+                      "consentSignal": {
+                        "type": "object",
+                        "properties": {
+                          "gcs": {
+                            "type": "string"
+                          },
+                          "gcd": {
+                            "type": "string"
+                          },
+                          "npa": {
+                            "type": "string"
+                          },
+                          "dma": {
+                            "type": "string"
+                          },
+                          "adStorage": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "granted",
+                                  "denied"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "analyticsStorage": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "granted",
+                                  "denied"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "parserVersion": {
+                        "type": "string"
+                      },
+                      "observationSource": {
+                        "type": "string",
+                        "enum": [
+                          "playwright",
+                          "cdp",
+                          "proxy-log"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "identifier",
+                      "matchesStoredIdentifier",
+                      "parserVersion",
+                      "observationSource"
+                    ]
+                  },
+                  "thirdPartyETLD1": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "connectedIp": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string",
+                        "enum": [
+                          "resolvedLocally",
+                          "upstream",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "origin"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "method",
+                  "resourceType",
+                  "delivery",
+                  "result",
+                  "features"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "cookie"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "Cookie domain, or \"first-party\""
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "partitionKey": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "secure": {
+                    "type": "boolean"
+                  },
+                  "httpOnly": {
+                    "type": "boolean"
+                  },
+                  "sameSite": {
+                    "type": "string"
+                  },
+                  "lifetime": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "session",
+                          "persistent"
+                        ]
+                      },
+                      "days": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "length": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "setter": {
+                    "type": "string",
+                    "enum": [
+                      "http-response",
+                      "script",
+                      "unknown"
+                    ]
+                  },
+                  "setterHost": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "attempted",
+                      "accepted",
+                      "rejected",
+                      "sent"
+                    ]
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "name",
+                  "domain",
+                  "path",
+                  "state"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "storage"
+                  },
+                  "storageType": {
+                    "type": "string",
+                    "enum": [
+                      "localStorage",
+                      "sessionStorage",
+                      "indexedDB"
+                    ]
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "length": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "firstParty": {
+                    "type": "boolean"
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "storageType",
+                  "origin",
+                  "key"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "header"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "name",
+                  "present"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "dns"
+                  },
+                  "qname": {
+                    "type": "string"
+                  },
+                  "qtype": {
+                    "type": "string"
+                  },
+                  "rcode": {
+                    "type": "string",
+                    "enum": [
+                      "NOERROR",
+                      "NXDOMAIN",
+                      "NODATA",
+                      "SERVFAIL",
+                      "TIMEOUT",
+                      "REFUSED",
+                      "ERROR"
+                    ]
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "resolver": {
+                    "type": "string"
+                  },
+                  "treeWalk": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "qname",
+                  "qtype",
+                  "rcode",
+                  "records"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "tls"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "ip": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "family": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "protocol": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "cipher": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "issuer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "san": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notBefore": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notAfter": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lifetimeDays": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "chainComplete": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "hostnameMatches": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "authorizationError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "trustStore": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "host"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "cmp"
+                  },
+                  "cmpId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "recognitionConfidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ]
+                  },
+                  "buttons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "kindConfidence": {
+                          "type": "string",
+                          "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                          ]
+                        },
+                        "vendorRole": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "box": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "number"
+                                },
+                                "y": {
+                                  "type": "number"
+                                },
+                                "width": {
+                                  "type": "number"
+                                },
+                                "height": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y",
+                                "width",
+                                "height"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "visibleAtFirstScreen": {
+                          "type": "boolean"
+                        },
+                        "actionableAtFirstScreen": {
+                          "type": "boolean"
+                        },
+                        "contrast": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "kind"
+                      ]
+                    }
+                  },
+                  "blocking": {
+                    "type": "object",
+                    "properties": {
+                      "overlay": {
+                        "type": "boolean"
+                      },
+                      "scrollLock": {
+                        "type": "boolean"
+                      },
+                      "inert": {
+                        "type": "boolean"
+                      },
+                      "coveredRatio": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "method": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "overlay",
+                      "scrollLock",
+                      "inert",
+                      "coveredRatio"
+                    ]
+                  },
+                  "viewport": {
+                    "type": "object",
+                    "properties": {
+                      "width": {
+                        "type": "number"
+                      },
+                      "height": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "width",
+                      "height"
+                    ]
+                  },
+                  "click": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "cmpId",
+                  "recognitionConfidence"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "consent-state"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "api",
+                      "cookie",
+                      "tcf"
+                    ]
+                  },
+                  "ready": {
+                    "type": "string",
+                    "enum": [
+                      "stub",
+                      "loading",
+                      "ready"
+                    ]
+                  },
+                  "categories": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "denied",
+                        "granted",
+                        "partial",
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "stored",
+                      "action",
+                      "special-branch"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "source",
+                  "ready",
+                  "categories",
+                  "origin"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "document"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "lang": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "origin": {
+                          "type": "string"
+                        },
+                        "section": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "origin"
+                      ]
+                    }
+                  },
+                  "complete": {
+                    "type": "boolean"
+                  },
+                  "errors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "manifest": {
+                    "type": "object",
+                    "properties": {
+                      "partCount": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "textLength": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "expandablesFound": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "expandablesOpened": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesIncluded": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesFound": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesRead": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "linkedPages": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "kind",
+                  "complete"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "text-match"
+                  },
+                  "documentId": {
+                    "type": "string"
+                  },
+                  "section": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "matchLevel": {
+                    "type": "string",
+                    "enum": [
+                      "named",
+                      "company",
+                      "domain",
+                      "category",
+                      "none"
+                    ]
+                  },
+                  "negation": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "negated",
+                      "ambiguous"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "documentId",
+                  "quote",
+                  "matchLevel"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "screenshot"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "path",
+                  "sha256"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "evaluable": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "redirect-chain"
+                  },
+                  "startUrl": {
+                    "type": "string"
+                  },
+                  "hops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "location": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "status"
+                      ]
+                    }
+                  },
+                  "outcome": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "startUrl",
+                  "hops",
+                  "outcome"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "link"
+                  },
+                  "href": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "href",
+                  "text"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "pattern": "^(?!(?:request|cookie|storage|header|dns|tls|cmp|consent-state|document|text-match|screenshot|page|redirect-chain|link)$)[a-z][a-z0-9-]*$",
+                    "description": "Evidence type not known to this schema version"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type"
+                ]
+              }
+            ]
+          }
+        },
+        "legalContext": {
+          "type": "object",
+          "properties": {
+            "rechtsstand": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "reviewedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewBy": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "draft": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "object",
+              "properties": {
+                "critical": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "warning": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "info": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "suppressed": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "checkErrors": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "inconclusive": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "critical",
+                "warning",
+                "info",
+                "suppressed",
+                "checkErrors",
+                "inconclusive"
+              ]
+            },
+            "exitCode": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 0
+                },
+                {
+                  "type": "number",
+                  "const": 1
+                },
+                {
+                  "type": "number",
+                  "const": 2
+                }
+              ]
+            },
+            "exitReasons": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(threshold|check-error:[A-Z]+-\\d{2}|unreachable|blocked|timeout|sandbox-unavailable|invalid-input|internal-error|report-write-failed|strict:inconclusive:[A-Z]+-\\d{2}|strict:sandbox-off|strict:egress-unverified)$"
+              }
+            }
+          },
+          "required": [
+            "counts",
+            "exitCode",
+            "exitReasons"
+          ]
+        },
+        "disclaimer": {
+          "type": "object",
+          "properties": {
+            "messageId": {
+              "type": "string"
+            },
+            "lang": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "draft": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "messageId",
+            "lang",
+            "text",
+            "draft"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "tool",
+        "ruleset",
+        "datasets",
+        "scan",
+        "checks",
+        "findings",
+        "diagnostics",
+        "evidence",
+        "legalContext",
+        "summary",
+        "disclaimer"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "dsgvo-check"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ]
+        },
+        "ruleset": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "CalVer"
+            },
+            "rechtsstand": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string",
+              "const": "de-2026"
+            },
+            "draft": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "version",
+            "rechtsstand",
+            "profile"
+          ]
+        },
+        "datasets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "date": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "license": {
+                "type": "string"
+              },
+              "attribution": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fetchedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "version",
+              "license"
+            ]
+          }
+        },
+        "scan": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "failed"
+            },
+            "target": {
+              "type": "string"
+            },
+            "startedAt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "UTC timestamp, ISO 8601"
+            },
+            "failure": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ]
+            },
+            "finalUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "durationMs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "environment": {
+              "type": "object",
+              "properties": {
+                "userAgent": {
+                  "type": "object",
+                  "properties": {
+                    "http": {
+                      "type": "string"
+                    },
+                    "browser": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "http",
+                    "browser"
+                  ]
+                },
+                "browser": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "engine": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "channel": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "headless": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "new",
+                                "shell"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "engine",
+                        "version",
+                        "channel",
+                        "headless"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sandbox": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "require",
+                        "off"
+                      ]
+                    },
+                    "active": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "active"
+                  ]
+                },
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "viewport": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "height"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                },
+                "egress": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "direct",
+                        "proxy"
+                      ]
+                    },
+                    "region": {
+                      "type": "string",
+                      "enum": [
+                        "unknown",
+                        "asserted"
+                      ]
+                    },
+                    "assertedRegion": {
+                      "type": "string",
+                      "enum": [
+                        "eea",
+                        "de"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "e.g. \"laut Nutzerangabe (--assume-region)\""
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "region",
+                    "source"
+                  ]
+                },
+                "disabledChromiumFeatures": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "quic": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "enabled"
+                  ]
+                },
+                "knownGaps": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "requestsIssued": {
+                  "type": "object",
+                  "properties": {
+                    "navigations": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "probes": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "dns": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "tls": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "navigations",
+                    "probes",
+                    "dns",
+                    "tls"
+                  ]
+                },
+                "node": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "userAgent",
+                "browser",
+                "sandbox",
+                "profile",
+                "viewport",
+                "locale",
+                "timezone",
+                "egress",
+                "disabledChromiumFeatures",
+                "quic",
+                "knownGaps",
+                "requestsIssued",
+                "node",
+                "platform"
+              ]
+            },
+            "coverage": {
+              "type": "object",
+              "properties": {
+                "pages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "planned": {
+                        "type": "boolean"
+                      },
+                      "observed": {
+                        "type": "boolean"
+                      },
+                      "evaluated": {
+                        "type": "boolean"
+                      },
+                      "phases": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Observation phase: A, B, C, http, tls, dns, …"
+                        }
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "role",
+                      "planned",
+                      "observed",
+                      "evaluated",
+                      "phases"
+                    ]
+                  }
+                },
+                "collectors": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "durationMs": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  }
+                },
+                "browserRequests": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "issued": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "issued",
+                    "truncated"
+                  ]
+                }
+              },
+              "required": [
+                "pages",
+                "collectors"
+              ]
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "failOn": {
+                  "type": "string",
+                  "enum": [
+                    "critical",
+                    "warning",
+                    "none"
+                  ]
+                },
+                "strict": {
+                  "type": "boolean"
+                },
+                "lang": {
+                  "type": "string",
+                  "enum": [
+                    "de",
+                    "en"
+                  ]
+                },
+                "formats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "maxPages": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "sandbox": {
+                  "type": "string",
+                  "enum": [
+                    "require",
+                    "off"
+                  ]
+                },
+                "screenshots": {
+                  "type": "boolean"
+                },
+                "checks": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "proxy": {
+                  "type": "boolean"
+                },
+                "assumeRegion": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "eea",
+                        "de"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fromSnapshot": {
+                  "type": "boolean"
+                },
+                "overrides": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "rule": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string",
+                        "enum": [
+                          "critical",
+                          "warning",
+                          "info"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "rule",
+                      "severity"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "failOn",
+                "strict",
+                "lang",
+                "formats",
+                "maxPages",
+                "timeoutMs",
+                "sandbox",
+                "screenshots",
+                "checks",
+                "proxy",
+                "assumeRegion",
+                "fromSnapshot",
+                "overrides"
+              ]
+            }
+          },
+          "required": [
+            "status",
+            "target",
+            "startedAt",
+            "failure"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d{2}$"
+              },
+              "module": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "partial",
+                  "inconclusive",
+                  "not_applicable",
+                  "skipped",
+                  "error"
+                ]
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "coverage": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "planned": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "observed": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "evaluated": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "note": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "maxSeverity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              },
+              "gating": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "reason",
+              "limitations",
+              "coverage",
+              "durationMs"
+            ]
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "checkId": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d{2}$"
+              },
+              "variant": {
+                "type": "string",
+                "minLength": 1
+              },
+              "variantGroup": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "warning",
+                  "info"
+                ]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "crmCode": {
+                "description": "interne Taxonomie des Auftraggebers, keine rechtliche Einordnung",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fingerprint": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1
+              },
+              "serviceId": {
+                "type": "string"
+              },
+              "phases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Observation phase: A, B, C, http, tls, dns, …"
+                }
+              },
+              "pages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "trigger": {
+                "type": "string"
+              },
+              "replicated": {
+                "type": "boolean"
+              },
+              "evidenceIds": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidenceTruncated": {
+                "type": "boolean"
+              },
+              "messageId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "params": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "legalNoteId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "related": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "checkId": {
+                      "type": "string",
+                      "pattern": "^[A-Z]+-\\d{2}$"
+                    },
+                    "fingerprint": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "relation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "checkId",
+                    "fingerprint"
+                  ]
+                }
+              },
+              "classification": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "datasetVersion": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "datasetVersion"
+                ]
+              },
+              "provider": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "country"
+                ]
+              },
+              "parent": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "country"
+                ]
+              },
+              "dpfEntity": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "listed": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "checkedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "listed",
+                  "checkedAt",
+                  "source"
+                ]
+              },
+              "suppression": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  },
+                  "expires": {
+                    "type": "string"
+                  },
+                  "owner": {
+                    "type": "string"
+                  },
+                  "expired": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "expires",
+                  "expired"
+                ]
+              },
+              "baselineStatus": {
+                "type": "string",
+                "enum": [
+                  "new",
+                  "unchanged",
+                  "severity-increased"
+                ]
+              },
+              "text": {
+                "description": "Rendered message (convenience copy of messageId + params)",
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "draft": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "lang",
+                  "title",
+                  "body",
+                  "draft"
+                ]
+              }
+            },
+            "required": [
+              "checkId",
+              "variant",
+              "variantGroup",
+              "severity",
+              "confidence",
+              "crmCode",
+              "fingerprint",
+              "subject",
+              "phases",
+              "pages",
+              "evidenceIds",
+              "messageId",
+              "params",
+              "legalNoteId",
+              "related",
+              "classification"
+            ]
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^SCAN-[A-Z0-9-]+$"
+              },
+              "affects": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]+-\\d{2}$"
+                }
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "code",
+              "affects",
+              "evidenceIds"
+            ]
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "request"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "method": {
+                    "type": "string"
+                  },
+                  "resourceType": {
+                    "type": "string"
+                  },
+                  "initiator": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  },
+                  "frameId": {
+                    "type": "string"
+                  },
+                  "frameUrl": {
+                    "type": "string"
+                  },
+                  "parentRequestId": {
+                    "description": "Request this one was redirected from",
+                    "type": "string"
+                  },
+                  "delivery": {
+                    "type": "string",
+                    "enum": [
+                      "attempted",
+                      "blocked-by-browser",
+                      "sent"
+                    ]
+                  },
+                  "result": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "response"
+                          },
+                          "status": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "status"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "failed"
+                          },
+                          "errorText": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "errorText"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "aborted"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "none"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    ]
+                  },
+                  "provenance": {
+                    "type": "string",
+                    "enum": [
+                      "network",
+                      "service-worker",
+                      "http-cache",
+                      "memory-cache"
+                    ]
+                  },
+                  "features": {
+                    "type": "object",
+                    "properties": {
+                      "identifier": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "stored-match",
+                              "persistent-param",
+                              "user-supplied",
+                              "per-load",
+                              "none"
+                            ]
+                          },
+                          "param": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      "matchesStoredIdentifier": {
+                        "type": "boolean"
+                      },
+                      "eventType": {
+                        "type": "string"
+                      },
+                      "consentSignal": {
+                        "type": "object",
+                        "properties": {
+                          "gcs": {
+                            "type": "string"
+                          },
+                          "gcd": {
+                            "type": "string"
+                          },
+                          "npa": {
+                            "type": "string"
+                          },
+                          "dma": {
+                            "type": "string"
+                          },
+                          "adStorage": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "granted",
+                                  "denied"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "analyticsStorage": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "granted",
+                                  "denied"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "parserVersion": {
+                        "type": "string"
+                      },
+                      "observationSource": {
+                        "type": "string",
+                        "enum": [
+                          "playwright",
+                          "cdp",
+                          "proxy-log"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "identifier",
+                      "matchesStoredIdentifier",
+                      "parserVersion",
+                      "observationSource"
+                    ]
+                  },
+                  "thirdPartyETLD1": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "serviceId": {
+                    "type": "string"
+                  },
+                  "connectedIp": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string",
+                        "enum": [
+                          "resolvedLocally",
+                          "upstream",
+                          "unknown"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "origin"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "method",
+                  "resourceType",
+                  "delivery",
+                  "result",
+                  "features"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "cookie"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "Cookie domain, or \"first-party\""
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "partitionKey": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "secure": {
+                    "type": "boolean"
+                  },
+                  "httpOnly": {
+                    "type": "boolean"
+                  },
+                  "sameSite": {
+                    "type": "string"
+                  },
+                  "lifetime": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "session",
+                          "persistent"
+                        ]
+                      },
+                      "days": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "length": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "setter": {
+                    "type": "string",
+                    "enum": [
+                      "http-response",
+                      "script",
+                      "unknown"
+                    ]
+                  },
+                  "setterHost": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "attempted",
+                      "accepted",
+                      "rejected",
+                      "sent"
+                    ]
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "name",
+                  "domain",
+                  "path",
+                  "state"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "storage"
+                  },
+                  "storageType": {
+                    "type": "string",
+                    "enum": [
+                      "localStorage",
+                      "sessionStorage",
+                      "indexedDB"
+                    ]
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "length": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "firstParty": {
+                    "type": "boolean"
+                  },
+                  "tMs": {
+                    "description": "ms since scan.startedAt on one monotonic scale for all phases and collectors",
+                    "type": "number"
+                  },
+                  "navigationId": {
+                    "type": "string"
+                  },
+                  "actionId": {
+                    "description": "The B/C click the observation followed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "storageType",
+                  "origin",
+                  "key"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "header"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "name",
+                  "present"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "dns"
+                  },
+                  "qname": {
+                    "type": "string"
+                  },
+                  "qtype": {
+                    "type": "string"
+                  },
+                  "rcode": {
+                    "type": "string",
+                    "enum": [
+                      "NOERROR",
+                      "NXDOMAIN",
+                      "NODATA",
+                      "SERVFAIL",
+                      "TIMEOUT",
+                      "REFUSED",
+                      "ERROR"
+                    ]
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "resolver": {
+                    "type": "string"
+                  },
+                  "treeWalk": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "qname",
+                  "qtype",
+                  "rcode",
+                  "records"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "tls"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "ip": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "family": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "protocol": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "cipher": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "issuer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "san": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notBefore": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notAfter": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lifetimeDays": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "chainComplete": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "hostnameMatches": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "authorizationError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "trustStore": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "host"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "cmp"
+                  },
+                  "cmpId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "recognitionConfidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ]
+                  },
+                  "buttons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "kindConfidence": {
+                          "type": "string",
+                          "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                          ]
+                        },
+                        "vendorRole": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "box": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "number"
+                                },
+                                "y": {
+                                  "type": "number"
+                                },
+                                "width": {
+                                  "type": "number"
+                                },
+                                "height": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y",
+                                "width",
+                                "height"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "visibleAtFirstScreen": {
+                          "type": "boolean"
+                        },
+                        "actionableAtFirstScreen": {
+                          "type": "boolean"
+                        },
+                        "contrast": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "kind"
+                      ]
+                    }
+                  },
+                  "blocking": {
+                    "type": "object",
+                    "properties": {
+                      "overlay": {
+                        "type": "boolean"
+                      },
+                      "scrollLock": {
+                        "type": "boolean"
+                      },
+                      "inert": {
+                        "type": "boolean"
+                      },
+                      "coveredRatio": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "method": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "overlay",
+                      "scrollLock",
+                      "inert",
+                      "coveredRatio"
+                    ]
+                  },
+                  "viewport": {
+                    "type": "object",
+                    "properties": {
+                      "width": {
+                        "type": "number"
+                      },
+                      "height": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "width",
+                      "height"
+                    ]
+                  },
+                  "click": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "cmpId",
+                  "recognitionConfidence"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "consent-state"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "api",
+                      "cookie",
+                      "tcf"
+                    ]
+                  },
+                  "ready": {
+                    "type": "string",
+                    "enum": [
+                      "stub",
+                      "loading",
+                      "ready"
+                    ]
+                  },
+                  "categories": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "denied",
+                        "granted",
+                        "partial",
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "stored",
+                      "action",
+                      "special-branch"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "source",
+                  "ready",
+                  "categories",
+                  "origin"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "document"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "lang": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "origin": {
+                          "type": "string"
+                        },
+                        "section": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "origin"
+                      ]
+                    }
+                  },
+                  "complete": {
+                    "type": "boolean"
+                  },
+                  "errors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "manifest": {
+                    "type": "object",
+                    "properties": {
+                      "partCount": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "textLength": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "expandablesFound": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "expandablesOpened": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesIncluded": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesFound": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "framesRead": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "linkedPages": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url",
+                  "kind",
+                  "complete"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "text-match"
+                  },
+                  "documentId": {
+                    "type": "string"
+                  },
+                  "section": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "matchLevel": {
+                    "type": "string",
+                    "enum": [
+                      "named",
+                      "company",
+                      "domain",
+                      "category",
+                      "none"
+                    ]
+                  },
+                  "negation": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "negated",
+                      "ambiguous"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "documentId",
+                  "quote",
+                  "matchLevel"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "screenshot"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "path",
+                  "sha256"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "evaluable": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "redirect-chain"
+                  },
+                  "startUrl": {
+                    "type": "string"
+                  },
+                  "hops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "location": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "status"
+                      ]
+                    }
+                  },
+                  "outcome": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "startUrl",
+                  "hops",
+                  "outcome"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "link"
+                  },
+                  "href": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "href",
+                  "text"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Observation phase: A, B, C, http, tls, dns, …"
+                  },
+                  "page": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "pattern": "^(?!(?:request|cookie|storage|header|dns|tls|cmp|consent-state|document|text-match|screenshot|page|redirect-chain|link)$)[a-z][a-z0-9-]*$",
+                    "description": "Evidence type not known to this schema version"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type"
+                ]
+              }
+            ]
+          }
+        },
+        "legalContext": {
+          "type": "object",
+          "properties": {
+            "rechtsstand": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "reviewedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reviewBy": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "draft": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "object",
+              "properties": {
+                "critical": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "warning": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "info": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "suppressed": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "checkErrors": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "inconclusive": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "critical",
+                "warning",
+                "info",
+                "suppressed",
+                "checkErrors",
+                "inconclusive"
+              ]
+            },
+            "exitCode": {
+              "type": "number",
+              "const": 2
+            },
+            "exitReasons": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(threshold|check-error:[A-Z]+-\\d{2}|unreachable|blocked|timeout|sandbox-unavailable|invalid-input|internal-error|report-write-failed|strict:inconclusive:[A-Z]+-\\d{2}|strict:sandbox-off|strict:egress-unverified)$"
+              }
+            }
+          },
+          "required": [
+            "exitCode",
+            "exitReasons"
+          ]
+        },
+        "disclaimer": {
+          "type": "object",
+          "properties": {
+            "messageId": {
+              "type": "string"
+            },
+            "lang": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "draft": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "messageId",
+            "lang",
+            "text",
+            "draft"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "tool",
+        "scan",
+        "summary",
+        "disclaimer"
+      ]
+    }
+  ],
+  "title": "dsgvo-check report",
+  "description": "dsgvo-check JSON report, schemaVersion 0.2.0. Consumers must ignore unknown fields and unknown evidence types.",
+  "$id": "https://github.com/seed-factory/dsgvo-check/schema/report/0.2.0.json"
+}

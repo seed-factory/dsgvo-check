@@ -1,0 +1,34 @@
+# Build context for the Dockerfile: package manifests, src/, data/, schema/, docker/, LICENSE, NOTICE.
+.git
+.github
+.DS_Store
+**/.DS_Store
+node_modules
+**/node_modules
+dist
+coverage
+*.tsbuildinfo
+*.log
+.env
+.env.*
+
+# scanner output, browser profiles, snapshots
+dsgvo-check-report*
+**/*.snapshot.json
+.tmp
+tmp-profile*
+dsgvo-check-profile-*
+
+# not needed inside the image
+canary
+docs
+specs
+test
+examples
+templates
+scripts
+action.yml
+biome.json
+vitest.config.ts
+.editorconfig
+.node-version

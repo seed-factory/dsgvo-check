@@ -1,0 +1,131 @@
+# Finding texts (de), module http (owner: M4). ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
+# Keys follow the registry docs/03-checks.md §2.1. Wording: "beobachtet", "nicht gefunden in …" — no legal
+# verdicts (stop-word test). Draft until reviewed (D22).
+draft: true
+messages:
+  # ------------------------------------------------------------------ HDR-01
+  HDR-01.hsts-missing:
+    title: "HSTS-Header nicht gefunden"
+    body: >-
+      {problem, select, absent {Der Header Strict-Transport-Security (HSTS) wurde in der HTTPS-Antwort von {url}
+      nicht gefunden} other {In der HTTPS-Antwort von {url} wurde ein Strict-Transport-Security-Header beobachtet,
+      der keine Wirkung hat ({problem, select, max-age-zero {max-age=0} no-max-age {kein gültiges max-age} other
+      {ungültige Syntax}})}}{count, plural, one {} other { (betrifft # Seiten)}}. Ohne wirksames HSTS kann ein
+      späterer Aufruf über http:// unverschlüsselt erfolgen, bevor die Umleitung auf https greift. Empfehlung:
+      Strict-Transport-Security mit einem max-age von mindestens einem Jahr setzen, z. B. max-age=31536000.
+  HDR-01.anti-framing-missing:
+    title: "Kein Schutz gegen Einbetten in fremde Seiten (Clickjacking)"
+    body: >-
+      In der Antwort von {url} wurde weder X-Frame-Options (DENY oder SAMEORIGIN) noch die CSP-Direktive
+      frame-ancestors im Header gefunden{count, plural, one {} other { (betrifft # Seiten)}}.{hint, select, meta-csp {
+      Die Direktive frame-ancestors steht nur in einem meta-Tag; dort wird sie von Browsern ignoriert.} other {}}
+      Empfehlung: X-Frame-Options: SAMEORIGIN oder Content-Security-Policy: frame-ancestors 'self' als HTTP-Header
+      setzen.
+  HDR-01.referrer-policy-permissive:
+    title: "Referrer-Policy gibt vollständige URLs weiter"
+    body: >-
+      In der Antwort von {url} wurde die Referrer-Policy „{policy}“ beobachtet{count, plural, one {} other {
+      (betrifft # Seiten)}}. Damit können vollständige Adressen der besuchten Seiten (einschließlich Pfad und
+      Parameter) an Dritte übermittelt werden. Empfehlung: strict-origin-when-cross-origin oder strenger.
+  HDR-01.header-missing:
+    title: "Header {header} nicht gefunden"
+    body: >-
+      In der Antwort von {url} wurde {mechanism, select, x-content-type-options {X-Content-Type-Options: nosniff}
+      other {der Header {header}}} nicht gefunden{count, plural, one {} other { (betrifft # Seiten)}}.
+      {mechanism, select, content-security-policy {Eine CSP begrenzt, welche Skripte und Ressourcen geladen werden
+      dürfen. Empfehlung: eine CSP schrittweise einführen, zunächst als Content-Security-Policy-Report-Only.}
+      x-content-type-options {Empfehlung: den Header mit dem Wert nosniff setzen.} permissions-policy {Mit ihr lässt
+      sich der Zugriff eingebetteter Inhalte auf Kamera, Mikrofon oder Standort begrenzen. Empfehlung: nicht
+      benötigte Funktionen abschalten, z. B. camera=(), microphone=(), geolocation=().} referrer-policy {Browser
+      verwenden dann ihren Standard (meist strict-origin-when-cross-origin). Empfehlung: die Richtlinie
+      ausdrücklich setzen.} other {Empfehlung: die Header-Konfiguration prüfen.}}
+  # ------------------------------------------------------------------ TLS-01
+  TLS-01.https-unavailable:
+    title: "Inhalte nur über http nutzbar"
+    body: >-
+      {url} liefert Inhalte unverschlüsselt über http aus{downgrade, select, yes { (nach einer Umleitung über https
+      zurück auf http)} other {}}. Über https war {host} {reason, select, unavailable {nicht erreichbar} invalid {nur
+      mit einem ungültigen Zertifikat erreichbar} other {nicht nutzbar}}. Seitenaufrufe und Eingaben werden damit
+      unverschlüsselt übertragen. Empfehlung: ein gültiges Zertifikat einrichten und http dauerhaft (301 oder 308)
+      auf https umleiten.
+  TLS-01.form-on-http-page:
+    title: "Formular auf einer http-Seite"
+    body: >-
+      Auf {url} wurde ein Formular beobachtet, das über unverschlüsseltes http ausgeliefert wird{downgrade, select,
+      yes { (die Weiterleitung führt über https zurück auf http)} other {}}. Das Formular wurde nicht ausgefüllt oder
+      abgesendet. Eingaben können so unverschlüsselt übertragen werden. Empfehlung: die Seite nur über https
+      ausliefern und http auf https umleiten.
+  TLS-01.no-redirect:
+    title: "Keine Umleitung von http auf https"
+    body: >-
+      {url} liefert Inhalte über http aus {downgrade, select, yes {– die Weiterleitung führt über https zurück auf
+      http –} other {und leitet nicht auf https um,}} obwohl {host} über https erreichbar ist. Wer die Adresse mit
+      http:// aufruft, bleibt auf der unverschlüsselten Seite. Empfehlung: http dauerhaft (301 oder 308) auf https
+      desselben Hosts umleiten.
+  TLS-01.client-side-redirect-only:
+    title: "Umleitung auf https nur im Seiteninhalt"
+    body: >-
+      {url} leitet nicht per HTTP-Statuscode auf https um, sondern erst im Seiteninhalt ({kind, select, meta
+      {Meta-Refresh} js {JavaScript} other {Seiteninhalt}}). Bis dahin wird die Seite unverschlüsselt geladen.
+      Empfehlung: serverseitige Umleitung mit 301 oder 308.
+  TLS-01.redirect-chain-detail:
+    title: "Umleitung auf https über einen Umweg"
+    body: >-
+      {reason, select, other-host {Die erste Umleitung von {url} führt auf {location} (anderer Host).}
+      other {Die erste Umleitung von {url} führt auf {location}; https wird erst danach erreicht.}}
+      Für die HSTS-Preload-Liste wird eine direkte Umleitung auf https desselben Hosts erwartet.
+  # ------------------------------------------------------------------ TLS-02
+  TLS-02.certificate-invalid:
+    title: "Zertifikat von {host} nicht gültig"
+    body: >-
+      Die Zertifikatsprüfung für {host} ({trustStore, select, node-bundled {Mozilla-Root-Store der verwendeten
+      Node.js-Version} system {Zertifikatsspeicher des Systems} test {Test-Zertifizierungsstelle} other
+      {{trustStore}}}) ergab:{expired, select, yes { Das Zertifikat ist seit {notAfter} abgelaufen.} other
+      {}}{notYetValid, select, yes { Das Zertifikat ist zum Zeitpunkt des Scans noch nicht gültig.} other
+      {}}{nameMismatch, select, yes { Das Zertifikat ist nicht für {host} ausgestellt, sondern für: {names}. Das ist
+      typisch für ein Standardzertifikat des Hosters.} other {}}{selfSigned, select, yes { Das Zertifikat ist selbst
+      signiert.} other {}}{untrustedRoot, select, yes { Die Zertifikatskette (Aussteller: {issuer}) endet nicht bei
+      einer bekannten Stammzertifizierungsstelle.} other {}}{otherError, select, yes { Die Prüfung ist
+      fehlgeschlagen ({error}).} other {}} Browser zeigen in der Regel eine Warnseite oder blockieren den Aufruf.
+      Empfehlung: ein gültiges Zertifikat für {host} einrichten und die automatische Verlängerung prüfen.
+  TLS-02.chain-incomplete:
+    title: "Zertifikatskette von {host} unvollständig"
+    body: >-
+      {host} sendet die Zertifikatskette ohne das nötige Zwischenzertifikat (Aussteller: {issuer}). Aktuelle Browser
+      ergänzen die Kette meist selbst; andere Clients wie ältere Geräte, Apps oder Skripte brechen die Verbindung ab.
+      Empfehlung: die vollständige Kette mit allen Zwischenzertifikaten ausliefern.
+  TLS-02.certificate-expiring:
+    title: "Zertifikat von {host} läuft bald ab"
+    body: >-
+      Das TLS-Zertifikat von {host} läuft am {notAfter} ab ({daysLeft, plural, one {noch # Tag} other {noch # Tage}}
+      bei einer Laufzeit von {lifetimeDays} Tagen). Empfehlung: die automatische Verlängerung prüfen.
+  TLS-02.certificate-expiry-approaching:
+    title: "Zertifikat von {host} läuft in Kürze ab"
+    body: >-
+      Das TLS-Zertifikat von {host} läuft am {notAfter} ab ({daysLeft, plural, one {noch # Tag} other {noch # Tage}}
+      bei einer Laufzeit von {lifetimeDays} Tagen). Empfehlung: die automatische Verlängerung prüfen.
+legalNotes:
+  HDR-01:
+    text: >-
+      Art. 32 und Art. 25 DSGVO verlangen technische Maßnahmen nach dem Stand der Technik; § 19 Abs. 4 TDDDG
+      verpflichtet Anbieter digitaler Dienste zu Vorkehrungen gegen unerlaubten Zugriff. Sicherheits-Header sind ein
+      verbreiteter technischer Standard. Welche Maßnahme im Einzelfall angemessen ist, hängt vom Risiko ab.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  TLS-01:
+    text: >-
+      § 19 Abs. 4 S. 3 TDDDG nennt die Anwendung eines als sicher anerkannten Verschlüsselungsverfahrens als
+      Vorkehrung; Art. 32 Abs. 1 lit. a DSGVO nennt Verschlüsselung als Maßnahme. Für rein statische Seiten ohne
+      Eingaben ist die Einordnung umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  TLS-02:
+    text: >-
+      Transportverschlüsselung im Sinne von Art. 32 DSGVO und § 19 Abs. 4 TDDDG wirkt beim Besucher nur mit einem
+      gültigen Zertifikat; bei ungültigem Zertifikat blockieren Browser die Seite oder der Besucher muss eine
+      Warnung übergehen.
+    status: technical
+    reviewedAt: null
+    reviewBy: null

@@ -1,0 +1,8 @@
+{
+  "hosts": {
+    "www.consent-shop.test": "ok",
+    "www.leaky-shop.test": "leaky",
+    "www.blocking-shop.test": "blocking",
+    "www.late-shop.test": "late"
+  }
+}

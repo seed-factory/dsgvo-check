@@ -1,0 +1,5 @@
+{
+  "hosts": {
+    "www.example.test": "www"
+  }
+}

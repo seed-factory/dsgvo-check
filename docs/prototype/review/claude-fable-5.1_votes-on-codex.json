@@ -1,0 +1,275 @@
+[
+ {
+  "id": "S-01",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "ssrf.ts:26-31 отдаёт 'unresolved' при ENOTFOUND/пустом ответе, а blocks() (стр. 55-56) пропускает такой verdict → Fetch.continueRequest; за --proxy браузер не резолвит имя локально, и внутреннее имя разрешится на прокси в private/metadata-адрес. Это fail-open внутри реализованной границы (документы/фреймы), не задокументированное упрощение (STATUS §4 называет только подресурсы, OOPIF и rebinding). Исправление — fail-closed для http(s)-документов — одна строка.",
+  "reproduced": true
+ },
+ {
+  "id": "S-02",
+  "verdict": "disagree",
+  "severity": "minor",
+  "reason": "Пробел реален по модели CDP-таргетов (Fetch.enable на сессии Page не видит навигации внутри OOPIF), но это сознательное упрощение: заголовок ssrf.ts прямо называет вложенные cross-site фреймы непокрытыми, STATUS §4 фиксирует «вложенные cross-site OOPIF не покрыты», а README §2а снимает с прототипа претензию на полноту SSRF-границы и переносит EgressPolicy на этап 2. Авто-attach к дочерним таргетам поверх собственного attach Playwright — нетривиальная работа не для прототипа; уместно лишь уточнить формулировку BRIEF.",
+  "reproduced": false
+ },
+ {
+  "id": "S-03",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "client.ts:139-156 decode() вызывает gunzipSync/inflateSync/brotliDecompressSync без maxOutputLength над буфером до DOCUMENT_READ_BYTES=512 KiB: воспроизведено, что 65 KB gzip разворачиваются в 64 MiB, т.е. один ответ сайта может дать ~500 MB (brotli больше) и OOM сканера. Опция { maxOutputLength } в Node работает (ERR_BUFFER_TOO_LARGE) — исправление в одну строку плюс пометка усечения.",
+  "reproduced": true
+ },
+ {
+  "id": "S-04",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "parseTarget (url.ts:92-94) сохраняет query в target.input и target.url (воспроизведено: ?token=secret остаётся), report.ts:167 пишет scan.target = snapshot.target.url, toSavedSnapshot не редактирует target, а fail() в scan.ts:532 берёт сырой URL. Это пользовательский ввод, а не данные посетителя, поэтому minor, но D20 — общее правило, а снимок/отчёт уходят в артефакты CI; сырой URL нужен только коллекторам в памяти.",
+  "reproduced": true
+ },
+ {
+  "id": "S-05",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "collect.ts:54 маскирует chunks поэлементно, и при разрыве 'mail'|'to:alice@…' между строками TXT адрес остаётся в chunks (воспроизведено), хотя value замаскирован; resolver.ts:70 сохраняет chunks в снимок. Проверки читают только value (txtValues), поэтому chunks можно либо не сохранять, либо нарезать заново из отредактированного value. Нарушение D20, но редкий граничный случай.",
+  "reproduced": true
+ },
+ {
+  "id": "S-06",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "jar.ts:116 передаёт w.script в pushAttempted как setterUrl без sanitizeRequestUrl, тогда как setterOf() (стр. 165) для accepted-cookies тот же URL очищает; in-page.ts:526-531 берёт URL скрипта из стека вызова вместе с query. Нарушение D20 для состояния attempted; исправление — очистка в pushAttempted.",
+  "reproduced": true
+ },
+ {
+  "id": "S-07",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "visit.ts:103-105 кладёт в responseHeaders значения всех заголовков (кроме set-cookie) до 2048 символов без редактирования URL в Location/Content-Location/Link/Refresh; в client.ts:123 очищены только location/content-location. По 5.3 у evidence header значение хранится только для заголовков безопасности — ограничение набора заголовков закроет и утечку, и расхождение с контрактом.",
+  "reproduced": true
+ },
+ {
+  "id": "S-08",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "sanitizeUrl('mailto:alice@example.de') возвращает адрес без изменений (воспроизведено); DOM-коллектор для mailto ставит href: null (dom.ts:126), поэтому утечка идёт только через CMP: probe.ts:569 → measure.ts:110 absoluteHref → normalizeFacts → firstLayer.legalLinks. Это адрес оператора сайта, а не посетителя, но 5.3 требует отсутствия mailto: в выводе (L0-тест) — достаточно маскировать mailto в общем очистителе.",
+  "reproduced": true
+ },
+ {
+  "id": "S-09",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "gate.ts:97-114 держит все strict-причины внутри ветки failOn !== 'none': воспроизведено gate({failOn:'none', strict:true, sandboxOff:true, egressRegion:'unknown', inconclusive CONSENT-01}) → 0 без причин, при 'critical' — 2 с тремя strict-причинами. Таблица 5.2 и 03-checks §8 прямо говорят «--strict действует независимо; 2 при strict-причинах», а gate.test.ts строка 19 закрепляет неверное поведение.",
+  "reproduced": true
+ },
+ {
+  "id": "S-10",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "scan.ts:327-331 при abort до результата коллектора пишет только collection.browser = error/timeout; ни один путь не даёт scan.status 'failed' c SCAN-TIMEOUT как fatal, как требует строка 5.2 «--timeout до завершения фазы A на стартовой». Практически при --fail-on critical код всё равно 2 через check-error:* релевантных проверок, расхождение проявляется в статусе/причинах и при --fail-on none (0 вместо 2); сценарий требует исчерпать 8 минут ещё до стартовой страницы, что при собственных таймаутах http/tls/dns маловероятно.",
+  "reproduced": false
+ },
+ {
+  "id": "S-11",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "untilDeadline (scan.ts:292-308) резолвится timedOut сразу по abort, runCollector возвращает null и результат коллектора отбрасывается, хотя BrowserCollection корректно обрабатывает abort (закрывает браузер, closePhase/result отдают partial с фактами A/B). deadlineReserveMs=20 с не ограничивает страницу (navigationTimeout 30 с + load 15 с + hardCap + cmp-вызовы по 15 с), так что дедлайн внутри B/C теряет весь браузерный сбор вопреки 5.2 «находки, собранные до сбоя, сохраняются». Нужен ограниченный grace-wait результата после abort.",
+  "reproduced": false
+ },
+ {
+  "id": "S-12",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "Воспроизведено через derive(): /g/collect с cid=[redacted] и identifierPresent=false даёт identifier=true и hit-with-identifier (critical), потому что hasIdentifierParam (index.ts:224-226, 282) смотрит наличие ключа в уже отредактированном URL. Проверка избыточна — IDENTIFIER_PARAMS покрывает все identifierParams каталога, и identifierPresent уже учитывает непустое значение, — и добавляет лишь ложный critical при пустом значении; различение per-load/устойчивого identifier.kind — контрактный пробел S-30, а cid по сигнатуре каталога §4 считает persistent-param.",
+  "reproduced": true
+ },
+ {
+  "id": "S-13",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "consent-01.ts:46-47 проверяет cookieless раньше идентификатора: воспроизведено, что хит с gcs=G100 и matchesStoredIdentifier=true даёт cookieless-ping (warning), хотя совпадение с сохранённым cookie — доказанный устойчивый идентификатор и по §4 CONSENT-01 это critical. Важно: исправление должно ставить вперёд только доказанную устойчивость (matchesStoredIdentifier / sentCookieNames), а не boolean identifier, иначе каждый G100-пинг с per-load cid станет ложным critical; та же последовательность в consent-05.ts:104-108.",
+  "reproduced": true
+ },
+ {
+  "id": "S-14",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "stateVerdict (detection.ts:79-88) отвергает только decision.responded === false: воспроизведено ok=true при всех denied и responded 'unknown' или без decision (так отдают cookiebot.ts:128 и cookiehub.ts:79). Затем base.ts:232-235 переписывает origin в 'action' лишь потому, что клик был в этом документе, без факта изменения состояния, а consent-05.ts:70 довольствуется some(origin !== 'default'). По §4 CONSENT-05 и 5.3 default-denied без responded:true — не отказ; неработающий клик может стать «подтверждённым» и дать ложный critical.",
+  "reproduced": true
+ },
+ {
+  "id": "S-15",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "consent-05.ts:69 принимает persistedAfterReload !== false, т.е. null; коллектор реально отдаёт null, когда reload пропущен по time-budget (collector.ts:891-907: verify1 с reload:false). §4 требует после reload origin: stored, иначе отказ не подтверждён → inconclusive; тест consent-05.test.ts:121 закрепляет обратное (completed с limitation persistence-unknown), что открывает путь к hit-after-reject critical без подтверждённой последовательности.",
+  "reproduced": false
+ },
+ {
+  "id": "S-16",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "jar.ts:70-71 и 104 дедуплицируют по name|domain|path|partitionKey|state, поэтому cookie, существовавшая в B до клика, после отказа не записывается повторно, и повторная установка/обновление невидимы для storage-after-reject; storageKeys (стр. 201-203) аналогично. Пробел реальный, но ограниченный: запись до клика уже даёт critical CONSENT-02, а журнал записей требует CDP ExtraInfo, чего в прототипе нет (knownGaps 'blocked-cookies-not-recorded').",
+  "reproduced": true
+ },
+ {
+  "id": "S-17",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "recorder.ts onResponse ставит completed/sent/result:response, а onDone(failure) (стр. 287-296) перезаписывает state → 'failed' и result → failed; derive берёт delivered по r.state === 'completed' (index.ts:268). Воспроизведено: запрос со статусом 204 и последующим ERR_ABORTED даёт delivered=false и request-not-confirmed (info) вместо хита. Реалистично для маяков при уходе со страницы; по 5.3 delivery/result — независимые факты, delivered должно быть delivery:'sent' ∧ result:'response'.",
+  "reproduced": true
+ },
+ {
+  "id": "S-18",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "tls-01.ts:91-101 возвращает none, как только первый хоп ведёт на https того же хоста, не проверяя завершение цепочки на https-2xx (03-checks §3.13 шаг 3): воспроизведено, что http→https→http 200 с формой даёт пустой список. На практике понижение на www/apex ловится их собственными цепочками, уязвим только same-host-даунгрейд или третий поддомен — потому minor.",
+  "reproduced": true
+ },
+ {
+  "id": "S-19",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "tls/index.ts:229 пробует только hostVariants(ctx.target.host), TLS идёт параллельно с http (scan.ts:411) до определения finalUrl, и никто не пробует финальный хост после междоменного редиректа; tlsBlocked() (scan.ts:365-374) тоже смотрит лишь hostVariant 'target'. §4 TLS-02 задаёт «финальный хост и www/apex»; в сценарии браузер получит tls-blocked через startFatal на финальном хосте, а TLS-02 промолчит о причине.",
+  "reproduced": false
+ },
+ {
+  "id": "S-20",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "startUrlFor (http/index.ts:199-207) обнуляет u.port — воспроизведено, что для https://example.de:8443/ цепочка стартует с http://example.de/; TLS пробует фиксированный 443 (tls/index.ts:226). При закрытых 80/443 http-коллектор отдаёт fatal 'start-page-unreachable' (стр. 275-282), и scan.ts:420 не запускает браузер — ложный fatal для валидного http(s)-URL; BRIEF нестандартные порты не исключает.",
+  "reproduced": true
+ },
+ {
+  "id": "S-21",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "Воспроизведено: `new URL('https://[2606:4700:4700::1111]/').hostname` возвращает `[2606:…]` со скобками, `parseTarget` (src/core/url.ts:91) их сохраняет, а `preflight` (src/scan.ts:214) отдаёт строку в `dns.lookup` → ENOTFOUND → фатальный `unreachable`/`target-nxdomain`. HTTP-клиент скобки снимает (src/collectors/http/client.ts:212), т.е. коллекторы готовы, но до них скан не доходит. IPv6-литерал как цель — редкий ввод, падение чистое (не ложная находка), поэтому minor.",
+  "reproduced": true
+ },
+ {
+  "id": "S-22",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`analyzeDmarc` при SERVFAIL шага делает `continue` (src/checks/dns/lib/dmarc.ts:185-188), и при записи у родителя state='found'; MAIL-01 бросает ошибку только при state='failed' (mail-01.ts:41), иначе `partial` + 'tree-walk-incomplete' без находок — это закреплено тестом mail-01.test.ts:153. §4 MAIL-01 и §5.2 требуют `error` при SERVFAIL/timeout после повтора: собственная политика хоста остаётся неизвестной. Minor: статус честно `partial` с limitation, а сценарий (SERVFAIL одного имени при работающем родителе) редкий.",
+  "reproduced": false
+ },
+ {
+  "id": "S-23",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "SPF-обходчик при SERVFAIL include кладёт запрос в `failures` и идёт дальше (spf.ts:208-211, 258-259), а MAIL-02 превращает это лишь в limitation 'spf-include-unresolved' (mail-02.ts:42; тест mail-02.test.ts:184). Спецификация §4 MAIL-02 говорит «SERVFAIL → error», и без include-дерева не установлены lookups/void/permerror, т.е. вывод «чисто» не доказан. Оговорка Codex верна: при независимо установленном факте (`+all`, permerror) результат можно оставить — так и ведёт себя существующий тест с `+all`.",
+  "reproduced": false
+ },
+ {
+  "id": "S-24",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "Коллектор сам считает `keyword-missing` признаком «не документ»: attempt получает outcome 'soft-404' и `recordDocument` возвращает false (collector.ts:713-723), но документ всё равно кладётся в `documents.documents`. LEGAL-01 `isGood` исключает только ошибку 'soft-404' (legal-01.ts:48-52), поэтому такой документ становится `viaLink` и ветка завершается без находки (legal-01.ts:167-186), хотя §4 требует «содержательность». Внутреннее противоречие коллектора и проверки скрывает critical-варианты `document-not-found`/`links-broken`.",
+  "reproduced": false
+ },
+ {
+  "id": "S-25",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`partsOf` для фрейма перезаписывает происхождение: `origin: frameUrl ? 'frame' : p.origin` (documents.ts:51), так что `hidden-irrelevant` из same-origin iframe становится `frame`, а PRIV-01 включает все не-hidden части в `visibleParts` (priv-01.ts:101) и не выдаёт `not-named`. Enum происхождения в D15 одномерный, поэтому нужно правило приоритета (hidden-irrelevant важнее, фрейм уже зафиксирован полем `frameUrl`). Сценарий узкий — скрытый текст внутри same-origin iframe на странице DSE.",
+  "reproduced": false
+ },
+ {
+  "id": "S-26",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "В `extractDocument` учитываются только `main.truncated` и `main.expandables*` (documents.ts:123-124, 140-144); `fr.truncated`, нераскрытые expandables фрейма и ошибка `frame.evaluate(...).catch(() => null)` (documents.ts:107) ни в `errors`, ни в manifest не попадают, `complete` остаётся true. Усечение при MAX_CHARS=400k на фрейм маловероятно, а нераскрытые аккордеоны во фрейме — вполне; тогда PRIV-01 даст `not-named` вместо `inconclusive`/`partial`.",
+  "reproduced": false
+ },
+ {
+  "id": "S-27",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "Пауза по Retry-After и один повтор есть только у стартовой (`visitStart`, collector.ts:372-391); общий `visit` (318-341) и `consentPhase` ничего не делают при 429/503, счётчика «≥ 3 за фазу» и остановки навигаций к хосту нет. Хуже: 429/503 на Impressum/DSE даёт в `recordDocument` outcome 'not-found' (collector.ts:688-690), `isBlockedPage` покрывает лишь challenge/navigation-failed (legal-01.ts:54-61), и LEGAL-01 может выдать ложный critical `links-broken` вместо `partial`+SCAN-THROTTLED — прямое нарушение D09/§5.2 и приоритета «без ложных critical».",
+  "reproduced": false
+ },
+ {
+  "id": "S-28",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`#consecutiveThrottle` один на клиент и сбрасывается ответом любого хоста (client.ts:177, 333-334), паузы по Retry-After и повтора нет — после 429 следующий запрос идёт через обычные 500 мс пейсера. Но 03-checks §7.5 прямо оставляет scope счётчика открытым (Q10), а формулировка §5.2 привязывает Retry-After/повтор к браузерной части; проб всего несколько цепочек. Поэтому дефект реален, но minor.",
+  "reproduced": false
+ },
+ {
+  "id": "S-29",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`maxSeverityOf` применяет `capByConfidence(sev, v.maxConfidence)` (assess.ts:110), тогда как §5.2 задаёт `maxSeverity` как статический максимум после ruleset и overrides «без кэпа уверенности»; тест assess.test.ts:139-148 закрепляет обратное. Эффект узкий: только при override выше статического кэпа (например PRIV-01.not-named → critical) ошибка проверки перестаёт быть релевантной при `--fail-on critical`. Исправление тривиально: убрать кэп из `maxSeverityOf` и поправить тест.",
+  "reproduced": false
+ },
+ {
+  "id": "S-30",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "`RequestEvidence` в схеме содержит `state`, `tStartMs`, `tRef`, `identifierPresent` и не содержит `delivery/result/provenance/tMs/navigationId/actionId/features` (report-schema.ts:60-78); `requestEvidence` переносит из RequestRecord только старые поля (shared.ts:237-266), хотя `delivery/result/provenance/matchesStoredIdentifier` в записи уже есть (types.ts:238-247). Консенсус §2а явно обязывает прототип взять форму `request` по §5.3 («её форма входит в alpha-схему, менять потом дороже») — это невыполненный контракт.",
+  "reproduced": false
+ },
+ {
+  "id": "S-31",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "`act(page, action, opts)` адаптера заново вызывает `classifyFirstLayer(facts, loadLexicon())` и сам выбирает цель (base.ts:285-291); `CmpBridge.act` передаёт только `facts`, а не target (cmp-bridge.ts:134-145), при том что коллектор уже вычислил `plan.click.target` через `s.cmp.targets` (collector.ts:879-886). Получается два решения вместо одного `act(page, target)` по D12; при `facts === null` адаптер ещё и перечитывает баннер и может кликнуть не то, что записано в `plan.click`. §2а называет этот контракт обязательным для прототипа. Расхождение лексиконов при пользовательском dataDir сейчас только программное (CLI dataDir не даёт), но путь к нему открыт.",
+  "reproduced": false
+ },
+ {
+  "id": "S-32",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "Проверено по data/ruleset/de-2026/*.yaml против 03-checks §2.1: CONSENT-01 `hit-with-identifier` vs `tracking-completed`, CONSENT-02 `tracking-storage-accepted` vs `tracking-identifier-stored` (нет `cmp-cookie-with-uid`), TRACK-01 `service-observed` vs `service-inventory`, HDR-01 `referrer-policy-unsafe`/`csp-missing…` vs `referrer-policy-permissive`/`header-missing`, TLS-01 `http-only`/`form-on-http` vs `https-unavailable`/`form-on-http-page`, TLS-02 `expired`/`name-mismatch`/… vs `certificate-invalid`, MAIL-01/02, LEGAL-01, PRIV-01 и CONSENT-05 — аналогично. `messageId = checkId.variant` — публичный ключ для `rules:`, подавлений и CRM-маппинга, а переименование по §5.6 — major-изменение схемы, поэтому синхронизировать надо в прототипе.",
+  "reproduced": false
+ },
+ {
+  "id": "S-33",
+  "verdict": "unsure",
+  "severity": "minor",
+  "reason": "Код возвращает `inconclusive` только при отсутствии наблюдений (consent-05.ts:163-167), иначе `completed` с limitation 'pagehide-not-observed'. §4 CONSENT-05 действительно требует `inconclusive` при недоступном pagehide, но §2.1 запрещает находки у исходов без находки, кроме locked-вариантов CONSENT-04 — компромисс кода сохраняет установленные хиты после отказа. Расхождение проявляется только при `--strict` без учитываемой находки; нужно решение по спецификации, можно ли CONSENT-05 нести находки при статусе `inconclusive`.",
+  "reproduced": false
+ },
+ {
+  "id": "S-34",
+  "verdict": "agree",
+  "severity": "major",
+  "reason": "Воспроизведено: `detectForm` возвращает true для `<script>const html=\"<form><input name=email></form>\"</script>` и для `<template>…<form>`, потому что перед регуляркой вырезаются только комментарии (html.ts:32-34, 102-119). TLS-01 `form-on-http` — critical (ruleset http.yaml), т.е. это путь к ложному critical на http-странице с шаблоном формы в inline-JS, что консенсус ставит выше всего («без ложных critical»). Исправление простое — вырезать `script/template/noscript/textarea` перед поиском и добавить негативные случаи.",
+  "reproduced": true
+ },
+ {
+  "id": "S-35",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`close` ставит `closed = true` до `await context.close()`/`rm` (launch.ts:86-91); обработчик abort вызывает `void this.current?.close()` (collector.ts:137-139), и повторный `await this.current?.close()` в finally (185) возвращается сразу, пока очистка ещё идёт. Далее `scan` завершается и CLI делает `process.exit` (cli.ts), так что временный профиль с реальными cookies/storage может остаться. Исправление — кэшировать Promise очистки; minor, т.к. проявляется только в гонке abort/timeout.",
+  "reproduced": false
+ },
+ {
+  "id": "S-36",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "Воспроизведено: `parseSpfRecord('v=spf1 ip6:12345::1 -all').errors` и запись с девятью hextet дают `[]`, тогда как `net.isIP` возвращает 0 для обоих. `validIp6` проверяет только набор символов и число `::` (spf.ts:57-59), поэтому MAIL-02 признаёт синтаксически невозможную запись чистой вместо permerror.",
+  "reproduced": true
+ },
+ {
+  "id": "S-37",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "`subjects.tls(kind, 'target'|'www'|'apex')` (fingerprint.ts:66-69) используется в tls-01.ts:75 и tls-02.ts:123 с `hostVariant`, тогда как §5.4 задаёт роли `final`/`pair` относительно финального хоста и префиксы `http-entry:`/`certificate:`. При скане example.de с редиректом на www сертификат www получает `certificate|www`, при прямом вводе www — `certificate|target`. Baseline и подавления в прототип не входят, но формат fingerprint — часть JSON-контракта, поэтому лучше поправить сейчас.",
+  "reproduced": false
+ },
+ {
+  "id": "S-38",
+  "verdict": "disagree",
+  "severity": "none",
+  "reason": "BRIEF «Правила для всех» формулирует требование именно на ID: «На каждый ID — фикстуры violation, clean и inconclusive (или error)», и `completenessProblems` ровно это проверяет (completeness.ts:85-89) плюс выполняет все фикстуры с `$expect`. 03-checks §2.1 прямо помечает «фикстуры на каждый вариант» как открытый вопрос (Q2, Q10). Пер-вариантные фикстуры — полезное усиление для этапа 3а, а не дефект прототипа.",
+  "reproduced": false
+ },
+ {
+  "id": "S-39",
+  "verdict": "agree",
+  "severity": "minor",
+  "reason": "Тест отмены (fatal.test.ts:47-53) глотает любую ошибку через `.catch(() => undefined)` и проверяет только `Date.now() - t0 < 15_000`: мгновенное падение `collect` до старта браузера его не нарушит, а оставшиеся процессы или каталог профиля не проверяются. Нужно убедиться, что сбор начался до abort, проверить результат `status: 'error', reason: 'timeout'` и завершение очистки.",
+  "reproduced": false
+ }
+]

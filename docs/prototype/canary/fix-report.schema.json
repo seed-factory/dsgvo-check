@@ -1,0 +1,5 @@
+{"type":"object","additionalProperties":false,"required":["results","crossZone","green"],"properties":{
+ "results":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["gid","outcome","test","note"],"properties":{
+  "gid":{"type":"string"},"outcome":{"type":"string","enum":["fixed","not-reproduced","deferred","cross-zone"]},"test":{"type":"string"},"note":{"type":"string"}}}},
+ "crossZone":{"type":"array","items":{"type":"string"}},
+ "green":{"type":"boolean"}}}

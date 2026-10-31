@@ -1,0 +1,37 @@
+{
+  "$description": "Counterexample: the start document is served over http (TLS-01 territory); HSTS is not evaluated on http, other headers are present",
+  "$expect": { "status": "completed", "variants": [] },
+  "target": {
+    "input": "http://www.example.de/",
+    "url": "http://www.example.de/",
+    "scheme": "http",
+    "host": "www.example.de",
+    "etld1": "example.de",
+    "finalUrl": "http://www.example.de/",
+    "finalHost": "www.example.de"
+  },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "http://www.example.de/",
+        "finalUrl": "http://www.example.de/",
+        "status": 200,
+        "headers": [
+          { "name": "x-frame-options", "value": "SAMEORIGIN" },
+          { "name": "content-security-policy", "value": "default-src 'self'" },
+          { "name": "x-content-type-options", "value": "nosniff" },
+          { "name": "referrer-policy", "value": "same-origin" },
+          { "name": "permissions-policy", "value": "camera=()" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": []
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

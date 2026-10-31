@@ -1,0 +1,177 @@
+{
+  "$description": "The browser section has no visited pages: the network slice is missing",
+  "$expect": {
+    "status": "inconclusive",
+    "variants": [],
+    "reason": "no-network-observation"
+  },
+  "target": {
+    "input": "https://www.example.de/",
+    "url": "https://www.example.de/",
+    "scheme": "https",
+    "host": "www.example.de",
+    "etld1": "example.de",
+    "finalUrl": "https://www.example.de/",
+    "finalHost": "www.example.de"
+  },
+  "browser": {
+    "engine": {
+      "name": "chromium",
+      "channel": "chromium",
+      "version": "156.0.8078.4",
+      "headless": "new",
+      "userAgent": "Mozilla/5.0 Chrome/156.0.0.0 Safari/537.36 dsgvo-check/test",
+      "sandbox": true,
+      "disabledFeatures": []
+    },
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "locale": "de-DE",
+    "timezoneId": "Europe/Berlin",
+    "phases": [
+      {
+        "phase": "A",
+        "status": "failed",
+        "startedAt": "2026-10-30T12:00:00.000Z",
+        "durationMs": 1000,
+        "profile": "persistent-tmp",
+        "pages": [],
+        "requests": [],
+        "cookies": [],
+        "storage": [],
+        "errors": []
+      }
+    ],
+    "requestCap": {
+      "limit": 2000,
+      "issued": 0,
+      "truncated": false
+    },
+    "screenshots": [],
+    "knownGaps": [],
+    "errors": []
+  },
+  "cmp": {
+    "phases": [
+      {
+        "phase": "A",
+        "facts": [
+          {
+            "phase": "A",
+            "pageUrl": "https://www.example.de/",
+            "moment": "phase-end",
+            "takenAt": "2026-10-30T12:00:00.000Z",
+            "viewport": {
+              "width": 1366,
+              "height": 768
+            },
+            "detection": {
+              "cmpId": null,
+              "method": "none",
+              "version": null,
+              "versionSupported": null,
+              "recognitionConfidence": "low",
+              "signals": []
+            },
+            "firstLayer": {
+              "bannerPresent": false,
+              "bannerVisible": false,
+              "buttons": [],
+              "purAbo": false,
+              "closeMeansAccept": null
+            },
+            "blocking": {
+              "overlay": false,
+              "scrollLock": false,
+              "inert": false,
+              "coveredRatio": null,
+              "method": []
+            },
+            "state": [],
+            "geoSignals": [],
+            "botSignals": [],
+            "config": {}
+          }
+        ]
+      }
+    ]
+  },
+  "documents": {
+    "documents": [
+      {
+        "id": "doc-impressum",
+        "url": "https://www.example.de/impressum",
+        "finalUrl": "https://www.example.de/impressum",
+        "status": 200,
+        "foundVia": "link",
+        "linkedFrom": [
+          {
+            "pageUrl": "https://www.example.de/",
+            "text": "Impressum"
+          }
+        ],
+        "phase": "A",
+        "format": "html",
+        "lang": "de",
+        "parts": [
+          {
+            "id": "i1",
+            "text": "Impressum. Beispiel GmbH, Musterstraße 1, 10115 Berlin.",
+            "origin": "visible",
+            "sourceUrl": "https://www.example.de/impressum"
+          }
+        ],
+        "manifest": {
+          "expandablesFound": 0,
+          "expandablesOpened": 0,
+          "framesIncluded": 0,
+          "linkedPages": 0,
+          "textLength": 0
+        },
+        "complete": true,
+        "errors": [],
+        "sha256": null,
+        "kind": "impressum"
+      },
+      {
+        "id": "doc-privacy",
+        "url": "https://www.example.de/datenschutz",
+        "finalUrl": "https://www.example.de/datenschutz",
+        "status": 200,
+        "foundVia": "link",
+        "linkedFrom": [
+          {
+            "pageUrl": "https://www.example.de/",
+            "text": "Datenschutz"
+          }
+        ],
+        "phase": "A",
+        "format": "html",
+        "lang": "de",
+        "parts": [
+          {
+            "id": "p1",
+            "section": "1 > Verantwortlicher",
+            "text": "Datenschutzerklärung. Verantwortlich ist die Beispiel GmbH.",
+            "origin": "visible",
+            "sourceUrl": "https://www.example.de/datenschutz"
+          }
+        ],
+        "manifest": {
+          "expandablesFound": 0,
+          "expandablesOpened": 0,
+          "framesIncluded": 0,
+          "linkedPages": 0,
+          "textLength": 0
+        },
+        "complete": true,
+        "errors": [],
+        "sha256": null,
+        "kind": "privacy"
+      }
+    ],
+    "attempts": []
+  }
+}

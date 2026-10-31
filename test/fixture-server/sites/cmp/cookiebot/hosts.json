@@ -1,0 +1,6 @@
+{
+  "hosts": {
+    "www.cookiebot.test": "www",
+    "consent.cookiebot.com": "cb"
+  }
+}

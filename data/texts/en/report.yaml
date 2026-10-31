@@ -1,0 +1,139 @@
+# Labels of the HTML report and the GitHub Job Summary (D22: no user-facing strings outside data/).
+# Draft texts ("Textentwurf") until reviewed.
+draft: true
+ui:
+  report.doc.title: dsgvo-check – report for {target}
+  report.doc.heading: dsgvo-check – report
+  report.nav.label: Contents
+  report.section.summary: Summary
+  report.section.findings: Findings
+  report.section.diagnostics: Diagnostics
+  report.section.environment: Measurement environment
+  report.section.coverage: Coverage
+  report.section.notice: Notice
+  report.meta.target: Target
+  report.meta.finalUrl: URL after redirects
+  report.meta.startedAt: Started (UTC)
+  report.meta.duration: Duration
+  report.meta.seconds: "{seconds, number} s"
+  report.meta.version: Version
+  report.meta.ruleset: Ruleset
+  report.meta.rulesetValue: "{profile} {version}, legal status as of {rechtsstand}"
+  report.meta.failOn: Threshold (--fail-on)
+  report.meta.schemaVersion: Report schema
+  report.status.label: Status
+  report.status.complete: Scan complete
+  report.status.partial: Scan partially completed
+  report.status.failed: Scan not performed
+  report.summary.exitCode: Exit code
+  report.summary.exitReasons: Reasons
+  report.summary.none: none
+  report.summary.counts: Findings by severity
+  report.summary.checkErrors: Check errors
+  report.summary.inconclusive: Inconclusive
+  report.summary.suppressed: Suppressed
+  report.summary.failure: "The scan was not performed: {message} ({code})"
+  report.summary.sandboxOff: The Chromium sandbox was disabled (--sandbox off).
+  report.summary.checkErrorsWithThreshold: "In addition to the findings, checks failed: {checks}. Their results are missing from the report."
+  report.summary.more: "… and {count} more findings. Full list: report.json or report.html."
+  report.summary.column.severity: Severity
+  report.summary.column.check: Check
+  report.summary.column.finding: Finding
+  report.summary.column.pages: Pages
+  report.summary.files: "Full report: report.json and report.html in the artifact."
+  report.severity.critical: critical
+  report.severity.warning: warning
+  report.severity.info: info
+  report.findings.none: No findings observed. This does not confirm that requirements are met.
+  report.findings.unavailable: No findings because the scan was not performed.
+  report.findings.groupService: "Service: {service}"
+  report.findings.groupOther: Not assigned to a service
+  report.finding.confidence: Confidence of the match
+  report.confidence.high: high
+  report.confidence.medium: medium – please review manually
+  report.confidence.low: low – please review manually
+  report.finding.pages: Pages
+  report.finding.phases: Phases
+  report.finding.trigger: Trigger
+  report.finding.replicated: Observed again
+  report.finding.provider: Provider
+  report.finding.parent: Parent company
+  report.finding.dpf: Data Privacy Framework
+  report.finding.dpfValue: "{name}: {listed, select, true {listed} false {not listed} other {unknown}} (as of {checkedAt})"
+  report.finding.classification: Matched via
+  report.finding.related: Related findings
+  report.finding.fingerprint: Fingerprint
+  report.finding.evidence: Evidence ({count})
+  report.finding.evidenceTruncated: More evidence only in the JSON report.
+  report.finding.evidenceMissing: Evidence {id} is not included in the report.
+  report.finding.legalNote: Legal background
+  report.finding.legalStatus: "Source: {status}"
+  report.finding.legalUnreviewed: draft text, not yet legally reviewed
+  report.legal.authority-consensus: consistent view of the supervisory authorities
+  report.legal.court-first-instance: first-instance case law
+  report.legal.court-appellate: appellate case law
+  report.legal.contested: contested
+  report.legal.technical: technical note
+  report.evidence.otherScreenshots: Other screenshots
+  report.screenshot.alt: Screenshot of the consent banner (first screen)
+  report.screenshot.missing: "Screenshot not embedded ({reason}): {path}"
+  report.diagnostics.none: No diagnostics.
+  report.diagnostics.affects: Affected checks
+  report.env.userAgentHttp: User agent (HTTP)
+  report.env.userAgentBrowser: User agent (browser)
+  report.env.browser: Browser
+  report.env.browserValue: "{engine} {version} · channel {channel} · headless {headless}"
+  report.env.sandbox: Chromium sandbox
+  report.env.sandboxValue: "mode {mode} · active: {active}"
+  report.env.profile: Browser profile
+  report.env.viewport: Viewport
+  report.env.locale: Locale
+  report.env.timezone: Time zone
+  report.env.egress: Network egress
+  report.env.egressValue: "{mode} · region {region} ({source})"
+  report.env.disabledFeatures: Disabled Chromium features
+  report.env.quic: QUIC
+  report.env.knownGaps: Known observation gaps
+  report.env.requests: Requests issued
+  report.env.requestsValue: navigations {navigations} · HTTP probes {probes} · DNS {dns} · TLS {tls}
+  report.env.phaseC: Phase C (acceptance in the banner)
+  report.env.phaseCValue: >-
+    Discloses the scanning machine's IP address to the third parties whose resources the website loads after
+    acceptance.
+  report.env.node: Node.js
+  report.env.platform: Platform
+  report.env.unavailable: not available
+  report.env.datasets: Datasets and attribution
+  report.env.datasetValue: "{name} {version} · license {license}"
+  report.coverage.pages: Pages
+  report.coverage.totals: "Pages: planned {planned} · observed {observed} · evaluable {evaluated}"
+  report.coverage.url: URL
+  report.coverage.role: Role
+  report.coverage.planned: planned
+  report.coverage.observed: observed
+  report.coverage.evaluated: evaluable
+  report.coverage.phases: Phases
+  report.coverage.reason: Reason
+  report.coverage.collectors: Collectors
+  report.coverage.collector: Collector
+  report.coverage.status: Status
+  report.coverage.duration: Duration
+  report.coverage.browserRequests: "Browser requests: {issued} of at most {limit}{truncated, select, true { (list truncated)} other {}}"
+  report.coverage.checks: Checks
+  report.coverage.check: Check
+  report.coverage.checkCoverage: Coverage
+  report.coverage.limitations: Limitations
+  report.coverage.unavailable: No coverage data because the scan was not performed.
+  report.checkStatus.completed: completed
+  report.checkStatus.partial: partial
+  report.checkStatus.inconclusive: inconclusive
+  report.checkStatus.not_applicable: not applicable
+  report.checkStatus.skipped: skipped
+  report.checkStatus.error: error
+  report.checkCoverage.value: planned {planned} · observed {observed} · evaluated {evaluated}
+  report.notice.rechtsstand: Legal status of the ruleset as of {date}
+  report.notice.draft: Draft text – the wording has not yet been legally reviewed.
+  report.footer.generated: Generated by dsgvo-check {version}. This file loads no external resources and contains no JavaScript.
+  report.yes: yes
+  report.no: no
+  report.unknown: unknown

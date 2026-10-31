@@ -1,0 +1,66 @@
+{
+  "name": "dsgvo-check",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Passive scanner for German websites: signs of DSGVO/TDDDG/DDG issues and basic security problems, CI-gated by threshold.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "bin": {
+    "dsgvo-check": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/report.json": "./schema/report.schema.json"
+  },
+  "files": [
+    "dist",
+    "data",
+    "schema",
+    "NOTICE",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run --project unit --project integration",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e --passWithNoTests",
+    "test:live": "vitest run --project live --passWithNoTests",
+    "schema": "node scripts/emit-schema.ts",
+    "canary": "node scripts/canary.ts",
+    "canary:summary": "node scripts/canary-summary.ts",
+    "schema:check": "node scripts/emit-schema.ts --check"
+  },
+  "dependencies": {
+    "canonicalize": "5.1.0",
+    "commander": "15.0.0",
+    "playwright-core": "1.64.1",
+    "tldts": "7.4.19",
+    "undici": "8.12.3",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@peculiar/x509": "3.1.0",
+    "@types/node": "24.19.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "dns2": "3.1.1",
+    "reflect-metadata": "0.2.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

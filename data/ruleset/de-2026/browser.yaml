@@ -1,0 +1,77 @@
+# Ruleset de-2026, module browser (owner M3). Severity per (checkId, variant), consensus §4 / D13 / 5.5.
+# Draft until signed off by the customer (_profile.yaml). The confidence cap applies on top (medium ≤ warning,
+# low ≤ info). `locked: true` documents 5.4/5.5 (not raisable by overrides); enforcement belongs to core.
+# Variant names and default levels follow the registry docs/03-checks.md §2.1 (test: variant-registry.test.ts).
+checks:
+  CONSENT-01:
+    gating: true
+    variants:
+      tracking-completed: { severity: critical }
+      library-loaded: { severity: warning }
+      first-party-proxy: { severity: warning }
+      cookieless-ping: { severity: warning }
+      third-party-resource: { severity: info }
+      unknown-host: { severity: info }
+      request-not-completed: { severity: info }
+  CONSENT-02:
+    gating: true
+    variants:
+      tracking-identifier-stored: { severity: critical }
+      unknown-third-party-persistent: { severity: warning }
+      unknown-first-party-persistent: { severity: info }
+      cmp-cookie-with-uid: { severity: info }
+      storage-rejected-or-attempted: { severity: info }
+  CONSENT-03:
+    gating: true
+    variants:
+      no-banner-strong-tracking: { severity: critical }
+      no-banner-consent-services: { severity: warning }
+  CONSENT-04:
+    gating: true
+    variants:
+      blocking-no-reject: { severity: critical }
+      close-means-accept: { severity: critical }
+      reject-not-actionable: { severity: warning }
+      reject-ineffective: { severity: warning }
+      consent-without-action: { severity: warning }
+      reject-as-link: { severity: info }
+      nonblocking-no-reject: { severity: info }
+      no-choice-at-first-layer: { severity: info }
+      pur-abo: { severity: info }
+      banner-not-recognized: { severity: info, gating: false, locked: true }
+      cmp-not-supported: { severity: info, gating: false, locked: true }
+  CONSENT-05:
+    gating: true
+    variants:
+      tracking-after-reject: { severity: critical }
+      cookieless-ping-after-reject: { severity: warning }
+      connect-only-after-reject: { severity: info }
+  TRACK-01:
+    # Inventory: the gating level belongs to the related CONSENT finding (consensus §4, question 6).
+    gating: false
+    variants:
+      service-inventory: { severity: info }
+  EMBED-01:
+    gating: true
+    variants:
+      fonts-loaded: { severity: warning }
+      preconnect-only: { severity: info }
+  EMBED-02:
+    gating: true
+    variants:
+      maps-loaded: { severity: warning }
+  LEGAL-01:
+    gating: true
+    variants:
+      document-not-found: { severity: critical }
+      links-broken: { severity: critical }
+      link-missing-on-some-pages: { severity: warning }
+      reachable-via-intermediate: { severity: warning }
+      footer-covered-by-banner: { severity: warning }
+      unresolved: { severity: info }
+  PRIV-01:
+    gating: true
+    variants:
+      not-named: { severity: warning }
+      category-only: { severity: info }
+      ambiguous-match: { severity: info }

@@ -1,0 +1,26 @@
+# Routing as data (consensus §4 "Дедупликация"): service category → check that owns the gating finding.
+# Assess drops observations of owner checks whose category belongs to another owner.
+# Independent axes (not routed): CONSENT-02 storage, CONSENT-03 no banner, CONSENT-05 after reject, TRACK-01 inventory.
+version: 1
+owners:
+  analytics: CONSENT-01
+  ads: CONSENT-01
+  session-recording: CONSENT-01
+  tag-manager: CONSENT-01
+  cdn: CONSENT-01
+  payment: CONSENT-01
+  consent-provider: CONSENT-01
+  unknown: CONSENT-01
+  # Added by M3 (error/performance monitoring such as Sentry): part of CONSENT-01's "remainder" (consensus §4).
+  monitoring: CONSENT-01
+  fonts: EMBED-01
+  maps: EMBED-02
+  video: EMBED-03
+  captcha: EMBED-04
+  widget: EMBED-05
+  social: EMBED-05
+  reviews: EMBED-05
+  chat: EMBED-05
+# Prototype note: EMBED-03..05 are not in the prototype scope (BRIEF), so observations of video, captcha and widget
+# categories are dropped from CONSENT-01 and only appear in CONSENT-02, CONSENT-03 and PRIV-01. Routing them to
+# CONSENT-01 meanwhile is a customer decision (minor release, "Baseline changes").

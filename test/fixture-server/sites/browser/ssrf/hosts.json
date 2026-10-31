@@ -1,0 +1,19 @@
+{
+  "hosts": {
+    "www.example.test": "www",
+    "intranet.example.test": "intranet",
+    "popup.example.test": "popup",
+    "popup-click.example.test": "popup-click",
+    "frames.other.test": "nested"
+  },
+  "routes": [
+    {
+      "host": "redir.example.test",
+      "path": "/",
+      "status": 302,
+      "headers": {
+        "location": "http://169.254.169.254/latest/meta-data/"
+      }
+    }
+  ]
+}

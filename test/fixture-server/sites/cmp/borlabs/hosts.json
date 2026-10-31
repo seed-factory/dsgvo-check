@@ -1,0 +1,5 @@
+{
+  "hosts": {
+    "www.borlabs.test": "www"
+  }
+}
