@@ -5,7 +5,7 @@
  * the scanner token.
  */
 import { execFile } from 'node:child_process';
-import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -231,9 +231,48 @@ function trackProfile(dir: string): void {
   liveProfiles.add(dir);
 }
 
-async function removeProfile(dir: string): Promise<void> {
-  await rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
-  liveProfiles.delete(dir);
+async function removeProfile(dir: string, log: Logger = silentLogger): Promise<void> {
+  let failure: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true, maxRetries: 3 });
+      if (!existsSync(dir)) {
+        liveProfiles.delete(dir);
+        return;
+      }
+    } catch (err) {
+      failure = err;
+    }
+  }
+  log.warn(
+    `temporary browser profile not removed (${(failure as NodeJS.ErrnoException | undefined)?.code ?? 'directory exists'})`,
+  );
+}
+
+/** Maximum additional time for killed browser processes to exit before profile removal. */
+const PROCESS_EXIT_BUDGET_MS = 2_000;
+const PROCESS_POLL_MS = 50;
+
+async function waitForProfileProcesses(dir: string, pids: number[], log: Logger): Promise<void> {
+  const pending = new Set(pids);
+  const deadline = Date.now() + PROCESS_EXIT_BUDGET_MS;
+  while (true) {
+    for (const pid of pidsUsingProfile(dir) ?? []) pending.add(pid);
+    for (const pid of pending) {
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ESRCH') pending.delete(pid);
+      }
+    }
+    if (pending.size === 0) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      log.warn('browser process still running after exit budget');
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(PROCESS_POLL_MS, remaining)));
+  }
 }
 
 /** Budget of `context.close()`; a browser that does not close in time is killed. */
@@ -282,6 +321,22 @@ function pkillProfile(dir: string): Promise<'killed' | 'none' | 'unavailable'> {
   });
 }
 
+/** Find profile processes before pkill, so their exit can be observed without /proc. */
+function profilePidsWithoutProc(dir: string): Promise<number[] | null> {
+  const pattern = `--user-data-dir=${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
+  return new Promise((resolve) => {
+    execFile('pgrep', ['-f', '--', pattern], { timeout: 2_000 }, (err, stdout) => {
+      if (err) return resolve(err.code === 1 ? [] : null);
+      resolve(
+        stdout
+          .split('\n')
+          .map(Number)
+          .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid),
+      );
+    });
+  });
+}
+
 export interface KillOptions {
   /** Process table. Default `/proc`. */
   procRoot?: string;
@@ -296,8 +351,8 @@ export interface KillOptions {
  * a process table `pkill` is the way (POSIX). A browser that cannot be killed at all is reported, without the
  * path of the profile.
  */
-export async function killBrowserProcesses(dir: string, o: KillOptions = {}): Promise<void> {
-  if (process.platform === 'win32') return;
+export async function killBrowserProcesses(dir: string, o: KillOptions = {}): Promise<number[]> {
+  if (process.platform === 'win32') return [];
   const log = o.log ?? silentLogger;
   const kill = o.kill ?? ((pid: number) => process.kill(pid, 'SIGKILL'));
   const pids = pidsUsingProfile(dir, o.procRoot);
@@ -311,11 +366,16 @@ export async function killBrowserProcesses(dir: string, o: KillOptions = {}): Pr
       }
     }
     if (failed > 0) log.warn(`browser process of a phase did not close and could not be killed (${failed})`);
-    return;
+    return pids;
   }
-  if ((await pkillProfile(dir)) === 'unavailable') {
+  const fallbackPids = await profilePidsWithoutProc(dir);
+  const result = await pkillProfile(dir);
+  if (result === 'unavailable') {
     log.warn('browser process of a phase did not close and could not be killed (no process table, no pkill)');
+  } else if (fallbackPids === null && result === 'killed') {
+    log.warn('browser process exit could not be verified (no process table, no pgrep)');
   }
+  return fallbackPids ?? [];
 }
 
 /** `context.close()` with a budget: true when the browser closed, false when it had to be killed. */
@@ -324,14 +384,19 @@ async function closeWithin(context: BrowserContext, dir: string, ms: number, log
   const closed = await Promise.race([
     context.close().then(
       () => true,
-      () => true, // an error on close: the browser is gone or going
+      () => false, // a rejected close does not establish that the browser exited
     ),
     new Promise<boolean>((resolve) => {
       timer = setTimeout(() => resolve(false), ms);
     }),
   ]);
   if (timer) clearTimeout(timer);
-  if (!closed) await killBrowserProcesses(dir, log ? { log } : {});
+  const logger = log ?? silentLogger;
+  const pids = !closed
+    ? await killBrowserProcesses(dir, { log: logger })
+    : (pidsUsingProfile(dir) ?? (await profilePidsWithoutProc(dir)));
+  if (pids === null) logger.warn('browser process exit could not be verified (no process table, no pgrep)');
+  await waitForProfileProcesses(dir, pids ?? [], logger);
   return closed;
 }
 
@@ -370,7 +435,10 @@ async function launch(cfg: LaunchConfig, userAgent: string | undefined): Promise
       timeout: cfg.timeoutMs ?? 60_000,
     });
   } catch (err) {
-    await removeProfile(dir);
+    const log = cfg.log ?? silentLogger;
+    const pids = await killBrowserProcesses(dir, { log });
+    await waitForProfileProcesses(dir, pids, log);
+    await removeProfile(dir, log);
     throw err;
   }
   exitHookLast();
@@ -382,7 +450,7 @@ async function launch(cfg: LaunchConfig, userAgent: string | undefined): Promise
     close: () => {
       closing ??= (async () => {
         await closeWithin(context, dir, closeBudgetMs, cfg.log);
-        await removeProfile(dir);
+        await removeProfile(dir, cfg.log);
       })();
       return closing;
     },
