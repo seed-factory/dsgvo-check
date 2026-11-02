@@ -1,4 +1,4 @@
-/** L2: CookieHub adapter against the own simulator (reject only in the settings layer in the blocking variant). */
+/** : CookieHub adapter against the own simulator (reject only in the settings layer in the blocking variant). */
 import { expect, it } from 'vitest';
 import { extract, waitForBanner } from '../../../src/cmp/index.ts';
 import { describeCmpScenarios, recognized } from './helpers.ts';

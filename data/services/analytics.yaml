@@ -159,7 +159,7 @@ services:
         kind: hit
         stage: loaded
         identifierParams: [dpuuid]
-      # Experience Edge consent call: a service request, not an analytics hit (canary2 G32).
+      # Experience Edge consent call: a service request, not an analytics hit.
       - id: edge-privacy
         hosts: [demdex.net]
         path: "^/ee/v1/privacy/"
@@ -275,7 +275,7 @@ services:
         path: '^/__ptq\.gif$'
         kind: hit
         stage: event-sent
-      # CMS tools menu, CTA, embed counter and live chat calls: service requests, not analytics hits (canary2 G32).
+      # CMS tools menu, CTA, embed counter and live chat calls: service requests, not analytics hits.
       - id: service-calls
         hosts: [hubspot.com]
         path: "^/(content-tools-menu|ctas|embed/v3|livechat-public)/"
@@ -384,8 +384,8 @@ services:
     aliasesDe: [New Relic]
     aliasesEn: [New Relic]
 
-  # ------------------------------------------------------------------ measurement and tag management (canary2 G31)
-  # Same rules as ads.yaml: observed endpoints, no provider claim without vendor documentation (D16).
+  # measurement and tag management
+  # Same rules as ads.yaml: observed endpoints, no provider claim without vendor documentation.
   - id: scorecardresearch
     name: ScorecardResearch (comScore)
     category: analytics
@@ -407,7 +407,7 @@ services:
 
   # The domains also cover identity, experience, checkout and REST hosts of the vendor. A domain-only match
   # classifies the request, but a xhr/fetch/image/ping without a signature becomes a `hit` in derive (open question
-  # G32 item 3), which CONSENT-01 reads as `cookieless-ping` and TRACK-01 as "event sent". Therefore every service
+  # the event classification, which CONSENT-01 reads as `cookieless-ping` and TRACK-01 as "event sent". Therefore every service
   # endpoint of the vendor (Piano ID, experience, checkout, REST) is a `resource` signature, EU and non-EU host alike;
   # the domains stay broad so that PRIV-01 still names the service.
   - id: piano

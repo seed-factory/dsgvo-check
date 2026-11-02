@@ -39,7 +39,7 @@ export function sortedUniq(xs: Iterable<string>): string[] {
 }
 
 /**
- * A hit carries a persistent identifier (03-checks §3.3, §4; S-13, FC-08). A match with stored tracking data or a
+ * A hit carries a persistent identifier (03-checks §3.3, §4). A match with stored tracking data or a
  * user/click id holds even under Consent Mode `denied`; a catalog identifier param counts only when the hit is not a
  * denied (cookieless) ping, where the catalog's persistence assumption does not hold. `per-load` / `none` never count.
  */
@@ -48,8 +48,6 @@ export function persistentIdentifier(c: ClassifiedRequest): boolean {
   if (kind === 'stored-match' || kind === 'user-supplied') return true;
   return kind === 'persistent-param' && c.cookieless !== true;
 }
-
-// ------------------------------------------------------------------ bot / geo signals (D10, D11)
 
 export interface ConsentSignals {
   bot: BotSignal[];
@@ -71,7 +69,7 @@ export function consentSignals(cmp: CmpSection, phases: readonly BrowserPhase[])
 }
 
 /**
- * A direct bot or geo signal makes the consent evaluation inconclusive (5.2, D10/D11); the check emits the
+ * A direct bot or geo signal makes the consent evaluation inconclusive (5.2); the check emits the
  * matching diagnostic. Returns null when there is no signal.
  */
 export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome | null {
@@ -100,8 +98,6 @@ export function allCmpFacts(cmp: CmpSection): CmpFacts[] {
   return cmp.phases.flatMap((p) => p.facts);
 }
 
-// ------------------------------------------------------------------ lookups
-
 export function requestIndex(browser: BrowserSection): Map<string, RequestRecord> {
   const out = new Map<string, RequestRecord>();
   for (const p of browser.phases) for (const r of p.requests) out.set(r.id, r);
@@ -114,21 +110,21 @@ export function phaseRecord(browser: BrowserSection, phase: BrowserPhase) {
 
 /**
  * Phase A ran and at least one of its pages could be evaluated: the "before consent" observation exists. A phase A
- * whose only page is a 429/503 or challenge page is no observation (FC-06, S-27).
+ * whose only page is a 429/503 or challenge page is no observation.
  */
 export function hasPhaseA(browser: BrowserSection): boolean {
   const a = phaseRecord(browser, 'A');
   return !!a && a.status !== 'skipped' && a.pages.some((p) => p.evaluable);
 }
 
-/** Reason for a missing phase-A basis: `throttled` when the collector stopped on 429/503 (D09), else `fallback`. */
+/** Reason for a missing phase-A basis: `throttled` when the collector stopped on 429/503, else `fallback`. */
 export function noPhaseAReason(browser: BrowserSection, fallback: string): string {
   return phaseRecord(browser, 'A')?.reason === 'throttled' ? 'throttled' : fallback;
 }
 
 /**
- * 5.2 / D09: throttling stopped navigations to the target in one of `phases`, so the observation is incomplete. A
- * `completed` outcome becomes `partial` with limitation `throttled`; other statuses stay (FC-06, S-27).
+ * Throttling stopped navigations to the target in one of `phases`, so the observation is incomplete. A
+ * `completed` outcome becomes `partial` with limitation `throttled`; other statuses stay.
  */
 export function throttleAware(
   browser: BrowserSection,
@@ -236,15 +232,13 @@ export function visitedPages(
   return out;
 }
 
-// ------------------------------------------------------------------ documents (D15)
-
 /** Errors by which the collector marks a fetched page as not being the legal document. */
 const NOT_A_DOCUMENT: ReadonlySet<string> = new Set(['soft-404', 'keyword-missing', 'unconfirmed']);
 
 /**
- * A usable legal document (S-24): 2xx and not judged "no document" by the collector, neither on the document
+ * A usable legal document: 2xx and not judged "no document" by the collector, neither on the document
  * (`soft-404`, `keyword-missing`, `unconfirmed`) nor on the attempt that fetched it (outcome `soft-404` or
- * `unconfirmed`, G20). A linked PDF counts even when it was not fetched (status null, D15).
+ * `unconfirmed`). A linked PDF counts even when it was not fetched (status null).
  */
 export function usableDocument(d: DocumentRecord, attempts: DocumentsSection['attempts']): boolean {
   if (d.errors.some((e) => NOT_A_DOCUMENT.has(e))) return false;
@@ -258,8 +252,6 @@ export function usableDocument(d: DocumentRecord, attempts: DocumentsSection['at
   if (d.status === null) return d.format === 'pdf';
   return d.status >= 200 && d.status < 300;
 }
-
-// ------------------------------------------------------------------ catalog attributes (D16)
 
 export function serviceInfo(derived: DerivedSection, serviceId: string | null): ServiceInfo | null {
   return serviceId ? (derived.catalog[serviceId] ?? null) : null;
@@ -292,8 +284,6 @@ export function serviceFields(
   if (info.dpfEntity) out.dpfEntity = info.dpfEntity;
   return out;
 }
-
-// ------------------------------------------------------------------ evidence (5.3)
 
 /** Parser version of snapshots written before the collector recorded one (5.3 `features.parserVersion`). */
 const LEGACY_PARSER_VERSION = 'request-features/1';
@@ -330,7 +320,7 @@ function unclassifiedIdentifier(r: RequestRecord): { kind: IdentifierKind; param
 }
 
 /**
- * `request` evidence (5.3, S-30). A pure function of the record and its classification, so the same request gives
+ * `request` evidence (5.3). A pure function of the record and its classification, so the same request gives
  * the same evidence (and evidence id) in every check. Times relative to the navigation or the click are not stored:
  * they follow from `tMs` and the `navigationId` / `actionId` of the page visit and the click.
  */

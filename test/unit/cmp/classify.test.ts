@@ -1,5 +1,5 @@
 /**
- * L1: the pure D13 table `classifyFirstLayer(facts, lexicon)` — every variant plus counterexamples
+ * the pure table `classifyFirstLayer(facts, lexicon)` — every variant plus counterexamples
  * (Verbergen / × are not a reject, a link instead of a button, reject only on the second layer…).
  */
 import { describe, expect, it } from 'vitest';
@@ -75,7 +75,7 @@ describe('isBlocking', () => {
   });
 });
 
-describe('classifyFirstLayer: D13 variants', () => {
+describe('classifyFirstLayer: variants', () => {
   it('ok: actionable reject and accept buttons', () => {
     const r = classifyFirstLayer(
       facts([btn('Ablehnen'), btn('Alle akzeptieren'), btn('Einstellungen')]),
@@ -137,7 +137,7 @@ describe('classifyFirstLayer: D13 variants', () => {
     expect(r.variant).toBe('blocking-no-reject');
   });
 
-  // FC-04 / 5.5: warning/critical only with an unambiguous first layer; an unknown button might be the reject.
+  // / 5.5: warning/critical only with an unambiguous first layer; an unknown button might be the reject.
   it('blocking, accept, an unclassified button and no reject → banner-not-recognized (5.5), not blocking-no-reject', () => {
     const r = classifyFirstLayer(facts([btn('Alle akzeptieren'), btn('Weiter')], { blocking }), lexicon);
     expect(r.variant).toBe('banner-not-recognized');
@@ -388,8 +388,8 @@ describe('classifyFirstLayer: D13 variants', () => {
   });
 });
 
-// G06: the probe keeps at most N buttons. When first-layer candidates were dropped, "no reject" is not a finding.
-describe('classifyFirstLayer: truncated button set (G06)', () => {
+// : the probe keeps at most N buttons. When first-layer candidates were dropped, "no reject" is not a finding.
+describe('classifyFirstLayer: truncated button set', () => {
   const truncated = (buttons: CmpButton[], p: Partial<CmpFacts> = {}): CmpFacts => {
     const f = facts(buttons, p);
     return { ...f, firstLayer: { ...f.firstLayer, buttonsTruncated: true } };
@@ -454,8 +454,8 @@ describe('classifyFirstLayer: truncated button set (G06)', () => {
   });
 });
 
-// G07: geometry measured during the appearance animation says nothing about reachability.
-describe('classifyFirstLayer: unsettled geometry (G07)', () => {
+// : geometry measured during the appearance animation says nothing about reachability.
+describe('classifyFirstLayer: unsettled geometry', () => {
   const rejectBelowViewport = (p: { geometryUnsettled?: boolean }): CmpFacts => {
     const f = facts([
       btn('Ablehnen', { actionableAtFirstScreen: false, inViewport: false, visibleAtFirstScreen: false }),
@@ -488,8 +488,8 @@ describe('classifyFirstLayer: unsettled geometry (G07)', () => {
   });
 });
 
-// G17: the only actionable "accept" is a save-selection button → no accept target (phase C must not click it).
-describe('classifyFirstLayer: save-selection button (G17)', () => {
+// : the only actionable "accept" is a save-selection button → no accept target (phase C must not click it).
+describe('classifyFirstLayer: save-selection button', () => {
   it('a lone "Ausgewählte Cookies akzeptieren" with vendor role save is no accept', () => {
     const r = classifyFirstLayer(
       facts([btn('Ausgewählte Cookies akzeptieren', { vendorRole: 'save' }), btn('Einstellungen')]),

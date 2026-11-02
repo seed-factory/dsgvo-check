@@ -1,5 +1,5 @@
 /**
- * L2 (D20, AGENTS rule 2; canary2 groups G01, G03): the real browser collector writes no e-mail local part, no
+ * (AGENTS rule 2; groups): the real browser collector writes no e-mail local part, no
  * query value inside link text or accessible names, and no identifier from matrix or `prefix:k=v` path segments into
  * the snapshot. Every marker below starts with `zq7`; none of them may appear in anything the collector persists.
  */
@@ -49,7 +49,7 @@ afterAll(async () => {
 
 const links = () => run.result.sections.browser?.phases[0]?.pages[0]?.dom?.links ?? [];
 
-describe('free text in the snapshot (G01)', () => {
+describe('free text in the snapshot', () => {
   it('masks the address in the text and the accessible name of a mailto link; the href stays out of the snapshot', () => {
     const mail = links().find((l) => l.hrefKind === 'mailto');
     expect(mail).toMatchObject({ href: null, text: '[redacted]@example.test' });
@@ -81,7 +81,7 @@ describe('free text in the snapshot (G01)', () => {
   });
 });
 
-describe('identifiers in the path of request URLs (G03)', () => {
+describe('identifiers in the path of request URLs', () => {
   it('redacts matrix parameters of a Floodlight-style URL', () => {
     const r = run.requests.find((x) => x.host === 'ad.doubleclick.net');
     expect(r?.url).toBe(

@@ -1,6 +1,6 @@
 /**
- * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works (D13, 5.5).
- * The first-layer verdict comes only from the pure `classifyFirstLayer` (owner M2) on first-screen facts of a
+ * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works (5.5).
+ * The first-layer verdict comes only from the pure `classifyFirstLayer` on first-screen facts of a
  * supported CMP recognised with `high` confidence (≥ 2 independent signals). Heuristic candidates, `medium`
  * recognition or unsupported versions → `banner-not-recognized` / `cmp-not-supported` (info, inconclusive,
  * crmCode null, locked). Check-level variants: `reject-ineffective` (click done, state not denied) and
@@ -70,7 +70,7 @@ const EMPTY_LEXICON: CmpLexicon = {
   hide: [],
 };
 
-/** Lexicon from data/cmp (owner M2): `lexicon:` block or the top level; null when the shape is invalid. */
+/** Lexicon from data/cmp: `lexicon:` block or the top level; null when the shape is invalid. */
 export function lexiconFrom(data: unknown): CmpLexicon | null {
   try {
     return lexiconFromData(data);
@@ -84,7 +84,7 @@ export type FirstLayerClassifier = (facts: CmpFacts, lexicon: CmpLexicon) => Fir
 /**
  * Source of a detection: only an own adapter with `high` recognition ranks above the heuristic. An adapter below `high`
  * (one kind of signal) is as much a hint as the heuristic itself, and its fact may be an empty one from a page where the
- * banner is hidden (G13).
+ * banner is hidden.
  */
 const rankOf = (d: CmpFacts['detection']): number =>
   d.method === 'none' ? 0 : d.method === 'adapter' && d.recognitionConfidence === 'high' ? 2 : 1;
@@ -177,7 +177,7 @@ function screenshotEvidence(browser: BrowserSection, f: CmpFacts): EvidenceInput
     : [];
 }
 
-/** Classifier reasons that say the measurement was incomplete (G06, G07): reported as limitations of the check. */
+/** Classifier reasons that say the measurement was incomplete: reported as limitations of the check. */
 const MEASUREMENT_LIMITATIONS: readonly string[] = ['buttons-truncated', 'geometry-unsettled'];
 
 const NO_REJECT_VARIANTS: ReadonlySet<string> = new Set([

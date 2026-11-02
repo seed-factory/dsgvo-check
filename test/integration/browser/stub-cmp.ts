@@ -1,7 +1,7 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: in-page callbacks run in Chromium; tsconfig has no DOM lib
 /**
  * Minimal CMP stub for the `browser/cmp-stub` fixture site: implements the `CmpApi` the collector uses and a
- * `CmpAdapter` for the hand-written banner. Stands in for M2's adapters in collector tests only; the production
+ * `CmpAdapter` for the hand-written banner. Stands in for 's adapters in collector tests only; the production
  * collector uses `src/cmp/index.ts`.
  */
 import type { Page } from 'playwright-core';

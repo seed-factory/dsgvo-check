@@ -83,7 +83,7 @@ services:
     aliasesDe: [iubenda]
     aliasesEn: [iubenda]
 
-  # canary2 G31: no anyHost signatures, so first-party proxies of these CMPs stay unclassified. CMP recognition
+  # no anyHost signatures, so first-party proxies of these CMPs stay unclassified. CMP recognition
   # stays with the adapters in src/cmp.
   - id: sourcepoint
     name: Sourcepoint

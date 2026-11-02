@@ -1,6 +1,6 @@
 /**
- * L2: phases B and C (D08) with a stub CMP on the fixture site — observation before the click, first screen and
- * banner screenshot (D20), reject via the adapter, verify, reload, control pages; accept in C. A second test runs
+ * phases B and C with a stub CMP on the fixture site — observation before the click, first screen and
+ * banner screenshot , reject via the adapter, verify, reload, control pages; accept in C. A second test runs
  * the collector with the real CMP subsystem (`src/cmp/index.ts`) on a site without banner.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -140,7 +140,7 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     });
   });
 
-  it('5.3 request fields: one monotonic tMs scale over A/B/C, navigation/action/frame ids (S-30)', () => {
+  it('5.3 request fields: one monotonic tMs scale over A/B/C, navigation/action/frame ids', () => {
     const phases = ['A', 'B', 'C'] as const;
     const all = phases.flatMap((p) => phase(p)?.requests ?? []);
     expect(all.length).toBeGreaterThan(0);
@@ -180,7 +180,7 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
   });
 });
 
-describe('--no-screenshots', () => {
+describe('no-screenshots', () => {
   it('takes no banner screenshot', async () => {
     const server = await startFixtureServer({ sites: ['browser/cmp-stub'] });
     try {

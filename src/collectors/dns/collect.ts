@@ -1,8 +1,8 @@
 /**
  * DNS collection for MAIL-*: MX of the mail domain, the DMARC Tree Walk (RFC 9989) from the scanned host and
  * from the mail domain, and the SPF include/redirect tree (RFC 7208). The same pure analyses the checks use decide what to query next,
- * so the snapshot always contains what the checks need. Budget ≤ 60 queries (D18). Redaction happens here,
- * before anything is stored (D20): `mailto:` and bare addresses are masked by the shared `redactText`, unrelated TXT at SPF names is dropped (count only).
+ * so the snapshot always contains what the checks need. Budget ≤ 60 queries. Redaction happens here,
+ * before anything is stored: `mailto:` and bare addresses are masked by the shared `redactText`, unrelated TXT at SPF names is dropped (count only).
  */
 import { analyzeDmarc, DMARC_MAX_WALK } from '../../checks/dns/lib/dmarc.ts';
 import {
@@ -51,7 +51,7 @@ interface Planned extends PendingQuery {
 /**
  * Chunks re-cut from the already redacted value at the original boundaries (the last chunk takes the rest), so
  * `chunks.join('') === value`. Masking each chunk on its own would miss a `mailto:` split across
- * character-strings (S-05).
+ * character-strings.
  */
 export function rechunk(value: string, original: readonly string[]): string[] {
   const out: string[] = [];

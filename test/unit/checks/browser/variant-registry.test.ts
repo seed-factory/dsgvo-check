@@ -1,5 +1,5 @@
 /**
- * S-32: the browser checks, ruleset, texts (de/en) and CRM mapping use exactly the variants of the approved
+ * the browser checks, ruleset, texts (de/en) and CRM mapping use exactly the variants of the approved
  * registry docs/03-checks.md §2.1 ("Реестр вариантов и messageId") with its default severities. The registry is
  * parsed from the document itself, independently of the data files, so a rename on either side fails here.
  */

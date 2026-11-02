@@ -1,10 +1,4 @@
-/**
- * L2 (review S-cmp-2, canary2 group G18): which links of the page the banner "covers" is decided with the legal-link
- * lexicon of data/legal, not with a German/English word list of the probe. A banner over French, Spanish, Italian or
- * Polish Impressum and privacy links is observed as covering the footer, the same links without an overlap are not,
- * and links that name no legal document (or a cookie settings dialog) are never reported. The same lexicon decides
- * which links of the banner itself count as legal links. All hosts are synthetic (`*.example.test`).
- */
+/** The localized legal-link lexicon determines which page and banner links count as covered. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { extract } from '../../../src/cmp/index.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
@@ -133,7 +127,7 @@ async function facts(file: string) {
   }
 }
 
-describe('S-cmp-2: the legal-link lexicon decides which covered links count', () => {
+describe('the legal-link lexicon decides which covered links count', () => {
   for (const l of LANGUAGES) {
     it(`${l.lang}: Impressum and privacy links under the banner are observed as covered`, async () => {
       const layer = await facts(`${l.lang}-covered.html`);
@@ -162,7 +156,7 @@ describe('S-cmp-2: the legal-link lexicon decides which covered links count', ()
   });
 });
 
-describe('S-cmp-2: the legal links of the banner itself', () => {
+describe('the legal links of the banner itself', () => {
   it('a French privacy link in the banner is listed, a link that names no document is not', async () => {
     const layer = await facts('fr-banner-links.html');
     expect(layer.legalLinks?.map((l) => l.text)).toEqual(['Politique de confidentialité']);

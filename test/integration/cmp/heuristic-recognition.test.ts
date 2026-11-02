@@ -1,5 +1,5 @@
 /**
- * L2: what the generic heuristic recognizes (canary fixes G09, G10, G13, G18). Facts only: an unknown banner is
+ * what the generic heuristic recognizes (canary fixes). Facts only: an unknown banner is
  * `banner-not-recognized` (info), nothing is clicked (5.5).
  */
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -14,7 +14,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
   const env = useCmpServer(['cmp/generic', 'cmp/cookiebot']);
   const lexicon = loadLexicon();
 
-  describe('G09: visible consent-looking iframe whose content cannot be resolved', () => {
+  describe('visible consent-looking iframe whose content cannot be resolved', () => {
     it('full-viewport iframe titled "Consent window", content below the keyword threshold → unresolved candidate', async () => {
       const { page } = await env.open('https://www.generic.test/consent-frame.html');
       const facts = await extract(page, null, 'first-screen');
@@ -66,7 +66,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
   });
 
-  describe('G10: languages beyond de/en and static banners', () => {
+  describe('languages beyond de/en and static banners', () => {
     it('Finnish fixed bar with reject and accept → found as heuristic banner, kinds classified, info only', async () => {
       const { page } = await env.open('https://www.generic.test/fi-banner.html');
       const { adapter, detection } = await detectCmp(page);
@@ -101,7 +101,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
   });
 
-  describe('G18: page chrome is not a banner, and "covers the footer" is a measured overlap', () => {
+  describe('page chrome is not a banner, and "covers the footer" is a measured overlap', () => {
     it('fixed side menu inside <nav> with privacy words and many links → nothing recognized, footer not covered', async () => {
       const { page } = await env.open('https://www.generic.test/docs-nav.html');
       const { detection } = await detectCmp(page);
@@ -177,7 +177,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
   });
 
-  describe('G13: a medium adapter signal does not hide a visible generic banner', () => {
+  describe('a medium adapter signal does not hide a visible generic banner', () => {
     it('stored-consent signal of an adapter (one signal kind) next to a visible fixed banner → heuristic facts, adapter kept as hint', async () => {
       const { page } = await env.open('https://www.generic.test/medium-storage.html');
       const { adapter, detection } = await detectCmp(page);
@@ -194,7 +194,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
       );
       expect(facts.firstLayer.containerBox).toBeTruthy();
       expect(classifyFirstLayer(facts, lexicon).targets).toEqual({ reject: null, accept: null });
-      // The banner can be photographed for the report (D20): the container is unique and small.
+      // The banner can be photographed for the report : the container is unique and small.
       const dir = await mkdtemp(path.join(tmpdir(), 'dsgvo-check-shot-'));
       try {
         const shot = await bannerScreenshot(page, facts, {

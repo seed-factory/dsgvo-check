@@ -1,10 +1,10 @@
 /**
- * L2: legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them (canary-2 triage).
- * G20: a fallback path that redirects to the home page is no Impressum; a policy in another language is a document
- *      whose language comes from its headings (the lang attribute says "en"). G24: localised link labels.
- *      R03: a heading of the navigation or footer ("Impressum" as a column title) does not confirm the type.
- * G23: an empty navigation panel is no part of the policy; an unopened section of the policy is a limitation.
- * G01: e-mail addresses in a document are masked before the snapshot is written.
+ * legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them .
+ * a fallback path that redirects to the home page is no Impressum; a policy in another language is a document
+ * whose language comes from its headings (the lang attribute says "en"). : localised link labels.
+ * a heading of the navigation or footer ("Impressum" as a column title) does not confirm the type.
+ * an empty navigation panel is no part of the policy; an unopened section of the policy is a limitation.
+ * e-mail addresses in a document are masked before the snapshot is written.
  * Synthetic hosts only (`*.example.test`), served by dynamic handlers of the fixture server.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -103,7 +103,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
-      // R03: /impressum redirects to the home page whose footer has a column titled "Impressum"
+      // : /impressum redirects to the home page whose footer has a column titled "Impressum"
       site('footerheading.example.test', {
         '/': send(
           html(
@@ -115,7 +115,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
-      // R03: the policy link redirects to the home page whose language switcher is a navigation heading in French and
+      // : the policy link redirects to the home page whose language switcher is a navigation heading in French and
       // whose footer (a div named like a footer) has a column "Datenschutz & Sicherheit"
       site('navheading.example.test', {
         '/': send(
@@ -128,7 +128,7 @@ beforeAll(async () => {
         '/datenschutz': redirect('/'),
         '/datenschutz/': redirect('/'),
       }),
-      // S-legal-1: /impressum (fallback) is an ordinary page whose only "Impressum" is the h1 of the navigation
+      // : /impressum (fallback) is an ordinary page whose only "Impressum" is the h1 of the navigation
       site('navh1.example.test', {
         '/': send(
           html(
@@ -144,7 +144,7 @@ beforeAll(async () => {
         ),
         '/datenschutz/': send(POLICY()),
       }),
-      // R03 counterexample: the type is confirmed by headings inside the content, also next to a footer heading of
+      // counterexample: the type is confirmed by headings inside the content, also next to a footer heading of
       // the same text; the page title and the h1 say only "Rechtliches"
       site('contentheading.example.test', {
         '/': send(START()),
@@ -210,7 +210,7 @@ function snapshotOf(run: CollectRun): Snapshot {
 const privacyDoc = (run: CollectRun) =>
   run.result.sections.documents?.documents.find((d) => d.kind === 'privacy');
 
-describe('G23: expandable elements outside and inside the text of the policy', () => {
+describe('expandable elements outside and inside the text of the policy', () => {
   it('(a) an empty navigation panel: the policy is complete and PRIV-01 is not inconclusive', async () => {
     const run = await collect(server, { url: 'https://navpanel.example.test/' });
     const r = runCheck(priv01, snapshotOf(run));
@@ -237,8 +237,8 @@ describe('G23: expandable elements outside and inside the text of the policy', (
   });
 });
 
-describe('G20: the type of a fetched page is confirmed by its headings', () => {
-  it('/impressum redirecting to the home page is no Impressum: no reachable-via-intermediate', async () => {
+describe('the type of a fetched page is confirmed by its headings', () => {
+  it('impressum redirecting to the home page is no Impressum: no reachable-via-intermediate', async () => {
     const run = await collect(server, { url: 'https://homeredirect.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     // The home page may be kept as a tagged candidate, never as a plain document.
@@ -249,7 +249,7 @@ describe('G20: the type of a fetched page is confirmed by its headings', () => {
     expect(impressum.map((o) => o.variant)).toEqual(['unresolved']);
   });
 
-  it('R03: a footer column titled "Impressum" does not make the home page an Impressum (fallback → home page)', async () => {
+  it('a footer column titled "Impressum" does not make the home page an Impressum (fallback → home page)', async () => {
     const run = await collect(server, { url: 'https://footerheading.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.filter((d) => d.kind === 'impressum' && d.errors.length === 0)).toEqual([]);
@@ -260,14 +260,14 @@ describe('G20: the type of a fetched page is confirmed by its headings', () => {
     expect(impressum.map((o) => o.variant)).toEqual(['unresolved']);
   });
 
-  it('R03: a navigation heading in another language does not set the language of the home page as a policy', async () => {
+  it('a navigation heading in another language does not set the language of the home page as a policy', async () => {
     const run = await collect(server, { url: 'https://navheading.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.filter((d) => d.kind === 'privacy' && d.errors.length === 0)).toEqual([]);
     expect(runCheck(priv01, snapshotOf(run)).reason).not.toBe('language-unsupported');
   });
 
-  it('S-legal-1: the h1 of the navigation does not make an ordinary page the Impressum (fallback)', async () => {
+  it('the h1 of the navigation does not make an ordinary page the Impressum (fallback)', async () => {
     const run = await collect(server, { url: 'https://navh1.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.filter((d) => d.kind === 'impressum' && d.errors.length === 0)).toEqual([]);
@@ -280,7 +280,7 @@ describe('G20: the type of a fetched page is confirmed by its headings', () => {
     expect(impressum.map((o) => o.variant)).toEqual(['document-not-found']);
   });
 
-  it('R03 counterexample: headings inside the content confirm the type, also next to a footer heading of the same text', async () => {
+  it('counterexample: headings inside the content confirm the type, also next to a footer heading of the same text', async () => {
     const run = await collect(server, { url: 'https://contentheading.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     const impressum = docs.find((d) => d.kind === 'impressum');
@@ -304,7 +304,7 @@ describe('G20: the type of a fetched page is confirmed by its headings', () => {
     expect(runCheck(priv01, snap)).toMatchObject({ status: 'inconclusive', reason: 'language-unsupported' });
   });
 
-  it('G24: the Portuguese footer is found by its labels ("Aviso legal", "Aviso de Privacidade")', async () => {
+  it('the Portuguese footer is found by its labels ("Aviso legal", "Aviso de Privacidade")', async () => {
     const run = await collect(server, { url: 'https://pt.example.test/' });
     const roles = run.result.sections.plan?.pages.map((p) => [p.role, p.source]);
     expect(roles).toEqual(
@@ -320,7 +320,7 @@ describe('G20: the type of a fetched page is confirmed by its headings', () => {
   });
 });
 
-describe('G01: free text of the documents is masked before it is stored', () => {
+describe('free text of the documents is masked before it is stored', () => {
   it('no local part of an e-mail address in the stored documents; the domain stays', async () => {
     const run = await collect(server, { url: 'https://navpanel.example.test/' });
     const stored = JSON.stringify(run.result.sections.documents);

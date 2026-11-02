@@ -1,4 +1,4 @@
-/** L2 helpers for the browser collector: fast timings, a CollectorContext against the fixture server. */
+/** helpers for the browser collector: fast timings, a CollectorContext against the fixture server. */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,11 +12,11 @@ import type { BrowserSections, CollectorContext, CollectorResult } from '../../.
 import { silentLogger } from '../../../src/core/logger.ts';
 import type { NetworkConfig } from '../../../src/core/net.ts';
 import { parseTarget } from '../../../src/core/url.ts';
-import { httpUserAgent, uaToken } from '../../../src/core/user-agent.ts';
+import { uaToken } from '../../../src/core/user-agent.ts';
 import type { FixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot } from '../../utils/snapshot-builder.ts';
 
-/** Same algorithm as production (D09), scaled down so that a full A/B/C run takes seconds. */
+/** Same algorithm as production , scaled down so that a full A/B/C run takes seconds. */
 export const FAST_TIMING: BrowserTiming = {
   quietWindowMs: 300,
   maxInflight: 1,
@@ -67,7 +67,7 @@ export async function collect(
       assumeRegion: null,
     },
     network: { ...server.network(), ...o.network },
-    userAgent: { http: httpUserAgent(), token: uaToken() },
+    userAgent: { http: uaToken(), token: uaToken() },
     signal: o.signal ?? new AbortController().signal,
     deadline: Date.now() + 110_000,
     artifactsDir: path.join(outDir, 'artifacts'),

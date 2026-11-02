@@ -1,6 +1,6 @@
-# Legal-link lexicon (canary-2 triage G19, G20, G24, G25): the labels and path slugs under which sites publish the
+# Legal-link lexicon: the labels and path slugs under which sites publish the
 # Impressum and the privacy policy, the heading markers by which a fetched page is judged to be that document, and
-# the navigation keys of the intermediate hop (Kontakt / Rechtliches / Über uns, D09). One source for the collector
+# the navigation keys of the intermediate hop (Kontakt / Rechtliches / Über uns). One source for the collector
 # (src/collectors/browser/pages.ts, documents.ts) and for LEGAL-01 (via `data: ['legal']`).
 #
 # Matching (src/collectors/browser/legal-lexicon.ts): every text is normalised (NFKC, lower case, ä→ae ö→oe ü→ue
@@ -9,12 +9,12 @@
 # "datenschutz" matches "datenschutzerklaerung"). Path segments are matched the same way ("mentions-legales").
 #
 # Per language and document kind:
-#   labels   exact canonical link labels (the whole label equals one of them → best rank)
-#   keys     phrases that denote the document itself ("Datenschutzerklärung", "Politique de confidentialité")
-#   generic  bare topic words ("Datenschutz", "Privacy"): a link whose only match is generic is dropped when the label
-#            also names a settings dialog ("Datenschutz-Einstellungen"), see falseFriends
-#   weak     last resort (generic umbrella labels such as "Rechtliche Hinweise" or "DSGVO")
-#   markers  further phrases that count as a document marker in a title, h1 or heading (not as a link key)
+# labels exact canonical link labels (the whole label equals one of them → best rank)
+# keys phrases that denote the document itself ("Datenschutzerklärung", "Politique de confidentialité")
+# generic bare topic words ("Datenschutz", "Privacy"): a link whose only match is generic is dropped when the label
+# also names a settings dialog ("Datenschutz-Einstellungen"), see falseFriends
+# weak last resort (generic umbrella labels such as "Rechtliche Hinweise" or "DSGVO")
+# markers further phrases that count as a document marker in a title, h1 or heading (not as a link key)
 # Link keys and labels are also document markers; weak keys are not.
 legal:
   version: "2026.10.1"
@@ -245,7 +245,7 @@ legal:
             [polityka prywatności, polityka ochrony danych, ochrona danych osobowych, klauzula informacyjna]
           weak: [rodo]
 
-  # Intermediate pages on the way to the legal documents (D09, LEGAL-01 hop). Matched on word boundaries: "kontakt"
+  # Intermediate pages on the way to the legal documents (LEGAL-01 hop). Matched on word boundaries: "kontakt"
   # and "kontaktlinsen" differ; a word may carry up to two more letters (kontakte). `hopStrict` keys count only as the
   # exact label or the first path segment ("legal" must not match "illegal-…", "about" not "aboutique").
   navigation:

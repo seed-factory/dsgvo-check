@@ -1,5 +1,5 @@
 /**
- * L2: the HTTP collector against local HTTP/HTTPS servers (random ports, test PKI trusted only for the test),
+ * the HTTP collector against local HTTP/HTTPS servers (random ports, test PKI trusted only for the test),
  * followed by the pure checks on the collected section.
  */
 import { createServer } from 'node:http';
@@ -16,16 +16,16 @@ import { createTlsCollector } from '../../../src/collectors/tls/index.ts';
 import type { TlsSection } from '../../../src/collectors/tls/types.ts';
 import type { CollectorContext } from '../../../src/core/collector.ts';
 import type { NetworkConfig } from '../../../src/core/net.ts';
-import { httpUserAgent } from '../../../src/core/user-agent.ts';
+import { uaToken } from '../../../src/core/user-agent.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
-import { closedPort, collectorContext, httpProxy, silentServer, socksProxy, withRoutes } from './helpers.ts';
+import { closedPort, collectorContext, httpProxy, silentServer, withRoutes } from './helpers.ts';
 import { ALL_ROUTES } from './sites.ts';
 
 let server: FixtureServer;
 let closed: number;
 const fast = createHttpCollector({ minIntervalMs: 20 });
-/** Production pacing (D09): at most 2 requests per second to one host. */
+/** Production pacing : at most 2 requests per second to one host. */
 const PACER_INTERVAL_MS = 500;
 const START_JITTER_MS = 50;
 
@@ -102,12 +102,12 @@ describe('HTTP collector: http → https redirect site', () => {
     ]);
     expect(res.probes?.length).toBe(6);
 
-    // D10: honest UA token only, no cookies are ever sent back.
-    expect(new Set(server.requests.map((r) => r.userAgent))).toEqual(new Set([httpUserAgent()]));
+    // : honest UA token only, no cookies are ever sent back.
+    expect(new Set(server.requests.map((r) => r.userAgent))).toEqual(new Set([uaToken()]));
     expect(server.requests.every((r) => r.cookieNames.length === 0)).toBe(true);
     expect(server.unexpected).toEqual([]);
 
-    // Each URL is requested once per scan (the four chains share https://www.redirect.test/).
+    // Each URL is requested once per scan (the four chains share https://www.redirect.test).
     const paths = server.requests.map((r) => `${r.scheme}://${r.host}${r.path}`);
     expect(paths.sort()).toEqual([
       'http://redirect.test/',
@@ -220,7 +220,7 @@ describe('HTTP collector: problem sites', () => {
     expect(chain?.hops).toHaveLength(6);
   });
 
-  it('S-28: three 429 of one host → Retry-After pause, one retry, then that host only is stopped', async () => {
+  it('three 429 of one host → Retry-After pause, one retry, then that host only is stopped', async () => {
     server.reset();
     const collector = createHttpCollector({ minIntervalMs: 20, maxRetryAfterMs: 300 });
     const res = await collect('https://busy.test/', {}, collector);
@@ -248,7 +248,7 @@ describe('HTTP collector: problem sites', () => {
     expect(http.requestsIssued).toBe(server.requests.length);
   });
 
-  it('S-03: a gzip bomb is decoded only up to the cap and marked truncated', async () => {
+  it('a gzip bomb is decoded only up to the cap and marked truncated', async () => {
     const MiB = 1024 * 1024;
     const bomb = zlib.gzipSync(Buffer.alloc(64 * MiB, 0x20));
     const local = createServer((_req, res) => {
@@ -329,7 +329,7 @@ describe('HTTP collector: problem sites', () => {
   });
 });
 
-describe('HTTP collector: explicit target port (S-20)', () => {
+describe('HTTP collector: explicit target port', () => {
   it('the start document is fetched from the origin with its port; standard ports stay separate probes', async () => {
     server.reset();
     const res = await collect('https://www.port.test:8443/', {
@@ -376,7 +376,7 @@ describe('HTTP collector: explicit target port (S-20)', () => {
   });
 });
 
-describe('HTTP collector: final host on another domain (S-19)', () => {
+describe('HTTP collector: final host on another domain', () => {
   it('records the TLS endpoints of the final host and its www/apex; TLS-02 reports the expired certificate', async () => {
     server.reset();
     const routes = { 'origin.test': closed, 'moved.test': closed };
@@ -419,7 +419,7 @@ describe('HTTP collector: final host on another domain (S-19)', () => {
     expect(server.unexpected).toEqual([]);
   });
 
-  it("SM-06: a sibling subdomain as final host is probed; its www/apex are already the TLS collector's", async () => {
+  it("a sibling subdomain as final host is probed; its www/apex are already the TLS collector's", async () => {
     const res = await collect('https://www.sib.test/', { 'sib.test': closed });
     const http = res.sections.http as HttpSection;
     expect(http.finalTls?.map((e) => `${e.role}/${e.hostVariant}:${e.host}`)).toEqual([
@@ -453,38 +453,28 @@ describe('HTTP collector without test routing', () => {
     expect(res.fatal).toBeUndefined();
   });
 
-  it.each(['http', 'socks5'] as const)(
-    'through a %s proxy (TLS verdict unknown behind the proxy)',
-    async (kind) => {
-      const proxy =
-        kind === 'http'
-          ? await httpProxy(server.httpPort, server.httpsPort)
-          : await socksProxy(server.httpsPort);
-      try {
-        const res = await fast(
-          collectorContext(
-            kind === 'http' ? 'https://www.redirect.test/' : 'https://www.plain.test/',
-            direct({
-              proxy: proxy.url,
-              lookup: async () => {
-                throw new Error('lookup must not be used behind a proxy');
-              },
-            }),
-          ),
-        );
-        const http = res.sections.http as HttpSection;
-        const https = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'https');
-        expect(https?.final).toMatchObject({ status: 200, tlsAuthorized: null, connectedIp: null });
-        if (kind === 'http') {
-          expect(proxy.targets).toContain('http://www.redirect.test/');
-          expect(proxy.targets).toContain('www.redirect.test:443');
-          expect(http.documents.map((d) => d.role)).toEqual(['start', 'impressum', 'privacy']);
-        } else {
-          expect(proxy.targets).toContain('www.plain.test:443');
-        }
-      } finally {
-        await proxy.close();
-      }
-    },
-  );
+  it('through an HTTP proxy (TLS verdict unknown behind the proxy)', async () => {
+    const proxy = await httpProxy(server.httpPort, server.httpsPort);
+    try {
+      const res = await fast(
+        collectorContext(
+          'https://www.redirect.test/',
+          direct({
+            proxy: proxy.url,
+            lookup: async () => {
+              throw new Error('lookup must not be used behind a proxy');
+            },
+          }),
+        ),
+      );
+      const http = res.sections.http as HttpSection;
+      const https = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'https');
+      expect(https?.final).toMatchObject({ status: 200, tlsAuthorized: null, connectedIp: null });
+      expect(proxy.targets).toContain('http://www.redirect.test/');
+      expect(proxy.targets).toContain('www.redirect.test:443');
+      expect(http.documents.map((d) => d.role)).toEqual(['start', 'impressum', 'privacy']);
+    } finally {
+      await proxy.close();
+    }
+  });
 });

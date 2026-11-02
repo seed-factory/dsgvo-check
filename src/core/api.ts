@@ -1,5 +1,5 @@
 /**
- * The only core module checks should import (D05/D23 import boundary). Everything here is pure.
+ * The only core module checks should import (import boundary). Everything here is pure.
  */
 
 export type {
@@ -21,4 +21,4 @@ export { cspFrameAncestors, MAX_HEADER_VALUE } from './headers.ts';
 export { maskEmails, maskMailto, redactText } from './redact.ts';
 export type { Confidence, MessageParams, Severity } from './report-schema.ts';
 export type * from './snapshot.ts';
-export { isSameSite, registrableDomain, sanitizeUrl } from './url.ts';
+export { isSameSite, parseUrl, registrableDomain, sanitizeUrl } from './url.ts';

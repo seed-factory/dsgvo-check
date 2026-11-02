@@ -1,4 +1,4 @@
-/** L2 helpers for the HTTP/TLS collectors: collector context, routing overrides, a chain PKI, a local proxy. */
+/** helpers for the HTTP/TLS collectors: collector context, routing overrides, a chain PKI, a local proxy. */
 import 'reflect-metadata';
 import { webcrypto } from 'node:crypto';
 import http from 'node:http';
@@ -11,7 +11,7 @@ import { silentLogger } from '../../../src/core/logger.ts';
 import type { NetworkConfig } from '../../../src/core/net.ts';
 import type { Snapshot } from '../../../src/core/snapshot.ts';
 import { parseTarget } from '../../../src/core/url.ts';
-import { httpUserAgent, uaToken } from '../../../src/core/user-agent.ts';
+import { uaToken } from '../../../src/core/user-agent.ts';
 
 x509.cryptoProvider.set(webcrypto as unknown as Parameters<typeof x509.cryptoProvider.set>[0]);
 
@@ -24,7 +24,7 @@ export function collectorContext(
     target: parseTarget(url),
     options: { maxPages: 6, screenshots: false, sandbox: 'off', lang: 'de', assumeRegion: null },
     network,
-    userAgent: { http: httpUserAgent(), token: uaToken() },
+    userAgent: { http: uaToken(), token: uaToken() },
     signal: new AbortController().signal,
     deadline: Date.now() + 120_000,
     artifactsDir: tmpdir(),
@@ -85,8 +85,6 @@ export function withRoutes(
     },
   };
 }
-
-// ------------------------------------------------------------------ root → intermediate → leaf
 
 const ALG = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' } as const;
 const DAY = 86_400_000;
@@ -185,8 +183,6 @@ export async function chainServer(
   };
 }
 
-// ------------------------------------------------------------------ proxies
-
 export interface TestProxy {
   url: string;
   /** `host:port` of CONNECT / SOCKS targets and absolute URLs of forwarded http requests. */
@@ -237,52 +233,6 @@ export async function httpProxy(httpPort: number, httpsPort: number): Promise<Te
     close: async () => {
       for (const c of sockets) c.destroy();
       s.closeAllConnections();
-      await new Promise<void>((r) => s.close(() => r()));
-    },
-  };
-}
-
-/** Minimal SOCKS5 proxy (no auth, CONNECT by domain name) → fixture https port. */
-export async function socksProxy(httpsPort: number): Promise<TestProxy> {
-  const targets: string[] = [];
-  const sockets = new Set<net.Socket>();
-  const s = net.createServer((c) => {
-    sockets.add(c);
-    c.on('error', () => undefined);
-    let stage = 0;
-    let buf = Buffer.alloc(0);
-    const onData = (d: Buffer) => {
-      buf = Buffer.concat([buf, d]);
-      if (stage === 0 && buf.length >= 2 && buf.length >= 2 + (buf[1] ?? 0)) {
-        buf = buf.subarray(2 + (buf[1] ?? 0));
-        c.write(Buffer.from([5, 0]));
-        stage = 1;
-      }
-      if (stage === 1 && buf.length >= 5 && buf[3] === 3) {
-        const len = buf[4] ?? 0;
-        if (buf.length < 5 + len + 2) return;
-        const host = buf.subarray(5, 5 + len).toString();
-        const port = buf.readUInt16BE(5 + len);
-        targets.push(`${host}:${port}`);
-        c.off('data', onData);
-        const up = net.connect(httpsPort, '127.0.0.1', () => {
-          c.write(Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 0]));
-          up.pipe(c);
-          c.pipe(up);
-        });
-        sockets.add(up);
-        up.on('error', () => c.destroy());
-        stage = 2;
-      }
-    };
-    c.on('data', onData);
-  });
-  await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()));
-  return {
-    url: `socks5://127.0.0.1:${(s.address() as AddressInfo).port}`,
-    targets,
-    close: async () => {
-      for (const c of sockets) c.destroy();
       await new Promise<void>((r) => s.close(() => r()));
     },
   };

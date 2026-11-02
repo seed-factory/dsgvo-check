@@ -1,4 +1,4 @@
-# Routing as data (consensus §4 "Дедупликация"): service category → check that owns the gating finding.
+# Routing as data: service category → check that owns the gating finding.
 # Assess drops observations of owner checks whose category belongs to another owner.
 # Independent axes (not routed): CONSENT-02 storage, CONSENT-03 no banner, CONSENT-05 after reject, TRACK-01 inventory.
 version: 1
@@ -11,7 +11,7 @@ owners:
   payment: CONSENT-01
   consent-provider: CONSENT-01
   unknown: CONSENT-01
-  # Added by M3 (error/performance monitoring such as Sentry): part of CONSENT-01's "remainder" (consensus §4).
+  # Error/performance monitoring such as Sentry: part of CONSENT-01's "remainder".
   monitoring: CONSENT-01
   fonts: EMBED-01
   maps: EMBED-02

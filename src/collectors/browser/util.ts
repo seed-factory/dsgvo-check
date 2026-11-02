@@ -51,7 +51,7 @@ export function normalizeText(s: string): string {
 }
 
 /**
- * Redaction of free text before it is stored, hashed or used for evidence (D20): e-mail addresses and `mailto:` values
+ * Redaction of free text before it is stored, hashed or used for evidence: e-mail addresses and `mailto:` values
  * lose their local part, URLs in the text get the query allowlist of the collector, matrix parameters and addresses
  * in their path are masked. Use it for every string copied from a page (link text, accessible names, titles,
  * document parts). Idempotent.

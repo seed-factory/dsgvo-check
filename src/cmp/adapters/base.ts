@@ -1,5 +1,5 @@
 /**
- * Shared adapter machinery (D12). An adapter is a declarative spec (signals, banner selectors, vendor roles) plus
+ * Shared adapter machinery. An adapter is a declarative spec (signals, banner selectors, vendor roles) plus
  * read-only state/geo/bot readers: `extract / act / verify`. What counts as reject/accept and where to click is
  * decided by the pure `classifyFirstLayer` in core; `act(page, action, target)` only executes that target with
  * `locator.click()` without `force`, on exactly one matching element.
@@ -166,7 +166,7 @@ async function documentOrigin(page: Page): Promise<number | null> {
 interface ClickRecord {
   /** Document in which our last click happened. */
   document: number;
-  /** Consent state read right before that click (S-14: `action` only for a state the click changed). */
+  /** Consent state read right before that click (`action` only for a state the click changed). */
   before: ConsentStateFact[];
 }
 
@@ -267,7 +267,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     async verify(page, action, opts: VerifyOptions = {}): Promise<VerifyResult> {
       const timeoutMs = opts.timeoutMs ?? 8000;
       const now = await adapter.state(page);
-      // `action` only in the document of our click and only for an answer the click produced (S-14); after any
+      // `action` only in the document of our click and only for an answer the click produced; after any
       // reload (ours or the collector's) the adapter's own origin (`stored`) stays.
       const click = await clickInThisDocument(page);
       const stateNow = originAfterClick(now, click?.before ?? null, click !== null);
@@ -311,7 +311,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     ready: (page) => safe(spec.isReady(page), false),
   };
 
-  /** D12 `act(page, target)`: click exactly the target core chose; no classification here. */
+  /** `act(page, target)`: click exactly the target core chose; no classification here. */
   async function execute(
     page: Page,
     action: 'reject' | 'accept',

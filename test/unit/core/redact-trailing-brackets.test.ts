@@ -1,31 +1,43 @@
-/**
- * L0 (review R10, G01): `redactText` stays linear when a URL or `mailto:` token is followed by a long run of closing
- * brackets. The balance of brackets used to be recounted over the whole prefix for every bracket cut off the tail
- * (quadratic): 40 000 brackets held the thread for 12 s, and the code is synchronous, so no timeout of the scan
- * could interrupt it. A part of a legal document is up to 400 000 characters long.
- */
 import { describe, expect, it } from 'vitest';
 import { redactText } from '../../../src/core/redact.ts';
 import { REDACTED } from '../../../src/core/url.ts';
 
 describe('redactText: long runs of closing brackets after a token', () => {
-  it('is linear after an http(s) URL and after a mailto: value', () => {
-    const n = 20_000;
-    const started = performance.now();
-    const outputs = [
-      redactText(`https://x.test/${')'.repeat(n)}`),
-      redactText(`https://x.test/${']'.repeat(n)}`),
-      redactText(`mailto:info@example.test${')'.repeat(n)}`),
-      redactText(`mailto:info@example.test${'}'.repeat(n)}`),
-    ];
-    const took = performance.now() - started;
-    expect(outputs).toEqual([
-      `https://x.test/${')'.repeat(n)}`,
-      `https://x.test/${']'.repeat(n)}`,
-      `mailto:${REDACTED}@example.test${')'.repeat(n)}`,
-      `mailto:${REDACTED}@example.test${'}'.repeat(n)}`,
-    ]);
-    expect(took).toBeLessThan(1_000);
+  it.each([
+    [
+      'HTTP URL with parentheses',
+      (n: number) => `https://x.test/${')'.repeat(n)}`,
+      (n: number) => `https://x.test/${')'.repeat(n)}`,
+    ],
+    [
+      'HTTP URL with square brackets',
+      (n: number) => `https://x.test/${']'.repeat(n)}`,
+      (n: number) => `https://x.test/${']'.repeat(n)}`,
+    ],
+    [
+      'mailto with parentheses',
+      (n: number) => `mailto:info@example.test${')'.repeat(n)}`,
+      (n: number) => `mailto:${REDACTED}@example.test${')'.repeat(n)}`,
+    ],
+    [
+      'mailto with braces',
+      (n: number) => `mailto:info@example.test${'}'.repeat(n)}`,
+      (n: number) => `mailto:${REDACTED}@example.test${'}'.repeat(n)}`,
+    ],
+  ] as const)('redacts and scales with %s', (_name, input, expected) => {
+    const best = (n: number) => {
+      const value = input(n);
+      redactText(value);
+      return Math.min(
+        ...Array.from({ length: 5 }, () => {
+          const started = performance.now();
+          redactText(value);
+          return performance.now() - started;
+        }),
+      );
+    };
+    expect(best(80_000) / Math.max(best(20_000), 0.05)).toBeLessThan(12);
+    expect(redactText(input(20_000))).toBe(expected(20_000));
   });
 
   it('keeps a closing bracket that belongs to an opener inside the token', () => {

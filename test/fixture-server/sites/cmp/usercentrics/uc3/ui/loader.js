@@ -1,4 +1,4 @@
-/* Own minimal Usercentrics v3 simulator for L2 tests (no vendor code). Mimics public identifiers only:
+/* Own minimal Usercentrics v3 simulator for integration tests (no vendor code). Mimics public identifiers only:
    window.__ucCmp (isInitialized, getConsentDetails, isConsentRequired), shadow host #usercentrics-cmp-ui with
    #uc-main-dialog and [data-action-type] buttons, localStorage "ucData". */
 (function () {

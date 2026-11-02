@@ -1,5 +1,5 @@
 /**
- * L0 (D20, consensus 5.3 "Редактирование"): the fixtures of collector output look like real output — no e-mail
+ * (specification 5.3 "Редактирование"): the fixtures of collector output look like real output — no e-mail
  * address with a local part, no `mailto:` recipient, and no matrix parameter, `prefix:k=v` segment or address in the
  * path of an http(s) URL. This covers `text`, `accessibleName`, document `parts` and every other string of a browser
  * snapshot fixture. A fixture that needs an address writes it the way the collector stores it: `[redacted]@domain`.

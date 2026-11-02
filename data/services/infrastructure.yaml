@@ -1,6 +1,6 @@
 # Payment providers and CDNs / static hosting. Format: see _catalog.yaml.
 services:
-  # ------------------------------------------------------------------ payment
+  # payment
   - id: stripe
     name: Stripe
     category: payment
@@ -45,7 +45,7 @@ services:
     aliasesDe: [Mollie]
     aliasesEn: [Mollie]
 
-  # ------------------------------------------------------------------ cdn / static hosting
+  # cdn / static hosting
   - id: jsdelivr
     name: jsDelivr
     category: cdn

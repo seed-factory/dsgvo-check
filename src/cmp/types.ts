@@ -1,7 +1,7 @@
 /**
- * CMP facts and adapter contract (owner: M2). Initial version by the scaffold; owners may only ADD optional fields.
- * Decisions: D12 (adapter contract, ≥ 2 independent signals for `high`), D13 (first-layer table), 5.3 `cmp` and
- * `consent-state` evidence, 5.5 (unrecognized banner → info).
+ * CMP facts and adapter contract.
+ * Recognition needs ≥ 2 independent signals for `high`; unrecognized banners remain informational.
+ * The pure first-layer table chooses click targets from recorded facts.
  */
 import type { Page } from 'playwright-core';
 import type {
@@ -64,7 +64,7 @@ export interface CmpButton {
   layer: 1 | 2;
   box: Box | null;
   visibleAtFirstScreen: boolean;
-  /** Visible, enabled, not covered (hit-test), inside the viewport — measured before any action (D13). */
+  /** Visible, enabled, not covered (hit-test), inside the viewport — measured before any action. */
   actionableAtFirstScreen: boolean;
   /** WCAG contrast ratio of text vs background, evidence only. */
   contrast: number | null;
@@ -137,9 +137,9 @@ export interface CmpFirstLayer {
   legalLinks?: Array<{ text: string; href: SanitizedUrl | null }>;
   /** Text length of the first layer (no text content stored here). */
   textLength?: number;
-  /** Banner container geometry (viewport coordinates) for the D20 screenshot crop. */
+  /** Banner container geometry (viewport coordinates) for the screenshot crop. */
   containerBox?: Box | null;
-  /** Exactly one container matched (D20: screenshot only for an unambiguous container). */
+  /** Exactly one container matched (screenshot only for an unambiguous container). */
   containerUnambiguous?: boolean;
   /** Banner container is position fixed/sticky (or inside such an element). */
   containerFixed?: boolean;
@@ -217,7 +217,7 @@ export interface CmpSection {
   phases: CmpPhaseFacts[];
 }
 
-/** Result of the pure first-layer table (D13). */
+/** Result of the pure first-layer table. */
 export type FirstLayerVariant =
   | 'blocking-no-reject'
   | 'close-means-accept'
@@ -228,7 +228,7 @@ export type FirstLayerVariant =
   | 'ok'
   | 'banner-not-recognized'
   | 'cmp-not-supported'
-  /** Blocking first layer with neither accept nor reject (settings only) → `info`, manual review (D13, round 4b). */
+  /** Blocking first layer with neither accept nor reject (settings only) → `info`, manual review. */
   | 'no-choice-at-first-layer';
 
 export interface FirstLayerClassification {
@@ -243,12 +243,12 @@ export interface FirstLayerClassification {
   blocking?: boolean;
   /** First-screen buttons re-classified with the given lexicon (`kind`, `kindConfidence`). */
   buttons?: CmpButton[];
-  /** Unambiguous click targets chosen by the table (D12: only core decides where to click). */
+  /** Unambiguous click targets chosen by the table (only core decides where to click). */
   targets?: { reject: CmpButton | null; accept: CmpButton | null };
   lexiconVersion?: string;
 }
 
-/** Button lexicon from data/cmp/*.yaml (owner M2). */
+/** Button lexicon from data/cmp/*.yaml. */
 export interface CmpLexicon {
   version: string;
   accept: string[];
@@ -272,7 +272,7 @@ export interface ExtractOptions {
 }
 
 /**
- * The element core chose to click (D12 `act(page, target)`): `classifyFirstLayer(...).targets[action]` or the
+ * The element core chose to click (`act(page, target)`): `classifyFirstLayer(...).targets[action]` or the
  * `plan.click` target. The adapter only locates it by `selector` (exactly one match) and clicks it.
  */
 export type ClickTarget = Pick<CmpButton, 'name' | 'role' | 'selector' | 'kindConfidence'> & {
@@ -281,7 +281,7 @@ export type ClickTarget = Pick<CmpButton, 'name' | 'role' | 'selector' | 'kindCo
 
 export interface ActOptions {
   /**
-   * D12: the click decision of core. When present (also `null` = "nothing to click") the adapter executes exactly it
+   * The click decision of core. When present (also `null` = "nothing to click") the adapter executes exactly it
    * and decides nothing; `facts`/`lexicon` are then ignored.
    */
   target?: ClickTarget | null;
@@ -304,7 +304,7 @@ export interface VerifyOptions {
 }
 
 /**
- * Per-CMP adapter (D12). Runs in the collector with a live page; reads CMP JS APIs, clicks with
+ * Per-CMP adapter. Runs in the collector with a live page; reads CMP JS APIs, clicks with
  * `locator.click()` (no `force`). Classification of the first layer is NOT done here (pure `classifyFirstLayer`).
  */
 export interface CmpAdapter {
@@ -321,7 +321,7 @@ export interface CmpAdapter {
   botSignals(page: Page): Promise<BotSignal[]>;
   firstLayer(page: Page): Promise<CmpFirstLayer>;
   /**
-   * D12 `act(page, target)`: click exactly the target core chose (`null` → nothing is clicked). No classification,
+   * `act(page, target)`: click exactly the target core chose (`null` → nothing is clicked). No classification,
    * no lexicon. Optional in the type only so that collector test stubs stay valid; every own adapter implements it.
    */
   act?(

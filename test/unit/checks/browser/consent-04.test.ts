@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { consent04, createConsent04, lexiconFrom } from '../../../../src/checks/browser/consent-04.ts';
-import { classifyFirstLayer } from '../../../../src/cmp/index.ts';
 import type { CmpButton, CmpFacts, CmpLexicon, FirstLayerClassification } from '../../../../src/cmp/types.ts';
 import { EvidenceSchema } from '../../../../src/core/report-schema.ts';
 import type { Snapshot } from '../../../../src/core/snapshot.ts';
@@ -198,7 +197,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(variantsOf(r)).toEqual(['reject-ineffective']);
   });
 
-  it('FT-05: reject clicked, CMP API not ready afterwards → no reject-ineffective, limitation reject-unverified', () => {
+  it('reject clicked, CMP API not ready afterwards → no reject-ineffective, limitation reject-unverified', () => {
     const r = runCheck(
       createConsent04(fixed('ok')),
       site({
@@ -227,7 +226,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r.outcome?.limitations).toContain('reject-unverified');
   });
 
-  it('FT-05: granted after our own accept (phase C after the click / after a reload) is not consent-without-action', () => {
+  it('granted after our own accept (phase C after the click / after a reload) is not consent-without-action', () => {
     const granted = (origin: 'stored' | 'action') => [
       {
         source: 'api' as const,
@@ -255,7 +254,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('FT-05: a granted state attributed to an action (origin action) on the first screen is not "without action"', () => {
+  it('a granted state attributed to an action (origin action) on the first screen is not "without action"', () => {
     const r = runCheck(
       createConsent04(fixed('ok')),
       site({
@@ -356,19 +355,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
   });
 });
 
-// With M2's real classifier (skipped while src/cmp still has the scaffold stub).
-const stub = classifyFirstLayer(visibleBanner(), {
-  version: 't',
-  accept: [],
-  reject: [],
-  settings: [],
-  save: [],
-  close: [],
-  later: [],
-  hide: [],
-}).reasons.includes('not-implemented');
-
-describe.skipIf(stub)('CONSENT-04 with the real classifyFirstLayer (M2)', () => {
+describe('CONSENT-04 with the first-layer classifier', () => {
   it('counterexample: "Verbergen" is not a reject → blocking dialog without reject', () => {
     const facts = visibleBanner({
       firstLayer: {
@@ -400,8 +387,8 @@ describe.skipIf(stub)('CONSENT-04 with the real classifyFirstLayer (M2)', () => 
   });
 });
 
-// G16: the CMP markup role of a button is a fact of the adapter and belongs to the report evidence.
-describe('CONSENT-04 evidence: vendorRole (G16)', () => {
+// : the CMP markup role of a button is a fact of the adapter and belongs to the report evidence.
+describe('CONSENT-04 evidence: vendorRole', () => {
   const firstLayer = (buttons: CmpButton[]): CmpFacts['firstLayer'] => ({
     bannerPresent: true,
     bannerVisible: true,
@@ -433,8 +420,8 @@ describe('CONSENT-04 evidence: vendorRole (G16)', () => {
   });
 });
 
-// G06 / G07: an incomplete or still-moving measurement is a limitation, never a verdict about the reject.
-describe('CONSENT-04 limitations from the classifier reasons (G06, G07)', () => {
+// / : an incomplete or still-moving measurement is a limitation, never a verdict about the reject.
+describe('CONSENT-04 limitations from the classifier reasons', () => {
   const bannerFacts = (extra: Partial<CmpFacts['firstLayer']> = {}) =>
     visibleBanner({
       firstLayer: {
@@ -477,9 +464,9 @@ describe('CONSENT-04 limitations from the classifier reasons (G06, G07)', () => 
   });
 });
 
-// G13: an adapter below `high` is no better a source than the heuristic, so the heuristic banner with buttons and
+// : an adapter below `high` is no better a source than the heuristic, so the heuristic banner with buttons and
 // screenshot of phase B is the evidence, not an empty adapter fact of a page where the banner is hidden.
-describe('CONSENT-04 primary facts: adapter below high vs heuristic (G13)', () => {
+describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
   const OTHER = 'https://www.example.de/impressum';
   const SHOT = 'shot-b-1';
   const heuristicBanner = (p: Partial<CmpFacts> = {}) =>

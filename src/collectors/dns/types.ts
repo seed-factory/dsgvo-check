@@ -1,5 +1,5 @@
 /**
- * DNS collector output (owner: M5). Initial version by the scaffold; owners may only ADD optional fields.
+ * DNS collector output.
  * 5.3 `dns` evidence: qname, type, rcode, records with masked `mailto:`, resolver, Tree Walk path.
  */
 import type { CollectorError, IsoTimestamp } from '../../core/snapshot-common.ts';
@@ -9,7 +9,7 @@ export type DnsRecordType = 'TXT' | 'MX' | 'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS'
 
 export interface DnsAnswer {
   type: DnsRecordType;
-  /** TXT: chunks joined; DMARC/security mailto: masked to the domain (D20). */
+  /** TXT: chunks joined; DMARC/security mailto: masked to the domain. */
   value: string;
   /**
    * TXT: character-strings at the boundaries as received, re-cut from the redacted `value`

@@ -1,4 +1,4 @@
-/** L2: CCM19 adapter against the own simulator (late widget injection). */
+/** : CCM19 adapter against the own simulator (late widget injection). */
 import { describeCmpScenarios } from './helpers.ts';
 
 describeCmpScenarios({

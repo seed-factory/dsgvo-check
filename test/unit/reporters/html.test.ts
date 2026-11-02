@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../src/core/data.ts';
+import { DEFAULT_DATA_DIR, loadTexts } from '../../../src/core/data.ts';
 import { templateParams } from '../../../src/core/messages.ts';
 import type {
   CmpEvidence,
@@ -14,13 +14,16 @@ import type {
   RedirectChainEvidence,
 } from '../../../src/core/report-schema.ts';
 import type { ReporterContext } from '../../../src/core/reporter.ts';
-import { REPORT_LABEL_KEYS, renderHtml } from '../../../src/reporters/html.ts';
+import { sanitizeExternal } from '../../../src/core/sanitize.ts';
+import { renderHtml } from '../../../src/reporters/html.ts';
+import { buildReportView, findingText } from '../../../src/reporters/report-view.ts';
+import { escapeHtml } from '../../../src/reporters/template.ts';
 import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { cspOf, htmlSafetyProblems, tagsOf } from './html-safety.ts';
 
 const ctx = (lang: 'de' | 'en' = 'de', outDir = '/nonexistent-out'): ReporterContext => {
   const texts = loadTexts(lang);
-  // A template with external params, so escaping of params is exercised (browser texts belong to M3).
+  // A template with external params, so escaping of params is exercised (browser texts may include external parameters).
   texts.messages['CONSENT-01.tracker-hit'] = {
     title: 'Tracker {service} auf {host} beobachtet',
     body: 'Anfrage an {host} vor einer Einwilligung beobachtet.',
@@ -87,7 +90,7 @@ describe('HTML report: document and CSP', () => {
     expect(html.trimEnd().endsWith('</html>')).toBe(true);
   });
 
-  it('declares the CSP from consensus 5.8: no scripts, no network, hashed style block', () => {
+  it('declares the offline CSP: no scripts, no network, hashed style block', () => {
     const csp = cspOf(renderHtml(sampleFullReport(), ctx()));
     expect(csp).toMatch(
       /^default-src 'none'; img-src data:; style-src 'sha256-[A-Za-z0-9+/]+=*'; base-uri 'none'; form-action 'none'$/,
@@ -403,25 +406,27 @@ describe('report labels', () => {
     /in breach/i,
   ];
 
-  it('every label key exists in de and en data with the same parameters and no stop words (D22)', () => {
+  it('every label key exists in de and en data with the same parameters and no stop words', () => {
     const params = (t: string) => templateParams(t).sort();
     const de = loadTexts('de').ui;
     const en = loadTexts('en').ui;
-    for (const key of REPORT_LABEL_KEYS) {
-      const d = de[`report.${key}`]?.text;
-      const e = en[`report.${key}`]?.text;
-      expect(d, `de report.${key}`).toBeTypeOf('string');
-      expect(e, `en report.${key}`).toBeTypeOf('string');
+    const keys = Object.keys(de).filter((key) => key.startsWith('report.'));
+    expect(keys.sort()).toEqual(
+      Object.keys(en)
+        .filter((key) => key.startsWith('report.'))
+        .sort(),
+    );
+    for (const key of keys) {
+      const d = de[key]?.text;
+      const e = en[key]?.text;
+      expect(d, `de ${key}`).toBeTypeOf('string');
+      expect(e, `en ${key}`).toBeTypeOf('string');
       expect(params(e as string), key).toEqual(params(d as string));
       for (const re of STOP) {
         expect(d, key).not.toMatch(re);
         expect(e, key).not.toMatch(re);
       }
     }
-    const extra = Object.keys(de).filter(
-      (k) => k.startsWith('report.') && !(REPORT_LABEL_KEYS as readonly string[]).includes(k.slice(7)),
-    );
-    expect(extra).toEqual([]);
   });
 
   it('labels can be overridden from data/texts ui keys (report.*)', () => {
@@ -431,5 +436,57 @@ describe('report labels', () => {
       ui: { ...c.texts.ui, 'report.section.findings': { text: 'Beobachtungen', draft: true } },
     };
     expect(renderHtml(sampleFullReport(), c)).toContain('>Beobachtungen</h2>');
+  });
+});
+
+describe('HTML report: template and presentation data', () => {
+  it('hashes the style as browsers parse it after a Windows checkout', () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), 'report-template-'));
+    mkdirSync(path.join(dataDir, 'report'));
+    const source = readFileSync(path.join(DEFAULT_DATA_DIR, 'report', 'report.html'), 'utf8');
+    const windowsSource = source.replace('<style>', '<style>\n').replace(/\r?\n/g, '\r\n');
+    writeFileSync(path.join(dataDir, 'report', 'report.html'), windowsSource);
+    expect(htmlSafetyProblems(renderHtml(sampleFullReport(), { ...ctx(), dataDir }))).toEqual([]);
+  });
+
+  it('has no executable markup, raw placeholders or external resources in the template', () => {
+    const template = readFileSync(path.join(DEFAULT_DATA_DIR, 'report', 'report.html'), 'utf8');
+    expect(template).not.toMatch(/{{[{&=]|<script|\son[a-z]+\s*=|\sstyle\s*=|https?:\/\/|url\s*\(|@import/i);
+    const styles = [...template.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+    expect(styles).toHaveLength(1);
+    expect(styles[0]![1]).not.toContain('{{');
+    expect(styles[0]![1]).toContain('size:A4');
+    expect(styles[0]![1]).toContain('details::details-content');
+    for (const match of template.matchAll(/{{t "([^"]+)"/g)) {
+      for (const lang of ['de', 'en'] as const) expect(loadTexts(lang).ui[match[1]!], match[1]).toBeDefined();
+    }
+    const withoutDirectives = template
+      .replace(/{{[\s\S]*?}}/g, '')
+      .replace(/<style>[\s\S]*?<\/style>/g, '')
+      .replace(/<[^>]+>/g, '');
+    expect(withoutDirectives).not.toMatch(/[a-zA-ZÀ-ž]/);
+  });
+
+  it('every JSON finding is represented and the view never copies crmCode fields', () => {
+    const report = sampleFullReport();
+    const context = ctx();
+    const view = buildReportView(report, context);
+    const keys: string[] = [];
+    const visit = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        keys.push(key);
+        visit(child);
+      }
+    };
+    visit(view);
+    expect(keys).not.toContain('crmCode');
+    const html = renderHtml(report, context);
+    for (const finding of report.findings) {
+      expect(html).toContain(escapeHtml(finding.checkId));
+      expect(html).toContain(escapeHtml(sanitizeExternal(findingText(finding, context).title, 300)));
+      expect(html).toContain(escapeHtml(sanitizeExternal(findingText(finding, context).body, 4000)));
+      expect(html).toContain(escapeHtml(finding.fingerprint));
+    }
   });
 });

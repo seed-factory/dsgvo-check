@@ -1,5 +1,5 @@
-# Ruleset de-2026, module http (owner: M4). Severity per (checkId, variant); variant names and levels follow the
-# registry docs/03-checks.md §2.1, D19 and consensus §4. T3 codes stay at most `warning` (D19 lint).
+# Ruleset de-2026, module http. Severity per (checkId, variant); variant names and levels follow the
+# registry docs/03-checks.md §2.1. T3 codes stay at most `warning` (lint).
 # Confidence caps apply on top (medium ≤ warning, low ≤ info).
 checks:
   HDR-01:

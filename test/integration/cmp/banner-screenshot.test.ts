@@ -1,5 +1,5 @@
 /**
- * L2: banner screenshot (D20, G08). The metadata of the record must describe the image that was saved: Playwright
+ * banner screenshot . The metadata of the record must describe the image that was saved: Playwright
  * crops a clip at the viewport edge, so the record is built from the intersection of the container with the viewport.
  */
 import { mkdtemp, readFile, rm } from 'node:fs/promises';

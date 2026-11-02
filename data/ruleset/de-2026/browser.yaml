@@ -1,4 +1,4 @@
-# Ruleset de-2026, module browser (owner M3). Severity per (checkId, variant), consensus §4 / D13 / 5.5.
+# Ruleset de-2026, module browser. Severity per (checkId, variant).
 # Draft until signed off by the customer (_profile.yaml). The confidence cap applies on top (medium ≤ warning,
 # low ≤ info). `locked: true` documents 5.4/5.5 (not raisable by overrides); enforcement belongs to core.
 # Variant names and default levels follow the registry docs/03-checks.md §2.1 (test: variant-registry.test.ts).
@@ -47,7 +47,7 @@ checks:
       cookieless-ping-after-reject: { severity: warning }
       connect-only-after-reject: { severity: info }
   TRACK-01:
-    # Inventory: the gating level belongs to the related CONSENT finding (consensus §4, question 6).
+    # Inventory: the gating level belongs to the related CONSENT finding.
     gating: false
     variants:
       service-inventory: { severity: info }

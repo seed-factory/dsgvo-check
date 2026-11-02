@@ -1,8 +1,8 @@
 /**
- * L1: robustness of the orchestrator (canary-2 triage): the global timeout after a partial browser collection (G50),
- * a browser collector that hands over nothing (G51), texts of the diagnostics SCAN-BLOCKED / SCAN-TIMEOUT /
- * SCAN-PRIVATE-REQUEST-BLOCKED (G54, G50, G52), the Nutzungshinweise wording (G58) and the CA setting of the
- * process (G46).
+ * robustness of the orchestrator : the global timeout after a partial browser collection ,
+ * a browser collector that hands over nothing , texts of the diagnostics SCAN-BLOCKED / SCAN-TIMEOUT /
+ * SCAN-PRIVATE-REQUEST-BLOCKED , the Nutzungshinweise wording and the CA setting of the
+ * process .
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -37,9 +37,7 @@ import {
 const START = 'https://www.example.de/';
 const startVisit = () => makePage({ url: START, phase: 'A' });
 
-// ------------------------------------------------------------------ G50: the timeout after a partial collection
-
-describe('G50: checks that lack data because the deadline cut the browser collection end in error/timeout', () => {
+describe('checks that lack data because the deadline cut the browser collection end in error/timeout', () => {
   const partial = (phases: ReturnType<typeof makePhase>[], reason: string | null = 'timeout') =>
     withDerived(
       makeSnapshot({
@@ -77,8 +75,8 @@ describe('G50: checks that lack data because the deadline cut the browser collec
     expect(r.limitations).toEqual(['deadline:insufficient-pages']);
   });
 
-  // R08: the reason belongs to a phase; only a phase the deadline cut makes the deadline the cause.
-  describe('R08: a reason from a phase that ended by itself stays inconclusive when only a later phase was cut', () => {
+  // : the reason belongs to a phase; only a phase the deadline cut makes the deadline the cause.
+  describe('a reason from a phase that ended by itself stays inconclusive when only a later phase was cut', () => {
     const cutC = makePhase('C', { status: 'partial', reason: 'timeout' });
     const skippedC = makePhase('C', { status: 'skipped', reason: 'timeout' });
 
@@ -122,7 +120,7 @@ describe('G50: checks that lack data because the deadline cut the browser collec
     it("phase C cut: the reasons of phase C (phase-c-missing) are the deadline's doing, the others stay", () => {
       // No shipped check reports phase-c-missing today; the mapping is exercised through a probe check.
       const probe = defineCheck({
-        id: 'TEST-R08',
+        id: 'TEST-TIMEOUT',
         module: 'browser',
         requires: ['browser'],
         variants: [{ variant: 'seen' }],
@@ -179,7 +177,7 @@ const dnsProbe = defineCheck({
   run: () => [],
 });
 
-describe('G50: scan() after the deadline cut phase B', () => {
+describe('scan after the deadline cut phase B', () => {
   const dataDir = testDataDir({ ruleset: { 'TEST-04': { seen: 'info' } } });
   const partialBrowser = (): CollectorResult<{
     browser: ReturnType<typeof makeBrowser>;
@@ -226,7 +224,7 @@ describe('G50: scan() after the deadline cut phase B', () => {
     expectValidReport(r.report);
     const byId = Object.fromEntries((r.report.checks ?? []).map((c) => [c.id, c]));
     expect(byId['CONSENT-05']).toMatchObject({ status: 'error', reason: 'timeout' });
-    // R08: one page in a completed phase A is the site's fact, not the deadline's doing.
+    // : one page in a completed phase A is the site's fact, not the deadline's doing.
     expect(byId['CONSENT-03']).toMatchObject({ status: 'inconclusive', reason: 'insufficient-pages' });
     const diag = r.report.diagnostics?.find((d) => d.code === 'SCAN-TIMEOUT');
     expect(diag?.affects).toEqual(['CONSENT-05']);
@@ -240,14 +238,14 @@ describe('G50: scan() after the deadline cut phase B', () => {
     expect(r.exitCode).toBe(2);
   });
 
-  it('--fail-on none: the diagnostic stays, the exit code is 0', async () => {
+  it('fail-on none: the diagnostic stays, the exit code is 0', async () => {
     const r = await scan(base({ failOn: 'none' }));
     expect(r.exitCode).toBe(0);
     expect(r.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
   });
 });
 
-describe('G50: texts of SCAN-TIMEOUT', () => {
+describe('texts of SCAN-TIMEOUT', () => {
   it.each(['de', 'en'] as const)(
     '%s: no claim about errors without unfinished checks, a count with them',
     (lang) => {
@@ -265,9 +263,7 @@ describe('G50: texts of SCAN-TIMEOUT', () => {
   );
 });
 
-// ------------------------------------------------------------------ G51: a collector that hands over nothing
-
-describe('G51: no hand-over after the global timeout', () => {
+describe('no hand-over after the global timeout', () => {
   it('a collector that never returns: its own failure code and a warning, not "before the start page"', async () => {
     const lines: string[] = [];
     const r = await scan({
@@ -321,8 +317,8 @@ describe('G51: no hand-over after the global timeout', () => {
   });
 });
 
-// R29: the failure texts of the orchestrator are data (data/texts), in the language of the scan.
-describe('R29: the failure message of a scan cut by the global timeout is a text of data/texts', () => {
+// : the failure texts of the orchestrator are data (data/texts), in the language of the scan.
+describe('the failure message of a scan cut by the global timeout is a text of data/texts', () => {
   const failed = async (lang: 'de' | 'en', browser: Collectors['browser']) => {
     const r = await scan({
       url: START,
@@ -387,9 +383,7 @@ describe('R29: the failure message of a scan cut by the global timeout is a text
   });
 });
 
-// ------------------------------------------------------------------ G54 / G52: diagnostic texts
-
-describe('G54: SCAN-BLOCKED names the page', () => {
+describe('SCAN-BLOCKED names the page', () => {
   it.each(['de', 'en'] as const)('%s: {page} for one page, a count and the list for several', (lang) => {
     const texts = loadTexts(lang);
     const one = renderMessage(texts, 'diagnostic.SCAN-BLOCKED', {
@@ -409,7 +403,7 @@ describe('G54: SCAN-BLOCKED names the page', () => {
   });
 });
 
-describe('G52: SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private address', () => {
+describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private address', () => {
   const render = (lang: 'de' | 'en', params: Record<string, string | number | boolean>) =>
     renderMessage(loadTexts(lang), 'diagnostic.SCAN-PRIVATE-REQUEST-BLOCKED', params).body;
 
@@ -450,7 +444,7 @@ describe('G52: SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a pr
     expect(unresolved).not.toContain('{');
   });
 
-  // R28: navigations that a retry loaded afterwards are named as such, not as documents that were not fetched.
+  // : navigations that a retry loaded afterwards are named as such, not as documents that were not fetched.
   it.each([
     ['de', /nach Wiederholung geladen/, /Eine weitere Navigation/, /2 weitere Navigationen/],
     ['en', /loaded after a retry/, /One more navigation/, /2 more navigations/],
@@ -466,16 +460,14 @@ describe('G52: SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a pr
   });
 });
 
-// ------------------------------------------------------------------ G58: Nutzungshinweise
-
-describe('G58: Nutzungshinweise', () => {
+describe('Nutzungshinweise', () => {
   it('en: the IP address is "disclosed to" the third parties, not "transmitted"', () => {
     const text = uiText(loadTexts('en'), 'usageNotes', { version: '1' });
     expect(text).not.toMatch(/transmits/i);
     expect(text).toMatch(/Phase C discloses the scanning machine's IP address to the third parties/);
   });
 
-  it('de: stays the wording of the guide §6 (allowlist by D08) — also in the README', () => {
+  it('de: stays the wording of the guide §6 (allowlist by ) — also in the README', () => {
     const de = uiText(loadTexts('de'), 'usageNotes', { version: '<version>' }).replace(/\s+/g, ' ');
     const phaseC =
       'Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach der Annahme im Banner lädt.';
@@ -490,9 +482,7 @@ describe('G58: Nutzungshinweise', () => {
   });
 });
 
-// ------------------------------------------------------------------ G46: CA setting of the process
-
-describe('G46: trust store of the process', () => {
+describe('trust store of the process', () => {
   it('NODE_USE_SYSTEM_CA=1, --use-system-ca on the command line or in NODE_OPTIONS → system', () => {
     expect(detectTrustStore({ NODE_USE_SYSTEM_CA: '1' }, [])).toBe('system');
     expect(detectTrustStore({}, ['--use-system-ca'])).toBe('system');
@@ -508,7 +498,7 @@ describe('G46: trust store of the process', () => {
     );
   });
 
-  it('scan(): the snapshot environment records it (old code: no field)', async () => {
+  it('scan: the snapshot environment records it', async () => {
     const run = async () =>
       (
         await scan({

@@ -1,5 +1,5 @@
 /**
- * AGENTS rule 2 / D20 (canary2 group G01): text copied from the page into the CMP facts (accessible names of buttons,
+ * AGENTS rule 2 / ( group ): text copied from the page into the CMP facts (accessible names of buttons,
  * text of the legal links of the banner, labels of the covered footer links) is redacted by the collector before it is
  * stored: an e-mail address loses its local part. The click selector of a button is no free text and stays usable.
  */
@@ -45,7 +45,7 @@ const facts = (): CmpFacts => {
   return f;
 };
 
-describe('normalizeFacts: text copied from the page (G01)', () => {
+describe('normalizeFacts: text copied from the page', () => {
   const out = normalizeFacts(facts(), 'B', 'https://www.example.test/');
 
   it('masks an address in the accessible name of a button', () => {

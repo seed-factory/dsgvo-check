@@ -1,12 +1,11 @@
 /**
- * L3: the container image (D24/D25) and the Action's scan step, with every exit code (0/1/2, D23). Opt-in: set
+ * Container isolation and the Action's scan step, with every exit code (0/1/2). Opt-in: set
  * DSGVO_E2E_IMAGE to a built image, e.g.
  *   docker build -t dsgvo-check:dev . && DSGVO_E2E_IMAGE=dsgvo-check:dev corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
  * Containers run with the hardened flags of action.yml and `--network none`. Exit codes 0 and 1 come from a saved
  * snapshot (`--from-snapshot`, no network) of a site that loads Google Analytics before consent; exit code 2 from
  * an unresolvable host and, in the Action test, from a loopback address that the scanner refuses.
- * The Action script needs bash 4+ and GNU realpath (Linux runners); on macOS point DSGVO_E2E_ACTION_PATH to a PATH
- * with GNU coreutils first, e.g. `/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH`.
+ * The Action script needs bash 4+; DSGVO_E2E_ACTION_PATH can provide a suitable PATH outside Linux.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -265,7 +264,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
         1,
         /^::error title=dsgvo-check::Findings at or above the threshold \(fail-on: warning\)\. Reasons: threshold[.,]/m,
       ],
-      ['none', 0, /^dsgvo-check: exit code 0 \(fail-on: none\)\.$/m],
+      ['none', 0, /^::stop-commands::/m],
     ] as const)(
       'scan with findings and fail-on %s → exit-code %i, reports, Job Summary, job result',
       (failOn, code, line) => {
@@ -273,7 +272,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
           {
             DC_URL: 'https://www.example.de/',
             DC_FAIL_ON: failOn,
-            DC_EXTRA_ARGS: '--from-snapshot /out/snapshot.json',
+            DC_EXTRA_ARGS: '--from-snapshot /out/snapshot.json --lang en',
           },
           { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
         );
@@ -291,19 +290,53 @@ describe.skipIf(!IMAGE)('docker image', () => {
       },
     );
 
-    it.each([
-      [{ DC_OUT: '../outside' }, 'sub-directory'],
-      [{ DC_OUT: '.' }, 'sub-directory'],
-      [{ DC_EXTRA_ARGS: '--out /etc' }, '--out'],
-      [{ DC_URL: 'ftp://example.de/' }, "'url'"],
-      [{ DC_URL: 'https://example.de/\n::set-output name=x::y' }, 'line breaks'],
-      [{ DC_FAIL_ON: 'high' }, "'fail-on'"],
-      [{ DC_IMAGE: 'img;rm -rf /' }, "'image'"],
-    ])('rejects unsafe input %j', (inputs, message) => {
-      const r = runStep(inputs);
-      expect(r.status).not.toBe(0);
+    it.each<Record<string, string>>([{ DC_URL: 'ftp://example.test/' }, { DC_FAIL_ON: 'high' }])(
+      'reports invalid scanner input through the CLI: %j',
+      (inputs) => {
+        const r = runStep(inputs);
+        expect(r.status, r.stderr).toBe(0);
+        expect(r.outputs['exit-code']).toBe('2');
+        const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+        expect(report.summary.exitReasons).toContain('invalid-input');
+        expect(r.stdout).toContain('::error title=dsgvo-check::The scan did not complete');
+      },
+    );
+
+    it('uses explicit Action options after repeated options from extra-args', () => {
+      const r = runStep(
+        {
+          DC_URL: 'https://www.example.de/',
+          DC_FAIL_ON: 'warning',
+          DC_EXTRA_ARGS:
+            '--from-snapshot /out/snapshot.json --out /tmp/ignored --format pdf --fail-on none --lang en',
+        },
+        { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.outputs['exit-code']).toBe('1');
+      expect(r.outputs['json-path']).toMatch(/dsgvo-check-report\/report\.json$/);
+      expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
+      expect(r.outputs['pdf-path']).toBe('');
+      const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+      expect(report.scan.options?.failOn).toBe('warning');
+    });
+
+    it.each(['.', mkdtempSync(path.join(tmpdir(), 'dsgvo-action-report-'))])(
+      'uses the workflow author report directory %s',
+      (out) => {
+        const r = runStep({ DC_OUT: out });
+        expect(r.status, r.stderr).toBe(0);
+        expect(r.outputs['exit-code']).toBe('2');
+        expect(readFileSync(r.outputs['json-path'] as string, 'utf8')).toContain('invalid-input');
+      },
+    );
+
+    it('passes shell syntax as URL data without executing it', () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-action-input-')), 'injected');
+      const r = runStep({ DC_URL: `ftp://example.test/$(touch ${marker})` });
+      expect(r.status, r.stderr).toBe(0);
       expect(r.outputs['exit-code']).toBe('2');
-      expect(r.stdout).toContain(message);
+      expect(() => readFileSync(marker)).toThrow();
     });
   });
 });

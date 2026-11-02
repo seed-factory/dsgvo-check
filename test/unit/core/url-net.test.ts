@@ -31,7 +31,7 @@ describe('parseTarget', () => {
     },
   );
 
-  it('keeps the IPv6 literal in URL form; bareHost() strips the brackets for DNS and sockets', () => {
+  it('keeps the IPv6 literal in URL form; bareHost strips the brackets for DNS and sockets', () => {
     const t = parseTarget('https://[2606:4700:4700::1111]/');
     expect(t.url).toBe('https://[2606:4700:4700::1111]/');
     expect(t.etld1).toBeNull();
@@ -58,7 +58,7 @@ describe('parseTarget', () => {
   });
 });
 
-describe('redactTarget (D20 for the scan target)', () => {
+describe('redactTarget ( for the scan target)', () => {
   it.each([
     ['https://example.de/?token=secret', `https://example.de/?token=${REDACTED}`],
     ['https://demo-user:demo-password@example.de/?sid=demo-session', `https://example.de/?sid=${REDACTED}`],
@@ -71,7 +71,7 @@ describe('redactTarget (D20 for the scan target)', () => {
   });
 });
 
-describe('sanitizeUrl (D20)', () => {
+describe('sanitizeUrl', () => {
   it('redacts query values outside the allowlist, drops fragment and credentials', () => {
     expect(
       sanitizeUrl('https://u:p@www.google-analytics.com/g/collect?v=2&tid=G-ABC&cid=123.456&en=page_view#x'),
@@ -100,7 +100,7 @@ describe('sanitizeUrl (D20)', () => {
   });
 
   it.each([
-    // generic names keep only site-level values of the expected form (FP-06)
+    // generic names keep only site-level values of the expected form
     ['https://shop.example.de/konto/bestellung?id=4711&token=abc', `?id=${REDACTED}&token=${REDACTED}`],
     ['https://shop.example.de/x?id=visitor-secret', `?id=${REDACTED}`],
     ['https://www.googletagmanager.com/gtag/js?id=G-ABC123', '?id=G-ABC123'],
@@ -151,7 +151,7 @@ describe('classifyAddress (SSRF guard)', () => {
     ['fd12:3456::1', 'private'],
     ['fd00:ec2::254', 'metadata'],
     ['2a00:1450:4001:80b::200e', 'public'],
-    // embedded IPv4 in transition prefixes (FP-04)
+    // embedded IPv4 in transition prefixes
     ['64:ff9b::7f00:1', 'loopback'], // NAT64 of 127.0.0.1
     ['64:ff9b::a9fe:a9fe', 'metadata'], // NAT64 of 169.254.169.254
     ['64:ff9b::10.0.0.5', 'private'],

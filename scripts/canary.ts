@@ -75,7 +75,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const sites = filterSites(loadSites(args.sitesFile), filter);
+  const sites = filterSites(loadSites(args.sitesFile, { expectedCount: args.expectedCount }), filter);
   const runDir = path.join(args.resultsDir, args.runId);
   log(
     `plan: ${sites.length} site(s), engine ${args.engine}, concurrency ${args.concurrency}, ` +

@@ -34,7 +34,7 @@ export const mail02 = defineCheck({
       throw new Error(`SPF lookup for ${spf.domain} failed after retry (${spf.query?.rcode}); no conclusion`);
     }
 
-    // S-23 (§4 MAIL-02: SERVFAIL → error): a nested lookup that failed or was not made leaves the result open
+    // A nested lookup that failed or was not made leaves the result open (SERVFAIL → error):
     // unless a fact of the resolved part already decides it (`+all` / `?all`, an established permerror).
     if (spf.state === 'found' && !spf.complete) {
       const decided = spf.permerrors.length > 0 || spf.all === '+' || spf.all === '?';

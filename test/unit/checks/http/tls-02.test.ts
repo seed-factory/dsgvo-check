@@ -95,7 +95,7 @@ describe('TLS-02 certificate', () => {
     });
   });
 
-  it('FT-08: not yet valid (notBefore in the future) → certificate-invalid (not-yet-valid)', () => {
+  it('not yet valid (notBefore in the future) → certificate-invalid (not-yet-valid)', () => {
     const r = run(ep({ authorized: false, authorizationError: 'CERT_NOT_YET_VALID' }, 200, -5));
     expect(variantsOf(r)).toEqual(['certificate-invalid']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'not-yet-valid', notYetValid: 'yes' });
@@ -152,7 +152,7 @@ describe('TLS-02 certificate', () => {
     expect(variantsOf(r)).toEqual(['chain-incomplete']);
   });
 
-  describe('the issuer of the leaf was sent, the root is unknown to the store (R20)', () => {
+  describe('the issuer of the leaf was sent, the root is unknown to the store', () => {
     const dates = { notBefore: at(-165), notAfter: at(200) };
     const leaf = (issuer = 'CN=Some Intermediate') => makeCert({ ...dates, issuer });
     const intermediate = (subject = 'CN=Some Intermediate') =>
@@ -310,7 +310,7 @@ describe('TLS-02 certificate', () => {
     const s = makeSnapshot({ collection: { tls: { status: 'error', durationMs: 0 } } });
     expect(runCheck(tls02, s)).toMatchObject({ status: 'error', reason: 'collector-error:tls' });
   });
-  describe('S-19: the final host of a redirect to another domain', () => {
+  describe('the final host of a redirect to another domain', () => {
     /** Start chain https://www.example.de/ → 301 → https://www.moved.de/ (200). */
     const movedHttp = (finalTls?: TlsEndpoint[]): HttpSection => {
       const chain = makeChain({
@@ -402,7 +402,7 @@ describe('TLS-02 certificate', () => {
     });
   });
 
-  it('S-20: the target endpoint on an explicit port is evaluated', () => {
+  it('the target endpoint on an explicit port is evaluated', () => {
     const r = runCheck(
       tls02,
       makeSnapshot({
@@ -418,7 +418,7 @@ describe('TLS-02 certificate', () => {
   });
 });
 
-describe('TLS-02 subject by host role, independent of how the target was typed (S-37, 5.4)', () => {
+describe('TLS-02 subject by host role, independent of how the target was typed (5.4)', () => {
   const expired = { authorized: false, authorizationError: 'CERT_HAS_EXPIRED' } as const;
 
   it('typed example.de (redirect to www) and typed www.example.de: same subject for the www certificate', () => {

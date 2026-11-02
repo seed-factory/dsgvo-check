@@ -1,7 +1,7 @@
 /**
  * Fixture scenarios for test/fixtures/snapshots/browser/<ID>/ (violation / clean / inconclusive per check).
  * `generate-fixtures.ts` writes them as JSON; `fixtures.test.ts` checks that the files are up to date.
- * Scenarios must not depend on the CMP first-layer classifier (owner M2): CONSENT-04 fixtures use check-level
+ * Scenarios must not depend on the CMP first-layer classifier (owner ): CONSENT-04 fixtures use check-level
  * variants or paths that do not call it.
  */
 
@@ -168,7 +168,7 @@ export const SCENARIOS: Record<string, Scenario[]> = {
                 }),
                 cookie('XSRF-TOKEN', { setter: 'http-response' }),
                 cookie('borlabs-cookie'),
-                // Consent state on the origin of the consent vendor (G36): third-party, persistent.
+                // Consent state on the origin of the consent vendor : third-party, persistent.
                 ...['__cmpcpc', '__cmpcccx144007_expire', 'FCNEC', '_sp_su'].map((name) =>
                   cookie(name, {
                     domain: 'cmp.consent-vendor.test',

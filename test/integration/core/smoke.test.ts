@@ -1,5 +1,5 @@
 /**
- * L2 smoke: real Chromium (CfT new headless) and Node clients reach only the local fixture server.
+ * smoke: real Chromium (CfT new headless) and Node clients reach only the local fixture server.
  * A fake site loads a fake www.google-analytics.com; the request is visible in Playwright events.
  */
 import { request } from 'undici';
@@ -105,7 +105,7 @@ describe('Node clients → fixture server (test connect + test CA)', () => {
   });
 });
 
-describe('scan() with the fixture network', () => {
+describe('scan with the fixture network', () => {
   it('passes preflight for a fixture host and produces a valid report', async () => {
     const result = await scan({
       url: 'https://www.example.test/',

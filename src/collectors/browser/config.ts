@@ -1,4 +1,4 @@
-/** Browser collector constants (D08, D09, D20, D25). Timings are injectable for tests via `BrowserTiming`. */
+/** Browser collector constants. Timings are injectable for tests via `BrowserTiming`. */
 import type { BrowserPhase, Viewport } from '../../core/snapshot-common.ts';
 import { QUERY_ALLOWLIST } from '../../core/url.ts';
 
@@ -10,12 +10,12 @@ export interface PhaseTiming {
 }
 
 export interface BrowserTiming {
-  /** Quiet window: no request started for this long (D09: 2 s). */
+  /** Quiet window: no request started for this long (2 s). */
   quietWindowMs: number;
-  /** Max requests still in flight to call the page quiet (D09: ≤ 1). */
+  /** Max requests still in flight to call the page quiet (≤ 1). */
   maxInflight: number;
   phases: Record<BrowserPhase, PhaseTiming>;
-  /** Pause between navigations (D09: ≥ 1.5 s). */
+  /** Pause between navigations (≥ 1.5 s). */
   navigationPauseMs: number;
   /** `page.goto` timeout until `domcontentloaded`. */
   navigationTimeoutMs: number;
@@ -29,7 +29,7 @@ export interface BrowserTiming {
   deadlineReserveMs: number;
 }
 
-/** Production timings from D09: A 6/20 s, B and C 4/12 s, quiet window 2 s, inflight ≤ 1, pause 1.5 s. */
+/** Production timings: A 6/20 s, B and C 4/12 s, quiet window 2 s, inflight ≤ 1, pause 1.5 s. */
 export const DEFAULT_TIMING: BrowserTiming = {
   quietWindowMs: 2_000,
   maxInflight: 1,
@@ -46,7 +46,7 @@ export const DEFAULT_TIMING: BrowserTiming = {
   deadlineReserveMs: 20_000,
 };
 
-/** Shared browser request cap across phases (D09). */
+/** Shared browser request cap across phases. */
 export const REQUEST_LIMIT = 2_000;
 
 export const VIEWPORT: Viewport = { width: 1366, height: 768 };
@@ -54,7 +54,7 @@ export const LOCALE = 'de-DE';
 export const TIMEZONE = 'Europe/Berlin';
 export const BROWSER_CHANNEL = 'chromium';
 
-/** Banner screenshot (D20): JPEG ≤ 200 KB, container ≤ 50 % of the viewport. */
+/** Banner screenshot: JPEG ≤ 200 KB, container ≤ 50 % of the viewport. */
 export const SCREENSHOT_MAX_BYTES = 200 * 1024;
 export const SCREENSHOT_MAX_VIEWPORT_SHARE = 0.5;
 

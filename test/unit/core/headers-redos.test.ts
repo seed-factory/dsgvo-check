@@ -1,26 +1,25 @@
-/**
- * L1 (review S-*, follow-up of N-REV-4): the header normalizer reads values of untrusted origin. Since N-REV-4 the
- * `<meta http-equiv>` values of the start document (up to `HEURISTIC_BYTES` = 64 KiB) pass `storedHeaderRecord` too,
- * and a lazy `(.*?)` followed by `\s*$` in the `Refresh` parser (and `[^>]*` in the `Link` parser) backtracks
- * quadratically: one page blocked the event loop for seconds, past every deadline timer. The parsers are linear now;
- * what they read did not change, which the tables and the differential runs against the old regular expressions
- * (kept here as oracles, small inputs only) pin down.
- */
 import { describe, expect, it } from 'vitest';
 import { MAX_HEADER_VALUE, storedHeaderRecord } from '../../../src/core/headers.ts';
 import { REDACTED, sanitizeUrl } from '../../../src/core/url.ts';
 
 /** The size of the biggest untrusted text that reaches the normalizer (`HEURISTIC_BYTES` of the start document). */
 const SIZE = 64 * 1024;
-/** A linear pass over 64 KiB takes well under a millisecond; the quadratic one took 7 s. */
-const LIMIT_MS = 200;
 const BASE = 'https://www.example.test/dir/page';
 const identity = (u: string) => u;
 
-function elapsedMs(run: () => unknown): number {
-  const t0 = performance.now();
-  run();
-  return performance.now() - t0;
+/** Scale the same hostile shape fourfold; absolute latency depends on the worker load. */
+function expectLinear(run: (size: number) => unknown): void {
+  run(SIZE / 4);
+  run(SIZE);
+  const best = (size: number) =>
+    Math.min(
+      ...Array.from({ length: 5 }, () => {
+        const started = performance.now();
+        run(size);
+        return performance.now() - started;
+      }),
+    );
+  expect(best(SIZE) / Math.max(best(SIZE / 4), 0.05)).toBeLessThan(12);
 }
 
 const stored = (name: string, value: string, sanitize = sanitizeUrl) =>
@@ -28,28 +27,26 @@ const stored = (name: string, value: string, sanitize = sanitizeUrl) =>
 
 describe('Refresh: 64 KiB values are read in linear time', () => {
   const spaces = ' '.repeat(SIZE - 8);
-  it.each([
-    ['a delay, a path, a long run of spaces, a last character', `0;x${spaces}y`],
-    ['the same behind url=', `0;url=x${spaces}y`],
-    ['an unclosed quote', `0;'x${spaces}y`],
-    ['an unclosed double quote behind url=', `0; URL = "x${spaces}y`],
-    ['a no-break space series (it is whitespace of JavaScript)', `0;x${'\u00a0'.repeat(SIZE - 8)}y`],
-    ['a tab series', `0;x${'\t'.repeat(SIZE - 8)}y`],
-    ['spaces in front of the delay, junk behind it', `${spaces}0${spaces}x`],
-    ['a comma as the separator', `0,x${spaces}y`],
-    ['words, not one run', `0;${'x '.repeat(SIZE / 2 - 4)}y`],
-    ['a closed quote with a space series inside', `0;'x${spaces}y'`],
-    ['a line terminator behind the series', `0;x${spaces}\ny`],
-  ])('%s', (_what, value) => {
-    expect(value.length).toBeGreaterThan(SIZE - 16);
-    let record: ReturnType<typeof stored> | undefined;
-    expect(elapsedMs(() => (record = stored('refresh', value)))).toBeLessThan(LIMIT_MS);
-    // the value is still stored cut at the limit, never longer
-    expect(record?.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
+  it.each<[string, (n: number) => string]>([
+    ['a delay, a path, spaces and a last character', (n) => `0;x${' '.repeat(n - 8)}y`],
+    ['the same behind url=', (n) => `0;url=x${' '.repeat(n - 8)}y`],
+    ['an unclosed quote', (n) => `0;'x${' '.repeat(n - 8)}y`],
+    ['an unclosed double quote behind url=', (n) => `0; URL = "x${' '.repeat(n - 8)}y`],
+    ['no-break spaces', (n) => `0;x${'\u00a0'.repeat(n - 8)}y`],
+    ['tabs', (n) => `0;x${'\t'.repeat(n - 8)}y`],
+    ['spaces before the delay and junk after it', (n) => `${' '.repeat(n - 8)}0${' '.repeat(n - 8)}x`],
+    ['a comma separator', (n) => `0,x${' '.repeat(n - 8)}y`],
+    ['words rather than one run', (n) => `0;${'x '.repeat(n / 2 - 4)}y`],
+    ['a closed quote containing spaces', (n) => `0;'x${' '.repeat(n - 8)}y'`],
+    ['a line terminator after the series', (n) => `0;x${' '.repeat(n - 8)}\ny`],
+  ])('%s', (_what, build) => {
+    expectLinear((n) => stored('refresh', build(n)));
+    const record = stored('refresh', build(SIZE));
+    expect(record.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
   });
 
   it('the same value with the identity sanitizer (the browser collector path)', () => {
-    expect(elapsedMs(() => stored('refresh', `0;x${spaces}y`, identity))).toBeLessThan(LIMIT_MS);
+    expectLinear((n) => stored('refresh', `0;x${' '.repeat(n)}y`, identity));
   });
 
   it('keeps what it read: the delay and the resolved address, cut at the limit', () => {
@@ -59,25 +56,24 @@ describe('Refresh: 64 KiB values are read in linear time', () => {
     expect(rec.value).toHaveLength(MAX_HEADER_VALUE);
   });
 
-  it('a header of the size a server may send (16 KB) is fast as well', () => {
-    expect(elapsedMs(() => stored('refresh', `0;x${' '.repeat(16 * 1024 - 8)}y`))).toBeLessThan(LIMIT_MS);
+  it('a server-sized Refresh value is bounded', () => {
+    expect(stored('refresh', `0;x${' '.repeat(16 * 1024 - 8)}y`).truncated).toBe(true);
   });
 });
 
 describe('Link: 64 KiB values are read in linear time', () => {
-  it.each([
-    ['only opening brackets', '<'.repeat(SIZE)],
-    ['opening brackets with a letter', '<a'.repeat(SIZE / 2)],
-    ['an unclosed target behind a closed one', `<https://a.test/x>;rel=next${'<'.repeat(SIZE - 40)}`],
-    ['a closed target behind many opening brackets', `${'<'.repeat(SIZE - 30)}http://a.test/x>`],
-  ])('%s', (_what, value) => {
-    let record: ReturnType<typeof stored> | undefined;
-    expect(elapsedMs(() => (record = stored('link', value)))).toBeLessThan(LIMIT_MS);
-    expect(record?.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
+  it.each<[string, (n: number) => string]>([
+    ['only opening brackets', (n) => '<'.repeat(n)],
+    ['opening brackets with a letter', (n) => '<a'.repeat(n / 2)],
+    ['an unclosed target after a closed one', (n) => `<https://a.test/x>;rel=next${'<'.repeat(n - 40)}`],
+    ['a closed target after many opening brackets', (n) => `${'<'.repeat(n - 30)}http://a.test/x>`],
+  ])('%s', (_what, build) => {
+    expectLinear((n) => stored('link', build(n)));
+    expect(stored('link', build(SIZE)).value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
   });
 
-  it('a 16 KB header of opening brackets is fast as well', () => {
-    expect(elapsedMs(() => stored('link', '<'.repeat(16 * 1024)))).toBeLessThan(LIMIT_MS);
+  it('a server-sized Link value is bounded', () => {
+    expect(stored('link', '<'.repeat(16 * 1024)).value).toBe('<'.repeat(MAX_HEADER_VALUE));
   });
 
   it('keeps what it read: closed targets are resolved, an unclosed one stays as sent', () => {
@@ -88,45 +84,27 @@ describe('Link: 64 KiB values are read in linear time', () => {
   });
 });
 
-describe('the other value parsers stay linear on 64 KiB (no regression)', () => {
-  it.each([
-    ['content-security-policy', `frame-ancestors ${'a.'.repeat(SIZE / 2)}!`],
-    ['content-security-policy', 'a@'.repeat(SIZE / 2)],
-    ['content-security-policy', 'a:'.repeat(SIZE / 2)],
-    ['content-security-policy', 'a://'.repeat(SIZE / 4)],
-    ['content-security-policy', `[${'a:'.repeat(SIZE / 2)}`],
-    ['content-security-policy', 'x '.repeat(SIZE / 2)],
-    ['content-security-policy', `frame-ancestors${' a'.repeat(SIZE / 2)}`],
-    ['content-security-policy', `${';'.repeat(SIZE)}`],
-    ['content-security-policy', `${','.repeat(SIZE)}`],
-    ['permissions-policy', 'http://'.repeat(SIZE / 7)],
-    ['permissions-policy', `http://${'a'.repeat(SIZE)}`],
-    ['location', 'a'.repeat(SIZE)],
-    ['x-trace', 'a'.repeat(SIZE)],
-  ])('%s: %#', (name, value) => {
-    expect(elapsedMs(() => stored(name, value))).toBeLessThan(LIMIT_MS);
+describe('other header parsers scale with untrusted values', () => {
+  it.each<[string, (n: number) => string]>([
+    ['content-security-policy', (n) => `frame-ancestors ${'a.'.repeat(n / 2)}!`],
+    ['content-security-policy', (n) => 'a@'.repeat(n / 2)],
+    ['content-security-policy', (n) => 'a:'.repeat(n / 2)],
+    ['content-security-policy', (n) => 'a://'.repeat(n / 4)],
+    ['content-security-policy', (n) => `[${'a:'.repeat(n / 2)}`],
+    ['content-security-policy', (n) => 'x '.repeat(n / 2)],
+    ['content-security-policy', (n) => `frame-ancestors${' a'.repeat(n / 2)}`],
+    ['content-security-policy', (n) => ';'.repeat(n)],
+    ['content-security-policy', (n) => ','.repeat(n)],
+    ['permissions-policy', (n) => 'http://'.repeat(n / 7)],
+    ['permissions-policy', (n) => `http://${'a'.repeat(n)}`],
+    ['location', (n) => 'a'.repeat(n)],
+    ['x-trace', (n) => 'a'.repeat(n)],
+  ])('%s: %#', (name, build) => {
+    expectLinear((n) => stored(name, build(n)));
   });
 });
 
-/** The parsers as they were before the fix: oracles for small inputs (they are quadratic on big ones). */
-function legacyResolve(raw: string): string {
-  try {
-    return new URL(raw.trim(), BASE).toString();
-  } catch {
-    return REDACTED;
-  }
-}
-
-function legacyRefresh(value: string): string {
-  const m = /^(\s*[\d.]+\s*)(?:[;,]\s*(?:url\s*=\s*)?(['"]?)(.*?)\2\s*)?$/i.exec(value);
-  if (!m) return REDACTED;
-  return m[3] ? `${(m[1] as string).trim()}; url=${legacyResolve(m[3])}` : (m[1] as string).trim();
-}
-
-const legacyLink = (value: string): string =>
-  value.replace(/<([^>]*)>/g, (_m, u: string) => `<${legacyResolve(u)}>`);
-
-describe('Refresh: what the parser reads did not change', () => {
+describe('Refresh delay and target parsing', () => {
   it.each([
     ['5', '5'],
     [' 5 ', '5'],
@@ -180,9 +158,43 @@ describe('Refresh: what the parser reads did not change', () => {
     ['５;url=/x', REDACTED],
   ])('%j', (value, expected) => {
     expect(stored('refresh', value, identity).value).toBe(expected);
-    expect(stored('refresh', value, identity).value).toBe(legacyRefresh(value));
   });
+});
 
+describe('Link target parsing', () => {
+  it.each([
+    ['<a.html>', '<https://www.example.test/dir/a.html>'],
+    ['</x>; rel="preload"; as=style', '<https://www.example.test/x>; rel="preload"; as=style'],
+    ['<a>, <b>', '<https://www.example.test/dir/a>, <https://www.example.test/dir/b>'],
+    ['<>', '<https://www.example.test/dir/page>'],
+    ['<a<b>', '<https://www.example.test/dir/a%3Cb>'],
+    ['<a>>', '<https://www.example.test/dir/a>>'],
+    ['<a', '<a'],
+    ['a>', 'a>'],
+    ['', ''],
+  ])('%j', (value, expected) => {
+    expect(stored('link', value, identity).value).toBe(expected);
+  });
+});
+
+function legacyResolve(raw: string): string {
+  try {
+    return new URL(raw.trim(), BASE).toString();
+  } catch {
+    return REDACTED;
+  }
+}
+
+function legacyRefresh(value: string): string {
+  const m = /^(\s*[\d.]+\s*)(?:[;,]\s*(?:url\s*=\s*)?(['"]?)(.*?)\2\s*)?$/i.exec(value);
+  if (!m) return REDACTED;
+  return m[3] ? `${(m[1] as string).trim()}; url=${legacyResolve(m[3])}` : (m[1] as string).trim();
+}
+
+const legacyLink = (value: string): string =>
+  value.replace(/<([^>]*)>/g, (_m, u: string) => `<${legacyResolve(u)}>`);
+
+describe('header parser equivalence', () => {
   it('differential: 30 000 random small values give the same record as the old expression', () => {
     const pieces = [
       '0',
@@ -217,24 +229,6 @@ describe('Refresh: what the parser reads did not change', () => {
         expect.fail(`${JSON.stringify(value)}: ${got} instead of ${legacyRefresh(value)}`);
     }
   });
-});
-
-describe('Link: what the parser reads did not change', () => {
-  it.each([
-    ['<a.html>', '<https://www.example.test/dir/a.html>'],
-    ['</x>; rel="preload"; as=style', '<https://www.example.test/x>; rel="preload"; as=style'],
-    ['<a>, <b>', '<https://www.example.test/dir/a>, <https://www.example.test/dir/b>'],
-    ['<>', '<https://www.example.test/dir/page>'],
-    ['<a<b>', '<https://www.example.test/dir/a%3Cb>'],
-    ['<a>>', '<https://www.example.test/dir/a>>'],
-    ['<a', '<a'],
-    ['a>', 'a>'],
-    ['', ''],
-  ])('%j', (value, expected) => {
-    expect(stored('link', value, identity).value).toBe(expected);
-    expect(stored('link', value, identity).value).toBe(legacyLink(value));
-  });
-
   it('differential: 20 000 random small values give the same record as the old expression', () => {
     const pieces = [
       '<',
@@ -259,7 +253,6 @@ describe('Link: what the parser reads did not change', () => {
     }
   });
 });
-
 /** mulberry32: a small seeded generator of unsigned 32-bit integers, so a failing input is reproducible. */
 function seeded(seed: number): () => number {
   let s = seed >>> 0;

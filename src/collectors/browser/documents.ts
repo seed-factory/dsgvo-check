@@ -1,5 +1,5 @@
 /**
- * Legal documents (D15): text of Impressum / Datenschutzerklärung by sections with provenance, without clicks and
+ * Legal documents: text of Impressum / Datenschutzerklärung by sections with provenance, without clicks and
  * independent of the consent outcome. PDF → `complete: false` (`pdf-not-evaluated`). Same-origin frames are
  * included; other frames are only reported. Pure helpers decide soft-404 and completeness.
  */
@@ -25,13 +25,13 @@ export interface JudgeInput {
   h1: string;
   /** Section headings of the whole document (all levels, frames included). */
   sections?: readonly string[];
-  /** Ignored: the verdict never rests on body text, a word in a footer or navigation proves nothing (G20). */
+  /** Ignored: the verdict never rests on body text, a word in a footer or navigation proves nothing. */
   text?: string;
   textLength: number;
 }
 
 /**
- * Verdict on a 2xx page that was fetched as the document `kind` (G20). The type is decided by localised markers
+ * Verdict on a 2xx page that was fetched as the document `kind`. The type is decided by localised markers
  * (data/legal/links.yaml) in the title, the h1 and the section headings of the whole document, not by one keyword in
  * the first characters. `ok`: marker found, `languages` lists the languages of the markers. `soft-404`: an explicit
  * error title, or a page without a marker that has no recognisable content. `unconfirmed`: a substantive page
@@ -99,7 +99,7 @@ function partsOf(raw: RawDocument, sourceUrl: string, prefix: string, frameUrl?:
   let i = 0;
   return (
     raw.parts
-      // E-mail addresses, mailto: values and URL queries are masked before the text is hashed or stored (D20, G01).
+      // E-mail addresses, mailto: values and URL queries are masked before the text is hashed or stored.
       .map((p) => ({ ...p, text: redactFreeText(normalizeText(p.text)) }))
       .filter((p) => p.text.length > 0)
       .map((p) => ({
@@ -107,7 +107,7 @@ function partsOf(raw: RawDocument, sourceUrl: string, prefix: string, frameUrl?:
         ...(p.section ? { section: redactFreeText(normalizeText(p.section)) } : {}),
         text: p.text,
         // Hidden text stays hidden-irrelevant inside a frame too (it must not count as a mention); the frame itself is
-        // recorded in `frameUrl` (S-25).
+        // recorded in `frameUrl`.
         origin: p.origin === 'hidden-irrelevant' ? 'hidden-irrelevant' : frameUrl ? 'frame' : p.origin,
         sourceUrl,
         ...(frameUrl ? { frameUrl } : {}),
@@ -145,7 +145,7 @@ export async function extractDocument(
   const errors: string[] = [];
   const main = await page.evaluate(documentInPage, { maxChars: MAX_CHARS });
   const parts = partsOf(main, finalUrl, `${c.id}-p`);
-  // Headings of the navigation or footer prove nothing about the type of the page (R03). The reader of the page
+  // Headings of the navigation or footer prove nothing about the type of the page. The reader of the page
   // (`documentInPage`) sorts the headings into chrome and content with the rule it applies to collapsed elements.
   const chromeHeads = new Set<string>();
   const contentHeads = new Set<string>();
@@ -162,7 +162,7 @@ export async function extractDocument(
     pageOrigin = '';
   }
   let foreignFrames = 0;
-  // Completeness covers every included part (S-26): truncation, unopened expandables and unreadable frames of
+  // Completeness covers every included part: truncation, unopened expandables and unreadable frames of
   // same-origin frames count like those of the main document.
   let truncated = main.truncated;
   let expandablesFound = main.expandablesFound;
@@ -200,7 +200,7 @@ export async function extractDocument(
   if (!ok) errors.push(c.status === null ? 'navigation-failed' : `http-${c.status}`);
   const judged = judgeDocumentDetail(c.kind, {
     title: main.title,
-    // Only an h1 of the content (the reader leaves out the h1 of a navigation, footer or hidden element, S-legal-1).
+    // Only an h1 of the content (the reader leaves out the h1 of a navigation, footer or hidden element).
     h1: main.h1,
     // A text that is a heading in the content as well stays (a footer column "Impressum" next to a real one).
     sections: headingsOf(parts).filter((h) => !chromeHeads.has(h) || contentHeads.has(h)),

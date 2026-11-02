@@ -3,7 +3,7 @@
 # null: "Banner nicht erkannt" / "CMP nicht unterstützt" (5.5) and info variants that only record a weaker technical
 # signal the catalog finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect
 # only, unresolved link, category-only or ambiguous text, non-identifier storage, consent cookie UID, CONNECT only,
-# Pur-Abo). These stay null until the customer maps them (consensus Q6, 03-checks Q2).
+# Pur-Abo). These stay null until the customer maps them (03-checks Q2).
 # Keys follow the registry docs/03-checks.md §2.1.
 mapping:
   CONSENT-01.tracking-completed: T1_TRACKER_BEFORE_CONSENT
@@ -34,7 +34,7 @@ mapping:
   CONSENT-05.tracking-after-reject: T1_CONSENT_BANNER_BROKEN
   CONSENT-05.cookieless-ping-after-reject: T1_CONSENT_BANNER_BROKEN
   CONSENT-05.connect-only-after-reject: null
-  # ⚠ catalog code for the info inventory, to be confirmed by the customer (consensus §4, question 6).
+  # ⚠ catalog code for the info inventory, to be confirmed by the customer.
   TRACK-01.service-inventory: T1_TRACKER_BEFORE_CONSENT
   EMBED-01.fonts-loaded: T1_FONTS_EXTERNAL
   EMBED-01.preconnect-only: null

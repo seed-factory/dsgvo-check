@@ -1,5 +1,5 @@
 /**
- * L3 static check: the traffic that canary/README.md promises (rule 1, "Passive only") matches the class T probes the
+ * static check: the traffic that canary/README.md promises (rule 1, "Passive only") matches the class T probes the
  * collectors actually send. A site owner who asks "what did you send us?" gets this list, so it must not name a
  * probe that does not exist (e.g. `security.txt` while SEC-01 is not part of the prototype) nor miss one.
  * No network, no build.
@@ -18,7 +18,7 @@ function sources(dir: string): string[] {
     .map((e) => path.relative(REPO_ROOT, path.join(e.parentPath, e.name)));
 }
 
-/** `purpose` of every HTTP/TLS probe record built in src/collectors (literal or via the http collector's `probe()`). */
+/** `purpose` of every HTTP/TLS probe record built in src/collectors (literal or via the http collector's `probe`). */
 function probePurposes(): Set<string> {
   const out = new Set<string>();
   for (const rel of sources('src/collectors')) {
@@ -37,11 +37,11 @@ function probePurposes(): Set<string> {
 const DESCRIBED: Record<string, RegExp> = {
   'robots.txt': /`robots\.txt`/,
   sitemap: /at most 2 sitemap requests/,
-  // S-20: an explicit port of the target URL adds the chain of that port.
+  // : an explicit port of the target URL adds the chain of that port.
   'redirect-chain':
     /`http:\/\/` and `https:\/\/` redirect chains of the target host and of its `www\.` and apex variants, plus the chain on an explicit port of the target URL/,
   'security-headers:': /Impressum and Datenschutz pages linked from the start page/,
-  // S-19: after a redirect to another domain the HTTP collector reads the final host's certificates as well.
+  // : after a redirect to another domain the HTTP collector reads the final host's certificates as well.
   certificate:
     /one TLS handshake per host variant \(at most 3\).*after a redirect to another domain, at most 3 more for the final host and its `www\.` and apex variants/,
 };

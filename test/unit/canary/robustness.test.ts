@@ -1,6 +1,5 @@
 /**
- * L1: the canary runner after canary-2 triage — the CA setting of the scans is recorded in run.json (G46) and a
- * child scan that has to be killed leaves no browser profile with the site's cookies behind (G57).
+ * The runner records the CA setting and removes browser profiles left by child scans that must be killed.
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -41,7 +40,7 @@ const sites = () =>
     { expectedCount: null },
   );
 
-describe('G46: run.json records the CA setting of the scanning process', () => {
+describe('run.json records the CA setting of the scanning process', () => {
   it('api engine: command-line flag, NODE_OPTIONS and NODE_USE_SYSTEM_CA all count', () => {
     expect(caSetting('api', {}, [])).toEqual<CaSetting>({
       trustStore: 'node-bundled',
@@ -60,7 +59,7 @@ describe('G46: run.json records the CA setting of the scanning process', () => {
     expect(caSetting('api', { NODE_OPTIONS: '--use-system-ca' }, [])).toMatchObject({ trustStore: 'system' });
   });
 
-  it('S-net-3: the flag is the effective one, read the way Node reads it (last wins, quotes, command line over NODE_OPTIONS)', () => {
+  it('the flag is the effective one, read the way Node reads it (last wins, quotes, command line over NODE_OPTIONS)', () => {
     const flag = (env: Record<string, string>, argv: string[]) => caSetting('api', env, argv).useSystemCaFlag;
     // cancelled by a later --no-use-system-ca
     expect(flag({}, ['--use-system-ca', '--no-use-system-ca'])).toBe(false);
@@ -107,7 +106,7 @@ describe('G46: run.json records the CA setting of the scanning process', () => {
     expect(JSON.stringify(c)).not.toContain('someone');
   });
 
-  it('runCanary writes it into run.json (old code: no field)', async () => {
+  it('runCanary writes it into run.json', async () => {
     vi.stubEnv('NODE_USE_SYSTEM_CA', '1');
     const dir = mkdtempSync(path.join(tmpdir(), 'canary-ca-'));
     const scanner: SiteScanner = async (job: SiteJob) => {
@@ -134,7 +133,7 @@ describe('G46: run.json records the CA setting of the scanning process', () => {
   });
 });
 
-describe('G57: a child scan that is killed leaves no profile behind', () => {
+describe('a child scan that is killed leaves no profile behind', () => {
   it('the pause between SIGTERM and SIGKILL is long enough for an orderly exit', () => {
     expect(KILL_GRACE_MS).toBeGreaterThanOrEqual(30_000);
   });
@@ -201,7 +200,7 @@ setInterval(() => {}, 1000);
     expect(existsSync(dirs[0] as string)).toBe(false);
   }, 30_000);
 
-  it('S-robustness-2: a profile of the same pid from another container in the shared temp dir stays (old code: removed)', async () => {
+  it('a profile of the same pid from another container in the shared temp dir stays', async () => {
     const { res, dirs } = await killedStub([
       { name: 'stub-own', host: null },
       { name: 'stub-foreign', host: 'other-container' },

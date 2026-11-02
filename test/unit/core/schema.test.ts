@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ReportSchema, reportJsonSchema } from '../../../src/core/report-schema.ts';
+import { EvidenceSchema, ReportSchema, reportJsonSchema } from '../../../src/core/report-schema.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { validateReport } from '../../utils/report-validator.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
@@ -63,5 +63,67 @@ describe('report schema (Ajv, JSON Schema 2020-12)', () => {
     const r = sampleFullReport();
     r.summary.exitReasons = ['whatever'];
     expect(validateReport(r).valid).toBe(false);
+  });
+});
+
+describe('cmp evidence: vendorRole', () => {
+  const base = {
+    id: 'ev-1',
+    type: 'cmp' as const,
+    cmpId: 'cookiebot',
+    recognitionConfidence: 'high' as const,
+  };
+
+  it('keeps a vendorRole string and a null vendorRole', () => {
+    const parsed = EvidenceSchema.parse({
+      ...base,
+      buttons: [
+        { name: 'Ausgewählte Cookies akzeptieren', kind: 'accept', vendorRole: 'save' },
+        { name: 'Alle akzeptieren', kind: 'accept', vendorRole: null },
+      ],
+    }) as { buttons: Array<{ vendorRole?: string | null }> };
+    expect(parsed.buttons[0]?.vendorRole).toBe('save');
+    expect(parsed.buttons[1]?.vendorRole).toBeNull();
+  });
+
+  it('a button without vendorRole stays valid (optional)', () => {
+    expect(
+      EvidenceSchema.safeParse({ ...base, buttons: [{ name: 'Ablehnen', kind: 'reject' }] }).success,
+    ).toBe(true);
+  });
+});
+
+describe('document evidence: manifest', () => {
+  const doc = {
+    id: 'ev-2',
+    type: 'document' as const,
+    url: 'https://www.example.test/datenschutz',
+    kind: 'privacy',
+    complete: true,
+  };
+
+  it('keeps the safe counters of the completeness manifest', () => {
+    const manifest = {
+      partCount: 7,
+      textLength: 18452,
+      expandablesFound: 6,
+      expandablesOpened: 5,
+      framesIncluded: 1,
+      framesFound: 2,
+      framesRead: 1,
+      linkedPages: 0,
+      truncated: false,
+    };
+    const parsed = EvidenceSchema.parse({ ...doc, manifest }) as { manifest?: Record<string, unknown> };
+    expect(parsed.manifest).toEqual(manifest);
+  });
+
+  it('a partial manifest is valid; a document without manifest stays valid', () => {
+    expect(EvidenceSchema.safeParse({ ...doc, manifest: { textLength: 10 } }).success).toBe(true);
+    expect(EvidenceSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it('the manifest holds numbers and one flag only (no text, no values)', () => {
+    expect(EvidenceSchema.safeParse({ ...doc, manifest: { textLength: 'long' } }).success).toBe(false);
   });
 });

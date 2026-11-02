@@ -1,5 +1,5 @@
 /**
- * L2 end-to-end: scan() with the real HTTP and TLS collectors and the http module checks only. The browser collector
+ * end-to-end: scan with the real HTTP and TLS collectors and the http module checks only. The browser collector
  * is replaced by a spy: http checks must not start a browser (and this test stays independent of the browser stack).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -34,7 +34,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe('scan() with HDR-01, TLS-01, TLS-02', () => {
+describe('scan with HDR-01, TLS-01, TLS-02', () => {
   it('good site: complete, only info findings, exit 0 even with --fail-on warning', async () => {
     server.reset();
     const result = await scan({

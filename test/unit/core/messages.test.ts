@@ -55,7 +55,7 @@ describe('diagnostic texts use the params the collectors send (browser-collector
       });
       expect(m.body).toContain('metadata, private');
       expect(m.body).toContain('3');
-      // `unresolved` / `nonPublic` / `lookupCodes` tell a name that did not resolve from a private address (G52);
+      // `unresolved` / `nonPublic` / `lookupCodes` tell a name that did not resolve from a private address ;
       // `recovered` counts the refused navigations that a retry loaded afterwards (absent: none).
       expect(
         templateParams(texts.messages['diagnostic.SCAN-PRIVATE-REQUEST-BLOCKED']?.body ?? '').sort(),

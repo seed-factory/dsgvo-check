@@ -1,10 +1,10 @@
 /**
- * L2: who set a cookie, in a real Chromium against local hosts (canary2 groups G34 and G35).
- * - G34: three origins set a cookie named `uid` (two trackers by `Set-Cookie`, the page by script): each jar record
- *   keeps its own setter instead of the first HTTP setter of that name.
- * - G35: a script of a third-party host writes a cookie that never reaches the jar. On the first-party page the record
- *   belongs to the target (`firstParty`, domain = target host), inside a third-party frame to the host of that frame;
- *   `setterHost` is the script host in both cases.
+ * who set a cookie, in a real Chromium against local hosts ( groups and ).
+ * - : three origins set a cookie named `uid` (two trackers by `Set-Cookie`, the page by script): each jar record
+ * keeps its own setter instead of the first HTTP setter of that name.
+ * - : a script of a third-party host writes a cookie that never reaches the jar. On the first-party page the record
+ * belongs to the target (`firstParty`, domain = target host), inside a third-party frame to the host of that frame;
+ * `setterHost` is the script host in both cases.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
@@ -24,7 +24,7 @@ const SCRIPT = [
   "document.cookie = 'tmp_probe=; path=/; max-age=0';",
 ].join('\n');
 
-describe('setter attribution of cookies (G34, G35)', () => {
+describe('setter attribution of cookies', () => {
   let server: FixtureServer;
   let run: CollectRun;
 
@@ -77,7 +77,7 @@ describe('setter attribution of cookies (G34, G35)', () => {
 
   const cookies = () => run.result.sections.browser?.phases[0]?.cookies ?? [];
 
-  it('G34: every `uid` record keeps its own setter', () => {
+  it('every `uid` record keeps its own setter', () => {
     const uid = (domain: string) => cookies().find((c) => c.name === 'uid' && c.domain === domain);
     expect(uid('www.example.test')).toMatchObject({
       state: 'accepted',
@@ -99,7 +99,7 @@ describe('setter attribution of cookies (G34, G35)', () => {
     });
   });
 
-  it('G35: an attempted script cookie belongs to the document of its frame, the script host is only the setter', () => {
+  it('an attempted script cookie belongs to the document of its frame, the script host is only the setter', () => {
     const probes = cookies()
       .filter((c) => c.name === 'tmp_probe')
       .map((c) => ({

@@ -1,6 +1,6 @@
 /**
  * Network recorder for one phase: subscribes to context events BEFORE the first navigation, builds redacted
- * `RequestRecord`s (D05, D20, 5.3), tracks activity for the quiet algorithm and keeps identifier values in memory
+ * `RequestRecord`s (5.3), tracks activity for the quiet algorithm and keeps identifier values in memory
  * only for the stored-identifier correlation (cleared with `dispose()`).
  */
 import { isIP } from 'node:net';
@@ -28,7 +28,7 @@ export interface RequestCounter {
 /**
  * A response that sent `Set-Cookie` for one cookie (name, domain, path, partition; no value). Domain, path and
  * partition decide which jar cookie it can be: a response of another registrable domain cannot set a cookie of this
- * one (G34). A `Domain=` the response host may not set (RFC 6265 5.3) is not kept: the origin is `rejected`.
+ * one. A `Domain=` the response host may not set (RFC 6265 5.3) is not kept: the origin is `rejected`.
  */
 export interface SetCookieOrigin {
   name: string;
@@ -46,14 +46,14 @@ export interface SetCookieOrigin {
   partitioned: boolean;
   /**
    * The `Domain=` of the response was one `host` may not set: `host` does not domain-match it, or it is a public
-   * suffix (S-requests-2). The browser ignores such a cookie entirely, so this origin is no setter of any jar cookie
+   * suffix. The browser ignores such a cookie entirely, so this origin is no setter of any jar cookie
    * and no write after the click of one; it only stands for the attempt of `host` (`attempted`, domain = `host`).
    */
   rejected?: true;
   /** Monotonic ms (performance.now) when the response arrived. */
   at: number;
   /**
-   * A response to a request that started after the B/C click set this same key (R06): the cookie was written
+   * A response to a request that started after the B/C click set this same key: the cookie was written
    * again after the click. Set on the first origin of the key even when that response came before the click, so the
    * setter attribution (first writer) stays unchanged.
    */
@@ -140,7 +140,7 @@ export function settleWithin<T>(p: Promise<T>, ms: number, signal?: AbortSignal)
   });
 }
 
-/** Options of the recorder that bound waits on response metadata (G49). */
+/** Options of the recorder that bound waits on response metadata. */
 export interface RecorderOptions {
   /** Budget per response for `headersArray()`, `serverAddr()` and `allHeaders()` together. Default 5 s. */
   metaTimeoutMs?: number;
@@ -201,11 +201,11 @@ export class NetworkRecorder implements ActivitySource {
   private mainFrame: object | null = null;
   private readonly pending = new Set<Promise<void>>();
   private readonly guardBlocked = new Set<string>();
-  /** Monotonic start (performance.now) of every record, in memory only: re-timing at the actual click (FC-03). */
+  /** Monotonic start (performance.now) of every record, in memory only: re-timing at the actual click. */
   private readonly starts = new Map<RequestRecord, number>();
   /**
    * `Set-Cookie` origins written by the response of a request that was not yet known to be after the click when the
-   * response was handled: the late `markClickAt` flags them too (S-requests-1). Keys only, no values.
+   * response was handled: the late `markClickAt` flags them too. Keys only, no values.
    */
   private readonly originsOfRequest = new Map<RequestRecord, SetCookieOrigin[]>();
   private seq = 0;
@@ -287,7 +287,7 @@ export class NetworkRecorder implements ActivitySource {
 
   /**
    * The navigation ended on `finalUrl` (HTTP redirect, JS/meta redirect): its requests belong to the page as shown,
-   * the same URL the plan, the CMP facts and the other phases use for it (FC-02).
+   * the same URL the plan, the CMP facts and the other phases use for it.
    */
   rebindNavigation(finalUrl: string): void {
     if (finalUrl === this.pageUrl) return;
@@ -301,7 +301,7 @@ export class NetworkRecorder implements ActivitySource {
   /**
    * The B/C click happened at `at` (performance.now domain): requests started at or after it are `afterClick` and
    * timed from it — also those recorded while the adapter call was still returning; earlier ones keep their
-   * navigation timing (FC-03). Only called for a click that really happened.
+   * navigation timing. Only called for a click that really happened.
    */
   markClickAt(at: number): void {
     const actionId = `${this.phase}-a${++this.actionSeq}`;
@@ -311,7 +311,7 @@ export class NetworkRecorder implements ActivitySource {
       rec.tRef = 'click';
       rec.tStartMs = Math.max(0, Math.round(start - at));
       rec.actionId = actionId;
-      // The cookies this request's response wrote count as written after the click as well (R06, S-requests-1).
+      // The cookies this request's response wrote count as written after the click as well.
       for (const o of this.originsOfRequest.get(rec) ?? []) o.afterClick = true;
       this.originsOfRequest.delete(rec);
     }
@@ -611,7 +611,7 @@ export class NetworkRecorder implements ActivitySource {
     }
     rec.failureText = truncate(failure, 200);
     if (rec.result?.kind === 'response') {
-      // The response arrived; only reading the body failed. Delivery and result stay as observed (S-17), the body
+      // The response arrived; only reading the body failed. Delivery and result stay as observed, the body
       // error is kept in `failureText` and the legacy `state`.
       rec.state = 'failed';
       return;

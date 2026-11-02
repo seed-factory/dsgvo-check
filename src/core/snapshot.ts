@@ -1,5 +1,5 @@
 /**
- * Snapshot = raw redacted facts of one scan (D05). Collectors fill sections, `derive` adds `derived`,
+ * Snapshot = raw redacted facts of one scan. Collectors fill sections, `derive` adds `derived`,
  * checks read only the sections listed in `requires`. Saved with `--save-snapshot`, replayed with `--from-snapshot`.
  */
 
@@ -16,9 +16,9 @@ export type * from './snapshot-common.ts';
 export const SNAPSHOT_VERSION = 1;
 
 export interface TargetInfo {
-  /** URL as given by the user (credentials never allowed). In the snapshot and report: redacted (D20). */
+  /** URL as given by the user (credentials never allowed). In the snapshot and report: redacted. */
   input: string;
-  /** Normalized URL (no fragment). In the snapshot and report: query values redacted like any URL (D20). */
+  /** Normalized URL (no fragment). In the snapshot and report: query values redacted like any URL. */
   url: string;
   scheme: 'http' | 'https';
   /** Host in URL form (`URL.hostname`, IPv6 literals in brackets); `bareHost()` for DNS and sockets. */
@@ -87,7 +87,7 @@ const optionName = (word: string): string => {
 };
 
 /**
- * The trust store this process uses, as Node resolves it (S-net-3, G46): `NODE_USE_SYSTEM_CA=1` is the starting
+ * The trust store this process uses, as Node resolves it: `NODE_USE_SYSTEM_CA=1` is the starting
  * value; then the options are applied in the order Node applies them, `NODE_OPTIONS` first and the command line
  * after it, so the last of `--use-system-ca` / `--no-use-system-ca` wins and the command line beats `NODE_OPTIONS`.
  * `system` when system roots are in use, else the bundled roots. Pure over its inputs.

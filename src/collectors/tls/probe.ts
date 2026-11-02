@@ -1,10 +1,10 @@
 /**
- * One TLS handshake with node:tls (owner: M4), shared by the TLS collector and the HTTP collector (final host of
- * a redirect to another domain, S-19): SNI = host (none for IP targets), `rejectUnauthorized: false`, default
+ * One TLS handshake with node:tls, shared by the TLS collector and the HTTP collector (final host of
+ * a redirect to another domain): SNI = host (none for IP targets), `rejectUnauthorized: false`, default
  * Node trust store (Mozilla bundle) or the test CA. Own name check via `X509Certificate.checkHost` / `checkIP`:
  * Node does not check the name when chain verification already failed (e.g. self-signed). Chain from
  * `getPeerCertificate(true)` (Node appends trusted issuers from its store), `chainComplete` = the walk ends at a
- * self-signed certificate. SSRF guard as in the HTTP client; `--proxy` → HTTP CONNECT / SOCKS5 tunnel (peer
+ * self-signed certificate. SSRF guard as in the HTTP client; `--proxy` → HTTP CONNECT tunnel (peer
  * address unknown).
  */
 import { X509Certificate } from 'node:crypto';

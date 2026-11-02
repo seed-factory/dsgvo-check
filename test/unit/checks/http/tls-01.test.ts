@@ -208,12 +208,12 @@ describe('TLS-01 http → https', () => {
     expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual([]);
   });
 
-  it('FT-19: a cut body with ≤ 1 KiB read is not a stub (its real size is unknown)', () => {
+  it('a cut body with ≤ 1 KiB read is not a stub (its real size is unknown)', () => {
     const http = chain('http://www.example.de/', [{ status: 200, bodyBytes: 512, bodyTruncated: true }]);
     expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual(['no-redirect']);
   });
 
-  describe('S-18: a chain that reaches https and returns to http is evaluated on its final http page', () => {
+  describe('a chain that reaches https and returns to http is evaluated on its final http page', () => {
     const downgrade = (last: Partial<HttpHop>) =>
       chain('http://www.example.de/', [
         { status: 301, location: 'https://www.example.de/' },
@@ -307,7 +307,7 @@ describe('TLS-01 http → https', () => {
   });
 });
 
-describe('TLS-01 subject by host role, independent of how the target was typed (S-37, 5.4)', () => {
+describe('TLS-01 subject by host role, independent of how the target was typed (5.4)', () => {
   const noRedirect = (host: string, hv: 'target' | 'www' | 'apex') =>
     chain(`http://${host}/`, [{ status: 200, bodyBytes: BIG, bodyKind: 'html' }], { hostVariant: hv });
 

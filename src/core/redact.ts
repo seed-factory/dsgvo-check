@@ -1,5 +1,5 @@
 /**
- * Redaction of free text that a collector copies into the snapshot or that a check puts into evidence (D20, AGENTS
+ * Redaction of free text that a collector copies into the snapshot or that a check puts into evidence (AGENTS
  * rule 2): link text, accessible names, titles, parts of legal documents, DNS TXT records. Pure; no I/O.
  *
  * - `mailto:local@domain` → `mailto:[redacted]@domain` (headers dropped, one prefix per recipient kept);
@@ -27,7 +27,7 @@ export { maskEmails, maskMailto };
  * A quoted address that sits right behind a token, without a blank (`https://x.test/p?id="alice"@example.test`,
  * `mailto:a@x.test"b"@y.test`): the `"` ends the token, but the mask of the bare address eats that `"`, so on the
  * second pass the address would join the token and change it. The address belongs to the token from the start
- * (R-privacy-2). Each repetition starts with `"` and its tail cannot contain one: no ambiguity, at most 64 characters
+ *. Each repetition starts with `"` and its tail cannot contain one: no ambiguity, at most 64 characters
  * looked at per attempt.
  */
 const quotedTail = (char: string) => `(?:${QUOTED_LOCAL}@${char}+)*`;
@@ -39,17 +39,17 @@ const mailtoChar = String.raw`(?:(?!https?:\/\/)[^\s<>";])`;
 /**
  * An http(s) URL, a `mailto:` value (the address may follow whitespace). Tokens end at whitespace, `<`, `>` and `"`; a
  * `mailto:` value also ends at `;`, which separates the tags of a DMARC record (`rua=mailto:a@x;ruf=mailto:b@y;pct=100`):
- * the tags after the address must survive (canary2 G02).
+ * the tags after the address must survive.
  *
  * An apostrophe (and a backtick) does not end a token: `'` is a legal character of a URL (`/o'brien`, `?name=l'a`), and
- * what follows it must still be redacted (S-privacy-3). A quote that really closes the text (`'https://…'`) is cut off
+ * what follows it must still be redacted. A quote that really closes the text (`'https://…'`) is cut off
  * as trailing punctuation by `splitTrailingPunctuation`. In doubt more is redacted: two URLs that are joined by quotes
  * and a comma without a blank (`'https://a.test/x','https://b.test/y?t=1'`) are one token, and the query of it goes.
  *
  * A `mailto:` value is a list of recipients or a quoted address (`mailto: "alice smith"@example.test`). It ends in front
  * of a URL: a URL after `mailto:` and a blank is no recipient but a URL in prose (`mailto: https://shop.example.test/p;ord=…`),
  * and one that is glued to an address (`mailto:a@x.test#https://x.test/p;ord=…`) is a URL of its own. The URL token
- * has its own end, not the `;` of a DMARC tag (R-privacy-3).
+ * has its own end, not the `;` of a DMARC tag.
  */
 const URL_TOKEN = String.raw`https?:\/\/${urlChar}+${quotedTail(urlChar)}`;
 const MAILTO_TOKEN = String.raw`mailto:\s*(?:${QUOTED_LOCAL}@${mailtoChar}+|${mailtoChar}+)${quotedTail(mailtoChar)}`;
@@ -63,7 +63,7 @@ const TRAILING_PUNCTUATION = /[.,;:!?)\]}»«“”„‘’>'`]/;
  * Split trailing sentence punctuation off a token; closing brackets stay when the token has the opener. Linear: the
  * brackets are counted once, and cutting a closing bracket off the tail lowers only its own counter (openers are not
  * punctuation, so their number does not change while the tail shrinks). A run of 400 000 brackets must not hold the
- * thread (review R10).
+ * thread.
  */
 function splitTrailingPunctuation(token: string): { core: string; tail: string } {
   const count = new Map<string, number>();
@@ -130,9 +130,9 @@ function redactToken(token: string, allowlist: ReadonlySet<string>): string {
   if (mail) {
     const [, space = '', body = ''] = mail;
     // "mailto: Kontakt aufnehmen" is prose: after whitespace only a token with an address counts. An encoded address
-    // ("mailto: %61lice%40example.test") counts as well (S-privacy-4). The prose itself stays, but whatever token sits
+    // ("mailto: %61lice%40example.test") counts as well. The prose itself stays, but whatever token sits
     // inside it does not (`mailto: x,mailto:y`); a URL after the blank is a token of its own, see `MAILTO_TOKEN`
-    // (R-privacy-3). The body is shorter than the token and has no blank and no "@": the recursion ends.
+    //. The body is shorter than the token and has no blank and no "@": the recursion ends.
     if (space !== '' && !hasAddress(body)) return `mailto:${space}${redactText(body, allowlist)}`;
     const { core, tail } = splitTrailingPunctuation(body);
     return `${maskMailto(core)}${tail}`;

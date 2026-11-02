@@ -1,6 +1,7 @@
 # Ресёрч: не-браузерные проверки на Node.js/TypeScript (HTTP · TLS · DNS/Mail · файлы · версии · вежливость)
 
-**Проект:** `dsgvo-check` (TypeScript + Playwright, Apache-2.0) · **Дата:** 2026-10-30 · **Автор панели:** Claude Fable 5.1 · **Статус:** черновик для консенсус-панели (Opus / Fable / Codex). Код не пишем; фрагменты ниже — иллюстрации.
+
+**Проект:** `dsgvo-check` (TypeScript + Playwright, Apache-2.0) · **Дата:** 2026-10-30 · **Статус:** исследовательский черновик. Фрагменты ниже — иллюстрации.
 
 Охват: модули `http`, `dns`, частично `http + browser` из каталога: TLS-01/02/04, HDR-01/02, MAIL-01/02/03, DNS-01, FILE-01, ADMIN-01, VULN-01/02, SEC-01, LEGAL-02. Всё, что не удалось подтвердить первоисточником, помечено **⚠ проверить**. Факты про Node/TLS дополнительно проверены локальным экспериментом (Node 24.21.0, см. §2.2).
 
@@ -79,7 +80,7 @@
 | Заголовок | Observatory (модификатор) | OWASP `headers_add.json` (18.10.2026) | Наш уровень при отсутствии | Примечания |
 |---|---|---|---|---|
 | Strict-Transport-Security | −20 / −10 / invalid −20 | `max-age=63072000; includeSubDomains` | **warning** | см. §1.2 |
-| Content-Security-Policy | не реализован −25; `unsafe-inline` в script −20; `unsafe-eval` −10; только report-only −25 | `default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests` | **info** при отсутствии; `info` при `unsafe-inline`/`unsafe-eval` | Для WordPress/TYPO3-сайтов строгий CSP нереалистичен; Observatory считает самым тяжёлым, но для DSGVO-тулзы это T3. Спорно — вынести на панель |
+| Content-Security-Policy | не реализован −25; `unsafe-inline` в script −20; `unsafe-eval` −10; только report-only −25 | `default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests` | **info** при отсутствии; `info` при `unsafe-inline`/`unsafe-eval` | Для WordPress/TYPO3-сайтов строгий CSP нереалистичен; Observatory считает самым тяжёлым, но для DSGVO-тулзы это T3. Уровень требует отдельного решения |
 | X-Frame-Options / CSP `frame-ancestors` | нет −20; через CSP +5 | `X-Frame-Options: deny` | **warning** | Засчитывать любой из двух; `ALLOW-FROM` устарел → info |
 | X-Content-Type-Options | нет −5 | `nosniff` | info | дёшево исправить |
 | Referrer-Policy | нет 0; `unsafe-url`/`no-referrer-when-downgrade`/`origin-when-cross-origin` −5; `no-referrer`/`same-origin`/`strict-origin*` +5 | `no-referrer` | нет → **info**; небезопасное значение → **warning** | Дефолт браузеров `strict-origin-when-cross-origin`; `unsafe-url` = утечка полного URL третьим сторонам — DSGVO-релевантно |
@@ -556,13 +557,13 @@ const agent = new Agent({ connect: { timeout: 5_000 }, headersTimeout: 10_000, b
 
 ## Открытые вопросы
 
-1. **Уровень CSP в HDR-01**: Observatory даёт −25 (самый тяжёлый штраф), я предлагаю `info` для WordPress-реальности. Панели решить: единый уровень или адаптивный (строже для не-CMS сайтов).
+1. **Уровень CSP в HDR-01**: Observatory даёт −25 (самый тяжёлый штраф), я предлагаю `info` для WordPress-реальности. Нужно решить: единый уровень или адаптивный (строже для не-CMS сайтов).
 2. **TLS-01 critical vs warning** при «http отдаёт 200, https исправен» — нужна ли эскалация по наличию формы (браузерный модуль)?
 3. **TLS-04: Node-клиент с SECLEVEL=0 или сырой ClientHello?** Node-вариант проверен и прост, но слеп к RC4-only и зависит от сборки OpenSSL; сырой — независим, но ~150 строк своего TLS-парсинга.
 4. **DKIM-селекторы немецких хостеров** (All-Inkl, Hetzner, Strato, mailbox.org, CleverReach, rapidmail, Mailjet) — подтвердить по `DKIM-Signature` реальных писем / 10 сайтов заказчика до этапа 3.
 5. **DoH по умолчанию выключен** — согласны ли все, что DNS-01 (AD-флаг) по умолчанию опирается на системный резолвер и часто даст «nicht prüfbar»?
 6. **MAIL-* при Null MX / отсутствии MX** — принять матрицу §3.6?
-7. **FILE-01: список путей** — панель может сократить/расширить; предел «≤ 30 путей» и неотключаемое усечение 4 KiB — принципиальны.
+7. **FILE-01: список путей** — список можно сократить или расширить; предел «≤ 30 путей» и неотключаемое усечение 4 KiB — принципиальны.
 8. **ADMIN-01 формулировка про имена сотрудников** (Datenminimierung) — зона заказчика.
 9. **KEV-правило = critical** на jQuery < 3.5.0 даёт много `critical` — оставить как в каталоге или ввести `warning` при отсутствии других признаков эксплуатируемости?
 10. **Версия Playwright ↔ Node 26** — проверить `engines` перед фиксацией CI-матрицы; при проблемах основной остаётся Node 24.

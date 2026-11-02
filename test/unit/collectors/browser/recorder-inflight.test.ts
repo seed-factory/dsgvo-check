@@ -1,5 +1,5 @@
 /**
- * L1: the quiet decision counts only requests of the current navigation and document (recorder `inflight()`). Requests
+ * the quiet decision counts only requests of the current navigation and document (recorder `inflight`). Requests
  * of an earlier page that never end (no response, no `requestfinished` / `requestfailed`) must not hold the next page
  * of the phase until its HARD_CAP; they stay in the snapshot records unchanged. Fake Playwright objects, no browser.
  */
@@ -57,7 +57,7 @@ function setup() {
 const URL_1 = 'https://www.example.test/';
 const URL_2 = 'https://www.example.test/impressum/';
 
-describe('NetworkRecorder.inflight(): the quiet decision looks at the current navigation only', () => {
+describe('NetworkRecorder.inflight: the quiet decision looks at the current navigation only', () => {
   it('requests of the previous page that never end do not count on the next page', () => {
     const { ctx, rec, main } = setup();
     rec.beginNavigation(URL_1);

@@ -1,5 +1,5 @@
 /**
- * L2 with the real browser collector and the browser checks: the canary fixes G06 and G07 must hold end to end (the
+ * with the real browser collector and the browser checks: the canary fixes and must hold end to end (the
  * collector waits for the banner, measures the first screen, core decides the click, CONSENT-04 judges the facts).
  * Hand-written shops on the Cookiebot simulator (test/fixture-server/sites/cmp/shops).
  */
@@ -46,7 +46,7 @@ async function run(host: string) {
 }
 
 describe('collector: first-screen measurement of the canary findings', () => {
-  it('G07: dialog slides in 1 s after the API is ready (1.2 s transition) → reject measured, clicked, no CONSENT-04 finding', async () => {
+  it('dialog slides in 1 s after the API is ready (1.2 s transition) → reject measured, clicked, no CONSENT-04 finding', async () => {
     const { result, report, bPhase, first } = await run('www.animated-shop.test');
     expect(first?.firstLayer.bannerVisible).toBe(true);
     expect(first?.firstLayer.geometryUnsettled ?? false).toBe(false);
@@ -59,7 +59,7 @@ describe('collector: first-screen measurement of the canary findings', () => {
     expect(report.checks.find((c) => c.id === 'CONSENT-04')?.status).toBe('completed');
   });
 
-  it('G06: 45 hidden vendor toggles before the visible buttons → reject and accept are clicked, no nonblocking-no-reject', async () => {
+  it('45 hidden vendor toggles before the visible buttons → reject and accept are clicked, no nonblocking-no-reject', async () => {
     const { result, report, bPhase } = await run('www.vendors-shop.test');
     expect(result.snapshot?.plan.browser?.click?.B).toMatchObject({
       action: 'reject',

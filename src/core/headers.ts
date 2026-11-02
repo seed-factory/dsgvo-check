@@ -1,6 +1,6 @@
 /**
- * Response headers as stored in snapshots and evidence (D20, 5.3 `header`): one normalizer for the HTTP collector and
- * the browser (FP-08). Lower-case names; no `Set-Cookie` (its names are recorded separately); URL-bearing headers
+ * Response headers as stored in snapshots and evidence: one normalizer for the HTTP collector and
+ * the browser. Lower-case names; no `Set-Cookie` (its names are recorded separately); URL-bearing headers
  * resolved against the response URL and sanitized; values only for security and technical headers the evaluation
  * reads, every other header by name only (`[redacted]`), e.g. request ids of CDNs (`x-amz-cf-id`, `cf-ray`,
  * `traceparent`). Live values that are needed during collection are read from the raw headers in memory.
@@ -104,7 +104,7 @@ function sanitizeUrlHeader(name: string, value: string, base: string, sanitize: 
     : refresh.delay;
 }
 
-/** CSP headers: the facts the checks need are derived from the complete value (G42). */
+/** CSP headers: the facts the checks need are derived from the complete value. */
 const CSP_HEADERS: ReadonlySet<string> = new Set([
   'content-security-policy',
   'content-security-policy-report-only',
@@ -131,7 +131,7 @@ const CSP_KEYWORDS: ReadonlySet<string> = new Set([
 const SOURCE_HOST_RE = /^(?:\*|(?:\*\.)?[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.?|\[[0-9a-f:.]+\])$/iu;
 
 /**
- * One CSP source reduced to what the facts need (S-net-2): a keyword, `*`, a scheme (`https:`), or
+ * One CSP source reduced to what the facts need: a keyword, `*`, a scheme (`https:`), or
  * `[scheme://]host[:port]`. User info, e-mail addresses, path, query and fragment of a host-source are dropped, a
  * host that is not a host (`alice%40mail.invalid`) and every other token become `[redacted]`. A source may come
  * without a scheme (`portal.invalid/users/alice%40mail.invalid`), which the URL sanitizer of the header values does
@@ -179,7 +179,7 @@ function sanitizeSchemelessSources(value: string): string {
  * `frame-ancestors` of a CSP header value. The value may hold several comma-joined policies; the directive restricts
  * framing when one policy has it without a wildcard source (`frame-ancestors * https://a.example` allows everybody).
  * An empty list restricts like `'none'`. `present` and `restricts` are decided on the sources as written; the stored
- * `sources` are reduced to scheme, host and port (S-net-2).
+ * `sources` are reduced to scheme, host and port.
  */
 export function cspFrameAncestors(value: string): FrameAncestorsFact {
   let present = false;
@@ -200,11 +200,6 @@ export function cspFrameAncestors(value: string): FrameAncestorsFact {
     }
   }
   return { present, restricts, sources };
-}
-
-/** One stored header value: URL headers sanitized, allowlisted values kept, everything else `[redacted]`. */
-export function storedHeaderValue(name: string, value: string, base: string, sanitize: UrlSanitizer): string {
-  return storedHeaderRecord(name, value, base, sanitize).value;
 }
 
 /**
@@ -233,7 +228,7 @@ export function storedHeaderRecord(
   if (csp) {
     const fact = cspFrameAncestors(value);
     // A complete value of exactly the limit carries the fact too: without it a record at the limit cannot be told
-    // from a cut value of an older snapshot, and the check would call the complete header undecided (R12).
+    // from a cut value of an older snapshot, and the check would call the complete header undecided.
     if (truncated || fact.present || full.length >= MAX_HEADER_VALUE) record.frameAncestors = fact;
   }
   return record;

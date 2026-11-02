@@ -3,8 +3,8 @@
  * function bodies (they are serialized into the page). Reads only; never clicks, never changes the DOM.
  *
  * Banner mode: container from vendor selectors (open shadow DOM included). Heuristic mode: best fixed/modal
- * candidate with consent wording (D12/5.5: facts only, the verdict stays `info`).
- * Measured before any action (D13): buttons (role, accessible name, box, rendered, in viewport, enabled, hit test,
+ * candidate with consent wording (5.5: facts only, the verdict stays `info`).
+ * Measured before any action: buttons (role, accessible name, box, rendered, in viewport, enabled, hit test,
  * contrast), blocking (overlay via grid hit test, scroll lock on html/body, inert, coveredRatio).
  */
 import type { Box, Viewport } from '../../core/snapshot-common.ts';
@@ -33,7 +33,7 @@ export interface ProbeArgs {
   controlPhrases?: string[];
   /**
    * Normalized phrases (same form) of the accept and reject classes only. A candidate inside a `header`/`footer`
-   * (or role banner/contentinfo) landmark counts as a banner only when it has a control with one of them (G18):
+   * (or role banner/contentinfo) landmark counts as a banner only when it has a control with one of them:
    * a footer strip with a "Cookie-Einstellungen" link offers no choice. Empty → such a candidate is page chrome.
    */
   choicePhrases?: string[];
@@ -89,7 +89,7 @@ export interface ProbeResult {
   /**
    * Links outside the banner whose centre lies in the first screen under the banner (or its overlay), by hit test,
    * whatever they are called. The probe holds no legal wording: which of them are Impressum or privacy links, and
-   * which links of the banner are, is decided on the Node side with the lexicon of data/legal (S-cmp-2).
+   * which links of the banner are, is decided on the Node side with the lexicon of data/legal.
    */
   coveredLinks: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
   heuristic: { score: number; signals: string[] } | null;
@@ -135,7 +135,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     }
   };
 
-  // ---------------------------------------------------------------- shadow roots and deep queries
   const shadowRoots: DShadowRoot[] = [];
   const collectShadows = (root: DQueryRoot) => {
     const all = root.querySelectorAll('*');
@@ -173,7 +172,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return out;
   };
 
-  // ---------------------------------------------------------------- geometry and visibility
   const rectOf = (el: DElement): Box => {
     const r = el.getBoundingClientRect();
     return {
@@ -221,7 +219,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return false;
   };
 
-  // ---------------------------------------------------------------- accessible name and role (simplified)
   const textOf = (node: DNode, includeHidden: boolean, depth = 0): string => {
     if (depth > 40) return '';
     let out = '';
@@ -292,7 +289,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return 'generic';
   };
 
-  // ---------------------------------------------------------------- lexicon controls and page chrome
   const tokensOf = (label: string): string[] =>
     label
       .normalize('NFKC')
@@ -324,7 +320,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   };
   /** The accessible name contains an accept/reject/settings/save phrase of the lexicon. */
   const isLexiconControl = (el: DElement): boolean => nameMatches(el, phraseMatchers);
-  /** The accessible name contains an accept or reject phrase of the lexicon (a real choice, G18). */
+  /** The accessible name contains an accept or reject phrase of the lexicon (a real choice). */
   const isChoiceControl = (el: DElement): boolean => nameMatches(el, choiceMatchers);
   const inNavigation = (el: DElement, stop: DElement | null): boolean => {
     for (let c: DElement | null = el, i = 0; c && c !== stop && i < 60; i++, c = parentEl(c)) {
@@ -338,7 +334,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
    * Page chrome. `navigation`: the element or an ancestor is a navigation landmark (nav, aside, role
    * navigation/complementary), always chrome. `section`: the element itself is a header/footer (role banner/
    * contentinfo), chrome for a non-dialog candidate. `inside-section`: an ancestor is one; a real banner may sit in a
-   * footer or header partial, so the caller decides by whether the candidate offers an accept/reject control (G18).
+   * footer or header partial, so the caller decides by whether the candidate offers an accept/reject control.
    * A true dialog may sit in a header or footer.
    */
   const pageChromeOf = (el: DElement): 'navigation' | 'section' | 'inside-section' | null => {
@@ -375,7 +371,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return false;
   };
 
-  // ---------------------------------------------------------------- contrast (WCAG 2.x)
   const parseColor = (c: string): [number, number, number, number] | null => {
     const m = /rgba?\(([^)]+)\)/.exec(c);
     if (!m?.[1]) return null;
@@ -424,11 +419,10 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return Math.round(ratio * 100) / 100;
   };
 
-  // ---------------------------------------------------------------- unique selector for clicking (verified later by Playwright count())
   const esc = (v: string): string => (w.CSS?.escape ? w.CSS.escape(v) : v.replace(/[^\w-]/g, '\\$&'));
   const uniqueIn = (el: DElement, root: DQueryRoot): string | null => {
     // A selector is good when it finds exactly this element: one match that is `el` itself. "One match" alone would
-    // accept a selector that points at a neighbour (R-cmp-1).
+    // accept a selector that points at a neighbour.
     const isOnly = (sel: string): boolean => {
       try {
         const found = root.querySelectorAll(sel);
@@ -447,7 +441,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     const tag = el.tagName.toLowerCase();
     const tries: string[] = [];
     // A value with an "@" may be an address (an aria-label "Fragen an name@firma.de", a class "kontakt-name@firma.de"):
-    // no selector is built from it, the selector is stored in the snapshot (G01, S-privacy-1). A class token with an
+    // no selector is built from it, the selector is stored in the snapshot. A class token with an
     // address is left out, the other tokens may still make the selector unique; otherwise the structural path below
     // is used.
     const plain = (v: string): boolean => !v.includes('@');
@@ -466,7 +460,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         tries.push(`${tag}[${attr}="${v}"]`);
     }
     // The class attribute is split by the whitespace of HTML (space, tab, LF, FF, CR), not by JavaScript `\s`: a token
-    // with a no-break space and an address is one token for the browser and is dropped as a whole (R-cmp-1).
+    // with a no-break space and an address is one token for the browser and is dropped as a whole.
     const cls = (el.getAttribute('class') ?? '')
       .split(/[ \t\n\f\r]+/)
       .filter(Boolean)
@@ -511,7 +505,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return chain.join(' >> ');
   };
 
-  // ---------------------------------------------------------------- container choice
   let container: DElement | null = null;
   let containerCount = 0;
   let containerSelector: string | null = null;
@@ -641,7 +634,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       containerSelector: null,
       textLength: 0,
       purAbo: false,
-      // In a child frame the wording of its body is still a hint that the frame is a consent dialog (G09).
+      // In a child frame the wording of its body is still a hint that the frame is a consent dialog.
       keywordHits:
         args.frameMode && doc.body && isRendered(doc.body)
           ? keywordHitsOf(clean(textOf(doc.body, false), 5000).toLowerCase())
@@ -674,7 +667,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     }
   });
 
-  // ---------------------------------------------------------------- buttons
   const candidates = [...new Set(deepWithin(root, INTERACTIVE))];
   const candidateSet = new Set(candidates);
   const outermost = candidates.filter((el) => {
@@ -686,7 +678,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return true;
   });
   // Keep the controls of the first layer when there are more than `maxButtons`: first those with a CMP markup role,
-  // then every rendered control, then the rest (hidden second-layer toggles), each group in DOM order (G06).
+  // then every rendered control, then the rest (hidden second-layer toggles), each group in DOM order.
   const RANK_POOL = 2000;
   const ranked = outermost.slice(0, RANK_POOL).map((el, order) => {
     const vendor = args.vendorRoles.find((v) => safeMatches(el, v.selector)) ?? null;
@@ -737,7 +729,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const visible = rootRendered || buttons.some((b) => b.rendered);
   const containerFixed = visible && isFixed(root);
 
-  // ---------------------------------------------------------------- blocking
   const method: string[] = [];
   let overlay = false;
   let inert = false;
@@ -847,8 +838,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   }
 
   // Links of the page (outside the banner) that are visible at the first screen and lie under the banner or its
-  // backdrop: a hit test at the centre of each link, not the geometry of the container (G18). Which of them are legal
-  // links is not decided here (S-cmp-2).
+  // backdrop: a hit test at the centre of each link, not the geometry of the container. Which of them are legal
+  // links is not decided here.
   const coveredLinks: ProbeResult['coveredLinks'] = [];
   // At most this many are reported (a full-screen backdrop covers every link of the first screen). Kept inside the
   // function: the probe is serialized into the page and sees no module scope.

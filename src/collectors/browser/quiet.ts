@@ -1,5 +1,5 @@
 /**
- * "Quiet" instead of `networkidle` (D09, browser research §1.4): after MIN_DWELL, stop once no request has started
+ * "Quiet" instead of `networkidle` (browser research §1.4): after MIN_DWELL, stop once no request has started
  * for the quiet window and at most `maxInflight` requests are still open; give up at HARD_CAP.
  */
 import { sleep } from './util.ts';

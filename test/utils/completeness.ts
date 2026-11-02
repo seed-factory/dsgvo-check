@@ -1,6 +1,6 @@
 /**
- * Registry completeness rules (D05, BRIEF "Тесты обязательны") as a function returning human-readable problems,
- * so the L0 test shows every gap at once and the rules themselves are unit-tested.
+ * Registry completeness rules (BRIEF "Тесты обязательны") as a function returning human-readable problems,
+ * so the test shows every gap at once and the rules themselves are unit-tested.
  */
 import type { AnyCheck } from '../../src/core/check.ts';
 import type { CrmMapping, Ruleset, Texts } from '../../src/core/data.ts';
@@ -114,11 +114,7 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
   return problems;
 }
 
-/**
- * Declared variants that no fixture expects (`$expect.variants`), as `checkId.variant` (FT-08 suggestion). Fixtures
- * per ID stay the rule of the BRIEF (S-38 rejected a per-variant rule); this list only makes the gaps visible, so a
- * new variant without any fixture is a deliberate decision.
- */
+/** Lists declared variants without a snapshot fixture so gaps remain visible under the fixture rule. */
 export function variantsWithoutFixture(checks: readonly AnyCheck[]): string[] {
   const out: string[] = [];
   for (const check of checks) {

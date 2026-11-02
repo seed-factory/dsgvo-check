@@ -109,7 +109,7 @@ export function coverageOf(snapshot: Snapshot): ScanCoverage {
   const visits = (snapshot.browser?.phases ?? []).flatMap((p) => p.pages);
   const plans = [...planned, ...control];
   // A visit is the page as shown (`finalUrl`); a plan entry matches it by the requested or the final URL, so a
-  // redirected start page (requested URL in A, final URL in plan and B/C) is one row (FC-02).
+  // redirected start page (requested URL in A, final URL in plan and B/C) is one row.
   const planOf = (v: (typeof visits)[number]) => plans.find((p) => p.url === v.url || p.url === v.finalUrl);
   const keyOf = (v: (typeof visits)[number]) => planOf(v)?.url ?? (v.finalUrl || v.url);
   const urls = [...new Set([...plans.map((p) => p.url), ...visits.map(keyOf)])];
@@ -188,7 +188,7 @@ export function buildFullReport(i: FullReportInput): FullReport {
     },
     disclaimer: disclaimerOf(i.texts),
   };
-  // The conditional paragraphs belong to the report itself, not only to the written files (FP-11).
+  // The conditional paragraphs belong to the report itself, not only to the written files.
   report.disclaimer.text = disclaimerText(report, i.texts);
   return report;
 }

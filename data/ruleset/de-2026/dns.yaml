@@ -1,5 +1,5 @@
-# Ruleset de-2026, module dns (owner: M5). Severity per (checkId, variant); variant names and levels follow the
-# registry docs/03-checks.md §2.1 and consensus §4 / D19. T3 codes stay at warning or below. MAIL-02 follows the
+# Ruleset de-2026, module dns. Severity per (checkId, variant); variant names and levels follow the
+# registry docs/03-checks.md §2.1. T3 codes stay at warning or below. MAIL-02 follows the
 # DMARC matrix of BSI TR-03182.
 checks:
   MAIL-01:

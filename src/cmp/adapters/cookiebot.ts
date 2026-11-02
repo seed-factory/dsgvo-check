@@ -1,7 +1,7 @@
 /**
  * Cookiebot (Usercentrics A/S) — `consent.cookiebot.com/uc.js` (or `.eu`), `window.Cookiebot`, `#CybotCookiebotDialog`,
  * consent cookie `CookieConsent`. Geo: `isOutOfRegion`, `CookieConsent=-1`, `regulations.gdprApplies`; bot: `isSpider()`
- * (D10/D11). Selectors from the vendor's public DOM ids; read-only API access.
+ * Selectors from the vendor's public DOM ids; read-only API access.
  */
 import type { Page } from 'playwright-core';
 import type { ConsentStateFact } from '../types.ts';

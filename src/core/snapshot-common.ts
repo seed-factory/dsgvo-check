@@ -1,5 +1,5 @@
 /**
- * Primitive types shared by all snapshot sections. Snapshot data is already redacted (D20):
+ * Primitive types shared by all snapshot sections. Snapshot data is already redacted:
  * no cookie / Web Storage / TC-String values, query parameters redacted except the allowlist.
  */
 
@@ -37,8 +37,8 @@ export interface HeaderRecord {
   truncated?: boolean;
   /**
    * CSP headers only: `frame-ancestors` evaluated on the complete value as the server sent it, BEFORE any editing and
-   * before the cut (G42, S-net-2). Set when the value has the directive or is at least MAX_HEADER_VALUE long (cut, or
-   * complete at exactly the limit, R12); absent on a shorter value without it (and in snapshots of older versions).
+   * before the cut. Set when the value has the directive or is at least MAX_HEADER_VALUE long (cut, or
+   * complete at exactly the limit); absent on a shorter value without it (and in snapshots of older versions).
    */
   frameAncestors?: FrameAncestorsFact;
 }
@@ -52,7 +52,7 @@ export interface FrameAncestorsFact {
   /**
    * Sources of the first restricting policy (else of the first policy with the directive), at most 20 of at most 200
    * characters. Each one is reduced to a keyword (`'self'`), `*`, a scheme (`https:`) or `[scheme://]host[:port]`:
-   * user info, addresses, path, query and fragment are not stored, anything else is `[redacted]` (S-net-2).
+   * user info, addresses, path, query and fragment are not stored, anything else is `[redacted]`.
    */
   sources: string[];
 }

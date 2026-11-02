@@ -1,5 +1,5 @@
 /**
- * L2: phase A on small fixture sites — clean site, Google Fonts, map embed on Kontakt, no legal links,
+ * phase A on small fixture sites — clean site, Google Fonts, map embed on Kontakt, no legal links,
  * privacy policy extraction, cookies and storage without values.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -120,7 +120,7 @@ site('maps', (get) => {
       pageUrl: 'https://www.example.test/kontakt/',
       url: 'https://www.google.com/maps/embed?pb=[redacted]',
     });
-    // The page with the embed becomes a B/C control page (D08 DOM/network signals).
+    // The page with the embed becomes a B/C control page ( DOM/network signals).
     expect(plan?.controlPages[0]).toMatchObject({
       url: 'https://www.example.test/kontakt/',
       reasons: ['iframe-signal', 'network-signal', 'role:contact'],

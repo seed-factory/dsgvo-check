@@ -1,5 +1,5 @@
 /**
- * Disclaimer with conditional paragraphs (D22, D08, D20; wording guide §6): each paragraph is rendered only when its
+ * Disclaimer with conditional paragraphs (wording guide §6): each paragraph is rendered only when its
  * condition holds in the report, in every human-readable format and in `disclaimer.text` of the JSON report.
  * Every condition is tested in both states.
  */

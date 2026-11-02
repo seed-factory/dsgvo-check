@@ -1,4 +1,4 @@
-# Core UI strings, disclaimer and diagnostics (scaffold). Draft texts: "Textentwurf" until reviewed (D22).
+# Core UI strings, disclaimer and diagnostics. Draft texts: "Textentwurf" until reviewed.
 draft: true
 ui:
   disclaimer: >-
@@ -6,7 +6,7 @@ ui:
     Zeitpunkt. Er ist keine Rechtsberatung und keine rechtliche Bewertung. Wenn zu einer Prüfung kein Befund
     vorliegt, bedeutet das nicht, dass eine Anforderung erfüllt ist. Ergebnisse können von Standort, Zeitpunkt,
     Konfiguration des Einwilligungsbanners und der Erkennung als automatisierter Besucher abhängen.
-  # Further paragraphs of the disclaimer (D22, wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # Further paragraphs of the disclaimer (wording guide §6). src/reporters/disclaimer.ts renders each conditional
   # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
   disclaimer.data: >-
     Werte von Cookies, Web-Storage-Einträgen und Consent-Strings werden weder im Klartext noch als Prüfsumme
@@ -47,7 +47,7 @@ ui:
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
     Dritter sind nicht zur Veröffentlichung vorgesehen. Die Software wird unter der Apache License 2.0 ohne
     Gewährleistung bereitgestellt.
-  # Nutzungshinweise for `--help` and the project README (wording guide §6, D08, D10, 5.7).
+  # Nutzungshinweise for `--help` and the project README (wording guide §6, 5.7).
   usageNotes.title: "Nutzungshinweise"
   usageNotes: >-
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
@@ -61,7 +61,7 @@ ui:
   console.status.complete: "Scan vollständig"
   console.status.partial: "Scan teilweise durchgeführt"
   console.failed: "Scan nicht durchgeführt: {message} ({code})"
-  # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts, G51).
+  # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts).
   failure.scan-timeout: "Globales Zeitlimit (--timeout {seconds} s) erreicht, bevor die Startseite in Phase A vollständig erfasst war."
   failure.browser-no-handover: "Globales Zeitlimit (--timeout {seconds} s) erreicht. Der Browser-Kollektor hat danach keine Daten übergeben; ob die Startseite erfasst war, ist nicht bekannt."
   console.duration: "Dauer: {seconds} s"

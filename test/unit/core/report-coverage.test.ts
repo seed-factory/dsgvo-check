@@ -1,4 +1,4 @@
-/** L1: coverage rows of the report (5.1 `coverage.pages`): one row per page, also when the start page redirected. */
+/** : coverage rows of the report (5.1 `coverage.pages`): one row per page, also when the start page redirected. */
 import { describe, expect, it } from 'vitest';
 import { coverageOf } from '../../../src/core/report.ts';
 import {
@@ -9,7 +9,7 @@ import {
   makeSnapshot,
 } from '../../utils/snapshot-builder.ts';
 
-describe('coverageOf (FC-02)', () => {
+describe('coverageOf', () => {
   it('a redirected start page is one row: phase A requested example.de, plan and B/C use the final URL', () => {
     const final = 'https://www.example.de/';
     const snapshot = makeSnapshot({

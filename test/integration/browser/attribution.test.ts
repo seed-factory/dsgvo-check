@@ -1,11 +1,11 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: in-page callbacks run in Chromium; tsconfig has no DOM lib
 /**
- * L2: attribution of requests to pages and to the B/C click on the `browser/cmp-stub` site.
- * - FC-02: a redirected start page (apex → www) attributes its requests and CMP facts to the final URL in every
- *   phase, the same URL as `plan.pages[0]`.
- * - FC-03: the click moment is the actual press of the button, not the call of the adapter: requests started while
- *   the adapter was still preparing are not "after the click"; a failed click changes nothing.
- * - FC-09: a reject confirmed only after the reload counts as verified (marked `verified-after-reload-only`).
+ * attribution of requests to pages and to the B/C click on the `browser/cmp-stub` site.
+ * - : a redirected start page (apex → www) attributes its requests and CMP facts to the final URL in every
+ * phase, the same URL as `plan.pages[0]`.
+ * - : the click moment is the actual press of the button, not the call of the adapter: requests started while
+ * the adapter was still preparing are not "after the click"; a failed click changes nothing.
+ * - : a reject confirmed only after the reload counts as verified (marked `verified-after-reload-only`).
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -74,7 +74,7 @@ describe('redirected start page, click timing, verification after reload', () =>
   const phase = (p: 'A' | 'B' | 'C') => run.result.sections.browser?.phases.find((x) => x.phase === p);
   const byEvent = (p: 'A' | 'B' | 'C', en: string) => phase(p)?.requests.find((r) => r.eventType === en);
 
-  it('FC-02: the start page is attributed to its final URL in every phase and in the plan', () => {
+  it('the start page is attributed to its final URL in every phase and in the plan', () => {
     const start = phase('A')?.pages[0];
     expect(start).toMatchObject({ url: 'https://example.test/', finalUrl: 'https://www.example.test/' });
     expect(run.result.sections.plan?.pages[0]?.url).toBe('https://www.example.test/');
@@ -88,20 +88,20 @@ describe('redirected start page, click timing, verification after reload', () =>
     expect(factsA[0]?.pageUrl).toBe('https://www.example.test/');
   });
 
-  it('FC-03: a request started before the actual press is not after the click; one after it is', () => {
+  it('a request started before the actual press is not after the click; one after it is', () => {
     expect(byEvent('B', 'before_click')).toMatchObject({ afterClick: false, tRef: 'navigation' });
     expect(byEvent('B', 'after_click')).toMatchObject({ afterClick: true, tRef: 'click' });
     expect(phase('B')?.click).toMatchObject({ action: 'reject', success: true });
   });
 
-  it('FC-03: a failed click leaves the recorder in navigation mode', () => {
+  it('a failed click leaves the recorder in navigation mode', () => {
     expect(phase('C')).toMatchObject({ status: 'partial', reason: 'no-accept-button' });
     expect(byEvent('C', 'failed_click')).toMatchObject({ afterClick: false, tRef: 'navigation' });
     expect(phase('C')?.requests.every((r) => !r.afterClick)).toBe(true);
     expect(phase('C')?.cookies.every((c) => !c.afterClick)).toBe(true);
   });
 
-  it('FC-09: confirmed only after the reload → verified, persisted, marked', () => {
+  it('confirmed only after the reload → verified, persisted, marked', () => {
     const v = run.result.sections.cmp?.phases.find((p) => p.phase === 'B')?.verify;
     expect(v).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
     expect(v?.method).toContain('verified-after-reload-only');

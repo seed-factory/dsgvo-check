@@ -1,9 +1,9 @@
-# Finding texts (en), module browser (owner M3). ICU-like templates: {param}, plural, select.
+# Finding texts (en), module browser. ICU-like templates: {param}, plural, select.
 # Wording: "observed", "not found in …", no legal verdicts (stop-word test). Same parameters as de.
-# Draft texts: all texts must be reviewed by the customer (D22).
+# Draft texts: all texts must be reviewed by the customer.
 draft: true
 messages:
-  # ---------------------------------------------------------------- CONSENT-01
+  # CONSENT-01
   CONSENT-01.tracking-completed:
     title: "Request with a persistent identifier to {service} before any interaction"
     body: >-
@@ -49,7 +49,7 @@ messages:
       Before any interaction with the consent banner, a request to {service} ({host}) was started, but no response
       was observed (e.g. blocked by the browser or aborted). No answered exchange is evidenced.
 
-  # ---------------------------------------------------------------- CONSENT-02
+  # CONSENT-02
   CONSENT-02.tracking-identifier-stored:
     title: "Known analytics or marketing identifier {name} stored before any interaction"
     body: >-
@@ -79,7 +79,7 @@ messages:
       observed; the browser rejected it or did not confirm it. Classified as an identifier of the category
       analytics/marketing per {dataset}.
 
-  # ---------------------------------------------------------------- CONSENT-03
+  # CONSENT-03
   CONSENT-03.no-banner-strong-tracking:
     title: "No consent banner recognised; analytics or marketing identifier observed"
     body: >-
@@ -95,7 +95,7 @@ messages:
       storage were observed before any interaction: {services}. Egress region: {regionAsserted, select, true {EEA
       as stated by the user} other {not stated}}.
 
-  # ---------------------------------------------------------------- CONSENT-04
+  # CONSENT-04
   CONSENT-04.blocking-no-reject:
     title: "Blocking dialog without a reject option on the first layer"
     body: >-
@@ -144,7 +144,7 @@ messages:
     title: "CMP {cmp} detected, not supported"
     body: "CMP {cmp} detected, not supported. The design and function of the options were not evaluated."
 
-  # ---------------------------------------------------------------- CONSENT-05
+  # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
       {kind, select, storage {Analytics or marketing identifier stored after a confirmed reject} other {Request with
@@ -168,7 +168,7 @@ messages:
       After a confirmed reject, a connection to {host} ({service}) was logged; no specific event was established from
       it.
 
-  # ---------------------------------------------------------------- TRACK-01
+  # TRACK-01
   TRACK-01.service-inventory:
     title: "{service} observed (inventory)"
     body: >-
@@ -180,7 +180,7 @@ messages:
       checked" stands for a timing at which no interaction with the consent banner took place. The timing is
       assessed in the related findings.
 
-  # ---------------------------------------------------------------- EMBED-01
+  # EMBED-01
   EMBED-01.fonts-loaded:
     title: "External fonts loaded from {service}"
     body: >-
@@ -193,7 +193,7 @@ messages:
       Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was observed; no
       completed download of font files was found.
 
-  # ---------------------------------------------------------------- EMBED-02
+  # EMBED-02
   EMBED-02.maps-loaded:
     title: "External map service {service} loaded"
     body: >-
@@ -202,7 +202,7 @@ messages:
       {afterReject, select, true {before any interaction with the consent banner or after reject} other {before any
       interaction with the consent banner}} ({pageCount, plural, one {# page} other {# pages}}).
 
-  # ---------------------------------------------------------------- LEGAL-01
+  # LEGAL-01
   LEGAL-01.document-not-found:
     title: "{documentKind, select, impressum {Legal notice (Impressum)} other {Privacy policy}} not found"
     body: >-
@@ -239,7 +239,7 @@ messages:
       could not be resolved on {missingCount} of {pageTotal} checked pages (e.g. a link to # or JavaScript without
       detected content). Please review manually.
 
-  # ---------------------------------------------------------------- PRIV-01
+  # PRIV-01
   PRIV-01.not-named:
     title: "{service} not found in the privacy policy"
     body: >-

@@ -1,4 +1,4 @@
-/** Inline fixture sites for the HTTP/TLS L2 tests (each scenario has its own registrable domain). */
+/** Inline fixture sites for the HTTP/TLS tests (each scenario has its own registrable domain). */
 import type { RouteSpec } from '../../fixture-server/server.ts';
 
 export const GOOD_HEADERS: Record<string, string> = {
@@ -107,7 +107,7 @@ const tooMany = (host: string, scheme: 'http' | 'https', path: string) => ({
 
 /**
  * busy.test — the target answers every request with 429 (Retry-After: 60); www.busy.test answers normally and
- * redirects to the target, so the target sees four different URLs and www stays healthy (S-28: per-host state).
+ * redirects to the target, so the target sees four different URLs and www stays healthy (per-host state).
  */
 export const BUSY_SITE: RouteSpec[] = [
   tooMany('busy.test', 'http', '/'),
@@ -125,11 +125,11 @@ export const LOOP_SITE: RouteSpec[] = [
   html('www.loop.test', 'https', '/', page('Start')),
 ];
 
-/** port.test — S-20: the site only answers on https port 8443 (80/443 closed, routed in the test). */
+/** port.test — : the site only answers on https port 8443 (80/443 closed, routed in the test). */
 export const PORT_SITE: RouteSpec[] = [html('www.port.test', 'https', '/', page('Start', LEGAL_LINKS))];
 
 /**
- * origin.test → moved.test — S-19: the start page redirects to another registrable domain whose certificate has
+ * origin.test → moved.test — : the start page redirects to another registrable domain whose certificate has
  * expired (`tls: { 'www.moved.test': 'expired' }`); origin.test itself has a valid certificate.
  */
 export const MOVED_SITE: RouteSpec[] = [
@@ -138,7 +138,7 @@ export const MOVED_SITE: RouteSpec[] = [
   html('www.moved.test', 'https', '/', page('Start')),
 ];
 
-/** sib.test — SM-06: www redirects to a sibling subdomain whose certificate has expired. */
+/** sib.test — : www redirects to a sibling subdomain whose certificate has expired. */
 export const SIBLING_SITE: RouteSpec[] = [
   redirect('www.sib.test', 'http', '/', 'https://www.sib.test/'),
   redirect('www.sib.test', 'https', '/', 'https://shop.sib.test/'),

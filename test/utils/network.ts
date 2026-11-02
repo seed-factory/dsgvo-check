@@ -1,5 +1,5 @@
 /**
- * Node-side routing through `NetworkConfig.test` (reference for M4/M5 collectors):
+ * Node-side routing through `NetworkConfig.test` (reference for / collectors):
  * an undici Agent whose connector sends every connection to `test.connect(host, port)` while keeping the
  * original hostname for SNI and certificate checks, trusting the test CA.
  */

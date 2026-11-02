@@ -16,8 +16,6 @@ import type { CheckResult, Finding, FullReport } from '../../../src/core/report-
 import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { makeCmp, makeCmpFacts } from '../../utils/snapshot-builder.ts';
 
-// ---------------------------------------------------------------- synthetic results
-
 function ref(id: string, over: Partial<SiteRef> = {}): SiteRef {
   const country = id.slice(0, 2).toUpperCase();
   return {
@@ -196,8 +194,6 @@ function results(): SiteResult[] {
 
 const summarize = (withSites = false): CanarySummary =>
   aggregate(results(), { runId: 'r1', generatedAt: '2026-10-30T13:00:00.000Z', mode: 'scan', withSites });
-
-// ---------------------------------------------------------------- tests
 
 describe('aggregate', () => {
   it('counts scan status, pending sites and runner errors per region group', () => {

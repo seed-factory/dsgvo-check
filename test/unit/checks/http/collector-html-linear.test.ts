@@ -1,13 +1,3 @@
-/**
- * L1 (P1): the HTML heuristics of the HTTP collector read untrusted markup in linear time. `findLegalLinks` gets the
- * whole body of the start page (up to `MAX_DECODED_BYTES` = 4 MiB), the other functions the first 64 KiB; a regexp
- * that restarts its scan at every `<a `, `<form `, `<!--`… (or a tag-end search that fails at every tag) was
- * quadratic: 128 KiB of `<a ` held the event loop for 3 s, 4 MiB for about an hour.
- *
- * The first block feeds hostile shapes: a small input must be quick (the old code needs seconds), and then 4 MiB must
- * be quick too. The second block pins the answers for ordinary markup (they were the same before the fix, the
- * differential fuzz against the old code found no other difference).
- */
 import { describe, expect, it } from 'vitest';
 import {
   detectClientRedirect,
@@ -20,17 +10,29 @@ import {
 const BASE = 'http://www.example.test/start';
 const KIB = 1024;
 const BIG_BYTES = 4 * 1024 * KIB;
-/** The old code needs 0.9 to 10 s for the small inputs; the linear one a few milliseconds. */
-const SMALL_BUDGET_MS = 200;
-const BIG_BUDGET_MS = 1000;
 
 const fill = (unit: string, bytes: number): string =>
   unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
 
-function elapsedMs(run: () => unknown): number {
-  const t0 = performance.now();
-  run();
-  return performance.now() - t0;
+/** Compare growth rather than a machine-dependent latency budget. Warm up and use the best sample to limit GC noise. */
+function expectLinear(
+  run: (input: string) => unknown,
+  build: (bytes: number) => string,
+  bytes: number,
+): void {
+  const small = build(bytes);
+  const large = build(4 * bytes);
+  run(small);
+  run(large);
+  const best = (input: string) =>
+    Math.min(
+      ...Array.from({ length: 5 }, () => {
+        const started = performance.now();
+        run(input);
+        return performance.now() - started;
+      }),
+    );
+  expect(best(large) / Math.max(best(small), 0.05)).toBeLessThan(12);
 }
 
 type Run = (html: string) => unknown;
@@ -42,7 +44,7 @@ const form: Run = (h) => detectForm(h);
 interface Hostile {
   name: string;
   run: Run;
-  /** Size where the old code takes seconds. */
+  /** Base input size for the growth comparison. */
   smallBytes: number;
   build: (bytes: number) => string;
 }
@@ -63,8 +65,6 @@ const HOSTILE: readonly Hostile[] = [
   {
     name: 'findLegalLinks: "<" in the text of one link',
     run: links,
-    // 256 KiB, not 64: a tag strip that searches every "<" again (quadratic) still takes under 200 ms at 64 KiB and
-    // shows only at 4 MiB, after minutes in which the runner cannot interrupt it (review m1); at 256 KiB it takes 0.9 s
     smallBytes: 256 * KIB,
     build: (n) => `<a href="/x">${fill('<', n)}</a>`,
   },
@@ -154,71 +154,46 @@ const HOSTILE: readonly Hostile[] = [
   },
 ];
 
-describe('P1: hostile markup is read in linear time', () => {
+describe('HTML parsing scales with hostile input size', () => {
   it.each(HOSTILE.map((h) => [h.name, h] as const))('%s', (_name, h) => {
-    const small = h.build(h.smallBytes);
-    expect(elapsedMs(() => h.run(small))).toBeLessThan(SMALL_BUDGET_MS);
-    const big = h.build(BIG_BYTES);
-    expect(big.length).toBeGreaterThanOrEqual(BIG_BYTES);
-    expect(elapsedMs(() => h.run(big))).toBeLessThan(BIG_BUDGET_MS);
+    expectLinear(h.run, h.build, h.smallBytes);
   });
 
-  it('findLegalLinks: 4 MiB of ordinary links without a legal one is a linear walk too', () => {
-    const big = fill('<a href="/shop/item">Artikel</a> ', BIG_BYTES);
-    expect(elapsedMs(() => findLegalLinks(big, BASE))).toBeLessThan(BIG_BUDGET_MS);
+  it('finds no legal link in a large ordinary product list', () => {
+    const build = (n: number) => fill('<a href="/shop/item">Artikel</a> ', n);
+    expectLinear(links, build, 256 * KIB);
+    expect(findLegalLinks(build(BIG_BYTES), BASE)).toEqual({});
   });
 
-  it('findLegalLinks: a legal link in the footer behind hostile markup is still found', () => {
-    // an unterminated "<!--" is no comment: the footer link behind it is part of the document
+  it('finds a legal footer behind an unterminated comment', () => {
     const footer = '<footer><a href="/impressum">Impressum</a></footer>';
-    const small = `${fill('<!--', 256 * KIB)}${footer}`;
-    expect(elapsedMs(() => findLegalLinks(small, BASE))).toBeLessThan(SMALL_BUDGET_MS);
-    const big = `${fill('<!--', BIG_BYTES)}${footer}`;
-    const t0 = performance.now();
-    const found = findLegalLinks(big, BASE);
-    expect(performance.now() - t0).toBeLessThan(BIG_BUDGET_MS);
-    expect(found).toEqual({ impressum: 'http://www.example.test/impressum' });
+    const build = (n: number) => `${fill('<!--', n)}${footer}`;
+    expectLinear(links, build, 256 * KIB);
+    expect(findLegalLinks(build(BIG_BYTES), BASE)).toEqual({
+      impressum: 'http://www.example.test/impressum',
+    });
   });
 
-  it('findLegalLinks: the footer links behind 4 MiB of other markup are found (the body is not cut at 64 KiB)', () => {
+  it('finds both footer links behind a full body of ordinary markup', () => {
     const big = `${fill('<p>text</p>', BIG_BYTES)}<footer><a href="/impressum">Impressum</a> <a href="/datenschutz">Datenschutz</a></footer>`;
-    const t0 = performance.now();
-    const found = findLegalLinks(big, BASE);
-    expect(performance.now() - t0).toBeLessThan(BIG_BUDGET_MS);
-    expect(found).toEqual({
+    expect(findLegalLinks(big, BASE)).toEqual({
       impressum: 'http://www.example.test/impressum',
       privacy: 'http://www.example.test/datenschutz',
     });
   });
 
-  it('parseAttributes: long and unbalanced attribute lists stay linear', () => {
-    for (const unit of ['a="', "a='", 'a= ', 'a=', 'a ', '= ', '"', '/', 'a=b ', 'a="b" ']) {
-      const tag = `<x ${fill(unit, BIG_BYTES)}>`;
-      expect(
-        elapsedMs(() => parseAttributes(tag)),
-        JSON.stringify(unit),
-      ).toBeLessThan(BIG_BUDGET_MS);
-    }
-  });
+  it.each(['a="', "a='", 'a= ', 'a=', 'a ', '= ', '"', '/', 'a=b ', 'a="b" '])(
+    'parses long unbalanced attribute lists: %j',
+    (unit) => expectLinear(parseAttributes, (n) => `<x ${fill(unit, n)}>`, 256 * KIB),
+  );
 
-  it('detectClientRedirect: big inline scripts with location-like text stay linear', () => {
-    for (const unit of [
-      "location='",
-      'location = ',
-      "location.replace('",
-      'location.href="a" ',
-      'location\n',
-    ]) {
-      const html = `<script>${fill(unit, BIG_BYTES)}</script>`;
-      expect(
-        elapsedMs(() => detectClientRedirect(html, BASE)),
-        JSON.stringify(unit),
-      ).toBeLessThan(BIG_BUDGET_MS);
-    }
-  });
+  it.each(["location='", 'location = ', "location.replace('", 'location.href="a" ', 'location\n'])(
+    'parses large inline scripts: %j',
+    (unit) => expectLinear(redirect, (n) => `<script>${fill(unit, n)}</script>`, 256 * KIB),
+  );
 });
 
-describe('P1 counterexamples: ordinary markup is read as before', () => {
+describe('HTML parsing of ordinary and malformed markup', () => {
   it.each<[string, Record<string, string>]>([
     [
       `<a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a>`,

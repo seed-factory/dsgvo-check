@@ -3,7 +3,7 @@
  * while services that need consent were observed before interaction: analytics/ads/session-recording, or an
  * embed provider writing cookies/storage. Fonts or CDNs alone are not enough (that is EMBED-01 / CONSENT-01).
  * `critical` variant only with strong tracking (identifier or tracking storage), no bot/geo signal and an EEA
- * region asserted by the user (D11, "Region laut Nutzerangabe"). A heuristic banner candidate → CONSENT-04.
+ * region asserted by the user ("Region laut Nutzerangabe"). A heuristic banner candidate → CONSENT-04.
  */
 import { defineCheck, type EvidenceInput, type Phase, subjects } from '../../core/api.ts';
 import type { ServiceCategory } from '../../derive/types.ts';
@@ -57,7 +57,7 @@ export const consent03 = defineCheck({
     if (facts.length === 0)
       return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [], coverage };
     // A resolved candidate (adapter or heuristic) means a banner exists. An iframe that merely looks like a consent
-    // dialog but could not be read (G09) is no candidate: it limits the conclusion instead (§3.5 "недоступные фреймы").
+    // dialog but could not be read is no candidate: it limits the conclusion instead (§3.5 "недоступные фреймы").
     const resolved = facts.filter((f) => !f.firstLayer.consentFrameUnresolved);
     if (resolved.some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent)) {
       return { status: 'completed', observations: [], coverage };
@@ -98,7 +98,7 @@ export const consent03 = defineCheck({
       };
     }
 
-    // Strong tracking: a persistent identifier (as in CONSENT-01, S-13) or tracking storage.
+    // Strong tracking: a persistent identifier (as in CONSENT-01) or tracking storage.
     const strong = tracking.some(persistentIdentifier) || trackingStorage.length > 0;
     const regionAsserted = environment.egress.region === 'asserted' || ctx.options.assumeRegion !== null;
     const serviceIds = sortedUniq(

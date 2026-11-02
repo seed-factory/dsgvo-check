@@ -1,5 +1,5 @@
 /**
- * L2: overload policy of D09 / table 5.2 for every navigation of the browser (S-27, SM-04) — 429/503 on a
+ * overload policy of / table 5.2 for every navigation of the browser — 429/503 on a
  * navigation → pause by Retry-After (≤ 30 s), one retry; then SCAN-THROTTLED, no new navigation to the host, the
  * affected phase partial; ≥ 3 such responses of the target host in a phase → the same. A throttled legal page is not
  * "not found" (no false LEGAL-01 `links-broken`).

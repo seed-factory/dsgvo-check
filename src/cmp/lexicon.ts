@@ -1,5 +1,5 @@
 /**
- * Pure button lexicon (D13): label normalization, phrase matching and button kind. No I/O — checks may import it.
+ * Pure button lexicon: label normalization, phrase matching and button kind. No I/O — checks may import it.
  * Data: data/cmp/lexicon.yaml (`lexicon:` block), loaded by `lexicon-file.ts` or by a check via `data: ['cmp']`.
  */
 import { z } from 'zod';

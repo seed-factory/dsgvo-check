@@ -1,4 +1,4 @@
-/* Own minimal CookieHub simulator for L2 tests (no vendor code). Mimics public identifiers only:
+/* Own minimal CookieHub simulator for integration tests (no vendor code). Mimics public identifiers only:
    window.cookiehub (load, hasAnswered, hasConsented), .ch2 > .ch2-container > .ch2-dialog, .ch2-*-btn classes,
    settings layer .ch2-settings, cookie "cookiehub". */
 (function () {

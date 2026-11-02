@@ -1,5 +1,5 @@
 /**
- * Cleaning of external strings (from scanned sites) before console / Markdown output (D25):
+ * Cleaning of external strings (from scanned sites) before console / Markdown output:
  * ANSI escapes, C0/C1 control characters, bidi overrides and CI workflow commands are neutralized.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the purpose

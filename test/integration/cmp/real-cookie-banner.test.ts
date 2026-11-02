@@ -1,4 +1,4 @@
-/** L2: Real Cookie Banner adapter against the own simulator, including accept-all-for-bots with our honest UA. */
+/** : Real Cookie Banner adapter against the own simulator, including accept-all-for-bots with our honest UA. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { browserUserAgent } from '../../../src/core/user-agent.ts';
@@ -24,7 +24,7 @@ describeCmpScenarios(
       expect(await page.locator(reject?.selector ?? 'none').count()).toBe(1);
     });
 
-    it('bot branch (D10): the honest UA token triggers accept-all-for-bots → bot signal, no banner', async () => {
+    it('bot branch : the honest UA token triggers accept-all-for-bots → bot signal, no banner', async () => {
       const { page } = await env.open('https://www.rcb.test/', browserUserAgent(CHROME_UA));
       const adapter = await recognized(page, 'real-cookie-banner');
       const facts = await extract(page, adapter, 'first-screen');

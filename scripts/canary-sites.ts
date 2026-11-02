@@ -9,7 +9,6 @@ import { z } from 'zod';
 import { registrableDomain } from '../src/core/url.ts';
 
 export const DEFAULT_SITES_FILE = fileURLToPath(new URL('../canary/sites.yaml', import.meta.url));
-export const CORPUS_SIZE = 100;
 
 export const REGIONS = ['de', 'eu', 'non-eu'] as const;
 export type Region = (typeof REGIONS)[number];
@@ -267,13 +266,13 @@ function isHttpsUrl(s: string): boolean {
 }
 
 export interface ParseSitesOptions {
-  /** Required number of sites; null disables the check (tests, partial corpora). Default 100. */
+  /** Optional required number of sites; omitted or null allows any corpus size. */
   expectedCount?: number | null;
 }
 
 /** Parse and validate the corpus. Collects every issue and throws one `SitesValidationError`. */
 export function parseSites(text: string, opts: ParseSitesOptions = {}): CanarySite[] {
-  const expectedCount = opts.expectedCount === undefined ? CORPUS_SIZE : opts.expectedCount;
+  const expectedCount = opts.expectedCount ?? null;
   let doc: unknown;
   try {
     doc = parseYaml(text);
@@ -345,7 +344,19 @@ export function parseSites(text: string, opts: ParseSitesOptions = {}): CanarySi
 }
 
 export function loadSites(file = DEFAULT_SITES_FILE, opts: ParseSitesOptions = {}): CanarySite[] {
-  return parseSites(readFileSync(file, 'utf8'), opts);
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      throw new Error(
+        'Canary corpus not found. Copy canary/sites.example.yaml to canary/sites.yaml and fill it in, or pass --sites <file>.',
+        { cause: err },
+      );
+    }
+    throw err;
+  }
+  return parseSites(text, opts);
 }
 
 export interface SiteFilter {

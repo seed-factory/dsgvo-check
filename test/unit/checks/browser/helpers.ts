@@ -1,5 +1,5 @@
 /**
- * Scenario builders for browser-check L1 tests and the fixture generator (generate-fixtures.ts).
+ * Scenario builders for browser-check tests and the fixture generator (generate-fixtures.ts).
  * A "site" is the target https://www.example.de/ with phase A pages start/impressum/datenschutz/kontakt that link
  * to both legal documents in the footer, documents found via link, and no CMP detected unless given.
  */
@@ -175,7 +175,7 @@ export interface SiteSpec {
   derive?: boolean;
 }
 
-/** Full snapshot (browser + cmp + documents) with `derived` computed by the real derive(). */
+/** Full snapshot (browser + cmp + documents) with `derived` computed by the real derive. */
 export function site(spec: SiteSpec = {}): Snapshot {
   const base = makeSnapshot({
     target: makeTarget(START),

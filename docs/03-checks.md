@@ -2,13 +2,14 @@
 
 Этот документ задаёт контракт детекта для разработчика проверки и материал для вычитки правовой части DSGVO-экспертом заказчика. Он описывает наблюдаемые факты, доказательства, ограничения и черновики немецких сообщений для пассивного CLI-сканера на TypeScript + Playwright под Apache-2.0; состояние спецификации — 2026-10-30.
 
+
 ## 1. Границы и общие контракты
 
-Основание: [итоговые решения и контракты](consensus/README.md), [каталог](../specs/dsgvo-check_katalog-proverok.md), [ТЗ](../specs/dsgvo-check_TZ.md), [правовая карта](01-research/legal-basis-map.md). Устройство коллекторов и конвейера описывает [архитектура](02-architecture.md).
+Основание: [архитектура и контракты](02-architecture.md), [каталог](../specs/dsgvo-check_katalog-proverok.md), [ТЗ](../specs/dsgvo-check_TZ.md), [правовая карта](01-research/legal-basis-map.md). Устройство коллекторов и конвейера описывает [архитектура](02-architecture.md).
 
 Проверка сообщает техническое наблюдение. Отсутствие находки не означает соответствия DSGVO, TDDDG, DDG или требованиям безопасности. `critical` означает уверенно установленный технический факт класса, приоритетного по утверждённому `ruleset`; смысл уровня и таблица уровней требуют подтверждения заказчика.
 
-Реестр вариантов и `messageId` (§2.1) — канон для ruleset, текстов wording-guide и CRM-маппинга: тексты и данные переименовываются вслед за ним. Имена вариантов, не названные в консенсусе, конкретные сценарии фикстур и распределение отдельных `SCAN-*` по этапам — **предложение автора, не согласовано**. Они вынесены в открытые вопросы. Немецкие формулировки являются черновиками; для всех действует пометка **«Entwurf — Prüfung durch Auftraggeber»**.
+Реестр вариантов и `messageId` (§2.1) — канон для ruleset, текстов wording-guide и CRM-маппинга: тексты и данные переименовываются вслед за ним. Дополнительные имена вариантов, конкретные сценарии фикстур и распределение отдельных `SCAN-*` по этапам — **предложение автора, не согласовано**. Они вынесены в открытые вопросы. Немецкие формулировки являются черновиками; для всех действует пометка **«Entwurf — Prüfung durch Auftraggeber»**.
 
 ### 1.1. Фазы и покрытие
 
@@ -145,7 +146,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 ### 2.1. Реестр вариантов и `messageId`
 
-Полный перечень вариантов для ruleset, `data/texts/{de,en}.yaml`, `data/crm/mapping.yaml` и теста полноты (D05); каждый `checkId.variant` назван здесь ровно один раз. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` (README §5.1, архитектура §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
+Полный перечень вариантов для ruleset, `data/texts/{de,en}.yaml`, `data/crm/mapping.yaml` и теста полноты; каждый `checkId.variant` назван здесь ровно один раз. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` (README §5.1, архитектура §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
 
 Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет `severity`, `messageId` и `crmCode`, а есть `reason` и `limitations[]` CheckResult. Их тексты — ключи `reason.<id>` и `limitation.<id>` (схема ключей — предложение автора, не согласовано; wording-guide, ОВ 3). Единственное исключение — два `locked`-варианта `CONSENT-04`: находка `info` при статусе `inconclusive` (README §5.5). Текст диагностики `SCAN-*` — по её коду (§7), без `severity`.
 
@@ -185,7 +186,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 | `PERF-01`⁴ | — | — | `lab-metrics` | — |
 
 ² `locked: true`, `gating: false`, `crmCode: null`, статус проверки `inconclusive`.  
-³ Уровни при `versionConfidence: exact`; `range` — на ступень ниже (D17). `crmCode`: `version-listed-kev-or-preauth` — `T1_EXPLOITABLE_CVE`, остальные сопоставленные — `T3_OUTDATED_CVE`; запись понижения и код при нём — Q10.  
+³ Уровни при `versionConfidence: exact`; `range` — на ступень ниже. `crmCode`: `version-listed-kev-or-preauth` — `T1_EXPLOITABLE_CVE`, остальные сопоставленные — `T3_OUTDATED_CVE`; запись понижения и код при нём — Q10.
 ⁴ `gating: false`.
 
 Не варианты и без строки ruleset: `TLS-03` в состоянии `loaded` и `ws://` (Q10), неизвестный формат `gcd` в `CONSENT-06`. `variantGroup`, CRM-коды `info`-вариантов и фикстуры на каждый вариант — Q2, Q10.
@@ -573,7 +574,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 | `inconclusive/error` | `SERVFAIL` после повтора → `error`; неполный Tree Walk из-за лимита не считается отсутствием |
 | Контрпример | Null MX без `p=reject` → `info`; найденная PSD-политика не теряется на PSL-границе |
 
-**Правовой якорь.** Art. 32 DSGVO — косвенная связь; BSI TR-03108-1 и TR-03182 — технические стандарты. Конкретная обязательность DMARC из этих фактов не выводится. RFC 9989 (май 2026) заменяет RFC 7489 и 9091 — подтверждено в раунде 4б.
+**Правовой якорь.** Art. 32 DSGVO — косвенная связь; BSI TR-03108-1 и TR-03182 — технические стандарты. Конкретная обязательность DMARC из этих фактов не выводится. RFC 9989 (май 2026) заменяет RFC 7489 и 9091.
 
 **Текст находки.** `MAIL-01.record-not-found`: «Im dokumentierten DNS-Suchpfad wurde kein anwendbarer DMARC-Eintrag gefunden.»  
 `MAIL-01.policy-none`: «Der gefundene DMARC-Eintrag enthält p=none; eine Quarantäne- oder Ablehnrichtlinie wurde darin nicht gefunden.»  
@@ -1438,7 +1439,8 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 | Старт недоступен/WAF, браузер не запустился, sandbox `require` не поднялся | Fatal `2` |
 | Глобальный `--timeout` до завершения фазы `A` на стартовой | Fatal `2` (`timeout`); позже — `1` при находке, иначе `2` при незавершённых релевантных, иначе `0` |
 | Сайт отвечает, TLS невалиден | `TLS-02 critical`, browser `skipped (tls-blocked)`; код по порогу |
-| Не записан JSON или запрошенный HTML/PDF/JUnit/Summary | Fatal `2` (`report-write-failed`); JSON пишется первым и после репортёров атомарно перезаписывается с окончательным `exitCode` |
+| Не записан JSON или запрошенный HTML/JUnit/Summary | Fatal `2` (`report-write-failed`); JSON пишется первым и после репортёров атомарно перезаписывается с окончательным `exitCode` |
+| Не напечатан явно запрошенный PDF | Одна строка предупреждения, без `report.pdf`; код выхода и `report.json` не меняются |
 | `--fail-on none` | `0`; `2` при fatal или strict-причинах (`--strict` действует независимо) |
 
 Релевантность вычисляется из включённости, `gating` и статического максимума `variants` после ruleset и overrides (`locked`-варианты не поднимаются); кэп confidence применяется только к конкретной находке, а не к релевантности. Неполученные данные не заменяются пустыми массивами с результатом `completed`.
@@ -1535,7 +1537,7 @@ Fingerprint: `sha256(JCS{v:1, checkId, variantGroup, subject})`, без хост
 
 Подтвердить скриншот области баннера по умолчанию, оценку UrhG § 51, retention 14 дней, маскирование `mailto:` и запрет экспорта значений/хешей storage. Утвердить немецкие тексты, `legalNote`, статусы источников, `reviewedAt`, `reviewBy`, стоп-листы и лицензию текстов.
 
-Немецкие формулировки в документе — **Entwurf — Prüfung durch Auftraggeber**. Имена вариантов §2.1, которых нет в консенсусе, и схема ключей `reason.<id>` — **предложение автора, не согласовано**.
+Немецкие формулировки в документе — **Entwurf — Prüfung durch Auftraggeber**. Дополнительные имена вариантов §2.1 и схема ключей `reason.<id>` — **предложение автора, не согласовано**.
 
 ### Q7. Факты с пометкой «⚠ проверить»
 

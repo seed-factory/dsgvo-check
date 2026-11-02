@@ -1,5 +1,5 @@
 /**
- * Own service catalog (D14, Apache-2.0): data/services/*.yaml → validated, compiled matcher.
+ * Own service catalog (Apache-2.0): data/services/*.yaml → validated, compiled matcher.
  * Loaded synchronously once per data dir; matching is pure.
  */
 import { z } from 'zod';
@@ -303,7 +303,7 @@ export class ServiceCatalog {
     return c ? [...c.de, ...c.en] : [];
   }
 
-  /** Check-facing view of a catalog entry (D14/D16 fields). */
+  /** Check-facing fields of a catalog entry. */
   info(id: string): ServiceInfo | null {
     const s = this.byId.get(id);
     if (!s) return null;

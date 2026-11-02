@@ -1,5 +1,5 @@
 /**
- * L2 (review S-legal-1, S-legal-2; canary-2 R03, R01): which headings may confirm the type of a fetched legal page.
+ * which headings may confirm the type of a fetched legal page.
  *
  * Real Chromium, `extractDocument` on a synthetic page. The type of the page is decided by headings of its CONTENT:
  * an h1 or a section heading inside a navigation, aside, footer, page-level header or hidden element proves nothing.
@@ -45,7 +45,6 @@ function row(key: string, label: string, kind: DocumentKind, body: string, title
   rows[key] = { label, kind, path: add(body, title) };
 }
 
-// ----- S-legal-1: the h1 is classified like the section headings
 const IMPRESSUM_BODY = `<p>Angaben gemäß § 5 DDG: Beispiel GmbH, Musterstraße 1, 10115 Berlin. ${LOREM.repeat(2)}</p>`;
 const NAV_H1: Array<[string, string, DocumentKind, string]> = [
   ['nav', 'h1 "Impressum" in a nav', 'impressum', '<nav><h1>Impressum</h1></nav>'],
@@ -112,7 +111,6 @@ row(
   'Impressum – Muster GmbH',
 );
 
-// ----- S-legal-2: one rule for chrome and content (manifest and headings)
 /** A wrapper with a heading that carries the only marker and a collapsed panel. `content`: both count as content. */
 const WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['accordion-header', '<div class="accordion-header">', '</div>', 'content'],
@@ -133,7 +131,7 @@ const WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['nav', '<nav>', '</nav>', 'chrome'],
   ['aside', '<aside>', '</aside>', 'chrome'],
   ['role=banner', '<div role="banner">', '</div>', 'chrome'],
-  // S-L-B: the footer of an ambiguous noun (section, block, item, entry, post, article) is a footer of the page more
+  // the footer of an ambiguous noun (section, block, item, entry, post, article) is a footer of the page more
   // often than a bar of a component; its header stays a bar of a component.
   ['section-header', '<div class="section-header">', '</div>', 'content'],
   ['section-footer', '<div class="section-footer">', '</div>', 'chrome'],
@@ -141,7 +139,7 @@ const WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['item-footer', '<div class="item-footer">', '</div>', 'chrome'],
   ['entry-footer', '<div class="entry-footer">', '</div>', 'chrome'],
   ['post-footer', '<div class="post-footer">', '</div>', 'chrome'],
-  // S-L-C: a state of the layout names no page part; the same word as a part (a token of its own) still does
+  // a state of the layout names no page part; the same word as a part (a token of its own) still does
   ['has-header', '<div class="has-header">', '</div>', 'content'],
   ['with-fixed-header', '<div class="page with-fixed-header">', '</div>', 'content'],
   ['has-header + header', '<div class="has-header header">', '</div>', 'chrome'],
@@ -156,7 +154,6 @@ for (const [name, open, close] of WRAPPERS) {
   );
 }
 
-// ----- S-L-B: a footer column in a `<name>-footer` wrapper without any footer tag
 const FOOTER_COLUMN: Array<[string, string]> = [
   ['section-footer', 'section-footer'],
   ['block-footer', 'block-footer'],
@@ -178,7 +175,6 @@ row(
   `<div class="section-footer"><h4>Impressum</h4></div><main><h2>Impressum</h2>${IMPRESSUM_BODY}</main>`,
 );
 
-// ----- S-L-C: the whole content sits in a wrapper whose class carries a state of the layout (no main, no article)
 /** `content`: the h1 of the wrapper confirms the document; `chrome`: the wrapper is a part of the page, it does not. */
 const H1_WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['has-fixed-header', '<div class="wrapper has-fixed-header">', '</div>', 'content'],
@@ -230,7 +226,7 @@ async function extract(path: string, kind: DocumentKind) {
   });
 }
 
-describe('S-legal-1: the h1 is judged where it sits, like the section headings', () => {
+describe('the h1 is judged where it sits, like the section headings', () => {
   it.each(NAV_H1.map(([key, label, kind]) => [key, label, kind] as const))(
     '%s: %s (a content page without any marker) stays unconfirmed',
     async (key, _label, kind) => {
@@ -271,7 +267,7 @@ describe('S-legal-1: the h1 is judged where it sits, like the section headings',
   });
 });
 
-describe('S-legal-2: headings and collapsed elements share one chrome rule', () => {
+describe('headings and collapsed elements share one chrome rule', () => {
   it.each(WRAPPERS.map(([name, , , where]) => [name, where] as const))(
     '%s is %s for the heading and for the collapsed panel alike',
     async (name, where) => {
@@ -288,7 +284,7 @@ describe('S-legal-2: headings and collapsed elements share one chrome rule', () 
   );
 });
 
-describe('S-L-B: a footer column in a wrapper named like an ambiguous component is page chrome', () => {
+describe('a footer column in a wrapper named like an ambiguous component is page chrome', () => {
   it.each(FOOTER_COLUMN.map(([key]) => [key] as const))(
     'div.%s: the column "Impressum" does not confirm the page',
     async (key) => {
@@ -305,7 +301,7 @@ describe('S-L-B: a footer column in a wrapper named like an ambiguous component 
   });
 });
 
-describe('S-L-C: a layout state class on the wrapper of the content does not make the h1 chrome', () => {
+describe('a layout state class on the wrapper of the content does not make the h1 chrome', () => {
   it.each(H1_WRAPPERS.map(([name, , , where]) => [name, where] as const))(
     '%s wraps the %s of the page',
     async (name, where) => {

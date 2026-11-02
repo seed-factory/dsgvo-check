@@ -1,5 +1,5 @@
 /**
- * FP-10: finding texts of the browser module follow the wording guide docs/legal/wording-guide.md §2 beyond the
+ * finding texts of the browser module follow the wording guide docs/legal/wording-guide.md §2 beyond the
  * stop words of rule 1 (test/unit/core/stopwords.test.ts): no claim about (missing) consent (rule 2), no
  * qualification as "tracker"/"Tracking-…" without evidence of purpose (rule 3; only "Tracking-Signatur" in
  * "First-party-Endpunkt mit Tracking-Signatur"), no necessity verdict outside quotes (rule 6), no evaluative terms

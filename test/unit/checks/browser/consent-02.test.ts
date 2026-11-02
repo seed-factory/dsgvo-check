@@ -43,7 +43,7 @@ describe('CONSENT-02 storage before interaction', () => {
     expect(r.outcome?.coverage?.note).toBe(`${ALLOWLIST}:not-evaluated=9`);
   });
 
-  it('G36 (R17): consent-state keys of consentmanager, Usercentrics, Sourcepoint and Funding Choices on the CMP origin → nothing', () => {
+  it('consent-state keys of consentmanager, Usercentrics, Sourcepoint and Funding Choices on the CMP origin → nothing', () => {
     const snap = scenario('clean-allowlist-only.json');
     const phases = snap.browser?.phases ?? [];
     const cookieNames = phases.flatMap((p) => p.cookies.map((c) => c.name));
@@ -61,7 +61,7 @@ describe('CONSENT-02 storage before interaction', () => {
     expect(r.outcome?.coverage?.note).toBe(`${ALLOWLIST}:not-evaluated=9`);
   });
 
-  it('G36 counterexample (R17): an unknown key on the same CMP origin stays a finding', () => {
+  it('counterexample : an unknown key on the same CMP origin stays a finding', () => {
     const r = run([
       phase('A', {
         cookies: [
@@ -141,7 +141,7 @@ describe('CONSENT-02 storage before interaction', () => {
     ]);
   });
 
-  it('FT-04: writes in phase B before the click (fresh profile, replication of A) count as before interaction', () => {
+  it('writes in phase B before the click (fresh profile, replication of A) count as before interaction', () => {
     const r = run([
       phase('A'),
       phase('B', {

@@ -15,7 +15,7 @@ import { type AddressClass, classifyAddress, type Lookup, type NetworkConfig } f
 
 export type GuardVerdict = AddressClass | 'unresolved';
 
-/** A resolver error seen by the classifier (G52): the Node error code and the attempt it happened on. */
+/** A resolver error seen by the classifier: the Node error code and the attempt it happened on. */
 export interface LookupError {
   host: string;
   /** `ENOTFOUND`, `EAI_AGAIN`, `ETIMEOUT`, `ESERVFAIL`, …; `UNKNOWN` when the error carries no code. */
@@ -28,7 +28,7 @@ export interface ClassifierOptions {
   onLookupError?: (e: LookupError) => void;
   /** Pauses before the 2nd and 3rd attempt after a transient resolver error. Default 250 and 750 ms. */
   backoffMs?: readonly number[];
-  /** All attempts of one name together, every wait for the resolver included (S-robustness-1). Default 5 s. */
+  /** All attempts of one name together, every wait for the resolver included. Default 5 s. */
   budgetMs?: number;
 }
 
@@ -63,7 +63,7 @@ export function hostClassifier(
   const backoff = options.backoffMs ?? DEFAULT_BACKOFF_MS;
   const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
   /**
-   * One ask of the resolver. The wait is bounded by what is left of the shared deadline (S-robustness-1): when it runs
+   * One ask of the resolver. The wait is bounded by what is left of the shared deadline: when it runs
    * out the ask ends as `timedOut` and an `ETIMEOUT` is reported; an answer that comes later is not applied (nothing
    * listens to it any more), and the timer is cleared on every way out. A budget that is spent already asks nothing.
    */

@@ -1,11 +1,4 @@
-/**
- * L2: a cookie written from an `about:blank` or `<iframe srcdoc>` frame, in a real Chromium against local hosts
- * (review finding R13, canary2 group G35).
- *
- * Such a frame has no host of its own (`location.hostname` is empty) and uses the origin of the frame that created it,
- * so the cookie lands in the jar of the page. The write must keep its setter (the third-party script) and must not
- * produce a second, `attempted` record for a cookie the browser accepted.
- */
+/** Cookies written by blank and srcdoc frames retain the inherited document origin. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { type CollectRun, collect, persisted } from './helpers.ts';
@@ -30,7 +23,7 @@ const SRCDOC_SCRIPT = "document.cookie = 'ab_srcdoc=SECRET_SRCDOC_VALUE; path=/;
 
 const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
-describe('cookie written from an about:blank or srcdoc frame (R13, G35)', () => {
+describe('cookie written from an about:blank or srcdoc frame', () => {
   let server: FixtureServer;
   let run: CollectRun;
 

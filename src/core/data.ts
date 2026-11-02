@@ -1,6 +1,6 @@
 /**
  * Loaders for data/ (ruleset, texts, crm, routing, generic data dirs). Each directory is a catalog of YAML files
- * that are merged (one file per module: browser.yaml, http.yaml, dns.yaml, plus core files owned by the scaffold).
+ * that are merged (one file per module: browser.yaml, http.yaml, dns.yaml, plus shared core files).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -64,8 +64,6 @@ function mergeUnique<V>(
   }
 }
 
-// ---------------------------------------------------------------- ruleset
-
 const RulesetVariantSchema = z.object({
   severity: SeveritySchema,
   /** Optional per-variant gating override (default: check gating). */
@@ -114,8 +112,6 @@ export function loadRuleset(dataDir = DEFAULT_DATA_DIR, profile = 'de-2026'): Ru
   if (!meta) throw new DataError(`ruleset ${profile}: missing profile block`);
   return { profile: meta, checks };
 }
-
-// ---------------------------------------------------------------- texts
 
 const MessageSchema = z.object({
   title: z.string().min(1),
@@ -188,8 +184,6 @@ export function loadTexts(lang: 'de' | 'en', dataDir = DEFAULT_DATA_DIR): Texts 
   return out;
 }
 
-// ---------------------------------------------------------------- crm mapping
-
 const CrmFileSchema = z.object({
   /** `<checkId>.<variant>` → CRM code (string as in the catalog) or explicit null. */
   mapping: z
@@ -213,8 +207,6 @@ export function loadCrm(dataDir = DEFAULT_DATA_DIR): CrmMapping {
   return out;
 }
 
-// ---------------------------------------------------------------- routing
-
 const RoutingFileSchema = z.object({
   version: z.literal(1),
   /** Service category → owning check id. */
@@ -226,8 +218,6 @@ export type Routing = Record<string, string>;
 export function loadRouting(dataDir = DEFAULT_DATA_DIR): Routing {
   return parseFile(path.join(dataDir, 'routing.yaml'), RoutingFileSchema).owners;
 }
-
-// ---------------------------------------------------------------- generic data dirs
 
 function deepMerge(
   target: Record<string, unknown>,

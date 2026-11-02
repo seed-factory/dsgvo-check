@@ -1,4 +1,4 @@
-# Labels of the HTML report and the GitHub Job Summary (D22: no user-facing strings outside data/).
+# Labels of the HTML report and the GitHub Job Summary; user-facing strings belong in data/.
 # Draft texts ("Textentwurf") until reviewed.
 draft: true
 ui:
@@ -137,3 +137,11 @@ ui:
   report.yes: ja
   report.no: nein
   report.unknown: unbekannt
+  report.pdf.skipped: "PDF konnte nicht erstellt werden."
+  report.pdf.footer: "Passive Beobachtungen; keine Rechtsberatung."
+  report.pdf.page: Seite
+  report.cli.description: Einen gespeicherten JSON-Bericht erneut ausgeben
+  report.cli.formats: "Ausgabeformate: console,json,html,summary,pdf (PDF nur auf Anfrage)"
+  report.cli.language: "Sprache des Berichts: de|en"
+  report.cli.output: Ausgabeverzeichnis
+  report.cli.invalid: Der JSON-Bericht oder die Berichtsoptionen sind ungültig oder werden nicht unterstützt.

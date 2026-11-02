@@ -1,5 +1,5 @@
 /**
- * L2: temp profiles of killed scans (G57). A process killed with SIGKILL runs no exit hook: its profile (real cookies
+ * temp profiles of killed scans . A process killed with SIGKILL runs no exit hook: its profile (real cookies
  * of the scanned site) stays in the temp dir. The profile names its owner; the next scan removes profiles of dead
  * owners and leaves profiles of running processes alone.
  */
@@ -76,7 +76,7 @@ const exited = (c: ChildProcess) =>
 const processesUsing = (dir: string) =>
   execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' }).includes(dir);
 
-describe('G57: a scan killed with SIGKILL leaves its profile; the next scan removes it', () => {
+describe('a scan killed with SIGKILL leaves its profile; the next scan removes it', () => {
   it('the profile of the killed process stays, names its owner, and is swept by the next collector run; a running process keeps its own', async () => {
     const killed = await startChild();
     const running = await startChild();

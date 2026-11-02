@@ -1,5 +1,5 @@
 /**
- * L2 (review R01, canary2 G23, D15): a collapsed section of the policy is counted as an unopened part (and its text
+ * a collapsed section of the policy is counted as an unopened part (and its text
  * is read as `expandable`) also when the page has no `<main>`/`<article>` and the accordion names its header the way
  * Bootstrap and other kits do (`accordion-header`, `card-header`, `panel-header`). The class token `header` used to
  * mark such a wrapper as page chrome: the panel was ignored, its hidden text became `hidden-irrelevant`, PRIV-01 did

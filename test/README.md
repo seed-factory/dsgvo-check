@@ -5,7 +5,7 @@
 | L0    | `test/unit/core/{registry-completeness,stopwords,no-crm-codes,schema}.test.ts` | registry completeness, stop words, no `T[0-9]_` outside JSON, schema drift and Ajv contract          | none          |
 | L1    | `test/unit/**`                                                                 | pure checks on snapshot slices (`test/utils/snapshot-builder.ts`), core (gate, assess, fingerprint…) | none          |
 | L2    | `test/integration/**`                                                          | real Chromium (Chrome for Testing, new headless), undici, `node:tls`, dns2 against local servers     | loopback only |
-| L3    | `test/e2e/**` (M6)                                                             | packed CLI / Docker image / Action                                                                   | loopback only |
+| L3    | `test/e2e/**`                                                                  | packed CLI / Docker image / Action                                                                   | loopback only |
 | live  | `test/live/**`                                                                 | real sites; never part of `pnpm test`                                                                | internet      |
 
 Commands: `corepack pnpm test` (unit + integration), `test:unit`, `test:integration`, `test:e2e`, `test:live`.

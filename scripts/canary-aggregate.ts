@@ -9,8 +9,6 @@ import type { CheckStatus, Severity } from '../src/core/report-schema.ts';
 import { FILES, type RunInfo, readJsonFile, type SiteMeta, type SiteRef } from './canary-runner.ts';
 import { EXPECTED_CMPS, type ExpectedCmp, KNOWN_CMPS, type KnownCmp, type Region } from './canary-sites.ts';
 
-// ---------------------------------------------------------------- inputs
-
 /** The parts of a report the summary reads. Reports are read defensively (older versions, partial files). */
 export interface ReportLike {
   scan?: {
@@ -136,8 +134,6 @@ export async function loadRun(runDir: string): Promise<{ run: RunInfo | null; re
   }
   return { run, results };
 }
-
-// ---------------------------------------------------------------- summary model
 
 export const GROUPS = ['all', 'eu-eea', 'de', 'eu', 'non-eu'] as const;
 export type GroupKey = (typeof GROUPS)[number];
@@ -283,8 +279,6 @@ export interface AggregateOptions {
   withSites: boolean;
   topErrors?: number;
 }
-
-// ---------------------------------------------------------------- helpers
 
 const zeros = <K extends string>(keys: readonly K[]): Record<K, number> =>
   Object.fromEntries(keys.map((k) => [k, 0])) as Record<K, number>;
@@ -614,8 +608,6 @@ export function aggregate(results: readonly SiteResult[], o: AggregateOptions): 
   if (o.withSites) summary.sites = siteRows(results);
   return summary;
 }
-
-// ---------------------------------------------------------------- Markdown
 
 function cell(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return '–';

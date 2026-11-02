@@ -1,4 +1,4 @@
-/** Tiny helper for L2 tests that need a few synthetic pages: files in a temp dir, served by the fixture server. */
+/** Tiny helper for tests that need a few synthetic pages: files in a temp dir, served by the fixture server. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

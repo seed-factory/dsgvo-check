@@ -109,7 +109,7 @@ describe('MAIL-02 SPF: matrix with DMARC (BSI TR-03182) and info variants', () =
     },
   );
 
-  it('-all → no finding', () => {
+  it('all → no finding', () => {
     const r = run(
       site(['v=spf1 mx include:_spf.provider.net -all'], REJECT, {
         'TXT _spf.provider.net': ['v=spf1 ip4:192.0.2.0/24 -all'],
@@ -186,7 +186,7 @@ describe('MAIL-02 errors', () => {
     expect(run(site(['v=spf1 ~all'], 'SERVFAIL')).status).toBe('error');
   });
 
-  it('-all while the DMARC lookup failed → still decidable', () => {
+  it('all while the DMARC lookup failed → still decidable', () => {
     expect(run(site(['v=spf1 -all'], 'SERVFAIL')).status).toBe('completed');
   });
 
@@ -208,7 +208,7 @@ describe('MAIL-02 errors', () => {
     ['-all', 'SERVFAIL'],
     ['-all', 'TIMEOUT'],
     ['~all', 'SERVFAIL'],
-  ] as const)('S-23: %s with an include that failed (%s) → error, not clean', (all, rcode) => {
+  ] as const)('%s with an include that failed (%s) → error, not clean', (all, rcode) => {
     const r = run(
       site([`v=spf1 include:failed.example.de ${all}`], REJECT, { 'TXT failed.example.de': rcode }),
     );
@@ -216,7 +216,7 @@ describe('MAIL-02 errors', () => {
     expect(r.error?.message).toMatch(`failed.example.de ${rcode}`);
   });
 
-  it('S-23: a permerror established in the resolved part stays, the failed include is a limitation', () => {
+  it('a permerror established in the resolved part stays, the failed include is a limitation', () => {
     const r = run(
       site(['v=spf1 include:none.example.de include:failed.example.de -all'], REJECT, {
         'TXT none.example.de': 'NXDOMAIN',

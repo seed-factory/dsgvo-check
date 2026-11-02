@@ -1,11 +1,3 @@
-/** Thrown by stubs that a module owner has not implemented yet. */
-export class NotImplementedError extends Error {
-  constructor(what: string) {
-    super(`${what} is not implemented yet`);
-    this.name = 'NotImplementedError';
-  }
-}
-
 /**
  * Reasons that end a scan as `failed` (exit 2, table 5.2). Each maps 1:1 to an `exitReasons` code.
  * `browser-unavailable` is reported as exit reason `invalid-input` per 5.2 ("браузер не установлен или не стартовал").

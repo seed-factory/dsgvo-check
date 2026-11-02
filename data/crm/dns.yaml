@@ -1,4 +1,4 @@
-# CRM mapping, module dns (owner: M5). Key "<checkId>.<variant>" → catalog code or explicit null. JSON report only.
+# CRM mapping, module dns. Key "<checkId>.<variant>" → catalog code or explicit null. JSON report only.
 # Variants that describe missing or weak spoofing protection map to the catalog code; hygiene hints (deprecated
 # ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings: Q2.
 mapping:

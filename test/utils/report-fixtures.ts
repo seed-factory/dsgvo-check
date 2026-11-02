@@ -1,5 +1,5 @@
 /**
- * Sample reports for reporter and contract tests (M6 uses them for HTML/Summary). They contain every evidence type,
+ * Sample reports for reporter and contract tests ( uses them for HTML/Summary). They contain every evidence type,
  * a crmCode, external strings with ANSI/bidi/control characters and a failed variant.
  */
 import type { FailedReport, FullReport } from '../../src/core/report-schema.ts';

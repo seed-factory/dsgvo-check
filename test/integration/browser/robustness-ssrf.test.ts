@@ -1,5 +1,5 @@
 /**
- * L2: the SSRF guard and a resolver that fails for a moment (G52). The name resolves in phase A; during phase B the
+ * the SSRF guard and a resolver that fails for a moment . The name resolves in phase A; during phase B the
  * injected lookup fails with EAI_AGAIN. Old code: the start page of B is refused as `unresolved` and B and C are lost.
  */
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
@@ -65,7 +65,7 @@ function resolverFailingInPhaseB(code: string, failures: number) {
 const bStart = (run: Awaited<ReturnType<typeof collect>>) =>
   run.result.sections.browser?.phases.find((p) => p.phase === 'B')?.pages[0];
 
-describe('G52: a start page refused in phase B because the resolver hiccuped', () => {
+describe('a start page refused in phase B because the resolver hiccuped', () => {
   it('EAI_AGAIN twice, then success: the guard re-asks and the start page of B loads', async () => {
     const r = resolverFailingInPhaseB('EAI_AGAIN', 2);
     const run = await collect(server, {
@@ -94,7 +94,7 @@ describe('G52: a start page refused in phase B because the resolver hiccuped', (
     // The refusal itself stays a fact in the data: one blocked navigation, flagged on its request record.
     expect(run.result.sections.browser?.guard).toMatchObject({ blocked: 1 });
     expect(b?.requests.filter((q) => q.blockedByGuard)).toHaveLength(1);
-    // R28: the document was fetched by the retry, so the report must not say that documents were not fetched.
+    // : the document was fetched by the retry, so the report must not say that documents were not fetched.
     expect(run.result.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-PRIVATE-REQUEST-BLOCKED');
   });
 

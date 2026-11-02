@@ -61,7 +61,7 @@ export function evidenceValue(value: string | undefined | null, max = 300): stri
 export const DAY_MS = 86_400_000;
 
 /**
- * Host where the start document's redirect chain ended (S-19): the final hop, else the redirect target the chain
+ * Host where the start document's redirect chain ended: the final hop, else the redirect target the chain
  * could not complete. Lower case; null when unknown.
  */
 export function startFinalHost(http: Pick<HttpSection, 'chains' | 'documents'>): string | null {

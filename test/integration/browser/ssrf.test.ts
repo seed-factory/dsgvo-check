@@ -1,5 +1,5 @@
 /**
- * L2: SSRF boundary of the prototype — documents (top-level, frames, popups) to loopback, link-local/metadata and
+ * SSRF boundary of the prototype — documents (top-level, frames, popups) to loopback, link-local/metadata and
  * private addresses, or to names that do not resolve locally, are not loaded when `allowPrivateAddresses` is false.
  * Fixture hosts are declared public by a fake lookup; `intranet.example.test` resolves to a private address and
  * `unresolvable.example.test` does not resolve.
@@ -49,7 +49,7 @@ describe('SSRF guard (documents and frames)', () => {
     expect(server.requestsTo('unresolvable.example.test')).toEqual([]);
     expect(metadataHits()).toEqual([]);
     expect(run.result.sections.browser?.guard).toMatchObject({ enabled: true, blocked: 5 });
-    // One diagnostic; its params name the address classes, `unresolved` separately (S-01).
+    // One diagnostic; its params name the address classes, `unresolved` separately .
     const diag = run.result.diagnostics?.find((d) => d.code === 'SCAN-PRIVATE-REQUEST-BLOCKED');
     expect(diag).toMatchObject({ affects: [], params: { count: 5 } });
     expect(String(diag?.params?.addressClass).split(', ')).toEqual([
@@ -75,7 +75,7 @@ describe('SSRF guard (documents and frames)', () => {
     expect(nav).toMatchObject({ blockedByGuard: true, isNavigation: true, isMainFrame: true });
   });
 
-  it('a start host that itself is not public is named as such, without a redirect that did not happen (FP-05)', async () => {
+  it('a start host that itself is not public is named as such, without a redirect that did not happen', async () => {
     const run = await collect(server, {
       url: 'https://intranet.example.test/',
       maxPages: 1,
@@ -93,7 +93,7 @@ describe('SSRF guard (documents and frames)', () => {
   });
 });
 
-describe('SSRF guard covers new windows (FP-01)', () => {
+describe('SSRF guard covers new windows', () => {
   it('window.open / target=_blank without a user gesture never reach internal addresses', async () => {
     server.reset();
     const run = await collect(server, {

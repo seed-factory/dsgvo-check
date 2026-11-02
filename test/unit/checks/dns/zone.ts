@@ -1,5 +1,5 @@
 /**
- * Tiny zone DSL for DNS L1 tests: `{ 'TXT _dmarc.example.de': ['v=DMARC1; p=reject'], 'MX example.de': 'NXDOMAIN' }`.
+ * Tiny zone DSL for DNS tests: `{ 'TXT _dmarc.example.de': ['v=DMARC1; p=reject'], 'MX example.de': 'NXDOMAIN' }`.
  * A string array is a NOERROR answer (MX entries as "<priority> <exchange>"); `[]` is NOERROR without relevant
  * answers (filtered); a string is the rcode.
  */

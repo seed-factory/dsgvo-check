@@ -1,5 +1,5 @@
 /**
- * L2 (review S-legal-3, L3/G19): a combined legal page. The start page has two exact labels, "Impressum" and
+ * a combined legal page. The start page has two exact labels, "Impressum" and
  * "Datenschutzerklärung", and both links lead to ONE URL whose page holds both documents. The collector must keep both
  * kinds of that page: a document of each kind in `DocumentsSection`, and LEGAL-01 / PRIV-01 read the real result.
  * The pure counterpart (selectPages keeps both choices) is in pure/legal-links.test.ts; this test goes through the real
@@ -104,7 +104,7 @@ function snapshotOf(run: CollectRun): Snapshot {
   );
 }
 
-describe('L3 (S-legal-3): a combined page behind two exact labels keeps both documents', () => {
+describe('a combined page behind two exact labels keeps both documents', () => {
   it.each([
     ['both links to one URL', 'https://shared.example.test/'],
     ['the links in the other order, one with a trailing slash', 'https://sharedorder.example.test/'],

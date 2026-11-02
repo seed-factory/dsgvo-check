@@ -4,8 +4,8 @@
  * not parsed, so `not-named` is capped at `medium`. Category-only description and matches only in
  * `hidden-irrelevant` parts → info for manual review. PDF, incomplete document, language not de/en →
  * inconclusive; expandable parts not opened (banner open) → partial, also when that is the only error of the
- * document (D15, G23). A page whose type the collector could not confirm is no policy (G20). The evidence of a
- * negative search carries the manifest of the processed document (G28). No policy found is LEGAL-01's finding.
+ * document. A page whose type the collector could not confirm is no policy. The evidence of a
+ * negative search carries the manifest of the processed document. No policy found is LEGAL-01's finding.
  */
 import type { DocumentRecord } from '../../collectors/browser/types.ts';
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
@@ -23,7 +23,7 @@ const ID = 'PRIV-01';
 
 export type MatchLevel = 'named' | 'company' | 'domain' | 'category' | 'none';
 
-/** NFKC, case, ä/ae, ß/ss, soft hyphen, diacritics; punctuation and hyphens → spaces (D15). */
+/** NFKC, case, ä/ae, ß/ss, soft hyphen, diacritics; punctuation and hyphens → spaces. */
 export function normalizeText(s: string): string {
   return ` ${s
     .normalize('NFKC')
@@ -72,7 +72,7 @@ function quote(text: string, term: string): string {
 
 /**
  * The only thing missing is the content of expandable parts that were not opened. With the banner open (phase B not
- * possible) such parts are marked in the manifest and reported as limitation `banner-open` (D15); every other error
+ * possible) such parts are marked in the manifest and reported as limitation `banner-open`; every other error
  * (truncation, unreadable frame, too short) still makes the document incomplete.
  */
 function onlyUnopened(d: DocumentRecord): boolean {
@@ -89,8 +89,8 @@ export const priv01 = defineCheck({
     { variant: 'ambiguous-match', variantGroup: 'policy-mention' },
   ],
   run({ browser, documents, derived }) {
-    // A page the collector judged "not the document" or could not confirm as such is no policy to search (S-24,
-    // G20): LEGAL-01 reports it.
+    // A page the collector judged "not the document" or could not confirm as such is no policy to search:
+    // LEGAL-01 reports it.
     const policies = documents.documents.filter(
       (d) => d.kind === 'privacy' && usableDocument(d, documents.attempts),
     );
@@ -127,7 +127,7 @@ export const priv01 = defineCheck({
 
     const records = requestIndex(browser);
     const classified = new Map(derived.requests.map((c) => [c.requestId, c] as const));
-    // What was read of the document(s): the counters of the snapshot manifest, no text (G28).
+    // What was read of the document(s): the counters of the snapshot manifest, no text.
     const manifest = {
       partCount: parts.length,
       textLength: html.reduce((n, d) => n + d.manifest.textLength, 0),

@@ -137,7 +137,7 @@ describe('CONSENT-05 after a confirmed reject', () => {
     });
   });
 
-  it('S-15: reload skipped by the time budget (persistence unknown) → reject not confirmed, no finding', () => {
+  it('reload skipped by the time budget (persistence unknown) → reject not confirmed, no finding', () => {
     const r = runB(
       [gaAfter('b')],
       {},
@@ -147,12 +147,12 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('S-15: no state produced by our click (only a stored state) → reject not confirmed', () => {
+  it('no state produced by our click (only a stored state) → reject not confirmed', () => {
     const r = runB([gaAfter('b')], {}, cmpWith(rejectB({ stateAfter: [STORED] })));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
   });
 
-  it('S-15: the action state must record the user decision (responded false → not confirmed)', () => {
+  it('the action state must record the user decision (responded false → not confirmed)', () => {
     const r = runB(
       [gaAfter('b')],
       {},
@@ -163,19 +163,19 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
   });
 
-  it('S-15: persisted flag without any stored state read after the reload → reject not confirmed', () => {
+  it('persisted flag without any stored state read after the reload → reject not confirmed', () => {
     const r = runB([gaAfter('b')], {}, cmpWith(rejectB({ stateAfter: [ACTION] })));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
   });
 
-  it('S-15: the stored state may come from the CMP facts read after the reload', () => {
+  it('the stored state may come from the CMP facts read after the reload', () => {
     const afterReload = cmpFacts({ moment: 'after-reload', state: [STORED] });
     const r = runB([gaAfter('b')], {}, cmpWith(rejectB({ stateAfter: [ACTION] }, [cmpFacts(), afterReload])));
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual(['tracking-after-reject']);
   });
 
-  it('S-33: pagehide capture unavailable → inconclusive (pagehide-capture-unavailable), established findings kept', () => {
+  it('pagehide capture unavailable → inconclusive (pagehide-capture-unavailable), established findings kept', () => {
     const none = runB([], {}, cmpWith(rejectB()), ['pagehide-beacons']);
     expect(none).toMatchObject({ status: 'inconclusive', reason: 'pagehide-capture-unavailable' });
     expect(none.outcome?.limitations).toContain('pagehide-capture-unavailable');
@@ -190,7 +190,7 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(variantsOf(r)).toEqual(['cookieless-ping-after-reject']);
   });
 
-  it('S-13: Consent Mode denied does not hide a stored identifier match after the reject → tracking-after-reject', () => {
+  it('Consent Mode denied does not hide a stored identifier match after the reject → tracking-after-reject', () => {
     const r = runB([
       gaAfter('b', {
         url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]',
@@ -202,7 +202,7 @@ describe('CONSENT-05 after a confirmed reject', () => {
     ]);
   });
 
-  it('FC-08: a per-load identifier after the reject is no persistent identifier → cookieless-ping-after-reject', () => {
+  it('a per-load identifier after the reject is no persistent identifier → cookieless-ping-after-reject', () => {
     const r = runB([
       req('b', 'https://in.hotjar.com/api/v2/client', {
         phase: 'B',
@@ -218,7 +218,7 @@ describe('CONSENT-05 after a confirmed reject', () => {
   });
 
   it.each(['rejected', 'attempted'] as const)(
-    'FT-03: a tracking cookie %s by the browser after the reject is no storage finding',
+    'a tracking cookie %s by the browser after the reject is no storage finding',
     (state) => {
       const r = runB([], {
         cookies: [

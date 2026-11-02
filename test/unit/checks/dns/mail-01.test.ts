@@ -160,7 +160,7 @@ describe('MAIL-01 Null MX (RFC 7505)', () => {
     expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy: 'none' });
   });
 
-  it("FT-19: a PSD-only p=reject is not the Null-MX domain's own policy → weak-option (policy missing)", () => {
+  it("a PSD-only p=reject is not the Null-MX domain's own policy → weak-option (policy missing)", () => {
     const r = run(
       site('NXDOMAIN', { 'MX example.de': ['0 .'], 'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'] }),
     );
@@ -185,7 +185,7 @@ describe('MAIL-01 errors are never "no record"', () => {
     expect(r.status).toBe('error');
   });
 
-  it('S-22: SERVFAIL on the host name is an error even when the organizational record has p=reject', () => {
+  it('SERVFAIL on the host name is an error even when the organizational record has p=reject', () => {
     const r = run(site([`v=DMARC1; p=reject; ${RUA}`], { 'TXT _dmarc.www.example.de': 'SERVFAIL' }));
     expect(r).toMatchObject({ status: 'error', reason: 'exception' });
     expect(r.error?.message).toMatch('_dmarc.www.example.de SERVFAIL');

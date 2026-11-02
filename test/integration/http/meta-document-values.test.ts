@@ -1,5 +1,5 @@
 /**
- * L2 (review N-REV-3, N-REV-4): the `<meta>` facts of the start document. They come from the markup of the document,
+ * the `<meta>` facts of the start document. They come from the markup of the document,
  * not from inert elements (`<template>`, `<noscript>`), and what is stored is reduced like a response header: URLs
  * sanitized, a value outside the allowlist `[redacted]`, a cookie never stored (AGENTS rule 2: the collector edits
  * before it writes). The collector runs for real against a local server; HDR-01 reads the section it produced.
@@ -60,7 +60,7 @@ beforeAll(async () => {
           '<meta name="referrer" content="unsafe-url">',
         ].join(''),
       ),
-      // 56 000-character values of untrusted markup: they must not hold up the event loop (S-*, N-REV-4 follow-up)
+      // 56 000-character values of untrusted markup: they must not hold up the event loop (S-*, follow-up)
       httpPage(
         'www.metaredos-refresh.test',
         `<meta http-equiv="refresh" content="0;x${' '.repeat(56_000)}y">`,
@@ -70,7 +70,7 @@ beforeAll(async () => {
         'www.metaredos-referrer.test',
         `<meta name="referrer" content="${'a,'.repeat(28_000)}no-referrer">`,
       ),
-      // P5: a tag of about 56 KB made of tokens that are no Referrer-Policy keyword, and one made of keywords
+      // : a tag of about 56 KB made of tokens that are no Referrer-Policy keyword, and one made of keywords
       httpPage('www.metareferrer-junk.test', `<meta name="referrer" content="${'a,'.repeat(28_000)}">`),
       httpPage(
         'www.metareferrer-many.test',
@@ -120,7 +120,7 @@ async function collectHttpOnly(host: string): Promise<HttpSection> {
 
 const start = (http: HttpSection) => http.documents.find((d) => d.role === 'start');
 
-describe('N-REV-4: the meta values of the document are stored reduced', () => {
+describe('the meta values of the document are stored reduced', () => {
   it('no marker of the page survives in the section; the facts the check reads are still there', async () => {
     const http = await collectHttpOnly('www.metaval.test');
     expect(JSON.stringify(http)).not.toContain('zq7');
@@ -156,7 +156,7 @@ describe('N-REV-4: the meta values of the document are stored reduced', () => {
   });
 });
 
-describe('N-REV-3: inert meta tags are no facts of the document', () => {
+describe('inert meta tags are no facts of the document', () => {
   it('a meta inside a template or a noscript counts neither as CSP nor as referrer', async () => {
     const http = await collectHttpOnly('www.metainert.test');
     const doc = start(http);
@@ -225,19 +225,19 @@ describe('S-*: big meta values of the start document are read in linear time', (
   it('a referrer of 28 000 tokens: the loop is not held up, the keyword is kept and the filler is not', async () => {
     const { value: http, stallMs } = await longestStall(() => collectHttpOnly('www.metaredos-referrer.test'));
     expect(stallMs).toBeLessThan(STALL_LIMIT_MS);
-    // the `a` tokens are no Referrer-Policy keyword (P5): they used to be stored as `a, a, …, no-referrer`
+    // the `a` tokens are no Referrer-Policy keyword : they used to be stored as `a, a, …, no-referrer`
     expect(start(http)?.metaReferrer).toBe('no-referrer');
     expect(server.unexpected).toEqual([]);
   });
 
-  it('P5: a referrer of 56 KB without any keyword stores nothing, so the snapshot does not grow with the tag', async () => {
+  it('a referrer of 56 KB without any keyword stores nothing, so the snapshot does not grow with the tag', async () => {
     const http = await collectHttpOnly('www.metareferrer-junk.test');
     expect(start(http)?.metaReferrer).toBeNull();
     expect(JSON.stringify(http).length).toBeLessThan(20_000);
     expect(server.unexpected).toEqual([]);
   });
 
-  it('P5: a referrer of 54 KB of keywords stores the last eight, and HDR-01 reads the policy in force', async () => {
+  it('a referrer of 54 KB of keywords stores the last eight, and HDR-01 reads the policy in force', async () => {
     const http = await collectHttpOnly('www.metareferrer-many.test');
     const stored = start(http)?.metaReferrer ?? '';
     expect(stored).toBe(`${Array(7).fill('no-referrer').join(', ')}, origin`);

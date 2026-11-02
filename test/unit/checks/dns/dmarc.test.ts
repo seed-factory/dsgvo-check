@@ -139,7 +139,7 @@ describe('analyzeDmarc', () => {
     expect(a.failures.map((s) => s.qname)).toEqual(['_dmarc.example.de']);
   });
 
-  it('S-22: a failure on a more specific name is not replaced by the parent policy → failed', () => {
+  it('a failure on a more specific name is not replaced by the parent policy → failed', () => {
     const a = analyzeDmarc(
       'www.example.de',
       'example.de',

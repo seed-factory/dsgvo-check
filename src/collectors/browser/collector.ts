@@ -1,5 +1,5 @@
 /**
- * Browser collection (D08, D09, D15, D20, D25): phase A (≤ maxPages, no interaction), phase B (start page:
+ * Browser collection: phase A (≤ maxPages, no interaction), phase B (start page:
  * observation before the click, first screen via the CMP subsystem, reject via the adapter, verify, reload, ≤ 2
  * control pages), phase C (accept on the start page, same control pages). Every phase runs in a fresh persistent
  * profile. Fatal start-page conditions are returned in `fatal` (5.2).
@@ -141,22 +141,22 @@ const BROWSER_CHECKS = [
   'PRIV-01',
   'TRACK-01',
 ];
-/** Overload answers of the target host (D09, table 5.2). */
+/** Overload answers of the target host (table 5.2). */
 const THROTTLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
-/** This many 429/503 responses of the target host within one phase count as throttling (D09). */
+/** This many 429/503 responses of the target host within one phase count as throttling. */
 const THROTTLE_RESPONSES = 3;
 const MAX_RETRY_AFTER_MS = 30_000;
 /** `about:blank` has no request: leaving a failed start navigation takes milliseconds, this is only the upper bound (L2). */
 const LEAVE_NAVIGATION_TIMEOUT_MS = 3_000;
-/** How long the recorder may keep a phase waiting for response metadata at the end of the phase (G49, G51). */
+/** How long the recorder may keep a phase waiting for response metadata at the end of the phase. */
 const FLUSH_BUDGET_MS = 2_000;
 /**
  * After the global abort the orderly shutdown (browser closed, profile removed) normally takes milliseconds and at most
  * about `FLUSH_BUDGET_MS` + `CLOSE_BUDGET_MS`. If it takes longer, the collector hands over what it has instead of
- * being given up by the orchestrator (`ABORT_GRACE_MS` = 10 s, G51).
+ * being given up by the orchestrator (`ABORT_GRACE_MS` = 10 s).
  */
 const ABORT_ORDERLY_MS = 5_500;
-/** Pages tried after a legal link led to a page of the wrong type, per scan (D09: ≤ 3 GET for finding a document). */
+/** Pages tried after a legal link led to a page of the wrong type, per scan (≤ 3 GET for finding a document). */
 const MAX_CANDIDATE_RETRIES = 3;
 
 export class BrowserCollection {
@@ -178,11 +178,11 @@ export class BrowserCollection {
   private guardScope: GuardHandle['scope'];
   /** Verdicts of documents refused by the SSRF guard (address classes for the diagnostic). */
   private readonly guardVerdicts: GuardVerdict[] = [];
-  /** Verdicts of refusals that a successful repeat of the same navigation made good (R28): no document is missing. */
+  /** Verdicts of refusals that a successful repeat of the same navigation made good: no document is missing. */
   private readonly guardRecovered: GuardVerdict[] = [];
-  /** Hosts of documents the guard refused (in memory only): tells a redirect from a non-public start host (FP-05). */
+  /** Hosts of documents the guard refused (in memory only): tells a redirect from a non-public start host. */
   private readonly guardBlockedHosts = new Set<string>();
-  /** The target host answered with 429/503 (D09): no new navigation to it. */
+  /** The target host answered with 429/503: no new navigation to it. */
   private throttled = false;
   private startRaw = '';
   private scope = { finalHost: '', etld1: null as string | null };
@@ -192,9 +192,9 @@ export class BrowserCollection {
   private stoppedEarly: string | null = null;
   /** The phase session that is open (not yet closed), for the hand-over after an abort. */
   private session: Session | null = null;
-  /** Pages with a challenge or an access block other than the start page of phase A (SCAN-BLOCKED, G54). */
+  /** Pages with a challenge or an access block other than the start page of phase A (SCAN-BLOCKED). */
   private readonly blockedPages: BlockedPage[] = [];
-  /** Resolver errors of the SSRF guard: code and scan-clock time (G52). */
+  /** Resolver errors of the SSRF guard: code and scan-clock time. */
   private readonly lookupErrors: Array<LookupError & { atMs: number }> = [];
 
   private readonly ctx: CollectorContext;
@@ -241,7 +241,7 @@ export class BrowserCollection {
 
   private async runBody(): Promise<CollectorResult<BrowserSections>> {
     try {
-      // Profiles of scans that were killed (SIGKILL, crash) hold cookies of the scanned site: remove them first (G57).
+      // Profiles of scans that were killed (SIGKILL, crash) hold cookies of the scanned site: remove them first.
       try {
         const removed = removeStaleProfiles();
         if (removed.length > 0) this.ctx.log.info(`removed ${removed.length} stale browser profile(s)`);
@@ -306,7 +306,7 @@ export class BrowserCollection {
   /**
    * Result after the abort (global --timeout): before the start page was visited nothing is delivered (5.2: the
    * orchestrator reports failed/SCAN-TIMEOUT); afterwards what was collected is kept. Phases that did not run are
-   * recorded as skipped by the deadline, so that checks can tell "cut by the deadline" from "not planned" (G50).
+   * recorded as skipped by the deadline, so that checks can tell "cut by the deadline" from "not planned".
    * Never a fatal of the site.
    */
   private abortedResult(): CollectorResult<BrowserSections> {
@@ -322,7 +322,7 @@ export class BrowserCollection {
   /**
    * The orderly shutdown after an abort did not finish in time (a browser that does not close, a call without
    * timeout): hand over what the phases hold now, from the running phase too. The orderly flow may still run in the
-   * background, so the sections are a copy it can no longer change (G51).
+   * background, so the sections are a copy it can no longer change.
    */
   private async handover(): Promise<CollectorResult<BrowserSections>> {
     this.ctx.log.warn(
@@ -332,8 +332,6 @@ export class BrowserCollection {
     if (s && this.current === s.browser) await this.sealPhase(s);
     return structuredClone(this.abortedResult());
   }
-
-  // ---------------------------------------------------------------- infrastructure
 
   private launchConfig() {
     return {
@@ -352,7 +350,7 @@ export class BrowserCollection {
 
   /**
    * A phase stopped because the time ran out. The global deadline (abort) is `timeout`; only the local reserve before it
-   * is `time-budget` and marks the collector as stopped early (R27, 7.6).
+   * is `time-budget` and marks the collector as stopped early (7.6).
    */
   private cutByTime(record: PhaseRecord): void {
     record.status = 'partial';
@@ -441,7 +439,7 @@ export class BrowserCollection {
 
   /**
    * Cookie/storage tracker; a `Set-Cookie` on a request started after the click is a write after the click. Its
-   * in-page reads are bounded by time and by the scan signal; a read that ran out of time is a phase error (G49).
+   * in-page reads are bounded by time and by the scan signal; a read that ran out of time is a phase error.
    */
   private newJar(
     recorder: NetworkRecorder,
@@ -583,12 +581,12 @@ export class BrowserCollection {
     );
     this.lastNavigationEnd = Date.now();
     s.record.pages.push(r.visit);
-    // Facts the page budget cut off (G49) stay visible as phase errors; what was gathered before the cut is kept.
+    // Facts the page budget cut off stay visible as phase errors; what was gathered before the cut is kept.
     for (const l of r.limitations ?? []) {
       s.record.errors.push({ code: l.code, message: l.message, phase: s.phase, url: r.visit.url });
     }
     // Whether the page counts as blocked is decided by the final outcome of the logical navigation (`navigate`), not
-    // by this attempt: a repeat may still deliver the page (S-robustness-3).
+    // by this attempt: a repeat may still deliver the page.
     return r;
   }
 
@@ -639,7 +637,7 @@ export class BrowserCollection {
   }
 
   /**
-   * A navigation under the overload policy of D09 / table 5.2 (S-27): 429/503 → pause by Retry-After (≤ 30 s) and
+   * A navigation under the overload policy: 429/503 → pause by Retry-After (≤ 30 s) and
    * one retry; still 429/503 — or ≥ 3 such responses of the target host in this phase — → throttled: SCAN-THROTTLED,
    * the phase is partial and no new navigation to the host starts.
    */
@@ -665,7 +663,7 @@ export class BrowserCollection {
   }
 
   /**
-   * SCAN-BLOCKED follows the final outcome of the logical navigation (S-robustness-3): a page whose final visit is a
+   * SCAN-BLOCKED follows the final outcome of the logical navigation: a page whose final visit is a
    * bot-protection page is blocked, so is one whose first attempt was and whose repeat gave no evaluable page; a page
    * that the repeat delivered is evaluated and not blocked. The block of the first attempt stays a fact of the phase
    * (an entry of `PhaseRecord.errors`, like the start-page repeat of L2). The start page of phase A is the fatal
@@ -742,7 +740,7 @@ export class BrowserCollection {
   /**
    * Cookies/storage snapshot and identifier correlation; CMP facts when `moment` is given. A page that is no readable
    * HTML document (PDF viewer, the browser's error page, a failed DOM read) gets its cookies from the jar only: in-page
-   * reads and the CMP calls would wait for frames that never answer (G49).
+   * reads and the CMP calls would wait for frames that never answer.
    */
   private async afterPage(
     s: Session,
@@ -750,7 +748,7 @@ export class BrowserCollection {
     cmpMoment: CmpFacts['moment'] | null,
     adapter: CmpAdapter | null = null,
   ): Promise<CmpFacts | null> {
-    // Facts of a page are attributed to the page as shown (final URL after redirects), like its requests (FC-02).
+    // Facts of a page are attributed to the page as shown (final URL after redirects), like its requests.
     const pageUrl = r.visit.finalUrl;
     const readable = !r.error && r.visit.dom !== null;
     const values = await s.jar.snapshot(
@@ -767,8 +765,6 @@ export class BrowserCollection {
     if (facts) s.cmpFacts.facts.push(facts);
     return facts;
   }
-
-  // ---------------------------------------------------------------- phase A
 
   private async phaseA(): Promise<PhaseAOutcome> {
     const s = await this.openPhase('A');
@@ -861,7 +857,7 @@ export class BrowserCollection {
       const code = navigationErrorCode(r.error);
       if (/^ERR_(CERT|SSL)/.test(code)) return { kind: 'tls-blocked' };
       if (code === 'ERR_BLOCKED_BY_CLIENT' && this.guard.blocked > 0) {
-        // Word it by the facts (FP-05): a redirect only when the refused document is on another host.
+        // Word it by the facts: a redirect only when the refused document is on another host.
         const redirected = [...this.guardBlockedHosts].some((h) => h !== this.startHost());
         // Refused because the name does not resolve locally: the target is unreachable, not "not public".
         if (this.guardVerdicts.every((v) => v === 'unresolved')) {
@@ -1044,8 +1040,8 @@ export class BrowserCollection {
       }
     };
     /**
-     * The page behind a legal link is substantive but not of the expected type (`unconfirmed`, G20): the next best link
-     * of the same page is tried instead of stopping at the first (G19), within `MAX_CANDIDATE_RETRIES` extra GETs.
+     * The page behind a legal link is substantive but not of the expected type (`unconfirmed`): the next best link
+     * of the same page is tried instead of stopping at the first, within `MAX_CANDIDATE_RETRIES` extra GETs.
      */
     const tryNextCandidate = (item: QItem): void => {
       const kind = item.docKind;
@@ -1098,7 +1094,7 @@ export class BrowserCollection {
         s.record.reason = 'request-cap';
         break;
       }
-      // --max-pages counts every page of phase A; legal pages and legal hops are visited regardless (D09).
+      // --max-pages counts every page of phase A; legal pages and legal hops are visited regardless.
       const budgeted = !item.docKind && !item.hop;
       if (budgeted && s.record.pages.length >= this.ctx.options.maxPages) continue;
       if (visited.has(pageKey(item.choice.raw))) continue;
@@ -1153,7 +1149,7 @@ export class BrowserCollection {
     for (const kind of LEGAL_KINDS) {
       if (found[kind] || this.throttled) continue;
       if (!this.timeLeft()) {
-        // A fallback probe that was not made leaves phase A unfinished, like a cut queue (R09, G22).
+        // A fallback probe that was not made leaves phase A unfinished, like a cut queue.
         if (s.record.status === 'completed') this.cutByTime(s.record);
         break;
       }
@@ -1204,7 +1200,7 @@ export class BrowserCollection {
   /**
    * Extract a legal document from the current page and record the attempt. `found`: a document of the expected type;
    * `unconfirmed`: a substantive page whose type could not be confirmed (its own outcome, neither found nor soft-404:
-   * the caller may try the next candidate, LEGAL-01 reports a limitation, G20); `no`: nothing usable.
+   * the caller may try the next candidate, LEGAL-01 reports a limitation); `no`: nothing usable.
    */
   private async recordDocument(
     s: Session,
@@ -1242,7 +1238,7 @@ export class BrowserCollection {
     }
     let doc: DocumentRecord;
     try {
-      // A page that does not answer must not hold the phase: the read is bounded like every other in-page call (G49).
+      // A page that does not answer must not hold the phase: the read is bounded like every other in-page call.
       doc = await withTimeout(
         extractDocument(s.page, {
           id: `doc-${kind}-${this.documents.documents.length + 1}`,
@@ -1309,8 +1305,6 @@ export class BrowserCollection {
     };
   }
 
-  // ---------------------------------------------------------------- robots / sitemap (class T probes)
-
   private async fetchRobots(origin: string): Promise<Robots | null> {
     const url = `${origin}/robots.txt`;
     this.probes.push({ kind: 'http', class: 'T', target: url, purpose: 'robots.txt' });
@@ -1327,7 +1321,7 @@ export class BrowserCollection {
     const first = robots?.sitemaps.find((u) => u.startsWith(origin)) ?? `${origin}/sitemap.xml`;
     const get = async (url: string) => {
       this.probes.push({ kind: 'http', class: 'T', target: sanitizeRequestUrl(url), purpose: 'sitemap' });
-      await sleep(500, this.ctx.signal); // ≤ 2 requests per second per host (D09)
+      await sleep(500, this.ctx.signal); // ≤ 2 requests per second per host
       const res = await fetchText(url, this.ctx.network, this.ctx.userAgent.http, {
         timeoutMs: 8_000,
         maxBytes: 512 * 1024,
@@ -1344,9 +1338,7 @@ export class BrowserCollection {
     return sub?.kind === 'urlset' ? sub.locs.slice(0, 500) : [];
   }
 
-  // ---------------------------------------------------------------- phases B and C
-
-  /** plan.click target: the D12 decision of `classifyFirstLayer` when available, else the unique actionable button. */
+  /** plan.click target: the decision of `classifyFirstLayer` when available, else the unique actionable button. */
   private async clickTarget(
     s: Session,
     facts: CmpFacts | null,
@@ -1426,7 +1418,7 @@ export class BrowserCollection {
       const verdictsBefore = this.guardVerdicts.length;
       let start = await this.navigate(s, startSpec);
       // The name resolved in phase A but not now (a resolver hiccup that outlasted the guard's retries): the start page
-      // is the one page this phase cannot do without, so it gets one more navigation after a pause (G52).
+      // is the one page this phase cannot do without, so it gets one more navigation after a pause.
       if (this.refusedAsUnresolved(start, verdictsBefore) && this.timeLeft() && !this.throttled) {
         this.ctx.log.warn(`phase ${phase}: start page refused as unresolved, retrying once`);
         const refused = this.guardVerdicts.slice(verdictsBefore);
@@ -1434,14 +1426,14 @@ export class BrowserCollection {
         s.record.pages.pop();
         start = await this.navigate(s, startSpec);
         // The repeat loaded the document: the refusal stays a fact of the request record and of `guard.blocked`, but
-        // no document is missing, so the report must not claim that (R28).
+        // no document is missing, so the report must not claim that.
         if (!start.error) this.guardRecovered.push(...refused);
       }
       await this.afterPage(s, start, null);
       if (this.throttled) return;
       if (!start.visit.evaluable) {
         if (this.ctx.signal.aborted) {
-          // The navigation failed because the deadline closed the browser: the phase was cut, the site did not fail (R27).
+          // The navigation failed because the deadline closed the browser: the phase was cut, the site did not fail.
           s.record.status = 'partial';
           s.record.reason = 'timeout';
         } else {
@@ -1495,7 +1487,7 @@ export class BrowserCollection {
         const verify2 = reload.error
           ? null
           : await s.cmp.verify(s.page, adapter, action, reload.visit.finalUrl);
-        // A reject confirmed only after the reload is verified too (FC-09).
+        // A reject confirmed only after the reload is verified too.
         const verify = combineVerify(verify1, verify2);
         if (verify) s.cmpFacts.verify = verify;
       } else if (verify1) {
@@ -1509,8 +1501,8 @@ export class BrowserCollection {
 
   /**
    * Click via the adapter, then observe with `tRef: click`. Returns false when nothing was clicked (the recorder then
-   * stays in navigation mode). The adapter clicks exactly `target`, the `plan.click` decision of core (S-31, D12).
-   * The click moment is the first trusted press in the page after the adapter was called (FC-03): the adapter still
+   * stays in navigation mode). The adapter clicks exactly `target`, the `plan.click` decision of core.
+   * The click moment is the first trusted press in the page after the adapter was called: the adapter still
    * locates and waits for the button before it presses it.
    */
   private async act(
@@ -1612,7 +1604,7 @@ export class BrowserCollection {
         this.screenshots.push(shot.record);
         facts.screenshotId = shot.record.id;
       } else if (shot.skipped !== 'no-banner') {
-        // D20 limitation: no unique container ≤ 50 % of the viewport → no image.
+        // No unique container ≤ 50 % of the viewport → no image.
         s.record.errors.push({
           code: 'screenshot-skipped',
           message: shot.skipped,
@@ -1629,8 +1621,6 @@ export class BrowserCollection {
       });
     }
   }
-
-  // ---------------------------------------------------------------- result
 
   private linkDocuments(): void {
     const visits = this.phases.flatMap((p) => p.pages);
@@ -1684,9 +1674,9 @@ export class BrowserCollection {
   }
 
   /**
-   * SCAN-PRIVATE-REQUEST-BLOCKED: address classes, and for names that did not resolve the resolver error (G52). Only
+   * SCAN-PRIVATE-REQUEST-BLOCKED: address classes, and for names that did not resolve the resolver error. Only
    * refusals that left a document unfetched count; those a repeat made good are named in `recovered` when others
-   * remain, and give no diagnostic when all were made good (R28).
+   * remain, and give no diagnostic when all were made good.
    */
   private privateBlockedDiagnostic(): DiagnosticInput | null {
     const verdicts = [...this.guardVerdicts];

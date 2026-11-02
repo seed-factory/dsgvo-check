@@ -1,8 +1,8 @@
 /**
- * Orchestrator (D05): validate → preflight → collectors → snapshot → derive → checks over `requires` slices →
+ * Orchestrator: validate → preflight → collectors → snapshot → derive → checks over `requires` slices →
  * assess → gate → report. Fatal conditions end in a minimal `failed` report (5.1) with exit code 2.
  */
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import { allChecks } from './checks/index.ts';
@@ -51,12 +51,13 @@ import {
   toSavedSnapshot,
 } from './core/snapshot.ts';
 import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } from './core/url.ts';
-import { httpUserAgent, uaToken } from './core/user-agent.ts';
+import { uaToken } from './core/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/version.ts';
 import { derive } from './derive/index.ts';
 import { renderConsole } from './reporters/console.ts';
 import { renderHtml } from './reporters/html.ts';
 import { renderJson } from './reporters/json.ts';
+import { PDF_TIMEOUT_MS, type PdfOptions, renderPdf } from './reporters/pdf.ts';
 import { renderSummary } from './reporters/summary.ts';
 
 export interface ScanOptions {
@@ -79,7 +80,7 @@ export interface ScanOptions {
   checks?: string[] | null;
   /** Severity overrides (`CHECK-ID` or `CHECK-ID.variant`). */
   overrides?: SeverityOverride[];
-  // ---- programmatic only (tests, canary)
+  // programmatic only (tests, canary)
   network?: Partial<NetworkConfig>;
   dataDir?: string;
   now?: () => Date;
@@ -130,7 +131,7 @@ export const DEFAULTS = {
   sandbox: 'require' as const,
 };
 
-/** Reserve on top of `--timeout` for writing reports (D09). */
+/** Reserve on top of `--timeout` for writing reports. */
 export const REPORT_WRITE_RESERVE_MS = 30_000;
 
 /**
@@ -154,7 +155,7 @@ export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
   }
   if (!o.url && !o.fromSnapshot) throw new InvalidInputError('target-missing', 'Keine Ziel-URL angegeben.');
   const proxy = o.proxy ?? null;
-  // D11 / consensus 2a: in 1.0 only an HTTP CONNECT proxy (`http://`); SOCKS5 is backlog.
+  // The supported proxy transport is HTTP CONNECT.
   if (proxy !== null && !/^http:\/\/[^\s]+$/i.test(proxy)) {
     throw new InvalidInputError('invalid-proxy', 'Ungültige Proxy-URL (nur http:// wird unterstützt).');
   }
@@ -285,7 +286,7 @@ function initialSnapshot(target: TargetInfo, o: ResolvedScanOptions): Snapshot {
         source: o.assumeRegion ? 'laut Nutzerangabe (--assume-region)' : 'nicht festgestellt',
       },
       sandbox: { mode: o.sandbox, active: null },
-      userAgent: { http: httpUserAgent(), browser: null },
+      userAgent: { http: uaToken(), browser: null },
       locale: 'de-DE',
       timezone: 'Europe/Berlin',
       node: process.version,
@@ -315,7 +316,7 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   const snapshot = s as Snapshot;
   delete snapshot.derived;
   snapshot.diagnostics ??= [];
-  // Older snapshots may hold the target unredacted (D20).
+  // Older snapshots may hold the target unredacted.
   snapshot.target = redactTargetInfo(snapshot.target);
   if (snapshot.target.finalUrl) snapshot.target.finalUrl = sanitizeUrl(snapshot.target.finalUrl);
   return snapshot;
@@ -452,7 +453,7 @@ const INCOMPLETE_CHAIN_ERRORS: ReadonlySet<string> = new Set([
 /** True when the TLS collector saw an invalid certificate on the target host (browser checks → `tls-blocked`). */
 function tlsBlocked(snapshot: Snapshot): boolean {
   if (snapshot.target.scheme !== 'https') return false;
-  // The target's own endpoint at whatever port it was probed (an explicit target port, S-20), not a final-host one.
+  // Keep the target's endpoint and explicit port rather than borrowing a final-host endpoint.
   const ep = snapshot.tls?.endpoints.find((e) => e.hostVariant === 'target' && !e.role);
   if (ep?.outcome !== 'handshake' || ep.authorized) return false;
   const incompleteChainOnly =
@@ -477,7 +478,7 @@ async function collect(
   const state: CollectState = { timedOut: false, fatal: null, noHandover: new Set() };
   const artifactsRelDir = 'artifacts';
   const ctx = (): CollectorContext => ({
-    // Collectors navigate to the URL as given; everything stored uses the redacted `snapshot.target` (D20).
+    // Collectors navigate to the URL as given; everything stored uses the redacted `snapshot.target`.
     target: { ...snapshot.target, input: rawTarget.input, url: rawTarget.url },
     options: {
       maxPages: o.maxPages,
@@ -487,7 +488,7 @@ async function collect(
       assumeRegion: o.assumeRegion,
     },
     network: o.network,
-    userAgent: { http: httpUserAgent(), token: uaToken() },
+    userAgent: { http: uaToken(), token: uaToken() },
     signal,
     deadline,
     artifactsDir: path.join(o.outDir, artifactsRelDir),
@@ -531,7 +532,7 @@ async function collect(
       }
     }
   }
-  // CONTRACTS §3: the browser fills the final URL, else the HTTP start document does.
+  // Prefer the browser's final URL; use the HTTP start document when the browser did not provide it.
   if (!snapshot.target.finalUrl) {
     const start = snapshot.http?.documents.find((d) => d.role === 'start' && d.status !== null);
     if (start?.finalUrl) setFinalUrl(snapshot, start.finalUrl);
@@ -541,7 +542,7 @@ async function collect(
   const browserPlanned = needed.has('browser') && snapshot.collection.browser?.status !== 'skipped';
   if (state.timedOut && !state.fatal && browserPlanned && !startPageDone(snapshot)) {
     const seconds = Math.round(o.timeoutMs / 1000);
-    // A browser collector that handed over nothing may have captured the start page: do not claim it had not (G51).
+    // A browser collector that handed over nothing may have captured the start page: do not claim it had not.
     // The texts are data (`failure.<code>` in data/texts), in the language of the scan (AGENTS rule 3).
     const code = state.noHandover.has('browser') ? 'browser-no-handover' : 'scan-timeout';
     state.fatal = { reason: 'timeout', code, message: uiText(texts, `failure.${code}`, { seconds }) };
@@ -612,7 +613,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
   const startedAt = startedAtDate.toISOString();
   const t0 = performance.now();
   const log = options.log ?? createLogger('warn');
-  // D20: the target in any report (also the minimal failed one) is redacted.
+  // the target in any report (also the minimal failed one) is redacted.
   const targetForReport = options.url ? redactTarget(options.url) : (options.fromSnapshot ?? '');
   let o: ResolvedScanOptions | null = null;
   let core: CoreData | null = null;
@@ -817,12 +818,14 @@ interface FailedReportExtras {
   gateFindings: Parameters<typeof gate>[0]['findings'];
 }
 
-// ---------------------------------------------------------------- writing reports
+// writing reports
 
 export interface WriteResult {
   exitCode: ExitCode;
   written: string[];
   errors: Array<{ path: string; message: string }>;
+  /** Optional PDF printing is best effort and does not change the scan result. */
+  warnings: string[];
   /** Console report text (when `console` is among the formats). */
   console: string | null;
 }
@@ -835,20 +838,41 @@ const RENDERERS = { json: renderJson, html: renderHtml, summary: renderSummary }
  */
 export async function writeReports(
   result: ScanResult,
-  opts: { outDir: string; formats: ReportFormat[]; lang: 'de' | 'en'; color?: boolean; dataDir?: string },
+  opts: {
+    outDir: string;
+    formats: ReportFormat[];
+    lang: 'de' | 'en';
+    color?: boolean;
+    dataDir?: string;
+    /** Directory containing source artifacts when reissuing a saved report. */
+    artifactsDir?: string;
+    pdf?: PdfOptions;
+    watchdogDeadline?: number;
+    outputConsole?: (text: string) => Promise<void>;
+  },
 ): Promise<WriteResult> {
   const outDir = path.resolve(opts.outDir);
   const texts = loadCoreData(opts.lang, opts.dataDir ?? DEFAULT_DATA_DIR).texts;
-  const ctx: ReporterContext = { texts, lang: opts.lang, outDir, color: opts.color ?? false };
+  const ctx: ReporterContext = {
+    texts,
+    lang: opts.lang,
+    outDir: path.resolve(opts.artifactsDir ?? outDir),
+    color: opts.color ?? false,
+    dataDir: opts.dataDir,
+  };
   const written: string[] = [];
   const errors: WriteResult['errors'] = [];
+  const warnings: string[] = [];
+  let renderedHtml: string | undefined;
   const fileFormats = (['json', 'html', 'summary'] as const).filter((f) => opts.formats.includes(f));
 
   const writeOne = async (format: (typeof fileFormats)[number]) => {
     const file = path.join(outDir, REPORT_FILES[format]);
     try {
       await mkdir(outDir, { recursive: true });
-      await writeFile(file, RENDERERS[format](result.report, ctx));
+      if (format === 'html' && renderedHtml === undefined) renderedHtml = renderHtml(result.report, ctx);
+      const content = format === 'html' ? renderedHtml! : RENDERERS[format](result.report, ctx);
+      await writeFile(file, content);
       if (!written.includes(file)) written.push(file);
     } catch (err) {
       errors.push({ path: file, message: errorMessage(err) });
@@ -877,10 +901,35 @@ export async function writeReports(
   }
 
   const consoleText = opts.formats.includes('console') ? renderConsole(result.report, ctx) : null;
-  return { exitCode, written, errors, console: consoleText };
-}
+  if (consoleText && opts.outputConsole) await opts.outputConsole(consoleText);
 
-/** Human line for a written file (used by the CLI). */
-export function reportWrittenLine(texts: Texts, file: string): string {
-  return uiText(texts, 'console.reportWritten', { path: file });
+  if (opts.formats.includes('pdf')) {
+    const file = path.join(outDir, REPORT_FILES.pdf);
+    try {
+      // Remove an earlier PDF first: a failed reprint must not leave a stale report behind.
+      await rm(file, { force: true });
+      await mkdir(outDir, { recursive: true });
+      if (opts.watchdogDeadline !== undefined && opts.watchdogDeadline - Date.now() < PDF_TIMEOUT_MS)
+        throw new Error('insufficient time');
+      const html = renderedHtml ?? renderHtml(result.report, ctx);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = Math.min(opts.pdf?.timeoutMs ?? PDF_TIMEOUT_MS, PDF_TIMEOUT_MS);
+      const pdf = await Promise.race([
+        renderPdf(html, ctx, opts.pdf),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('PDF timeout')), timeout);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      const temporary = `${file}.tmp`;
+      await writeFile(temporary, pdf);
+      await rename(temporary, file);
+      written.push(file);
+    } catch {
+      await rm(file, { force: true }).catch(() => undefined);
+      await rm(`${file}.tmp`, { force: true }).catch(() => undefined);
+      warnings.push(uiText(texts, 'report.pdf.skipped'));
+    }
+  }
+
+  return { exitCode, written, errors, warnings, console: consoleText };
 }

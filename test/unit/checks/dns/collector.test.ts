@@ -1,6 +1,6 @@
 /**
  * DNS collector logic with a fake resolver client (no network): query plan, Tree Walk, SPF tree, budget,
- * redaction (D20), retries and the circuit breaker. The real node:dns client is covered in test/integration/dns.
+ * redaction , retries and the circuit breaker. The real node:dns client is covered in test/integration/dns.
  */
 import { describe, expect, it } from 'vitest';
 import { mail01 } from '../../../../src/checks/dns/mail-01.ts';
@@ -130,7 +130,7 @@ describe('collectMailDns: query plan', () => {
     expect(q[0]?.queriedAt).toBe(FIXED_NOW.toISOString());
   });
 
-  it('the section feeds MAIL-01 and MAIL-02 (end to end, L1)', async () => {
+  it('the section feeds MAIL-01 and MAIL-02 (end to end)', async () => {
     const { run } = collect(site);
     const snap = makeSnapshot({ dns: (await run).section });
     expect(variantsOf(runCheck(mail01, snap))).toEqual([]);
@@ -158,7 +158,7 @@ describe('collectMailDns: query plan', () => {
     expect(org).toMatchObject({ purpose: 'dmarc-mail-domain', treeWalkStep: 0 });
   });
 
-  it('stops the walk at a failed step (S-22: a parent cannot replace it) and records the failure', async () => {
+  it('stops the walk at a failed step (a parent cannot replace it) and records the failure', async () => {
     const { run } = collect({ ...site, 'TXT _dmarc.example.de': 'SERVFAIL' });
     const r = await run;
     const failed = r.section.queries.find((x) => x.qname === '_dmarc.example.de');
@@ -194,7 +194,7 @@ describe('collectMailDns: query plan', () => {
   });
 });
 
-describe('collectMailDns: redaction (D20) and minimisation', () => {
+describe('collectMailDns: redaction and minimisation', () => {
   it('masks mailto: in values and chunks', async () => {
     const r = await collect(site).run;
     const json = JSON.stringify(r.section);
@@ -204,7 +204,7 @@ describe('collectMailDns: redaction (D20) and minimisation', () => {
     expect(dmarc?.answers[0]?.chunks).toEqual(['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de']);
   });
 
-  it('S-05: a mailto: split across TXT character-strings does not survive in chunks', async () => {
+  it('a mailto: split across TXT character-strings does not survive in chunks', async () => {
     const base = fakeClient(site);
     const split = ['v=DMARC1; p=reject; rua=mail', 'to:alice@example.de', ',mailto:bob', '@example.de'];
     const client: DnsClient = {

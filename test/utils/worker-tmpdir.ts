@@ -2,8 +2,8 @@
  * Setup file of the integration and e2e projects: every test file runs with its own temporary directory.
  *
  * Several workers run at the same time and share the machine's temp dir. Tests look for and delete
- * `dsgvo-check-profile-*` there (G57), and the `collect()` helper leaves one output directory per call. So each file
- * gets `<run dir>/w<VITEST_POOL_ID>-<pid>` as `TMPDIR` (read by `os.tmpdir()` on every call, inherited by child
+ * `dsgvo-check-profile-*` there , and the `collect` helper leaves one output directory per call. So each file
+ * gets `<run dir>/w<VITEST_POOL_ID>-<pid>` as `TMPDIR` (read by `os.tmpdir` on every call, inherited by child
  * processes and by Chromium). The directory is removed after the file and again when the process exits; the run
  * dir (global-tmpdir.ts) is removed after the run, which also takes what a terminated worker or a skipped file left.
  *

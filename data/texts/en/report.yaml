@@ -1,4 +1,4 @@
-# Labels of the HTML report and the GitHub Job Summary (D22: no user-facing strings outside data/).
+# Labels of the HTML report and the GitHub Job Summary; user-facing strings belong in data/.
 # Draft texts ("Textentwurf") until reviewed.
 draft: true
 ui:
@@ -137,3 +137,11 @@ ui:
   report.yes: yes
   report.no: no
   report.unknown: unknown
+  report.pdf.skipped: "PDF could not be created."
+  report.pdf.footer: "Passive observations; no legal advice."
+  report.pdf.page: Page
+  report.cli.description: Reissue a saved JSON report
+  report.cli.formats: "Output formats: console,json,html,summary,pdf (PDF on request only)"
+  report.cli.language: "Report language: de|en"
+  report.cli.output: Output directory
+  report.cli.invalid: The JSON report or report options are invalid or unsupported.

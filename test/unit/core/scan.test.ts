@@ -131,7 +131,7 @@ function opts(over: Partial<ScanOptions> = {}): ScanOptions {
   };
 }
 
-describe('scan() — fatal paths produce a valid minimal failed report (5.1, 5.2)', () => {
+describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)', () => {
   it.each([
     ['unsupported scheme', { url: 'ftp://example.de/' }, 'invalid-input', 'target-unsupported-scheme'],
     ['credentials in URL', { url: 'https://user:pw@example.de/' }, 'invalid-input', 'target-credentials'],
@@ -144,7 +144,7 @@ describe('scan() — fatal paths produce a valid minimal failed report (5.1, 5.2
     ],
     ['unknown --checks id', { checks: ['NOPE-99'] }, 'invalid-input', 'unknown-check'],
     [
-      'SOCKS5 proxy (1.0: http:// only, D11)',
+      'SOCKS5 proxy (1.0: http:// only)',
       { proxy: 'socks5://127.0.0.1:1080' },
       'invalid-input',
       'invalid-proxy',
@@ -205,7 +205,7 @@ describe('scan() — fatal paths produce a valid minimal failed report (5.1, 5.2
   });
 });
 
-describe('scan() — pipeline', () => {
+describe('scan — pipeline', () => {
   it('runs collectors, derive, checks, assess and gate', async () => {
     const result = await scan(opts());
     expect(result.report.scan.status).toBe('complete');
@@ -268,7 +268,7 @@ describe('scan() — pipeline', () => {
     expect(result.snapshot?.target.finalUrl).toBe('https://www.example.de/start');
   });
 
-  it('--fail-on warning / none', async () => {
+  it('fail-on warning / none', async () => {
     expect((await scan(opts({ failOn: 'none' }))).exitCode).toBe(0);
     const onlyHttp = await scan(opts({ failOn: 'warning', checks: ['TEST-02'] }));
     expect(onlyHttp.exitCode).toBe(1);
@@ -356,7 +356,7 @@ describe('scan() — pipeline', () => {
       }),
     );
     expect(result.report.scan.status).toBe('failed');
-    // The collector handed over nothing: whether the start page was captured is unknown (G51), the code says so.
+    // The collector handed over nothing: whether the start page was captured is unknown , the code says so.
     if (result.report.scan.status === 'failed')
       expect(result.report.scan.failure.code).toBe('browser-no-handover');
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
@@ -407,7 +407,7 @@ describe('scan() — pipeline', () => {
     });
   });
 
-  it('invalid certificate on an explicit target port (S-20) → tls-blocked as well', async () => {
+  it('invalid certificate on an explicit target port → tls-blocked as well', async () => {
     let browserCalled = false;
     const result = await scan(
       opts({
@@ -503,7 +503,7 @@ describe('scan() — pipeline', () => {
     expect(browserCalled).toBe(false);
   });
 
-  it('--sandbox off → SCAN-SANDBOX-OFF; --strict turns it into 2', async () => {
+  it('sandbox off → SCAN-SANDBOX-OFF; --strict turns it into 2', async () => {
     const soft = await scan(opts({ sandbox: 'off', checks: ['TEST-02'], failOn: 'critical' }));
     expect(soft.report.diagnostics?.map((d) => d.code)).toContain('SCAN-SANDBOX-OFF');
     expect(soft.exitCode).toBe(0);
@@ -514,7 +514,7 @@ describe('scan() — pipeline', () => {
     expect(strict.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
 
-  it('--save-snapshot / --from-snapshot: replay without collectors gives the same findings', async () => {
+  it('save-snapshot / --from-snapshot: replay without collectors gives the same findings', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');
     const first = await scan(opts({ saveSnapshot: file }));
@@ -542,7 +542,7 @@ describe('scan() — pipeline', () => {
 
 const startVisit = (phase: 'A' | 'B' = 'A') => makePage({ url: 'https://www.example.de/', phase });
 
-/** Browser collector that honours the abort signal like M1: it stops and returns what it has after `delayMs`. */
+/** Browser collector that honours the abort signal like : it stops and returns what it has after `delayMs`. */
 const abortAware =
   (sections: () => Record<string, unknown>, delayMs = 5) =>
   (ctx: { signal: AbortSignal }) =>
@@ -558,7 +558,7 @@ const abortAware =
       );
     });
 
-describe('scan() — global timeout (5.2)', () => {
+describe('scan — global timeout (5.2)', () => {
   it('before phase A finished on the start page: fatal timeout even with --fail-on none; earlier findings kept', async () => {
     const result = await scan(
       opts({
@@ -683,7 +683,7 @@ describe('scan() — global timeout (5.2)', () => {
   });
 });
 
-describe('scan() — target redaction (D20)', () => {
+describe('scan — target redaction', () => {
   it('query values of the target never reach snapshot, report or saved snapshot; collectors get the raw URL', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');
@@ -728,7 +728,7 @@ describe('scan() — target redaction (D20)', () => {
   });
 });
 
-describe('scan() — preflight', () => {
+describe('scan — preflight', () => {
   it('an IPv6 literal target is classified without DNS (no brackets sent to the resolver)', async () => {
     const asked: string[] = [];
     const lookup = async (host: string) => {
@@ -782,7 +782,7 @@ describe('scan() — preflight', () => {
   });
 });
 
-describe('scan() — --strict under --fail-on none (5.2: --strict acts independently)', () => {
+describe('scan — --strict under --fail-on none (5.2: --strict acts independently)', () => {
   it('sandbox off → 2 with strict:sandbox-off', async () => {
     const result = await scan(
       opts({ failOn: 'none', strict: true, sandbox: 'off', assumeRegion: 'de', checks: ['TEST-02'] }),
@@ -797,7 +797,7 @@ describe('scan() — --strict under --fail-on none (5.2: --strict acts independe
   });
 });
 
-describe('--save-snapshot write failure', () => {
+describe('save-snapshot write failure', () => {
   it('keeps the scan result but exits 2 with report-write-failed', async () => {
     const parent = mkdtempSync(path.join(tmpdir(), 'snapfail-'));
     const blocker = path.join(parent, 'file');
@@ -810,7 +810,7 @@ describe('--save-snapshot write failure', () => {
   });
 });
 
-describe('writeReports()', () => {
+describe('writeReports', () => {
   it('writes report.json and renders the console report', async () => {
     const out = mkdtempSync(path.join(tmpdir(), 'out-'));
     const result = await scan(opts());
@@ -857,7 +857,7 @@ describe('writeReports()', () => {
   );
 });
 
-describe('scan() — one monotonic time scale for evidence (5.3 tMs, S-30)', () => {
+describe('scan — one monotonic time scale for evidence (5.3 tMs)', () => {
   it('every collector gets the same scan clock: ms since scan.startedAt, monotonic, never reset', async () => {
     const seen: Array<{ name: string; t: number }> = [];
     const clocked =
@@ -889,7 +889,7 @@ describe('scan() — one monotonic time scale for evidence (5.3 tMs, S-30)', () 
   });
 });
 
-describe('scan() — the in-memory report carries the composed disclaimer (FP-11)', () => {
+describe('scan — the in-memory report carries the composed disclaimer', () => {
   it('conditional paragraphs are part of report.disclaimer.text, not only of the written files', async () => {
     const result = await scan(opts({ sandbox: 'off' }));
     const text = result.report.disclaimer.text;

@@ -1,4 +1,4 @@
-/* Own minimal CCM19 simulator for L2 tests (no vendor code). Mimics public identifiers only:
+/* Own minimal CCM19 simulator for integration tests (no vendor code). Mimics public identifiers only:
    window.CCM (acceptedEmbeddings, embeddings), #ccm-widget.ccm-show, .ccm--decline-cookies,
    [data-full-consent], localStorage "ccm_consent". The widget is injected late, like the real one. */
 (function () {

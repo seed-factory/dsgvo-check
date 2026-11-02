@@ -1,7 +1,7 @@
 /**
- * Explicit check registry (D05). The core never imports src/checks; the list is passed in from src/checks/index.ts.
+ * The core never imports src/checks; the explicit check list is passed in from src/checks/index.ts.
  */
-import type { AnyCheck, CheckModule } from './check.ts';
+import type { AnyCheck } from './check.ts';
 import { SNAPSHOT_SECTION_KEYS } from './snapshot.ts';
 
 const ID_RE = /^[A-Z]+-\d{2}$/;
@@ -49,10 +49,6 @@ export class CheckRegistry {
   /** Checks sorted by id (stable order for reports). */
   all(): AnyCheck[] {
     return [...this.#checks.values()].sort((a, b) => a.id.localeCompare(b.id));
-  }
-
-  byModule(module: CheckModule): AnyCheck[] {
-    return this.all().filter((c) => c.module === module);
   }
 
   ids(): string[] {

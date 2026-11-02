@@ -1,5 +1,5 @@
 /**
- * L2 (canary2 G23, D15): collapsed elements are counted in the manifest of a legal document only when they belong to
+ * collapsed elements are counted in the manifest of a legal document only when they belong to
  * the text of the document. An empty menu panel in the navigation used to be counted as an unopened part and made the
  * whole privacy statement `document-incomplete` (expand-failed). A collapsed section of the policy itself still
  * counts, so that an unopened part is not silently treated as read.

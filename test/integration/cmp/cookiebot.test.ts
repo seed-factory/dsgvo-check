@@ -1,4 +1,4 @@
-/** L2: Cookiebot adapter against the own simulator, including the bot branch (isSpider) and the geo branch. */
+/** : Cookiebot adapter against the own simulator, including the bot branch (isSpider) and the geo branch. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { CHROME_UA, decideAndAct, describeCmpScenarios, recognized } from './helpers.ts';
@@ -14,7 +14,7 @@ describeCmpScenarios(
     acceptName: /^Alle zulassen$/,
   },
   (env) => {
-    it('bot branch: isSpider() → bot signal, consent without banner (special-branch), no verdict', async () => {
+    it('bot branch: isSpider → bot signal, consent without banner (special-branch), no verdict', async () => {
       const { page } = await env.open('https://www.cookiebot.test/', `${CHROME_UA} Chrome-Lighthouse`);
       const adapter = await recognized(page, 'cookiebot');
       const facts = await extract(page, adapter, 'first-screen');

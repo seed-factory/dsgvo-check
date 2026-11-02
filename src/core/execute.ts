@@ -60,7 +60,7 @@ export function missingSectionResult(
  * timeout cut the browser collection such a reason is the deadline's doing only when the phase it belongs to was cut:
  * missing from the snapshot or recorded with the deadline as its reason. A reason from a phase that ended by itself
  * (one evaluable page in a completed phase A, no reject button in a phase B that ran) is a fact about the site and
- * stays `inconclusive`, even if a later phase was cut (5.2, 7.6, G50, R08). A reason of `null` has no phase: the
+ * stays `inconclusive`, even if a later phase was cut (5.2, 7.6). A reason of `null` has no phase: the
  * collection as a whole was cut.
  */
 const REASON_PHASES: ReadonlyMap<string, readonly BrowserPhase[] | null> = new Map([

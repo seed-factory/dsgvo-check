@@ -56,7 +56,7 @@ services:
         kind: library
         stage: loaded
       # The ids of the sinks below sit in matrix parameters of the path (`;dc_pre=…`); the collector reads them before
-      # the path is redacted, the names here make them persistent identifiers (canary2 G03).
+      # the path is redacted, the names here make them persistent identifiers.
       - id: floodlight
         hosts: [ad.doubleclick.net, fls.doubleclick.net]
         path: "^/"
@@ -91,7 +91,7 @@ services:
     consentStorage: ad
     domains: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net, googletagservices.com]
     signatures:
-      # Compression Dictionary Transport of the ad scripts: a downloaded resource, no event (canary2 G32).
+      # Compression Dictionary Transport of the ad scripts: a downloaded resource, no event.
       - id: compression-dictionary
         hosts: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net]
         path: "^/pagead/managed/"
@@ -303,9 +303,9 @@ services:
     aliasesDe: [X Pixel, Twitter Pixel, Twitter Conversion Tracking, X Ads, Twitter Ads]
     aliasesEn: [X Pixel, Twitter Pixel, X Ads, Twitter Ads]
 
-  # ------------------------------------------------------------------ programmatic ad tech (canary2 G31)
+  # programmatic ad tech
   # Hosts and paths come from observed traffic, generalised to each vendor's endpoints. Cookie-sync pixels are
-  # `hit` with stage `loaded` (a sync, not an event). No provider or DPF claim without vendor documentation (D16).
+  # `hit` with stage `loaded` (a sync, not an event). No provider or DPF claim without vendor documentation.
   # `identifierParams` only where the identifier parameter was seen in the traffic.
   - id: the-trade-desk
     name: The Trade Desk

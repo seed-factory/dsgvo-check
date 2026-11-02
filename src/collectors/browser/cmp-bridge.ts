@@ -1,5 +1,5 @@
 /**
- * Bridge to the CMP subsystem (owner M2). The collector calls it ONLY through `src/cmp/index.ts` (the default
+ * Bridge to the CMP subsystem. The collector calls it ONLY through `src/cmp/index.ts` (the default
  * `CmpApi`, loaded lazily so that a broken CMP module costs CMP facts, not the whole collection); tests may inject a
  * stub with the same shape. Every call is time-boxed and failures are recorded, never thrown.
  */
@@ -33,7 +33,7 @@ export interface CmpApi {
     moment: CmpFacts['moment'],
     phase: BrowserPhase,
   ): Promise<CmpFacts>;
-  /** D12: the click decision of the pure `classifyFirstLayer` (optional; else the facts' unique button). */
+  /** The click decision of the pure `classifyFirstLayer` (optional; else the facts' unique button). */
   chooseTargets?(facts: CmpFacts): Promise<ClickTargets | null>;
 }
 
@@ -60,10 +60,10 @@ export const defaultCmpApi: CmpApi = {
 };
 
 /**
- * The collector owns phase and page attribution, and the snapshot only holds sanitized URLs (D20): overwrite
+ * The collector owns phase and page attribution, and the snapshot only holds sanitized URLs: overwrite
  * `phase`/`pageUrl` and sanitize URL fields the CMP subsystem may have filled from the live page. Strings that the
  * probe copied from the page (accessible names of controls, text of the legal links of the banner, labels of covered
- * footer links) pass `redactFreeText`: an address in a link text loses its local part before it is stored (G01).
+ * footer links) pass `redactFreeText`: an address in a link text loses its local part before it is stored.
  * The click `selector` is no free text; the probe does not build it from an attribute value that holds an address.
  */
 export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: SanitizedUrl): CmpFacts {
@@ -88,7 +88,7 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
 }
 
 /**
- * Verification of B: `v1` right after the click, `v2` after the collector's reload (FC-09). A CMP that updates its
+ * Verification of B: `v1` right after the click, `v2` after the collector's reload. A CMP that updates its
  * state asynchronously may confirm the reject only after the reload: then the reject counts as verified, marked
  * `verified-after-reload-only` in `method`. `persistedAfterReload` is the reload result (null without one).
  */
@@ -164,8 +164,8 @@ export class CmpBridge {
   }
 
   /**
-   * D12 `act(page, target)`: the adapter clicks exactly the element core chose (`plan.click[phase].target`) and
-   * decides nothing (S-31). `null` means "nothing to click"; the adapter then reports `no-unambiguous-<action>`.
+   * `act(page, target)`: the adapter clicks exactly the element core chose (`plan.click[phase].target`) and
+   * decides nothing. `null` means "nothing to click"; the adapter then reports `no-unambiguous-<action>`.
    */
   act(
     page: Page,

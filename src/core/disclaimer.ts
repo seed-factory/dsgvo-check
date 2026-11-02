@@ -1,10 +1,10 @@
 /**
- * Disclaimer with conditional paragraphs (D22, D08, D20; wording guide §6). The base text is the report's
+ * Disclaimer with conditional paragraphs (wording guide §6). The base text is the report's
  * `disclaimer.text` (built by core); the other paragraphs come from `data/texts/<lang>/core.yaml` (`ui.disclaimer.*`).
  * A conditional paragraph is added only when its condition holds in the report, so the text always stays true.
- * scan() composes `disclaimer.text` of the in-memory report with it (FP-11); every reporter renders the paragraphs
+ * scan() composes `disclaimer.text` of the in-memory report with it; every reporter renders the paragraphs
  * again from the final report (exit reasons may change while writing). A text composed from the same base is
- * composed anew; a paragraph that a foreign base already carries is not added again. Moved to core (FP-11).
+ * composed anew; a paragraph that a foreign base already carries is not added again.
  */
 import type { Texts } from './data.ts';
 import { uiText } from './messages.ts';
@@ -28,7 +28,7 @@ export const DISCLAIMER_KEYS = [
 
 export type DisclaimerKey = (typeof DISCLAIMER_KEYS)[number];
 
-/** Phase C ("Alle akzeptieren") visited at least one page: the scanner's IP reached the site's third parties (D08). */
+/** Phase C ("Alle akzeptieren") visited at least one page: the scanner's IP reached the site's third parties. */
 export function phaseCPerformed(report: Report): boolean {
   return (report.scan.coverage?.pages ?? []).some((p) => p.phases.includes('C'));
 }

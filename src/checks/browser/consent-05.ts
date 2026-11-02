@@ -1,13 +1,13 @@
 /**
  * CONSENT-05 (P1 → release): tracking after a technically confirmed reject (phase B, requests started after the
  * click on the reload and control pages). The reject is confirmed by CMP state only, never by network silence
- * (03-checks §4 steps 3–4, S-15): `verify` confirms the reject, a ready state produced by our click
+ * (03-checks §4 steps 3–4): `verify` confirms the reject, a ready state produced by our click
  * (`origin: action`, decision not refused), the reload ran and the reject persisted (`persistedAfterReload: true`)
  * and a ready `stored` state was read after it. Anything less → inconclusive `reject-not-confirmed`.
  * Analytics/ads hits with a persistent identifier (as in CONSENT-01) and tracking cookies/storage accepted after the
  * click → `tracking-after-reject`; Consent Mode denied pings and hits without an evidenced persistent identifier →
  * `cookieless-ping-after-reject`. No pagehide/keepalive capture → inconclusive `pagehide-capture-unavailable`
- * (03-checks §4 step 10); established findings are kept and still gate (S-33).
+ * (03-checks §4 step 10); established findings are kept and still gate.
  */
 import type { CmpPhaseFacts, ConsentStateFact } from '../../cmp/types.ts';
 import type { RequestRecord } from '../../collectors/browser/types.ts';
@@ -52,13 +52,13 @@ interface Group {
   consentModeDenied: boolean;
 }
 
-/** A persistent identifier as in CONSENT-01 (S-13, FC-08); a cookieless, per-load or anonymous hit → warning. */
+/** A persistent identifier as in CONSENT-01; a cookieless, per-load or anonymous hit → warning. */
 const requestVariant = (c: ClassifiedRequest): Variant =>
   persistentIdentifier(c) ? 'tracking-after-reject' : 'cookieless-ping-after-reject';
 
 const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
 
-/** The ready states proving the reject: produced by our click and read back after the reload (S-15). */
+/** The ready states proving the reject: produced by our click and read back after the reload. */
 function confirmedReject(
   b: CmpPhaseFacts | undefined,
 ): { action: ConsentStateFact; stored: ConsentStateFact } | null {
@@ -166,7 +166,7 @@ export const consent05 = defineCheck({
     ];
     for (const s of stored) {
       if (s.record.phase !== 'B' || s.cls.timing !== 'after-reject' || !s.cls.tracking) continue;
-      // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not (FT-03).
+      // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not.
       if ('state' in s.record && s.record.state !== 'accepted' && s.record.state !== 'sent') continue;
       const g = group('tracking-after-reject', 'storage', s.cls, s.cls.etld1 ?? null);
       g.pages.add(s.record.pageUrl);

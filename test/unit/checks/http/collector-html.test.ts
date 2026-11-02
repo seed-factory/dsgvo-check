@@ -1,4 +1,4 @@
-/** L1 for the HTTP collector's HTML heuristics (pure; the collector itself is covered in L2). */
+/** for the HTTP collector's HTML heuristics (pure; the collector itself is covered in ). */
 import { describe, expect, it } from 'vitest';
 import {
   detectClientRedirect,
@@ -87,7 +87,7 @@ describe('detectForm', () => {
     expect(detectForm(html)).toBe(false);
   });
 
-  // S-34: markup inside raw-text / inert elements is not a form in the document.
+  // : markup inside raw-text / inert elements is not a form in the document.
   it.each([
     `<script>const html = "<form><input name=email></form>";</script>`,
     `<script type="text/template"><form><input name="email"></form></script>`,

@@ -1,8 +1,8 @@
 /**
- * L0 (FT-09): the canonical variant registry `docs/03-checks.md` §2.1 against the prototype's ruleset, check
+ * the canonical variant registry `docs/03-checks.md` §2.1 against the prototype's ruleset, check
  * declarations, texts (de, en) and crm mapping. The internal completeness test only compares the data with itself;
  * this one fails when a `checkId.variant`, its default severity or its `locked` mark drifts from the spec.
- * Scope: the checks of the prototype (BRIEF: 14 P0 without PRIV-02, plus CONSENT-05).
+ * Scope: the checks of the prototype (BRIEF: 14 without PRIV-02, plus CONSENT-05).
  */
 import { describe, expect, it } from 'vitest';
 import { allChecks } from '../../../src/checks/index.ts';
@@ -36,7 +36,7 @@ const ALLOWED_DIFFERENCES: Readonly<Record<string, string>> = {};
 
 const key = (v: Pick<SpecVariant, 'checkId' | 'variant'>) => `${v.checkId}.${v.variant}`;
 
-describe('variant registry docs/03-checks.md §2.1 = prototype data (FT-09)', () => {
+describe('variant registry docs/03-checks.md §2.1 = prototype data', () => {
   const spec = loadSpecRegistry().filter((v) => (PROTOTYPE_IDS as readonly string[]).includes(v.checkId));
   const ruleset = loadRuleset();
   const crm = loadCrm();

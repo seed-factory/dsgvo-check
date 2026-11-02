@@ -1,9 +1,9 @@
-# First-layer button lexicon for classifyFirstLayer (D13). Owner: M2.
+# First-layer button lexicon for classifyFirstLayer.
 # Matching (src/cmp/lexicon.ts): labels are normalized (NFKC, lower case, close glyphs → "×") and tokenized on
 # letters/digits. A label equal to a phrase → confidence high; a phrase inside a longer label → medium; the longest
 # phrase wins, a tie between two kinds → unclassified, except one decision (reject/accept) tied only with
 # close/hide/later ("Ablehnen und schließen" → reject). "*suffix" matches any token ending with the suffix
-# (German compounds such as "Datenschutzeinstellungen"). close/hide/later alone are never a reject (D13).
+# (German compounds such as "Datenschutzeinstellungen"). close/hide/later alone are never a reject.
 # After the German and English phrases of each class follow fr, es, it, pt, nl, da, no, sv, fi, is and pl phrases:
 # they classify the buttons of unknown banners (generic heuristic, info only). A phrase may stand in one class only.
 lexicon:
@@ -436,7 +436,7 @@ lexicon:
     - confirm choices
     - confirm my choices
     - allow selection
-    # "save selection" phrasing (G17), then fr, es, pt, it, nl, da, no, sv, fi, is, pl
+    # "save selection" phrasing, then fr, es, pt, it, nl, da, no, sv, fi, is, pl
     - ausgewählte cookies akzeptieren
     - ausgewählte akzeptieren
     - ausgewählte cookies erlauben

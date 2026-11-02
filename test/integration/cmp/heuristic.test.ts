@@ -1,5 +1,5 @@
 /**
- * L2: unknown banners (no adapter) — generic heuristic in the main document, open shadow DOM and a cross-origin
+ * unknown banners (no adapter) — generic heuristic in the main document, open shadow DOM and a cross-origin
  * iframe. Facts only: the classification is always `banner-not-recognized` (5.5), nothing is clicked.
  */
 import { describe, expect, it } from 'vitest';

@@ -1,9 +1,9 @@
 /**
- * L2: how the first screen is measured (canary fixes G06, G07). Own Cookiebot simulator, real Chromium.
- *  - G06: a long list of hidden vendor toggles before the visible buttons must not push the buttons of the first
- *    layer out of the measurement; a truncation that does lose first-layer candidates is reported.
- *  - G07: the first screen is measured after the appearance animation has finished; a banner that never settles is
- *    reported as such instead of being judged by an intermediate frame.
+ * how the first screen is measured (canary fixes). Own Cookiebot simulator, real Chromium.
+ * - : a long list of hidden vendor toggles before the visible buttons must not push the buttons of the first
+ * layer out of the measurement; a truncation that does lose first-layer candidates is reported.
+ * - : the first screen is measured after the appearance animation has finished; a banner that never settles is
+ * reported as such instead of being judged by an intermediate frame.
  */
 import { describe, expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
@@ -13,7 +13,7 @@ describe('first-layer measurement (Cookiebot simulator)', () => {
   const env = useCmpServer(['cmp/cookiebot', 'cmp/generic']);
   const lexicon = loadLexicon();
 
-  describe('G06: button limit', () => {
+  describe('button limit', () => {
     it('45 hidden vendor toggles before the visible buttons: reject and accept are measured and clicked', async () => {
       const { page } = await env.open('https://www.cookiebot.test/many-vendors.html');
       const adapter = await recognized(page, 'cookiebot');
@@ -58,7 +58,7 @@ describe('first-layer measurement (Cookiebot simulator)', () => {
     });
   });
 
-  describe('G07: appearance animation', () => {
+  describe('appearance animation', () => {
     it('dialog slides in over 1.2 s: the first screen is measured settled, the reject is actionable and clicked', async () => {
       const { page } = await env.open('https://www.cookiebot.test/animated.html');
       const adapter = await recognized(page, 'cookiebot');

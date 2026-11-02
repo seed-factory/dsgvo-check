@@ -1,5 +1,5 @@
 /**
- * L2 (review R-cmp-1 of S-privacy-1): the click selector that the CMP probe records points at THE control, not only at
+ * the click selector that the CMP probe records points at THE control, not only at
  * "one element". A class attribute is split by the whitespace of HTML (space, tab, LF, FF, CR), not by every character
  * that JavaScript `\s` knows: a token such as `nbq9nb<NBSP>@example.test` is ONE class token, it has an address and
  * is dropped as a whole. Before, its first half stayed as a class, matched the class of another control and gave
@@ -82,7 +82,7 @@ async function clickBySelector(host: string, selector: string): Promise<{ count:
   }
 }
 
-describe('CMP click selector: it points at the control it was recorded for (R-cmp-1)', () => {
+describe('CMP click selector: it points at the control it was recorded for', () => {
   it('a class token with a non-breaking space and an address is one token and is dropped as a whole', async () => {
     const accept = selectorOf(runs.nbsp as CollectRun, 'Zustimmen');
     const reject = selectorOf(runs.nbsp as CollectRun, 'Ablehnen');

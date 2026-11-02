@@ -1,5 +1,5 @@
 /**
- * L2: the real browser collector inside `scan()` — the orchestrator accepts the sections, the report is valid
+ * the real browser collector inside `scan` — the orchestrator accepts the sections, the report is valid
  * (Ajv), coverage lists the visited pages and the environment shows the browser; fatal start pages fail the scan.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -44,7 +44,7 @@ const base = () => ({
   }),
 });
 
-describe('scan() with the browser collector', () => {
+describe('scan with the browser collector', () => {
   it('produces a valid report with coverage, final URL and browser environment', async () => {
     const r = await scan({ url: 'https://www.example.test/', ...base() });
     expectValidReport(r.report);

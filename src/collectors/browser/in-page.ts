@@ -3,7 +3,7 @@
 // biome-ignore-all lint/complexity/useOptionalChain: keep in-page code plain and defensive
 /**
  * Functions evaluated INSIDE the page via `page.evaluate` / `frame.evaluate`. They must be self-contained (no
- * references to module scope) and must never return cookie, storage or form values (D20): only names, lengths and
+ * references to module scope) and must never return cookie, storage or form values: only names, lengths and
  * structural facts. Node-side code sanitizes URLs before anything is stored.
  */
 
@@ -302,7 +302,7 @@ export interface RawStorage {
   idb: string[];
 }
 
-/** Keys and value LENGTHS of Web Storage plus IndexedDB database names of this frame (D20: no values). */
+/** Keys and value LENGTHS of Web Storage plus IndexedDB database names of this frame (no values). */
 export async function storageInPage(arg: { maxKeys: number }): Promise<RawStorage> {
   const out: RawStorage = { origin: String(location.origin), local: [], session: [], idb: [] };
   const read = (s: any, into: RawStorage['local']) => {
@@ -339,11 +339,11 @@ export interface RawDocument {
   title: string;
   /**
    * The first visible h1 that belongs to the content of the document (not to a navigation, aside, footer, page-level
-   * header or hidden element; the same rule as `headingPlaces`), '' when there is none (S-legal-1).
+   * header or hidden element; the same rule as `headingPlaces`), '' when there is none.
    */
   h1: string;
   /**
-   * Visible headings (h1-h6, text only) by place (R03): `chrome` sits in a navigation / aside / search / menu landmark,
+   * Visible headings (h1-h6, text only) by place: `chrome` sits in a navigation / aside / search / menu landmark,
    * in a page-level header, footer or menu-like wrapper outside `main` and `article` (`outsideText`); `content` is every
    * other one. Consent banners and scripts are skipped. Optional so that a reader without it sees no chrome headings.
    */
@@ -359,18 +359,18 @@ export interface RawDocument {
 }
 
 /**
- * Text of a legal document by heading sections without any click (D15): rendered text, content of collapsed
+ * Text of a legal document by heading sections without any click: rendered text, content of collapsed
  * `<details>` and `aria-expanded=false` panels (`expandable`), other hidden text (`hidden-irrelevant`).
  * Fixed consent banners are skipped so that banner texts are not mistaken for the document.
  *
  * Only collapsed elements inside the text of the document count in `expandablesFound` / `expandablesWithContent`
- * (the manifest of D15): an empty menu panel in `nav`, `header`, `footer`, `aside` or a banner is not part of the
+ * (the completeness manifest): an empty menu panel in `nav`, `header`, `footer`, `aside` or a banner is not part of the
  * policy and must not make it incomplete. Those are counted in `expandablesIgnored` and their text is not
  * `expandable` (it stays `visible` or `hidden-irrelevant`).
  *
  * The same rule (`outsideText`) sorts the visible headings into `headingPlaces.chrome` and `.content` and picks `h1`:
  * the rule is written once, so the manifest and the type of the page cannot disagree about what is page chrome
- * (S-legal-2; an in-page function cannot share code with another one).
+ * (an in-page function cannot share code with another one).
  */
 export function documentInPage(arg: { maxChars: number }): RawDocument {
   const SKIP = new Set([
@@ -393,7 +393,7 @@ export function documentInPage(arg: { maxChars: number }): RawDocument {
   /**
    * A state of the layout, not a part of the page: `has-fixed-header`, `with-footer`, `page-with-header`, `no-sidebar`.
    * The token ends in the name of a part, but it says that the page has one (or has none), and the wrapper holds the
-   * whole page. Judged per token: `site-header--no-border` or `header-with-logo` are still the header (S-L-C).
+   * whole page. Judged per token: `site-header--no-border` or `header-with-logo` are still the header.
    */
   const LAYOUT_STATE_RE = new RegExp(
     `(?:^|[_-])(?:has|with|without|no)[_-](?:[a-z0-9]+[_-]){0,2}(?:${NAV_NOUNS})$`,
@@ -403,10 +403,10 @@ export function documentInPage(arg: { maxChars: number }): RawDocument {
    * Header or footer of a component, not of the page: `accordion-header`, `card-header`, `panel-header`,
    * `el-collapse-item__header`, `section-header`, `card-footer`. The component name comes first (`header-menu` and
    * `footer-panel` are parts of the page chrome and stay so). Such tokens are removed before NAV_WRAPPER_RE looks at
-   * the class: an accordion of a policy outside `main` must not count as page chrome (review R01).
+   * the class: an accordion of a policy outside `main` must not count as page chrome.
    * Only the header of an ambiguous noun is a bar of a component (`item`, `entry`, `post`, `article`, `section`,
    * `block`): `section-footer` or `block-footer` is a footer of the page as often as a footer of a content block, and
-   * a footer column "Impressum" in it must not confirm the page (S-L-B).
+   * a footer column "Impressum" in it must not confirm the page.
    */
   const COMPONENT_BAR_RE =
     /(^|[\s_-])(?:(?:accordion|collapse|collapsible|card|panel|expansion|faq|toggle|expand|expandable|tab|tabs)[_-]+(?:header|footer)|(?:item|entry|post|article|section|block)[_-]+header)(?=$|[\s_-])/gi;
@@ -573,7 +573,7 @@ export function documentInPage(arg: { maxChars: number }): RawDocument {
           headings.push({ level, text: full.slice(0, 120) });
           cur = null;
           // One rule for chrome and content: the place of a heading is judged by the function that judges collapsed
-          // elements. Only headings of the content name the type of the page (R03, S-legal-1, S-legal-2).
+          // elements. Only headings of the content name the type of the page.
           if (full !== '') {
             const chromeHeading = outsideText(child);
             places[chromeHeading ? 'chrome' : 'content'].push(full.slice(0, 120));
@@ -593,7 +593,7 @@ export function documentInPage(arg: { maxChars: number }): RawDocument {
 
 /**
  * Box of the banner container that holds the given first-layer points (button centres), measured without scrolling
- * (D20). The container is the closest common ancestor that is fixed/sticky, a dialog, or named like a consent banner.
+ * The container is the closest common ancestor that is fixed/sticky, a dialog, or named like a consent banner.
  */
 export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }> }): {
   box: { x: number; y: number; width: number; height: number } | null;
@@ -649,7 +649,7 @@ export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }> }
   return { box: { x, y, width, height }, reason: 'ok' };
 }
 
-/** One logged cookie write: names and places only, never the value (D20). */
+/** One logged cookie write: names and places only, never the value. */
 export interface RawCookieWrite {
   name: string;
   t: number;
@@ -666,7 +666,7 @@ export interface RawCookieWrite {
  * Init script: observe `document.cookie` writes (name and calling script only, never the value) so that transient
  * script cookies are seen and jar cookies can be attributed (`setter: script`). A cookie written by a script belongs
  * to the DOCUMENT it runs in (or to its `Domain=` attribute), not to the host the script was loaded from, so every
- * entry also carries the hostname of the document and the parsed `Domain=` attribute (canary2 G35). Semantics are
+ * entry also carries the hostname of the document and the parsed `Domain=` attribute. Semantics are
  * unchanged.
  */
 export function cookieHookInit(): void {
@@ -767,7 +767,7 @@ export function cookieWritesInPage(): RawCookieWrite[] {
 
 /**
  * Init script: log Web Storage writes (`setItem`: storage type, key and time — never the value) so that a key that
- * existed before the B/C click and is written again after it is seen as a write after the click (S-16).
+ * existed before the B/C click and is written again after it is seen as a write after the click.
  */
 export function storageHookInit(): void {
   const KEY = Symbol.for('dsgvo-check.storage-writes');
@@ -812,7 +812,7 @@ export function storageWritesInPage(): Array<{
 /**
  * Init script: epoch ms of trusted pointer presses (capture phase, registered before any page script). The moment of
  * the CMP click is the first press after the collector armed the click — not the moment the adapter was called
- * (FC-03): requests started while the adapter still classified and waited for the button are not "after the click".
+ * Requests started while the adapter still classified and waited for the button are not "after the click".
  */
 export function inputHookInit(): void {
   const KEY = Symbol.for('dsgvo-check.input-events');

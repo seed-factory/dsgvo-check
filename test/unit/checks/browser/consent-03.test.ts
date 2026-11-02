@@ -123,7 +123,7 @@ describe('CONSENT-03 no consent dialog', () => {
     egress: { mode: 'direct', region: 'asserted', assertedRegion: 'eea', source: 'laut Nutzerangabe' },
   } as const;
 
-  it('FT-06: a cookieless Consent Mode ping is no strong tracking → warning variant even with an asserted region', () => {
+  it('a cookieless Consent Mode ping is no strong tracking → warning variant even with an asserted region', () => {
     const r = runCheck(
       consent03,
       site({
@@ -142,7 +142,7 @@ describe('CONSENT-03 no consent dialog', () => {
     ]);
   });
 
-  it('S-13 analogue: a denied ping whose identifier matches stored data is strong tracking', () => {
+  it('analogue: a denied ping whose identifier matches stored data is strong tracking', () => {
     const r = runCheck(
       consent03,
       site({
@@ -162,7 +162,7 @@ describe('CONSENT-03 no consent dialog', () => {
     expect(variantsOf(r)).toEqual(['no-banner-strong-tracking']);
   });
 
-  it('FT-06: --assume-region reaches the check through ctx.options even when the snapshot egress is unknown', () => {
+  it('assume-region reaches the check through ctx.options even when the snapshot egress is unknown', () => {
     const snap = site({ phases: [phase('A', { requests: [gaHit()] })] });
     expect(snap.environment.egress.region).toBe('unknown');
     const r = runCheck(consent03, snap, {
@@ -173,7 +173,7 @@ describe('CONSENT-03 no consent dialog', () => {
     ]);
   });
 
-  it('FT-06: a first-party tracking endpoint (tag gateway) without a banner counts as tracking', () => {
+  it('a first-party tracking endpoint (tag gateway) without a banner counts as tracking', () => {
     const r = runCheck(
       consent03,
       site({
@@ -211,7 +211,7 @@ describe('CONSENT-03 no consent dialog', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-observed' });
   });
 
-  // G10: banners found by the extended heuristic (other languages, static notice) are CONSENT-04 territory.
+  // : banners found by the extended heuristic (other languages, static notice) are CONSENT-04 territory.
   it.each(['heuristic:static', 'heuristic:fixed'])(
     'counterexample: a heuristic candidate with signal %s is a banner, not "no banner"',
     (signal) => {
@@ -245,8 +245,8 @@ describe('CONSENT-03 no consent dialog', () => {
     },
   );
 
-  // G09: a visible consent-looking iframe whose content could not be resolved limits the "no banner" conclusion.
-  describe('unresolved consent iframe (G09)', () => {
+  // : a visible consent-looking iframe whose content could not be resolved limits the "no banner" conclusion.
+  describe('unresolved consent iframe', () => {
     const frameCandidate = (p: Partial<CmpFacts['firstLayer']> = {}) =>
       makeCmpFacts({
         phase: 'A',

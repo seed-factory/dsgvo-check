@@ -1,6 +1,6 @@
 /**
- * DNS collector (owner: M5). Resolver: `node:dns/promises` with `ctx.network.dnsServers` when non-empty
- * (system configuration otherwise), direct even with `--proxy` (consensus 5.7). ≤ 60 queries, SERVFAIL/TIMEOUT
+ * DNS collector. Resolver: `node:dns/promises` with `ctx.network.dnsServers` when non-empty
+ * (system configuration otherwise), direct even with `--proxy`. ≤ 60 queries, SERVFAIL/TIMEOUT
  * retried once, NXDOMAIN vs NODATA kept apart, `mailto:` masked before storing.
  */
 import { isIP } from 'node:net';

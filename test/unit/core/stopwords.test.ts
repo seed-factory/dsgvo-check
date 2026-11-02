@@ -1,6 +1,6 @@
 /**
- * L0 (D22, wording guide §2): no legal verdicts in user-facing texts, de and en, in every module (data/texts/**) and
- * in the rendered reports. Rule 1 (`block`) plus rules 2, 3, 6, 10 and 13 (FP-10): no claim about (missing)
+ * (wording guide §2): no legal verdicts in user-facing texts, de and en, in every module (data/texts/**) and
+ * in the rendered reports. Rule 1 (`block`) plus rules 2, 3, 6, 10 and 13 : no claim about (missing)
  * consent, no "tracker" label, no necessity verdict outside quoted button names, no "missing imprint", no
  * obligations. Rule 3 and 6 are `label` rules: quoted button names („…“, "…") of the site are exempt.
  */
@@ -30,7 +30,7 @@ const STOP_WORDS = [
   /\bin breach\b|\bbreaches\b/i,
 ];
 
-/** Rules 2, 3, 6, 10, 13 of the wording guide §2 (FP-10), with the rule number for the failure message. */
+/** Rules 2, 3, 6, 10, 13 of the wording guide §2 , with the rule number for the failure message. */
 const GUIDE_RULES: Array<[string, RegExp]> = [
   [
     '2',
@@ -133,7 +133,7 @@ describe('stop words in data/texts', () => {
   });
 });
 
-describe('stop words in rendered reports (FP-10)', () => {
+describe('stop words in rendered reports', () => {
   const ctx = (lang: 'de' | 'en'): ReporterContext => ({
     texts: loadTexts(lang),
     lang,

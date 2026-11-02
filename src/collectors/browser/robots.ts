@@ -1,5 +1,5 @@
 /**
- * robots.txt (RFC 9309) for additional pages only (D09: start and legal pages are always visited) and a minimal
+ * robots.txt (RFC 9309) for additional pages only (start and legal pages are always visited) and a minimal
  * sitemap `<loc>` reader for page selection fallback.
  */
 

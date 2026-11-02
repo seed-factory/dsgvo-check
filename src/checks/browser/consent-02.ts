@@ -3,7 +3,7 @@
  * Known tracking identifiers from the catalog; persistent entries that are not known identifiers by party;
  * the allowlist (consent, session, load balancer, CSRF, language, bot protection) is "nicht bewertet", not
  * "notwendig". One observation per cookie key (name, party, path, partitioned) or storage key.
- * Values are never read (D20), so `cmp-cookie-with-uid` (registry §2.1) is declared but not emitted: the collector
+ * Values are never read, so `cmp-cookie-with-uid` (registry §2.1) is declared but not emitted: the collector
  * has no safe "consent cookie carries a UID" feature yet. Bot or geo signal → inconclusive.
  */
 import type { CookieRecord, StorageRecord } from '../../collectors/browser/types.ts';
@@ -190,7 +190,7 @@ export const consent02 = defineCheck({
   },
 });
 
-/** Written before any click: phase A or phase B before the click (consensus §4: A, A′, B before the click). */
+/** Written before any click: phase A or phase B before the click (A, A′, B before the click). */
 function beforeInteraction(r: CookieRecord | StorageRecord): boolean {
   return (r.phase === 'A' || r.phase === 'B') && !r.afterClick;
 }

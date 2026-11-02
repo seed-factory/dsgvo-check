@@ -1,5 +1,5 @@
 /**
- * L1: `request` evidence follows consensus 5.3 after the review (S-30, SM-05): independent `delivery` / `result` /
+ * `request` evidence follows specification 5.3 : independent `delivery` / `result` /
  * `provenance`, one monotonic `tMs` from the scan start, navigation/action/frame/parent ids and the versioned safe
  * `features` (identifier kind, stored-identifier match, event type, Consent Mode signal). No legacy relative times.
  */
@@ -55,7 +55,7 @@ const classified: ClassifiedRequest = {
   cookieless: true,
 };
 
-describe('requestEvidence (5.3, S-30)', () => {
+describe('requestEvidence (5.3)', () => {
   it('carries delivery/result/provenance, the scan-scale tMs, the ids and the safe features', () => {
     const ev = requestEvidence(ga4Hit, classified);
     expect(ev).toEqual({

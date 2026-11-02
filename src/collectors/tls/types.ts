@@ -1,5 +1,5 @@
 /**
- * TLS collector output (owner: M4). Initial version by the scaffold; owners may only ADD optional fields.
+ * TLS collector output.
  * 5.3 `tls` evidence; research http-dns-tls-mail §2.1 (node:tls + X509Certificate.checkHost).
  */
 import type { CollectorError, IsoTimestamp } from '../../core/snapshot-common.ts';
@@ -25,7 +25,7 @@ export interface TlsEndpoint {
   hostVariant: HostVariant;
   /**
    * `final`: the final host of a redirect to another registrable domain or its www/apex (recorded by the HTTP
-   * collector in `HttpSection.finalTls`, S-19). Absent for the scanned host's variants.
+   * collector in `HttpSection.finalTls`). Absent for the scanned host's variants.
    */
   role?: 'final';
   host: string;

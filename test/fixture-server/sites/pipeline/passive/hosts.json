@@ -1,0 +1,11 @@
+{
+  "hosts": {
+    "www.example.test": "www",
+    "example.test": "www"
+  },
+  "routes": [
+    { "host": "www.example.test", "scheme": "http", "path": ".*", "pathRegex": true, "status": 301, "headers": { "location": "https://www.example.test/" } },
+    { "host": "example.test", "scheme": "http", "path": ".*", "pathRegex": true, "status": 301, "headers": { "location": "https://example.test/" } },
+    { "host": "example.test", "scheme": "https", "path": ".*", "pathRegex": true, "status": 301, "headers": { "location": "https://www.example.test/" } }
+  ]
+}

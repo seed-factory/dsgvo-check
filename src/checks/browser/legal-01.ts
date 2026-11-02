@@ -1,16 +1,16 @@
 /**
- * LEGAL-01 (P0): Impressum and Datenschutzerklärung reachable from the evaluated pages (D09, consensus §3).
+ * LEGAL-01 (P0): Impressum and Datenschutzerklärung reachable from the evaluated pages.
  * Per document kind one reachability verdict: not found by link, intermediate hop or fallback (critical); all
  * links lead to 4xx/soft-404 (critical); missing link on some pages (warning); found only via hop/fallback
  * (warning, medium – BGH I ZR 228/03 two clicks); `#`/`javascript:` link without resolved content (info).
  * Separately: footer covered by the banner without legal links in it (warning). Pages behind a challenge stay
  * in the denominator; blocked legal targets make the verdict for that kind inconclusive.
  *
- * Canary-2 triage: labels come from the shared lexicon data/legal (G24); `links-broken` needs every link of the kind
- * to be confirmed broken, a link counts as working when its URL is a successful document (G21); an interrupted
- * search is a limitation, not `document-not-found` (G22); a page whose type is not confirmed is a limitation (G20);
- * soft-404 probes are no checked pages (G26); a blocked target comes before `unresolved` (G27); a truncated link
- * list proves no missing link (G04); hidden CMP vendor links are no links of the site (G25).
+ * Labels come from the shared lexicon data/legal; `links-broken` needs every link of the kind
+ * to be confirmed broken, a link counts as working when its URL is a successful document; an interrupted
+ * search is a limitation, not `document-not-found`; a page whose type is not confirmed is a limitation;
+ * soft-404 probes are no checked pages; a blocked target comes before `unresolved`; a truncated link
+ * list proves no missing link; hidden CMP vendor links are no links of the site.
  */
 import {
   isUnconfirmedDocument,
@@ -51,9 +51,9 @@ function linkInput(l: { text: string; accessibleName?: string; href: string | nu
 
 /**
  * The links of a page that point to the document `kind` of the site. A hidden link of the consent banner to another
- * registrable domain is the policy link of a CMP vendor (G25). The target of each link identifies the page, so a weak
+ * registrable domain is the policy link of a CMP vendor. The target of each link identifies the page, so a weak
  * key loses against an exact label of the other kind on any link to the same page, as it does where the collector
- * chooses the document (L3).
+ * chooses the document.
  */
 function linksOfKind(lex: LegalLexicon, links: readonly LinkFact[], kind: DocumentKind): LinkFact[] {
   const own = links.filter((l) => !(l.region === 'banner' && !l.visible && l.sameSite === false));
@@ -84,7 +84,7 @@ function sameDoc(p: PageVisit, kind: DocumentKind, docs: readonly DocumentRecord
   return p.role === kind || docs.some((d) => d.url === url || d.finalUrl === url);
 }
 
-/** The link list of this page was cut at the collector's limit (G04): no link on it proves nothing. */
+/** The link list of this page was cut at the collector's limit: no link on it proves nothing. */
 function linksTruncated(p: PageVisit): boolean {
   return p.dom?.linksTruncated === true;
 }
@@ -125,14 +125,14 @@ export const legal01 = defineCheck({
     const lex = legalLexiconFromData(ctx.data.legal);
     const pages = visitedPages(browser, ['A', 'B']).filter((p) => !p.reload);
     // A probe of the fallback or hop step that the collector judged an error page or not the document is not a
-    // checked page of the site (G26); it stays in the observed coverage.
+    // checked page of the site; it stays in the observed coverage.
     const unjudged = new Set(
       documents.attempts
         .filter((a) => a.outcome === 'soft-404' || a.outcome === 'unconfirmed')
         .map((a) => pageKey(a.url)),
     );
     // The same holds for the page behind a legal link that the collector judged an error page: its visit carries the
-    // role of the document kind, but it is no page of the site for the other kind (R26). A page that is merely
+    // role of the document kind, but it is no page of the site for the other kind. A page that is merely
     // unconfirmed is substantive and stays.
     const soft404 = new Set(
       documents.attempts.filter((a) => a.outcome === 'soft-404').map((a) => pageKey(a.url)),
@@ -175,7 +175,7 @@ export const legal01 = defineCheck({
     for (const kind of KINDS) {
       const docs = documents.documents.filter((d) => d.kind === kind);
       // A page the collector judged "not the document" (soft-404) or could not confirm as such (unconfirmed) is no
-      // reachable document (S-24, G20).
+      // reachable document.
       const good = docs.filter((d) => usableDocument(d, documents.attempts));
       const attempts = documents.attempts.filter((a) => a.kind === kind);
       const keysOf = (xs: Iterable<string>) => new Set([...xs].map(pageKey));
@@ -211,7 +211,7 @@ export const legal01 = defineCheck({
       // The document page itself needs no link to itself.
       const status = evaluated.filter((p) => !sameDoc(p, kind, docs)).map((p) => ({ p, s: linkStatus(p) }));
       const missingAll = status.filter((x) => !x.s.present && !x.s.unresolved && !x.s.toBlocked);
-      // No link on a page whose link list was cut proves nothing (G04).
+      // No link on a page whose link list was cut proves nothing.
       const missingTruncated = missingAll.filter((x) => linksTruncated(x.p));
       const missing = missingAll.filter((x) => !linksTruncated(x.p));
       if (missingTruncated.length > 0) limitations.push(`${kind}-links-truncated`);
@@ -219,7 +219,7 @@ export const legal01 = defineCheck({
       const unresolvedOnly = status.filter((x) => !x.s.present && x.s.unresolved);
 
       const allHrefs = status.flatMap((x) => x.s.hrefs);
-      // Every link of the kind is confirmed broken (G21): one working or unchecked link is enough to say otherwise.
+      // Every link of the kind is confirmed broken: one working or unchecked link is enough to say otherwise.
       const allBroken =
         allHrefs.length > 0 &&
         allHrefs.every((h) => classify(h) === 'broken') &&
@@ -246,7 +246,7 @@ export const legal01 = defineCheck({
       const viaLinkRecorded = good.find((d) => d.foundVia === 'link' || d.foundVia === 'config');
       const viaHop = good.find((d) => d.foundVia === 'hop');
       const viaFallback = good.find((d) => d.foundVia === 'fallback');
-      // A document the fallback found at the URL of a working link was found by that link (G21).
+      // A document the fallback found at the URL of a working link was found by that link.
       const linked = (d: DocumentRecord) =>
         allHrefs.some((h) => pageKey(h) === pageKey(d.url) || pageKey(h) === pageKey(d.finalUrl));
       const viaLink = viaLinkRecorded ?? (viaFallback && linked(viaFallback) ? viaFallback : undefined);
@@ -265,12 +265,12 @@ export const legal01 = defineCheck({
         .slice(0, 6)
         .map((a) => ({ type: 'link', href: a.url, text: `${a.via}:${a.outcome}`, status: a.status }));
       const missingPages = missing.map((x) => x.p.finalUrl || x.p.url).sort();
-      // The site's own link (or hop) leads to a page that is not confirmed as the document (G20). A fallback path
+      // The site's own link (or hop) leads to a page that is not confirmed as the document. A fallback path
       // that serves another page is negative evidence for that path only.
       const unconfirmedLink =
         unconfirmedAttempts.some((a) => a.via !== 'fallback') ||
         docs.some((d) => d.foundVia !== 'fallback' && isUnconfirmedDocument(d, documents.attempts));
-      // The target of the direct link is open: "not reachable by a direct link" cannot be said (R25).
+      // The target of the direct link is open: "not reachable by a direct link" cannot be said.
       const unconfirmedDirect =
         unconfirmedAttempts.some((a) => a.via === 'link') ||
         docs.some(
@@ -311,7 +311,7 @@ export const legal01 = defineCheck({
           );
         } else if (unconfirmedDirect) {
           // A document found by the fallback or the hop does not settle a direct link that was fetched and could not
-          // be confirmed: a limitation, not a warning with the statement "no direct link" (R25).
+          // be confirmed: a limitation, not a warning with the statement "no direct link".
           limitations.push(`${kind}-type-unconfirmed`);
         } else if (missing.length > 0 || missingTruncated.length === 0) {
           // (Not when the only pages without a link are pages whose link list was cut: "no direct link" is open.)
@@ -337,7 +337,7 @@ export const legal01 = defineCheck({
         );
         continue;
       }
-      // A blocked target comes before every other conclusion about unchecked links (G27, G55).
+      // A blocked target comes before every other conclusion about unchecked links.
       if (blocked) {
         blockedKinds++;
         limitations.push(`${kind}-target-not-evaluable`);
@@ -361,8 +361,8 @@ export const legal01 = defineCheck({
       }
       if (missing.length === 0 && missingTruncated.length > 0) continue;
       // The search must have run its steps before `critical` (03-checks §3.15 steps 5–7): the intermediate page,
-      // if there was a candidate, and the usual paths (G22). A fallback that was skipped (the time budget ended
-      // between the last queued page and the fallback step, so the phase still says `completed`) counts as well (R09).
+      // if there was a candidate, and the usual paths. A fallback that was skipped (the time budget ended
+      // between the last queued page and the fallback step, so the phase still says `completed`) counts as well.
       const fallbackChecked = attempts.some((a) => a.via === 'fallback');
       const hopChecked = attempts.some((a) => a.via === 'hop') || hopVisited;
       if (!fallbackChecked || (searchStopped && hopCandidates && !hopChecked)) {
@@ -380,9 +380,9 @@ export const legal01 = defineCheck({
       );
     }
 
-    // Banner covers the footer and offers no legal link itself (consensus §4, research §7.4). The overlap is certain
+    // Banner covers the footer and offers no legal link itself (research §7.4). The overlap is certain
     // when an own adapter recognised the banner with high confidence or when the hit test measured that a concrete
-    // footer link is covered (`coveredFooterLinks`); otherwise it rests on the geometry of a heuristic candidate (G18).
+    // footer link is covered (`coveredFooterLinks`); otherwise it rests on the geometry of a heuristic candidate.
     const cover = allCmpFacts(cmp).find(
       (f) => f.firstLayer.bannerVisible && f.firstLayer.coversFooter === true,
     );

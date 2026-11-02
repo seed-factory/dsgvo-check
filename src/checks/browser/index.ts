@@ -1,4 +1,4 @@
-/** Browser checks registry (owner: M3). Add one import + one array entry per check. */
+/** Browser checks registry. Add one import + one array entry per check. */
 import type { AnyCheck } from '../../core/check.ts';
 import { consent01 } from './consent-01.ts';
 import { consent02 } from './consent-02.ts';

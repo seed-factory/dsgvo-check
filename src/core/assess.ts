@@ -1,5 +1,5 @@
 /**
- * Assess (D04, D05, 5.1): observations → findings. Severity comes from the ruleset by (checkId, variant),
+ * Assess (5.1): observations → findings. Severity comes from the ruleset by (checkId, variant),
  * user overrides apply, then the confidence cap (medium → ≤ warning, low → ≤ info). Routing drops observations
  * whose service category belongs to another owner check; observations with the same fingerprint are merged.
  */

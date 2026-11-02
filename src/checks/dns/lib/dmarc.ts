@@ -31,7 +31,7 @@ export interface DmarcRecord {
   invalid: DmarcInvalidReason | null;
 }
 
-/** RFC 9989 limits the walk; 8 is the consensus cap (the RFC algorithm needs at most 5). */
+/** RFC 9989 limits the walk; 8 is the cap (the RFC algorithm needs at most 5). */
 export const DMARC_MAX_WALK = 8;
 
 const POLICIES: ReadonlySet<string> = new Set(['none', 'quarantine', 'reject']);
@@ -147,7 +147,7 @@ export interface DmarcAnalysis {
   steps: DmarcWalkStep[];
   /**
    * Step whose query failed (SERVFAIL, TIMEOUT, REFUSED, ERROR) after the retry. The walk stops there with
-   * state `failed`: discovery is not proven, so a parent's record is never used in its place (S-22).
+   * state `failed`: discovery is not proven, so a parent's record is never used in its place.
    */
   failures: DmarcWalkStep[];
   found: DmarcFound | null;
@@ -186,7 +186,7 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
     const s: DmarcWalkStep = { step, domain, qname, query };
     out.steps.push(s);
     if (isFailure(query.rcode)) {
-      // S-22: the policy of this more specific name is unknown; a parent record must not stand in for it.
+      // the policy of this more specific name is unknown; a parent record must not stand in for it.
       out.failures.push(s);
       out.state = 'failed';
       return out;

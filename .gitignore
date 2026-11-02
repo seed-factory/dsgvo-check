@@ -8,6 +8,7 @@ coverage/
 dsgvo-check-report*/
 dsgvo-check-report*
 canary/results/
+canary/sites.yaml
 
 # saved snapshots outside test fixtures
 *.snapshot.json

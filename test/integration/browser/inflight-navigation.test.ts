@@ -1,6 +1,6 @@
 /**
- * L2: requests of an earlier page that never end must not hold the next page of the phase until its HARD_CAP
- * (recorder `inflight()` counted all open requests of the phase, so every later page waited the full cap). Real
+ * requests of an earlier page that never end must not hold the next page of the phase until its HARD_CAP
+ * (recorder `inflight` counted all open requests of the phase, so every later page waited the full cap). Real
  * Chromium, synthetic hosts (`*.example.test`) on the fixture server; the "forever" requests are never answered.
  */
 import type { ServerResponse } from 'node:http';

@@ -1,7 +1,7 @@
 /**
  * MAIL-01: DMARC (RFC 9989, legacy RFC 7489 `pct`) on the scanned host via the DNS Tree Walk, with the Null-MX
  * matrix (RFC 7505). SERVFAIL/TIMEOUT after the retry is an error, never "no record" — also when a parent name
- * publishes a record (S-22). Variant names: registry docs/03-checks.md §2.1.
+ * publishes a record. Variant names: registry docs/03-checks.md §2.1.
  */
 import { defineCheck, type EvidenceInput, type Observation, subjects } from '../../core/api.ts';
 import { analyzeDmarc, type DmarcAnalysis } from './lib/dmarc.ts';

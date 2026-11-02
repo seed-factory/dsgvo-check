@@ -1,4 +1,4 @@
-/** L1 for pure parts of the HTTP/TLS collectors: header redaction (D20), outcome mapping, pacing, host variants. */
+/** for pure parts of the HTTP/TLS collectors: header redaction , outcome mapping, pacing, host variants. */
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
@@ -10,7 +10,7 @@ import {
 } from '../../../../src/collectors/http/client.ts';
 import { hostVariants } from '../../../../src/collectors/http/index.ts';
 
-describe('snapshotHeaders (D20)', () => {
+describe('snapshotHeaders', () => {
   it('keeps names only for Set-Cookie and redacts query values in Location', () => {
     const out = snapshotHeaders({
       'Set-Cookie': ['PHPSESSID=abc123; Path=/; HttpOnly', '_pref=xyz; Max-Age=60'],
@@ -28,7 +28,7 @@ describe('snapshotHeaders (D20)', () => {
     expect(JSON.stringify(out)).not.toContain('abc123');
   });
 
-  it('FP-08: same normalizer as the browser — URL headers sanitized, values only for security headers', () => {
+  it('same normalizer as the browser — URL headers sanitized, values only for security headers', () => {
     const out = snapshotHeaders(
       {
         Refresh: '0; url=/next?token=s3cret',
@@ -57,7 +57,7 @@ describe('snapshotHeaders (D20)', () => {
   });
 });
 
-describe('decodeBody (S-03: the decoded size is bounded)', () => {
+describe('decodeBody (the decoded size is bounded)', () => {
   const MiB = 1024 * 1024;
   const zeros = Buffer.alloc(64 * MiB);
   const bombs: Array<[string, Buffer]> = [

@@ -1,4 +1,4 @@
-/** Own service catalog (D14): schema, coverage of the catalog's priority services, URL and cookie matching. */
+/** Own service catalog : schema, coverage of the catalog's priority services, URL and cookie matching. */
 import { describe, expect, it } from 'vitest';
 import { loadServiceCatalog, parseCatalog, ServiceCatalog } from '../../../src/derive/catalog.ts';
 

@@ -1,8 +1,8 @@
 /**
- * Chromium launch (D08, D10, D25): Chrome for Testing in new headless (`channel: 'chromium'`), a fresh persistent
+ * Chromium launch: Chrome for Testing in new headless (`channel: 'chromium'`), a fresh persistent
  * profile in a temp dir per phase (removed afterwards), `chromiumSandbox` per `--sandbox`, de-DE / Europe/Berlin,
  * 1366×768, downloads off, QUIC off, popup blocker on. The UA is the real Chrome UA (HeadlessChrome → Chrome) plus
- * the D10 token.
+ * the scanner token.
  */
 import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -22,9 +22,13 @@ export interface LaunchConfig {
   sandbox: 'require' | 'off';
   network: NetworkConfig;
   executablePath?: string;
+  /** Report printing disables script execution and starts offline before opening a page. */
+  javaScriptEnabled?: boolean;
+  offline?: boolean;
+  timeoutMs?: number;
   /** Budget of `context.close()` before the browser is killed. Default `CLOSE_BUDGET_MS`. */
   closeBudgetMs?: number;
-  /** Where a browser that could not be killed is reported (R14). Default: nowhere. */
+  /** Where a browser that could not be killed is reported. Default: nowhere. */
   log?: Logger;
 }
 
@@ -66,8 +70,8 @@ function args(network: NetworkConfig): string[] {
 /**
  * Temp profiles not yet removed. They hold real cookies and storage of the scanned site: a profile still alive when
  * the process exits (e.g. `process.exit` right after a timeout while `context.close()` hangs) is removed
- * synchronously by the exit hook (S-35, FC-10). A process that is killed (SIGKILL, crash) runs no hook: its profile
- * carries an owner marker, and the next scan removes profiles whose owner is gone (G57).
+ * synchronously by the exit hook. A process that is killed (SIGKILL, crash) runs no hook: its profile
+ * carries an owner marker, and the next scan removes profiles whose owner is gone.
  */
 const liveProfiles = new Set<string>();
 
@@ -171,7 +175,7 @@ export function removeStaleProfiles(o: StaleProfileOptions = {}): string[] {
 
 /**
  * Profiles whose owner marker names `pid` on `host` (default: this host). A pid alone says nothing when several
- * containers share the temp dir: the same number can belong to a live scan of another one (S-robustness-2). A marker
+ * containers share the temp dir: the same number can belong to a live scan of another one. A marker
  * without a host (older versions) is not claimed either, as it might be a foreign one; the stale sweep still judges it.
  */
 export function profilesOfPid(pid: number, tmp: string = tmpdir(), host: string = hostname()): string[] {
@@ -232,7 +236,7 @@ async function removeProfile(dir: string): Promise<void> {
   liveProfiles.delete(dir);
 }
 
-/** Budget of `context.close()`; a browser that does not close in time is killed (G51). */
+/** Budget of `context.close()`; a browser that does not close in time is killed. */
 export const CLOSE_BUDGET_MS = 3_000;
 
 /**
@@ -287,9 +291,9 @@ export interface KillOptions {
 }
 
 /**
- * Kill the browser processes that use `dir` as their profile; used when `context.close()` does not return (G51). Node
+ * Kill the browser processes that use `dir` as their profile; used when `context.close()` does not return. Node
  * does it itself through the process table (`/proc`, Linux): the runtime image has neither `pkill` nor `ps`. Without
- * a process table `pkill` is the way (POSIX). A browser that cannot be killed at all is reported (R14), without the
+ * a process table `pkill` is the way (POSIX). A browser that cannot be killed at all is reported, without the
  * path of the profile.
  */
 export async function killBrowserProcesses(dir: string, o: KillOptions = {}): Promise<void> {
@@ -355,13 +359,15 @@ async function launch(cfg: LaunchConfig, userAgent: string | undefined): Promise
       ...(userAgent ? { userAgent } : {}),
       extraHTTPHeaders: { 'Accept-Language': ACCEPT_LANGUAGE },
       acceptDownloads: false,
+      ...(cfg.javaScriptEnabled === undefined ? {} : { javaScriptEnabled: cfg.javaScriptEnabled }),
+      ...(cfg.offline === undefined ? {} : { offline: cfg.offline }),
       serviceWorkers: 'allow',
       ...(proxy ? { proxy } : {}),
       args: args(cfg.network),
       // Keep Chrome's popup blocker (Playwright disables it): pages cannot open windows without a user gesture. The
-      // SSRF guard covers the remaining popups (FP-01).
+      // SSRF guard covers the remaining popups.
       ignoreDefaultArgs: ['--disable-popup-blocking'],
-      timeout: 60_000,
+      timeout: cfg.timeoutMs ?? 60_000,
     });
   } catch (err) {
     await removeProfile(dir);
@@ -419,7 +425,7 @@ export function launchPhase(cfg: LaunchConfig, userAgent: string): Promise<Phase
   return launch(cfg, userAgent);
 }
 
-/** D25: inside the dsgvo-check image (`DSGVO_CHECK_CONTAINER=1`) the sandbox error prints the exact fix. */
+/** inside the dsgvo-check image (`DSGVO_CHECK_CONTAINER=1`) the sandbox error prints the exact fix. */
 const CONTAINER_SANDBOX_HINT =
   ' Im Docker-Image: Profil exportieren mit "docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json" ' +
   'und den Container so starten: "docker run --rm --cap-drop=ALL --security-opt no-new-privileges ' +

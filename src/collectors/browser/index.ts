@@ -1,5 +1,5 @@
 /**
- * Browser collector (owner: M1). Phases A/B/C, each in a fresh `chromium.launchPersistentContext(tmpdir)` with
+ * Browser collector. Phases A/B/C, each in a fresh `chromium.launchPersistentContext(tmpdir)` with
  * `channel: 'chromium'` (Chrome for Testing, new headless); `chromiumSandbox: ctx.options.sandbox === 'require'`;
  * extra args from `ctx.network.test?.browserArgs`; UA = browserUserAgent(navigator.userAgent).
  * Fatal conditions are returned in `fatal` (unreachable/blocked start page, sandbox, browser missing).

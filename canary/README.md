@@ -1,6 +1,6 @@
 # Canary corpus and runner
 
-The canary is a one-off measurement run of the dsgvo-check prototype against 100 public websites. It answers
+The canary measures the dsgvo-check prototype against a locally maintained sample of public websites. It answers
 questions about the **scanner**, not about the sites:
 
 - How often does each check end `inconclusive`, `skipped` or `error`?
@@ -9,15 +9,16 @@ questions about the **scanner**, not about the sites:
 - Does CMP recognition match the CMP we expected?
 - How long do scans take, and which collection errors are the most common?
 
-It is not the acceptance canary of decision D23 (10 sites with written owner consent, `mustFind` / `mustNotFind`),
-and it does not replace it. See [consensus §2a](../docs/consensus/README.md) ("Канарейка прототипа").
+The acceptance canary is a separate set of 10 sites with written owner consent and `mustFind` / `mustNotFind`
+expectations. This measurement runner does not replace that acceptance process.
+
 
 ## Rules
 
 These rules are part of the tool, not a recommendation.
 
-1. **Passive only.** The scanner sends browser navigations (class O: phases A, B and C of D08) and the default
-   probes (class T, D18), nothing else:
+1. **Passive only.** The scanner sends browser navigations (class O: phases A, B and C) and the default
+   probes (class T), nothing else:
    - HTTP: `robots.txt` of the start origin and, only when the links of the start page do not fill the page
      budget, at most 2 sitemap requests (the sitemap, or a sitemap index and one child sitemap); the `http://` and
      `https://` redirect chains of the target host and of its `www.` and apex variants, plus the chain on an explicit
@@ -30,11 +31,11 @@ These rules are part of the tool, not a recommendation.
    It sends no exposure probes, no FILE-01, no ADMIN-01, no logins and no form submissions. It never tries to get
    around bot protection, CAPTCHAs or geo blocks. A blocked site is recorded as blocked; it is not retried with
    tricks. Phase C ("Alle akzeptieren") lets the site load its third-party resources, which then receive the IP
-   address of the scanning machine (D08).
+   address of the scanning machine.
 2. **Low load.** The default is 3 sites in parallel, and at most 5. Each worker pauses before every site
-   (default 5 s, at least 1.5 s). Inside a scan, the scanner's own pacing applies (D09): one navigation at a time
+   (default 5 s, at least 1.5 s). Inside a scan, the scanner's own pacing applies: one navigation at a time
    with ≥ 1.5 s between navigations, at most 2 HTTP probes per second per host. The scanner sends an honest
-   User-Agent with a link to the repository (D10). Each corpus entry has its own registrable domain, so no two
+   User-Agent with a link to the repository. Each corpus entry has its own registrable domain, so no two
    parallel scans hit the same site.
 3. **Results stay private.** `canary/results/` is in `.gitignore`. Results are never published with site names,
    never passed to a CRM and never used for warning letters (Abmahnungen), complaints or sales outreach. Aggregates
@@ -44,11 +45,15 @@ These rules are part of the tool, not a recommendation.
    ("CMP-Vielfalt: Cookiebot", "Behörden-Referenz", "Nicht-EU-Kontrolle"). A `publicReference` is added only for
    cases that were documented publicly by an authority, a court, noyb or major media, and only with a link that was
    checked. The validator rejects verdict words (the stop-word list of `data/texts`, plus "Abmahnung").
-5. **Confirmation first.** A full live run needs the customer's confirmation (consensus, question 5). The runner
+5. **Confirmation first.** A full live run needs the customer's confirmation. The runner
    only scans with `--confirm`; without it, it prints the plan and exits.
-6. **Opt-out.** If a site operator asks, remove the site from `sites.yaml` and delete its results. On any complaint,
-   stop the run (Ctrl-C finishes the running sites and starts no new ones).
-7. **Minimal data.** Snapshots hold no cookie, Web Storage or TC-String values (D20); query strings are redacted.
+6. **Opt-out.** Operators can contact the project through the [repository](https://github.com/seed-factory/dsgvo-check)
+   linked in the User-Agent. On an opt-out request or complaint, stop the run (Ctrl-C finishes the running sites
+   and starts no new ones), remove the site from the local corpus, and delete its entire `<siteId>` directory from
+   every local run, including reports, snapshots, screenshots, logs and `meta.json`. Also remove its entry from
+   each `run.json`, or delete the affected run directories entirely. Regenerate summaries from the remaining
+   results before using them again.
+7. **Minimal data.** Snapshots hold no cookie, Web Storage or TC-String values; query strings are redacted.
    Banner screenshots are stored next to the reports. Delete raw results (`canary/results/<runId>/`) once the
    analysis is done; keep only the aggregate summary without `--with-sites`.
 
@@ -61,13 +66,18 @@ COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm install
 node node_modules/playwright-core/cli.js install --no-shell chromium
 ```
 
+Create your private corpus by copying [sites.example.yaml](sites.example.yaml) to `canary/sites.yaml` and replacing
+the fictional entries. `canary/sites.yaml` is ignored by Git; do not commit it. An external corpus can be selected
+with `--sites <file>`.
+
 Commands (all options: `node scripts/canary.ts --help`):
 
 ```sh
 node scripts/canary.ts --dry-run                       # print the plan, scan nothing
+node scripts/canary.ts --dry-run --expected-count 100  # optionally require a sample size
 node scripts/canary.ts --confirm                       # full run, new run id (UTC timestamp)
 node scripts/canary.ts --confirm --region de --limit 5 # first 5 German sites
-node scripts/canary.ts --confirm --id de-bfdi,gb-ico   # selected sites
+node scripts/canary.ts --confirm --id de-example-media,at-example-retail # selected local entries
 node scripts/canary.ts --confirm --run-id 20261030-120000              # resume: finished sites are skipped
 node scripts/canary.ts --confirm --run-id 20261030-120000 --retry-errors   # re-run sites with runner errors
 node scripts/canary.ts --confirm --engine cli          # one CLI process per site (isolation, hard kill)
@@ -134,11 +144,13 @@ free-text message appears, and site hosts that leak into machine codes are repla
 
 ## The corpus (`sites.yaml`)
 
-There are exactly 100 sites: 45 in Germany, 25 in other EU/EEA countries, and 30 outside the EU/EEA. Switzerland
-counts as outside the EU/EEA. All seven catalog CMPs are covered by at least three sites. The corpus mixes sectors
-and sizes: media, e-commerce and retail, Mittelstand, Handwerk chains and chambers, universities, banks and
-insurers, travel, health, and authorities as reference sites. The sites belong to organizations only, never to
-private persons.
+The repository contains only [sites.example.yaml](sites.example.yaml), with three fictional hosts and all input
+fields. Real URLs, site identifiers, organization names and selection notes belong in the local ignored
+`canary/sites.yaml` or in a private file passed through `--sites`. Do not publish that file or named scan results.
+
+There is no mandatory corpus size or regional split. Choose a sample that answers the measurement question;
+`--expected-count <n>` optionally enforces its size before any filters or scans. Only include organizations,
+never private persons. Each entry must have a distinct registrable domain.
 
 | Field             | Values                                                                                                                                                                                                                              |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -153,19 +165,19 @@ private persons.
 | `selectionReason` | neutral, factual; documented cases start with `öffentlich dokumentierter Fall:` and contain the link                                                                                                                                |
 | `publicReference` | https URL of the public source, or `null`                                                                                                                                                                                           |
 
-`expectedCmp` was established on 2026-10-30 with one GET of each start page from a German connection. It is read
-from markers in the static HTML: loader scripts, element ids and configuration objects. A vendor statement counts
-when it is public, for example a CMP vendor naming the site as a customer.
+`expectedCmp` records the observation used to choose a local entry. Record the source in `cmpSignal`, for example
+a loader script, an element id, a configuration object or a public vendor statement. Keep selection notes neutral;
+`publicReference` is optional, and a documented public case requires an HTTPS reference in `selectionReason`.
 
 - `other` is a CMP outside the seven adapters (OneTrust, Sourcepoint, Didomi, consentmanager, own banners, …).
 - `none` means no CMP loader, no banner element and no cookie notice in the static HTML. A banner added later by
   JavaScript cannot be ruled out.
 - `unknown` covers blocked, ambiguous and inconclusive pages.
 
-Validation: `corepack pnpm vitest run test/unit/canary`. The tests check the schema and the composition (exactly
-100 sites, 40–50 / 20–30 / 25–35 per region, at least 3 sites per catalog CMP, the required non-EU countries) and
-reject verdict words. To change the corpus:
+Validation: `corepack pnpm vitest run test/unit/canary` checks the fictional example, schema, filters, runner and
+aggregation behavior without scanning sites. The validator rejects duplicate ids, hosts and registrable domains,
+invalid regions, missing CMP evidence and verdict words. To change a local corpus:
 
-1. Keep exactly 100 entries.
-2. Re-check a CMP with one request per site.
-3. Add a `publicReference` only after opening the source.
+1. Choose entries and the optional sample size for the measurement.
+2. Record CMP observations factually, with no more than one verification request per site.
+3. Add a `publicReference` only after checking its source; do not publish local corpus notes.

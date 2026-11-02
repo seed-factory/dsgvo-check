@@ -1,4 +1,4 @@
-/* Own minimal Usercentrics v2 simulator for L2 tests (no vendor code). Mimics public identifiers only:
+/* Own minimal Usercentrics v2 simulator for integration tests (no vendor code). Mimics public identifiers only:
    window.UC_UI (isInitialized, getServicesBaseInfo), shadow host #usercentrics-root with
    [data-testid="uc-default-banner"] and uc-*-button test ids, localStorage uc_settings / uc_user_interaction. */
 (function () {

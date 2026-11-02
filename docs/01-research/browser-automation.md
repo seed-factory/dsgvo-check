@@ -1,10 +1,10 @@
 # dsgvo-check — ресёрч браузерной части (Playwright)
 
+
 | | |
 |---|---|
 | Дата | 2026-10-30 |
 | Статус | Этап 0 · анализ, кода нет. Иллюстративные фрагменты — псевдокод |
-| Автор | Claude (Opus), участник консенсус-панели |
 | Входные документы | `specs/dsgvo-check_idea.md`, `specs/dsgvo-check_TZ.md`, `specs/dsgvo-check_katalog-proverok.md` |
 | Зафиксированная база | Playwright **1.64.1** (npm, 2026-10-14), Chromium **156.0.8078.4** (Chrome for Testing + Chrome Headless Shell), Node ≥ 20 (`engines` у `playwright-core`), Docker-образы Playwright — Node 24 |
 
@@ -520,7 +520,7 @@ TCF-слой (если есть): `__tcfapi('ping',2,cb)` → `cmpLoaded`, `gdpr
 - **Sandbox:** Playwright документирует для краулинга запуск под отдельным пользователем + `--security-opt seccomp=seccomp_profile.json`, чтобы Chromium работал **с** sandbox ✔. Наш эксперимент (раздел 10):
   - с дефолтным seccomp Docker sandbox **не поднимается** даже от `pwuser`;
   - с `--cap-add=SYS_ADMIN` — поднимается, но capability широкая (Playwright советует её только для локальной отладки);
-  - их seccomp-профиль в OrbStack/arm64 не дал стартовать контейнеру, на amd64 проверить ⚠.
+  - их seccomp-профиль в Docker/arm64 не дал стартовать контейнеру, на amd64 проверить ⚠.
 
   Поэтому: `--sandbox auto` — пробуем `chromiumSandbox: true`, при неудаче откатываемся на `--no-sandbox` с явным предупреждением в логе и отчёте.
   - GitHub Actions `container: options:` позволяет передать `--security-opt` ⚠.
@@ -536,7 +536,7 @@ TCF-слой (если есть): `__tcfapi('ping',2,cb)` → `cmpLoaded`, `gdpr
 ## 10. Мини-эксперимент (верификация утверждений)
 
 Прогон 2026-10-30, `playwright-core@1.64.1`, две среды:
-- **(D)** официальный образ `mcr.microsoft.com/playwright:v1.64.1-noble` (linux/arm64, OrbStack): `chromium-headless-shell` 156.0.8078.4 (дефолт) и Chrome for Testing 156.0.8078.4 (`channel:'chromium'`, new headless);
+- **(D)** официальный образ `mcr.microsoft.com/playwright:v1.64.1-noble` (linux/arm64, Docker): `chromium-headless-shell` 156.0.8078.4 (дефолт) и Chrome for Testing 156.0.8078.4 (`channel:'chromium'`, new headless);
 - **(M)** установленный Google Chrome 156.0.8078.74 на macOS (`channel:'chrome'`, new headless; headed — где указано).
 
 Условия: локальные HTTP- и HTTPS-серверы, домены `*.test` через `--host-resolver-rules`, `locale: 'de-DE'`, `timezoneId: 'Europe/Berlin'`. Скрипты лежат вне репозитория (scratchpad).
@@ -576,7 +576,7 @@ TCF-слой (если есть): `__tcfapi('ping',2,cb)` → `cmpLoaded`, `gdpr
 | Размер образа `v1.64.1-noble` (arm64, распакованный) | **3.52 ГБ**. `/ms-playwright`: chromium 400 МБ, chromium_headless_shell 276 МБ, firefox 287 МБ, webkit 277 МБ, ffmpeg 4 МБ. Node v24.22.1; `pwuser` (uid 1001) есть |
 | `chromiumSandbox: true`, дефолтный seccomp Docker (root или `pwuser`) | **Падает**: «Chromium sandboxing failed!» |
 | То же + `--cap-add=SYS_ADMIN`, `--user pwuser` | **Работает** (shell и CfT) |
-| `--security-opt seccomp=<seccomp_profile.json из репозитория Playwright>` | Контейнер **не стартует** в OrbStack/arm64 (ошибка рантайма). На linux/amd64 (CI) проверить ⚠ |
+| `--security-opt seccomp=<seccomp_profile.json из репозитория Playwright>` | Контейнер **не стартует** в Docker/arm64 (ошибка рантайма). На linux/amd64 (CI) проверить ⚠ |
 | Без sandbox (дефолт Playwright) | Работает от root и от `pwuser` |
 
 **Новые выводы из эксперимента:**

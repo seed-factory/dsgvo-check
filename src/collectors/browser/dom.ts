@@ -1,7 +1,7 @@
 /** Node-side mapping of raw in-page DOM facts to redacted `DomFacts` (sanitized URLs, same-site flags). */
 import type { Frame, Page } from 'playwright-core';
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
-import { registrableDomain } from '../../core/url.ts';
+import { parseUrl, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
 import { domFactsInPage, type RawDomFacts } from './in-page.ts';
 import type { CandidateLink } from './pages.ts';
@@ -29,11 +29,7 @@ function hrefKind(attr: string, resolved: string): LinkFact['hrefKind'] {
 }
 
 function safeHost(url: string): string | null {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
+  return parseUrl(url)?.hostname.toLowerCase() ?? null;
 }
 
 function sameSiteAs(url: string, etld1: string | null, host: string): boolean | undefined {
@@ -52,12 +48,8 @@ export function parseLinkHeader(value: string, base: string): LinkRelFact[] {
     const rel = /rel\s*=\s*"?([^";]+)"?/i.exec(params)?.[1]?.toLowerCase().trim();
     if (!rel || !/(preconnect|dns-prefetch|preload|modulepreload|prefetch|prerender|stylesheet)/.test(rel))
       continue;
-    let href: string;
-    try {
-      href = new URL(m[1] as string, base).toString();
-    } catch {
-      continue;
-    }
+    const href = parseUrl(m[1] as string, base)?.toString();
+    if (href === undefined) continue;
     const as = /\bas\s*=\s*"?([^";]+)"?/i.exec(params)?.[1];
     out.push({ rel, href: sanitizeRequestUrl(href), ...(as ? { as } : {}), source: 'header' });
   }
@@ -70,11 +62,8 @@ function metaRefresh(content: string | null, base: string): DomFacts['metaRefres
   if (!m) return undefined;
   let url: string | null = null;
   if (m[2]) {
-    try {
-      url = sanitizeRequestUrl(new URL(m[2], base).toString());
-    } catch {
-      url = null;
-    }
+    const absolute = parseUrl(m[2], base);
+    if (absolute) url = sanitizeRequestUrl(absolute.toString());
   }
   return { url, delaySec: Number(m[1]) };
 }
@@ -113,7 +102,7 @@ export async function collectDom(
   const links: LinkFact[] = raw.links.map((l, order) => {
     const kind = hrefKind(l.attr, l.href);
     const navigable = kind === 'http' || kind === 'https';
-    // Free text is redacted here, before anything is stored or hashed (D20): addresses, mailto:, URLs with a query.
+    // Free text is redacted here, before anything is stored or hashed: addresses, mailto:, URLs with a query.
     const text = redactFreeText(l.text);
     const name = redactFreeText(l.name);
     candidates.push({

@@ -1,5 +1,5 @@
 /**
- * L2 (S-net-1): an inert `<meta http-equiv="refresh">` inside nested `<template>` elements of an http page is no
+ * an inert `<meta http-equiv="refresh">` inside nested `<template>` elements of an http page is no
  * redirect, so with an unavailable HTTPS the verdict of TLS-01 stays `https-unavailable` (critical) and does not
  * drop to `client-side-redirect-only` (warning). The collector runs for real against a local server; the check reads
  * the section it produced.
@@ -63,7 +63,7 @@ async function collectHttpOnly(host: string): Promise<HttpSection> {
 const httpHop = (http: HttpSection) =>
   http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'http')?.final;
 
-describe('S-net-1: TLS-01 with an inert refresh in nested templates', () => {
+describe('TLS-01 with an inert refresh in nested templates', () => {
   it('http page, https refused: the nested-template meta is no redirect → https-unavailable (critical)', async () => {
     const http = await collectHttpOnly('www.nestedtpl.test');
     const hop = httpHop(http);

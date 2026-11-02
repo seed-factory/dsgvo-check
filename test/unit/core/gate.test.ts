@@ -53,7 +53,7 @@ interface Row {
 
 const critical = { checkId: 'CONSENT-01', severity: 'critical' as const };
 
-// One entry per row of consensus table 5.2 (plus the variants each row names).
+// One entry per row of specification 5.2 (plus the variants each row names).
 const rows: Row[] = [
   {
     row: '1: no counted findings, relevant checks completed/inconclusive/not_applicable → 0',
@@ -426,7 +426,7 @@ const rows: Row[] = [
   },
 ];
 
-describe('gate() — table 5.2', () => {
+describe('gate — table 5.2', () => {
   it.each(rows)('$row', ({ input, exitCode, reasons }) => {
     const result = gate(input);
     expect(result.exitCode).toBe(exitCode);

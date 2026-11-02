@@ -1,5 +1,5 @@
 /**
- * Check contract (D05, D04, 5.1). A check is a pure function over its snapshot slice: no I/O, no Playwright,
+ * A check is a pure function over its snapshot slice: no I/O, no Playwright,
  * no `node:*` network/file modules (enforced by Biome `noRestrictedImports` in src/checks/**).
  * Severity is NOT decided by the check: it comes from the ruleset by (checkId, variant), capped by confidence.
  */
@@ -13,10 +13,7 @@ export interface CheckVariant {
   variant: string;
   /** Fingerprint group (defaults to `variant`). Variants of one group share a fingerprint for the same subject. */
   variantGroup?: string;
-  /**
-   * Highest confidence this variant can ever have (static documentation of the check). Not used for `maxSeverity`:
-   * gate relevance ignores the confidence cap (5.2), the cap applies to each finding.
-   */
+  /** Static confidence ceiling; gating uses the uncapped severity. */
   maxConfidence?: Confidence;
 }
 
@@ -43,7 +40,7 @@ export interface Observation {
   /** Fingerprint subject (5.4), see `subjects` helpers in core/fingerprint.ts. Never contains the target host. */
   subject: string;
   serviceId?: string;
-  /** Service category; enables routing de-duplication (consensus §4 "Дедупликация"). */
+  /** Service category; enables routing de-duplication. */
   category?: string;
   phases: Phase[];
   /** Sanitized page URLs. */
@@ -53,7 +50,7 @@ export interface Observation {
   params: MessageParams;
   /** e.g. `interaction-without-consent`. */
   trigger?: string;
-  /** false: not reproduced in B-before-click (level kept, D08). */
+  /** false: not reproduced in B-before-click; the level is kept. */
   replicated?: boolean;
   related?: RelatedRef[];
   /** Where the classification came from (catalog, third-party-web, …). */

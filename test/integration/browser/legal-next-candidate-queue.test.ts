@@ -1,11 +1,4 @@
-/**
- * L2 (review S-legal-3, follow-up of the reviewer): the next candidate of one kind is a page that is already queued for
- * the other kind. The retry must not take that queue item away: the page stays queued and is read for both kinds
- * (`alsoKinds`), as for a combined page that is found by both links from the start.
- * Setting: "Impressum" leads to a page of another kind (unconfirmed), the only other Impressum link
- * ("Anbieterkennzeichnung") leads to the combined legal page that is queued as the privacy policy.
- * Synthetic hosts only (`*.example.test`).
- */
+/** A legal candidate already queued for another document kind does not consume its next candidate. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type DynamicHandler, type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { collect } from './helpers.ts';
@@ -61,7 +54,7 @@ beforeAll(async () => {
         '/about/': send(NEWS),
         '/legal/': send(COMBINED),
       }),
-      // counterexample: the next candidate is a page that is not queued yet (the G19 path stays as it was)
+      // counterexample: the next candidate is a page that is not queued yet (the path stays as it was)
       site('freshnext.example.test', {
         '/': send(
           START(
@@ -85,7 +78,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe('S-legal-3 follow-up: the retry takes no queue item away from the other kind', () => {
+describe('follow-up: the retry takes no queue item away from the other kind', () => {
   it('the next Impressum candidate is queued as the policy: the page is read for both kinds', async () => {
     const run = await collect(server, { url: 'https://crossqueue.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];

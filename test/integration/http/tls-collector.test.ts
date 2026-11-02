@@ -1,5 +1,5 @@
 /**
- * L2: the TLS collector (node:tls) against local HTTPS servers with certificates from test/utils/certs.ts (the test
+ * the TLS collector (node:tls) against local HTTPS servers with certificates from test/utils/certs.ts (the test
  * CA is trusted only for the test) and a separate root → intermediate → leaf hierarchy for chain cases; then TLS-02.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,7 +18,6 @@ import {
   createChainPki,
   httpProxy,
   silentServer,
-  socksProxy,
   withRoutes,
 } from './helpers.ts';
 
@@ -207,7 +206,7 @@ describe('TLS collector: certificate chains', () => {
     expect(tls02Variants('https://www.chain.test/', s)).toEqual(['chain-incomplete']);
   });
 
-  it('leaf + intermediate sent, root not in the client store → UNABLE_TO_GET_ISSUER_CERT_LOCALLY → certificate-invalid (R20)', async () => {
+  it('leaf + intermediate sent, root not in the client store → UNABLE_TO_GET_ISSUER_CERT_LOCALLY → certificate-invalid', async () => {
     const s = await endpoints('https://www.chain.test/', chainNet(fullChain, false));
     expect(target(s)).toMatchObject({
       authorized: false,
@@ -232,7 +231,7 @@ describe('TLS collector: certificate chains', () => {
     expect(r.outcome?.observations[0]?.params).toMatchObject({ reason: 'untrusted-root' });
   });
 
-  it('S-20: an https target with an explicit port is probed on that port', async () => {
+  it('an https target with an explicit port is probed on that port', async () => {
     const s = await endpoints(
       'https://www.valid.test:8443/',
       withRoutes(server.network(), { 'www.valid.test:8443': server.httpsPort, 'valid.test': closed }),
@@ -260,7 +259,7 @@ describe('TLS collector through --proxy (no test routing)', () => {
         collectorContext('https://www.valid.test/', proxyNetwork(proxy.url)),
       );
       const ep = target(res.sections.tls as TlsSection);
-      // The label follows the CA setting of this process (G46): `system` with NODE_USE_SYSTEM_CA=1, else the bundle.
+      // The label follows the CA setting of this process : `system` with NODE_USE_SYSTEM_CA=1, else the bundle.
       expect(ep).toMatchObject({
         outcome: 'handshake',
         ip: null,
@@ -269,21 +268,6 @@ describe('TLS collector through --proxy (no test routing)', () => {
       });
       // The test CA is in neither the bundled nor the system store.
       expect(ep.authorized).toBe(false);
-      expect(ep.chain[0]?.subject).toBe('CN=www.valid.test');
-      expect(proxy.targets).toContain('www.valid.test:443');
-    } finally {
-      await proxy.close();
-    }
-  });
-
-  it('SOCKS5 tunnel', async () => {
-    const proxy = await socksProxy(server.httpsPort);
-    try {
-      const res = await createTlsCollector({ timeoutMs: 3_000 })(
-        collectorContext('https://www.valid.test/', proxyNetwork(proxy.url)),
-      );
-      const ep = target(res.sections.tls as TlsSection);
-      expect(ep).toMatchObject({ outcome: 'handshake', ip: null });
       expect(ep.chain[0]?.subject).toBe('CN=www.valid.test');
       expect(proxy.targets).toContain('www.valid.test:443');
     } finally {

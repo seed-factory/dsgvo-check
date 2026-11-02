@@ -25,9 +25,7 @@ examples/github-failing/
 ## Try it
 
 1. Create a new repository and copy the contents of this directory into it (including `.github/`).
-2. In `.github/workflows/dsgvo-check.yml`, replace the placeholder SHA in `uses: seed-factory/dsgvo-check@…` with
-   the commit of a release tag (shown in the summary of the release job, or
-   `git ls-remote https://github.com/seed-factory/dsgvo-check 'refs/tags/v0.1.0^{}'`).
+2. The workflow uses `seed-factory/dsgvo-check@v0.1.0`; choose the release tag to use.
 3. In the repository settings, enable GitHub Pages with the source "GitHub Actions".
 4. Push to `main`. The `deploy` job publishes the page, the `dsgvo-check` job fails with exit code 1.
 
@@ -54,9 +52,7 @@ Scan vollständig · Exit-Code 1 (`threshold`)
 - The scan runs in its own job with `permissions: contents: read` and no secrets. The Action starts the scanner
   in a container as a non-root user with a seccomp profile for the Chromium sandbox, `--cap-drop=ALL`, a
   read-only root filesystem and memory/CPU limits. Only the report directory is mounted.
-- Pin the Action by commit SHA (`uses: seed-factory/dsgvo-check@<sha> # v0.1.0`). Each release of the Action pins
-  its image by digest (`ghcr.io/seed-factory/dsgvo-check@sha256:…`, D24), so the SHA fixes both the Action and the
-  scanner. A tag (`@v0.1.0`, `:0.1.0`) can be re-published and is not used.
+- Use the Action release tag `seed-factory/dsgvo-check@v0.1.0` and its matching scanner image version.
 - To report without failing the build, use `fail-on: none` (only scan errors give exit code 2) or
   `continue-on-error: true` on the step and read `steps.<id>.outputs.exit-code`.
 - GitHub-hosted runners are not guaranteed to be in the EU. Consent banners that depend on the visitor's location

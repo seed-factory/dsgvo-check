@@ -1,7 +1,7 @@
 /**
- * Browser collector output (owner: M1). Initial version by the scaffold; owners may only ADD optional fields.
- * Decisions: D05 (raw redacted facts + plan), D08 (phases A/B/C, fresh persistent profile per phase),
- * D09 (page selection with reasons), D15 (documents), D20 (no values), 5.3 (evidence model).
+ * Browser collector output.
+ * Raw redacted facts and plan, with a fresh persistent profile for each phase A/B/C.
+ * Page selection keeps its reasons; document and evidence records never store cookie or storage values.
  */
 import type {
   Box,
@@ -13,8 +13,6 @@ import type {
   SanitizedUrl,
   Viewport,
 } from '../../core/snapshot-common.ts';
-
-// ------------------------------------------------------------------ plan (D05 `plan`, D08/D09)
 
 export type PageRole =
   | 'start'
@@ -39,7 +37,7 @@ export interface PlannedPage {
   robotsAllowed?: boolean;
 }
 
-/** Decision about which first-layer button to press (consensus `plan.click`). */
+/** Decision about which first-layer button to press (`plan.click`). */
 export interface ClickPlan {
   phase: 'B' | 'C';
   action: 'reject' | 'accept';
@@ -58,12 +56,10 @@ export interface ClickPlan {
 export interface BrowserPlan {
   /** Phase A selection (≤ maxPages). */
   pages: PlannedPage[];
-  /** B/C control selection: start + up to 2 pages chosen from A signals (D08). */
+  /** B/C control selection: start + up to 2 pages chosen from A signals. */
   controlPages: PlannedPage[];
   click: { B?: ClickPlan; C?: ClickPlan };
 }
-
-// ------------------------------------------------------------------ pages and DOM facts
 
 export type DomRegion = 'header' | 'nav' | 'main' | 'footer' | 'banner' | 'aside' | 'other';
 
@@ -134,13 +130,13 @@ export interface DomFacts {
   metaRefresh?: { url: SanitizedUrl | null; delaySec: number };
   /** Text length of the visible body (for soft-404 / empty page heuristics). */
   visibleTextLength?: number;
-  /** Two-click / content-blocker placeholders (D08 control page signal; EMBED-* "no load" cases). Added by M1. */
+  /** Two-click / content-blocker placeholders (control page signal; EMBED-* "no load" cases). */
   embedPlaceholders?: Array<{ kind: 'maps' | 'video' | 'other'; text: string }>;
-  /** Text of the first `<h1>` (≤ 200 chars). Added by M1. */
+  /** Text of the first `<h1>` (≤ 200 chars). */
   h1?: string;
   /**
    * Set (only then) when the page has more links than were collected (cap `maxLinks`): the list is not the whole
-   * page, so a missing legal link on it proves nothing (LEGAL-01: limitation, not "missing"). Canary2 G04.
+   * page, so a missing legal link on it proves nothing (LEGAL-01: limitation, not "missing").
    */
   linksTruncated?: boolean;
 }
@@ -177,7 +173,7 @@ export interface PageVisit {
   role: PageRole;
   order: number;
   phase: BrowserPhase;
-  /** 5.3 `navigationId` of this visit; requests, cookies and storage of the visit carry the same id (S-30). */
+  /** 5.3 `navigationId` of this visit; requests, cookies and storage of the visit carry the same id. */
   navigationId?: string;
   /** Only the start page in phase A is a "first visit"; others are "Folgeseite in derselben Sitzung". */
   firstVisit: boolean;
@@ -189,13 +185,11 @@ export interface PageVisit {
   challenge: ChallengeFacts;
   /** false → page is in coverage as "nicht auswertbar". */
   evaluable: boolean;
-  /** The visit is the reload of the start page after the B click (5.x CONSENT-05). Added by M1. */
+  /** The visit is the reload of the start page after the B click (5.x CONSENT-05). */
   reload?: boolean;
   notEvaluableReason?: string;
   dom: DomFacts | null;
 }
-
-// ------------------------------------------------------------------ network, cookies, storage
 
 export type RequestState =
   | 'attempted'
@@ -225,7 +219,7 @@ export interface RequestRecord {
   tRef: 'navigation' | 'click';
   /**
    * 5.3 `tMs`: start of the request in ms since the scan start, one monotonic scale for all phases and collectors.
-   * Added in the review (S-30); absent in older snapshots.
+   * Absent in older snapshots.
    */
   atMs?: number;
   /** 5.3 `navigationId`: the top-level navigation (or reload) during which the request started. */
@@ -249,23 +243,23 @@ export interface RequestRecord {
   identifierPresent: boolean;
   /** Names of identifier params/cookies that triggered `identifierPresent`, e.g. `cid`, `_fbp`. */
   identifierNames?: string[];
-  /** Safe semantic features extracted before redaction (D05), e.g. GA4 `en=page_view`. */
+  /** Safe semantic features extracted before redaction, e.g. GA4 `en=page_view`. */
   eventType?: string;
   consentSignals?: { gcs?: string; gcd?: string; npa?: string; dma?: string };
   initiator?: { type?: string; url?: SanitizedUrl };
   /**
    * The request was issued BY a service worker (its initiator). It says nothing about who answered it: delivery is
-   * decided by `provenance` and `state` (canary2 G33).
+   * decided by `provenance` and `state`.
    */
   fromServiceWorker?: boolean;
   setCookieNames?: string[];
   connectedIp?: { value: string; origin: 'resolvedLocally' | 'upstream' | 'unknown' };
   /** Blocked by the SSRF guard (private/loopback/link-local/metadata address). */
   blockedByGuard?: boolean;
-  /** 5.3 `delivery`: did the request leave the browser? Added by M1. */
+  /** 5.3 `delivery`: did the request leave the browser? */
   delivery?: 'attempted' | 'blocked-by-browser' | 'sent';
   /**
-   * 5.3 `result`. Added by M1. A body error after the response keeps `response` (S-17); `aborted` = cancelled
+   * 5.3 `result`. A body error after the response keeps `response`; `aborted` = cancelled
    * (`ERR_ABORTED`) before any response.
    */
   result?:
@@ -276,15 +270,15 @@ export interface RequestRecord {
   /**
    * 5.3 `provenance`: who answered. The prototype records `network` and `service-worker`; `http-cache` and
    * `memory-cache` are in the schema and are treated as "not delivered" by derive (not distinguishable yet; unknown
-   * → absent). Added by M1.
+   * → absent).
    */
   provenance?: 'network' | 'service-worker' | 'http-cache' | 'memory-cache';
   /**
    * An identifier value of this request equals or is contained in a cookie / Web Storage value of the same phase
-   * (5.3 `identifier.kind: stored-match`). Compared in memory only; values are never stored. Added by M1.
+   * (5.3 `identifier.kind: stored-match`). Compared in memory only; values are never stored.
    */
   matchesStoredIdentifier?: boolean;
-  /** Names of identifier cookies sent with the request (third-party requests only; values not read). Added by M1. */
+  /** Names of identifier cookies sent with the request (third-party requests only; values not read). */
   sentCookieNames?: string[];
 }
 
@@ -300,7 +294,7 @@ export interface CookieRecord {
   httpOnly: boolean;
   sameSite: 'Strict' | 'Lax' | 'None' | 'unknown';
   lifetime: { kind: 'session' | 'persistent'; days?: number };
-  /** Value length only (D20). */
+  /** Value length only. */
   length: number;
   setter: 'http-response' | 'script' | 'unknown';
   setterHost?: string;
@@ -312,7 +306,7 @@ export interface CookieRecord {
   tMs?: RelativeMs;
   tRef?: 'navigation' | 'click';
   afterClick: boolean;
-  /** 5.3 `tMs`: first seen, ms since the scan start (one monotonic scale). Added in the review (S-30). */
+  /** 5.3 `tMs`: first seen, ms since the scan start (one monotonic scale). */
   atMs?: number;
   /** 5.3 `navigationId` / `actionId?` of the moment the record was taken. */
   navigationId?: string;
@@ -327,7 +321,7 @@ export interface StorageRecord {
   /** Key (localStorage/sessionStorage) or database name (IndexedDB). */
   key: string;
   firstParty: boolean;
-  /** Value length only (D20). */
+  /** Value length only. */
   length?: number;
   phase: BrowserPhase;
   pageUrl: SanitizedUrl;
@@ -348,10 +342,10 @@ export interface ClickRecord {
   clickedAt: number;
   /**
    * Where `clickedAt` comes from: the trusted press observed in the page, or (no press observed) the moment the
-   * adapter was called. Added by M1 (FC-03).
+   * adapter was called.
    */
   clickedAtSource?: 'input-event' | 'adapter-call';
-  /** 5.3 `actionId` of the click; requests, cookies and storage after it carry the same id (S-30). */
+  /** 5.3 `actionId` of the click; requests, cookies and storage after it carry the same id. */
   actionId?: string;
   pageUrl: SanitizedUrl;
   success: boolean;
@@ -410,17 +404,15 @@ export interface BrowserSection {
   locale: string;
   timezoneId: string;
   phases: PhaseRecord[];
-  /** Shared browser request counter (D09: cap 2 000). */
+  /** Shared browser request counter (cap 2 000). */
   requestCap: { limit: number; issued: number; truncated: boolean };
-  /** Documents blocked by the SSRF guard (prototype: top-level documents, frames and popups). Added by M1. */
+  /** Documents blocked by the SSRF guard (prototype: top-level documents, frames and popups). */
   guard?: { enabled: boolean; blocked: number };
   screenshots: ScreenshotRecord[];
   /** Observation gaps of this run, e.g. `pagehide-beacons`, `preconnect`. */
   knownGaps: string[];
   errors: CollectorError[];
 }
-
-// ------------------------------------------------------------------ documents (D15)
 
 export type DocumentKind = 'impressum' | 'privacy';
 export type DocumentPartOrigin = 'visible' | 'expandable' | 'frame' | 'linked' | 'hidden-irrelevant';
@@ -442,7 +434,7 @@ export interface DocumentRecord {
   url: SanitizedUrl;
   finalUrl: SanitizedUrl;
   status: number | null;
-  /** How the document was found (D09/LEGAL-01). */
+  /** How the document was found (LEGAL-01). */
   foundVia: 'link' | 'hop' | 'fallback' | 'config';
   /** Links that pointed to this document (page → link text). */
   linkedFrom: Array<{ pageUrl: SanitizedUrl; text: string }>;
@@ -450,7 +442,7 @@ export interface DocumentRecord {
   format: 'html' | 'pdf' | 'other';
   lang: string | null;
   parts: DocumentPart[];
-  /** Completeness manifest (D15). */
+  /** Completeness manifest. */
   manifest: {
     expandablesFound: number;
     expandablesOpened: number;
@@ -474,7 +466,7 @@ export interface DocumentsSection {
     via: 'link' | 'hop' | 'fallback';
     url: SanitizedUrl;
     status: number | null;
-    /** `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404, G20). */
+    /** `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404). */
     outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved';
   }>;
 }

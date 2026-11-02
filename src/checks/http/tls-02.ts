@@ -1,7 +1,7 @@
 /**
- * TLS-02 (consensus §4, D19): certificate of the target host and its www/apex variant (port 443, or the explicit
- * port of an https target, S-20), plus the final host of a redirect to another domain and its www/apex (recorded
- * by the HTTP collector, S-19). Variant names: registry docs/03-checks.md §2.1.
+ * TLS-02: certificate of the target host and its www/apex variant (port 443, or the explicit
+ * port of an https target), plus the final host of a redirect to another domain and its www/apex (recorded
+ * by the HTTP collector). Variant names: registry docs/03-checks.md §2.1.
  * critical (`certificate-invalid`, one finding per endpoint listing every cause): expired / not yet valid, name
  * mismatch (own `checkHost`, also when Node stops at another error), self-signed, unknown root (also an issuer
  * Node did not find although the server sent the issuer of the leaf), other verification error. warning: incomplete
@@ -90,7 +90,7 @@ function problemsOf(ep: TlsEndpoint, now: Date): Problems {
   if (ep.hostnameMatches === false) causes.add('name-mismatch');
   if (leaf?.selfSigned && ep.chain.length === 1 && fromNode !== null) causes.add('self-signed');
   // The validator did not find an issuer. When the server did send the issuer of the leaf, the intermediate is not
-  // missing: the chain ends at a root the store does not know (private CA, root newer than the bundle) (R20).
+  // missing: the chain ends at a root the store does not know (private CA, root newer than the bundle).
   const issuerNotFound = !ep.authorized && fromNode === 'incomplete-chain';
   const issuerSent = leaf !== undefined && ep.chain.slice(1).some((c) => sameName(c.subject, leaf.issuer));
   if (issuerNotFound && issuerSent) causes.add('untrusted-root');
@@ -158,7 +158,7 @@ export const tls02 = defineCheck({
         lifetimeDays: lifetimeDaysOf(ep),
         issuer: leaf?.issuer ?? null,
       };
-      // `certificate:<role>` relative to the final host (5.4): independent of how the target was typed (S-37).
+      // `certificate:<role>` relative to the final host (5.4): independent of how the target was typed.
       const subject = subjects.tlsEndpoint('certificate', tlsHostRole(ep.host, roleBase));
       const emit = (variant: string, extra: Observation['params'] = {}) =>
         observations.push({

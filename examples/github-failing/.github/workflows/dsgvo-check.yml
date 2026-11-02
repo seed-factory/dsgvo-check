@@ -1,8 +1,4 @@
-# Example: the dsgvo-check Action stops the pipeline when the scanned site has a finding.
-# Copy this directory into its own repository (with GitHub Pages enabled, source "GitHub Actions").
-# The first job publishes site/ to GitHub Pages, the second job scans it. The scan job is expected to fail:
-# the page has no Impressum/Datenschutz link (LEGAL-01, critical) and loads Google Fonts (EMBED-01, warning).
-
+# Example: the scan reports findings and can fail the pipeline.
 name: dsgvo-check example (expected to fail)
 
 on:
@@ -29,38 +25,25 @@ jobs:
     outputs:
       page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
-
-  # Separate job without secrets and without write permissions: the scanner opens untrusted pages.
+        uses: actions/deploy-pages@v5
+  # Keep the scanner in a separate job without secrets or write permissions because it opens untrusted pages.
   dsgvo-check:
     needs: deploy
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      # The action is pinned by commit SHA; each release of the action pins its image by digest (D24). Replace the
-      # SHA with the commit of the release tag, as printed in the summary of the release job, or with
-      # `git ls-remote https://github.com/seed-factory/dsgvo-check 'refs/tags/v0.1.0^{}'`.
-      - uses: seed-factory/dsgvo-check@0000000000000000000000000000000000000000 # v0.1.0
+      - uses: seed-factory/dsgvo-check@v0.1.0
         id: scan
         with:
           url: ${{ needs.deploy.outputs.page_url }}
           fail-on: critical
           format: console,json,html
-
-      # Runs only when the scan step failed: shows how to read the outputs.
-      - name: Explain the result
-        if: failure() && steps.scan.outputs.exit-code == '1'
-        env:
-          JSON_PATH: ${{ steps.scan.outputs.json-path }}
-        run: |
-          echo "Findings at or above the threshold:"
-          jq -r '.findings[] | select(.severity == "critical") | "\(.checkId) \(.variant)"' "$JSON_PATH"

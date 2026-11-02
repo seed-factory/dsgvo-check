@@ -1,5 +1,5 @@
 /**
- * Shared L2 scenarios for the seven CMP adapters against our own simulators in test/fixture-server/sites/cmp/<cmp>/
+ * Shared scenarios for the seven CMP adapters against our own simulators in test/fixture-server/sites/cmp/<cmp>/
  * (hand-written HTML/JS that mimics DOM ids, the global API and the consent cookie — no vendor code).
  * Every scenario runs in a fresh persistent profile (like a fresh phase) with a plain Chrome UA.
  */
@@ -75,7 +75,7 @@ export async function recognized(page: Page, id: KnownCmpId): Promise<CmpAdapter
 }
 
 /**
- * The collector's D12 flow: measure the first screen, let the pure `classifyFirstLayer` decide, and have the adapter
+ * The collector's flow: measure the first screen, let the pure `classifyFirstLayer` decide, and have the adapter
  * execute exactly that target (`act(page, action, target)`).
  */
 export async function decideAndAct(
@@ -181,7 +181,7 @@ export function describeCmpScenarios(
       expect(verify.persistedAfterReload).toBe(true);
     });
 
-    // S-31 (D12): the adapter executes the target core chose and decides nothing itself.
+    // : the adapter executes the target core chose and decides nothing itself.
     it('act(page, action, target) clicks exactly the target chosen by classifyFirstLayer', async () => {
       const { page } = await env.open(s.okUrl);
       const adapter = await recognized(page, s.id);

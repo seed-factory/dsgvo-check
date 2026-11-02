@@ -1,5 +1,5 @@
 /**
- * L1: inert `<template>` content with nesting (S-net-1). The first `</template>` closes the innermost template only;
+ * inert `<template>` content with nesting . The first `</template>` closes the innermost template only;
  * markup anywhere inside the outer one is not part of the document. A real `<meta>` after the outer template stays
  * visible, and so does a form.
  */
@@ -11,7 +11,7 @@ const META = '<meta http-equiv="refresh" content="0;url=https://www.example.test
 const FORM = '<form method="post"><input name="email"></form>';
 const NEXT = { kind: 'meta', url: 'https://www.example.test/next' };
 
-describe('S-net-1: nested <template> hides the markup of the outer one', () => {
+describe('nested <template> hides the markup of the outer one', () => {
   it.each([
     ['inner template first, meta after it', `<template><template></template>${META}</template>`],
     ['meta before the inner template', `<template>${META}<template></template></template>`],
@@ -48,7 +48,7 @@ describe('S-net-1: nested <template> hides the markup of the outer one', () => {
   });
 });
 
-describe('S-net-1 counterexamples: what the fix must not hide', () => {
+describe('counterexamples: what the fix must not hide', () => {
   it.each([
     ['real meta after the outer template', `<template><template></template></template>${META}`],
     ['real meta after two sibling templates', `<template>a</template><template>b</template>${META}`],
@@ -58,7 +58,7 @@ describe('S-net-1 counterexamples: what the fix must not hide', () => {
       `<template><template></template></template>${META}<template><template></template></template>`,
     ],
     ['a stray </template> closes nothing', `</template>${META}`],
-    ['real meta after a flat template (S-34 behaviour)', `<template>x</template>${META}`],
+    ['real meta after a flat template', `<template>x</template>${META}`],
   ])('meta is found: %s', (_label, html) => {
     expect(detectClientRedirect(html, BASE)).toEqual(NEXT);
   });
@@ -80,7 +80,7 @@ describe('S-net-1 counterexamples: what the fix must not hide', () => {
   });
 });
 
-describe('S-net-1: the name of an inert element ends at whitespace, "/" or ">"', () => {
+describe('the name of an inert element ends at whitespace, "/" or ">"', () => {
   it('an element that only starts like template/script/style is no inert element', () => {
     expect(detectClientRedirect(`<template-card>x</template-card>${META}`, BASE)).toEqual(NEXT);
     expect(detectClientRedirect(`<script-loader>x</script-loader>${META}`, BASE)).toEqual(NEXT);
@@ -92,7 +92,7 @@ describe('S-net-1: the name of an inert element ends at whitespace, "/" or ">"',
   });
 });
 
-describe('N-REV-2: text that looks like a tag inside an attribute value is no tag', () => {
+describe('text that looks like a tag inside an attribute value is no tag', () => {
   it.each([
     [
       'a literal <template> in a value inside a template',
@@ -153,7 +153,7 @@ describe('N-REV-2: text that looks like a tag inside an attribute value is no ta
   });
 });
 
-describe('N-REV-3: extractMeta reads the markup of the document, not of inert elements', () => {
+describe('extractMeta reads the markup of the document, not of inert elements', () => {
   it.each([
     [
       'template',

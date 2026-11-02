@@ -1,4 +1,4 @@
-# CRM mapping, module http (owner: M4). Key "<checkId>.<variant>" → catalog code (string) or explicit null. JSON only.
+# CRM mapping, module http. Key "<checkId>.<variant>" → catalog code (string) or explicit null. JSON only.
 # Catalog: HDR-01 → T3_NO_SECURITY_HEADERS, TLS-01/TLS-02 → T1_UNENCRYPTED. Variant names: docs/03-checks.md §2.1.
 # TLS-01.redirect-chain-detail is null: https is reached, only the redirect path is unusual (no "unencrypted" case).
 mapping:

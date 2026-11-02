@@ -1,5 +1,5 @@
 /**
- * GitHub Job Summary / Markdown reporter (owner: M6). Written to `summary.md`; scan.ts also appends it to
+ * GitHub Job Summary / Markdown reporter. Written to `summary.md`; scan.ts also appends it to
  * $GITHUB_STEP_SUMMARY when that variable is set.
  * Safety: external strings are sanitized (`sanitizeExternal`), HTML-escaped and Markdown-escaped; URLs are never
  * turned into links (no autolinks), no images, no crmCode / `T[0-9]_` strings (5.6). Size stays far below the
@@ -17,7 +17,7 @@ import {
   type ReportLabelKey,
   reportLabel,
   sortFindings,
-} from './html.ts';
+} from './report-view.ts';
 
 export const SUMMARY_MAX_FINDINGS = 50;
 const MAX_BYTES = 512 * 1024;

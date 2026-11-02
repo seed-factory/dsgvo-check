@@ -1,5 +1,5 @@
 /**
- * Pure lexicon of legal links (canary-2 triage G19, G20, G24, G25): which link labels and path slugs point to the
+ * Pure lexicon of legal links: which link labels and path slugs point to the
  * Impressum or the privacy policy, with a rank by precision, which headings mark a fetched page as that document
  * (and in which language), and which navigation keys lead to an intermediate page (Kontakt, Rechtliches, Über uns).
  * No I/O: the collector reads data/legal/links.yaml through `legal-lexicon-file.ts`, LEGAL-01 gets the same data
@@ -20,10 +20,8 @@ export const LEGAL_KINDS: readonly LegalKind[] = ['impressum', 'privacy'];
 const MAX_LABEL_TOKENS = 8;
 /** A navigation key may carry this many more letters (plural: kontakt → kontakte), not a compound. */
 const NAV_SUFFIX = 2;
-/** A weak key counts only as the whole label or in a label of at most this many words (R24): "Alles zur DSGVO" is no link. */
+/** A weak key counts only as the whole label or in a label of at most this many words: "Alles zur DSGVO" is no link. */
 const WEAK_LABEL_TOKENS = 2;
-
-// ------------------------------------------------------------------ data
 
 const LanguageSchema = z.object({
   labels: z.array(z.string()).default([]),
@@ -68,7 +66,7 @@ export interface NavPhrase extends Phrase {
 interface KindLexicon {
   /** Normalised canonical labels. */
   labels: Set<string>;
-  /** The same labels with the spaces removed: "Datenschutz-Hinweise" is the canonical "Datenschutzhinweise" (R04). */
+  /** The same labels with the spaces removed: "Datenschutz-Hinweise" is the canonical "Datenschutzhinweise". */
   labelsJoined: Set<string>;
   /** Phrases for link matching in rank order of their role: generic, key, weak. */
   link: LinkPhrase[];
@@ -84,8 +82,6 @@ export interface LegalLexicon {
   hop: NavPhrase[];
   notFound: Phrase[];
 }
-
-// ------------------------------------------------------------------ normalisation
 
 const FOLD: Record<string, string> = {
   ä: 'ae',
@@ -147,8 +143,6 @@ export function pathOfUrl(href: string): string {
     return '';
   }
 }
-
-// ------------------------------------------------------------------ compile
 
 function compile(raw: z.infer<typeof LexiconSchema>): LegalLexicon {
   const kinds = {} as Record<LegalKind, KindLexicon>;
@@ -228,8 +222,6 @@ export function legalLexiconFromData(data: unknown): LegalLexicon {
   return lex;
 }
 
-// ------------------------------------------------------------------ matching primitives
-
 type Mode = 'exact' | 'prefix' | 'word';
 
 function wordMatches(token: string, key: string, mode: Mode): boolean {
@@ -269,8 +261,6 @@ function labelsOf(input: LinkInput): string[] {
   return out;
 }
 
-// ------------------------------------------------------------------ legal links
-
 export interface LinkMatch {
   /** 0 exact canonical label, 1 label starts with a key, 2 key inside the label, 3 href slug only, 4 weak. */
   tier: 0 | 1 | 2 | 3 | 4;
@@ -295,13 +285,13 @@ function matchLabel(k: KindLexicon, label: string): LabelMatch | null {
   for (const p of k.link) {
     const i = matchAt(toks, p.tokens, 'prefix');
     if (i < 0) continue;
-    // A weak key inside a longer label is a headline or a badge ("Webdesign DSGVO konform"), not a link to the document (R24).
+    // A weak key inside a longer label is a headline or a badge ("Webdesign DSGVO konform"), not a link to the document.
     if (p.role === 'weak' && p.norm !== norm && toks.length > WEAK_LABEL_TOKENS) continue;
     if (p.role === 'key') primary = true;
     const tier = p.role === 'weak' ? 4 : i === 0 ? 1 : 2;
     if (!best || tier < best.tier) best = { tier, keyword: p.key, primary: false };
   }
-  // Hyphen and space do not matter for a canonical label: "Datenschutz-Hinweise" is "Datenschutzhinweise" (R04).
+  // Hyphen and space do not matter for a canonical label: "Datenschutz-Hinweise" is "Datenschutzhinweise".
   if (k.labels.has(norm) || k.labelsJoined.has(toks.join(''))) {
     return { tier: 0, keyword: best?.keyword ?? label.trim().toLowerCase(), primary: true };
   }
@@ -336,7 +326,7 @@ function matchOwn(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMat
       if (!path || tier < path.tier) path = { tier, keyword: p.key };
     }
     // A settings word in the path ("cookie-settings") switches the path match off, unless the path carries a primary
-    // key of the document ("privacy-policy-and-cookies"): the same rule as for a label (`primary`, S-legal-4).
+    // key of the document ("privacy-policy-and-cookies"): the same rule as for a label (`primary`).
     if (kind === 'privacy' && !primaryInPath && hasFalseFriend(k, ptoks)) path = null;
   }
   const slug = path !== null && path.tier === 3;
@@ -347,7 +337,7 @@ function matchOwn(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMat
   return null;
 }
 
-/** A link as seen by the matcher; `page` is the identity of its target (`pageKey`), '' when it has none (L3). */
+/** A link as seen by the matcher; `page` is the identity of its target (`pageKey`), '' when it has none. */
 export interface LegalLinkRef {
   input: LinkInput;
   page: string;
@@ -357,7 +347,7 @@ export interface LegalLinkRef {
  * Match several links for the document `kind` at once. A weak key (tier 4: a generic umbrella label such as "Legal
  * information") is the last resort and loses against an exact canonical label of the other kind: on the same link
  * ("Privacy Policy" with the accessible name "Legal Information") and on another link to the same page, so one URL
- * is not offered as the Impressum when a link names it the privacy policy (L3, G19). Stronger tiers are not
+ * is not offered as the Impressum when a link names it the privacy policy. Stronger tiers are not
  * touched: a combined page with an exact label for each kind belongs to both. The result is parallel to `links`.
  */
 export function matchLegalLinks(
@@ -381,13 +371,11 @@ export function matchLegalLinks(
  * Does the link point to the document `kind`, and how precisely? A privacy label that names a settings dialog
  * ("Datenschutz-Einstellungen", "Privacy settings") is rejected unless it contains a document phrase
  * ("Polityka prywatności i cookies"); the href path can still identify the link. A weak match yields to an exact
- * label of the other kind on the same link (L3); links to one page are compared by `matchLegalLinks`.
+ * label of the other kind on the same link; links to one page are compared by `matchLegalLinks`.
  */
 export function matchLegalLink(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMatch | null {
   return matchLegalLinks(lex, kind, [{ input, page: '' }])[0] ?? null;
 }
-
-// ------------------------------------------------------------------ navigation keys (contact, hop)
 
 export interface NavMatch {
   /** 0 exact label, 1 label starts with the key, 2 key inside the label, 3 path only. */
@@ -436,8 +424,6 @@ export function matchNav(phrases: readonly NavPhrase[], input: LinkInput): NavMa
   return best;
 }
 
-// ------------------------------------------------------------------ document markers
-
 interface Hit {
   lang: string;
   start: number;
@@ -480,10 +466,8 @@ export function isNotFoundText(lex: LegalLexicon, text: string): boolean {
   return lex.notFound.some((p) => matchAt(toks, p.tokens, 'exact') >= 0);
 }
 
-// ------------------------------------------------------------------ records
-
 /**
- * A page the collector fetched as a candidate document but could not confirm as that document type (G20): the
+ * A page the collector fetched as a candidate document but could not confirm as that document type: the
  * stored document carries the error `unconfirmed`, or the attempt for its URL has the outcome `unconfirmed`. It is
  * neither found nor a soft-404.
  */

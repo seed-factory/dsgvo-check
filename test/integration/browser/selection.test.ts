@@ -1,4 +1,4 @@
-/** L2: page selection is deterministic, keeps reasons, honours robots.txt for additional pages and maxPages. */
+/** : page selection is deterministic, keeps reasons, honours robots.txt for additional pages and maxPages. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { collect } from './helpers.ts';
@@ -13,7 +13,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe('page selection (D09)', () => {
+describe('page selection', () => {
   it('start, Impressum, Datenschutz, Kontakt and two extras of different templates; robots.txt respected', async () => {
     const run = await collect(server);
     const plan = run.result.sections.plan;
@@ -46,7 +46,7 @@ describe('page selection (D09)', () => {
     expect(run.result.sections.plan?.pages.map((p) => p.role)).toEqual(['start', 'impressum', 'privacy']);
   });
 
-  it('the shared request cap truncates recording and stops further navigation (D09)', async () => {
+  it('the shared request cap truncates recording and stops further navigation', async () => {
     const run = await collect(server, { deps: { requestLimit: 3, phases: ['A', 'B', 'C'] } });
     const b = run.result.sections.browser;
     expect(run.result.status).toBe('partial');

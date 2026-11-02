@@ -1,14 +1,14 @@
 /**
- * L2 fixture server: one HTTP and one HTTPS listener on random ports serving virtual hosts by the Host header
+ * fixture server: one HTTP and one HTTPS listener on random ports serving virtual hosts by the Host header
  * (HTTPS: certificate by SNI from the test PKI). Every hostname — target sites and fake third parties like
  * fonts.googleapis.com or www.google-analytics.com — is served locally; nothing goes to the internet.
  *
  * Sites live in test/fixture-server/sites/<module>/<site>/ with a `hosts.json` (see test/README.md):
  * {
- *   "hosts": { "www.example.test": "www", "www.google-analytics.com": "ga" },   // host → docroot (sub dir)
- *   "tls":   { "expired.example.test": "expired" },                            // CertKind per host (default valid)
- *   "routes": [ { "host": "example.test", "scheme": "http", "path": "/", "status": 301,
- *                 "headers": { "location": "https://www.example.test/" } } ]
+ * "hosts": { "www.example.test": "www", "www.google-analytics.com": "ga" }, // host → docroot (sub dir)
+ * "tls": { "expired.example.test": "expired" }, // CertKind per host (default valid)
+ * "routes": [ { "host": "example.test", "scheme": "http", "path": "/", "status": 301,
+ * "headers": { "location": "https://www.example.test/" } } ]
  * }
  * Static files: `<docroot>/<path>` (`/` → index.html), optional sidecar `<file>.headers.json` {status?, headers?}.
  * Unknown host → 599 and an entry in `unexpected` (a test bug: undeclared third party).
@@ -114,7 +114,7 @@ export interface FixtureServer {
   /** Add handlers/routes at runtime (e.g. per test). */
   addHandler(h: DynamicHandler): void;
   addRoute(r: RouteSpec): void;
-  /** NetworkConfig that routes every host to this server (for scan() and collectors). */
+  /** NetworkConfig that routes every host to this server (for scan and collectors). */
   network(): NetworkConfig;
   /** Chromium args: host resolver rules + SPKI allowlist for the shared test leaf key. */
   browserArgs(): string[];

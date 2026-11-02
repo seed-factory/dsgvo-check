@@ -2,14 +2,15 @@
 import type { Texts } from './data.ts';
 import type { Report } from './report-schema.ts';
 
-export type ReportFormat = 'console' | 'json' | 'html' | 'summary';
-export const REPORT_FORMATS: readonly ReportFormat[] = ['console', 'json', 'html', 'summary'];
+export type ReportFormat = 'console' | 'json' | 'html' | 'summary' | 'pdf';
+export const REPORT_FORMATS: readonly ReportFormat[] = ['console', 'json', 'html', 'summary', 'pdf'];
 
 /** File names inside `--out`. */
 export const REPORT_FILES: Readonly<Record<Exclude<ReportFormat, 'console'>, string>> = {
   json: 'report.json',
   html: 'report.html',
   summary: 'summary.md',
+  pdf: 'report.pdf',
 };
 
 export interface ReporterContext {
@@ -19,6 +20,8 @@ export interface ReporterContext {
   outDir: string;
   /** ANSI colors (console only). */
   color: boolean;
+  /** Optional data root, including the report template. */
+  dataDir?: string;
 }
 
 export type RenderReport = (report: Report, ctx: ReporterContext) => string;

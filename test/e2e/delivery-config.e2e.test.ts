@@ -1,11 +1,5 @@
-/**
- * L3 static checks of the delivery files (D24/D25): composite Action, project CI, release workflow, example
- * workflow, GitLab template, Dockerfile, .dockerignore and the seccomp profile. No Docker and no network needed
- * (shell scripts run with bash only up to their input checks).
- */
-import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+/** Delivery contracts: isolation, versioned releases and complete report artifacts. */
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -13,6 +7,10 @@ import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const read = (rel: string) => readFileSync(path.join(REPO_ROOT, rel), 'utf8');
 const yaml = (rel: string) => parseYaml(read(rel)) as Record<string, unknown>;
+const VERSION = (JSON.parse(read('package.json')) as { version: string }).version;
+const IMAGE = `ghcr.io/seed-factory/dsgvo-check:${VERSION}`;
+const GITLAB_TEMPLATE = 'templates/gitlab/dsgvo-check.gitlab-ci.yml';
+const ACTION_TAG = /^[\w.-]+\/[\w.-]+@v\d+(?:\.\d+)*$/;
 
 interface Step {
   id?: string;
@@ -28,70 +26,56 @@ const WORKFLOWS = [
   'examples/github-failing/.github/workflows/dsgvo-check.yml',
 ];
 
-/** D24: the image is pulled by digest, never by a mutable tag. */
-const IMAGE_BY_DIGEST = /^ghcr\.io\/seed-factory\/dsgvo-check@sha256:[0-9a-f]{64}$/;
-/** Placeholder digest on the default branch; the release job replaces it before tagging. */
-const UNRELEASED_IMAGE = `ghcr.io/seed-factory/dsgvo-check@sha256:${'0'.repeat(64)}`;
-const GITLAB_TEMPLATE = 'templates/gitlab/dsgvo-check.gitlab-ci.yml';
-
 function workflowSteps(rel: string): Step[] {
   const wf = yaml(rel) as { jobs: Record<string, { steps: Step[] }> };
-  return Object.values(wf.jobs).flatMap((j) => j.steps);
+  return Object.values(wf.jobs).flatMap((job) => job.steps);
 }
 
-describe('action.yml (composite → docker run)', () => {
+describe('composite action', () => {
   const action = yaml('action.yml') as {
     runs: { using: string; steps: Step[] };
-    inputs: Record<string, { default?: string; required?: boolean }>;
+    inputs: Record<string, { default?: string; required?: boolean; description?: string }>;
     outputs: Record<string, unknown>;
   };
-  const scan = action.runs.steps.find((s) => s.id === 'scan') as Step;
+  const scan = action.runs.steps.find((step) => step.id === 'scan') as Step;
 
-  it('is a composite action with the required inputs and outputs', () => {
+  it('preserves its public inputs and exposes each report path', () => {
     expect(action.runs.using).toBe('composite');
-    for (const i of ['url', 'fail-on', 'format', 'out', 'extra-args', 'image'])
-      expect(action.inputs).toHaveProperty(i);
+    for (const name of [
+      'url',
+      'fail-on',
+      'format',
+      'out',
+      'extra-args',
+      'image',
+      'memory',
+      'cpus',
+      'pids-limit',
+      'job-summary',
+      'upload-artifact',
+      'artifact-name',
+      'retention-days',
+    ]) {
+      expect(action.inputs).toHaveProperty(name);
+    }
     expect(action.inputs.url?.required).toBe(true);
-    expect(Object.keys(action.outputs).sort()).toEqual(['exit-code', 'html-path', 'json-path']);
+    expect(Object.keys(action.outputs).sort()).toEqual(['exit-code', 'html-path', 'json-path', 'pdf-path']);
+    expect(action.inputs.image?.default).toBe(IMAGE);
+    expect(action.inputs.format?.default).toBe('console,json,html');
+    expect(action.inputs.format?.description).toContain('pdf');
   });
 
-  it('pulls the image by digest by default, never by a mutable tag (D24)', () => {
-    expect(action.inputs.image?.default).toMatch(IMAGE_BY_DIGEST);
-  });
-
-  it('refuses the unreleased placeholder digest before touching Docker', () => {
-    const outputFile = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-action-')), 'github-output');
-    const r = spawnSync('bash', ['-c', `: > "$GITHUB_OUTPUT"\n${scan.run as string}`], {
-      encoding: 'utf8',
-      env: {
-        PATH: '/usr/bin:/bin',
-        GITHUB_OUTPUT: outputFile,
-        DC_URL: 'https://www.example.de/',
-        DC_FAIL_ON: 'critical',
-        DC_FORMAT: 'console,json,html',
-        DC_OUT: 'dsgvo-check-report',
-        DC_EXTRA_ARGS: '',
-        DC_IMAGE: UNRELEASED_IMAGE,
-        DC_MEMORY: '3g',
-        DC_CPUS: '2',
-        DC_PIDS_LIMIT: '1024',
-        DC_JOB_SUMMARY: 'true',
-      },
-    });
-    expect(r.status).not.toBe(0);
-    expect(r.stdout).toMatch(/^::error title=dsgvo-check::.*not a release.*'image'/m);
-    expect(readFileSync(outputFile, 'utf8')).toBe('exit-code=2\n');
-  });
-
-  it('warns when it has to pull an image that is not pinned by digest', () => {
-    expect(scan.run).toContain('[[ "$DC_IMAGE" == *@sha256:* ]] || echo "::warning title=dsgvo-check::');
-  });
-
-  it('never interpolates expressions into shell scripts (inputs go through env)', () => {
+  it('passes inputs through environment variables and lets explicit action options win', () => {
     for (const step of action.runs.steps) if (step.run) expect(step.run).not.toContain('${{');
+    const run = scan.run as string;
+    expect(run).toContain('read -r -a extra <<< "$DC_EXTRA_ARGS"');
+    expect(run).toContain(`"$DC_IMAGE" "$DC_URL" \${extra[@]+"\${extra[@]}"} --fail-on "$DC_FAIL_ON"`);
+    expect(run).toContain('--format "$formats" --out /out');
+    expect(run).not.toMatch(/\bjq\b|=~|\bcase\b|docker image inspect|docker pull|eval /);
+    expect(run).toContain('mkdir -p -- "$out"');
   });
 
-  it('runs the container hardened, without secrets, docker.sock or runner environment', () => {
+  it('isolates the scanner and disables workflow commands while it runs', () => {
     const run = scan.run as string;
     for (const flag of [
       '--cap-drop=ALL',
@@ -99,7 +83,9 @@ describe('action.yml (composite → docker run)', () => {
       '--security-opt "seccomp=$profile"',
       '--read-only',
       '--tmpfs /tmp',
+      '--shm-size=',
       '--memory=',
+      '--memory-swap=',
       '--cpus=',
       '--pids-limit=',
       '--user "$(id -u):$(id -g)"',
@@ -111,222 +97,211 @@ describe('action.yml (composite → docker run)', () => {
     expect(run).not.toMatch(
       /docker\.sock|--privileged|--cap-add|--env-file|--network[ =]host|GITHUB_TOKEN|secrets\./,
     );
-    expect(run.match(/--env /g)).toHaveLength(2); // HOME and NO_COLOR only
-    expect(run).toContain('::stop-commands::');
+    expect(run.match(/--env /g)).toHaveLength(2);
+    expect(run).toContain('--env HOME=/tmp --env NO_COLOR=1');
+    expect(run.indexOf('::stop-commands::')).toBeLessThan(run.indexOf('docker run'));
+    expect(run.indexOf('echo "::$token::"')).toBeGreaterThan(run.indexOf('docker run'));
+    expect(run).toContain('Findings at or above the threshold');
+    expect(run).toContain('The scan did not complete');
+    expect(run).toContain('[[ ! -f "$out/report.$kind" ]]');
+    expect(run).toContain('for kind in json html pdf');
   });
 
-  it('pins every used action by commit SHA', () => {
-    for (const step of action.runs.steps) {
-      if (step.uses) expect(step.uses).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
-    }
+  it('uploads the complete report directory, including explicitly requested PDF', () => {
+    const upload = action.runs.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    expect(upload?.uses).toBe('actions/upload-artifact@v7');
+    expect(upload?.with?.path).toBe(`\${{ steps.scan.outputs.out-dir }}`);
+    for (const step of action.runs.steps) if (step.uses) expect(step.uses).toMatch(ACTION_TAG);
   });
 });
 
 describe('workflows', () => {
-  it.each(WORKFLOWS)('%s pins actions by SHA and does not persist credentials', (rel) => {
-    const wf = yaml(rel) as { permissions?: unknown };
-    expect(wf.permissions).toEqual({});
+  it.each(WORKFLOWS)('%s uses action tags and does not persist credentials', (rel) => {
+    expect(yaml(rel).permissions).toEqual({});
     for (const step of workflowSteps(rel)) {
-      if (!step.uses || step.uses.startsWith('./')) continue;
-      expect(step.uses, rel).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
-      if (step.uses.startsWith('actions/checkout@')) expect(step.with?.['persist-credentials']).toBe(false);
-    }
-    for (const step of workflowSteps(rel))
+      if (step.uses && !step.uses.startsWith('./')) expect(step.uses, rel).toMatch(ACTION_TAG);
+      if (step.uses?.startsWith('actions/checkout@')) expect(step.with?.['persist-credentials']).toBe(false);
       if (step.run) expect(step.run).not.toMatch(/\$\{\{\s*(inputs|github\.event)/);
+    }
     expect(read(rel)).not.toContain('pull_request_target');
   });
 
-  it('the example pins this action by commit SHA with the release tag as a comment', () => {
-    const text = read('examples/github-failing/.github/workflows/dsgvo-check.yml');
-    expect(text).toMatch(/^\s+- uses: seed-factory\/dsgvo-check@[0-9a-f]{40} # v\d+\.\d+\.\d+$/m);
-    expect(text).not.toMatch(/seed-factory\/dsgvo-check@v\d/);
+  it('uses the current scanner release in the example', () => {
+    expect(read('examples/github-failing/.github/workflows/dsgvo-check.yml')).toContain(
+      `uses: seed-factory/dsgvo-check@v${VERSION}`,
+    );
   });
 
-  it('CI runs typecheck, lint, unit, integration, build and e2e on Node 24 and 26', () => {
+  it('runs all checks on Node 24 and 26 and tests the hardened Chromium sandbox', () => {
     const ci = yaml('.github/workflows/ci.yml') as {
       jobs: { test: { strategy: { matrix: { node: string[] } } } };
     };
     expect(ci.jobs.test.strategy.matrix.node).toEqual(['24', '26']);
-    const runs = workflowSteps('.github/workflows/ci.yml')
-      .map((s) => s.run ?? '')
-      .join('\n');
-    for (const cmd of ['typecheck', 'lint', 'test:unit', 'test:integration', 'build', 'test:e2e']) {
+    const steps = workflowSteps('.github/workflows/ci.yml');
+    const runs = steps.map((step) => step.run ?? '').join('\n');
+    for (const cmd of [
+      'typecheck',
+      'lint',
+      'schema:check',
+      'test:unit',
+      'test:integration',
+      'build',
+      'test:e2e',
+    ]) {
       expect(runs).toContain(`corepack pnpm ${cmd}`);
     }
     expect(runs).toContain('install --with-deps --no-shell chromium');
     expect(runs).toContain('docker build');
-  });
-
-  it('CI runs the L2 browser tests with the Chromium sandbox required, after allowing user namespaces', () => {
-    const steps = workflowSteps('.github/workflows/ci.yml');
-    const index = (cmd: string) => steps.findIndex((s) => s.run?.includes(cmd));
+    const index = (cmd: string) => steps.findIndex((step) => step.run?.includes(cmd));
     const integration = steps[index('corepack pnpm test:integration')] as Step;
-    // test/integration/browser/helpers.ts picks `off` on Linux unless this is set.
     expect(integration.env?.DSGVO_CHECK_TEST_SANDBOX).toBe('require');
     expect(index('kernel.apparmor_restrict_unprivileged_userns=0')).toBeGreaterThanOrEqual(0);
     expect(index('kernel.apparmor_restrict_unprivileged_userns=0')).toBeLessThan(
       index('corepack pnpm test:integration'),
     );
   });
+
+  it('checks offline HTML/PDF conversion and retains its report artifact for 14 days', () => {
+    const ci = yaml('.github/workflows/ci.yml') as { jobs: { test: { steps: Step[] } } };
+    const steps = ci.jobs.test.steps;
+    expect(
+      steps.some((step) =>
+        step.run?.includes(
+          'report test/fixtures/reports/sample-full.report.json --format html,pdf --out report-preview',
+        ),
+      ),
+    ).toBe(true);
+    const upload = steps.find((step) => step.uses === 'actions/upload-artifact@v7');
+    expect(upload?.with?.['retention-days']).toBe(14);
+    expect(upload?.with?.path).toBe('report-preview/');
+  });
 });
 
-describe('release (D24: image → digest → commit in action.yml → tag)', () => {
+describe('release', () => {
   const release = yaml('.github/workflows/release.yml') as {
     on: Record<string, unknown>;
     permissions: unknown;
     jobs: Record<string, { permissions: Record<string, string>; steps: Step[] }>;
   };
-  const jobs = Object.values(release.jobs);
   const steps = workflowSteps('.github/workflows/release.yml');
-  const at = (re: RegExp) => steps.findIndex((s) => re.test(s.run ?? ''));
+  const at = (re: RegExp) => steps.findIndex((step) => re.test(step.run ?? ''));
 
-  it('is started by hand and only the release job may write contents and packages', () => {
+  it('starts manually and grants write access only to its release job', () => {
     expect(Object.keys(release.on)).toEqual(['workflow_dispatch']);
     expect(release.permissions).toEqual({});
+    const jobs = Object.values(release.jobs);
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.permissions).toEqual({ contents: 'write', packages: 'write' });
   });
 
-  it('builds and tests the image, pushes it, pins its digest, then tags the pinned commit', () => {
+  it('builds and tests the image before publishing its version tag and the matching Action tag', () => {
     const order = [
       at(/docker build/),
       at(/test\/e2e\/docker\.e2e\.test\.ts/),
       at(/docker push/),
-      at(/\.github\/scripts\/pin-image\.sh "\$ref"/),
-      at(/git commit/),
-      at(/git tag -a "v\$VERSION"/),
-      at(/git .*push origin "refs\/tags\/v\$VERSION"/),
+      at(/git tag -a/),
+      at(/git .*push origin/),
     ];
-    for (const i of order) expect(i).toBeGreaterThanOrEqual(0);
+    for (const index of order) expect(index).toBeGreaterThanOrEqual(0);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    const pin = steps[at(/pin-image\.sh/)]?.run as string;
-    expect(pin).toContain('RepoDigests');
-    const versionCheck = steps.find((s) => (s.run ?? '').includes('jq -r .version package.json'));
-    expect(versionCheck?.env?.VERSION).toMatch(/^\$\{\{ inputs\.version \}\}$/);
-  });
-
-  describe('.github/scripts/pin-image.sh', () => {
-    const digest = `ghcr.io/seed-factory/dsgvo-check@sha256:${'ab'.repeat(32)}`;
-    function sandbox(): string {
-      const root = mkdtempSync(path.join(tmpdir(), 'dsgvo-pin-'));
-      mkdirSync(path.join(root, 'templates/gitlab'), { recursive: true });
-      copyFileSync(path.join(REPO_ROOT, 'action.yml'), path.join(root, 'action.yml'));
-      copyFileSync(path.join(REPO_ROOT, GITLAB_TEMPLATE), path.join(root, GITLAB_TEMPLATE));
-      return root;
-    }
-    const pin = (ref: string, root: string) =>
-      spawnSync('bash', [path.join(REPO_ROOT, '.github/scripts/pin-image.sh'), ref, root], {
-        encoding: 'utf8',
-      });
-
-    it('replaces exactly the image defaults of action.yml and the GitLab template', () => {
-      const root = sandbox();
-      const r = pin(digest, root);
-      expect(r.status, r.stderr).toBe(0);
-      const action = parseYaml(readFileSync(path.join(root, 'action.yml'), 'utf8')) as {
-        inputs: Record<string, { default?: string }>;
-      };
-      expect(action.inputs.image?.default).toBe(digest);
-      const tpl = parseYaml(readFileSync(path.join(root, GITLAB_TEMPLATE), 'utf8')) as {
-        variables: Record<string, string>;
-      };
-      expect(tpl.variables.DSGVO_CHECK_IMAGE).toBe(digest);
-      const changed = (rel: string) => {
-        const before = read(rel).split('\n');
-        const after = readFileSync(path.join(root, rel), 'utf8').split('\n');
-        expect(after).toHaveLength(before.length);
-        return before.filter((l, i) => l !== after[i]);
-      };
-      expect(changed('action.yml')).toHaveLength(1);
-      expect(changed(GITLAB_TEMPLATE)).toHaveLength(1);
-    });
-
-    it.each([
-      'ghcr.io/seed-factory/dsgvo-check:0.1.0',
-      'ghcr.io/seed-factory/dsgvo-check@sha256:abc',
-      `ghcr.io/other/dsgvo-check@sha256:${'ab'.repeat(32)}`,
-    ])('rejects %s', (ref) => {
-      const root = sandbox();
-      expect(pin(ref, root).status).not.toBe(0);
-      expect(readFileSync(path.join(root, 'action.yml'), 'utf8')).toBe(read('action.yml'));
-    });
+    const text = read('.github/workflows/release.yml');
+    expect(text).toContain('docker tag dsgvo-check:release "$IMAGE:$VERSION"');
+    expect(text).not.toMatch(/RepoDigests|pin-image|git commit/);
+    expect(existsSync(path.join(REPO_ROOT, '.github/scripts/pin-image.sh'))).toBe(false);
+    const validation = steps.find((step) => step.id === 'version');
+    expect(validation?.env?.VERSION).toBe(`\${{ inputs.version }}`);
+    expect(validation?.run).toBe('node .github/scripts/release.ts');
   });
 });
 
 describe('GitLab template', () => {
-  const tpl = yaml('templates/gitlab/dsgvo-check.gitlab-ci.yml') as Record<
-    string,
-    {
-      image?: { name: string; entrypoint: string[] };
-      artifacts?: { when: string; expire_in: string };
-      allow_failure?: boolean;
-      script?: string[];
-    }
-  >;
-  const job = tpl['.dsgvo-check'];
+  const tpl = yaml(GITLAB_TEMPLATE) as {
+    variables: Record<string, string>;
+    '.dsgvo-check': {
+      image: { entrypoint: string[] };
+      artifacts: { when: string; expire_in: string; access: string; paths: string[] };
+      allow_failure: boolean;
+      script: string[];
+    };
+  };
 
-  it('keeps artifacts on failure, does not allow failure and overrides the entrypoint', () => {
-    expect(job?.image?.entrypoint).toEqual(['']);
-    expect(job?.artifacts?.when).toBe('always');
-    expect(job?.artifacts?.expire_in).toBe('14 days');
-    expect(job?.allow_failure).toBe(false);
-    expect(job?.script?.join('\n')).toContain('--sandbox "$DSGVO_CHECK_SANDBOX"');
-    expect((tpl.variables as unknown as Record<string, string>).DSGVO_CHECK_SANDBOX).toBe('require');
-  });
-
-  it('pulls the image by digest by default, never by a mutable tag (D24)', () => {
-    expect((tpl.variables as unknown as Record<string, string>).DSGVO_CHECK_IMAGE).toMatch(IMAGE_BY_DIGEST);
+  it('preserves the sandbox and uploads reports on failure with developer access', () => {
+    const job = tpl['.dsgvo-check'];
+    expect(job.image.entrypoint).toEqual(['']);
+    expect(job.artifacts).toMatchObject({ when: 'always', expire_in: '14 days', access: 'developer' });
+    expect(job.artifacts.paths).toContain('$DSGVO_CHECK_OUT/');
+    expect(job.allow_failure).toBe(false);
+    expect(job.script.join('\n')).toContain('--sandbox "$DSGVO_CHECK_SANDBOX"');
+    expect(tpl.variables.DSGVO_CHECK_SANDBOX).toBe('require');
+    expect(tpl.variables.DSGVO_CHECK_FORMAT).toBe('console,json,html,summary');
+    expect(tpl.variables.DSGVO_CHECK_IMAGE).toBe(IMAGE);
   });
 
   it('documents include:remote with integrity', () => {
-    const text = read('templates/gitlab/dsgvo-check.gitlab-ci.yml');
-    expect(text).toContain('include:');
-    expect(text).toContain('remote:');
-    expect(text).toContain('integrity: sha256-');
+    const text = read(GITLAB_TEMPLATE);
+    for (const fragment of ['include:', 'remote:', 'integrity: sha256-']) expect(text).toContain(fragment);
   });
 });
 
 describe('Dockerfile and seccomp profile', () => {
   const dockerfile = read('Dockerfile');
 
-  it('uses node:24-bookworm-slim, the full Chromium via playwright-core, a non-root user and tini', () => {
-    expect(dockerfile).toContain('ARG NODE_IMAGE=node:24-bookworm-slim');
+  it('uses two Debian/Node stages, the full Chromium, a non-root user and tini', () => {
+    expect(dockerfile.match(/^FROM node:24-bookworm-slim.*$/gm)).toHaveLength(2);
     expect(dockerfile).toContain('corepack pnpm install --frozen-lockfile');
+    expect(dockerfile).toContain('corepack pnpm prune --prod --ignore-scripts');
     expect(dockerfile).toContain('playwright-core/cli.js install-deps chromium');
     expect(dockerfile).toContain('playwright-core/cli.js install --no-shell chromium');
+    expect(dockerfile).toContain('apt-get purge -y --auto-remove xvfb');
     expect(dockerfile).toMatch(/^USER 10001:10001$/m);
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/dsgvo-check"]');
     expect(dockerfile).not.toMatch(/HEALTHCHECK|--no-sandbox/);
+    expect(dockerfile.indexOf('COPY --from=build /app/node_modules ./node_modules')).toBeGreaterThan(
+      dockerfile.indexOf('install --no-shell chromium'),
+    );
+    expect(dockerfile.indexOf('ARG REVISION=')).toBeGreaterThan(dockerfile.lastIndexOf('RUN '));
   });
 
-  it('labels the image with the package version: CI passes it from package.json, the default matches', () => {
-    const version = (JSON.parse(read('package.json')) as { version: string }).version;
-    expect(dockerfile).toMatch(/^ARG VERSION=(\S+)$/m);
-    expect(dockerfile.match(/^ARG VERSION=(\S+)$/m)?.[1]).toBe(version);
+  it('keeps image labels in sync with package.json and CI build arguments', () => {
+    expect(dockerfile.match(/^ARG VERSION=(\S+)$/m)?.[1]).toBe(VERSION);
     expect(dockerfile).toMatch(/org\.opencontainers\.image\.version="\$\{VERSION\}"/);
     const builds = [
       ...workflowSteps('.github/workflows/ci.yml'),
       ...workflowSteps('.github/workflows/release.yml'),
     ]
-      .map((s) => s.run ?? '')
-      .filter((r) => /docker build/.test(r));
+      .map((step) => step.run ?? '')
+      .filter((run) => run.includes('docker build'));
     expect(builds.length).toBeGreaterThanOrEqual(2);
     for (const run of builds) {
-      expect(run).toMatch(/--build-arg VERSION="\$\(jq -r \.version package\.json\)"/);
+      expect(run).toContain('--build-arg VERSION=');
+      expect(run).toContain('"$VERSION"');
       expect(run).toContain('--build-arg REVISION="$GITHUB_SHA"');
     }
+    expect(read('.github/scripts/version.ts')).toContain('../../package.json');
+    expect(read('.github/scripts/release.ts')).toContain('../../package.json');
   });
 
-  it('.dockerignore keeps the build context small', () => {
-    const lines = read('.dockerignore').split('\n');
-    for (const p of ['node_modules', '.git', 'dist', 'test', 'docs', 'specs', 'coverage', 'canary']) {
-      expect(lines).toContain(p);
+  it('allows only the files and directories copied into the image', () => {
+    const lines = read('.dockerignore').trim().split(/\r?\n/);
+    expect(lines[0]).toBe('*');
+    const sources = dockerfile
+      .split('\n')
+      .filter((line) => line.startsWith('COPY ') && !line.includes('--from='))
+      .flatMap((line) =>
+        line
+          .trim()
+          .split(/\s+/)
+          .slice(1, -1)
+          .filter((part) => !part.startsWith('--')),
+      );
+    for (const source of sources) {
+      expect(existsSync(path.join(REPO_ROOT, source)), source).toBe(true);
+      expect(lines, source).toContain(`!${source}`);
     }
-    for (const needed of ['src', 'data', 'schema', 'docker', 'package.json', 'pnpm-lock.yaml']) {
-      expect(lines).not.toContain(needed);
-    }
+    for (const directory of ['src', 'data', 'schema']) expect(lines).toContain(`!${directory}/**`);
+    expect(lines).toContain('!docker');
+    expect(lines).toContain('docker/**');
   });
-
   it('the seccomp profile is the Docker default plus the Chromium sandbox syscalls', () => {
     const profile = JSON.parse(read('docker/seccomp-chromium.json')) as {
       defaultAction: string;

@@ -1,5 +1,5 @@
 /**
- * Derive (owner: M3): pure classification of snapshot facts by the own service catalog (D05, D14).
+ * Derive: pure classification of snapshot facts by the own service catalog.
  * Third party = registrable domain (eTLD+1) differs from the target's (www/apex are one party). First-party
  * tracker proxies (sGTM, tag gateway) are recognised by catalog path signatures on the site's own host.
  * Recomputed on `--from-snapshot`; never persisted.
@@ -13,7 +13,7 @@ import type {
   StorageRecord,
 } from '../collectors/browser/types.ts';
 import type { Snapshot } from '../core/snapshot.ts';
-import { registrableDomain } from '../core/url.ts';
+import { parseUrl, registrableDomain } from '../core/url.ts';
 import { loadServiceCatalog, type RequestMatch, type ServiceCatalog, type ServiceEntry } from './catalog.ts';
 import type {
   ClassificationSource,
@@ -52,9 +52,9 @@ const NON_NETWORK_PROVENANCE: ReadonlySet<string> = new Set(['service-worker', '
 /**
  * 5.3: the request left the browser (`delivery: sent`) and a network response arrived (`result: response`, or the
  * response status the recorder kept when a later body error overwrote `result`). Delivery and response are
- * independent of the final `state`: an error while reading the body does not undo a received response (S-17).
+ * independent of the final `state`: an error while reading the body does not undo a received response.
  * Service-worker or cache answers are no new network exchange; that is a fact about the ANSWER (`provenance`,
- * `state`). `fromServiceWorker` marks the INITIATOR of the request and says nothing about who answered it (G33).
+ * `state`). `fromServiceWorker` marks the INITIATOR of the request and says nothing about who answered it.
  */
 export function responseReceived(r: RequestRecord): boolean {
   if (r.provenance !== undefined && NON_NETWORK_PROVENANCE.has(r.provenance)) return false;
@@ -140,8 +140,6 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   };
 }
 
-// ------------------------------------------------------------------ timing
-
 export function timingOf(
   phase: Pick<PhaseRecord, 'phase' | 'click'>,
   afterClick: boolean,
@@ -151,15 +149,8 @@ export function timingOf(
   return action === 'accept' ? 'after-accept' : 'after-reject';
 }
 
-// ------------------------------------------------------------------ requests
-
 function parseHttpUrl(raw: string): URL | null {
-  try {
-    const u = new URL(raw);
-    return u.protocol === 'http:' || u.protocol === 'https:' ? u : null;
-  } catch {
-    return null;
-  }
+  return parseUrl(raw, undefined, true);
 }
 
 function kindFromResourceType(resourceType: string, category: ServiceCategory): RequestKind {
@@ -184,7 +175,7 @@ function kindFromResourceType(resourceType: string, category: ServiceCategory): 
       return TRACKING_CATEGORIES.has(category) ? 'hit' : 'resource';
     case 'other':
       // Chromium's catch-all (e.g. Compression Dictionary Transport) is no event transport: without a catalog
-      // signature it proves a loaded resource only (G32, 03-checks §3.7 step 4).
+      // signature it proves a loaded resource only (03-checks §3.7 step 4).
       return 'resource';
     default:
       return 'resource';
@@ -271,7 +262,7 @@ const PERSISTENT_KINDS: ReadonlySet<IdentifierKind> = new Set([
 ]);
 
 /**
- * 5.3 `identifier.kind` from collector facts only (S-12, FC-08). The query keys of the sanitized URL are not evidence:
+ * 5.3 `identifier.kind` from collector facts only. The query keys of the sanitized URL are not evidence:
  * a key survives redaction even when its value was empty, and its presence says nothing about persistence.
  */
 export function identifierOf(
@@ -406,8 +397,6 @@ function classifyHints(
   return out;
 }
 
-// ------------------------------------------------------------------ cookies and storage
-
 function serviceByHost(catalog: ServiceCatalog, host: string | undefined | null): ServiceEntry | null {
   if (!host) return null;
   const url = parseHttpUrl(`https://${host.replace(/^\./, '')}/`);
@@ -480,8 +469,6 @@ function classifyStorage(catalog: ServiceCatalog, phase: PhaseRecord, s: Storage
   if (out.allowlisted && allowCls) out.allowlistClass = allowCls;
   return out;
 }
-
-// ------------------------------------------------------------------ service inventory
 
 function aggregateServices(
   snapshot: Snapshot,

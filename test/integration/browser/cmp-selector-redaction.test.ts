@@ -1,9 +1,4 @@
-/**
- * L2 (review S-privacy-1, canary2 group G01, AGENTS rule 2): the click selector that the CMP probe records for a
- * control is not built from a value that holds an address: not from an id or attribute (R19) and not from a CSS class
- * token either. The control stays clickable: a structural `nth-child` selector replaces the class selector, and a
- * plain class is still used. Every marker starts with `zq7`.
- */
+/** Click selectors omit class tokens containing addresses while retaining the intended button identity. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
@@ -64,7 +59,7 @@ async function clickBySelector(selector: string): Promise<{ count: number; click
   }
 }
 
-describe('CMP click selector: a class token with an address (S-privacy-1)', () => {
+describe('CMP click selector: a class token with an address', () => {
   it('the scenario is real: the banner is found and the controls are recorded with selectors', () => {
     expect(buttons().map((b) => b.name)).toEqual(
       expect.arrayContaining(['Alle akzeptieren', 'Ablehnen', 'Einstellungen']),

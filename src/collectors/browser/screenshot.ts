@@ -1,5 +1,5 @@
 /**
- * Banner screenshot (D20): only the banner area of the current viewport, taken before any action and without
+ * Banner screenshot: only the banner area of the current viewport, taken before any action and without
  * scrolling (`page.screenshot({ clip })`, never `locator.screenshot()`), JPEG ≤ 200 KB, only when the container is
  * unique and ≤ 50 % of the viewport. Otherwise no image (`screenshot-skipped`).
  */
@@ -34,7 +34,7 @@ export async function bannerBox(page: Page, facts: CmpFacts): Promise<{ box: Box
 /**
  * The part of the container that lies in the viewport, in whole CSS pixels (rounded outwards), or null when they do
  * not intersect. This is what `page.screenshot({ clip })` really saves without scrolling: the record describes it
- * instead of the requested box (G08).
+ * instead of the requested box.
  */
 export function clipForBox(
   box: Box,

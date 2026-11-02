@@ -1,9 +1,9 @@
-# Befundtexte (de), Modul browser (Owner M3). ICU-ähnliche Vorlagen: {param}, plural, select.
+# Befundtexte (de), Modul browser. ICU-ähnliche Vorlagen: {param}, plural, select.
 # Formulierungen: "beobachtet", "nicht gefunden in …", keine rechtlichen Bewertungen (Stoppwort-Test).
-# Textentwurf: alle Texte sind Entwürfe und müssen vom Auftraggeber geprüft werden (D22).
+# Textentwurf: alle Texte sind Entwürfe und müssen vom Auftraggeber geprüft werden.
 draft: true
 messages:
-  # ---------------------------------------------------------------- CONSENT-01
+  # CONSENT-01
   CONSENT-01.tracking-completed:
     title: "Anfrage mit dauerhafter Kennung an {service} vor einer Interaktion"
     body: >-
@@ -52,7 +52,7 @@ messages:
       Antwort wurde nicht beobachtet (z. B. vom Browser blockiert oder abgebrochen). Ein beantworteter Austausch ist
       damit nicht belegt.
 
-  # ---------------------------------------------------------------- CONSENT-02
+  # CONSENT-02
   CONSENT-02.tracking-identifier-stored:
     title: "Bekannte Analyse- oder Marketing-Kennung {name} vor einer Interaktion gespeichert"
     body: >-
@@ -83,7 +83,7 @@ messages:
       {party}) zu speichern; der Browser hat die Speicherung abgelehnt oder nicht bestätigt. Einordnung als Kennung
       der Kategorie Analyse/Marketing laut {dataset}.
 
-  # ---------------------------------------------------------------- CONSENT-03
+  # CONSENT-03
   CONSENT-03.no-banner-strong-tracking:
     title: "Kein Einwilligungsbanner erkannt; Analyse- oder Marketing-Kennung beobachtet"
     body: >-
@@ -99,7 +99,7 @@ messages:
       Marketing oder eingebettete Inhalte mit Speicherung beobachtet: {services}. Egress-Region:
       {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
 
-  # ---------------------------------------------------------------- CONSENT-04
+  # CONSENT-04
   CONSENT-04.blocking-no-reject:
     title: "Blockierender Dialog ohne Ablehnoption auf der ersten Ebene"
     body: >-
@@ -148,7 +148,7 @@ messages:
     title: "CMP {cmp} erkannt, nicht unterstützt"
     body: "CMP {cmp} erkannt, nicht unterstützt. Die Gestaltung und Funktion der Optionen wurden nicht ausgewertet."
 
-  # ---------------------------------------------------------------- CONSENT-05
+  # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
       {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert} other {Anfrage
@@ -172,7 +172,7 @@ messages:
       Nach bestätigter Ablehnung wurde ein Verbindungsaufbau zu {host} ({service}) protokolliert; ein konkreter
       Ereignisversand wurde daraus nicht festgestellt.
 
-  # ---------------------------------------------------------------- TRACK-01
+  # TRACK-01
   TRACK-01.service-inventory:
     title: "{service} beobachtet (Inventar)"
     body: >-
@@ -185,7 +185,7 @@ messages:
       Zeitpunkt, zu dem keine Interaktion mit dem Einwilligungsbanner stattfand. Die Bewertung des Zeitpunkts
       erfolgt in den verknüpften Befunden.
 
-  # ---------------------------------------------------------------- EMBED-01
+  # EMBED-01
   EMBED-01.fonts-loaded:
     title: "Externe Schriftarten von {service} geladen"
     body: >-
@@ -198,7 +198,7 @@ messages:
       Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
       Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
 
-  # ---------------------------------------------------------------- EMBED-02
+  # EMBED-02
   EMBED-02.maps-loaded:
     title: "Externer Kartendienst {service} geladen"
     body: >-
@@ -208,7 +208,7 @@ messages:
       Ablehnung} other {vor einer Interaktion mit dem Einwilligungsbanner}} ({pageCount, plural, one {# Seite} other
       {# Seiten}}).
 
-  # ---------------------------------------------------------------- LEGAL-01
+  # LEGAL-01
   LEGAL-01.document-not-found:
     title: "{documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht gefunden"
     body: >-
@@ -247,7 +247,7 @@ messages:
       {missingCount} von {pageTotal} geprüften Seiten nicht eindeutig aufgelöst werden (z. B. Link auf # oder
       JavaScript ohne erkannten Inhalt). Bitte manuell prüfen.
 
-  # ---------------------------------------------------------------- PRIV-01
+  # PRIV-01
   PRIV-01.not-named:
     title: "{service} nicht gefunden in der Datenschutzerklärung"
     body: >-

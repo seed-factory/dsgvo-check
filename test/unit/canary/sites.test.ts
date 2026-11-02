@@ -60,10 +60,11 @@ describe('parseSites', () => {
     expect(sites[1]?.expectedCmp).toBe('cookiebot');
   });
 
-  it('requires exactly 100 sites by default', () => {
+  it('accepts partial corpora and checks their size only when requested', () => {
     const text = corpus(Array.from({ length: 99 }, (_, i) => site(i)));
     expect(issuesOf(text, 100)).toEqual(['sites: expected exactly 100 sites, got 99']);
-    expect(() => parseSites(text)).toThrow(SitesValidationError);
+    expect(parseSites(text)).toHaveLength(99);
+    expect(parseSites(corpus([site(1)]))).toHaveLength(1);
     const hundred = corpus(Array.from({ length: 100 }, (_, i) => site(i)));
     expect(parseSites(hundred)).toHaveLength(100);
   });

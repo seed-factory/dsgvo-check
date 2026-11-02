@@ -1,12 +1,12 @@
 /**
- * L2: details of the adapters found by the canary analysis: the version read for Complianz (G15) and the category
- * set of a CookieHub installation (G14). Own simulators, real Chromium.
+ * details of the adapters found by the canary analysis: the version read for Complianz and the category
+ * set of a CookieHub installation . Own simulators, real Chromium.
  */
 import { describe, expect, it } from 'vitest';
 import { waitForBanner, waitForCmp } from '../../../src/cmp/index.ts';
 import { decideAndAct, recognized, useCmpServer } from './helpers.ts';
 
-describe('Complianz: version (G15)', () => {
+describe('Complianz: version', () => {
   const env = useCmpServer(['cmp/complianz']);
 
   it('a timestamp in the script URL does not become the version; the version of the config object does', async () => {
@@ -31,7 +31,7 @@ describe('Complianz: version (G15)', () => {
   });
 });
 
-describe('CookieHub: categories the installation does not offer (G14)', () => {
+describe('CookieHub: categories the installation does not offer', () => {
   const env = useCmpServer(['cmp/cookiehub']);
 
   it('accept on an installation without "preferences": verified by the categories that exist', async () => {

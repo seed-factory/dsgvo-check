@@ -1,35 +1,8 @@
-# dsgvo-check – GitLab CI template (D24).
-#
-# Passive scan of a website for signs of DSGVO/TDDDG/DDG issues and basic security problems. The job fails with
-# exit code 1 when findings reach DSGVO_CHECK_FAIL_ON and with 2 when the scan could not be completed.
-# Technical observations only, no legal advice.
-#
-# Usage (pin the template by tag and integrity hash, GitLab >= 17.9):
-#
-#   include:
-#     - remote: https://raw.githubusercontent.com/seed-factory/dsgvo-check/v0.1.0/templates/gitlab/dsgvo-check.gitlab-ci.yml
-#       integrity: sha256-<base64 sha256 of this file>   # openssl dgst -sha256 -binary FILE | openssl base64 -A
-#
-#   variables:
-#     DSGVO_CHECK_URL: https://staging.example.de/
-#
-# Older self-managed instances: copy this file into your project at a fixed commit and use `include: local:`.
-#
-# Sandbox: the Chromium sandbox is required by default. GitLab.com SaaS runners run jobs in a privileged VM where it
-# starts. On self-managed runners with the default Docker seccomp profile it does not start and the job ends with
-# exit code 2 (sandbox-unavailable). Either let the runner administrator set the profile from the image
-# (`docker run --rm <image> seccomp-profile`, runner config.toml `security_opt = ["seccomp=<file>"]`) or set
-# DSGVO_CHECK_SANDBOX: "off" explicitly (reported as SCAN-SANDBOX-OFF).
-#
-# Secrets: CI/CD variables of the project are visible to every job. Bind deployment secrets to protected
-# environments; this job uses no environment and needs no secrets.
-#
-# Image: pulled by digest (D24). The release job pins the digest of the image built for a release in this file at
-# the release tag (.github/scripts/pin-image.sh); include the template from a release tag, as above. On the default
-# branch DSGVO_CHECK_IMAGE is an all-zero placeholder that cannot be pulled.
-
+# include:
+#   - remote: https://raw.githubusercontent.com/seed-factory/dsgvo-check/v0.1.0/templates/gitlab/dsgvo-check.gitlab-ci.yml
+#     integrity: sha256-<base64 SHA-256 of this file>
 variables:
-  DSGVO_CHECK_IMAGE: ghcr.io/seed-factory/dsgvo-check@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  DSGVO_CHECK_IMAGE: ghcr.io/seed-factory/dsgvo-check:0.1.0
   DSGVO_CHECK_URL: ""
   DSGVO_CHECK_FAIL_ON: critical
   DSGVO_CHECK_FORMAT: console,json,html,summary
@@ -51,34 +24,19 @@ variables:
   script:
     - |
       set -eu
-      if [ -z "$DSGVO_CHECK_URL" ]; then
-        echo "dsgvo-check: set DSGVO_CHECK_URL to the URL that should be scanned." >&2
-        exit 2
-      fi
+      set -f
       out="$CI_PROJECT_DIR/$DSGVO_CHECK_OUT"
       mkdir -p "$out"
-      set +e
-      # DSGVO_CHECK_EXTRA_ARGS is split on spaces on purpose (no quoting is interpreted).
-      # shellcheck disable=SC2086
-      dsgvo-check "$DSGVO_CHECK_URL" \
-        --fail-on "$DSGVO_CHECK_FAIL_ON" \
-        --format "$DSGVO_CHECK_FORMAT" \
-        --sandbox "$DSGVO_CHECK_SANDBOX" \
-        --out "$out" \
-        $DSGVO_CHECK_EXTRA_ARGS
-      code=$?
-      set -e
-      if [ -f "$out/report.json" ]; then
-        reasons="$(node -e 'const r=require(process.argv[1]);process.stdout.write((r.summary.exitReasons||[]).join(", "))' "$out/report.json" 2>/dev/null | tr -cd 'a-zA-Z0-9:,. -' || true)"
-        echo "dsgvo-check: exit code $code (${reasons:-no reasons})" >&2
-      fi
-      exit "$code"
+      dsgvo-check "$DSGVO_CHECK_URL" $DSGVO_CHECK_EXTRA_ARGS \
+        --fail-on "$DSGVO_CHECK_FAIL_ON" --format "$DSGVO_CHECK_FORMAT" \
+        --sandbox "$DSGVO_CHECK_SANDBOX" --out "$out"
   artifacts:
     when: always
     name: dsgvo-check-report
     paths:
       - $DSGVO_CHECK_OUT/
     expire_in: 14 days
+    access: developer
 
 dsgvo-check:
   extends: .dsgvo-check

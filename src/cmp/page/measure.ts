@@ -3,7 +3,7 @@ import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { LEGAL_KINDS, type LegalLexicon, matchLegalLink } from '../../collectors/browser/legal-lexicon.ts';
 import { loadLegalLexicon } from '../../collectors/browser/legal-lexicon-file.ts';
 import type { Box, Viewport } from '../../core/snapshot-common.ts';
-import { sanitizeUrl } from '../../core/url.ts';
+import { parseUrl, sanitizeUrl } from '../../core/url.ts';
 import { classifyButton, labelTokens, normalizeLabel } from '../lexicon.ts';
 import type {
   BlockingFacts,
@@ -35,10 +35,10 @@ const MAX_BUTTONS = 40;
 /** At most this many covered legal links are reported (evidence, not a census). */
 const MAX_COVERED_LEGAL_LINKS = 5;
 
-/** Different banner keywords the body of a large frame needs when its title, aria-label and name give no hint (G09). */
+/** Different banner keywords the body of a large frame needs when its title, aria-label and name give no hint. */
 const MIN_BODY_KEYWORDS = 2;
 
-/** A visible iframe must cover at least this share of the viewport to be a consent-frame candidate (G09). */
+/** A visible iframe must cover at least this share of the viewport to be a consent-frame candidate. */
 const FRAME_CANDIDATE_MIN_SHARE = 0.5;
 
 /** Lexicon phrases of the given classes, normalized for the probe. */
@@ -61,7 +61,7 @@ function phrasesOf(
   return [...out];
 }
 
-/** `control`: classes that offer a choice (accept, reject, settings, save); `choice`: accept and reject only (G18). */
+/** `control`: classes that offer a choice (accept, reject, settings, save); `choice`: accept and reject only. */
 const phrasesCache = new WeakMap<CmpLexicon, { control: string[]; choice: string[] }>();
 
 function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
@@ -94,11 +94,8 @@ export async function runProbe(target: Page | Frame, args: ProbeArgs): Promise<P
 
 function absoluteHref(href: string | null, base: string): string | null {
   if (!href) return null;
-  try {
-    return sanitizeUrl(new URL(href, base).toString());
-  } catch {
-    return null;
-  }
+  const absolute = parseUrl(href, base);
+  return absolute ? sanitizeUrl(absolute.toString()) : null;
 }
 
 function shift(box: Box | null, offset: { x: number; y: number } | null): Box | null {
@@ -137,7 +134,7 @@ export function toButton(
 /**
  * Does the label name the Impressum or the privacy policy? The lexicon of data/legal decides, with the code the
  * collector uses to choose the documents (`matchLegalLink`): every language of the lexicon counts, and a link to a
- * cookie settings dialog ("Datenschutz-Einstellungen") does not. The probe holds no legal wording (S-cmp-2).
+ * cookie settings dialog ("Datenschutz-Einstellungen") does not. The probe holds no legal wording.
  */
 function namesLegalDocument(lex: LegalLexicon, label: string): boolean {
   return LEGAL_KINDS.some((kind) => matchLegalLink(lex, kind, { text: label, path: '' }) !== null);
@@ -267,7 +264,7 @@ export async function measureHeuristic(
 /**
  * A visible iframe that covers at least half of the viewport and looks like a consent dialog — its title, aria-label
  * or name matches the banner keywords, or its own wording gave at least two different keyword hits — while the probe found no
- * banner inside it (G09). The content is not resolved: it is reported as a candidate (`consentFrameUnresolved`) so that
+ * banner inside it. The content is not resolved: it is reported as a candidate (`consentFrameUnresolved`) so that
  * "no banner" is not concluded from it. It carries no buttons and is never clicked. Ordinary video or map frames
  * without such a hint are no candidates.
  */

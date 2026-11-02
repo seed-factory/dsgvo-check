@@ -1,4 +1,4 @@
-/* Own minimal Cookiebot simulator for L2 tests (no vendor code). Mimics public identifiers only:
+/* Own minimal Cookiebot simulator for integration tests (no vendor code). Mimics public identifiers only:
    window.Cookiebot API fields, #CybotCookiebotDialog ids, CookieConsent cookie, isSpider/isOutOfRegion. */
 (function () {
   var script = document.currentScript;

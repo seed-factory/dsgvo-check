@@ -1,5 +1,5 @@
 /**
- * L0 import graph (D23): checks are pure. Biome forbids direct I/O imports in src/checks/**; this test also follows
+ * import graph : checks are pure. Biome forbids direct I/O imports in src/checks/**; this test also follows
  * runtime imports transitively, so a check cannot reach playwright-core or node I/O through a helper module.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -70,7 +70,7 @@ function closure(entry: string): Map<string, string[]> {
   return seen;
 }
 
-describe('import graph of checks (L0, D23)', () => {
+describe('import graph of checks', () => {
   it('parses runtime vs type-only imports', () => {
     expect(
       runtimeImports(

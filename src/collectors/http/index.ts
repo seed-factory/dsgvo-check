@@ -1,16 +1,16 @@
 /**
- * HTTP collector (owner: M4). Passive probes for TLS-01 and HDR-01:
+ * HTTP collector. Passive probes for TLS-01 and HDR-01:
  * - manual redirect chains (≤ 5 redirects, no HSTS cache, no cookies) for http:// and https:// of the target host,
  *   its www and its apex variant;
  * - main documents for headers: the start page (target chain) and Impressum / Datenschutz when the start page links
  *   to them on the same site (the browser plan is not available yet: http runs before the browser);
  * - meta / JS redirect and form heuristics on http pages (body prefix ≤ 64 KiB; bodies are never stored);
  * - a target URL with an explicit port: the start document comes from exactly that origin, which also decides
- *   reachability; the standard-port chains stay TLS-01 probes (S-20);
+ *   reachability; the standard-port chains stay TLS-01 probes;
  * - the start page ends on a host outside target/www/apex: TLS handshakes with that host and its www/apex for
- *   TLS-02 (`finalTls`, S-19).
- * Pacing ≤ 2 requests/s per host; 429/503 per host with Retry-After pause and one retry (D09); UA = token with
- * repository link (D10).
+ *   TLS-02 (`finalTls`).
+ * Pacing ≤ 2 requests/s per host; 429/503 per host with Retry-After pause and one retry; UA = token with
+ * repository link.
  */
 
 import { startFinalHost } from '../../checks/http/shared.ts';
@@ -49,9 +49,9 @@ export interface HttpCollectorOptions {
   /** Pacing per host (default 500 ms = 2 requests/s). Tests may lower it. */
   minIntervalMs?: number;
   timeouts?: HttpClientOptions['timeouts'];
-  /** Cap of the Retry-After pause (default 30 s, D09). Tests may lower it. */
+  /** Cap of the Retry-After pause (default 30 s). Tests may lower it. */
   maxRetryAfterMs?: number;
-  /** Handshake budget for the final-host TLS probe (S-19). */
+  /** Handshake budget for the final-host TLS probe. */
   tlsTimeoutMs?: number;
 }
 
@@ -161,7 +161,7 @@ async function followChain(
 }
 
 /**
- * A `<meta http-equiv>` as stored (N-REV-4, AGENTS rule 2): reduced like the response header of the same name, which
+ * A `<meta http-equiv>` as stored (AGENTS rule 2): reduced like the response header of the same name, which
  * keeps the URLs sanitized, a value outside the allowlist `[redacted]` (a `set-cookie` meta never keeps its value).
  * A meta CSP has no effect on `frame-ancestors`, so the derived fact is not stored with it.
  */
@@ -172,14 +172,14 @@ function storedMeta(meta: HeaderRecord, base: string): HeaderRecord {
 
 /** The shape of a stored `<meta http-equiv>` name: a header name (HDR-01 reads `content-security-policy`). */
 const META_NAME = /^[a-z][a-z0-9._-]{0,39}$/;
-/** More records than this are not stored: a 64 KiB prefix of the document holds about 1 500 short tags. */
+/** Limit for ordinary records; CSP remains available to the security-header check regardless of document order. */
 const MAX_META_HTTP_EQUIV = 32;
 
 /**
- * The `<meta http-equiv>` records of the start document as stored (review m2). The name is untrusted text of the page,
+ * The `<meta http-equiv>` records of the start document as stored. The name is untrusted text of the page,
  * and `storedMeta` edits only the value: a name of 30 000 characters, or one with an address in it, went into the
  * snapshot as written, and so did every one of 1 500 distinct short names. A name that has not the shape of a header
- * name is not stored, nor is any record after the first 32; the others are stored as before, in document order.
+ * name is not stored. The first 32 valid records are stored in document order.
  */
 export function storedMetaHttpEquiv(records: readonly HeaderRecord[], base: string): HeaderRecord[] {
   const out: HeaderRecord[] = [];
@@ -210,7 +210,7 @@ const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
 const MAX_REFERRER_KEYWORDS = 8;
 
 /**
- * The referrer policy of a `<meta name="referrer">` as stored (P5): its Referrer-Policy keywords as written, comma
+ * The referrer policy of a `<meta name="referrer">` as stored: its Referrer-Policy keywords as written, comma
  * separated, the last eight at most, nothing else the tag may say. A tag is untrusted text of any size: every token
  * that looked like a word (`a, a, a, …`) used to be kept, which grew a 64 KiB tag into a 96 KiB snapshot value.
  */
@@ -280,7 +280,7 @@ function startUrlFor(ctx: CollectorContext, t: HostTarget, scheme: 'http' | 'htt
   return `${scheme}://${t.host}/`;
 }
 
-/** Explicit non-default port of the target URL (S-20), else null. */
+/** Explicit non-default port of the target URL, else null. */
 function explicitPort(url: string): number | null {
   const port = new URL(url).port;
   return port ? Number(port) : null;
@@ -290,7 +290,7 @@ const unreachable = (c: RedirectChain | undefined) =>
   !c || (c.hops.length === 0 && ['connection-refused', 'dns-error', 'timeout'].includes(c.outcome));
 
 /**
- * S-19: the start page ended on a host outside target/www/apex (redirect to another registrable domain). The TLS
+ * The start page ended on a host outside target/www/apex (redirect to another registrable domain). The TLS
  * collector runs in parallel and cannot know it, so its certificate (and that of its www/apex) is probed here with
  * the same TLS probe; TLS-02 reads `HttpSection.finalTls`. A TLS handshake only, no HTTP request.
  */
@@ -356,7 +356,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
             }
             return out;
           }),
-          // S-20: a target with an explicit port is loaded from exactly that origin (start document, reachability).
+          // A target with an explicit port is loaded from exactly that origin (start document, reachability).
           ...(port === null
             ? []
             : [
@@ -421,7 +421,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
         chains.find((c) => c.hostVariant === 'target' && c.scheme === scheme && c.port === undefined);
       const http = standard('http');
       const https = standard('https');
-      // S-20: with an explicit port only that origin decides reachability; the standard ports are extra probes.
+      // With an explicit port only that origin decides reachability; the standard ports are extra probes.
       const down = port === null ? unreachable(http) && unreachable(https) : unreachable(startRun.chain);
       const fatal =
         !ctx.signal.aborted && down

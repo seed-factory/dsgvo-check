@@ -1,5 +1,5 @@
 /**
- * L2 (AGENTS rule 2; canary2 group G01): the real collector with the real CMP subsystem stores no e-mail local part
+ * (AGENTS rule 2; group ): the real collector with the real CMP subsystem stores no e-mail local part
  * from text that the CMP probe copies from the page: the accessible name of a banner control, the text of a legal
  * link in the banner, the label of a footer link that the banner covers, and the click selector of a control.
  * Every marker starts with `zq7`.
@@ -46,7 +46,7 @@ afterAll(async () => {
 
 const cmpFacts = () => run.result.sections.cmp?.phases.flatMap((p) => p.facts) ?? [];
 
-describe('CMP facts: text copied from the page (G01)', () => {
+describe('CMP facts: text copied from the page', () => {
   it('the banner is recognized by the heuristic and covers the footer links (the scenario is real)', () => {
     const f = cmpFacts().find((x) => x.firstLayer.bannerPresent);
     expect(f?.detection.method).toBe('heuristic');

@@ -1,5 +1,5 @@
 /**
- * L2: start-page conditions of table 5.2 — WAF/challenge → blocked, 5xx twice / connection failure → unreachable,
+ * start-page conditions of table 5.2 — WAF/challenge → blocked, 5xx twice / connection failure → unreachable,
  * 429 after the retry → SCAN-THROTTLED without fatal, invalid certificate → skipped (tls-blocked); abort stops
  * promptly and leaves neither a browser process nor a temp profile behind.
  */
@@ -98,7 +98,7 @@ describe('fatal start-page conditions', () => {
     expect(Date.now() - t0).toBeLessThan(10_000);
     expect(run.result).toMatchObject({ status: 'error', reason: 'timeout' });
     expect(run.result.fatal).toBeUndefined();
-    // Cleanup finished before collect() resolved: no profile directory and no Chromium process using it.
+    // Cleanup finished before collect resolved: no profile directory and no Chromium process using it.
     expect(dirs.length).toBeGreaterThanOrEqual(2);
     for (const dir of dirs) expect(existsSync(dir)).toBe(false);
     expect(liveProfileDirs().filter((d) => dirs.includes(d))).toEqual([]);

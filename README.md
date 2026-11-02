@@ -7,9 +7,9 @@ und wie Header, TLS und E-Mail-Authentifizierung der Domain konfiguriert sind.
 
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
-> **Status: Prototyp 0.1.0.** 15 Prüfungen, sieben CMP-Adapter, Berichte als JSON, Konsole, HTML und Markdown-Summary.
-> Noch nicht veröffentlicht: kein npm-Paket, das Image-Digest in `action.yml` und im GitLab-Template ist ein
-> Platzhalter. Umfang, Vereinfachungen und bekannte Lücken: [docs/prototype/STATUS.md](docs/prototype/STATUS.md).
+> **Status: Prototyp 0.1.0.** 15 Prüfungen, sieben CMP-Adapter, Berichte als JSON, Konsole, HTML und Markdown-Summary;
+> PDF bei ausdrücklicher Auswahl. Umfang und Vereinfachungen: [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md).
+
 
 ## Was geprüft wird
 
@@ -70,7 +70,16 @@ Docker-Image.
 
 Ein Scan dauert meist 1–3 Minuten. Ergebnis: `report.json`, `report.html` (eine Datei ohne JavaScript),
 optional `summary.md`, bei erkanntem Banner `artifacts/banner-B.jpg` (abschaltbar mit `--no-screenshots`), dazu die
-Ausgabe in der Konsole.
+Ausgabe in der Konsole. `--format html,pdf` erzeugt zusätzlich `report.pdf`; ohne `pdf` wird kein PDF erzeugt.
+Ein Druckfehler führt zu einer Warnzeile; Exit-Code und JSON-Bericht bleiben dabei erhalten.
+
+Ein vorhandener JSON-Bericht lässt sich ohne erneuten Scan ausgeben:
+
+```sh
+node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lang de --out ./report-export
+```
+
+Die Eingabe wird gegen das Berichtsschema geprüft; ungültiges oder fremdes JSON endet mit Exit-Code 2.
 
 ### Docker
 
@@ -101,7 +110,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: seed-factory/dsgvo-check@<commit-sha-des-release-tags>
+      - uses: seed-factory/dsgvo-check@v0.1.0
         with:
           url: https://staging.example.de/
           fail-on: critical
@@ -109,9 +118,11 @@ jobs:
 
 Die Action startet das Image mit gehärteten Flags (non-root, eigenes seccomp-Profil, `--cap-drop=ALL`,
 schreibgeschütztes Dateisystem, ohne Secrets), hängt die Summary an den Job an und lädt das Berichtsverzeichnis als
-Artefakt `dsgvo-check-report` hoch (14 Tage). Ihr Standardformat ist `console,json,html`. Solange es kein Release
-gibt, ist das Image-Digest in `action.yml` ein Platzhalter: der Schritt bricht dann ab, außer der Input `image` zeigt
-auf ein abrufbares Image. Den Scan in einem eigenen Job ohne Secrets und ohne Schreibrechte laufen lassen: der
+Artefakt `dsgvo-check-report` hoch (14 Tage). Ihr Standardformat ist `console,json,html`; mit `job-summary: true`
+kommt die Summary hinzu. Das Image ist `ghcr.io/seed-factory/dsgvo-check:0.1.0`. Mit `format: console,json,html,pdf`
+wird ein erzeugtes PDF ebenfalls hochgeladen; der Output `pdf-path` bleibt bei einem Druckfehler leer.
+In öffentlichen GitHub-Repositories können angemeldete Nutzer die Artefakte herunterladen. Berichte über Websites
+Dritter werden nicht veröffentlicht. Den Scan in einem eigenen Job ohne Secrets und ohne Schreibrechte laufen lassen: der
 Scanner öffnet fremde Seiten. Beispiel mit absichtlich rotem Build:
 [examples/github-failing](examples/github-failing/README.md).
 
@@ -126,8 +137,9 @@ variables:
   DSGVO_CHECK_URL: https://staging.example.de/
 ```
 
-Hinweise zu Sandbox auf self-managed Runnern und zum Pinnen: Kopf von
-[templates/gitlab/dsgvo-check.gitlab-ci.yml](templates/gitlab/dsgvo-check.gitlab-ci.yml).
+Hinweise zu Sandbox auf self-managed Runnern: [docker/README.md](docker/README.md).
+Das [GitLab-Template](templates/gitlab/dsgvo-check.gitlab-ci.yml) speichert das Berichtsverzeichnis auch bei einem
+fehlgeschlagenen Job für 14 Tage mit `artifacts: access: developer`. Ein ausdrücklich gewähltes PDF ist enthalten.
 
 ## Optionen
 
@@ -136,7 +148,7 @@ Vollständig: `dsgvo-check --help`. Die wichtigsten:
 | Option                                             | Bedeutung                                                                                |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `--fail-on critical\|warning\|none`                | Schwelle für Exit-Code 1 (Standard `critical`)                                           |
-| `--format console,json,html,summary`               | Ausgabeformate (Standard `console,json`)                                                 |
+| `--format console,json,html,pdf,summary`           | Ausgabeformate (Standard `console,json`); PDF nur bei ausdrücklicher Auswahl             |
 | `--out <dir>`                                      | Ausgabeverzeichnis (Standard `./dsgvo-check-report`)                                     |
 | `--max-pages <n>`, `--timeout <dauer>`             | Seiten in Phase A (Standard 6), globales Zeitlimit (Standard `8m`)                       |
 | `--assume-region eea\|de`                          | Standort des Scanners laut Nutzerangabe                                                  |
@@ -156,7 +168,8 @@ Vollständig: `dsgvo-check --help`. Die wichtigsten:
 | `2`  | Scan nicht durchgeführt (nicht erreichbar, blockiert, Zeitlimit vor der Startseite, Sandbox nicht gestartet, Browser nicht installiert, ungültige Eingabe, interner Fehler oder Abbruch, Bericht nicht geschrieben) oder eine für die Schwelle relevante Prüfung ist fehlgeschlagen; mit `--strict` auch bei nicht eindeutigen Ergebnissen, `--sandbox off` und nicht angegebener Region |
 
 Vorrang: `2` (Scan nicht durchgeführt) vor `1` vor `2` (Prüfungsfehler, `--strict`) vor `0`. Die Gründe stehen in
-`report.json` unter `summary.exitReasons`. Vollständige Tabelle: [Konsens §5.2](docs/consensus/README.md).
+`report.json` unter `summary.exitReasons`. Vollständige Tabelle: [Architektur §12](docs/02-architecture.md).
+Ein Fehler bei der optionalen PDF-Ausgabe ändert den Exit-Code nicht.
 
 ## Grenzen
 
@@ -174,7 +187,7 @@ Vorrang: `2` (Scan nicht durchgeführt) vor `1` vor `2` (Prüfungsfehler, `--str
   Standort nicht selbst: mit `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit
   Exit-Code 2 (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen,
-  DKIM, PDF-Berichte.
+  DKIM.
 - **Netzwerkgrenze (SSRF).** Der Scanner prüft die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames auf private, Loopback-, Link-local- und Metadaten-Adressen. Subressourcen, DNS-Rebinding und das Ziel
   hinter einem `--proxy` deckt der Prototyp nicht ab. Den Scanner daher nicht in einem Netz mit sensiblen internen
@@ -205,23 +218,21 @@ das: eine Zahl (`DSGVO_TEST_WORKERS=4 corepack pnpm test:integration`) oder ein 
 mit `1` laufen die Dateien nacheinander. Ein ungültiger Wert bricht den Lauf mit einer Fehlermeldung ab. Jede Testdatei
 bekommt ein eigenes temporäres Verzeichnis (`TMPDIR`), das nach der Datei gelöscht wird.
 
-Regeln für Beiträge (auch für KI-Agenten): [AGENTS.md](AGENTS.md). Die Kanarienvogel-Messung über 100 öffentliche
-Websites und ihre Regeln: [canary/README.md](canary/README.md); ihre Ergebnisse bleiben lokal.
+Regeln für Beiträge (auch für KI-Agenten): [AGENTS.md](AGENTS.md). Die Kanarienvogel-Messung und ihre Regeln:
+[canary/README.md](canary/README.md). Der reale Korpus und die Ergebnisse bleiben lokal; im Repository liegt nur
+[sites.example.yaml](canary/sites.example.yaml) mit fiktiven Hosts. Eine feste Anzahl von Websites ist optional.
 
 ## Dokumentation
 
-| Thema                             | Dokument                                                           |
-| --------------------------------- | ------------------------------------------------------------------ |
-| Ziel und Rahmen                   | [docs/00-brief.md](docs/00-brief.md)                               |
-| Entscheidungen (Konsens)          | [docs/consensus/README.md](docs/consensus/README.md)               |
-| Architektur und Verträge          | [docs/02-architecture.md](docs/02-architecture.md)                 |
-| Prüfungen und Varianten           | [docs/03-checks.md](docs/03-checks.md)                             |
-| Formulierungen der Befunde        | [docs/legal/wording-guide.md](docs/legal/wording-guide.md)         |
-| Tests, CI, Docker, Action         | [docs/04-quality-and-delivery.md](docs/04-quality-and-delivery.md) |
-| Plan bis 1.0                      | [docs/05-plan.md](docs/05-plan.md)                                 |
-| Prototyp: Brief, Verträge, Status | [docs/prototype/](docs/prototype/BRIEF.md)                         |
-| Architekturentscheidungen         | [docs/adr/](docs/adr/README.md)                                    |
-| Aufgabenstellung                  | [specs/](specs/dsgvo-check_TZ.md)                                  |
+| Thema                        | Dokument                                                           |
+| ---------------------------- | ------------------------------------------------------------------ |
+| Ziel und Rahmen              | [docs/00-brief.md](docs/00-brief.md)                               |
+| Architektur und Verträge     | [docs/02-architecture.md](docs/02-architecture.md)                 |
+| Prüfungen und Varianten      | [docs/03-checks.md](docs/03-checks.md)                             |
+| Formulierungen der Befunde   | [docs/legal/wording-guide.md](docs/legal/wording-guide.md)         |
+| Tests, CI, Docker, Action    | [docs/04-quality-and-delivery.md](docs/04-quality-and-delivery.md) |
+| Prototyp: Umfang und Grenzen | [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md)                 |
+| Aufgabenstellung             | [specs/](specs/dsgvo-check_TZ.md)                                  |
 
 Die Projektdokumentation unter `docs/` ist auf Russisch; Ausgaben des Scanners sind Deutsch oder Englisch.
 

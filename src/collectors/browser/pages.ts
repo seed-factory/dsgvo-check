@@ -1,9 +1,9 @@
 /**
- * Deterministic page selection (D09) and B/C control pages (D08). Pure: input is the link list of the start page
+ * Deterministic page selection and B/C control pages. Pure: input is the link list of the start page
  * (raw hrefs stay in memory for navigation; plans store sanitized URLs), robots.txt and sitemap entries.
  */
 import type { SanitizedUrl } from '../../core/snapshot-common.ts';
-import { registrableDomain } from '../../core/url.ts';
+import { parseUrl as parse, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
 import {
   type LegalKind,
@@ -55,7 +55,7 @@ export interface LegalLinkResult {
   link?: CandidateLink;
   /**
    * Navigable same-site candidates in rank order, the chosen one first (page and pdf only). When the chosen page
-   * is not confirmed as the document, the collector tries the next one within its budget (G19).
+   * is not confirmed as the document, the collector tries the next one within its budget.
    */
   candidates?: PageChoice[];
 }
@@ -130,14 +130,6 @@ function lower(s: string): string {
   return s.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function parse(raw: string): URL | null {
-  try {
-    return new URL(raw);
-  } catch {
-    return null;
-  }
-}
-
 function template(raw: string): string {
   const u = parse(raw);
   return u ? (u.pathname.split('/').filter(Boolean)[0] ?? '').toLowerCase() : '';
@@ -147,7 +139,7 @@ function stripWww(h: string): string {
   return h.toLowerCase().replace(/^www\./, '');
 }
 
-/** Final host plus its www/apex pair (D09 scope). */
+/** Final host plus its www/apex pair. */
 export function inScope(raw: string, scope: Scope): boolean {
   const u = parse(raw);
   if (!u || (u.protocol !== 'http:' && u.protocol !== 'https:')) return false;
@@ -241,8 +233,6 @@ function choice(
   };
 }
 
-// ------------------------------------------------------------------ legal links (G19, G24, G25)
-
 interface LegalMatch {
   link: CandidateLink;
   m: LinkMatch;
@@ -262,7 +252,7 @@ function reasonOfLegal(x: LegalMatch): string {
 /**
  * Best link for a legal document kind among `links` (used on the start page and on hop pages). The result lists the
  * navigable same-site candidates in rank order. A hidden link of the consent banner to another registrable domain is
- * the policy link of a CMP vendor, not of the site (G25).
+ * the policy link of a CMP vendor, not of the site.
  */
 export function findLegalLink(
   links: readonly CandidateLink[],
@@ -313,8 +303,6 @@ export function findLegalLink(
   if (navigable(best.link)) return { kind, status: 'offsite', link: best.link };
   return { kind, status: 'unresolved', link: best.link };
 }
-
-// ------------------------------------------------------------------ contact and hop pages (G19)
 
 interface NavPick {
   link: CandidateLink;
@@ -416,8 +404,6 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
 
   return { impressum, privacy, contact, hops, extras, extrasWanted: need };
 }
-
-// ------------------------------------------------------------------ control pages for B/C (D08)
 
 export interface ControlCandidate {
   raw: string;

@@ -62,7 +62,7 @@ describe('TRACK-01 inventory', () => {
     ]);
   });
 
-  it('G32: the GAM compression dictionary (resourceType other) proves only "loaded"; a fetch ad request proves event-sent', () => {
+  it('the GAM compression dictionary (resourceType other) proves only "loaded"; a fetch ad request proves event-sent', () => {
     const dict = req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
       resourceType: 'other',
     });
@@ -88,7 +88,7 @@ describe('TRACK-01 inventory', () => {
     ]);
   });
 
-  it('G31: Piano identity, experience and checkout calls prove "loaded" only; the engagement ping proves event-sent', () => {
+  it('Piano identity, experience and checkout calls prove "loaded" only; the engagement ping proves event-sent', () => {
     const calls = runCheck(
       track01,
       site({
@@ -121,7 +121,7 @@ describe('TRACK-01 inventory', () => {
     ]);
   });
 
-  it('G32 (R16): an `other` request on a path without a signature proves "loaded" only', () => {
+  it('an `other` request on a path without a signature proves "loaded" only', () => {
     const r = runCheck(
       track01,
       site({
@@ -139,7 +139,7 @@ describe('TRACK-01 inventory', () => {
     ).toEqual([['google-ad-manager', 'loaded', 'loaded']]);
   });
 
-  it('G31: Chartbeat ping and ScorecardResearch beacon prove event-sent; the Tealium library and a Chartbeat strategy call prove "loaded"', () => {
+  it('Chartbeat ping and ScorecardResearch beacon prove event-sent; the Tealium library and a Chartbeat strategy call prove "loaded"', () => {
     const hits = runCheck(
       track01,
       site({
@@ -198,7 +198,7 @@ describe('TRACK-01 inventory', () => {
     ],
     ['attempted without any response (aborted)', { state: 'attempted', delivery: 'attempted' }],
     ['failed before a response', { state: 'failed', delivery: 'attempted' }],
-  ] as const)('FT-13: a request %s is no inventory', (_name, p) => {
+  ] as const)('a request %s is no inventory', (_name, p) => {
     const r = runCheck(
       track01,
       site({
@@ -213,7 +213,7 @@ describe('TRACK-01 inventory', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('S-17: a hit whose response arrived before a body error still proves event-sent; SW/cache answers count as loaded', () => {
+  it('a hit whose response arrived before a body error still proves event-sent; SW/cache answers count as loaded', () => {
     const r = runCheck(
       track01,
       site({
@@ -260,7 +260,7 @@ describe('TRACK-01 inventory', () => {
   });
 });
 
-describe('TRACK-01 stage per timing (G37)', () => {
+describe('TRACK-01 stage per timing', () => {
   const ga4LibraryInA = () =>
     phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtag/js?id=G-ABC')] });
   const ga4HitInC = () =>
@@ -285,7 +285,7 @@ describe('TRACK-01 stage per timing (G37)', () => {
       afterReject: false,
       afterAccept: true,
       stageBeforeInteraction: 'loaded',
-      // No phase B in the snapshot: the reject was not carried out, so nothing is "not found" after it (R07).
+      // No phase B in the snapshot: the reject was not carried out, so nothing is "not found" after it .
       stageAfterReject: 'not-checked',
       stageAfterAccept: 'event-sent',
       stage: 'event-sent',
@@ -331,7 +331,7 @@ describe('TRACK-01 stage per timing (G37)', () => {
     });
   });
 
-  describe('R07: "nicht gefunden" only for a timing that was carried out', () => {
+  describe('"nicht gefunden" only for a timing that was carried out', () => {
     const libraryInA = () =>
       phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtag/js?id=G-ABC')] });
     const bodies = (phases: ReturnType<typeof phase>[]) => {

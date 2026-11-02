@@ -1,9 +1,9 @@
-# Finding texts (en), module http (owner: M4). ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
+# Finding texts (en), module http. ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
 # Keys follow the registry docs/03-checks.md §2.1. Wording: "observed", "not found in …" — no legal verdicts
-# (stop-word test). Draft until reviewed (D22).
+# (stop-word test). Draft until reviewed.
 draft: true
 messages:
-  # ------------------------------------------------------------------ HDR-01
+  # HDR-01
   HDR-01.hsts-missing:
     title: "HSTS header not found"
     body: >-
@@ -39,7 +39,7 @@ messages:
       microphone=(), geolocation=().} referrer-policy {Browsers then apply their default (usually
       strict-origin-when-cross-origin). Recommendation: set the policy explicitly.} other {Recommendation: review
       the header configuration.}}
-  # ------------------------------------------------------------------ TLS-01
+  # TLS-01
   TLS-01.https-unavailable:
     title: "Content only usable via http"
     body: >-
@@ -72,7 +72,7 @@ messages:
       {reason, select, other-host {The first redirect of {url} leads to {location} (another host).}
       other {The first redirect of {url} leads to {location}; https is only reached afterwards.}}
       The HSTS preload list expects a direct redirect to https on the same host.
-  # ------------------------------------------------------------------ TLS-02
+  # TLS-02
   TLS-02.certificate-invalid:
     title: "Certificate of {host} not valid"
     body: >-

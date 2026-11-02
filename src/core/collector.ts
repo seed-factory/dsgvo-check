@@ -1,5 +1,5 @@
 /**
- * Collector contract. Collectors do all I/O, redact before anything is stored (D20) and return snapshot sections.
+ * Collector contract. Collectors do all I/O, redact before anything is stored and return snapshot sections.
  * They know nothing about checks.
  */
 
@@ -24,12 +24,12 @@ export interface CollectorOptions {
 export interface CollectorContext {
   /**
    * Target for navigation: `url`/`input` as given (query included). Never store them; what goes into sections must be
-   * sanitized (D20). `ctx.snapshot.target` is the redacted copy that snapshot and report carry.
+   * sanitized. `ctx.snapshot.target` is the redacted copy that snapshot and report carry.
    */
   target: TargetInfo;
   options: CollectorOptions;
   network: NetworkConfig;
-  /** HTTP/TLS UA (D10) and the token appended to the browser UA. */
+  /** HTTP/TLS UA and the token appended to the browser UA. */
   userAgent: { http: string; token: string };
   /**
    * Aborted on the global `--timeout`. Collectors must stop promptly and return what they have: the orchestrator

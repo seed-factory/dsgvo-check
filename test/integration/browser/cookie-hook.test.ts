@@ -1,5 +1,5 @@
 /**
- * L2 (canary2 G35): the `document.cookie` hook logs where a cookie is written — the hostname of the DOCUMENT that
+ * the `document.cookie` hook logs where a cookie is written — the hostname of the DOCUMENT that
  * runs the script and the parsed `Domain=` attribute — next to the name and the calling script. A cookie that a
  * third-party script writes into a first-party page belongs to the page; the same script in a third-party frame
  * writes for the frame. The log never holds a cookie value.
@@ -62,7 +62,7 @@ const writesOf = (host: string) => {
   return frame.evaluate(cookieWritesInPage);
 };
 
-describe('cookie-write log (G35)', () => {
+describe('cookie-write log', () => {
   it('records the hostname of the document and the script that wrote the cookie', async () => {
     const writes = await writesOf('www.example.test');
     const uid = writes.find((w) => w.name === 'uid');

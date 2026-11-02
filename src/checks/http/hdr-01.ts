@@ -1,5 +1,5 @@
 /**
- * HDR-01 (consensus §4, D19): security headers of the main documents (start page, Impressum, Datenschutz) after
+ * HDR-01: security headers of the main documents (start page, Impressum, Datenschutz) after
  * redirects. One observation per mechanism; pages where it is missing are united. Variant names: registry
  * docs/03-checks.md §2.1.
  * warning: no (effective) HSTS (https only), no anti-framing (X-Frame-Options or `frame-ancestors` in a CSP
@@ -87,7 +87,7 @@ function cspRestrictsFraming(values: readonly string[]): boolean {
 
 /**
  * What the enforced CSP headers say about framing. The collector stores the fact next to a value of the limit length
- * or longer (G42, R12); such a value without it (snapshot of an older version) proves nothing about the directive:
+ * or longer; such a value without it (snapshot of an older version) proves nothing about the directive:
  * `unknown`.
  */
 function cspFraming(records: readonly HeaderRecord[]): 'restricts' | 'open' | 'unknown' {
@@ -141,7 +141,7 @@ function problemsOf(doc: DocumentResponse): { problems: Problem[]; limitations: 
   const framing = xfoOk
     ? 'open'
     : cspFraming(h.filter((r) => r.name.toLowerCase() === 'content-security-policy'));
-  // A cut CSP without the derived fact may still hold the directive: no finding on a guess (G42).
+  // A cut CSP without the derived fact may still hold the directive: no finding on a guess.
   if (!xfoOk && framing === 'unknown') limitations.push('csp-truncated');
   if (!xfoOk && framing === 'open') {
     const metaCsp = doc.metaHttpEquiv

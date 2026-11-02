@@ -1,5 +1,5 @@
 /**
- * L0 completeness (D05): every registered check and every variant has a ruleset entry, de + en texts,
+ * completeness : every registered check and every variant has a ruleset entry, de + en texts,
  * a crm mapping (string or explicit null), a legal note, and violation/clean/inconclusive|error fixtures.
  * Every fixture must declare `$expect` and is executed. Green on an empty registry.
  */
@@ -28,7 +28,7 @@ describe('registry completeness', () => {
 });
 
 /**
- * Variants that no fixture expects (FT-08): most are covered by targeted L1 tests in test/unit/checks/**, the rest
+ * Variants that no fixture expects : most are covered by targeted tests in test/unit/checks/**, the rest
  * cannot occur in the prototype (CONSENT-05 `connect-only-after-reject` needs the egress proxy). The list may only
  * shrink: a new variant without a fixture, or a stale entry after a fixture was added, fails the test.
  */
@@ -67,7 +67,7 @@ const KNOWN_VARIANTS_WITHOUT_FIXTURE = [
   'PRIV-01.category-only',
 ];
 
-describe('variants without a fixture (FT-08)', () => {
+describe('variants without a fixture', () => {
   it('only the known list; it may only shrink', () => {
     expect(variantsWithoutFixture(new CheckRegistry(allChecks).all())).toEqual(
       KNOWN_VARIANTS_WITHOUT_FIXTURE,

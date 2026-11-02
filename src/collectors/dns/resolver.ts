@@ -1,7 +1,7 @@
 /**
  * Resolver abstraction for the DNS collector. `createNodeDnsClient` wraps `node:dns/promises` `Resolver`
  * (c-ares) with a per-attempt timeout and exactly one retry for SERVFAIL/TIMEOUT, and maps errors to rcodes
- * while keeping NXDOMAIN and NODATA apart. DNS never goes through `--proxy` (consensus 5.7).
+ * while keeping NXDOMAIN and NODATA apart. DNS never goes through `--proxy`.
  */
 import { Resolver } from 'node:dns/promises';
 import type { CollectorError } from '../../core/snapshot-common.ts';

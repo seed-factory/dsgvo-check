@@ -3,12 +3,13 @@
  * `MAX_DECODED_BYTES`). No DOM: the collector never executes page content. Bodies are never stored, only these
  * derived facts.
  *
- * The text is untrusted, so every function here is linear in its size (P1): a search never restarts at each
+ * The text is untrusted, so every function here is linear in its size: a search never restarts at each
  * candidate (`<a `, `<form `, `<!--`… repeated without their `>` or closing part used to cost O(n²): 128 KiB held the
  * event loop for seconds). Where a regexp like `<a\b([^>]*)>([\s\S]*?)<\/a>` was the model, `elements` and
  * `startTags` give the same matches with `indexOf` scans, and say why a failed candidate ends the search.
  */
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
+import { parseUrl } from '../../core/url.ts';
 
 export const HEURISTIC_BYTES = 64 * 1024;
 
@@ -84,10 +85,10 @@ const isHtmlSpace = (c: number): boolean => c === 32 || c === 9 || c === 10 || c
 /**
  * Finder of tag ends in one text: `tagEnd(i)` is the index after the `>` of the tag whose name ends at `i`, or -1 when
  * the tag is not closed. A quoted attribute value (`name="…"`, `name='…'`, also with spaces around `=`) belongs to the
- * tag, so a `>` or a `<template>` inside it is text (N-REV-2); a quote anywhere else (`<p don't>`, `a=b'c`) is no
+ * tag, so a `>` or a `<template>` inside it is text; a quote anywhere else (`<p don't>`, `a=b'c`) is no
  * quote. A text without any `>` behind the position answers at once.
  *
- * Linear over all calls on one text (P1). The walk from a position is fixed (it jumps over quoted values and over the
+ * Linear over all calls on one text. The walk from a position is fixed (it jumps over quoted values and over the
  * spaces after `=`), so when it ends without a `>`, every position it passed ends without one too: those are
  * remembered, and a later tag whose walk reaches one of them stops there. Without it, a text whose every `>` sits
  * inside a quoted value (`<a x=">" <a x=">" …`) was walked to its end once per tag.
@@ -160,9 +161,9 @@ function templateEnd(html: string, from: number, tagEnd: (i: number) => number):
 }
 
 /**
- * HTML without comments and without the content of raw-text / inert elements (S-34, S-net-1). A `<textarea>` itself
+ * HTML without comments and without the content of raw-text / inert elements. A `<textarea>` itself
  * is a form control, so its (empty) tag is kept. Markup after the closing tag of an outer `<template>` is the
- * document's again. The tags are read with their quoted attribute values (N-REV-2): a `<template>` or `<script>` in a
+ * document's again. The tags are read with their quoted attribute values: a `<template>` or `<script>` in a
  * value is no element.
  */
 function documentMarkup(html: string): string {
@@ -261,27 +262,19 @@ function openTags(markup: string, name: string): string[] {
 }
 
 function resolve(raw: string, base: string): string | null {
-  try {
-    const u = new URL(raw.trim(), base);
-    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
-  } catch {
-    return null;
-  }
+  return parseUrl(raw.trim(), base, true)?.href ?? null;
 }
 
 function withHttps(base: string): string | null {
-  try {
-    const u = new URL(base);
-    u.protocol = 'https:';
-    return u.href;
-  } catch {
-    return null;
-  }
+  const u = parseUrl(base);
+  if (!u) return null;
+  u.protocol = 'https:';
+  return u.href;
 }
 
 /**
  * `<meta http-equiv>` pairs and `<meta name="referrer">` of the document: a meta inside a `<template>`, `<noscript>`,
- * `<script>`… is inert and does not count (N-REV-3). The values are as written; the collector stores them reduced.
+ * `<script>`… is inert and does not count. The values are as written; the collector stores them reduced.
  */
 export function extractMeta(html: string): { httpEquiv: HeaderRecord[]; referrer: string | null } {
   const httpEquiv: HeaderRecord[] = [];

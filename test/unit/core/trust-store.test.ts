@@ -1,5 +1,5 @@
 /**
- * L1 (S-net-3): the `trustStore` label names the CA set the process really uses. Node reads `NODE_OPTIONS` first and
+ * the `trustStore` label names the CA set the process really uses. Node reads `NODE_OPTIONS` first and
  * the command line after it, the last of `--use-system-ca` / `--no-use-system-ca` wins, `NODE_USE_SYSTEM_CA=1` is
  * only the starting value, and `NODE_OPTIONS` knows double quotes (single quotes are plain characters).
  *
@@ -9,14 +9,15 @@
 import { execFile } from 'node:child_process';
 import tls from 'node:tls';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { probeTlsEndpoint } from '../../../src/collectors/tls/probe.ts';
 import { detectTrustStore } from '../../../src/core/snapshot.ts';
 
 const run = promisify(execFile);
 
-describe('S-net-3: detectTrustStore over injected settings', () => {
+describe('detectTrustStore over injected settings', () => {
   it.each([
-    // the two scenarios of the review
+    // the two scenarios
     ['command line: enabled, then disabled', {}, ['--use-system-ca', '--no-use-system-ca'], 'node-bundled'],
     ['NODE_OPTIONS with the flag in double quotes', { NODE_OPTIONS: '"--use-system-ca"' }, [], 'system'],
     // order and negation
@@ -117,8 +118,6 @@ describe('S-net-3: detectTrustStore over injected settings', () => {
   });
 });
 
-// ------------------------------------------------------------------ the same settings in real child processes
-
 const bundled = new Set(tls.getCACertificates('bundled'));
 /** Some operating-system root is not in Node's bundled list: only then can a label be told from the real set. */
 const systemStoreDiffers = tls.getCACertificates('system').some((c) => !bundled.has(c));
@@ -144,7 +143,7 @@ async function inChild(flags: string[], nodeOptions: string | null, extraEnv: Re
   return JSON.parse(stdout.trim()) as { reported: string; actual: string };
 }
 
-describe.skipIf(!systemStoreDiffers)('S-net-3: the label equals the CA set of a real Node process', () => {
+describe.skipIf(!systemStoreDiffers)('the label equals the CA set of a real Node process', () => {
   it.each([
     ['baseline', [], null, {}, 'node-bundled'],
     ['--use-system-ca', ['--use-system-ca'], null, {}, 'system'],
@@ -197,4 +196,21 @@ describe.skipIf(!systemStoreDiffers)('S-net-3: the label equals the CA set of a 
     },
     30_000,
   );
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+it('reports system trust store when enabled in the environment', async () => {
+  vi.stubEnv('NODE_USE_SYSTEM_CA', '1');
+  const endpoint = await probeTlsEndpoint(
+    {
+      network: { proxy: null, lookup: async () => [], allowPrivateAddresses: false, dnsServers: [] },
+      signal: new AbortController().signal,
+      now: () => new Date('2026-01-01T00:00:00Z'),
+    },
+    { host: 'example.test', hostVariant: 'target' },
+    443,
+    100,
+  );
+  expect(endpoint.trustStore).toBe('system');
 });

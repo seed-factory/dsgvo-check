@@ -1,5 +1,5 @@
 /**
- * L1 helpers: factories for snapshot sections, a deterministic CheckContext and fixture loading.
+ * helpers: factories for snapshot sections, a deterministic CheckContext and fixture loading.
  * Every factory takes a partial override; nested arrays are replaced, not merged.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -11,7 +11,6 @@ import type {
   BrowserSection,
   CookieRecord,
   DocumentRecord,
-  DocumentsSection,
   DomFacts,
   LinkFact,
   PageVisit,
@@ -40,8 +39,6 @@ import type { DerivedSection } from '../../src/derive/types.ts';
 export const FIXED_NOW = new Date('2026-10-30T12:00:00.000Z');
 export const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const SNAPSHOT_FIXTURES_DIR = path.join(REPO_ROOT, 'test/fixtures/snapshots');
-
-// ------------------------------------------------------------------ snapshot
 
 export function makeTarget(url = 'https://www.example.de/', finalUrl: string | null = url): TargetInfo {
   const t = parseTarget(url);
@@ -79,13 +76,11 @@ export function makeSnapshot(partial: Partial<Snapshot> = {}): Snapshot {
   };
 }
 
-/** Snapshot plus `derived` computed by the real derive() (as the orchestrator does when `browser` exists). */
+/** Snapshot plus `derived` computed by the real derive (as the orchestrator does when `browser` exists). */
 export function withDerived(snapshot: Snapshot, derived?: Partial<DerivedSection>): Snapshot {
   const base = snapshot.browser ? derive(snapshot) : makeDerived({}, snapshot.target);
   return { ...snapshot, derived: { ...base, ...derived } };
 }
-
-// ------------------------------------------------------------------ browser
 
 let seq = 0;
 const nextId = (prefix: string) => `${prefix}-${String(++seq).padStart(4, '0')}`;
@@ -247,10 +242,6 @@ export function makeDocument(p: Partial<DocumentRecord> & { kind: DocumentRecord
   };
 }
 
-export function makeDocuments(p: Partial<DocumentsSection> = {}): DocumentsSection {
-  return { documents: [], attempts: [], ...p };
-}
-
 export function makeCmpFacts(p: Partial<CmpFacts> = {}): CmpFacts {
   return {
     phase: 'B',
@@ -285,8 +276,6 @@ export function makeCmpFacts(p: Partial<CmpFacts> = {}): CmpFacts {
 export function makeCmp(p: Partial<CmpSection> = {}): CmpSection {
   return { phases: [], ...p };
 }
-
-// ------------------------------------------------------------------ http / tls / dns
 
 export function makeHop(p: Partial<HttpHop> & { url: string }): HttpHop {
   return {
@@ -423,8 +412,6 @@ export function makeDerived(
   };
 }
 
-// ------------------------------------------------------------------ running checks
-
 let routingCache: Record<string, string> | null = null;
 
 /** Deterministic context (fixed clock, de, real routing.yaml, data dirs loaded from data/ on demand). */
@@ -456,8 +443,6 @@ export function observationsOf(result: ExecutedCheck): Observation[] {
 export function variantsOf(result: ExecutedCheck): string[] {
   return [...new Set((result.outcome?.observations ?? []).map((o) => o.variant))].sort();
 }
-
-// ------------------------------------------------------------------ fixtures
 
 /** Expected result stored in a fixture file under `$expect`. */
 export interface FixtureExpect {

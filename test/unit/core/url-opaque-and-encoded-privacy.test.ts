@@ -1,17 +1,5 @@
-/**
- * L0 (P3, P4): addresses that `sanitizeUrl` let through.
- *
- * - P3: the opaque part of a URL with a scheme other than http(s) and `mailto:` (`foo:alice@…`,
- *   `javascript:alert(1)alice@…`, `sms:`, `webcal:`, `xmpp:`, `view-source:https://…/alice@…`) was left alone. A
- *   `Location` header or a meta refresh brings such a value into the snapshot (AGENTS rule 2). Schemes with an
- *   authority (`ftp:`, `ws:`, `wss:`, `git+ssh:`) were already fine: userinfo is dropped, the query goes through the
- *   allowlist, the path is masked. The host of a non-special scheme is opaque and may hold an encoded address.
- * - P4: a path segment was decoded once (`decodeLenient`), a query value (`containsAddress`) and a `mailto:` body
- *   (`hasAddress`) up to three times. `…/alice%2540example.invalid` passed unchanged. Now the address that is visible
- *   after at most three rounds of lenient decoding is masked, in the path as in the query and in `mailto:`.
- *
- * Synthetic data only (`*.invalid`, `*.test`).
- */
+/** URL sanitization redacts addresses in opaque schemes and in repeatedly encoded path segments.
+ * Scheme authority, path structure, controls and idempotence are checked with synthetic inputs. */
 import { describe, expect, it } from 'vitest';
 import { storedHeaderRecord } from '../../../src/core/headers.ts';
 import { redactText } from '../../../src/core/redact.ts';
@@ -37,10 +25,10 @@ function expectStable(input: string): string {
 }
 
 /**
- * Ordinary forms that carry no address at any level. `expected` is what `sanitizeUrl` returned before P2-P4 (recorded
+ * Ordinary forms that carry no address at any level. `expected` is what `sanitizeUrl` returned before (recorded
  * from the old function): the three changes must not touch them.
  */
-describe('P2-P4: ordinary URLs come out exactly as before', () => {
+describe('ordinary URLs without addresses retain their meaning', () => {
   const SHOP = 'https://shop.example.test';
   it.each([
     [
@@ -102,7 +90,7 @@ describe('P2-P4: ordinary URLs come out exactly as before', () => {
   });
 });
 
-describe('P3: an address in the opaque part of a URL with another scheme is masked', () => {
+describe('an address in the opaque part of a URL with another scheme is masked', () => {
   it.each([
     [`foo:alice@${M}`, `foo:${REDACTED}@${M}`],
     [`javascript:alert(1)alice@${M}`, `javascript:alert(1)${REDACTED}@${M}`],
@@ -121,7 +109,7 @@ describe('P3: an address in the opaque part of a URL with another scheme is mask
     [`foo:a/alice@${M}`, `foo:a/${REDACTED}@${M}`],
     // the opaque path of view-source: is a URL of its own
     [`view-source:https://x.test/alice@${M}`, `view-source:https://x.test/${REDACTED}@${M}`],
-    // percent-encoded, up to three rounds (as in a path, a query and mailto:)
+    // percent-encoded, up to three rounds (as in a path, a query and mailto)
     [`foo:alice%40${M}`, `foo:${REDACTED}@${M}`],
     [`foo:alice%2540${M}`, `foo:${REDACTED}@${M}`],
     [`foo:alice%252540${M}`, `foo:${REDACTED}@${M}`],
@@ -288,7 +276,7 @@ describe('P3: an address in the opaque part of a URL with another scheme is mask
     ];
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
     // not `foo://` + pieces: a host made of pieces is often no host, and an unparsable URL that ends in a blank is
-    // not stable (the blank is cut by the next parse; the same before P3, not part of it)
+    // not stable (the blank is cut by the next parse; the same before , not part of it)
     const schemes = ['foo:', 'javascript:', 'sms:', 'x-y+z.w:', 'foo://h.test/', 'ws://h.test/'];
     for (let i = 0; i < 40_000; i++) {
       const scheme = schemes[Math.floor(rnd() * schemes.length)] as string;
@@ -302,7 +290,7 @@ describe('P3: an address in the opaque part of a URL with another scheme is mask
   });
 });
 
-describe('P4: an address encoded two or three times in a path segment is masked', () => {
+describe('an address encoded two or three times in a path segment is masked', () => {
   it.each([
     [`https://${D}/alice%2540${D}`, `https://${D}/${REDACTED}@${D}`],
     [`https://${D}/alice%2540${D}%ZZ`, `https://${D}/${REDACTED}@${D}%25ZZ`],
@@ -422,7 +410,7 @@ describe('P4: an address encoded two or three times in a path segment is masked'
     expect(sanitizeUrl(`wss://h.test/a/alice%252540${M}`)).toBe(`wss://h.test/a/${REDACTED}@${M}`);
   });
 
-  it('the old test "does not decode twice" is turned around: %2540 is %40 is "@"', () => {
+  it('masks an address visible after repeated decoding: %2540 is %40 is "@"', () => {
     expect(sanitizeUrl(`https://${D}/alice%2540${D}`)).toBe(`https://${D}/${REDACTED}@${D}`);
   });
 
@@ -536,7 +524,7 @@ describe('P4: an address encoded two or three times in a path segment is masked'
   });
 });
 
-describe('review of P3/P4: what the rewrite writes back is a fixed point and keeps no part of an address', () => {
+describe('what the rewrite writes back is a fixed point and keeps no part of an address', () => {
   describe('path-parameter syntax that comes out of a deeper round of decoding', () => {
     it.each([
       [`https://x.test/alice%2540${D}%253Bord%253D123`, `https://x.test/${REDACTED}@${D};ord=${REDACTED}`],

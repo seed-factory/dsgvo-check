@@ -1,6 +1,6 @@
 /**
- * L2 integration of all browser-side modules: the real browser collector (M1) with the real CMP subsystem (M2),
- * derive and the browser checks (M3), assess/gate (core) and the reporters (M6), on a hand-written shop that uses
+ * integration of all browser-side modules: the real browser collector with the real CMP subsystem ,
+ * derive and the browser checks , assess/gate (core) and the reporters , on a hand-written shop that uses
  * the Cookiebot simulator. Three variants: consent respected, tracker before consent, blocking banner without reject.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
@@ -27,7 +27,7 @@ const BROWSER_CHECKS = [
   'LEGAL-01',
   'PRIV-01',
 ];
-/** Value parts of the `_ga` cookie / `cid` set by the fake gtag (must never reach a report, D20). */
+/** Value parts of the `_ga` cookie / `cid` set by the fake gtag (must never reach a report). */
 const GA_CLIENT_ID = '987654321';
 
 let server: FixtureServer;

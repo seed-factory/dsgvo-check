@@ -83,7 +83,7 @@ function classifyV6(ip: string): AddressClass {
   if (w.slice(0, 5).every((x) => x === 0) && (w[5] === 0xffff || w[5] === 0)) {
     return classifyV4(v4Of(word(6), word(7)));
   }
-  // Transition prefixes that carry an IPv4 destination are classified by that IPv4 address (FP-04):
+  // Transition prefixes that carry an IPv4 destination are classified by that IPv4 address:
   // NAT64 well-known prefix 64:ff9b::/96 (RFC 6052), 6to4 2002::/16 (RFC 3056), Teredo 2001::/32 (RFC 4380,
   // client address obfuscated by inversion).
   if (word(0) === 0x64 && word(1) === 0xff9b && w.slice(2, 6).every((x) => x === 0)) {
@@ -130,7 +130,7 @@ export const systemLookup: Lookup = async (hostname) => {
  * `test` is set exclusively by test utilities (L2): it maps every host to the local fixture server.
  */
 export interface NetworkConfig {
-  /** `--proxy` (HTTP or SOCKS5) for all collectors; null = direct. */
+  /** `--proxy` (HTTP) for all collectors; null = direct. */
   proxy: string | null;
   /** SSRF guard switch; true only in tests. */
   allowPrivateAddresses: boolean;

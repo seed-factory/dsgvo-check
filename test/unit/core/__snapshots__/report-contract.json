@@ -1,0 +1,525 @@
+{
+  "$schema": "https://github.com/seed-factory/dsgvo-check/schema/report/<version>.json",
+  "schemaVersion": "<version>",
+  "tool": {
+    "name": "dsgvo-check",
+    "version": "<version>"
+  },
+  "ruleset": {
+    "version": "<version>",
+    "rechtsstand": "<time>",
+    "profile": "de-2026",
+    "draft": true
+  },
+  "datasets": [
+    {
+      "name": "services",
+      "version": "<version>",
+      "license": "Apache-2.0",
+      "sha256": null,
+      "date": "<time>"
+    }
+  ],
+  "scan": {
+    "status": "complete",
+    "target": "https://www.example.test/",
+    "finalUrl": "https://www.example.test/",
+    "startedAt": "<time>",
+    "durationMs": 0,
+    "environment": {
+      "userAgent": {
+        "http": "dsgvo-check/<version> (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)",
+        "browser": "Mozilla/<version> Chrome/<version> Safari/<version> dsgvo-check/<version>"
+      },
+      "browser": {
+        "engine": "chromium",
+        "version": "<version>",
+        "channel": "chromium",
+        "headless": "new"
+      },
+      "sandbox": {
+        "mode": "require",
+        "active": true
+      },
+      "profile": "persistent-tmp",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "locale": "de-DE",
+      "timezone": "Europe/Berlin",
+      "egress": {
+        "mode": "direct",
+        "region": "unknown",
+        "source": "nicht festgestellt"
+      },
+      "disabledChromiumFeatures": [
+        "ThirdPartyStoragePartitioning"
+      ],
+      "quic": "disabled",
+      "knownGaps": [
+        "pagehide-beacons"
+      ],
+      "requestsIssued": {
+        "navigations": 9,
+        "probes": 12,
+        "dns": 6,
+        "tls": 3
+      },
+      "node": "<version>",
+      "platform": "linux-x64"
+    },
+    "coverage": {
+      "pages": [
+        {
+          "url": "https://www.example.test/",
+          "role": "start",
+          "planned": true,
+          "observed": true,
+          "evaluated": true,
+          "phases": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "url": "https://www.example.test/kontakt",
+          "role": "contact",
+          "planned": true,
+          "observed": true,
+          "evaluated": false,
+          "phases": [
+            "A"
+          ],
+          "reason": "challenge"
+        }
+      ],
+      "collectors": {
+        "browser": {
+          "status": "ok",
+          "durationMs": 0
+        },
+        "dns": {
+          "status": "ok",
+          "durationMs": 0
+        }
+      },
+      "browserRequests": {
+        "limit": 2000,
+        "issued": 140,
+        "truncated": false
+      }
+    },
+    "options": {
+      "failOn": "critical",
+      "strict": false,
+      "lang": "de",
+      "formats": [
+        "console",
+        "json"
+      ],
+      "maxPages": 6,
+      "timeoutMs": 480000,
+      "sandbox": "require",
+      "screenshots": true,
+      "checks": null,
+      "proxy": false,
+      "assumeRegion": null,
+      "fromSnapshot": false,
+      "overrides": []
+    }
+  },
+  "checks": [
+    {
+      "id": "CONSENT-01",
+      "module": "browser",
+      "status": "completed",
+      "reason": null,
+      "limitations": [],
+      "coverage": null,
+      "durationMs": 0,
+      "maxSeverity": "critical",
+      "gating": true
+    },
+    {
+      "id": "CONSENT-04",
+      "module": "browser",
+      "status": "inconclusive",
+      "reason": "banner-not-recognized",
+      "limitations": [],
+      "coverage": null,
+      "durationMs": 0,
+      "maxSeverity": "critical",
+      "gating": true
+    },
+    {
+      "id": "MAIL-01",
+      "module": "dns",
+      "status": "error",
+      "reason": "exception",
+      "limitations": [],
+      "coverage": null,
+      "durationMs": 0,
+      "error": {
+        "code": "check-exception",
+        "message": "boom"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "checkId": "CONSENT-01",
+      "variant": "tracking-completed",
+      "variantGroup": "tracking-completed",
+      "severity": "critical",
+      "confidence": "high",
+      "crmCode": "T1_TRACKER_BEFORE_CONSENT",
+      "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "subject": "google-analytics-4",
+      "serviceId": "google-analytics-4",
+      "phases": [
+        "A",
+        "B"
+      ],
+      "pages": [
+        "https://www.example.test/"
+      ],
+      "replicated": true,
+      "evidenceIds": [
+        "ev-request",
+        "ev-cookie",
+        "ev-storage"
+      ],
+      "messageId": "CONSENT-01.tracking-completed",
+      "params": {
+        "service": "Evil\u001b[31m red\u001b[0m ‮gnp.exe‬ ::set-output name=x::y <script>alert(1)</script>",
+        "host": "www.google-analytics.com",
+        "identifierKind": "stored-match",
+        "requestCount": 2,
+        "pageCount": 1
+      },
+      "legalNoteId": "CONSENT-01",
+      "related": [
+        {
+          "checkId": "CONSENT-04",
+          "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+          "relation": "same-service"
+        }
+      ],
+      "classification": {
+        "source": "catalog",
+        "datasetVersion": "<version>"
+      },
+      "provider": {
+        "name": "Google Ireland Ltd.",
+        "country": "IE"
+      },
+      "parent": {
+        "name": "Google LLC",
+        "country": "US"
+      },
+      "dpfEntity": {
+        "name": "Google LLC",
+        "listed": true,
+        "checkedAt": "<time>",
+        "source": "dataprivacyframework.gov"
+      },
+      "text": {
+        "lang": "de",
+        "title": "Titel",
+        "body": "Text",
+        "draft": true
+      }
+    },
+    {
+      "checkId": "CONSENT-04",
+      "variant": "banner-not-recognized",
+      "variantGroup": "banner-not-recognized",
+      "severity": "info",
+      "confidence": "low",
+      "crmCode": null,
+      "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+      "subject": "consent-ui",
+      "phases": [
+        "B"
+      ],
+      "pages": [
+        "https://www.example.test/"
+      ],
+      "evidenceIds": [
+        "ev-cmp",
+        "ev-screenshot",
+        "ev-consent"
+      ],
+      "messageId": "CONSENT-04.banner-not-recognized",
+      "params": {},
+      "legalNoteId": "CONSENT-04",
+      "related": [],
+      "classification": {
+        "source": "heuristic",
+        "datasetVersion": null
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "SCAN-BOTMODE",
+      "affects": [
+        "CONSENT-01"
+      ],
+      "evidenceIds": [],
+      "messageId": "diagnostic.SCAN-BOTMODE",
+      "params": {
+        "signal": "rcb:accept-all-for-bots"
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-request",
+      "type": "request",
+      "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-TEST&cid=[redacted]",
+      "method": "POST",
+      "resourceType": "ping",
+      "phase": "A",
+      "page": "https://www.example.test/",
+      "tMs": 0,
+      "navigationId": "A-n1",
+      "frameId": "A-f1",
+      "delivery": "sent",
+      "result": {
+        "kind": "response",
+        "status": 204
+      },
+      "provenance": "network",
+      "features": {
+        "identifier": {
+          "kind": "stored-match",
+          "param": "cid"
+        },
+        "matchesStoredIdentifier": true,
+        "eventType": "page_view",
+        "consentSignal": {
+          "gcs": "G111",
+          "adStorage": "granted",
+          "analyticsStorage": "granted"
+        },
+        "parserVersion": "request-features/2",
+        "observationSource": "playwright"
+      },
+      "thirdPartyETLD1": "google-analytics.com",
+      "serviceId": "google-analytics-4",
+      "connectedIp": {
+        "value": "142.250.0.1",
+        "origin": "resolvedLocally"
+      }
+    },
+    {
+      "id": "ev-cookie",
+      "type": "cookie",
+      "name": "_ga",
+      "domain": "first-party",
+      "path": "/",
+      "state": "accepted",
+      "setter": "script",
+      "length": 30,
+      "lifetime": {
+        "kind": "persistent",
+        "days": 400
+      }
+    },
+    {
+      "id": "ev-storage",
+      "type": "storage",
+      "storageType": "localStorage",
+      "origin": "https://www.example.test",
+      "key": "_hjSessionUser",
+      "firstParty": true
+    },
+    {
+      "id": "ev-header",
+      "type": "header",
+      "url": "https://www.example.test/",
+      "name": "strict-transport-security",
+      "present": false,
+      "value": null
+    },
+    {
+      "id": "ev-dns",
+      "type": "dns",
+      "qname": "_dmarc.example.test",
+      "qtype": "TXT",
+      "rcode": "NOERROR",
+      "records": [
+        "v=DMARC1; p=none; rua=mailto:***@example.test"
+      ],
+      "resolver": "system"
+    },
+    {
+      "id": "ev-tls",
+      "type": "tls",
+      "host": "www.example.test",
+      "ip": "203.0.113.10",
+      "family": 4,
+      "protocol": "TLSv1.3",
+      "issuer": "CN=Test CA",
+      "san": [
+        "DNS:www.example.test"
+      ],
+      "notBefore": "<time>",
+      "notAfter": "<time>",
+      "chainComplete": true,
+      "authorizationError": null,
+      "trustStore": "node-bundled"
+    },
+    {
+      "id": "ev-cmp",
+      "type": "cmp",
+      "cmpId": null,
+      "version": null,
+      "recognitionConfidence": "low",
+      "buttons": [
+        {
+          "role": "button",
+          "name": "Alle akzeptieren",
+          "kind": "accept",
+          "kindConfidence": "high",
+          "box": {
+            "x": 10,
+            "y": 600,
+            "width": 200,
+            "height": 40
+          },
+          "visibleAtFirstScreen": true,
+          "actionableAtFirstScreen": true,
+          "contrast": 7.1
+        }
+      ],
+      "blocking": {
+        "overlay": true,
+        "scrollLock": true,
+        "inert": false,
+        "coveredRatio": 0.8,
+        "method": [
+          "elementFromPoint-grid"
+        ]
+      },
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "click": null
+    },
+    {
+      "id": "ev-consent",
+      "type": "consent-state",
+      "source": "cookie",
+      "ready": "ready",
+      "categories": {
+        "analytics": "denied"
+      },
+      "origin": "default"
+    },
+    {
+      "id": "ev-document",
+      "type": "document",
+      "url": "https://www.example.test/datenschutz",
+      "kind": "privacy",
+      "lang": "de",
+      "complete": true,
+      "parts": [
+        {
+          "origin": "visible",
+          "section": "1"
+        }
+      ],
+      "errors": [],
+      "sha256": "abc"
+    },
+    {
+      "id": "ev-match",
+      "type": "text-match",
+      "documentId": "doc-privacy",
+      "section": "5",
+      "quote": "Wir verwenden Google Analytics …",
+      "matchLevel": "named",
+      "negation": "none"
+    },
+    {
+      "id": "ev-screenshot",
+      "type": "screenshot",
+      "path": "artifacts/banner-B.jpg",
+      "sha256": "def",
+      "kind": "banner"
+    },
+    {
+      "id": "ev-page",
+      "type": "page",
+      "url": "https://www.example.test/kontakt",
+      "status": 403,
+      "role": "contact",
+      "evaluable": false,
+      "reason": "challenge"
+    },
+    {
+      "id": "ev-chain",
+      "type": "redirect-chain",
+      "startUrl": "http://example.test/",
+      "hops": [
+        {
+          "url": "http://example.test/",
+          "status": 301,
+          "location": "https://www.example.test/"
+        }
+      ],
+      "outcome": "ok"
+    },
+    {
+      "id": "ev-link",
+      "type": "link",
+      "href": "https://www.example.test/impressum",
+      "text": "Impressum",
+      "status": 200
+    },
+    {
+      "id": "ev-future",
+      "type": "mixed-content",
+      "sourceUrl": "https://www.example.test/",
+      "selected": true
+    }
+  ],
+  "legalContext": {
+    "rechtsstand": "<time>",
+    "notes": [
+      {
+        "id": "CONSENT-01",
+        "status": "authority-consensus",
+        "reviewedAt": null,
+        "reviewBy": null,
+        "draft": true
+      }
+    ]
+  },
+  "summary": {
+    "counts": {
+      "critical": 1,
+      "warning": 0,
+      "info": 1,
+      "suppressed": 0,
+      "checkErrors": 1,
+      "inconclusive": 1
+    },
+    "exitCode": 1,
+    "exitReasons": [
+      "threshold",
+      "check-error:MAIL-01"
+    ]
+  },
+  "disclaimer": {
+    "messageId": "disclaimer",
+    "lang": "de",
+    "text": "Keine Rechtsberatung. Textentwurf.",
+    "draft": true
+  }
+}

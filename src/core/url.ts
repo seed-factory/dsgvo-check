@@ -1,10 +1,10 @@
-/** Target validation, URL sanitizing (D20) and registrable-domain helpers. */
+/** Target validation, URL sanitizing and registrable-domain helpers. */
 import { getDomain } from 'tldts';
 import { InvalidInputError } from './errors.ts';
 import type { TargetInfo } from './snapshot.ts';
 
 /**
- * Query parameters whose values are kept. Everything else becomes `[redacted]` (D20).
+ * Query parameters whose values are kept. Everything else becomes `[redacted]`.
  * Only site-level identifiers/settings, never visitor identifiers. Generic names (`id`, `tid`, `v`, `t`) keep their
  * value only in the expected form, see `QUERY_VALUE_RULES`.
  */
@@ -32,6 +32,16 @@ export const QUERY_ALLOWLIST: ReadonlySet<string> = new Set([
 
 export const REDACTED = '[redacted]';
 
+/** Parse an absolute URL or resolve one against a base; malformed input has no URL. */
+export function parseUrl(raw: string, base?: string, httpOnly = false): URL | null {
+  try {
+    const url = new URL(raw, base);
+    return httpOnly && url.protocol !== 'http:' && url.protocol !== 'https:' ? null : url;
+  } catch {
+    return null;
+  }
+}
+
 /** `sanitizeUrl` and `redactTarget` cut their result at this length: what lies behind it is never seen. */
 const MAX_URL_LENGTH = 2048;
 
@@ -54,7 +64,7 @@ const VERSION = /^\d{1,4}(?:\.\d{1,4}){0,3}$/;
 const isMetaPixel = (u: URL) => /(^|\.)facebook\.com$/i.test(u.hostname) && /^\/tr\/?$/.test(u.pathname);
 
 /**
- * Value rules for allowlisted generic parameter names (FP-06): the value is kept only when it has the form of a
+ * Value rules for allowlisted generic parameter names: the value is kept only when it has the form of a
  * site-level setting; anything else (customer numbers, timestamps, cache busters, tokens) is redacted.
  */
 export const QUERY_VALUE_RULES: Readonly<Record<string, (value: string, url: URL) => boolean>> = {
@@ -68,7 +78,7 @@ function keepValue(name: string, value: string, url: URL, allowlist: ReadonlySet
   const key = name.toLowerCase();
   if (!allowlist.has(key)) return false;
   // An allowlisted name keeps a value of the expected form, never a visitor's address that ended up inside it (a quote
-  // or a comma glued an address to the URL: `?hl=de','alice@example.test`; R-privacy-1).
+  // or a comma glued an address to the URL: `?hl=de','alice@example.test`).
   if (containsAddress(value)) return false;
   const rule = QUERY_VALUE_RULES[key];
   return rule ? rule(value, url) : true;
@@ -84,7 +94,7 @@ const EMAIL_DOMAIN = `(?!\\d+x\\.)(?:${EMAIL_LABEL}\\.){1,10}${EMAIL_TLD}`;
  * Pe: `„alice@…“`, `«alice@…»`, `（alice@…）` keep their marks). Everything else belongs to the local part: the whole
  * `atext` of RFC 5322, letters, digits and marks of any script and, as RFC 6531 allows, every other non-ASCII character
  * (emoji, `™`, `€`, `·`, `–`). A negated class: a character that is not listed is a part of the address, so that a
- * rare one cannot cut the mask short (R-privacy-4). Written for the `u` flag.
+ * rare one cannot cut the mask short. Written for the `u` flag.
  */
 const LOCAL_BORDER = String.raw`\x00-\x20\x7f"(),:;<>@\[\\\]\s\p{Z}\p{Cc}\p{Pi}\p{Pf}\p{Ps}\p{Pe}`;
 /**
@@ -125,7 +135,7 @@ const EMAIL_IN_URL_RE = new RegExp(emailSource(LOCAL_URL_STRUCTURE), 'giu');
  * address, and no mask). Two addresses of different depth of encoding in one segment
  * (`alice%40a%25252Einvalid-bob%2540b.invalid`): at the earliest round the dot of the first is still escaped, its domain
  * is not one, and the second address takes it for its local part. What stays is the local part of the first address,
- * `alice@`, next to the mask of the second (review of P4). It is masked as well.
+ * `alice@`, next to the mask of the second. It is masked as well.
  */
 const orphanLocal = (extraBorder: string) =>
   new RegExp(
@@ -166,10 +176,12 @@ function decodeEscapeRun(run: string): string {
   } catch {
     // at least one escape is invalid: go through the bytes
   }
+  // Validate UTF-8 bytes directly: malformed input must not throw once per escape.
+  const byteAt = (at: number) => Number.parseInt(run.slice(at + 1, at + 3), 16);
   let out = '';
   let i = 0;
   while (i < run.length) {
-    const byte = Number.parseInt(run.slice(i + 1, i + 3), 16);
+    const byte = byteAt(i);
     // length of the UTF-8 sequence that starts with this byte; 0: a continuation byte or a byte UTF-8 never uses
     let need = 0;
     if (byte < 0x80) need = 1;
@@ -177,12 +189,28 @@ function decodeEscapeRun(run: string): string {
     else if (byte >= 0xe0 && byte <= 0xef) need = 3;
     else if (byte >= 0xf0 && byte <= 0xf4) need = 4;
     if (need > 0 && i + need * 3 <= run.length) {
-      try {
-        out += decodeURIComponent(run.slice(i, i + need * 3));
+      let point = byte & (0x7f >> need);
+      let valid = true;
+      for (let part = 1; part < need; part++) {
+        const next = byteAt(i + part * 3);
+        if (
+          next < 0x80 ||
+          next > 0xbf ||
+          (part === 1 &&
+            ((byte === 0xe0 && next < 0xa0) ||
+              (byte === 0xed && next > 0x9f) ||
+              (byte === 0xf0 && next < 0x90) ||
+              (byte === 0xf4 && next > 0x8f)))
+        ) {
+          valid = false;
+          break;
+        }
+        point = (point << 6) | (next & 0x3f);
+      }
+      if (valid) {
+        out += String.fromCodePoint(need === 1 ? byte : point);
         i += need * 3;
         continue;
-      } catch {
-        // not a valid sequence: keep the byte as written
       }
     }
     out += run.slice(i, i + 3);
@@ -194,7 +222,7 @@ function decodeEscapeRun(run: string): string {
 /**
  * `decodeURIComponent` that does not give up: valid escapes are decoded, a stray `%`, `%ZZ` or an escape that is no
  * valid UTF-8 (`%E9`) stays as written. Used to *find* addresses and parameters; one invalid escape next to `%40` must
- * not hide the address (S-privacy-5). Linear. Equal to `decodeURIComponent` when every escape is valid.
+ * not hide the address. Linear. Equal to `decodeURIComponent` when every escape is valid.
  */
 export function decodeLenient(s: string): string {
   if (!s.includes('%')) return s;
@@ -250,7 +278,7 @@ export function maskMailto(raw: string): string {
 
 /**
  * Values of parameters in the path. Matrix parameters (`/activity;dc_pre=…;ord=…`) and `prefix:k=v&k=v` segments
- * carry visitor identifiers of ad and sync tags like a query does (D20); the rule is syntactic, not a length or
+ * carry visitor identifiers of ad and sync tags like a query does; the rule is syntactic, not a length or
  * entropy guess. Names of the query allowlist keep a value of the expected form, every other value is redacted.
  * Segments without `=` stay as they are.
  */
@@ -286,7 +314,7 @@ function redactLeadParams(first: string, url: URL, allowlist: ReadonlySet<string
 
 /**
  * Percent-escapes of the characters that the parameter rule is built on (`;` `=` `&` `:`) count as the characters
- * themselves: `max@example.test%3Bord%3D12345` is a matrix parameter like `max@example.test;ord=12345` (review R11).
+ * themselves: `max@example.test%3Bord%3D12345` is a matrix parameter like `max@example.test;ord=12345`.
  */
 const ENCODED_PARAM_SYNTAX = /%(3B|3D|26|3A)/gi;
 const PARAM_SYNTAX: Readonly<Record<string, string>> = { '3B': ';', '3D': '=', '26': '&', '3A': ':' };
@@ -326,7 +354,7 @@ const escapeDecodedOpaque = (text: string) =>
 /**
  * Mask the addresses that are visible in `segment` after one to three rounds of lenient decoding (the first round: the
  * segment as written, with its valid escapes decoded; one invalid escape (`%ZZ`, `%E9`) must not keep `%40` from being
- * decoded, S-privacy-5; an address encoded twice, `%2540`, is visible in the second round, P4). The earliest round
+ * decoded; an address encoded twice, `%2540`, is visible in the second round). The earliest round
  * that shows one decides: that decoded form is masked and written back, so that `m%C3%BCller%40…` and the rest of the
  * segment behave as they always did. Without an address the segment stays as it is.
  */
@@ -384,7 +412,7 @@ function redactPathSegmentOnce(segment: string, url: URL, allowlist: ReadonlySet
  * `redactPathSegmentOnce` until nothing changes. The masked form is written back decoded, and a deeper level of
  * encoding can show up in it as syntax: `…%2540example.invalid%253Bord%253D1` becomes `…@example.invalid;ord=1`, a
  * path parameter that only the next pass reads. The result is the fixed point, so that `sanitizeUrl` of its own output
- * returns it (review of P4); a segment that does not settle within the passes is replaced.
+ * returns it; a segment that does not settle within the passes is replaced.
  */
 function redactPathSegment(segment: string, url: URL, allowlist: ReadonlySet<string>): string {
   let current = segment;
@@ -412,7 +440,7 @@ function redactPath(u: URL, allowlist: ReadonlySet<string>): void {
 }
 
 /**
- * The URL as a string, with the addresses of an opaque path masked (P3). The path of `foo:alice@mail.invalid`,
+ * The URL as a string, with the addresses of an opaque path masked. The path of `foo:alice@mail.invalid`,
  * `javascript:alert(1)alice@…`, `sms:…`, `view-source:https://…/alice@…` is not a list of segments and no setter
  * rewrites it, so the masked pieces (cut at `/` like a path) are put into the string and the URL is parsed again: the
  * result is what the URL parser makes of it, and a second pass finds nothing to change. Without an address the string
@@ -442,7 +470,7 @@ const schemeOnly = (scheme: string) =>
 /**
  * The string as the URL parser reads it: leading and trailing C0 controls and blanks are removed, and so are tabs and
  * line breaks anywhere. A string that is cut the same way here parses as the same URL on the next pass: `\thttp://[a%40b.test/`
- * must not keep its tab, or its scheme is not seen now and is the next time (review of P3).
+ * must not keep its tab, or its scheme is not seen now and is the next time.
  */
 function withoutParserNoise(raw: string): string {
   let start = 0;
@@ -493,7 +521,7 @@ const RAW_UNSAFE = /[\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2
 
 /**
  * A decoded piece of an unparsable URL written back: nothing may turn into a query or a fragment on the next pass, and
- * no control or separator comes out raw (review of P3: a relative `Location` of `/alice%40x.test%0A…` would put a line
+ * no control or separator comes out raw (a relative `Location` of `/alice%40x.test%0A…` would put a line
  * break into the snapshot).
  */
 const escapeDecodedUnparsable = (text: string) =>
@@ -501,7 +529,7 @@ const escapeDecodedUnparsable = (text: string) =>
 
 /**
  * The addresses that are only visible after decoding (`https://exa mple.test/alice%40mail.invalid`) in a string that is
- * not a parsable URL (P4): the pieces of the path as for a parsable one. An encoded address in the host part has no
+ * not a parsable URL: the pieces of the path as for a parsable one. An encoded address in the host part has no
  * place to go (it would turn into userinfo on the next pass): the URL is reduced to its scheme. The host part is the
  * first piece after the scheme, however many slashes come in front of it (`http:///x` is `http://x`).
  */
@@ -560,7 +588,7 @@ function formDecode(s: string): string {
 
 /**
  * Redact the query of `u` in one pass over the string. The iterator of `URLSearchParams` is quadratic in the number of
- * parameters (P2): the browser collector hands every request URL to `sanitizeUrl`, whatever its length. The sequences
+ * parameters: the browser collector hands every request URL to `sanitizeUrl`, whatever its length. The sequences
  * are cut at `&`, the name from the value at the first `=`, empty sequences are skipped: the algorithm of
  * `application/x-www-form-urlencoded`, so the result is the same as with the iterator. The query is the last part of the
  * URL, and the result is cut at `MAX_URL_LENGTH`: once the pairs written so far fill that many characters (a
@@ -622,7 +650,7 @@ export function bareHost(host: string): string {
 const hasScheme = (s: string) => /^[a-z][a-z0-9+.-]*:/i.test(s);
 
 /**
- * The scan target as it may appear in snapshots, reports, logs and messages (D20): credentials and fragment removed,
+ * The scan target as it may appear in snapshots, reports, logs and messages: credentials and fragment removed,
  * query values redacted like any other URL. Also for input that is rejected or not parsable.
  */
 export function redactTarget(input: string): string {

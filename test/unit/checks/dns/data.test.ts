@@ -1,5 +1,5 @@
 /**
- * Ruleset table for MAIL-* (tested separately, D23), the D19 rule "T3 codes not above warning", and rendering of
+ * Ruleset table for MAIL-* (tested separately), the rule "T3 codes not above warning", and rendering of
  * every emitted observation in de and en without unresolved placeholders.
  */
 import { describe, expect, it } from 'vitest';
@@ -13,7 +13,7 @@ const ruleset = loadRuleset();
 const crm = loadCrm();
 
 describe('ruleset de-2026 for MAIL-*', () => {
-  it('matches the registry (docs/03-checks.md §2.1) and the consensus table (§4, D19)', () => {
+  it('matches the registry (docs/03-checks.md §2.1)', () => {
     const table = Object.fromEntries(
       ['MAIL-01', 'MAIL-02'].map((id) => [
         id,
@@ -43,7 +43,7 @@ describe('ruleset de-2026 for MAIL-*', () => {
     expect(ruleset.checks['MAIL-02']?.gating).toBe(true);
   });
 
-  it('T3 codes are never critical (D19)', () => {
+  it('T3 codes are never critical', () => {
     for (const check of dnsChecks) {
       for (const { variant } of check.variants) {
         const code = crm[`${check.id}.${variant}`];

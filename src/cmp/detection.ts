@@ -1,4 +1,4 @@
-/** Pure helpers for CMP recognition (D12: `high` needs ≥ 2 independent signals) and consent-state verdicts. */
+/** Pure helpers for CMP recognition (`high` needs ≥ 2 independent signals) and consent-state verdicts. */
 import type { CmpDetection, Confidence, ConsentStateFact } from './types.ts';
 
 /**

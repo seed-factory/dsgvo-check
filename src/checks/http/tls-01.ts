@@ -1,11 +1,11 @@
 /**
- * TLS-01 (consensus §4, D19): does `http://` of the host, www and apex lead to https? Variant names: registry
+ * TLS-01: does `http://` of the host, www and apex lead to https? Variant names: registry
  * docs/03-checks.md §2.1.
  * critical: http serves content while https is unavailable or invalid (`https-unavailable`), or a form on an http
  * page (`form-on-http-page`). warning: http 2xx without redirect while https works (`no-redirect`); redirect only
  * via meta/JS (`client-side-redirect-only`). info (`redirect-chain-detail`): the first hop is not https or goes to
  * another host. A chain that reaches https but ends on http again (downgrade) is evaluated on its final http page
- * (S-18). A closed port is not "serving content"; a stub of ≤ 1 KiB gives no finding; a timeout → inconclusive.
+ * A closed port is not "serving content"; a stub of ≤ 1 KiB gives no finding; a timeout → inconclusive.
  * Prototype gap: http links to own subdomains (browser phase A) are not evaluated here.
  */
 
@@ -64,7 +64,7 @@ interface Verdict {
 
 /**
  * Subject `http-entry:<role>` (5.4): the role of the chain's host relative to the final host of the start page, so
- * the same entry gets the same fingerprint whether `example.de` or `www.example.de` was typed (S-37). The variant
+ * the same entry gets the same fingerprint whether `example.de` or `www.example.de` was typed. The variant
  * group tells the variants of one entry apart.
  */
 function observation(
@@ -123,7 +123,7 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
     };
   }
 
-  // The chain ends on http: never upgraded, or upgraded and sent back to http (downgrade, S-18).
+  // The chain ends on http: never upgraded, or upgraded and sent back to http (downgrade).
   if (http.outcome !== 'ok' || isRedirect(last.status)) {
     return { observations: [], undecided: true, timeout: http.outcome === 'timeout' };
   }
@@ -200,7 +200,7 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
   return { ...none, observations };
 }
 
-/** Standard-port probe of a host variant (chains of an explicit target port only load the start page, S-20). */
+/** Standard-port probe of a host variant (chains of an explicit target port only load the start page). */
 function chainFor(slice: SnapshotSlice<'http'>, hv: HostVariant, scheme: 'http' | 'https') {
   return slice.http.chains.find((c) => c.hostVariant === hv && c.scheme === scheme && c.port === undefined);
 }

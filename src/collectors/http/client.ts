@@ -1,5 +1,5 @@
 /**
- * Polite HTTP client for passive probes (D09, D10, research http-dns-tls-mail §7):
+ * Polite HTTP client for passive probes:
  * - undici, no automatic redirects, no cookies, no HSTS cache, honest UA (token only);
  * - ≤ 2 requests per second per host (pacing by request start);
  * - TLS with `rejectUnauthorized: false`: the request is sent, Node's verdict is recorded per connection;
@@ -10,7 +10,7 @@ import { isIP, type Socket } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { TLSSocket } from 'node:tls';
 import zlib from 'node:zlib';
-import { Agent, buildConnector, type Dispatcher, ProxyAgent, Socks5ProxyAgent } from 'undici';
+import { Agent, buildConnector, type Dispatcher, ProxyAgent } from 'undici';
 import { snapshotHeaderRecords } from '../../core/headers.ts';
 import { isPublicAddress, type NetworkConfig } from '../../core/net.ts';
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
@@ -119,11 +119,11 @@ export class HostPacer {
   }
 }
 
-/** D09: pause after the third 429/503 in a row when the server sends no usable Retry-After. */
+/** Pause after the third 429/503 in a row when the server sends no usable Retry-After. */
 export const DEFAULT_THROTTLE_PAUSE_MS = 2_000;
-/** D09: `Retry-After` is honoured up to 30 s. */
+/** `Retry-After` is honoured up to 30 s. */
 export const MAX_RETRY_AFTER_MS = 30_000;
-/** D09 / 03-checks §7.5: three 429/503 in a row on probes to one host. */
+/** Three 429/503 responses in a row on probes to one host trigger the overload policy. */
 export const THROTTLE_SERIES = 3;
 
 /** `Retry-After` as delay-seconds or HTTP-date (RFC 9110 §10.2.3); null when absent or unusable. */
@@ -137,7 +137,7 @@ export function retryAfterMs(value: string | null, now: number): number | null {
 
 const isOverload = (status: number) => status === 429 || status === 503;
 
-/** Overload state of one host (S-28: per host, not per client). */
+/** Overload state is isolated per host, so one host cannot stop probes to another. */
 interface HostThrottle {
   consecutive: number;
   retried: boolean;
@@ -151,7 +151,7 @@ function cookieName(setCookie: string): string {
 }
 
 /**
- * Header records for the snapshot (D20, 5.3): the core normalizer shared with the browser (FP-08) — no Set-Cookie
+ * Header records for the snapshot: the core normalizer shared with the browser — no Set-Cookie
  * values (names only), URL headers resolved against `base` and sanitized, values only for security and technical
  * headers. `base` is the response URL.
  */
@@ -189,7 +189,7 @@ function originKey(protocol: string, hostname: string, port: number): string {
   return `${protocol}//${hostname.toLowerCase()}:${port}`;
 }
 
-/** Upper bound of a decoded (decompressed) body; the compressed read is limited separately (S-03). */
+/** Upper bound of a decoded (decompressed) body; the compressed read is limited separately. */
 export const MAX_DECODED_BYTES = 4 * 1024 * 1024;
 
 function decompressor(enc: string): zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | null {
@@ -203,7 +203,7 @@ function decompressor(enc: string): zlib.Gunzip | zlib.Inflate | zlib.BrotliDeco
 
 /**
  * Decode a (possibly cut) body by `Content-Encoding`, streaming, with at most `maxOutput` decoded bytes: a small
- * compressed response cannot expand into hundreds of megabytes (S-03). A corrupt or cut stream yields the
+ * compressed response cannot expand into hundreds of megabytes. A corrupt or cut stream yields the
  * prefix decoded so far. `truncated` = the decoded output hit the limit.
  */
 export function decodeBody(
@@ -256,7 +256,7 @@ export interface HttpClientOptions {
   now?: () => Date;
   /** Decoded body cap (default `MAX_DECODED_BYTES`). */
   maxDecodedBytes?: number;
-  /** Cap of the `Retry-After` pause before the one retry (default 30 s, D09). Tests lower it. */
+  /** Cap of the `Retry-After` pause before the one retry (default 30 s). Tests lower it. */
   maxRetryAfterMs?: number;
 }
 
@@ -293,9 +293,6 @@ export class HttpClient {
     const { network } = this;
     const insecure = { rejectUnauthorized: false, maxCachedSessions: 0 };
     if (network.proxy && !network.test) {
-      if (/^socks5h?:/i.test(network.proxy)) {
-        return new Socks5ProxyAgent(network.proxy, { requestTls: insecure });
-      }
       return new ProxyAgent({ uri: network.proxy, requestTls: insecure });
     }
     const connector = buildConnector({
@@ -398,7 +395,7 @@ export class HttpClient {
   }
 
   /**
-   * D09 overload policy per host: the third 429/503 in a row → pause by `Retry-After` (≤ 30 s, within the scan
+   * Overload policy per host: the third 429/503 in a row → pause by `Retry-After` (≤ 30 s, within the scan
    * deadline) and one retry of that request; a further 429/503 stops new requests to that host (SCAN-THROTTLED).
    * Other hosts are not affected and do not reset the series.
    */

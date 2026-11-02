@@ -1,5 +1,5 @@
 /**
- * L1 (review m2 of the P1-P5 round): what the HTTP collector stores of the `<meta http-equiv>` names. The name is
+ * What the HTTP collector stores of the `<meta http-equiv>` names. The name is
  * untrusted text of the page (the value is edited before it is stored, the name was not): `storedMeta` lower-cased it
  * and kept it, so a 64 KiB prefix of the document grew the snapshot by 64 KB, and a name could carry an address.
  * HDR-01 reads one name, `content-security-policy`. A name is kept when it has the shape of a header name (at most 40
@@ -12,7 +12,7 @@ import { storedMetaHttpEquiv } from '../../../../src/collectors/http/index.ts';
 const BASE = 'http://www.example.test/';
 const meta = (name: string, content: string) => ({ name: name.toLowerCase(), value: content });
 
-describe('m2: the names of <meta http-equiv> are bounded when they are stored', () => {
+describe('the names of <meta http-equiv> are bounded when they are stored', () => {
   it('a name that carries an address is not stored', () => {
     const out = storedMetaHttpEquiv([meta('zq7alice@mail.invalid', 'v'), meta('refresh', '0')], BASE);
     expect(out.map((m) => m.name)).toEqual(['refresh']);
@@ -90,5 +90,17 @@ describe('m2: the names of <meta http-equiv> are bounded when they are stored', 
     const records = Array.from({ length: 32 }, (_, i) => meta(`h${i}`, 'v'));
     expect(storedMetaHttpEquiv(records, BASE)).toHaveLength(32);
     expect(storedMetaHttpEquiv([...records, meta('refresh', '0')], BASE)).toHaveLength(32);
+  });
+
+  it('counts CSP within the 32 stored records', () => {
+    // Characterizes the existing limit, including CSP at and beyond the boundary.
+    const records = [
+      ...Array.from({ length: 31 }, (_, i) => meta(`h${i}`, 'v')),
+      meta('content-security-policy', "default-src 'self'"),
+      meta('content-security-policy', "img-src 'none'"),
+    ];
+    const out = storedMetaHttpEquiv(records, BASE);
+    expect(out).toHaveLength(32);
+    expect(out.at(-1)?.value).toBe("default-src 'self'");
   });
 });

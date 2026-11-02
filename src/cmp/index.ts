@@ -1,8 +1,8 @@
 /**
- * CMP subsystem (owner: M2): seven own adapters in catalog order (D12), recognition with ≥ 2 independent signals for
- * `high`, the generic heuristic for unknown banners (facts only, 5.5) and the pure D13 table.
+ * CMP subsystem: seven own adapters in catalog order, recognition with ≥ 2 independent signals for
+ * `high`, the generic heuristic for unknown banners (facts only, 5.5) and the pure table.
  *
- * Collector usage (M1), phase B — one decision, made by core (D12):
+ * Collector usage, phase B — one decision, made by core:
  *   const { adapter, detection } = await waitForCmp(page, { timeoutMs });
  *   await waitForBanner(page, adapter, { timeoutMs });   // banner visible and its geometry settled (≤ 2 s extra)
  *   const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });   // before any action
@@ -100,7 +100,7 @@ export async function waitForCmp(
   }
 }
 
-/** Interval between two geometry readings while a freshly shown banner settles (≥ 200 ms, G07). */
+/** Interval between two geometry readings while a freshly shown banner settles (≥ 200 ms). */
 const SETTLE_STEP_MS = 200;
 /** A banner whose geometry has not settled after this long is measured as it is and marked `geometryUnsettled`. */
 const SETTLE_MAX_MS = 2000;
@@ -117,7 +117,7 @@ function geometrySignature(layer: CmpFirstLayer): string {
 /**
  * After the first visibility an appearance animation (slide-in, fade-in) may still be running and the buttons are at
  * intermediate positions. Settled = two consecutive readings, at least `SETTLE_STEP_MS` apart, with the same container
- * and button boxes and no finite animation running in the container (G07). Bounded by `SETTLE_MAX_MS`.
+ * and button boxes and no finite animation running in the container. Bounded by `SETTLE_MAX_MS`.
  */
 async function geometrySettled(page: Page, adapter: CmpAdapter, first: CmpFirstLayer): Promise<boolean> {
   const end = Date.now() + SETTLE_MAX_MS;
@@ -166,7 +166,7 @@ export async function waitForBanner(
 
 /**
  * First-screen facts of an adapter whose recognition is below `high`, or whose own banner is not there, may hide a
- * visible banner of another kind: the generic heuristic is run as well (G13). When it finds one, its container, buttons
+ * visible banner of another kind: the generic heuristic is run as well. When it finds one, its container, buttons
  * and blocking replace the adapter's (which were measured on a banner that is not there); the adapter's state, bot/geo
  * signals and config stay. The result is a heuristic detection (`info` only, never clicked) with the adapter as a hint.
  * An adapter whose own banner was measured and is visible keeps its facts whatever its confidence: another element on

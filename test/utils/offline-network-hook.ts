@@ -1,8 +1,8 @@
 /**
- * Test-only preload for running the CLI from source in L2 (loopback only, no DNS):
+ * Test-only preload for running the CLI from source in (loopback only, no DNS):
  * `node --import test/utils/offline-network-hook.ts src/cli.ts <url> …`.
  *
- * It rewrites `src/core/net.ts` at load time so that `defaultNetworkConfig()` resolves every host with ENOTFOUND
+ * It rewrites `src/core/net.ts` at load time so that `defaultNetworkConfig` resolves every host with ENOTFOUND
  * instead of the system resolver. Each lookup is appended to the file named by `DSGVO_TEST_LOOKUP_LOG` (if set),
  * so tests can assert that names went only through this resolver. The CLI itself has no switch for this.
  */

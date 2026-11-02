@@ -1,9 +1,9 @@
 /**
- * L1 after the prototype review, integrator part:
- * - FC-06 / S-27: phase A cut short by throttling (429/503, D09) is not a clean observation. With evaluable pages
- *   the affected checks are `partial` (limitation `throttled`, 5.2); without any evaluable page they are
- *   `inconclusive` (reason `throttled`) instead of `completed` without findings.
- * - FT-19: counterexamples for guard conditions of the browser checks that no test pinned down.
+ * after the , integrator part:
+ * - / : phase A cut short by throttling (429/503) is not a clean observation. With evaluable pages
+ * the affected checks are `partial` (limitation `throttled`, 5.2); without any evaluable page they are
+ * `inconclusive` (reason `throttled`) instead of `completed` without findings.
+ * - : counterexamples for guard conditions of the browser checks that no test pinned down.
  */
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../src/checks/browser/consent-01.ts';
@@ -25,7 +25,7 @@ const THROTTLE_CHECKS: Array<[string, AnyCheck]> = [
   ['TRACK-01', track01],
 ];
 
-describe('throttled phase A (FC-06, S-27)', () => {
+describe('throttled phase A', () => {
   it.each(THROTTLE_CHECKS)(
     '%s: only a non-evaluable 429 start page → inconclusive (throttled)',
     (_id, check) => {
@@ -66,7 +66,7 @@ describe('throttled phase A (FC-06, S-27)', () => {
   });
 });
 
-describe('guard conditions without a counterexample so far (FT-19)', () => {
+describe('guard conditions without a counterexample so far', () => {
   it('shared.hasPhaseA: a skipped phase A is no pre-consent observation, even with page records', () => {
     const snap = site({ phases: [phase('A', { status: 'skipped', reason: 'time-budget' })] });
     expect(runCheck(consent01, snap)).toMatchObject({ status: 'inconclusive' });

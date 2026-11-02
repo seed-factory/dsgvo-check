@@ -1,6 +1,6 @@
 /**
- * TLS collector (owner: M4). One handshake per host variant (target, www, apex) with node:tls (see `probe.ts`):
- * port 443, or the explicit port of an https target URL for the target itself (S-20).
+ * TLS collector. One handshake per host variant (target, www, apex) with node:tls (see `probe.ts`):
+ * port 443, or the explicit port of an https target URL for the target itself.
  */
 import type { TlsCollector } from '../../core/collector.ts';
 import { errorMessage } from '../../core/errors.ts';
@@ -18,7 +18,7 @@ export interface TlsCollectorOptions {
   port?: number;
 }
 
-/** Explicit non-default port of an https target URL (S-20), else null. */
+/** Explicit non-default port of an https target URL, else null. */
 export function targetTlsPort(url: string): number | null {
   const u = new URL(url);
   return u.protocol === 'https:' && u.port ? Number(u.port) : null;

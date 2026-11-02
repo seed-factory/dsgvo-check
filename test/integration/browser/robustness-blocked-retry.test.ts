@@ -1,8 +1,8 @@
 /**
- * S-robustness-3 (G54): SCAN-BLOCKED follows the final outcome of a logical navigation. A legal subpage that answers
- * 503 with a bot-protection page and then, on the one repeat of the overload policy (D09), delivers its content, is an
+ * SCAN-BLOCKED follows the final outcome of a logical navigation. A legal subpage that answers
+ * 503 with a bot-protection page and then, on the one repeat of the overload policy , delivers its content, is an
  * evaluated page: the report must not say that its content was not evaluated. The first blocked attempt stays a fact
- * of the phase (`PhaseRecord.errors`, like the start-page retry of L2), without a new field. Synthetic hosts only.
+ * of the phase (`PhaseRecord.errors`, like the start-page retry of ), without a new field. Synthetic hosts only.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type DynamicHandler, type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
@@ -102,8 +102,8 @@ const privacyHits = (host: string) => server.requestsTo(host).filter((r) => r.pa
 const privacyVisit = (run: Awaited<ReturnType<typeof collect>>) =>
   run.result.sections.browser?.phases[0]?.pages.filter((p) => p.role === 'privacy') ?? [];
 
-describe('S-robustness-3: a blocked first attempt that the repeat made good is no SCAN-BLOCKED', () => {
-  it('503 + challenge, then 200: the page is evaluated, no SCAN-BLOCKED (old code: SCAN-BLOCKED for LEGAL-01, PRIV-01)', async () => {
+describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED', () => {
+  it('503 + challenge, then 200: the page is evaluated, no SCAN-BLOCKED', async () => {
     const run = await collect(server, { url: 'https://recovers.example.test/' });
     expect(privacyHits('recovers.example.test')).toHaveLength(2); // the repeat of the overload policy happened
     const visits = privacyVisit(run);

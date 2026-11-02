@@ -1,7 +1,7 @@
 # Fonts, maps, video and captcha embeds. Format: see _catalog.yaml.
 # Integration types (EMBED-02): iframe, js-api, static, tiles.
 services:
-  # ------------------------------------------------------------------ fonts (EMBED-01)
+  # fonts (EMBED-01)
   - id: google-fonts
     name: Google Fonts
     category: fonts
@@ -119,7 +119,7 @@ services:
     aliasesDe: [Monotype, Fonts.com, fonts.net]
     aliasesEn: [Monotype, Fonts.com]
 
-  # ------------------------------------------------------------------ maps (EMBED-02)
+  # maps (EMBED-02)
   - id: google-maps
     name: Google Maps
     category: maps
@@ -263,7 +263,7 @@ services:
     aliasesDe: [Apple MapKit, MapKit JS, Apple Maps]
     aliasesEn: [Apple MapKit, MapKit JS, Apple Maps]
 
-  # ------------------------------------------------------------------ video
+  # video
   - id: youtube
     name: YouTube
     category: video
@@ -346,7 +346,7 @@ services:
     aliasesDe: [Vimeo]
     aliasesEn: [Vimeo]
 
-  # ------------------------------------------------------------------ captcha
+  # captcha
   - id: google-recaptcha
     name: Google reCAPTCHA
     category: captcha

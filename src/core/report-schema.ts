@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Report contract (consensus 5.1–5.6). Published schema: schema/report.schema.json (JSON Schema 2020-12).
+ * Published report contract: schema/report.schema.json (JSON Schema 2020-12).
  * Rules: objects are open in the published schema (emitted with io "input", no additionalProperties:false);
  * zod parsing strips unknown keys, so use safeParse only for validation. Closed enums are `severity`, `confidence`,
  * check `status` and `scan.status`. Changing them is a major schema bump.
@@ -25,7 +25,6 @@ export const CheckStatusSchema = z.enum([
 export type CheckStatus = z.infer<typeof CheckStatusSchema>;
 
 export const ScanStatusSchema = z.enum(['complete', 'partial', 'failed']);
-export type ScanStatus = z.infer<typeof ScanStatusSchema>;
 
 export const FailOnSchema = z.enum(['critical', 'warning', 'none']);
 export type FailOn = z.infer<typeof FailOnSchema>;
@@ -49,15 +48,13 @@ export const ExitReasonSchema = z
     /^(threshold|check-error:[A-Z]+-\d{2}|unreachable|blocked|timeout|sandbox-unavailable|invalid-input|internal-error|report-write-failed|strict:inconclusive:[A-Z]+-\d{2}|strict:sandbox-off|strict:egress-unverified)$/,
   );
 
-// ---------------------------------------------------------------- evidence (5.3)
-
 const evidenceBase = {
   id: z.string().min(1),
   phase: PhaseSchema.optional(),
   page: z.string().optional(),
 };
 
-/** 5.3 `features.identifier.kind` (D05; persistent kinds are stored-match, persistent-param, user-supplied). */
+/** `features.identifier.kind`: persistent kinds are stored-match, persistent-param, user-supplied. */
 export const IdentifierKindSchema = z.enum([
   'stored-match',
   'persistent-param',
@@ -96,7 +93,7 @@ const RequestEvidence = z.object({
     z.object({ kind: z.literal('none') }),
   ]),
   provenance: z.enum(['network', 'service-worker', 'http-cache', 'memory-cache']).optional(),
-  /** Safe features extracted by the collector before redaction (D05); never parameter values. */
+  /** Safe features extracted by the collector before redaction; never parameter values. */
   features: z.object({
     identifier: z.object({ kind: IdentifierKindSchema, param: z.string().optional() }),
     matchesStoredIdentifier: z.boolean(),
@@ -184,7 +181,7 @@ const TlsEvidence = z.object({
   san: z.array(z.string()).optional(),
   notBefore: z.string().nullable().optional(),
   notAfter: z.string().nullable().optional(),
-  /** Certificate lifetime L = notAfter − notBefore in days (D19 relative expiry thresholds). */
+  /** Certificate lifetime L = notAfter − notBefore in days, used for relative expiry thresholds. */
   lifetimeDays: z.number().nullable().optional(),
   chainComplete: z.boolean().nullable().optional(),
   /** Own `X509Certificate.checkHost/checkIP` result; null when no certificate. */
@@ -252,7 +249,7 @@ const DocumentEvidence = z.object({
   errors: z.array(z.string()).optional(),
   sha256: z.string().optional(),
   /**
-   * Completeness manifest of the processed document (D15): counters and one flag only, no text. Lets a negative
+   * Completeness manifest of the processed document: counters and one flag only, no text. Lets a negative
    * search ("not named in …") state how much of the document was read.
    */
   manifest: z
@@ -377,8 +374,6 @@ export type PageEvidence = z.infer<typeof PageEvidence>;
 export type RedirectChainEvidence = z.infer<typeof RedirectChainEvidence>;
 export type LinkEvidence = z.infer<typeof LinkEvidence>;
 
-// ---------------------------------------------------------------- findings, checks, diagnostics
-
 const PartySchema = z.object({ name: z.string(), country: z.string().nullable() });
 
 export const FindingSchema = z.object({
@@ -462,8 +457,6 @@ export const DiagnosticSchema = z.object({
   params: ParamsSchema.optional(),
 });
 export type Diagnostic = z.infer<typeof DiagnosticSchema>;
-
-// ---------------------------------------------------------------- scan
 
 const EgressSchema = z.object({
   mode: z.enum(['direct', 'proxy']),
@@ -566,8 +559,6 @@ const ScanFailedSchema = z.object({
   coverage: CoverageSchema.optional(),
   options: ScanOptionsSchema.optional(),
 });
-
-// ---------------------------------------------------------------- top level
 
 const ToolSchema = z.object({ name: z.literal('dsgvo-check'), version: z.string() });
 
@@ -673,11 +664,9 @@ export const ReportSchema = z.union([FullReportSchema, FailedReportSchema]).meta
 export type FullReport = z.infer<typeof FullReportSchema>;
 export type FailedReport = z.infer<typeof FailedReportSchema>;
 export type Report = z.infer<typeof ReportSchema>;
-export type Summary = z.infer<typeof SummarySchema>;
 export type Counts = z.infer<typeof CountsSchema>;
 export type Disclaimer = z.infer<typeof DisclaimerSchema>;
 export type RulesetInfo = z.infer<typeof RulesetInfoSchema>;
-export type DatasetInfo = z.infer<typeof DatasetSchema>;
 export type LegalContext = z.infer<typeof LegalContextSchema>;
 
 export const REPORT_SCHEMA_ID = `https://github.com/seed-factory/dsgvo-check/schema/report/${SCHEMA_VERSION}.json`;

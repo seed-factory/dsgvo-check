@@ -54,7 +54,7 @@ describe('HDR-01 security headers', () => {
       expect(variantsOf(runCheck(hdr01, snap([start(headers)])))).not.toContain('anti-framing-missing');
     },
   );
-  describe('X-Frame-Options ALLOWALL (R15)', () => {
+  describe('X-Frame-Options ALLOWALL', () => {
     const withXfo = (value: string) => [...without('x-frame-options'), { name: 'x-frame-options', value }];
     const xfoVariants = (value: string) => variantsOf(runCheck(hdr01, snap([start(withXfo(value))])));
 
@@ -161,7 +161,7 @@ describe('HDR-01 security headers', () => {
     expect(variantsOf(runCheck(hdr01, snap([start(headers)])))).toEqual(['anti-framing-missing']);
   });
 
-  describe('a CSP over the stored limit (G42)', () => {
+  describe('a CSP over the stored limit', () => {
     const cut = (extra: Partial<HeaderRecord> = {}): HeaderRecord => ({
       name: 'content-security-policy',
       value: `default-src 'self'; ${'x'.repeat(2040)}`.slice(0, 2048),
@@ -198,7 +198,7 @@ describe('HDR-01 security headers', () => {
       expect(r.status).toBe('completed');
     });
 
-    describe('the boundary of the limit (R12): the record comes from the collector', () => {
+    describe('the boundary of the limit : the record comes from the collector', () => {
       /** A CSP of exactly `length` characters without URLs, stored the way the collectors store it. */
       const stored = (length: number, tail = '') => {
         const head = "default-src 'self'; x-pad ";
@@ -265,7 +265,7 @@ describe('HDR-01 security headers', () => {
     ['frame-ancestors https:', ['anti-framing-missing']],
     ["frame-ancestors 'self' https://a.example", []],
     ["frame-ancestors 'none'", []],
-  ])('FT-19: CSP "%s" → %j (a wildcard source allows every framer)', (directive, variants) => {
+  ])('CSP "%s" → %j (a wildcard source allows every framer)', (directive, variants) => {
     const headers = [
       ...without('x-frame-options', 'content-security-policy'),
       { name: 'content-security-policy', value: `default-src 'self'; ${directive}` },
@@ -337,7 +337,7 @@ describe('HDR-01 security headers', () => {
     expect(observationsOf(r)[0]?.evidence[0]).toMatchObject({ present: true, value });
   });
 
-  describe('combined HSTS fields: the first one decides (RFC 6797 §8.1, R15)', () => {
+  describe('combined HSTS fields: the first one decides (RFC 6797 §8.1)', () => {
     const hstsRun = (value: string) =>
       runCheck(
         hdr01,

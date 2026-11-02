@@ -33,11 +33,11 @@ const INVENTORY: ReadonlySet<ServiceCategory> = new Set([
 const STAGES: readonly TrackingStage[] = ['loaded', 'initialised', 'event-sent'];
 /**
  * The proven stage of one timing. `none` = the timing was carried out and no request of the service followed;
- * `not-checked` = the timing never took place (no banner click of that action), so absence proves nothing (R07).
+ * `not-checked` = the timing never took place (no banner click of that action), so absence proves nothing.
  */
 type TimingStage = TrackingStage | 'none' | 'not-checked';
 
-/** Timings in the order of the text, each with the param that carries its own stage (G37). */
+/** Timings in the order of the text, each with the param that carries its own stage. */
 const TIMINGS = [
   ['before-interaction', 'stageBeforeInteraction'],
   ['after-reject', 'stageAfterReject'],

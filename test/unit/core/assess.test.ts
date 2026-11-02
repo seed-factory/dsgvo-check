@@ -136,9 +136,9 @@ describe('ruleset resolution and overrides', () => {
     ).toEqual([]);
   });
 
-  it('maxSeverity uses static variants, ruleset and overrides, without the confidence cap (5.2)', () => {
+  it('maxSeverity uses static variants, ruleset and overrides, without the confidence cap', () => {
     expect(maxSeverityOf(check('TEST-01', ['soft', 'inventory']), ruleset)).toBe('warning');
-    const mediumOnly = defineCheck({
+    const multiVariantCheck = defineCheck({
       id: 'TEST-01',
       module: 'browser',
       requires: [],
@@ -149,12 +149,15 @@ describe('ruleset resolution and overrides', () => {
       run: () => [],
     });
     // A failed check has no confidence: the cap applies to concrete findings only.
-    expect(maxSeverityOf(mediumOnly, ruleset)).toBe('warning');
-    expect(maxSeverityOf(mediumOnly, ruleset, [{ rule: 'TEST-01.soft', severity: 'critical' }])).toBe(
+    expect(maxSeverityOf(multiVariantCheck, ruleset)).toBe('warning');
+    expect(maxSeverityOf(multiVariantCheck, ruleset, [{ rule: 'TEST-01.soft', severity: 'critical' }])).toBe(
       'critical',
     );
-    const capped = defineCheck({ ...mediumOnly, variants: [{ variant: 'hit', maxConfidence: 'medium' }] });
-    expect(maxSeverityOf(capped, ruleset)).toBe('critical');
+    const criticalVariantCheck = defineCheck({
+      ...multiVariantCheck,
+      variants: [{ variant: 'hit', maxConfidence: 'medium' }],
+    });
+    expect(maxSeverityOf(criticalVariantCheck, ruleset)).toBe('critical');
     expect(maxSeverityOf(check('NONE-01', ['x']), ruleset)).toBeNull();
   });
 
@@ -163,7 +166,7 @@ describe('ruleset resolution and overrides', () => {
       id: 'TEST-01',
       module: 'browser',
       requires: [],
-      variants: [{ variant: 'soft', maxConfidence: 'medium' }],
+      variants: [{ variant: 'soft' }],
       run: () => [],
     });
     const out = assess({

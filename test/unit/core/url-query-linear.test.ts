@@ -1,13 +1,3 @@
-/**
- * L0 (P2): `sanitizeUrl` walks the query in one linear pass.
- *
- * Before, the loop `for (const [k, v] of u.searchParams)` was quadratic in the number of parameters (the iterator of
- * `URLSearchParams` costs O(n) per step): `?a=` + `&a` × 32 768 (64 KiB) took 30-40 ms, 128 KiB 130 ms, 256 KiB 480 ms,
- * 512 KiB 1.8 s, 4 MiB about two minutes. The browser collector passes the URL of every request through `sanitizeUrl`,
- * whatever its length. The result must stay byte for byte the same: `REFERENCE` below is the old loop.
- *
- * Synthetic hosts only (`*.test`).
- */
 import { describe, expect, it } from 'vitest';
 import {
   containsAddress,
@@ -17,103 +7,72 @@ import {
   sanitizeUrl,
 } from '../../../src/core/url.ts';
 
-/** mulberry32: the same sequence on every run, no extra dependency. */
-const random = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
+const KiB = 1024;
+const manyParams = (bytes: number) => `http://h.test/?a=${'&a'.repeat(bytes / 2)}`;
 
-/**
- * The query part of the old `sanitizeUrl` (before P2), for a URL whose path needs no redaction. It iterates
- * `u.searchParams`, which is quadratic, so it is used on short inputs only.
- */
-function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST): string {
-  const u = new URL(raw);
-  u.username = '';
-  u.password = '';
-  u.hash = '';
-  if (u.search) {
-    const out = new URLSearchParams();
-    for (const [k, v] of u.searchParams) {
-      const name = k.toLowerCase();
-      const rule = QUERY_VALUE_RULES[name];
-      const keep = allowlist.has(name) && !containsAddress(v) && (rule ? rule(v, u) : true);
-      out.append(containsAddress(k) ? REDACTED : k, keep ? v : REDACTED);
-    }
-    u.search = out.toString().replaceAll('%5Bredacted%5D', REDACTED);
-  }
-  return u.toString().slice(0, 2048);
+/** Compare fourfold input growth, with warmed best samples to reduce scheduler and GC noise. */
+function expectLinear(build: (n: number) => string): void {
+  const small = build(128 * KiB);
+  const large = build(512 * KiB);
+  sanitizeUrl(small);
+  sanitizeUrl(large);
+  const best = (url: string) =>
+    Math.min(
+      ...Array.from({ length: 5 }, () => {
+        const started = performance.now();
+        sanitizeUrl(url);
+        return performance.now() - started;
+      }),
+    );
+  expect(best(large) / Math.max(best(small), 0.05)).toBeLessThan(12);
 }
 
-const timed = (fn: () => unknown): number => {
-  const started = performance.now();
-  fn();
-  return performance.now() - started;
-};
+describe('query processing scales with parameter count and value size', () => {
+  it('four times as many parameters stays below quadratic growth', () => expectLinear(manyParams));
 
-describe('P2: the time of sanitizeUrl grows linearly with the number of query parameters', () => {
-  // The shape of the report: one `&a` per parameter, no "=" (the cheapest parameter there is).
-  const manyParams = (bytes: number) => `http://h.test/?a=${'&a'.repeat(bytes / 2)}`;
-
-  it('64 KiB of parameters', () => {
-    const url = manyParams(64 * 1024);
-    expect(timed(() => sanitizeUrl(url))).toBeLessThan(200);
+  it.each([64 * KiB, 512 * KiB, 4 * 1024 * KiB])('bounds the output for %i input bytes', (bytes) => {
+    const out = sanitizeUrl(manyParams(bytes));
+    expect(out).toHaveLength(2048);
+    expect(out.startsWith(`http://h.test/?a=${REDACTED}&a=${REDACTED}`)).toBe(true);
   });
 
-  it('512 KiB of parameters', () => {
-    const url = manyParams(512 * 1024);
-    expect(timed(() => sanitizeUrl(url))).toBeLessThan(400);
+  it.each<[string, (n: number) => string]>([
+    ['pairs with a value', (n) => `a=1${'&a=1'.repeat(n / 4)}`],
+    ['long keys without a value', (n) => `${'k'.repeat(64)}${`&${'k'.repeat(64)}`.repeat(n / 65)}`],
+    ['escapes in every pair', (n) => `a=%41%2B%20${'&a=%41%2B%20'.repeat(n / 12)}`],
+    ['plus signs', (n) => `a=${'+'.repeat(n)}`],
+    ['one invalid escape run', (n) => `a=${'%E9'.repeat(n / 3)}`],
+    ['percent signs', (n) => `a=${'%'.repeat(n)}`],
+    ['empty sequences', (n) => '&'.repeat(n)],
+    ['equal signs', (n) => '='.repeat(n)],
+    ['pairs without a key', (n) => `=1${'&=1'.repeat(n / 3)}`],
+    ['allowlisted names', (n) => `hl=de${'&hl=de'.repeat(n / 6)}`],
+    ['addresses in values', (n) => `a=b@c.test${'&a=b@c.test'.repeat(n / 11)}`],
+    ['encoded addresses in keys', (n) => `b%40c.test${'&b%40c.test'.repeat(n / 11)}`],
+  ])('%s', (_name, query) => {
+    expectLinear((n) => `http://h.test/?${query(n)}`);
+    const out = sanitizeUrl(`http://h.test/?${query(1024 * KiB)}`);
+    expect(out.length).toBeLessThanOrEqual(2048);
+    expect(out).not.toMatch(/b(?:%40|@)c\.test/);
   });
 
-  it('4 MiB of parameters', { timeout: 60_000 }, () => {
-    const url = manyParams(4 * 1024 * 1024);
-    expect(timed(() => sanitizeUrl(url))).toBeLessThan(1000);
-  });
-
-  it('the time of 4x the input is not 16x (quadratic) the time of the input', () => {
-    // best of three: a hiccup (GC) of a single run must not decide
-    const best = (url: string) => Math.min(...[0, 1, 2].map(() => timed(() => sanitizeUrl(url))));
-    const small = best(manyParams(128 * 1024));
-    const large = best(manyParams(512 * 1024));
-    // linear: about 4; quadratic: about 16. The floor of 5 ms keeps a sub-millisecond `small` from deciding.
-    expect(large).toBeLessThan(Math.max(small, 5) * 10);
-  });
-
-  describe('other shapes of a long query', () => {
-    const MiB = 1024 * 1024;
-    const shapes: Array<[string, string]> = [
-      ['pairs with a value', `a=1${'&a=1'.repeat(MiB / 4)}`],
-      ['keys without a value, long keys', `${'k'.repeat(64)}${`&${'k'.repeat(64)}`.repeat(MiB / 65)}`],
-      ['escapes in every pair', `a=%41%2B%20${'&a=%41%2B%20'.repeat(MiB / 12)}`],
-      ['plus signs', `a=${'+'.repeat(MiB)}`],
-      ['one long invalid escape run', `a=${'%E9'.repeat(MiB / 3)}`],
-      ['percent signs only', `a=${'%'.repeat(MiB)}`],
-      ['empty sequences', '&'.repeat(MiB)],
-      ['equal signs only', '='.repeat(MiB)],
-      ['pairs without a key', `=1${'&=1'.repeat(MiB / 3)}`],
-      ['allowlisted names with a value', `hl=de${'&hl=de'.repeat(MiB / 6)}`],
-      ['addresses in the values', `a=b@c.test${'&a=b@c.test'.repeat(MiB / 11)}`],
-      ['encoded addresses in the keys', `b%40c.test${'&b%40c.test'.repeat(MiB / 11)}`],
-    ];
-
-    it.each(shapes)('%s: 1 MiB', (_name, query) => {
-      const url = `http://h.test/?${query}`;
-      expect(timed(() => sanitizeUrl(url))).toBeLessThan(1000);
-    });
-  });
-
-  it('the result of a very long query is cut at 2048 characters like any other', () => {
+  it('cuts a long mixed query at the public URL limit', () => {
     const out = sanitizeUrl(`http://h.test/?a=${'&b=1'.repeat(400_000)}`);
     expect(out).toHaveLength(2048);
     expect(out.startsWith(`http://h.test/?a=${REDACTED}&b=${REDACTED}&b=${REDACTED}`)).toBe(true);
   });
+
+  it.each([200, 340, 341, 342, 500, 1023, 1024, 1025, 2000])(
+    'cuts a query of %i short parameters at the same character boundary',
+    (n) => {
+      const expected = `http://h.test/?${Array.from({ length: n }, () => `a=${REDACTED}`).join('&')}`;
+      expect(sanitizeUrl(`http://h.test/?${'a&'.repeat(n)}`)).toBe(expected.slice(0, 2048));
+    },
+  );
 });
 
-describe('P2: the result is the same as before (counterexamples of ordinary queries)', () => {
+describe('query normalization and privacy', () => {
   it.each([
-    // [input, expected]; every expected value is what the quadratic version returned
     ['http://h.test/p?hl=de&x=1', `http://h.test/p?hl=de&x=${REDACTED}`],
     ['http://h.test/p?a=1&a=2&a=3', `http://h.test/p?a=${REDACTED}&a=${REDACTED}&a=${REDACTED}`],
     ['http://h.test/p?a&b&c', `http://h.test/p?a=${REDACTED}&b=${REDACTED}&c=${REDACTED}`],
@@ -169,7 +128,37 @@ describe('P2: the result is the same as before (counterexamples of ordinary quer
   });
 });
 
-describe('P2: differential test against the old loop', () => {
+/** mulberry32: the same sequence on every run, no extra dependency. */
+const random = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+/**
+ * The query part of the old `sanitizeUrl`, for a URL whose path needs no redaction. It iterates
+ * `u.searchParams`, which is quadratic, so it is used on short inputs only.
+ */
+function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST): string {
+  const u = new URL(raw);
+  u.username = '';
+  u.password = '';
+  u.hash = '';
+  if (u.search) {
+    const out = new URLSearchParams();
+    for (const [k, v] of u.searchParams) {
+      const name = k.toLowerCase();
+      const rule = QUERY_VALUE_RULES[name];
+      const keep = allowlist.has(name) && !containsAddress(v) && (rule ? rule(v, u) : true);
+      out.append(containsAddress(k) ? REDACTED : k, keep ? v : REDACTED);
+    }
+    u.search = out.toString().replaceAll('%5Bredacted%5D', REDACTED);
+  }
+  return u.toString().slice(0, 2048);
+}
+
+describe('query output matches the previous implementation', () => {
   const pieces = [
     'a',
     'b',

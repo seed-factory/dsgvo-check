@@ -1,4 +1,4 @@
-/** The check layer's explicit registry (D05). The core receives this list; it never imports checks itself. */
+/** The check layer's explicit registry. The core receives this list; it never imports checks itself. */
 import type { AnyCheck } from '../core/check.ts';
 import { CheckRegistry } from '../core/registry.ts';
 import { browserChecks } from './browser/index.ts';

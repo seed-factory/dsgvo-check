@@ -1,5 +1,5 @@
 /**
- * Small Node GET for robots.txt and sitemaps (class T probes, D18) that honours `NetworkConfig`: test routing and
+ * Small Node GET for robots.txt and sitemaps (class T probes) that honours `NetworkConfig`: test routing and
  * CA, `--proxy` (HTTP CONNECT) and the SSRF boundary. Body size is capped; nothing but the text is returned.
  */
 import { Agent, buildConnector, type Dispatcher, ProxyAgent, request } from 'undici';

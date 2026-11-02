@@ -1,5 +1,5 @@
 /**
- * L2: the global timeout and a browser that does not close (G51), what a cut collection looks like (G50), and the
+ * the global timeout and a browser that does not close , what a cut collection looks like , and the
  * reason of a partial result. Synthetic hosts only (`*.example.test`).
  */
 import { execFileSync } from 'node:child_process';
@@ -69,12 +69,12 @@ afterAll(async () => {
   for (const fn of cleanup) await fn().catch(() => undefined);
   for (const dir of leftovers) rmSync(dir, { recursive: true, force: true });
   await server?.close();
-  // No profile of this process is left behind by the collectors above (G57).
+  // No profile of this process is left behind by the collectors above .
   expect(profilesOfPid(process.pid)).toEqual([]);
 });
 
 /**
- * A chromium whose `context.close()` never returns for the browsers launched from the `from`-th launch on (the first
+ * A chromium whose `context.close` never returns for the browsers launched from the `from`-th launch on (the first
  * launch is the engine probe, the second phase A). The real browser keeps running until the test ends.
  */
 function hangingClose(from: number) {
@@ -107,7 +107,7 @@ function hangingClose(from: number) {
 const processesUsing = (dir: string) =>
   execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' }).includes(dir);
 
-describe('G51: a phase browser that does not close', () => {
+describe('a phase browser that does not close', () => {
   it('is killed after the close budget; the phase and its pages are kept, the profile is gone', async () => {
     const h = hangingClose(2);
     const t0 = Date.now();
@@ -125,7 +125,7 @@ describe('G51: a phase browser that does not close', () => {
     }
   });
 
-  it('after the global timeout the collector hands over phase A although the close hangs (old code: no browser section)', async () => {
+  it('after the global timeout the collector hands over phase A although the close hangs', async () => {
     const h = hangingClose(2);
     const lines: string[] = [];
     const t0 = Date.now();
@@ -179,7 +179,7 @@ describe('G51: a phase browser that does not close', () => {
   }, 60_000);
 });
 
-describe('G50: a collection cut by the deadline', () => {
+describe('a collection cut by the deadline', () => {
   it('phases that did not run are skipped/timeout, the running one is partial/timeout; the result carries the reason', async () => {
     const ac = new AbortController();
     const started = new Promise<void>((resolve) => {
@@ -208,7 +208,7 @@ describe('G50: a collection cut by the deadline', () => {
     expect(phases[0]?.pages.length).toBeGreaterThanOrEqual(1);
   });
 
-  // R27: the deadline that cuts the queue of phase A or the phases after it is `timeout`, never the local `time-budget`.
+  // : the deadline that cuts the queue of phase A or the phases after it is `timeout`, never the local `time-budget`.
   it('the abort while pages are still queued in phase A: A is partial/timeout (not time-budget), B and C skipped/timeout', async () => {
     server.reset();
     const ac = new AbortController();
@@ -295,10 +295,10 @@ describe('G50: a collection cut by the deadline', () => {
 });
 
 /**
- * Crosszone of R09: the probe of the fallback paths skipped for lack of time is an unfinished phase A, as is a cut
+ * Crosszone of : the probe of the fallback paths skipped for lack of time is an unfinished phase A, as is a cut
  * queue. LEGAL-01 is guarded without it (`fallback-skipped`), but the phase and the collector must say so as well.
  */
-describe('R09: the fallback probe skipped by the time budget', () => {
+describe('the fallback probe skipped by the time budget', () => {
   const BUDGET_MS = 5_000;
 
   const addSite = (host: string, delayStartUntil: number) =>

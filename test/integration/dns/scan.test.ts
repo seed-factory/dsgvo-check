@@ -1,5 +1,5 @@
 /**
- * L2: full `scan()` with only the MAIL-* checks against a fake authoritative DNS (dns2). Only the DNS collector
+ * full `scan` with only the MAIL-* checks against a fake authoritative DNS (dns2). Only the DNS collector
  * runs (no browser, no HTTP). No internet.
  */
 import { mkdtempSync } from 'node:fs';
@@ -35,7 +35,7 @@ const run = (failOn: 'critical' | 'warning') =>
     log: silentLogger,
   });
 
-describe('scan() with only the MAIL-* checks', () => {
+describe('scan with only the MAIL-* checks', () => {
   it('reports DMARC p=none and SPF ~all without DMARC enforcement (exit 1 with --fail-on warning)', async () => {
     dns.setZone(MAIL_SITE);
     const result = await run('warning');

@@ -1,5 +1,5 @@
 /**
- * L1 (D20, AGENTS rule 2): `redactText` masks e-mail addresses, `mailto:` values and URL query/path values in free
+ * (AGENTS rule 2): `redactText` masks e-mail addresses, `mailto:` values and URL query/path values in free
  * text that a collector copies into the snapshot (link text, accessible names, document parts). Domains and service
  * names stay, so the matching of PRIV-01 does not change. The function is idempotent.
  */
@@ -10,7 +10,7 @@ import { REDACTED } from '../../../src/core/url.ts';
 
 const MARK = 'zq7marker';
 
-describe('redactText: DNS TXT records (G02)', () => {
+describe('redactText: DNS TXT records', () => {
   it.each([
     // tags after an address survive, whether or not a space follows the semicolon
     [
@@ -191,7 +191,7 @@ describe('maskEmails and maskMailto', () => {
   });
 });
 
-describe('api.ts exports the masks for checks and collectors (D05/D23 import boundary)', () => {
+describe('api.ts exports the masks for checks and collectors (import boundary)', () => {
   it('exports redactText and maskMailto', () => {
     expect(api.redactText('info@example.test')).toBe(`${REDACTED}@example.test`);
     expect(api.maskMailto('mailto:info@example.test')).toBe(`mailto:${REDACTED}@example.test`);

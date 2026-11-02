@@ -1,8 +1,9 @@
 # Formulierungsleitfaden: тексты находок, `legalNote` и дисклеймер
 
-**Зачем этот документ и кому он нужен.** `dsgvo-check` выдаёт технические наблюдения о чужих сайтах, и каждая строка отчёта — потенциальное утверждение факта в смысле § 824 BGB. Этот документ фиксирует, как такие строки формулируются: какие слова запрещены и чем заменяются, как устроен шаблон находки, что означают статусы правового якоря и как выглядят черновики всех немецких текстов, которые DSGVO-эксперт заказчика вычитывает к этапу 3 ([ТЗ](../../specs/dsgvo-check_TZ.md), раздел «От нас»). Разработчикам он даёт готовые правила для L0-lint стоп-слов и теста полноты текстов; решения, на которые он опирается, — D04, D13, D16, D19, D22 и раздел 4 [консенсуса](../consensus/README.md).
 
-Все немецкие тексты ниже — **черновики** (`draft: true`, штамп «Textentwurf — Prüfung durch Auftraggeber ausstehend» в отчёте). Релиз 1.0 с неутверждённым `de` заблокирован; `en` выходит только вычитанным, иначе `--lang en` в 1.0 недоступен (D22).
+**Зачем этот документ и кому он нужен.** `dsgvo-check` выдаёт технические наблюдения о чужих сайтах, и каждая строка отчёта — потенциальное утверждение факта в смысле § 824 BGB. Этот документ фиксирует, как такие строки формулируются: какие слова запрещены и чем заменяются, как устроен шаблон находки, что означают статусы правового якоря и как выглядят черновики всех немецких текстов, которые DSGVO-эксперт заказчика вычитывает к этапу 3 ([ТЗ](../../specs/dsgvo-check_TZ.md), раздел «От нас»). Разработчикам он даёт готовые правила для L0-lint стоп-слов и теста полноты текстов; контракты результата и правил проверки описаны в [архитектуре](../02-architecture.md) и [спецификации проверок](../03-checks.md).
+
+Все немецкие тексты ниже — **черновики** (`draft: true`, штамп «Textentwurf — Prüfung durch Auftraggeber ausstehend» в отчёте). Релиз 1.0 с неутверждённым `de` заблокирован; `en` выходит только вычитанным, иначе `--lang en` в 1.0 недоступен.
 
 ---
 
@@ -14,19 +15,19 @@
 
 | Слой | Поле отчёта | О чём говорит | Пример |
 |---|---|---|---|
-| Beobachtung | `findings[].messageId` + `params`, `evidence[]` | Измеренный факт: что, где, когда, в какой фазе, в каком состоянии (`delivery / result / provenance`, README 5.3) | «Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an `www.google-analytics.com` beobachtet (Phase A, Startseite)» |
+| Beobachtung | `findings[].messageId` + `params`, `evidence[]` | Измеренный факт: что, где, когда, в какой фазе, в каком состоянии (`delivery / result / provenance`, [архитектура](../02-architecture.md) §11.5) | «Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an `www.google-analytics.com` beobachtet (Phase A, Startseite)» |
 | Klassifikation | `classification {source, datasetVersion}`, `confidence`, `provider`, `parent`, `dpfEntity` | Сопоставление с версионированной базой; всегда с происхождением и уверенностью | «Dienst laut Dienstekatalog v2026.10.1: Google Analytics 4, Kategorie Analyse, Konfidenz hoch» |
 | Rechtlicher Kontext | `legalNoteId` → статический `legalNote` по `checkId` | Общий текст, одинаковый для всех сайтов: нормы, позиции надзора, статус якоря (раздел 4). Без глаголов оценки, без «Sie» | «§ 25 Abs. 1 TDDDG verlangt für das Speichern von oder den Zugriff auf Informationen in der Endeinrichtung eine Einwilligung …» |
 
-Правило: слой «Beobachtung» никогда не содержит слов из раздела 2; слой «Rechtlicher Kontext» никогда не ссылается на проверяемый сайт. Индивидуальная правовая оценка («Ihre Website verstößt gegen § 25 TDDDG») не пишется ни в одном слое и не генерируется под сайт (в том числе LLM) — это non-feature продукта ([ADR-0002](../adr/0002-product-boundary.md), кандидат ADR-001 консенсуса).
+Правило: слой «Beobachtung» никогда не содержит слов из раздела 2; слой «Rechtlicher Kontext» никогда не ссылается на проверяемый сайт. Индивидуальная правовая оценка («Ihre Website verstößt gegen § 25 TDDDG») не пишется ни в одном слое и не генерируется под сайт (в том числе LLM) — это non-feature продукта ([ТЗ](../../specs/dsgvo-check_TZ.md), раздел «От нас»).
 
 ### 1.2 Три правовые опоры принципа
 
 | Опора | Что говорит | Следствие для текстов |
 |---|---|---|
-| **§ 2 Abs. 1, § 3 RDG; BGH *Smartlaw*, I ZR 113/20 (09.09.2021)** | Rechtsdienstleistung — «jede Tätigkeit in konkreten fremden Angelegenheiten, sobald sie eine rechtliche Prüfung des Einzelfalls erfordert». BGH признал digitaler Vertragsdokumentengenerator **не** Rechtsdienstleistung: провайдер не действует в конкретном чужом деле, продукт сопоставим с Formularhandbuch | Статический `legalNote` по `checkId` — generisches Hilfsmittel той же природы. Граница пересекается, если текст делает вывод о конкретном сайте или генерируется индивидуально. RDG — не основание самого запрета (ошибка Opus-П № 25 в консенсусе), основание — ТЗ и § 824 BGB; RDG касается платных аудитов заказчика (§ 5 RDG Nebenleistung — вопрос 15 заказчику) |
-| **§ 824 BGB, § 4 Nr. 2 UWG, § 186 StGB** | Unwahre Tatsachenbehauptung о чужом предприятии (Kreditgefährdung, Herabsetzung); для Einzelunternehmer — üble Nachrede | Защита — проверяемость: URL, UTC, фаза, Messumgebung, версия базы, `confidence`, «Momentaufnahme zum Prüfzeitpunkt». Самая вероятная «unwahre Tatsache» — утверждение о получателе данных: поэтому модель `provider / parent / dpfEntity` (D16) и запрет слов «Empfänger», «Übermittlung» |
-| **ТЗ «Юридические выводы в отчёте — нельзя»** | «Формулировка „nicht gefunden in der Datenschutzerklärung“, а не „verstößt gegen DSGVO“»; нераспознанный баннер → `info` «Banner nicht erkannt» | Статусы проверки `completed / partial / inconclusive / not_applicable / skipped / error` без `pass/fail` (D04); уровни `critical / warning / info` — приоритет по ruleset, не констатация нарушения (вопрос 1 заказчику, рекомендация B) |
+| **§ 2 Abs. 1, § 3 RDG; BGH *Smartlaw*, I ZR 113/20 (09.09.2021)** | Rechtsdienstleistung — «jede Tätigkeit in konkreten fremden Angelegenheiten, sobald sie eine rechtliche Prüfung des Einzelfalls erfordert». BGH признал digitaler Vertragsdokumentengenerator **не** Rechtsdienstleistung: провайдер не действует в конкретном чужом деле, продукт сопоставим с Formularhandbuch | Статический `legalNote` по `checkId` — generisches Hilfsmittel той же природы. Граница пересекается, если текст делает вывод о конкретном сайте или генерируется индивидуально. RDG — не основание самого запрета, основание — ТЗ и § 824 BGB; RDG касается платных аудитов заказчика (§ 5 RDG Nebenleistung — вопрос к юристу заказчика) |
+| **§ 824 BGB, § 4 Nr. 2 UWG, § 186 StGB** | Unwahre Tatsachenbehauptung о чужом предприятии (Kreditgefährdung, Herabsetzung); для Einzelunternehmer — üble Nachrede | Защита — проверяемость: URL, UTC, фаза, Messumgebung, версия базы, `confidence`, «Momentaufnahme zum Prüfzeitpunkt». Самая вероятная «unwahre Tatsache» — утверждение о получателе данных: поэтому модель `provider / parent / dpfEntity` и запрет слов «Empfänger», «Übermittlung» |
+| **ТЗ «Юридические выводы в отчёте — нельзя»** | «Формулировка „nicht gefunden in der Datenschutzerklärung“, а не „verstößt gegen DSGVO“»; нераспознанный баннер → `info` «Banner nicht erkannt» | Статусы проверки `completed / partial / inconclusive / not_applicable / skipped / error` без `pass/fail`; уровни `critical / warning / info` — приоритет по ruleset, не констатация нарушения (формулировку легенды уровней утверждает заказчик) |
 
 ### 1.3 «Отсутствие находки ≠ соответствие»
 
@@ -41,13 +42,13 @@
 | Пропущена | `skipped` | «Nicht geprüft: {reason}» | "Not checked: {reason}" |
 | Сбой | `error` | «Prüfung nicht abgeschlossen: {reason}» | "Check did not complete: {reason}" |
 
-`{reason}` — текст ключа `reason.<id>` из 5.20; у этих статусов находки нет. Покрытие выводится как три числа «geplant / beobachtet / auswertbar» (D09); «первый визит» утверждается только для стартовой страницы, остальные — «Folgeseite in derselben Sitzung» (D08).
+`{reason}` — текст ключа `reason.<id>` из 5.20; у этих статусов находки нет. Покрытие выводится как три числа «geplant / beobachtet / auswertbar»; «первый визит» утверждается только для стартовой страницы, остальные — «Folgeseite in derselben Sitzung».
 
 ---
 
 ## 2. Запрещённые слова и конструкции (de и en)
 
-Таблица — источник для L0-lint. Lint прогоняет все строки `data/texts/{de,en}.yaml` и `data/legal/**` (D22: «ни одной пользовательской строки вне `data/`»), а также рендер HTML, консоли, JUnit и Job Summary на фикстурах. Режимы:
+Таблица — источник для L0-lint. Lint прогоняет все строки `data/texts/{de,en}.yaml` и `data/legal/**` («ни одной пользовательской строки вне `data/`»), а также рендер HTML, консоли, JUnit и Job Summary на фикстурах. Режимы:
 
 - `block` — любое вхождение (регистронезависимо, по границам слов) роняет L0;
 - `label` — слово запрещено как самостоятельная метка/заголовок, разрешено только внутри перечисленных составных слов (колонка «Замена»);
@@ -60,25 +61,25 @@
 | 1 | `verstößt`, `Verstoß`, `verstoßen`, `rechtswidrig`, `illegal`, `unzulässig`, `nicht DSGVO-konform`, `DSGVO-Verstoß`, `Rechtsverletzung` | `violat(e\|es\|ed\|ion\|ions)`, `breach`, `unlawful`, `illegal`, `non-compliant`, `infringement` | `block` | Индивидуальная правовая оценка (§ 824 BGB; RDG-линия Smartlaw) | «wurde beobachtet», «wurde nicht gefunden», ссылка на `legalNote` | "was observed", "was not found", see legal context |
 | 2 | `ohne Einwilligung`, `ohne Rechtsgrundlage`, `Einwilligung liegt (nicht) vor`, `einwilligungslos` | `without consent`, `without (a) legal basis`, `no consent (was) given` | `block` | Сканер не видит Einwilligung (PIMS, Vertrag, lit. f) и Rechtsgrundlage | «vor einer Interaktion mit dem Einwilligungsbanner», «nach Betätigung von „{button}“», «kein Banner erkannt»; CMP-Status `granted/denied` как измеренное состояние | "before any interaction with the consent banner", "after clicking “{button}”", "no banner recognised"; CMP state `granted/denied` |
 | 3 | `Tracker`, `Tracking-Cookie`, `Spionage`, `Überwachung`, `Schnüffel-` | `tracker`, `tracking cookie`, `spyware`, `surveillance` | `label` | Квалификация без доказательства назначения | «Dienst der Kategorie Analyse/Marketing laut Dienstekatalog v{catalogVersion}», «Kennung laut Open Cookie Database v{ocdVersion}»; допустимо: «Tracking-Signatur» только в составе «First-party-Endpunkt mit Tracking-Signatur erkannt» | "service in category analytics/marketing per service catalogue v{catalogVersion}" |
-| 4 | `Datenübermittlung in die USA`, `Übermittlung in ein Drittland`, `Empfänger`, `übermittelt an`, `Daten fließen` | `data transfer to the US`, `third-country transfer`, `recipient`, `transmits data to` | `block`; в `legalNote` — `quote` для Gesetzeswortlaut (Art. 13 Abs. 1 lit. e, f) | Роль получателя и Übermittlungsinstrument не наблюдаемы; «Empfänger: Google LLC (US)» — потенциально unwahre Tatsache (D16) | «Anbieter laut Dienstekatalog v{catalogVersion}: {provider} ({providerCountry}), Konzernmutter {parent} ({parentCountry}); „{dpfEntity}“ am {dpfCheckedAt} in der DPF-Liste geführt. Ort der Verarbeitung und Übermittlungsinstrument wurden nicht geprüft.» | "provider per service catalogue …; processing location and transfer mechanism were not checked" |
-| 5 | `EU-Ausland`, `Nicht-EU`, `EU-Egress`, `außerhalb der EU` | `outside the EU`, `non-EU` | `block` | Релевантная зона — EWR, не EU (D11) | «EWR», «außerhalb des EWR», «Egress-Region laut Nutzerangabe: EWR» | "EEA", "outside the EEA" |
-| 6 | `unbedingt erforderlich`, `nicht erforderlich`, `notwendig`, `essenziell`, `technisch notwendig` как вывод | `strictly necessary`, `(not) necessary`, `essential` as a verdict | `label` | Оценка по § 25 Abs. 2 Nr. 2 TDDDG; allowlist — не классификация (Fable-К §4.13) | «Die Erforderlichkeit wurde nicht bewertet», «nicht bewertet (Allowlist v{allowlistVersion})»; допустимо в названии кнопки сайта внутри кавычек („Nur technisch notwendige“) | "necessity was not assessed", "not assessed (allowlist v{allowlistVersion})" |
+| 4 | `Datenübermittlung in die USA`, `Übermittlung in ein Drittland`, `Empfänger`, `übermittelt an`, `Daten fließen` | `data transfer to the US`, `third-country transfer`, `recipient`, `transmits data to` | `block`; в `legalNote` — `quote` для Gesetzeswortlaut (Art. 13 Abs. 1 lit. e, f) | Роль получателя и Übermittlungsinstrument не наблюдаемы; «Empfänger: Google LLC (US)» — потенциально unwahre Tatsache | «Anbieter laut Dienstekatalog v{catalogVersion}: {provider} ({providerCountry}), Konzernmutter {parent} ({parentCountry}); „{dpfEntity}“ am {dpfCheckedAt} in der DPF-Liste geführt. Ort der Verarbeitung und Übermittlungsinstrument wurden nicht geprüft.» | "provider per service catalogue …; processing location and transfer mechanism were not checked" |
+| 5 | `EU-Ausland`, `Nicht-EU`, `EU-Egress`, `außerhalb der EU` | `outside the EU`, `non-EU` | `block` | Релевантная зона — EWR, не EU | «EWR», «außerhalb des EWR», «Egress-Region laut Nutzerangabe: EWR» | "EEA", "outside the EEA" |
+| 6 | `unbedingt erforderlich`, `nicht erforderlich`, `notwendig`, `essenziell`, `technisch notwendig` как вывод | `strictly necessary`, `(not) necessary`, `essential` as a verdict | `label` | Оценка по § 25 Abs. 2 Nr. 2 TDDDG; allowlist — не классификация | «Die Erforderlichkeit wurde nicht bewertet», «nicht bewertet (Allowlist v{allowlistVersion})»; допустимо в названии кнопки сайта внутри кавычек („Nur technisch notwendige“) | "necessity was not assessed", "not assessed (allowlist v{allowlistVersion})" |
 | 7 | `manipulativ`, `Dark Pattern`, `täuschend`, `irreführend`, `Nudging`, `versteckt` | `manipulative`, `dark pattern`, `deceptive`, `misleading`, `nudging`, `hidden` | `block` | Оценочные термины из Rechtsprechung; вместо них — измеренные факты | «Schaltfläche „{label}“: Fläche {area} px², Kontrast {contrast}:1, Element `{tag}`», «blockiert die Seite: {blocking}» | "button “{label}”: area {area} px², contrast {contrast}:1, element `{tag}`" |
 | 8 | `Datenleck`, `Sicherheitslücke`, `angreifbar`, `verwundbar`, `unsicher`, `kritische Schwachstelle`, `ausnutzbar`, `kompromittiert` | `data leak`, `vulnerable`, `exploitable`, `insecure`, `security hole`, `compromised` | `block` | Утверждение о состоянии чужой системы без верификации; `T1_EXPLOITABLE_CVE` остаётся только в JSON | «Versionsangabe „{version}“ gefunden; {database} (Stand {datasetDate}) listet {count} Einträge, darunter {cve}», «Pfad antwortete mit HTTP 200» | "version string “{version}” found; {database} (as of {datasetDate}) lists {count} entries" |
 | 9 | `Abmahngefahr`, `abmahnfähig`, `Bußgeld droht`, `Haftungsrisiko`, `Schadensersatz`, `Schaden` | `risk of a fine`, `liability`, `damages`, `legal risk`, `harm` | `block` | Прогноз правовых последствий = Rechtsberatung; EuGH C-300/21: нарушение ≠ ущерб | Убрать. В дисклеймере — только абстрактная ссылка на нормы | Remove |
 | 10 | `Impressumspflicht verletzt`, `fehlendes Impressum`, `Datenschutzerklärung fehlt`, `DKIM fehlt`, `DMARC fehlt`, `kein Impressum` | `missing imprint`, `no privacy policy`, `DKIM (is) missing` | `block` | Сканер видел только посещённые страницы, метки и проверенные селекторы | «auf {n} von {m} geprüften Seiten nicht gefunden; über {via} erreichbar: {reachable}», «unter {count} geprüften Selektoren nicht gefunden», «unter `_dmarc.{domain}` nicht gefunden» | "not found on {n} of {m} pages checked", "not found under {count} selectors checked" |
 | 11 | `sicher`, `geschützt`, `konform`, `bestanden`, `erfüllt`, `in Ordnung`, `grün`, `Score`, `Note`, `✅` | `compliant`, `passed`, `secure`, `protected`, `safe`, `OK`, `score`, `grade` | `block` (`sicher` — `quote`: § 19 Abs. 4 S. 3 TDDDG «als sicher anerkanntes Verschlüsselungsverfahren») | Negative proof невозможен | «Keine Beobachtung», «nicht geprüft», «nicht auswertbar» | "no observation", "not checked", "not assessable" |
 | 12 | `Google speichert`, `Meta verarbeitet`, `leitet weiter an`, `der Betreiber hat`, `der Anbieter will`, `absichtlich` | `Google stores`, `forwards to`, `the operator has`, `intentionally` | `block` | Утверждения о поведении или намерениях третьих лиц; субъект предложения — ресурс, запрос, заголовок | «Eine Anfrage an {host} wurde beobachtet», «Der Header {name} wurde in der Antwort von {url} nicht gefunden» | "a request to {host} was observed" |
-| 13 | `Sie müssen`, `Sie sind verpflichtet`, `Pflicht`, `muss` в Hinweis | `you must`, `you are required to`, `is mandatory` | `block` в поле `hint` («Sie müssen», «Sie sind verpflichtet» — везде) | Remediation как Rechtsberatung (Fable-К §4.6) | Технический Hinweis: «Consent-Gating oder Zwei-Klick-Lösung prüfen», «lokale Einbindung der Schriftdateien prüfen» | "check consent gating or two-click embedding" |
-| 14 | `Beweis`, `beweist`, `nachgewiesen`, `Verstöße` как заголовок раздела | `proof`, `proves`, `violations` as a heading | `block` | «Beleg» и «Befund» — термины отчёта (D22) | «Beleg», «Befunde / Beobachtungen», «belegt durch» | "evidence", "findings / observations" |
-| 15 | `Daten übertragen` (TLS-03), `Daten abgeflossen`; `gesendet` и `Antwort erhalten` вне ключей с таким условием | `data was transmitted`; `sent`, `response received` outside such keys | `block`; `gesendet`/`sent` — только в ключах allowlist, чьё условие требует `delivery: sent`; `Antwort erhalten` — `result: response` | Отправку доказывает только `delivery: sent`, ответ — `result: response`; `attempted`, `blocked-by-browser` и `provenance: service-worker / http-cache / memory-cache` — не новый сетевой обмен (README 5.3; CONSENT-01, TLS-03) | «Anfrage gestartet / gesendet / vom Browser blockiert», «Antwort erhalten», «aus Service Worker bzw. Cache bedient», «Mixed Content: {resolution}» | "request started / sent / blocked by the browser", "response received", "served from service worker or cache" |
-| 16 | `veraltet`, `Text veraltet`, `falsch` о Datenschutzerklärung | `outdated`, `wrong` about a policy | `block` | Роль оператора и контекст цитаты сканеру не видны (ошибка Fable-П № 46) | «Formulierung prüfen: Rollenänderung zum 02.04.2026», «Verweis auf „{oldNorm}“ gefunden; abgelöst am {date} durch {newNorm}» | "wording to review: role change effective 02.04.2026" |
+| 13 | `Sie müssen`, `Sie sind verpflichtet`, `Pflicht`, `muss` в Hinweis | `you must`, `you are required to`, `is mandatory` | `block` в поле `hint` («Sie müssen», «Sie sind verpflichtet» — везде) | Remediation как Rechtsberatung | Технический Hinweis: «Consent-Gating oder Zwei-Klick-Lösung prüfen», «lokale Einbindung der Schriftdateien prüfen» | "check consent gating or two-click embedding" |
+| 14 | `Beweis`, `beweist`, `nachgewiesen`, `Verstöße` как заголовок раздела | `proof`, `proves`, `violations` as a heading | `block` | «Beleg» и «Befund» — термины отчёта | «Beleg», «Befunde / Beobachtungen», «belegt durch» | "evidence", "findings / observations" |
+| 15 | `Daten übertragen` (TLS-03), `Daten abgeflossen`; `gesendet` и `Antwort erhalten` вне ключей с таким условием | `data was transmitted`; `sent`, `response received` outside such keys | `block`; `gesendet`/`sent` — только в ключах allowlist, чьё условие требует `delivery: sent`; `Antwort erhalten` — `result: response` | Отправку доказывает только `delivery: sent`, ответ — `result: response`; `attempted`, `blocked-by-browser` и `provenance: service-worker / http-cache / memory-cache` — не новый сетевой обмен ([архитектура](../02-architecture.md) §11.5; CONSENT-01, TLS-03) | «Anfrage gestartet / gesendet / vom Browser blockiert», «Antwort erhalten», «aus Service Worker bzw. Cache bedient», «Mixed Content: {resolution}» | "request started / sent / blocked by the browser", "response received", "served from service worker or cache" |
+| 16 | `veraltet`, `Text veraltet`, `falsch` о Datenschutzerklärung | `outdated`, `wrong` about a policy | `block` | Роль оператора и контекст цитаты сканеру не видны | «Formulierung prüfen: Rollenänderung zum 02.04.2026», «Verweis auf „{oldNorm}“ gefunden; abgelöst am {date} durch {newNorm}» | "wording to review: role change effective 02.04.2026" |
 | 17 | `Einwilligung erteilt`, `Nutzer hat zugestimmt`, `Zustimmung erfolgt` | `consent (was) given`, `user agreed` | `block` | Вывод о волеизъявлении; наблюдаем только состояние CMP и клик коллектора | «CMP-Status laut {source}: granted (Herkunft: {origin})», «Schaltfläche „{button}“ wurde vom Scanner betätigt» | "CMP state per {source}: granted (origin: {origin})" |
 | 18 | Строки `T[0-9]_[A-Z_]+` (`crmCode`) | то же | `block` во всех человекочитаемых форматах | Коды каталога содержат оценку («MISLEADING», «EXPLOITABLE», «BROKEN»); только JSON, описание в схеме «interne Taxonomie des Auftraggebers, keine rechtliche Einordnung» | — | — |
 | 19 | `BFSG-konform`, `barrierefrei`, `WCAG-konform` | `BFSG-compliant`, `accessible`, `WCAG-compliant` | `block` | Применимость BFSG и ручные критерии WCAG не определяются | «axe-core v{axeVersion} meldete {count} Regelverletzungen (WCAG 2.1 {level})» | "axe-core v{axeVersion} reported {count} rule violations" |
 | 20 | `personenbezogene Daten werden übertragen` как факт | `personal data is transferred` | `block` | Спор об идентифицируемости (C-413/23 P); для EMBED хватает DSK OH Rn. 101 | «IP-Adresse des Besuchers wird beim Laden an {host} offengelegt (technisch bedingt)» | "the visitor's IP address is disclosed to {host} when the resource loads (technically inherent)" |
 
-Allowlist (слова, которые lint пропускает по контексту): `Einwilligungsbanner`, `Einwilligungsverwaltung`, `Einwilligungsverwaltungsdienst`, `Datenschutzerklärung`, `DSGVO`, `TDDDG`, `DDG`, названия кнопок сайта в типографских кавычках „…“, цитаты норм и решений в полях `quote` с `source`, «Ausnutzbarkeit» и «Übermittlungsinstrument» только в обороте «wurde(n) nicht geprüft» (и в дисклеймере), «Phase C übermittelt die IP-Adresse des prüfenden Rechners …» только в Messumgebung и Nutzungshinweise (D08), axe-core-термин «violations» / «Regelverletzungen» только в BFSG-01 рядом с `axe-core v{axeVersion}`. Любое новое исключение — запись в allowlist с `reason` и ревью заказчика.
+Allowlist (слова, которые lint пропускает по контексту): `Einwilligungsbanner`, `Einwilligungsverwaltung`, `Einwilligungsverwaltungsdienst`, `Datenschutzerklärung`, `DSGVO`, `TDDDG`, `DDG`, названия кнопок сайта в типографских кавычках „…“, цитаты норм и решений в полях `quote` с `source`, «Ausnutzbarkeit» и «Übermittlungsinstrument» только в обороте «wurde(n) nicht geprüft» (и в дисклеймере), «Phase C übermittelt die IP-Adresse des prüfenden Rechners …» только в Messumgebung и Nutzungshinweise, axe-core-термин «violations» / «Regelverletzungen» только в BFSG-01 рядом с `axe-core v{axeVersion}`. Любое новое исключение — запись в allowlist с `reason` и ревью заказчика.
 
 Lint-ошибка печатает ключ, язык, найденный паттерн и строку таблицы: `de.yaml CONSENT-01.tracking-completed.description: stopword #1 "Verstoß" (rule: block)`.
 
@@ -96,7 +97,7 @@ Lint-ошибка печатает ключ, язык, найденный пат
 | Хранилище | «wurde gespeichert / vom Browser abgelehnt / nur versucht / mit einer Anfrage gesendet», «Cookie „{name}“ (Domain {domain}, Laufzeit {lifetime}, gesetzt durch {setter})» — без значения | "was stored / rejected by the browser / attempted only" |
 | Фаза | «vor einer Interaktion mit dem Einwilligungsbanner» (A), «nach Mausbewegung und Scrollen ohne Klick» (A′), «nach Betätigung von „{button}“» (B/C), «auf dem mobilen Viewport 390×844» (M), «kein Banner erkannt» | "before any interaction with the consent banner", "after mouse movement and scrolling without a click", "after clicking “{button}”", "on the mobile viewport 390×844", "no banner recognised" |
 | Классификация | «laut Dienstekatalog v{catalogVersion}», «laut Open Cookie Database v{ocdVersion}», «Konfidenz: hoch / mittel / niedrig», «unbekannter Host» | "per service catalogue v{catalogVersion}", "confidence: high / medium / low", "unknown host" |
-| Получатель (D16) | «Anbieter laut Dienstekatalog: {provider} ({providerCountry}); Konzernmutter {parent} ({parentCountry}); „{dpfEntity}“ am {dpfCheckedAt} in der DPF-Liste geführt; Ort der Verarbeitung: nicht feststellbar» | "provider per service catalogue …; processing location: not determinable" |
+| Получатель | «Anbieter laut Dienstekatalog: {provider} ({providerCountry}); Konzernmutter {parent} ({parentCountry}); „{dpfEntity}“ am {dpfCheckedAt} in der DPF-Liste geführt; Ort der Verarbeitung: nicht feststellbar» | "provider per service catalogue …; processing location: not determinable" |
 | Граница измерения | «wurde nicht bewertet», «wurde nicht geprüft», «nicht feststellbar», «nicht eindeutig», «Nicht auswertbar: …» | "was not assessed", "was not checked", "not determinable", "not unambiguous" |
 | Воспроизводимость | «Momentaufnahme vom {startedAt} UTC», «Messumgebung: {engine} {engineVersion}, Viewport {viewport}, Egress {egressMode}» (полный набор строк — 3.5) | "snapshot taken {startedAt} UTC" |
 | Повторяемость | «in Phase B vor dem Klick erneut beobachtet: ja / nein» (`replicated`) | "observed again in phase B before the click: yes / no" |
@@ -125,19 +126,19 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 
 | Элемент | Поле | Правило формулировки |
 |---|---|---|
-| Was | `subject`, `serviceId`, `params.host` | Имя ресурса или сервиса в кавычках или `code`; значения cookies, TC-String, query-значения — никогда (D20) |
+| Was | `subject`, `serviceId`, `params.host` | Имя ресурса или сервиса в кавычках или `code`; значения cookies, TC-String, query-значения — никогда |
 | Wo | `pages[]`, `coverage` | Всегда «auf {n} von {m} geprüften Seiten»; при одной странице — URL |
-| Wann | `phases[]`, `tMs`, `navigationId`, `actionId?`, `scan.startedAt` | Фаза словами из 3.1; `{sinceMs}` = `tMs` запроса минус `tMs` навигации (`navigationId`) или действия (`actionId`) на монотонной шкале; вычисляется при рендере, в снимке не хранится (README 5.3) |
+| Wann | `phases[]`, `tMs`, `navigationId`, `actionId?`, `scan.startedAt` | Фаза словами из 3.1; `{sinceMs}` = `tMs` запроса минус `tMs` навигации (`navigationId`) или действия (`actionId`) на монотонной шкале; вычисляется при рендере, в снимке не хранится ([архитектура](../02-architecture.md) §11.5) |
 | Zustand | `request.delivery`, `request.result`, `request.provenance`; `cookie.state` | Три поля раздельно. `delivery`: «gestartet, Versand nicht bestätigt» (`attempted`) / «vom Browser blockiert» / «gesendet» (`sent`). `result`: «Antwort erhalten (HTTP {status})» / «fehlgeschlagen ({errorText})» / «abgebrochen» / «keine Antwort beobachtet» (`none`). `provenance`: «über das Netzwerk» / «aus Service Worker bzw. Cache bedient». Cookies: `attempted / accepted / rejected / sent`. «gesendet» — только при `delivery: sent`, «Antwort erhalten» — только при `result: response` (№ 15) |
 | Herkunft классификации | `classification {source, datasetVersion}` | Имя базы и версия в каждом предложении о категории |
-| Уверенность | `confidence` | «Konfidenz hoch / mittel / niedrig»; `medium` → уровень не выше `warning`, `low` → не выше `info` (D04) — текст уровня не повторяет |
+| Уверенность | `confidence` | «Konfidenz hoch / mittel / niedrig»; `medium` → уровень не выше `warning`, `low` → не выше `info` — текст уровня не повторяет |
 | Ограничения | `limitations[]`, `diagnostics[]` | Тексты `limitation.<id>` и `reason.<id>` — в 5.20; диагностики `SCAN-*` выводятся отдельным блоком «Einschränkungen der Messung», не внутри находки |
 
 ### 3.3 Правила для Hinweis zur manuellen Prüfung
 
 1. Называет **что проверить**, а не **что сделать по закону**: «prüfen, ob …», «abgleichen», «dokumentieren». Допустимые технические рекомендации: «Consent-Gating oder Zwei-Klick-Lösung prüfen», «lokale Einbindung prüfen», «DMARC-Richtlinie und Berichtsadresse prüfen».
 2. Перечисляет, чего сканер **не** видел: Rechtsgrundlage, Auftragsverarbeitungsvertrag, Erforderlichkeit, вторая ступень баннера, PIMS-сигнал.
-3. Один абзац ≤ 400 знаков, без ссылок на внешние сайты (URL в отчёте — текстом, не ссылками; D25).
+3. Один абзац ≤ 400 знаков, без ссылок на внешние сайты (URL в отчёте — текстом, не ссылками).
 4. Для `info`-вариантов с ручной оценкой (`reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `category-only`, `ambiguous-match`) Hinweis начинается словами «Manuelle Bewertung erforderlich:».
 
 ### 3.4 Заголовки и служебные тексты отчёта
@@ -153,12 +154,12 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 | Подавление | «Unterdrückt bis {expires}: {reason}» | "Suppressed until {expires}: {reason}" |
 | Baseline | «In Baseline enthalten (Stufe unverändert)» / «Stufe gegenüber Baseline gestiegen» | "In baseline (level unchanged)" / "Level increased versus baseline" |
 | Черновик | «Textentwurf — Prüfung durch Auftraggeber ausstehend» | "Draft text — pending review by the client" |
-| Футер HTML (README 5.8) | «Datensätze und Attribution»; строка на элемент `datasets[]`: «{name} (Stand {date}, Lizenz {license}, sha256 {sha256}): {attribution}»; атрибуция всех использованных CC BY-источников, для GHSA: «GitHub Advisory Database, Lizenz CC BY 4.0» | "Datasets and attribution"; GHSA: "GitHub Advisory Database, licensed under CC BY 4.0" |
+| Футер HTML ([архитектура](../02-architecture.md) §13.5) | «Datensätze und Attribution»; строка на элемент `datasets[]`: «{name} (Stand {date}, Lizenz {license}, sha256 {sha256}): {attribution}»; атрибуция всех использованных CC BY-источников, для GHSA: «GitHub Advisory Database, Lizenz CC BY 4.0» | "Datasets and attribution"; GHSA: "GitHub Advisory Database, licensed under CC BY 4.0" |
 | Уровни | «Kritisch / Warnung / Hinweis» — с пояснением в легенде: «Stufen folgen dem Regelwerk {rulesetVersion} (Rechtsstand {rechtsstand}) und stellen keine rechtliche Bewertung dar» | "Critical / Warning / Info — levels follow ruleset {rulesetVersion} … and are not a legal assessment" |
 
 ### 3.5 Строки раздела «Messumgebung»
 
-Раздел строится из `scan.environment` (README 5.1, 5.7); каждая строка выводится только при своём условии.
+Раздел строится из `scan.environment` ([архитектура](../02-architecture.md) §11.2 и §7.6); каждая строка выводится только при своём условии.
 
 | Условие | de | en |
 |---|---|---|
@@ -166,14 +167,14 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 | `--proxy` и DNS-коллектор включён | «DNS-Abfragen direkt über Resolver {resolver}, nicht über den Proxy» | "DNS queries sent directly to resolver {resolver}, not via the proxy" |
 | `--proxy` | «Zieladressen lokal geprüft; Proxy {proxy}» (`{proxy}` — схема, хост и порт, без учётных данных) | "Destination addresses checked locally; proxy {proxy}" |
 | `--proxy` | «CDN-Knoten nach lokaler Namensauflösung gewählt, nicht nach der Egress-Region» | "CDN node selected by local name resolution, not by egress region" |
-| фаза C выполнена | «Phase C übermittelt die IP-Adresse des prüfenden Rechners an Drittanbieter» (D08) | "Phase C discloses the scanning machine's IP address to third parties" |
+| фаза C выполнена | «Phase C übermittelt die IP-Adresse des prüfenden Rechners an Drittanbieter» | "Phase C discloses the scanning machine's IP address to third parties" |
 | захват pagehide/keepalive недоступен | «Anfragen beim Verlassen der Seite (pagehide, keepalive) wurden nicht erfasst» | "Requests sent on page exit (pagehide, keepalive) were not captured" |
 
 ---
 
 ## 4. Статусы правового якоря
 
-`legalNote` — один текст на `checkId` (не на вариант), хранится в `data/texts/{de,en}.yaml`, раздел `legalNotes`, по `legalNoteId` = `checkId` ([архитектура](../02-architecture.md) §9.4, §10.1, §13.4), имеет поля `status`, `reviewedAt`, `reviewBy` (D22). Статус говорит о **прочности источника**, а не о тяжести находки: уровень задаёт ruleset `de-2026`, и связь статус → уровень в коде отсутствует. Отчёт выводит статус рядом с нормами, чтобы читатель видел, на чём стоит контекст.
+`legalNote` — один текст на `checkId` (не на вариант), хранится в `data/texts/{de,en}.yaml`, раздел `legalNotes`, по `legalNoteId` = `checkId` ([архитектура](../02-architecture.md) §9.4, §10.1, §13.4), имеет поля `status`, `reviewedAt`, `reviewBy`. Статус говорит о **прочности источника**, а не о тяжести находки: уровень задаёт ruleset `de-2026`, и связь статус → уровень в коде отсутствует. Отчёт выводит статус рядом с нормами, чтобы читатель видел, на чём стоит контекст.
 
 | `status` | Значение | Типичные источники | Отображение в HTML (de) | Отображение (en) |
 |---|---|---|---|---|
@@ -185,14 +186,14 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 
 Правила:
 
-1. В `legalNote` каждое решение приводится с Az., датой и инстанцией; факты с пометкой ⚠ в консенсусе (раздел 7) несут её и в черновике и снимаются только после первоисточника (juris, curia.europa.eu, пресс-релиз суда).
+1. В `legalNote` каждое решение приводится с Az., датой и инстанцией; непроверенные факты несут пометку ⚠ и в черновике и снимаются только после первоисточника (juris, curia.europa.eu, пресс-релиз суда).
 2. У `legalNote` один статус. Если у проверки две линии (CONSENT-04: блокирующий баннер — `court-appellate`, неблокирующий — `contested`), в тексте появляется абзац «Umstritten ist: …», а статус берётся по основному варианту `critical`.
-3. `reviewBy` — дата следующей вычитки; CI предупреждает при просрочке (D22, Opus-К). Для `contested` и `court-first-instance` срок — 6 месяцев, для остальных — 12.
-4. Статус уровень не ограничивает: lint D19 («T3 не выше `warning`») сверяет ruleset с `crmCode`, а не со статусом якоря. FILE-01 имеет статус `technical` и `critical`-вариант `sensitive-signature`.
+3. `reviewBy` — дата следующей вычитки; CI предупреждает при просрочке. Для `contested` и `court-first-instance` срок — 6 месяцев, для остальных — 12.
+4. Статус уровень не ограничивает: lint («T3 не выше `warning`») сверяет ruleset с `crmCode`, а не со статусом якоря. FILE-01 имеет статус `technical` и `critical`-вариант `sensitive-signature`.
 
 Назначение статусов по проверкам (черновик, вычитывает заказчик):
 
-| `checkId` | `status` | Якорь (из консенсуса, раздел 4) |
+| `checkId` | `status` | Правовой якорь |
 |---|---|---|
 | CONSENT-01 | `court-appellate` | § 25 Abs. 1 TDDDG; EuGH *Planet49* C-673/17; BGH I ZR 7/16. Абзац «Umstritten»: запрос ресурса без Speicherung/Zugriff; GTM по VG Hannover 10 A 5385/22 ⚠ |
 | CONSENT-02 | `court-appellate` | § 25 Abs. 1, Abs. 2 Nr. 2 TDDDG; *Planet49*; BGH I ZR 7/16 |
@@ -226,13 +227,13 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 
 **Формат.** `data/texts/de.yaml` и `data/texts/en.yaml`, ICU MessageFormat 1, ключ `checkId.variant` = `messageId`. Под ключом — поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung) по [архитектуре](../02-architecture.md) §11.4 и §13.4; в таблицах им соответствуют колонки «Titel», «Beschreibung» и «Hinweis zur manuellen Prüfung», `en`-таблицы дают `description` одной строкой. `legalNote` лежит в тех же файлах, в разделе `legalNotes`, по `legalNoteId` = `checkId` (§13.4). Плейсхолдеры `{…}` — из `findings[].params`; множественное число — через ICU `{count, plural, one {…} other {…}}`, в черновиках для краткости показана форма `other`; перечисления (`delivery`, `result`, `identifierKind`, `targetKind`, `kind`, `basis`, `transferred`, `detail`) — через `select` с обязательной ветвью `other`. Все записи этого раздела несут `draft: true`.
 
-**Реестр ключей.** Канон вариантов и `messageId` — реестр [спецификации проверок](../03-checks.md) §2.1. Раздел 5 ему следует: у каждого `checkId.variant` реестра здесь ровно один ключ, других ключей находок нет; при переименовании в реестре ключи здесь переименовываются вслед за ним (03-checks §1). Уровень в скобках после ключа — значение ruleset по умолчанию из реестра, до overrides и кэпа confidence; текст его не повторяет. Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет уровня, `messageId` и `crmCode`, а их тексты — ключи `reason.<id>` и `limitation.<id>` в 5.20 (README §5.1, §5.5; 03-checks §2.1). Исключение — только два `locked`-варианта CONSENT-04 (`banner-not-recognized`, `cmp-not-supported`): находка `info` при статусе проверки `inconclusive`.
+**Реестр ключей.** Канон вариантов и `messageId` — реестр [спецификации проверок](../03-checks.md) §2.1. Раздел 5 ему следует: у каждого `checkId.variant` реестра здесь ровно один ключ, других ключей находок нет; при переименовании в реестре ключи здесь переименовываются вслед за ним (03-checks §1). Уровень в скобках после ключа — значение ruleset по умолчанию из реестра, до overrides и кэпа confidence; текст его не повторяет. Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет уровня, `messageId` и `crmCode`, а их тексты — ключи `reason.<id>` и `limitation.<id>` в 5.20 ([архитектура](../02-architecture.md) §9.1 и §11.3; 03-checks §2.1). Исключение — только два `locked`-варианта CONSENT-04 (`banner-not-recognized`, `cmp-not-supported`): находка `info` при статусе проверки `inconclusive`.
 
-**Расхождения с реестром 03-checks — требуют правки 03-checks.** По именам и уровням вариантов расхождений нет. Три прежних отклонения guide теперь совпадают с реестром и правки 03-checks не требуют: LEGAL-01 — вариант `unresolved` (имя README §4 и §6 № 38); TLS-02 — два варианта срока, `certificate-expiring` (`warning`) и `certificate-expiry-approaching` (`info`), по двум порогам D19; MAIL-02 — вариант `ptr-mechanism` (`info`, README §4). Открытым остаётся одно расхождение по исходу без находки:
+**Расхождения с реестром 03-checks — требуют правки 03-checks.** По именам и уровням вариантов расхождений нет. Три прежних отклонения guide теперь совпадают с реестром и правки 03-checks не требуют: LEGAL-01 — вариант `unresolved`; TLS-02 — два варианта срока, `certificate-expiring` (`warning`) и `certificate-expiry-approaching` (`info`), по двум порогам срока действия; MAIL-02 — вариант `ptr-mechanism` (`info`, [спецификация проверок](../03-checks.md) §3.11). Открытым остаётся одно расхождение по исходу без находки:
 
 | # | Где в 03-checks | Что там | Что в guide | Основание | Нужная правка 03-checks |
 |---|---|---|---|---|---|
-| 1 | §2.1, строка CONSENT-05; §4, строка `inconclusive` таблицы «Уровень» | Один `reason` `reject-not-confirmed` на три основания: отказ не подтверждён, CMP не поддержан, захват pagehide недоступен | `reason.reject-not-confirmed` (ветки `default-only`, `no-decision`, `not-stored`, `cmp-unknown`) и отдельный `reason.pagehide-capture-unavailable` вместе с limitation того же имени (5.20) | README §4, CONSENT-05: отказ подтверждается по состоянию CMP, независимо от сети. При недоступном захвате pagehide отказ подтверждён, и строка «Ablehnung nicht bestätigt» утверждала бы неверный факт (§ 824 BGB, раздел 1.2) | Добавить `pagehide-capture-unavailable` в столбец `reason` строки CONSENT-05 §2.1 и развести строку `inconclusive` в §4 на два `reason` |
+| 1 | §2.1, строка CONSENT-05; §4, строка `inconclusive` таблицы «Уровень» | Один `reason` `reject-not-confirmed` на три основания: отказ не подтверждён, CMP не поддержан, захват pagehide недоступен | `reason.reject-not-confirmed` (ветки `default-only`, `no-decision`, `not-stored`, `cmp-unknown`) и отдельный `reason.pagehide-capture-unavailable` вместе с limitation того же имени (5.20) | [Спецификация проверок](../03-checks.md) §4, CONSENT-05: отказ подтверждается по состоянию CMP, независимо от сети. При недоступном захвате pagehide отказ подтверждён, и строка «Ablehnung nicht bestätigt» утверждала бы неверный факт (§ 824 BGB, раздел 1.2) | Добавить `pagehide-capture-unavailable` в столбец `reason` строки CONSENT-05 §2.1 и развести строку `inconclusive` в §4 на два `reason` |
 
 Общие плейсхолдеры: `{url}` — страница; `{n}`/`{m}` — «auf n von m geprüften Seiten»; `{phase}` — фаза словами из 3.1; `{host}`; `{service}`; `{catalogVersion}`; `{confidence}`; `{delivery}`, `{result}`, `{provenance}` — словами из 3.2; `{sinceMs}` — вычисленное время от навигации или действия (3.2); `{startedAt}`.
 
@@ -384,7 +385,7 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 | `PRIV-01.category-only` | For the loaded service {service} only the category term “{categoryTerm}” was found at {policyUrl}; manual assessment required. |
 | `PRIV-01.ambiguous-match` | A mention of “{service}” was found only in text not displayed on the page or in a sentence with an ambiguous negation: “{quote}”; manual assessment required. |
 
-PDF, неполный manifest и язык вне de/en — не находка, а статус `inconclusive` с `reason.pdf-not-evaluated`, `reason.document-incomplete` или `reason.language-unsupported` (5.20). Если баннер не удалось закрыть отказом, а manifest полон, PRIV-01 остаётся `completed` или `partial` с `limitation.banner-open` (5.20), а не `inconclusive` (D15).
+PDF, неполный manifest и язык вне de/en — не находка, а статус `inconclusive` с `reason.pdf-not-evaluated`, `reason.document-incomplete` или `reason.language-unsupported` (5.20). Если баннер не удалось закрыть отказом, а manifest полон, PRIV-01 остаётся `completed` или `partial` с `limitation.banner-open` (5.20), а не `inconclusive`.
 
 ### 5.9 PRIV-02 — Aussage der Datenschutzerklärung und gegenläufige Beobachtung
 
@@ -402,7 +403,7 @@ PDF, неполный manifest и язык вне de/en — не находка,
 | `PRIV-02.contradiction-single` | The privacy policy states “{quote}”; a contrary observation was made once ({url}, {phase}). |
 | `PRIV-02.wording-to-review` | Wording to review: “{quote}” ({policyUrl}) — {note}. |
 
-Неоднозначная формулировка — не находка, а статус `inconclusive` с `reason.claim-ambiguous` (5.20). Исторический или условный контекст («früher», «außer») и другой продукт находки не дают (README §4).
+Неоднозначная формулировка — не находка, а статус `inconclusive` с `reason.claim-ambiguous` (5.20). Исторический или условный контекст («früher», «außer») и другой продукт находки не дают ([спецификация проверок](../03-checks.md) §3.2).
 
 ### 5.10 LEGAL-01 — Impressum und Datenschutzerklärung: Auffindbarkeit
 
@@ -438,7 +439,7 @@ PDF, неполный manifest и язык вне de/en — не находка,
 | `MAIL-01.weak-option` (`info`) | DMARC-Option mit eingeschränkter Wirkung | Der DMARC-Eintrag für {domain} enthält {option} (`sp=none`, `t=y`, keine `rua`-Adresse, Null-MX ohne `p=reject`). Berichtsadressen werden maskiert dargestellt: {ruaMasked}. | Option gegen die gewünschte Richtlinie prüfen. |
 | `MAIL-01.legacy-pct` (`info`) | DMARC-Eintrag mit Legacy-Tag `pct={pct}` | Der DMARC-Eintrag für {domain} enthält `pct={pct}` ({record}). Das Tag stammt aus RFC 7489 und ist in RFC 9989 entfallen; die übrige Auswertung folgt RFC 9989. | Verwendung des Tags `pct` gegen RFC 9989 prüfen. |
 
-`{record}` — запись с замаскированными до домена `mailto:` в `rua`/`ruf` (D20).
+`{record}` — запись с замаскированными до домена `mailto:` в `rua`/`ruf`.
 
 | Schlüssel | en |
 |---|---|
@@ -512,7 +513,7 @@ PDF, неполный manifest и язык вне de/en — не находка,
 
 `legalNote`: wie TLS-01 (`authority-consensus`).
 
-Для IP-цели (`tls.ipTarget`, проверка `checkIP`, без SNI) вместо `{host}` выводится «IP-Adresse {ip}»: в ICU — `{targetKind, select, ip {IP-Adresse {ip}} other {{host}}}`; ниже сокращённо `{target}`. Порог срока — относительно срока действия L (D19): `warning` при остатке < min(14 д, 25 % L), `info` при < min(30 д, 50 % L), при L ≤ 10 д находки о сроке нет.
+Для IP-цели (`tls.ipTarget`, проверка `checkIP`, без SNI) вместо `{host}` выводится «IP-Adresse {ip}»: в ICU — `{targetKind, select, ip {IP-Adresse {ip}} other {{host}}}`; ниже сокращённо `{target}`. Порог срока — относительно срока действия L: `warning` при остатке < min(14 д, 25 % L), `info` при < min(30 д, 50 % L), при L ≤ 10 д находки о сроке нет.
 
 | Schlüssel | Titel (de) | Beschreibung (de) | Hinweis zur manuellen Prüfung (de) |
 |---|---|---|---|
@@ -542,7 +543,7 @@ Handshake без установленной причины — не находк
 | `CONSENT-05.cookieless-ping-after-reject` (`warning`) | Anfrage ohne dauerhafte Kennung nach Ablehnung | Nach bestätigter Ablehnung wurde eine Anfrage an {host} ohne dauerhafte Kennung gesendet (Consent-Mode-Parameter: {gcs}, `denied`). | Consent-Mode-Konfiguration prüfen. |
 | `CONSENT-05.connect-only-after-reject` (`info`) | Nur Verbindungsaufbau zu {host} nach Ablehnung | Nach bestätigter Ablehnung wurde im Proxy-Protokoll ein Verbindungsaufbau (CONNECT) zu {host} ohne beobachtete HTTP-Anfrage protokolliert. | Vorverbindungen (preconnect) prüfen. |
 
-Подтверждённый отказ: `origin: action` после клика, `decision.responded: true`, все необязательные категории `denied`, после reload — `origin: stored` (README §4, 5.3). Неподтверждённый отказ (в том числе только default-denied) и нераспознанный CMP — не вариант, а статус `inconclusive` с `reason.reject-not-confirmed` (5.20); при установленных условиях отдельно выдаётся `CONSENT-04.reject-ineffective`. Если отказ подтверждён, но захват pagehide/keepalive недоступен, — `inconclusive` с `reason.pagehide-capture-unavailable` и `limitation.pagehide-capture-unavailable` (расхождение 1 с реестром, начало раздела 5).
+Подтверждённый отказ: `origin: action` после клика, `decision.responded: true`, все необязательные категории `denied`, после reload — `origin: stored` ([архитектура](../02-architecture.md) §8.8 и §11.5). Неподтверждённый отказ (в том числе только default-denied) и нераспознанный CMP — не вариант, а статус `inconclusive` с `reason.reject-not-confirmed` (5.20); при установленных условиях отдельно выдаётся `CONSENT-04.reject-ineffective`. Если отказ подтверждён, но захват pagehide/keepalive недоступен, — `inconclusive` с `reason.pagehide-capture-unavailable` и `limitation.pagehide-capture-unavailable` (расхождение 1 с реестром, начало раздела 5).
 
 | Schlüssel | en |
 |---|---|
@@ -665,7 +666,7 @@ Handshake без установленной причины — не находк
 
 ### 5.20 Исходы без находки: `reason.<id>` и `limitation.<id>`
 
-Исходы `inconclusive`, `error`, `skipped` и `not_applicable` — не варианты: у них нет уровня, `messageId`, `crmCode` и находки (README §5.1, §5.5; 03-checks §2.1). Исключение — только `locked`-варианты CONSENT-04 (5.4). Текст `reason.<id>` подставляется в статусную строку проверки из 1.3 («Nicht auswertbar: {reason}», «Nicht geprüft: {reason}»), поэтому начинается без повторения статуса; тексты `limitation.<id>` выводятся в строке «Einschränkungen» шаблона 3.2. Ids — по столбцу «Не варианты» реестра 03-checks §2.1; отклонение — только `reason.pagehide-capture-unavailable` (расхождение 1, начало раздела 5). `reason.tls-blocked` реестр не перечисляет, но его называют README 5.2 и 03-checks §3.14. Схема ключей `reason.<id>` / `limitation.<id>` и ветки `select` — предложение автора, не согласовано (открытый вопрос 3; 03-checks Q6). Один id — один текст для всех проверок, которые его используют.
+Исходы `inconclusive`, `error`, `skipped` и `not_applicable` — не варианты: у них нет уровня, `messageId`, `crmCode` и находки ([архитектура](../02-architecture.md) §9.1 и §11.3; 03-checks §2.1). Исключение — только `locked`-варианты CONSENT-04 (5.4). Текст `reason.<id>` подставляется в статусную строку проверки из 1.3 («Nicht auswertbar: {reason}», «Nicht geprüft: {reason}»), поэтому начинается без повторения статуса; тексты `limitation.<id>` выводятся в строке «Einschränkungen» шаблона 3.2. Ids — по столбцу «Не варианты» реестра 03-checks §2.1; отклонение — только `reason.pagehide-capture-unavailable` (расхождение 1, начало раздела 5). `reason.tls-blocked` реестр не перечисляет, но его называют [архитектура](../02-architecture.md) §12 и 03-checks §3.14. Схема ключей `reason.<id>` / `limitation.<id>` и ветки `select` — предложение автора, не согласовано (открытый вопрос 3; 03-checks Q6). Один id — один текст для всех проверок, которые его используют.
 
 | Ключ | Проверки | de | en |
 |---|---|---|---|
@@ -688,7 +689,7 @@ Handshake без установленной причины — не находк
 
 ## 6. Черновик дисклеймера (Hinweis / Haftungsausschluss)
 
-Дисклеймер выводится в каждом человекочитаемом формате и в `disclaimer` JSON; он обязателен и в минимальном отчёте при `scan.status: failed`. Флага отключения нет (D22). Абзацы с пометкой **[условие]** рендерятся только при выполнении условия, чтобы текст всегда оставался истинным. Плейсхолдеры берутся из `tool`, `ruleset`, `datasets[]`, `scan.environment`.
+Дисклеймер выводится в каждом человекочитаемом формате и в `disclaimer` JSON; он обязателен и в минимальном отчёте при `scan.status: failed`. Флага отключения нет. Абзацы с пометкой **[условие]** рендерятся только при выполнении условия, чтобы текст всегда оставался истинным. Плейсхолдеры берутся из `tool`, `ruleset`, `datasets[]`, `scan.environment`.
 
 > **Hinweis zur Art dieses Berichts.** Dieser Bericht wurde automatisiert durch `dsgvo-check` {toolVersion} am {startedAt} UTC erstellt (Messumgebung: {engine} {engineVersion}, Viewport {viewport}, Sprache de-DE, Zeitzone Europe/Berlin; User-Agent „{userAgent}“; Egress-Modus {egressMode}, Egress-Region {egressRegion} laut {egressSource}). Er dokumentiert technische Beobachtungen zum Prüfzeitpunkt: Netzwerkanfragen, Cookies und Speichereinträge, Seitenelemente, HTTP-Header, DNS-Einträge und TLS-Verbindungen. Die Ergebnisse sind eine Momentaufnahme und können sich jederzeit ändern.
 >
@@ -722,13 +723,13 @@ Handshake без установленной причины — не находк
 
 Что проверяет L0 на дисклеймере: ни одного слова из раздела 2 (кроме цитаты § 19 TDDDG, если она появится), все плейсхолдеры определены в схеме, каждый условный абзац привязан к полю отчёта (`scan.options.screenshots`, `diagnostics[]`, `scan.environment.egress`, `scan.status`, `texts.draft`), тест рендера для каждого условия в обоих состояниях.
 
-Английская версия дисклеймера выходит только вычитанной; до этого `--lang en` недоступен (D22).
+Английская версия дисклеймера выходит только вычитанной; до этого `--lang en` недоступен.
 
-**Nutzungshinweise** (README проекта и `--help`, draft; D08, D10, 5.7):
+**Nutzungshinweise** (README проекта и `--help`, draft; [архитектура](../02-architecture.md) §7.6):
 
 > `dsgvo-check` ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites Dritter sind nicht zur Veröffentlichung vorgesehen. HTTP-Anfragen des Scanners tragen den User-Agent `dsgvo-check/{version} (+https://github.com/{org}/{repo}; passive DSGVO/security check)`; der Browser meldet sich als Chrome mit demselben Token. TLS-Verbindungsaufbauten (TLS-02, TLS-04) und DNS-Abfragen tragen keinen User-Agent. Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach der Annahme im Banner lädt. Mit `--proxy` laufen DNS-Abfragen direkt über den Resolver, nicht über den Proxy.
 
-`{org}` и `{repo}` не содержат `bot`, `crawler`, `spider`, `robot` (D27, вопрос 7: Borlabs ловит `bot` в UA); L0 проверяет подставленные значения.
+`{org}` и `{repo}` не содержат `bot`, `crawler`, `spider`, `robot` (Borlabs ловит `bot` в UA); L0 проверяет подставленные значения.
 
 ---
 
@@ -745,7 +746,7 @@ Handshake без установленной причины — не находк
 | `dsk-oh` | «Die Orientierungshilfe der Datenschutzkonferenz für Anbieter:innen von digitalen Diensten liegt in Version 1.2 (Stand November 2024) vor; die Randnummern in den Rechtshinweisen beziehen sich auf diese Fassung.» | `current` | Новая версия → перепроверка всех Rn. в `legalNote` | Rn. 121, 124–125, 134–137 — ⚠ до чтения PDF |
 | `eprivacy-vo` | «Der Entwurf einer ePrivacy-Verordnung wurde zurückgezogen (Amtsblatt vom 06.10.2025, C/2025/5423). Maßgeblich bleiben die Richtlinie 2002/58/EG und § 25 TDDDG.» | `withdrawn` | — | — |
 | `digital-omnibus` | «Die Europäische Kommission hat am 19.11.2025 Änderungen der Regeln für den Zugriff auf Endeinrichtungen vorgeschlagen (Digital Omnibus). Der Rat hat am 21.10.2026 ein Verhandlungsmandat beschlossen (ST 14756/26); das Europäische Parlament hat noch keine Position angenommen. Geltendes Recht ist unverändert.» | `proposal` | Возможные einwilligungsfreie Zwecke (агрегированная Reichweitenmessung) → профиль ruleset по дате; «Ablehnen mit einem Klick» как прямая норма | Содержание мандата — по вторичным источникам ⚠ |
-| `eu-us-dpf` | «Der Angemessenheitsbeschluss (EU) 2023/1795 (EU-US Data Privacy Framework) ist in Kraft. Das Gericht der EU hat die Klage T-553/23 am 03.09.2025 abgewiesen; das Rechtsmittel C-703/25 P (eingelegt am 31.10.2025) ist beim Gerichtshof anhängig. Angaben zur DPF-Liste in diesem Bericht geben den Stand am genannten Prüfdatum wieder und beziehen sich auf Organisationen, nicht auf einzelne Dienste.» | `in-force-contested` | Отмена → `dpfEntity.listed` теряет смысл, тексты D16 меняются одним data-релизом; на уровень не влияет | Письмо EDPB 31.07.2026 после *Trump v. Slaughter* (29.06.2026) — вторичные источники ⚠, в блок не выводится до первоисточника |
+| `eu-us-dpf` | «Der Angemessenheitsbeschluss (EU) 2023/1795 (EU-US Data Privacy Framework) ist in Kraft. Das Gericht der EU hat die Klage T-553/23 am 03.09.2025 abgewiesen; das Rechtsmittel C-703/25 P (eingelegt am 31.10.2025) ist beim Gerichtshof anhängig. Angaben zur DPF-Liste in diesem Bericht geben den Stand am genannten Prüfdatum wieder und beziehen sich auf Organisationen, nicht auf einzelne Dienste.» | `in-force-contested` | Отмена → `dpfEntity.listed` теряет смысл, тексты об организации и DPF меняются одним data-релизом; на уровень не влияет | Письмо EDPB 31.07.2026 после *Trump v. Slaughter* (29.06.2026) — вторичные источники ⚠, в блок не выводится до первоисточника |
 | `uk-adequacy` | «Die Angemessenheitsbeschlüsse für das Vereinigte Königreich wurden am 19.12.2025 bis zum 27.12.2031 verlängert.» | `in-force` | `adequacy.json` (`country-adequacy`) | — |
 | `recaptcha-role` | «Google bietet reCAPTCHA seit dem 02.04.2026 unter Auftragsverarbeitungsbedingungen an. Welcher Vertragsstand für eine konkrete Website gilt, ist technisch nicht erkennbar.» | `changed` | Тексты PRIV-02 `wording-to-review`, EMBED-04 `captcha-with-form` | — |
 | `bsi-tr-02102-2` | «Die Technische Richtlinie BSI TR-02102-2 (Version 2026-01) empfiehlt TLS 1.2 und 1.3; TLS 1.0 und 1.1 werden nicht empfohlen (siehe auch RFC 8996).» | `current` | Пороги TLS-04 в ruleset (`source: TR-02102-2@2026-01`) | — |
@@ -785,20 +786,20 @@ Handshake без установленной причины — не находк
 - ☐ Один текст на `checkId`; ни одной ссылки на проверяемый сайт, ни одного «Sie».
 - ☐ Нормы названы в актуальной редакции (TDDDG, DDG, MStV); у каждого решения — суд, Az., дата, инстанция.
 - ☐ `status` из словаря раздела 4 выбран по основному варианту `critical`; расхождения — в абзаце «Umstritten ist …».
-- ☐ Все ⚠ консенсуса (раздел 7: DSK Rn., Rechtskraft OLG Köln 6 U 80/23, Berufung VG Hannover, EDPB 05/2020 Rn. 86, EDPB TF Type C) либо подтверждены первоисточником, либо оставлены с пометкой и без цитирования деталей.
-- ☐ `reviewedAt` и `reviewBy` заполнены (D22).
+- ☐ Все непроверенные факты с пометкой ⚠ (DSK Rn., Rechtskraft OLG Köln 6 U 80/23, Berufung VG Hannover, EDPB 05/2020 Rn. 86, EDPB TF Type C) либо подтверждены первоисточником, либо оставлены с пометкой и без цитирования деталей.
+- ☐ `reviewedAt` и `reviewBy` заполнены.
 
 **C. Дисклеймер и Rechtlicher Kontext**
 
 - ☐ Каждый условный абзац привязан к полю отчёта; тест рендера в обоих состояниях.
-- ☐ Абзац о скриншотах согласован с оценкой § 51 UrhG (вопрос 11); при отрицательном ответе скриншоты переводятся в opt-in одним флагом, абзац остаётся условным.
+- ☐ Абзац о скриншотах согласован с оценкой § 51 UrhG; при отрицательном ответе скриншоты переводятся в opt-in одним флагом, абзац остаётся условным.
 - ☐ Записи `context.yaml` с `verifiedAt: null` не рендерятся.
 - ☐ Формулировка о DPF не содержит «sicher», «ausreichend», «unzulässig»; дата проверки списка выводится.
-- ☐ Абзац «Nutzung und Haftung» согласован с юристом заказчика по RDG, CRA и PLD (вопрос 15); при изменении статуса проекта правится только этот абзац.
+- ☐ Абзац «Nutzung und Haftung» согласован с юристом заказчика по RDG, CRA и PLD; при изменении статуса проекта правится только этот абзац.
 
 **D. Процесс**
 
-- ☐ Лицензия текстов зафиксирована (рекомендация консенсуса: CC BY 4.0 для `data/texts` и `data/legal`, вопрос 10); в шапке файлов — `license:` и `owner: customer-legal`.
+- ☐ Лицензия текстов зафиксирована (рекомендация: CC BY 4.0 для `data/texts` и `data/legal`); в шапке файлов — `license:` и `owner: customer-legal`.
 - ☐ Стоп-листы `de` и `en` вычитаны вместе с текстами; каждое исключение allowlist имеет `reason`.
 - ☐ После снятия `draft: true` у всех `de`-ключей релизного manifest L0-тест «release-ready texts» зелёный; `en` либо полностью вычитан, либо `--lang en` остаётся отключённым.
 - ☐ Канарейка (10 сайтов с письменным согласием) прогнана с финальными текстами; отчёты не публикуются.
@@ -807,17 +808,17 @@ Handshake без установленной причины — не находк
 
 ## Открытые вопросы
 
-Решения, которых нет в консенсусе и которые автор помечает как **предложение автора, не согласовано**:
+Открытые решения, которые помечены как **предложение автора, не согласовано**:
 
-1. **Поля сообщения.** Поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет) и раздел `legalNotes` в `data/texts/{de,en}.yaml` взяты из [архитектуры](../02-architecture.md) §11.4 и §13.4. Там это предложение автора архитектуры, не согласовано (ОВ-2): консенсус фиксирует только `messageId` + `params` и `legalNoteId`, а отрендеренные тексты в контракт `findings[]` не входят (§11.4). Для текстов важно одно: поле рекомендации нейтрально («Hinweis»), а не «remediation».
-2. **Реестр вариантов.** Реестр `checkId.variant` существует — [спецификация проверок](../03-checks.md) §2.1, канон для ruleset, текстов и CRM-маппинга. Раздел 5 ему следует: у каждого варианта реестра есть ключ, лишних ключей нет, исходы без находки вынесены в 5.20 как `reason.<id>` / `limitation.<id>`. Имена вариантов, которых нет в консенсусе, — предложение автора 03-checks (её Q6, Q10); при их переименовании guide переименовывает ключи вслед. Открытое расхождение с реестром одно — `reason` CONSENT-05 при недоступном захвате pagehide; оно описано в блоке «Расхождения с реестром 03-checks» в начале раздела 5 и закрывается правкой 03-checks.
+1. **Поля сообщения.** Поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет) и раздел `legalNotes` в `data/texts/{de,en}.yaml` взяты из [архитектуры](../02-architecture.md) §11.4 и §13.4. Там это предложение автора архитектуры, не согласовано (ОВ-2): контракт фиксирует только `messageId` + `params` и `legalNoteId`, а отрендеренные тексты в контракт `findings[]` не входят (§11.4). Для текстов важно одно: поле рекомендации нейтрально («Hinweis»), а не «remediation».
+2. **Реестр вариантов.** Реестр `checkId.variant` существует — [спецификация проверок](../03-checks.md) §2.1, канон для ruleset, текстов и CRM-маппинга. Раздел 5 ему следует: у каждого варианта реестра есть ключ, лишних ключей нет, исходы без находки вынесены в 5.20 как `reason.<id>` / `limitation.<id>`. Неутверждённые имена вариантов — предложение автора 03-checks (её Q6, Q10); при их переименовании guide переименовывает ключи вслед. Открытое расхождение с реестром одно — `reason` CONSENT-05 при недоступном захвате pagehide; оно описано в блоке «Расхождения с реестром 03-checks» в начале раздела 5 и закрывается правкой 03-checks.
 3. **Ключи `reason.<id>` / `limitation.<id>` и ветки их `select`** (5.20) — предложение автора, не согласовано (так же помечено в 03-checks §2.1 и Q6). Ids берутся из реестра §2.1; набор открыт.
-4. **Режимы lint `block / label / quote`**, ограничение правил областью поля (№ 13 — `hint`), allowlist ключей для «gesendet» (№ 15) и формат allowlist с `reason` — предложение автора; консенсус требует только L0-lint стоп-слов для `de` и `en` с явными исключениями. Имя файла стоп-листа (предложение: `data/texts/stoplist.{de,en}.yaml`) — за архитектурой.
-5. **Сроки `reviewBy`** (6/12 месяцев для `legalNote`, 3/12 для `context.yaml`) — предложение автора; консенсус фиксирует только наличие поля и предупреждение CI при просрочке.
+4. **Режимы lint `block / label / quote`**, ограничение правил областью поля (№ 13 — `hint`), allowlist ключей для «gesendet» (№ 15) и формат allowlist с `reason` — предложение автора; обязателен только L0-lint стоп-слов для `de` и `en` с явными исключениями. Имя файла стоп-листа (предложение: `data/texts/stoplist.{de,en}.yaml`) — за архитектурой.
+5. **Сроки `reviewBy`** (6/12 месяцев для `legalNote`, 3/12 для `context.yaml`) — предложение автора; контракт фиксирует только наличие поля и предупреждение CI при просрочке.
 6. **Назначение `status` по проверкам** (таблица в разделе 4) — черновик автора на основе правовой карты; утверждает DSGVO-эксперт заказчика вместе с `legalNote`.
 7. **Словарь статусов `context.yaml`** (`in-force`, `in-force-contested`, `proposal`, `withdrawn`, `changed`, `current`, `dataset`) и правило «вторичные источники не рендерятся» — предложение автора.
 8. **Лимиты длины** (Titel ≤ 70, Hinweis ≤ 400 знаков) — предложение автора для L0-lint.
 
-Вопросы к заказчику, от которых зависят тексты (нумерация — по разделу 8 консенсуса): 1 (смысл `critical` — формулировка легенды уровней), 3 (UA — абзац Nutzungshinweise о браузере), 6 (`crmCode` для EMBED-03, CONSENT-06, TRACK-01 — на тексты не влияет, но определяет `null`), 7 (`{org}/{repo}` в UA и Nutzungshinweise), 9 (подпись ruleset — тексты `critical`-вариантов), 10 (кто и когда пишет финальные `de`, лицензия, судьба `en`), 11 (скриншоты и § 51 UrhG — условный абзац дисклеймера), 12 (egress — «Region laut Nutzerangabe» в CONSENT-03), 13 (стандарт описания сервисов для PRIV-01 — формулировка `not-named` и `category-only`), 15 (RDG/CRA/PLD — абзац «Nutzung und Haftung»), 16 (generic-селекторы DKIM — текст `MAIL-03.selectors-not-found`).
+Вопросы к заказчику, от которых зависят тексты: смысл `critical` и формулировка легенды уровней; UA и абзац Nutzungshinweise о браузере; `crmCode` для EMBED-03, CONSENT-06, TRACK-01 (на тексты не влияет, но определяет `null`); `{org}/{repo}` в UA и Nutzungshinweise; подпись ruleset для текстов `critical`-вариантов; авторство и сроки финальных `de`, лицензия и судьба `en`; скриншоты и § 51 UrhG для условного абзаца дисклеймера; egress и «Region laut Nutzerangabe» в CONSENT-03; стандарт описания сервисов для формулировок PRIV-01 `not-named` и `category-only`; RDG/CRA/PLD и абзац «Nutzung und Haftung»; generic-селекторы DKIM и текст `MAIL-03.selectors-not-found`.
 
-Факты с пометкой ⚠, которые нужно закрыть до снятия `draft` (раздел 7 консенсуса): DSK OH v1.2 Rn. 121, 124–125, 134–137 (№ 10); Rechtskraft OLG Köln 6 U 80/23, Berufung VG Hannover 10 A 5385/22 и деталь о GTM (№ 11); EDPB Guidelines 05/2020 Rn. 86 (№ 12); EDPB Cookie Banner TF Type C (№ 13); UrhG § 51 для скриншотов (№ 14); URL TDDDG на gesetze-im-internet.de (№ 25); EinwV «Consenter» (№ 29).
+Факты с пометкой ⚠, которые нужно закрыть до снятия `draft`: DSK OH v1.2 Rn. 121, 124–125, 134–137; Rechtskraft OLG Köln 6 U 80/23, Berufung VG Hannover 10 A 5385/22 и деталь о GTM; EDPB Guidelines 05/2020 Rn. 86; EDPB Cookie Banner TF Type C; UrhG § 51 для скриншотов; URL TDDDG на gesetze-im-internet.de; EinwV «Consenter».

@@ -11,7 +11,7 @@ import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 const cli = path.join(REPO_ROOT, 'src/cli.ts');
 
 /**
- * L2 is loopback-only (test/README.md): the CLI runs with a preload that replaces the system resolver by one that
+ * is loopback-only (test/README.md): the CLI runs with a preload that replaces the system resolver by one that
  * answers ENOTFOUND for every host and logs each lookup, so no DNS query leaves the machine.
  */
 function run(...args: string[]) {
@@ -26,14 +26,14 @@ function run(...args: string[]) {
 }
 
 describe('dsgvo-check CLI', () => {
-  it('--help → 0', () => {
+  it('help → 0', () => {
     const r = run('--help');
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('--fail-on <level>');
     expect(r.stdout).toContain('install');
   });
 
-  it('--help carries the Nutzungshinweise (FP-11, wording guide §6: own sites, UA token, phase C, DNS with --proxy)', () => {
+  it('help carries the Nutzungshinweise (wording guide §6: own sites, UA token, phase C, DNS with --proxy)', () => {
     const r = run('--help');
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('Nutzungshinweise');
@@ -43,7 +43,7 @@ describe('dsgvo-check CLI', () => {
     expect(r.stdout).toContain('--proxy');
   });
 
-  it('a failed report written by the CLI itself carries the conditional disclaimer paragraphs (FP-11)', () => {
+  it('a failed report written by the CLI itself carries the conditional disclaimer paragraphs', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
     const r = run('https://example.de', '--lang', 'fr', '--out', out);
     expect(r.status).toBe(2);

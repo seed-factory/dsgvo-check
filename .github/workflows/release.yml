@@ -1,87 +1,52 @@
-# Release (D24): image → digest → commit in action.yml → tag.
-#
-# Started by hand (Actions → Release → Run workflow) on a commit whose CI is green, with the version from
-# package.json. The job builds and tests the image, pushes it to GHCR, pins its digest in action.yml and in the GitLab
-# template (.github/scripts/pin-image.sh), commits that change and tags the commit v<version>. Only the tag is pushed:
-# the default branch keeps the all-zero placeholder digest, so only release tags of the action carry an image.
-# amd64 only; arm64 follows after a native smoke test (D24).
-
 name: Release
-
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release, equal to "version" in package.json (e.g. 0.1.0). The tag is v<version>.
+        description: Version from package.json, released as v<version>.
         required: true
-
 permissions: {}
-
 concurrency:
   group: release
   cancel-in-progress: false
-
 env:
   IMAGE: ghcr.io/seed-factory/dsgvo-check
-
 jobs:
   release:
-    name: image, digest, tag
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
-      contents: write # the release commit and its tag
-      packages: write # push the image to ghcr.io
+      contents: write
+      packages: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      - name: Check the version and that the tag is new
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Validate release version
+        id: version
         env:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must look like 1.2.3"; exit 1; }
-          pkg="$(jq -r .version package.json)"
-          [[ "$pkg" == "$VERSION" ]] || { echo "::error::package.json has version $pkg, not $VERSION"; exit 1; }
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" > /dev/null 2>&1; then
-            echo "::error::tag v$VERSION exists already"
-            exit 1
-          fi
-
-      - name: Allow unprivileged user namespaces for the Chromium sandbox
+        run: node .github/scripts/release.ts
+      - name: Allow unprivileged user namespaces for Chromium
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Build image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          docker build --tag dsgvo-check:release \
-            --build-arg VERSION="$(jq -r .version package.json)" --build-arg REVISION="$GITHUB_SHA" .
-
-      - name: Image smoke
-        run: |
-          docker run --rm dsgvo-check:release --help > /dev/null
-          test "$(docker run --rm dsgvo-check:release --version)" = "$(jq -r .version package.json)"
-          docker run --rm dsgvo-check:release seccomp-profile | cmp - docker/seccomp-chromium.json
-          test "$(docker run --rm --entrypoint id dsgvo-check:release -u)" != "0"
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-
+          docker build --tag dsgvo-check:release --build-arg VERSION="$VERSION" --build-arg REVISION="$GITHUB_SHA" .
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
-
-      - name: End-to-end in Docker (exit codes 0/1/2, hardened flags, Chromium sandbox, Action step)
+      - name: End-to-end in Docker
         run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
         env:
           DSGVO_E2E_IMAGE: dsgvo-check:release
-
-      - name: Push image and pin its digest
-        id: pin
+      - name: Push versioned image
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -89,30 +54,16 @@ jobs:
           docker tag dsgvo-check:release "$IMAGE:$VERSION"
           docker push --quiet "$IMAGE:$VERSION"
           docker logout ghcr.io
-          ref="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION")"
-          .github/scripts/pin-image.sh "$ref"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-
-      - name: Release commit and tag
+      - name: Tag release
         env:
-          VERSION: ${{ inputs.version }}
-          REF: ${{ steps.pin.outputs.ref }}
+          VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --quiet -m "Release v$VERSION: pin image $REF" -- action.yml templates/gitlab/dsgvo-check.gitlab-ci.yml
-          git tag -a "v$VERSION" -m "dsgvo-check v$VERSION, image $REF"
+          git tag -a "v$VERSION" -m "dsgvo-check v$VERSION"
           auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           echo "::add-mask::$auth"
           git -c http.extraheader="AUTHORIZATION: basic $auth" push origin "refs/tags/v$VERSION"
-          sha="$(git rev-parse "v$VERSION^{commit}")"
-          integrity="$(openssl dgst -sha256 -binary templates/gitlab/dsgvo-check.gitlab-ci.yml | openssl base64 -A)"
-          {
-            echo "### dsgvo-check v$VERSION"
-            echo
-            echo "- Image: \`$REF\`"
-            echo "- GitHub Action: \`uses: seed-factory/dsgvo-check@$sha # v$VERSION\`"
-            echo "- GitLab template at \`v$VERSION\`: \`integrity: sha256-$integrity\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          node .github/scripts/release.ts summary

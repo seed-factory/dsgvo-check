@@ -1,18 +1,16 @@
 /**
- * L3: the built CLI (`node dist/cli.js`) against local fixture sites, no internet. Checks exit codes 0/1/2 (5.2),
+ * the built CLI (`node dist/cli.js`) against local fixture sites, no internet. Checks exit codes 0/1/2 (5.2),
  * reports (JSON valid against schema/report.schema.json, HTML safe, Job Summary) and that no cookie or storage
- * value reaches any output (D20).
- *
- * Cases that need the browser pipeline (M1 collector, M3 checks) are skipped while those parts are scaffold stubs;
- * with DSGVO_E2E_STRICT=1 (CI) they fail instead.
+ * value reaches any output.
  */
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FullReport, Report } from '../../src/core/report-schema.ts';
 import { htmlSafetyProblems } from '../unit/reporters/html-safety.ts';
 import { expectValidReport } from '../utils/report-validator.ts';
+import { makeDocumentResponse, makeHttp, makeSnapshot, makeTarget } from '../utils/snapshot-builder.ts';
 import {
   type CliRun,
   type E2eEnvironment,
@@ -20,7 +18,6 @@ import {
   pipelineGaps,
   runCli,
   SECRET_MARKER,
-  STRICT,
   startE2eEnvironment,
 } from './support/cli-harness.ts';
 
@@ -53,11 +50,8 @@ function expectSafeReports(run: CliRun): Report {
   return report;
 }
 
-function requirePipeline(report: Report, checks: readonly string[], t: TestContext): void {
-  const gaps = pipelineGaps(report, checks);
-  if (gaps.length === 0) return;
-  if (STRICT) throw new Error(`pipeline not implemented: ${gaps.join('; ')}`);
-  t.skip(`pipeline not implemented yet: ${gaps.join('; ')}`);
+function requirePipeline(report: Report, checks: readonly string[]): void {
+  expect(pipelineGaps(report, checks), 'the browser pipeline must be implemented').toEqual([]);
 }
 
 describe('dsgvo-check CLI (dist) against local fixture sites', () => {
@@ -73,7 +67,7 @@ describe('dsgvo-check CLI (dist) against local fixture sites', () => {
     expect(env.server.unexpected).toEqual([]);
   });
 
-  it('clean site with --fail-on critical → exit 0', async (t) => {
+  it('clean site with --fail-on critical → exit 0', async () => {
     const run = await runCli(env, [
       'https://www.clean-shop.test/',
       '--fail-on',
@@ -86,17 +80,17 @@ describe('dsgvo-check CLI (dist) against local fixture sites', () => {
     expect(report.scan.status).not.toBe('failed');
     expect(report.summary.exitReasons).toEqual([]);
     expect(env.server.unexpected).toEqual([]);
-    requirePipeline(report, ['CONSENT-01'], t);
+    requirePipeline(report, ['CONSENT-01']);
     expect(report.findings.filter((f) => f.severity === 'critical')).toEqual([]);
     expect(env.server.requestsTo('www.clean-shop.test').length).toBeGreaterThan(0);
     expect(env.server.requestsTo('www.google-analytics.com')).toEqual([]);
   });
 
-  it('tracker before consent → exit 1 (threshold), no cookie or storage values in any output', async (t) => {
+  it('tracker before consent → exit 1 (threshold), no cookie or storage values in any output', async () => {
     const run = await runCli(env, ['https://www.tracker-shop.test/', ...ALL_FORMATS, ...FAST]);
     const report = expectSafeReports(run) as FullReport;
     expect(env.server.unexpected).toEqual([]);
-    requirePipeline(report, ['CONSENT-01'], t);
+    requirePipeline(report, ['CONSENT-01']);
     expect(run.code, `${run.stdout}\n${run.stderr}`).toBe(1);
     expect(report.summary.exitReasons).toContain('threshold');
     const critical = report.findings.filter((f) => f.severity === 'critical');
@@ -110,7 +104,7 @@ describe('dsgvo-check CLI (dist) against local fixture sites', () => {
     expect(run.html).not.toMatch(/T[0-9]_/);
   });
 
-  it('tracker with --fail-on none → exit 0', async (t) => {
+  it('tracker with --fail-on none → exit 0', async () => {
     const run = await runCli(env, [
       'https://www.tracker-shop.test/',
       '--fail-on',
@@ -121,7 +115,49 @@ describe('dsgvo-check CLI (dist) against local fixture sites', () => {
     expect(run.code, `${run.stdout}\n${run.stderr}`).toBe(0);
     const report = expectSafeReports(run) as FullReport;
     expect(report.summary.exitReasons).toEqual([]);
-    requirePipeline(report, ['CONSENT-01'], t);
+    requirePipeline(report, ['CONSENT-01']);
     expect(report.findings.some((f) => f.severity === 'critical')).toBe(true);
+  });
+
+  it('a warning-only saved snapshot exits 1 with --fail-on warning and 0 with critical', async () => {
+    const target = 'https://www.example.test/';
+    const snapshot = makeSnapshot({
+      target: makeTarget(target),
+      http: makeHttp({
+        documents: [
+          makeDocumentResponse({
+            url: target,
+            headers: [
+              { name: 'strict-transport-security', value: 'max-age=31536000' },
+              { name: 'content-security-policy', value: "default-src 'self'; frame-ancestors 'none'" },
+              { name: 'x-content-type-options', value: 'nosniff' },
+              { name: 'referrer-policy', value: 'unsafe-url' },
+              { name: 'permissions-policy', value: 'camera=()' },
+            ],
+          }),
+        ],
+      }),
+    });
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-warning-')), 'input.json');
+    writeFileSync(file, JSON.stringify(snapshot));
+    for (const [threshold, expectedCode] of [
+      ['warning', 1],
+      ['critical', 0],
+    ] as const) {
+      const run = await runCli(null, [
+        '--from-snapshot',
+        file,
+        '--checks',
+        'HDR-01',
+        '--fail-on',
+        threshold,
+        ...ALL_FORMATS,
+      ]);
+      expect(run.code, run.stderr).toBe(expectedCode);
+      const report = expectSafeReports(run) as FullReport;
+      expect(report.findings.some((finding) => finding.severity === 'warning')).toBe(true);
+      expect(report.findings.filter((finding) => finding.severity === 'critical')).toEqual([]);
+      expect(report.summary.exitReasons).toEqual(expectedCode === 1 ? ['threshold'] : []);
+    }
   });
 });

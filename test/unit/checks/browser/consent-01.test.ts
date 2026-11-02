@@ -123,7 +123,7 @@ describe('CONSENT-01 requests before interaction', () => {
       ...p,
     });
 
-  it('G32: GAM compression dictionary (resourceType other) and gpt.js → library-loaded, not cookieless-ping', () => {
+  it('GAM compression dictionary (resourceType other) and gpt.js → library-loaded, not cookieless-ping', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -139,7 +139,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ]);
   });
 
-  it('G32 (R16): an `other` request on a path without a signature and gpt.js → library-loaded, not cookieless-ping', () => {
+  it('an `other` request on a path without a signature and gpt.js → library-loaded, not cookieless-ping', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -153,7 +153,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ]);
   });
 
-  it('G32 counterexample: an ad request through fetch is still a hit (cookieless-ping without identifier)', () => {
+  it('counterexample: an ad request through fetch is still a hit (cookieless-ping without identifier)', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -164,7 +164,7 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual(['cookieless-ping']);
   });
 
-  it('G31: Piano identity, experience and checkout calls over xhr/fetch (EU and non-EU hosts) → library-loaded, not cookieless-ping', () => {
+  it('Piano identity, experience and checkout calls over xhr/fetch (EU and non-EU hosts) → library-loaded, not cookieless-ping', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -181,7 +181,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ]);
   });
 
-  it('G31 counterexample: the Piano engagement ping is still a hit (cookieless-ping without identifier)', () => {
+  it('counterexample: the Piano engagement ping is still a hit (cookieless-ping without identifier)', () => {
     const r = run([
       phase('A', {
         requests: [req('a', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
@@ -190,7 +190,7 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual(['cookieless-ping']);
   });
 
-  it('G31: a Chartbeat ping or ScorecardResearch beacon before the interaction → cookieless-ping, not tracking-completed', () => {
+  it('a Chartbeat ping or ScorecardResearch beacon before the interaction → cookieless-ping, not tracking-completed', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -207,7 +207,7 @@ describe('CONSENT-01 requests before interaction', () => {
     );
   });
 
-  it('G31: the Tealium library (utag.js) → library-loaded; a Chartbeat strategy call is no hit (counterexamples)', () => {
+  it('the Tealium library (utag.js) → library-loaded; a Chartbeat strategy call is no hit (counterexamples)', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -222,7 +222,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ]);
   });
 
-  it('G33: a GA4 hit issued by a service worker and answered by the network is tracking-completed, not request-not-completed', () => {
+  it('a GA4 hit issued by a service worker and answered by the network is tracking-completed, not request-not-completed', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -242,7 +242,7 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual(['tracking-completed']);
   });
 
-  it('G33 counterexample: the answer itself came from the service worker → request-not-completed', () => {
+  it('counterexample: the answer itself came from the service worker → request-not-completed', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -260,14 +260,14 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual(['request-not-completed']);
   });
 
-  it('S-12: a redacted `cid` key with an empty value before redaction is no identifier → cookieless-ping', () => {
+  it('a redacted `cid` key with an empty value before redaction is no identifier → cookieless-ping', () => {
     const r = run([phase('A', { requests: [gaHit('a', { identifierPresent: false })] })]);
     expect(observationsOf(r).map((o) => [o.variant, o.params.identifierKind])).toEqual([
       ['cookieless-ping', 'none'],
     ]);
   });
 
-  it('FC-08: a per-load identifier (generic `uuid`, no stored match, no catalog param) → cookieless-ping (warning)', () => {
+  it('a per-load identifier (generic `uuid`, no stored match, no catalog param) → cookieless-ping (warning)', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -288,14 +288,14 @@ describe('CONSENT-01 requests before interaction', () => {
     ['stored-match', { identifierNames: ['cid'], matchesStoredIdentifier: true }],
     ['persistent-param', { identifierNames: ['cid'] }],
     ['user-supplied', { identifierNames: ['gclid'] }],
-  ])('FC-08: persistent identifier %s → tracking-completed', (kind, p) => {
+  ])('persistent identifier %s → tracking-completed', (kind, p) => {
     const r = run([phase('A', { requests: [gaHit('a', { identifierPresent: true, ...p })] })]);
     expect(observationsOf(r).map((o) => [o.variant, o.params.identifierKind])).toEqual([
       ['tracking-completed', kind],
     ]);
   });
 
-  it('S-17: response headers received, then the body aborted (beacon on navigation) → still a completed hit', () => {
+  it('response headers received, then the body aborted (beacon on navigation) → still a completed hit', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -313,7 +313,7 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual(['tracking-completed']);
   });
 
-  it('S-13: Consent Mode denied does not hide a stored identifier match → tracking-completed', () => {
+  it('Consent Mode denied does not hide a stored identifier match → tracking-completed', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -331,7 +331,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ).toEqual([['tracking-completed', 'stored-match', true]]);
   });
 
-  it('S-13 counterexample: denied ping whose `cid` is only a catalog param (per-load in Consent Mode) → cookieless-ping', () => {
+  it('counterexample: denied ping whose `cid` is only a catalog param (per-load in Consent Mode) → cookieless-ping', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -354,7 +354,7 @@ describe('CONSENT-01 requests before interaction', () => {
     ['consent-provider', 'https://consent.cookiebot.com/uc.js', 'cookiebot'],
     ['monitoring', 'https://browser.sentry-cdn.com/7.0.0/bundle.min.js', 'sentry'],
   ])(
-    'FT-07: %s before interaction → third-party-resource (info), not library-loaded',
+    '%s before interaction → third-party-resource (info), not library-loaded',
     (category, url, serviceId) => {
       const r = run([phase('A', { requests: [req('a', url)] })]);
       expect(observationsOf(r).map((o) => [o.variant, o.category, o.serviceId])).toEqual([
@@ -363,7 +363,7 @@ describe('CONSENT-01 requests before interaction', () => {
     },
   );
 
-  it('FT-07: a main-frame navigation to a third party (redirect via CMP or SSO) is no request finding', () => {
+  it('a main-frame navigation to a third party (redirect via CMP or SSO) is no request finding', () => {
     const r = run([
       phase('A', {
         requests: [
@@ -382,7 +382,7 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('FT-07: start page hit without an observed phase B → no `replicated` claim either way', () => {
+  it('start page hit without an observed phase B → no `replicated` claim either way', () => {
     const r = run([
       phase('A', { requests: [gaHit('a', { identifierPresent: true, identifierNames: ['cid'] })] }),
       phase('B', { status: 'skipped', pages: [] }),

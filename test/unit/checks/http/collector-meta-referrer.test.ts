@@ -1,5 +1,5 @@
 /**
- * L1 (P5): what the HTTP collector stores of `<meta name="referrer">`. The tag is untrusted text; HDR-01 reads one
+ * what the HTTP collector stores of `<meta name="referrer">`. The tag is untrusted text; HDR-01 reads one
  * thing from it, the referrer policy in force (the last recognised keyword). So only the Referrer-Policy keywords
  * are stored, at most the last eight: a 64 KiB tag used to grow the snapshot to about 96 KiB (every `a` token passed
  * the old "looks like a keyword" filter `^[a-z][a-z-]{0,39}$`).
@@ -22,7 +22,7 @@ const KEYWORDS = [
 /** Values of the old `<meta name="referrer">` syntax: HDR-01 does not read them, so they are not stored. */
 const LEGACY = ['never', 'default', 'always', 'origin-when-crossorigin'] as const;
 
-describe('P5: only Referrer-Policy keywords are stored, and few of them', () => {
+describe('only Referrer-Policy keywords are stored, and few of them', () => {
   it('64 KiB of tokens that are no keyword store nothing', () => {
     const content = 'a,'.repeat(32 * 1024);
     expect(content.length).toBe(64 * 1024);
@@ -93,7 +93,7 @@ describe('P5: only Referrer-Policy keywords are stored, and few of them', () => 
   });
 });
 
-describe('P5 counterexamples: ordinary tags are stored as before', () => {
+describe('counterexamples: ordinary tags are stored as before', () => {
   it.each<[string | null, string | null]>([
     ['origin', 'origin'],
     ['no-referrer', 'no-referrer'],

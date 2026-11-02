@@ -1,5 +1,5 @@
 /**
- * Exit-code gate (D03, table 5.2). Pure function.
+ * Exit-code gate (table 5.2). Pure function.
  * Priority: 2 (fatal) > 1 (threshold) > 2 (check-error / timeout / strict) > 0.
  * `exitReasons` lists every reason that applies, not only the winning one.
  * `--fail-on none` switches off the threshold and the relevance of check errors; `--strict` acts independently.

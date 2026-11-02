@@ -1,6 +1,6 @@
 /**
- * HTTP collector output (owner: M4). Initial version by the scaffold; owners may only ADD optional fields.
- * Decisions: D09 (≤ 2 req/s per host), D10 (UA), D18 (class T probes), 5.3 `header` / `redirect-chain` evidence.
+ * HTTP collector output.
+ * Passive class T probes at ≤ 2 req/s per host, with honest User-Agent and redacted header/redirect evidence.
  */
 import type { CollectorError, HeaderRecord, IsoTimestamp, SanitizedUrl } from '../../core/snapshot-common.ts';
 import type { TlsEndpoint } from '../tls/types.ts';
@@ -45,7 +45,7 @@ export interface RedirectChain {
   host: string;
   scheme: 'http' | 'https';
   /**
-   * Explicit non-default port of the target URL (S-20): this chain loads the start document from the exact
+   * Explicit non-default port of the target URL: this chain loads the start document from the exact
    * origin. Absent for the standard http (80) / https (443) probes that TLS-01 evaluates.
    */
   port?: number;
@@ -90,7 +90,7 @@ export interface DocumentResponse {
 /** A probe the collector issued (written to `snapshot.plan.probes` too). */
 export interface ProbeRecord {
   kind: 'http' | 'tls' | 'dns';
-  /** Probe class (D18): O = browser navigation, T = default passive probe. */
+  /** Probe class: O = browser navigation, T = default passive probe. */
   class: 'O' | 'T';
   target: string;
   purpose: string;
@@ -103,13 +103,13 @@ export interface HttpSection {
   requestsIssued: number;
   /**
    * A host answered 429/503 three times in a row, and again after the Retry-After pause and one retry
-   * (D09) → probing of that host stopped, SCAN-THROTTLED.
+   * → probing of that host stopped, SCAN-THROTTLED.
    */
   throttled: boolean;
   /** Hosts whose probing stopped (state is kept per host). */
   throttledHosts?: string[];
   /**
-   * S-19: TLS endpoints of the start page's final host after a redirect to a host outside target/www/apex, and of
+   * TLS endpoints of the start page's final host after a redirect to a host outside target/www/apex, and of
    * that host's www/apex (`role: 'final'`). Read by TLS-02; the TLS collector runs before the final host is known.
    */
   finalTls?: TlsEndpoint[];

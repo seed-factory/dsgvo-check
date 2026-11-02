@@ -1,6 +1,5 @@
 #!/bin/sh
-# Container entrypoint (runs under tini). `dsgvo-check seccomp-profile` prints the seccomp profile that lets the
-# Chromium sandbox start without --privileged or CAP_SYS_ADMIN; everything else goes to the CLI.
+# Prints the Chromium sandbox profile or starts the CLI under tini.
 set -eu
 
 if [ "${1:-}" = "seccomp-profile" ]; then

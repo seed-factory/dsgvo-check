@@ -39,12 +39,12 @@ export interface VisitResult {
   /** Navigation error text (net::ERR_…, timeout), when the navigation failed. */
   error?: string;
   retryAfterMs?: number;
-  /** Facts that could not be completed within the page budget (G49): the collector keeps them as phase errors. */
+  /** Facts that could not be completed within the page budget: the collector keeps them as phase errors. */
   limitations?: Array<{ code: string; message: string }>;
 }
 
 const MAX_HEADER_VALUE = 2048;
-/** Floor of the page budget left for response metadata after the quiet wait (G49). */
+/** Floor of the page budget left for response metadata after the quiet wait. */
 const MIN_META_BUDGET_MS = 500;
 
 export interface Settled<T> {
@@ -54,7 +54,7 @@ export interface Settled<T> {
 }
 
 /**
- * Wait for `p`, but not longer than `ms` and not past the abort of `signal` (G49). Never rejects: a rejection and a cut
+ * Wait for `p`, but not longer than `ms` and not past the abort of `signal`. Never rejects: a rejection and a cut
  * both give `fallback`. The pending promise keeps running; whatever it settles with later is not used.
  */
 export function settleWithin<T>(
@@ -86,8 +86,8 @@ export function settleWithin<T>(
 }
 
 /**
- * Response headers of a document as stored in the snapshot (D20, 5.3): the core normalizer shared with the HTTP
- * collector (FP-08), with the browser's detection allowlist for URLs. Live values (challenge detection, `Link` hints,
+ * Response headers of a document as stored in the snapshot (5.3): the core normalizer shared with the HTTP
+ * collector, with the browser's detection allowlist for URLs. Live values (challenge detection, `Link` hints,
  * Retry-After) are read from the raw headers in memory.
  */
 export function snapshotResponseHeaders(
@@ -135,7 +135,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   const limitations: Array<{ code: string; message: string }> = [];
   /** What is left of the page's HARD_CAP, at least a floor: the budget of everything that follows the navigation. */
   const budgetLeft = () => Math.max(MIN_META_BUDGET_MS, i.phaseTiming.hardCapMs - (Date.now() - t0));
-  /** Await response metadata within the page budget; on a cut keep what is known and record the limitation (G49). */
+  /** Await response metadata within the page budget; on a cut keep what is known and record the limitation. */
   const bounded = async <T>(code: string, what: string, p: Promise<T>, fallback: T): Promise<T> => {
     const ms = budgetLeft();
     const r = await settleWithin(p, ms, i.signal, fallback);
@@ -167,7 +167,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   // The page waits for the recorder's response handlers only within its budget (`bounded`). The wait is the page's, not
   // the handlers': a `timeoutMs` here would make the recorder abandon every handler still pending, and a late
   // `Set-Cookie`, server address or sent identifier would be lost for good although the handler's own budget allows
-  // it. The handlers keep that budget; the flush of the phase end (collector) and `dispose()` abandon what is left (R30).
+  // it. The handlers keep that budget; the flush of the phase end (collector) and `dispose()` abandon what is left.
   await bounded('recorder-flush-timeout', 'network records', i.recorder.flush({ signal: i.signal }), true);
 
   // `headers()` (the response event) is the fallback when the raw headers do not arrive in time: it still tells the
@@ -235,7 +235,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   let rawFinalUrl = error ? s.rawUrl : i.page.url();
   if (!error && !/^https?:/i.test(rawFinalUrl)) {
     // The browser ended on its own error page (`chrome-error://`, e.g. an endless redirect after a 200 response) or
-    // left http(s) altogether: that is a failed navigation, and nothing read from the page belongs to the site (G55).
+    // left http(s) altogether: that is a failed navigation, and nothing read from the page belongs to the site.
     error = `net::${errorCodeOfErrorPage(title, text) ?? 'ERR_FAILED'}`;
     rawFinalUrl = s.rawUrl;
     dom = null;
@@ -244,7 +244,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
     text = '';
     scripts = [];
   }
-  // Requests of this navigation belong to the page as shown (FC-02); later ones too until the next navigation.
+  // Requests of this navigation belong to the page as shown; later ones too until the next navigation.
   if (!error) i.recorder.rebindNavigation(sanitizeRequestUrl(rawFinalUrl));
   const challenge = error
     ? { detected: false, signals: [] }

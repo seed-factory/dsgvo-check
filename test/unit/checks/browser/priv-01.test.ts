@@ -1,24 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { matchLevel, normalizeText, priv01 } from '../../../../src/checks/browser/priv-01.ts';
-import type { DocumentPart } from '../../../../src/collectors/browser/types.ts';
+import type {
+  DocumentPart,
+  DocumentRecord,
+  DocumentsSection,
+} from '../../../../src/collectors/browser/types.ts';
+import { EvidenceSchema } from '../../../../src/core/report-schema.ts';
 import { loadServiceCatalog } from '../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from './helpers.ts';
 import { SCENARIOS } from './scenarios.ts';
 
 const scenario = (file: string) => SCENARIOS['PRIV-01']!.find((s) => s.file === file)!.build();
-const part = (text: string, origin: DocumentPart['origin'] = 'visible'): DocumentPart => ({
+const part = (text: string, origin: DocumentPart['origin'] = 'visible', section?: string): DocumentPart => ({
   id: `p-${text.length}-${origin}`,
+  ...(section ? { section } : {}),
   text,
   origin,
   sourceUrl: PRIVACY,
 });
 const trustindex = () =>
   phase('A', { requests: [req('a', 'https://cdn.trustindex.io/loader.js?wp-widget')] });
-const withPolicy = (parts: DocumentPart[], p = {}) =>
+const withPolicy = (
+  parts: DocumentPart[],
+  p: Partial<DocumentRecord> = {},
+  attempts: DocumentsSection['attempts'] = [],
+) =>
   site({
     phases: [trustindex()],
-    documents: { documents: [defaultDocuments().documents[0]!, privacyDoc(parts, p)], attempts: [] },
+    documents: { documents: [defaultDocuments().documents[0]!, privacyDoc(parts, p)], attempts },
   });
 
 describe('PRIV-01 service not found in the privacy policy', () => {
@@ -131,7 +141,7 @@ describe('PRIV-01 service not found in the privacy policy', () => {
     });
   });
 
-  it('S-24: a "Datenschutz" link target judged not a policy (keyword missing) is not searched → no not-named', () => {
+  it('a "Datenschutz" link target judged not a policy (keyword missing) is not searched → no not-named', () => {
     const r = runCheck(
       priv01,
       withPolicy([part('Willkommen in unserem Shop.')], { errors: ['keyword-missing'] }),
@@ -167,4 +177,132 @@ describe('PRIV-01 service not found in the privacy policy', () => {
     );
     expect(matchLevel(info, normalizeText('Nichts davon.')).level).toBe('none');
   });
+});
+
+describe('PRIV-01 policy availability and completeness', () => {
+  const unopened = {
+    expandablesFound: 1,
+    expandablesOpened: 0,
+    framesIncluded: 0,
+    linkedPages: 0,
+    textLength: 40,
+  };
+  interface PolicyCase {
+    name: string;
+    parts: DocumentPart[];
+    document: Partial<DocumentRecord>;
+    attempts?: DocumentsSection['attempts'];
+    status: 'completed' | 'partial' | 'inconclusive';
+    reason?: string;
+    variants?: string[];
+    limitations?: string[];
+  }
+  it.each<PolicyCase>([
+    {
+      name: 'a stored document tagged unconfirmed is not searched',
+      parts: [part('Willkommen in unserem Shop.')],
+      document: { errors: ['unconfirmed'], complete: false },
+      status: 'inconclusive',
+      reason: 'privacy-policy-not-found',
+      variants: [],
+    },
+    {
+      name: 'an unconfirmed link attempt invalidates the stored policy',
+      parts: [part('Willkommen in unserem Shop.')],
+      document: {},
+      attempts: [{ kind: 'privacy', via: 'link', url: PRIVACY, status: 200, outcome: 'unconfirmed' }],
+      status: 'inconclusive',
+      reason: 'privacy-policy-not-found',
+    },
+    {
+      name: 'Portuguese policy markers are unsupported',
+      parts: [part('Utilizamos o Trustindex.', 'visible', 'Aviso de Privacidade')],
+      document: { lang: 'pt' },
+      status: 'inconclusive',
+      reason: 'language-unsupported',
+    },
+    {
+      name: 'German policy markers are evaluated despite an English lang attribute',
+      parts: [part('Wir nutzen einen Dienst.', 'visible', 'Datenschutzerklärung')],
+      document: { lang: 'en' },
+      status: 'completed',
+      variants: ['not-named'],
+    },
+    {
+      name: 'an unopened expandable policy remains searchable with a limitation',
+      parts: [part('Datenschutzerklärung. Verantwortlich ist die Beispiel GmbH.')],
+      document: { errors: ['expand-failed'], complete: false, manifest: unopened },
+      status: 'partial',
+      limitations: ['banner-open'],
+      variants: ['not-named'],
+    },
+    {
+      name: 'expand-failed with truncation prevents policy evaluation',
+      parts: [part('Datenschutzerklärung.')],
+      document: { errors: ['expand-failed', 'truncated'], complete: false, manifest: unopened },
+      status: 'inconclusive',
+      reason: 'document-incomplete',
+    },
+    {
+      name: 'truncation alone prevents policy evaluation',
+      parts: [part('x')],
+      document: { errors: ['truncated'], complete: false },
+      status: 'inconclusive',
+      reason: 'document-incomplete',
+    },
+  ])('$name', ({ parts, document, attempts, status, reason, variants, limitations }) => {
+    const result = runCheck(priv01, withPolicy(parts, document, attempts));
+    expect(result.status).toBe(status);
+    if (reason) expect(result.reason).toBe(reason);
+    if (variants) expect(variantsOf(result)).toEqual(variants);
+    if (limitations) expect(result.outcome?.limitations).toEqual(limitations);
+  });
+
+  it('a failed policy navigation yields no document and no finding', () => {
+    const result = runCheck(
+      priv01,
+      site({
+        phases: [trustindex()],
+        documents: {
+          documents: [defaultDocuments().documents[0]!],
+          attempts: [{ kind: 'privacy', via: 'link', url: PRIVACY, status: null, outcome: 'error' }],
+        },
+      }),
+    );
+    expect(result).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
+    expect(variantsOf(result)).toEqual([]);
+  });
+});
+
+describe('PRIV-01 negative search evidence', () => {
+  const manifest = {
+    expandablesFound: 3,
+    expandablesOpened: 3,
+    framesIncluded: 2,
+    linkedPages: 0,
+    textLength: 1234,
+  };
+  const parts = [
+    part('Datenschutzerklärung der Beispiel GmbH.', 'visible', '1 > Verantwortlicher'),
+    part('Wir setzen Dienste ein.', 'visible', '2 > Dienste'),
+    part('Weitere Hinweise.', 'expandable', '2 > Dienste'),
+    part('Rahmen.', 'frame'),
+  ];
+  const expectedManifest = { partCount: 4, ...manifest, truncated: false };
+  it.each(['document evidence', 'schema roundtrip', 'message parameters'] as const)(
+    'preserves completeness in %s',
+    (projection) => {
+      const result = runCheck(priv01, withPolicy(parts, { manifest }));
+      const observation = observationsOf(result)[0];
+      if (projection === 'document evidence') {
+        expect(observation?.variant).toBe('not-named');
+        expect(observation?.evidence[0]).toMatchObject({ type: 'document', manifest: expectedManifest });
+      } else if (projection === 'schema roundtrip') {
+        const parsed = EvidenceSchema.parse({ id: 'ev-1', ...observation?.evidence[0] });
+        expect(JSON.parse(JSON.stringify(parsed)).manifest).toEqual(expectedManifest);
+      } else {
+        expect(observation?.params).toMatchObject({ partCount: 4, complete: true });
+      }
+    },
+  );
 });

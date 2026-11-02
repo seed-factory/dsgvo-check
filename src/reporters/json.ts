@@ -1,6 +1,6 @@
 /**
  * JSON reporter: the contract format (5.1). crmCode appears only here. `disclaimer.text` carries the conditional
- * paragraphs (D22) when texts are available; without a context (minimal failed report written synchronously by the
+ * paragraphs when texts are available; without a context (minimal failed report written synchronously by the
  * CLI) the report's own text is kept.
  */
 

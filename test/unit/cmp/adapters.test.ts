@@ -1,4 +1,4 @@
-/** L1: adapter registry shape (catalog order, contract members) — no browser needed. */
+/** : adapter registry shape (catalog order, contract members) — no browser needed. */
 import { describe, expect, it } from 'vitest';
 import { adapters } from '../../../src/cmp/index.ts';
 
@@ -15,7 +15,7 @@ describe('CMP adapter registry', () => {
     ]);
   });
 
-  it('every adapter implements the D12 contract', () => {
+  it('every adapter implements the contract', () => {
     for (const a of adapters) {
       for (const m of [
         'detect',

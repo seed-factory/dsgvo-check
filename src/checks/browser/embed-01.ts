@@ -118,7 +118,7 @@ export const embed01 = defineCheck({
       {
         status: 'completed',
         observations,
-        // The collector names the gap `preconnect-without-request` (FC-07): match the prefix, not one spelling.
+        // The collector names the gap `preconnect-without-request`: match the prefix, not one spelling.
         limitations: browser.knownGaps.some((g) => g.startsWith('preconnect'))
           ? ['preconnect-not-observable']
           : [],

@@ -36,14 +36,14 @@ export const DEFAULT_CLI_PATH = fileURLToPath(new URL('../src/cli.ts', import.me
 export const DEFAULT_CONCURRENCY = 3;
 export const MAX_CONCURRENCY = 5;
 export const DEFAULT_PAUSE_MS = 5_000;
-/** D09: never faster than one navigation per 1.5 s; the runner keeps at least that between site starts. */
+/** Never faster than one navigation per 1.5 s; keep at least that between site starts. */
 export const MIN_PAUSE_MS = 1_500;
 export const DEFAULT_TIMEOUT_MS = 4 * 60_000;
 /** Runner watchdog on top of the scan timeout (the CLI itself reserves 30 s for writing reports). */
 export const WATCHDOG_RESERVE_MS = 60_000;
 /**
  * Time between SIGTERM and SIGKILL of a child scan. SIGTERM lets the CLI close its browser and remove the temp
- * profile (cookies of the scanned site); SIGKILL cannot be handled, so the child gets time to finish (G57).
+ * profile (cookies of the scanned site); SIGKILL cannot be handled, so the child gets time to finish.
  */
 export const KILL_GRACE_MS = 30_000;
 
@@ -125,10 +125,9 @@ export interface RunnerDeps {
   shouldStop?: () => boolean;
 }
 
-// ---------------------------------------------------------------- arguments
-
 export interface RunnerArgs {
   sitesFile: string;
+  expectedCount: number | null;
   resultsDir: string;
   runId: string;
   concurrency: number;
@@ -170,6 +169,7 @@ Passive canary run over canary/sites.yaml (see canary/README.md). Live scans nee
   --retry-errors            re-run sites whose meta.json records a runner error
   --reanalyze <runId>       recompute checks from the saved snapshots of <runId>, no network
   --sites <file>            corpus file (default canary/sites.yaml)
+  --expected-count <n>      require exactly n corpus entries (default: no fixed size)
   --results <dir>           results directory (default canary/results)
 `;
 
@@ -211,6 +211,7 @@ export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs 
     allowPositionals: false,
     options: {
       sites: { type: 'string' },
+      'expected-count': { type: 'string' },
       results: { type: 'string' },
       'run-id': { type: 'string' },
       concurrency: { type: 'string' },
@@ -245,7 +246,7 @@ export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs 
     throw new Error('--assume-region: expected eea|de');
   }
   const pauseMs = values.pause === undefined ? DEFAULT_PAUSE_MS : parseDuration(values.pause);
-  if (pauseMs < MIN_PAUSE_MS) throw new Error(`--pause: at least ${MIN_PAUSE_MS} ms (D09)`);
+  if (pauseMs < MIN_PAUSE_MS) throw new Error(`--pause: at least ${MIN_PAUSE_MS} ms`);
   const timeoutMs = values.timeout === undefined ? DEFAULT_TIMEOUT_MS : parseDuration(values.timeout);
   const reanalyze = values.reanalyze === undefined ? null : checkRunId('reanalyze', values.reanalyze);
   const stamp = newRunId(now);
@@ -258,6 +259,10 @@ export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs 
 
   return {
     sitesFile: path.resolve(values.sites ?? DEFAULT_SITES_FILE),
+    expectedCount:
+      values['expected-count'] === undefined
+        ? null
+        : intIn('expected-count', values['expected-count'], 1, Number.MAX_SAFE_INTEGER),
     resultsDir: path.resolve(values.results ?? DEFAULT_RESULTS_DIR),
     runId,
     concurrency:
@@ -282,8 +287,6 @@ export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs 
   };
 }
 
-// ---------------------------------------------------------------- scanners
-
 export interface ScannerOptions {
   sandbox: 'require' | 'off';
   screenshots: boolean;
@@ -293,7 +296,7 @@ export interface ScannerOptions {
   killGraceMs?: number;
 }
 
-/** CA setting of the scanning process, recorded in run.json: the TLS verdicts depend on it (G46). */
+/** CA setting of the scanning process, recorded in run.json: the TLS verdicts depend on it. */
 export interface CaSetting {
   trustStore: TrustStore;
   /** `NODE_USE_SYSTEM_CA` as set, or null. */
@@ -406,14 +409,12 @@ export function cliScanner(o: ScannerOptions & { cliPath: string }): SiteScanner
       child.on('close', (code) => {
         signal.removeEventListener('abort', kill);
         out.end();
-        // A child that was killed ran no exit hook: its temp browser profile (cookies of the site) is still there (G57).
+        // A child that was killed ran no exit hook: its temp browser profile (cookies of the site) is still there.
         if (child.pid !== undefined) removeProfilesOfPid(child.pid);
         resolve({ exitCode: code === 0 || code === 1 || code === 2 ? code : null });
       });
     });
 }
-
-// ---------------------------------------------------------------- per site
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -562,8 +563,6 @@ export async function runPool<T>(
   await Promise.all(Array.from({ length: n }, (_, w) => worker(w)));
 }
 
-// ---------------------------------------------------------------- run
-
 export interface RunInfo {
   runVersion: 1;
   runId: string;
@@ -577,7 +576,7 @@ export interface RunInfo {
   sitesFile: string | null;
   sitesSha256: string | null;
   options: Record<string, unknown>;
-  /** CA setting of the scanning process (G46); absent in runs of older versions and in reanalysis runs. */
+  /** CA setting of the scanning process; absent in runs of older versions and in reanalysis runs. */
   ca?: CaSetting;
   sites: SiteRef[];
 }
@@ -703,8 +702,6 @@ export async function runCanary(o: RunCanaryOptions, deps: RunnerDeps): Promise<
   );
   return outcome;
 }
-
-// ---------------------------------------------------------------- reanalyze
 
 export interface ReanalyzeOptions {
   resultsDir: string;

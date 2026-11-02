@@ -1,5 +1,5 @@
 /**
- * L3 harness: builds dist/, starts the fixture server (test/fixture-server) with the e2e sites plus a fake DNS
+ * CLI harness: builds dist/, starts the fixture server (test/fixture-server) with the e2e sites plus a fake DNS
  * server, and runs `node dist/cli.js` as a subprocess whose network is routed to them by `network-hook.ts`.
  */
 import { spawn, spawnSync } from 'node:child_process';
@@ -20,9 +20,6 @@ const SITES = fileURLToPath(new URL('../sites/', import.meta.url));
 
 /** Marker contained in every cookie and storage value the fixture sites set; it must never reach a report. */
 export const SECRET_MARKER = 'E2ESECRET';
-
-/** `DSGVO_E2E_STRICT=1` (CI): a pipeline that is not fully implemented is a failure, not a skip. */
-export const STRICT = process.env.DSGVO_E2E_STRICT === '1';
 
 /** Build dist/ (unless DSGVO_E2E_SKIP_BUILD=1 and it exists). Type errors fail `pnpm typecheck`, not this step. */
 export function ensureBuilt(): void {

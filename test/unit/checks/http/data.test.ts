@@ -1,5 +1,5 @@
 /**
- * Ruleset table for HDR-01 / TLS-01 / TLS-02 against the registry (docs/03-checks.md §2.1), the D19 rule "T3 codes
+ * Ruleset table for HDR-01 / TLS-01 / TLS-02 against the registry (docs/03-checks.md §2.1), the rule "T3 codes
  * not above warning", and rendering of every emitted observation in de and en without unresolved placeholders.
  */
 import { describe, expect, it } from 'vitest';
@@ -45,7 +45,7 @@ describe('ruleset de-2026 for HDR-01 / TLS-01 / TLS-02', () => {
     for (const id of ['HDR-01', 'TLS-01', 'TLS-02']) expect(ruleset.checks[id]?.gating).toBe(true);
   });
 
-  it('T3 codes are never critical (D19)', () => {
+  it('T3 codes are never critical', () => {
     for (const check of httpChecks) {
       for (const { variant } of check.variants) {
         const code = crm[`${check.id}.${variant}`];

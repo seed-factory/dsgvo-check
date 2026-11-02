@@ -14,9 +14,12 @@
       "!**/canary/results",
       "!**/schema/report.schema.json",
       "!**/pnpm-lock.yaml",
+      "!**/data/report",
       "!**/docs",
       "!**/specs",
       "!**/test/fixtures/snapshots/**/*.json",
+      "!**/test/fixtures/reports/*.json",
+      "!**/test/unit/core/__snapshots__/*.json",
       "!**/test/fixture-server/sites"
     ]
   },

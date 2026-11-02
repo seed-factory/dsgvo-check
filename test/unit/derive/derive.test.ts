@@ -1,4 +1,4 @@
-/** derive(): party, first-party proxies, identifiers, Consent Mode, stages, cookie/storage classification. */
+/** derive: party, first-party proxies, identifiers, Consent Mode, stages, cookie/storage classification. */
 import { describe, expect, it } from 'vitest';
 import { parseCatalog, ServiceCatalog } from '../../../src/derive/catalog.ts';
 import { decodeConsentMode, derive, loadServiceCatalog, timingOf } from '../../../src/derive/index.ts';
@@ -136,7 +136,7 @@ describe('derive: requests', () => {
     ]);
   });
 
-  it('S-12: a redacted identifier key in the URL is no evidence; the collector names decide (before redaction)', () => {
+  it('a redacted identifier key in the URL is no evidence; the collector names decide (before redaction)', () => {
     const d = derive(
       snap([
         makePhase('A', {
@@ -163,7 +163,7 @@ describe('derive: requests', () => {
     expect(d.requests[1]?.identifierParam).toBe('cid');
   });
 
-  it('FC-08: identifier kind – stored match, sent tracking cookie, catalog param, user-supplied, per-load, none', () => {
+  it('identifier kind – stored match, sent tracking cookie, catalog param, user-supplied, per-load, none', () => {
     const ga = 'https://www.google-analytics.com/g/collect?v=2&tid=G-1&cid=[redacted]';
     const d = derive(
       snap([
@@ -209,7 +209,7 @@ describe('derive: requests', () => {
     expect(d.services.find((s) => s.serviceId === 'hotjar')?.identifierSeen).toBe(false);
   });
 
-  it('S-17: delivery and response are independent facts – a body error after the response keeps the exchange', () => {
+  it('delivery and response are independent facts – a body error after the response keeps the exchange', () => {
     const ga = 'https://www.google-analytics.com/g/collect?v=2&tid=G-1';
     const d = derive(
       snap([
@@ -254,7 +254,7 @@ describe('derive: requests', () => {
     expect(d.services[0]?.stages).toEqual(['event-sent']);
   });
 
-  it('G03: names read from the URL path (before redaction) make a path-form sync a persistent-param when the signature declares them', () => {
+  it('names read from the URL path (before redaction) make a path-form sync a persistent-param when the signature declares them', () => {
     const base = loadServiceCatalog().data;
     const catalog = new ServiceCatalog(
       parseCatalog({
@@ -305,7 +305,7 @@ describe('derive: requests', () => {
     ]);
   });
 
-  it('G32: a domain-only match with resourceType `other` is a loaded resource, no hit (compression dictionary)', () => {
+  it('a domain-only match with resourceType `other` is a loaded resource, no hit (compression dictionary)', () => {
     const dict = 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def';
     const d = derive(
       snap([
@@ -348,7 +348,7 @@ describe('derive: requests', () => {
     expect(only.services.find((s) => s.serviceId === 'google-ad-manager')?.stages).toEqual(['loaded']);
   });
 
-  it('G32 (R16): `other` on a path without any signature is a loaded resource by the resource type alone', () => {
+  it('`other` on a path without any signature is a loaded resource by the resource type alone', () => {
     // No signature covers /pcs/anything: the `other` branch of the resource-type mapping decides, not the catalog.
     const url = 'https://securepubads.g.doubleclick.net/pcs/anything';
     const d = derive(
@@ -372,7 +372,7 @@ describe('derive: requests', () => {
     expect(only.services.find((s) => s.serviceId === 'google-ad-manager')?.stages).toEqual(['loaded']);
   });
 
-  it('G33: fromServiceWorker marks the initiator, not the answer: a network-answered SW request is delivered', () => {
+  it('fromServiceWorker marks the initiator, not the answer: a network-answered SW request is delivered', () => {
     const ga = 'https://www.google-analytics.com/g/collect?v=2&tid=G-1';
     const d = derive(
       snap([

@@ -198,7 +198,7 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
     expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
   });
 
-  it('S-24: the "Impressum" link leads to an ordinary page (HTTP 200, keyword missing) → links-broken, not found', () => {
+  it('the "Impressum" link leads to an ordinary page (HTTP 200, keyword missing) → links-broken, not found', () => {
     // As the collector records it: the document is kept with `keyword-missing`, the link attempt is a soft-404.
     const landing = makeDocument({
       kind: 'impressum',
@@ -231,7 +231,7 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
     expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
   });
 
-  it('S-24: a document whose link attempt the collector judged soft-404 is not usable even without the error tag', () => {
+  it('a document whose link attempt the collector judged soft-404 is not usable even without the error tag', () => {
     const r = runCheck(
       legal01,
       site({
@@ -257,7 +257,7 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
             pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
           }),
         ],
-        // The collector always tries the usual path last; critical rests on that step (R09).
+        // The collector always tries the usual path last; critical rests on that step .
         documents: {
           documents: [defaultDocuments().documents[0]!],
           attempts: [{ kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' }],

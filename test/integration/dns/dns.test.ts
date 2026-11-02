@@ -1,6 +1,6 @@
 /**
- * L2: the real node:dns client and the DNS collector against a fake authoritative DNS (dns2, random UDP port,
- * `Resolver.setServers`). No internet. The full `scan()` path is in scan.test.ts.
+ * the real node:dns client and the DNS collector against a fake authoritative DNS (dns2, random UDP port,
+ * `Resolver.setServers`). No internet. The full `scan` path is in scan.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mail01 } from '../../../src/checks/dns/mail-01.ts';

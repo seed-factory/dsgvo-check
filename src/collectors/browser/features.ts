@@ -1,5 +1,5 @@
 /**
- * Safe request features extracted BEFORE redaction (D05, D20): identifier parameter names, event type and Consent
+ * Safe request features extracted BEFORE redaction: identifier parameter names, event type and Consent
  * Mode signals. Identifier values are returned only for the in-memory stored-identifier correlation and must never
  * be written to the snapshot, report or logs.
  */
@@ -31,7 +31,7 @@ const PATH_IDENTIFIER_PARAMS: ReadonlySet<string> = new Set([
   'gdid',
 ]);
 const MAX_PATH_PARAMS = 200;
-/** Event names (GA4 `en`, Meta Pixel `ev`). `t` counts only as a Universal Analytics hit type (FP-06). */
+/** Event names (GA4 `en`, Meta Pixel `ev`). `t` counts only as a Universal Analytics hit type. */
 const EVENT_KEYS = ['en', 'ev'] as const;
 const MAX_BODY = 16 * 1024;
 
@@ -151,7 +151,7 @@ export interface SetCookieAttrs {
 
 /**
  * Cookies of `Set-Cookie` header values with their `Domain`, `Path` and `Partitioned` attributes. The value is
- * dropped immediately (D20). One header value may hold several cookies separated by a line break.
+ * dropped immediately. One header value may hold several cookies separated by a line break.
  */
 export function parseSetCookies(headers: readonly string[]): SetCookieAttrs[] {
   const out: SetCookieAttrs[] = [];

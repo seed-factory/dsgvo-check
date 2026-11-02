@@ -4,7 +4,7 @@ import { resolveTestWorkers } from './test/utils/test-workers.ts';
 
 const shared = {
   environment: 'node' as const,
-  // Fixed locale/time zone for deterministic texts and dates (engineering research §2.9).
+  // Fixed locale/time zone for deterministic texts and dates.
   env: { TZ: 'Europe/Berlin', LANG: 'de_DE.UTF-8' },
 };
 

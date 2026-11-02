@@ -1,4 +1,4 @@
-/** L2: Usercentrics v3 (shadow DOM #usercentrics-cmp-ui) and v2 (#usercentrics-root) against own simulators. */
+/** : Usercentrics v3 (shadow DOM #usercentrics-cmp-ui) and v2 (#usercentrics-root) against own simulators. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
 import { decideAndAct, describeCmpScenarios, recognized } from './helpers.ts';
@@ -36,7 +36,7 @@ describeCmpScenarios(
       expect((await adapter.verify(page, 'reject')).verified).toBe(true);
     });
 
-    it('geo branch: isConsentRequired() false without an answer → geo signal, no banner', async () => {
+    it('geo branch: isConsentRequired false without an answer → geo signal, no banner', async () => {
       const { page } = await env.open('https://www.usercentrics.test/geo.html');
       const adapter = await recognized(page, 'usercentrics');
       await page.waitForTimeout(400);
@@ -45,7 +45,7 @@ describeCmpScenarios(
       expect(facts.firstLayer.bannerVisible).toBe(false);
     });
 
-    // S-14: a click that changes nothing must not turn a default-denied state with an unknown answer into a reject.
+    // : a click that changes nothing must not turn a default-denied state with an unknown answer into a reject.
     it('a deny button without effect (answer unknown, default denied) is not a verified reject', async () => {
       const { page } = await env.open('https://www.usercentrics.test/broken-deny.html');
       const adapter = await recognized(page, 'usercentrics');
@@ -67,7 +67,7 @@ describeCmpScenarios(
       expect(full.persistedAfterReload).toBe(false);
     });
 
-    it('after an explicit reject isConsentRequired() is false too, but that is not a geo signal', async () => {
+    it('after an explicit reject isConsentRequired is false too, but that is not a geo signal', async () => {
       const { page } = await env.open('https://www.usercentrics.test/');
       const adapter = await recognized(page, 'usercentrics');
       await waitForBanner(page, adapter);

@@ -1,5 +1,5 @@
 {
-  "$description": "S-19: the start page redirects to another domain whose certificate expired; the target certificate is valid",
+  "$description": "the start page redirects to another domain whose certificate expired; the target certificate is valid",
   "$expect": {
     "status": "completed",
     "variants": [

@@ -1,10 +1,10 @@
 /**
- * Derived classification (owner: M3). Pure function of the snapshot + catalog data; recomputed on `--from-snapshot`
- * and never persisted (D05). Initial version by the scaffold; owners may only ADD optional fields.
+ * Derived classification. Pure function of the snapshot + catalog data; recomputed on `--from-snapshot`
+ * and never persisted.
  */
 import type { BrowserPhase, SanitizedUrl } from '../core/snapshot-common.ts';
 
-/** Catalog categories (D14) and routing owners (consensus §4 "Дедупликация"). */
+/** Catalog categories and check ownership for finding deduplication. */
 export type ServiceCategory =
   | 'analytics'
   | 'ads'
@@ -63,7 +63,7 @@ export interface Party {
   country: string | null;
 }
 
-/** Catalog entry fields needed by checks (D14, D16). */
+/** Catalog entry fields needed by checks. */
 export interface ServiceInfo {
   serviceId: string;
   name: string;
@@ -111,22 +111,22 @@ export interface ClassifiedRequest {
   integration?: string;
   /**
    * A persistent identifier is evidenced (`identifierKind` stored-match / persistent-param / user-supplied).
-   * Never inferred from a query key in the redacted URL (S-12): only from collector facts extracted before redaction.
+   * Never inferred from a query key in the redacted URL: only from collector facts extracted before redaction.
    */
   identifier?: boolean;
-  /** 5.3 `identifier.kind`; see IdentifierKind. Added by M3. */
+  /** 5.3 `identifier.kind`; see IdentifierKind. */
   identifierKind?: IdentifierKind;
-  /** Name of the parameter or cookie that carried the identifier (never its value). Added by M3. */
+  /** Name of the parameter or cookie that carried the identifier (never its value). */
   identifierParam?: string;
   consentMode?: ConsentModeSignal | null;
   /** Consent Mode says the storage relevant for this service was denied (cookieless ping). */
   cookieless?: boolean;
   /**
    * 5.3 `delivery: sent` and `result: response` over the network (not SW/cache). Independent of a later body error
-   * that ends the record in `state: failed` (S-17).
+   * that ends the record in `state: failed`.
    */
   delivered?: boolean;
-  /** The resource reached the page: network response, service worker or cache (TRACK-01 stages). Added by M3. */
+  /** The resource reached the page: network response, service worker or cache (TRACK-01 stages). */
   loaded?: boolean;
   timing?: InteractionTiming;
   /** Matched on the site's own host for a self-hostable service (no third party involved). */

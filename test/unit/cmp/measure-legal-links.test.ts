@@ -1,9 +1,4 @@
-/**
- * L1 (review S-cmp-2, canary2 group G18): `toMeasured` picks the legal links of the banner and the covered legal
- * links of the page with the lexicon of data/legal. The in-page probe holds no legal wording and reports every
- * covered link and every link of the banner; a label counts when the collector's own matcher accepts it, so every
- * label and key of the lexicon file is honoured without a second word list.
- */
+/** Measured banner and covered page links use the localized legal-link lexicon. */
 import { describe, expect, it } from 'vitest';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import { toMeasured } from '../../../src/cmp/page/measure.ts';
@@ -89,7 +84,7 @@ function lexiconPhrases(): Array<{ kind: string; lang: string; role: string; phr
   return out;
 }
 
-describe('toMeasured: covered links are judged by the lexicon of data/legal (S-cmp-2)', () => {
+describe('toMeasured: covered links are judged by the lexicon of data/legal', () => {
   it('the lexicon file lists phrases of many languages (the scenario is real)', () => {
     const langs = new Set(lexiconPhrases().map((p) => p.lang));
     expect(langs.has('fr') && langs.has('es') && langs.has('pl')).toBe(true);
@@ -194,7 +189,7 @@ describe('toMeasured: covered links are judged by the lexicon of data/legal (S-c
   });
 });
 
-describe('toMeasured: legal links of the banner are judged by the lexicon of data/legal (S-cmp-2)', () => {
+describe('toMeasured: legal links of the banner are judged by the lexicon of data/legal', () => {
   it('every label and key of the lexicon file is a legal link of the banner', () => {
     const missed = lexiconPhrases().filter(
       (p) => !measure({ buttons: [link(p.phrase)] }).legalLinks?.some((l) => l.text === p.phrase),

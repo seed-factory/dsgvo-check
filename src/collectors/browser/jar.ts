@@ -1,25 +1,25 @@
 /**
- * Cookies and Web Storage per phase (D20: names, flags and lengths only). `context.cookies()` after every page;
+ * Cookies and Web Storage per phase (names, flags and lengths only). `context.cookies()` after every page;
  * Set-Cookie names attribute `http-response`; the `document.cookie` hook attributes `script` and reveals transient
  * cookies (`attempted`). Values are read only into memory for the identifier correlation and then dropped.
  * Records are deduplicated per key, but a key seen before the B/C click gets a second, `afterClick` record when a
  * write event follows the click (script write, `Set-Cookie` of a request started after it, `setItem`): a re-set
- * `_ga` after "Ablehnen" is a write after the reject even though the cookie already existed (S-16).
+ * `_ga` after "Ablehnen" is a write after the reject even though the cookie already existed.
  *
- * Attribution never goes by the cookie name alone (G34, G35): a cookie is attributed to a `Set-Cookie` response only
+ * Attribution never goes by the cookie name alone: a cookie is attributed to a `Set-Cookie` response only
  * when name, domain, path and partition match, and to a script write only when the document of the writing frame (or
  * the `Domain=` attribute of the write) can set a cookie of that domain; otherwise the setter is `unknown`. The same
  * identity decides the second, `afterClick` record: a `Set-Cookie` after the click marks only the cookie with that
- * name, domain, path and partition (R06). A `Set-Cookie` whose `Domain=` the response host may not set is ignored by
- * the browser: it is no setter and no write after the click of an existing cookie (S-requests-2). The domain of an
+ * name, domain, path and partition. A `Set-Cookie` whose `Domain=` the response host may not set is ignored by
+ * the browser: it is no setter and no write after the click of an existing cookie. The domain of an
  * `attempted` script cookie is that Domain= attribute or the host of the frame's document — never the host of the
  * script, which is only the `setterHost`. An `about:blank` or `about:srcdoc` frame has the document host of the frame
- * that created it (R13); a write whose document host stays unknown cannot be verified and creates no `attempted`
- * record. Every in-page read is bounded in time and by the scan signal (G49).
+ * that created it; a write whose document host stays unknown cannot be verified and creates no `attempted`
+ * record. Every in-page read is bounded in time and by the scan signal.
  */
 import type { BrowserContext, Cookie, Frame, Page } from 'playwright-core';
 import type { BrowserPhase } from '../../core/snapshot-common.ts';
-import { registrableDomain } from '../../core/url.ts';
+import { parseUrl, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
 import { cookieWritesInPage, type RawStorage, storageInPage, storageWritesInPage } from './in-page.ts';
 import { type SetCookieOrigin, settleWithin } from './recorder.ts';
@@ -32,7 +32,7 @@ export interface Moment {
   tMs: number;
   tRef: 'navigation' | 'click';
   afterClick: boolean;
-  /** 5.3: ms since the scan start (one monotonic scale), navigation and click of this moment (S-30). */
+  /** 5.3: ms since the scan start (one monotonic scale), navigation and click of this moment. */
   atMs?: number;
   navigationId?: string;
   actionId?: string;
@@ -57,7 +57,7 @@ export interface ScriptWrite {
   domain?: string | null;
 }
 
-/** Options that bound the in-page reads of the tracker (G49). */
+/** Options that bound the in-page reads of the tracker. */
 export interface JarOptions {
   /** Budget of one `frame.evaluate`. Default 1 s: the reads are trivial, a slower frame is wedged (PDF viewer). */
   evalTimeoutMs?: number;
@@ -166,7 +166,7 @@ export function mapCookie(
   };
 }
 
-/** One sanitizing point for the setter of every cookie record (D20: no query values of script URLs). */
+/** One sanitizing point for the setter of every cookie record (no query values of script URLs). */
 function cleanSetter(
   s: Pick<CookieRecord, 'setter' | 'setterHost' | 'setterUrl'>,
 ): Pick<CookieRecord, 'setter' | 'setterHost' | 'setterUrl'> {
@@ -255,7 +255,7 @@ export class JarTracker {
   finalize(defaultMoment: Moment): void {
     for (const [key, w] of this.scriptWrites) {
       if (w.deletion || this.jarHas(w.name, (d) => scriptCanSet(w, d))) continue;
-      // A write of unknown document and without Domain= cannot be placed on any domain (R13): not verifiable.
+      // A write of unknown document and without Domain= cannot be placed on any domain: not verifiable.
       const domain = writeDomain(w);
       if (!domain) continue;
       const where = {
@@ -288,7 +288,7 @@ export class JarTracker {
 
   /**
    * Was this jar cookie written again after the click? A script write must be able to set the domain; a `Set-Cookie`
-   * counts only for the cookie with the same name, domain, path and partition (R06).
+   * counts only for the cookie with the same name, domain, path and partition.
    */
   private writtenAfterClick(name: string, domain: string, path: string, partitioned: boolean): boolean {
     if (this.clickAt === null) return false;
@@ -296,7 +296,7 @@ export class JarTracker {
       if (w.name === name && scriptCanSet(w, domain)) return true;
     }
     for (const o of this.setCookieOrigins.values()) {
-      // A rejected `Domain=` (S-requests-2) wrote no cookie: the browser ignored the response's cookie entirely.
+      // A rejected `Domain=` wrote no cookie: the browser ignored the response's cookie entirely.
       if (o.rejected || !o.afterClick || o.name !== name || originDomain(o) !== domain) continue;
       if (o.path === path && o.partitioned === partitioned) return true;
     }
@@ -413,12 +413,8 @@ export class JarTracker {
       if (dead.has(frame)) continue;
       const url = frame.url();
       if (!/^https?:/.test(url)) continue;
-      let origin: string;
-      try {
-        origin = new URL(url).origin;
-      } catch {
-        continue;
-      }
+      const origin = parseUrl(url)?.origin;
+      if (origin === undefined) continue;
       if (seenOrigins.has(origin)) continue;
       seenOrigins.add(origin);
       const raw: RawStorage | null = await this.bounded(
@@ -468,9 +464,5 @@ export class JarTracker {
 }
 
 function hostOf(url: string): string | undefined {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
+  return parseUrl(url)?.hostname.toLowerCase();
 }

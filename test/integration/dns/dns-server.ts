@@ -1,5 +1,5 @@
 /**
- * Fake authoritative DNS for L2 (dns2 on 127.0.0.1:<random>, UDP). Zone keys are `"<TYPE> <name>"`.
+ * Fake authoritative DNS for (dns2 on 127.0.0.1:<random>, UDP). Zone keys are `"<TYPE> <name>"`.
  * Values: TXT records (a string, or an array of chunks for one multi-string record), MX as "<prio> <exchange>"
  * ("0 ." = Null MX), A addresses; or an rcode `SERVFAIL` / `REFUSED` / `NXDOMAIN`, or `DROP` (never answer).
  * A name with records of other types only answers NOERROR without data (NODATA); unknown names → NXDOMAIN.
@@ -97,7 +97,7 @@ export const MAIL_SITE: FakeZone = {
   'TXT _spf.provider.test': ['v=spf1 ip4:192.0.2.0/24 -all'],
 };
 
-/** Network for scan()/collectors: every host resolves to 127.0.0.1, DNS goes to the fake server only. */
+/** Network for scan/collectors: every host resolves to 127.0.0.1, DNS goes to the fake server only. */
 export function localDnsNetwork(dns: FakeDnsServer): NetworkConfig {
   return {
     proxy: null,

@@ -1,5 +1,5 @@
 /**
- * L2: a fake GA4 tag fires before any consent. Phase A must show the hit with the identifier redacted, the
+ * a fake GA4 tag fires before any consent. Phase A must show the hit with the identifier redacted, the
  * identifier name and stored-identifier match extracted before redaction, and the _ga cookie without its value.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -52,7 +52,7 @@ describe('GA4 before consent (phase A)', () => {
     });
   });
 
-  it('records _ga without its value (D20)', () => {
+  it('records _ga without its value', () => {
     const phaseA = run.result.sections.browser?.phases.find((p) => p.phase === 'A');
     const ga = phaseA?.cookies.find((c) => c.name === '_ga');
     expect(ga).toMatchObject({
