@@ -94,7 +94,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 ## 2. Сводный реестр
 
-`1` — первая проверка модуля в каркасе; это не завершение P0. Сдачу этапа 1 закрывает прототип по `docs/prototype/BRIEF.md` (README §2а) — не релиз и не его ворота. `3а` — релизный manifest; `3б` — остальные P1 после manifest; «после» — после релиза. Перенос `CONSENT-05` в обязательный релиз требует подтверждения заказчика. VULN реализуются последними среди P1 и первыми исключаются при нехватке бюджета.
+`1` — первая проверка модуля в каркасе; это не завершение P0. Сдачу этапа 1 закрывает прототип по [брифу прототипа](prototype/BRIEF.md) — не релиз и не его ворота. `3а` — релизный manifest; `3б` — остальные P1 после manifest; «после» — после релиза. Перенос `CONSENT-05` в обязательный релиз требует подтверждения заказчика. VULN реализуются последними среди P1 и первыми исключаются при нехватке бюджета.
 
 В колонке уровня перечислены основные варианты; подробные условия находятся в разделах ID. `crmCode` выводится только в JSON. Для непривязанных вариантов действует `null`.
 
@@ -146,9 +146,9 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 ### 2.1. Реестр вариантов и `messageId`
 
-Полный перечень вариантов для ruleset, `data/texts/{de,en}.yaml`, `data/crm/mapping.yaml` и теста полноты; каждый `checkId.variant` назван здесь ровно один раз. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` (README §5.1, архитектура §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
+Полный перечень вариантов для ruleset, `data/texts/{de,en}.yaml`, `data/crm/mapping.yaml` и теста полноты; каждый `checkId.variant` назван здесь ровно один раз. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` ([архитектура](02-architecture.md) §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
 
-Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет `severity`, `messageId` и `crmCode`, а есть `reason` и `limitations[]` CheckResult. Их тексты — ключи `reason.<id>` и `limitation.<id>` (схема ключей — предложение автора, не согласовано; wording-guide, ОВ 3). Единственное исключение — два `locked`-варианта `CONSENT-04`: находка `info` при статусе `inconclusive` (README §5.5). Текст диагностики `SCAN-*` — по её коду (§7), без `severity`.
+Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет `severity`, `messageId` и `crmCode`, а есть `reason` и `limitations[]` CheckResult. Их тексты — ключи `reason.<id>` и `limitation.<id>` (схема ключей — предложение автора, не согласовано; wording-guide, ОВ 3). Единственное исключение — два `locked`-варианта `CONSENT-04`: находка `info` при статусе `inconclusive` ([архитектура](02-architecture.md) §10.1 и §11.3). Текст диагностики `SCAN-*` — по её коду (§7), без `severity`.
 
 | ID | `critical` | `warning` | `info` | Не варианты: `reason`, limitation |
 |---|---|---|---|---|
@@ -1447,7 +1447,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 Fingerprint: `sha256(JCS{v:1, checkId, variantGroup, subject})`, без хоста цели, страниц и фаз. Поэтому новые затронутые страницы при прежнем `variantGroup/severity` могут не вернуть находку из baseline; страницы остаются в evidence. Для устойчивого сравнения выборка закрепляется `pages:`.
 
-`subject` по ID (README §5.4):
+`subject` по ID ([архитектура](02-architecture.md) §11.8):
 
 | Проверки | `subject` |
 |---|---|

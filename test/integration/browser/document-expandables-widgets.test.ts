@@ -1,10 +1,8 @@
 /**
- * a collapsed section of the policy is counted as an unopened part (and its text
- * is read as `expandable`) also when the page has no `<main>`/`<article>` and the accordion names its header the way
- * Bootstrap and other kits do (`accordion-header`, `card-header`, `panel-header`). The class token `header` used to
- * mark such a wrapper as page chrome: the panel was ignored, its hidden text became `hidden-irrelevant`, PRIV-01 did
- * not see the services named in it and the manifest did not show an unopened part. Header and footer of the page
- * (`site-header`, `header`, `page_footer`) stay chrome.
+ * A collapsed policy section counts as an unopened part, with text classified as `expandable`, even without
+ * `<main>`/`<article>`. Widget headers such as `accordion-header`, `card-header` and `panel-header` belong to
+ * their panels: treating them as page chrome would hide both policy text and completeness limitations.
+ * Actual page headers and footers (`site-header`, `header`, `page_footer`) remain chrome.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

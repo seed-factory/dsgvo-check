@@ -30,7 +30,7 @@ const STOP_WORDS = [
   /\bin breach\b|\bbreaches\b/i,
 ];
 
-/** Rules 2, 3, 6, 10, 13 of the wording guide §2 , with the rule number for the failure message. */
+/** Rules 2, 3, 6, 10, 13 of the wording guide §2, with the rule number for the failure message. */
 const GUIDE_RULES: Array<[string, RegExp]> = [
   [
     '2',

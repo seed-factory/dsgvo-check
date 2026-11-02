@@ -379,9 +379,8 @@ describe('an invalid escape does not cancel the mask of an encoded address in th
       expect(sanitizeUrl(url)).toBe(url);
     });
 
-    // : this used to expect the URL back unchanged ("%2540 is the text %40, not an address"). A query value
-    // (`containsAddress`) and a `mailto:` body (`hasAddress`) look three rounds deep, and "better hidden" decided:
-    // the path does the same now. A text that shows no address in three rounds stays (url-opaque-and-encoded-privacy).
+    // Paths inspect up to three encoding layers, like query values (`containsAddress`) and mailto bodies (`hasAddress`),
+    // so an extra layer does not hide an address. Text with no address in those layers stays as written.
     it('decodes up to three rounds like the query and mailto: %2540 is %40 is "@"', () => {
       expect(sanitizeUrl(`https://${D}/alice%2540${D}`)).toBe(`https://${D}/${REDACTED}@${D}`);
       expect(sanitizeUrl(`https://${D}/alice%252540${D}`)).toBe(`https://${D}/${REDACTED}@${D}`);
@@ -702,7 +701,7 @@ describe('the closing bracket of the mask is not sentence punctuation', () => {
 });
 
 describe('long inputs: the scan stays linear (about 100 000 to 400 000 characters)', () => {
-  // The code is synchronous: a quadratic tail cannot be interrupted by the timeout of the scan .
+  // The code is synchronous: a quadratic tail cannot be interrupted by the timeout of the scan.
   const budgetMs = 2_000;
   const n = 100_000;
 

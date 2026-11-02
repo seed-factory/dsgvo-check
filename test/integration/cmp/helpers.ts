@@ -181,7 +181,7 @@ export function describeCmpScenarios(
       expect(verify.persistedAfterReload).toBe(true);
     });
 
-    // : the adapter executes the target core chose and decides nothing itself.
+    // the adapter executes the target core chose and decides nothing itself.
     it('act(page, action, target) clicks exactly the target chosen by classifyFirstLayer', async () => {
       const { page } = await env.open(s.okUrl);
       const adapter = await recognized(page, s.id);

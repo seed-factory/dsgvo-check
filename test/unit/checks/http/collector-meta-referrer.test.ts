@@ -1,8 +1,7 @@
 /**
- * what the HTTP collector stores of `<meta name="referrer">`. The tag is untrusted text; HDR-01 reads one
- * thing from it, the referrer policy in force (the last recognised keyword). So only the Referrer-Policy keywords
- * are stored, at most the last eight: a 64 KiB tag used to grow the snapshot to about 96 KiB (every `a` token passed
- * the old "looks like a keyword" filter `^[a-z][a-z-]{0,39}$`).
+ * The HTTP collector stores only the Referrer-Policy keywords of `<meta name="referrer">`, at most the last eight.
+ * HDR-01 needs the last recognized keyword. Keeping unrelated tokens from an arbitrarily long, untrusted tag
+ * would enlarge the snapshot without adding a policy fact.
  */
 import { describe, expect, it } from 'vitest';
 import { effectiveReferrerPolicy } from '../../../../src/checks/http/hdr-01.ts';

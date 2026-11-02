@@ -1,5 +1,5 @@
 /**
- * Pure: findings of the . A false friend ("cookie", "settings") in the href path of a
+ * Pure: path labels that distinguish legal documents. A false friend ("cookie", "settings") in the href path of a
  * link switches the path match off only when the path carries no primary key of the document: `privacy-policy-and-cookies`
  * is the privacy policy, `cookie-settings` is not. The label branch already worked like this (`primary`).
  */

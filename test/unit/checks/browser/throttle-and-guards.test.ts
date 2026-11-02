@@ -1,9 +1,9 @@
 /**
- * after the , integrator part:
- * - / : phase A cut short by throttling (429/503) is not a clean observation. With evaluable pages
+ * Throttling and browser-check guards:
+ * - A phase A cut short by throttling (429/503) is not a clean observation. With evaluable pages
  * the affected checks are `partial` (limitation `throttled`, 5.2); without any evaluable page they are
  * `inconclusive` (reason `throttled`) instead of `completed` without findings.
- * - : counterexamples for guard conditions of the browser checks that no test pinned down.
+ * - Counterexamples pin down the browser-check guard conditions.
  */
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../src/checks/browser/consent-01.ts';

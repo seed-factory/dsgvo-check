@@ -1,3 +1,8 @@
+/**
+ * Every browser request URL passes through sanitization, so a large query must take one linear pass.
+ * Repeated URLSearchParams iteration can make the work quadratic in the number of parameters.
+ * The reference loop checks byte-for-byte redaction semantics on synthetic inputs.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   containsAddress,
@@ -6,6 +11,7 @@ import {
   REDACTED,
   sanitizeUrl,
 } from '../../../src/core/url.ts';
+import { expectLinearGrowth } from '../../utils/scaling.ts';
 
 const KiB = 1024;
 const manyParams = (bytes: number) => `http://h.test/?a=${'&a'.repeat(bytes / 2)}`;
@@ -14,17 +20,10 @@ const manyParams = (bytes: number) => `http://h.test/?a=${'&a'.repeat(bytes / 2)
 function expectLinear(build: (n: number) => string): void {
   const small = build(128 * KiB);
   const large = build(512 * KiB);
-  sanitizeUrl(small);
-  sanitizeUrl(large);
-  const best = (url: string) =>
-    Math.min(
-      ...Array.from({ length: 5 }, () => {
-        const started = performance.now();
-        sanitizeUrl(url);
-        return performance.now() - started;
-      }),
-    );
-  expect(best(large) / Math.max(best(small), 0.05)).toBeLessThan(12);
+  expectLinearGrowth(
+    () => sanitizeUrl(small),
+    () => sanitizeUrl(large),
+  );
 }
 
 describe('query processing scales with parameter count and value size', () => {

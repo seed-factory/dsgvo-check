@@ -1,7 +1,7 @@
 /**
  * Parser for the canonical variant registry `docs/03-checks.md` §2.1 (AGENTS.md "реестр §2.1 — канон"):
  * every `checkId.variant` with its default severity and the `locked` mark (²). Used by the test that compares
- * the registry with ruleset, check declarations, texts and the crm mapping .
+ * the registry with ruleset, check declarations, texts and the crm mapping.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

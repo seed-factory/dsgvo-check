@@ -257,7 +257,7 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
             pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
           }),
         ],
-        // The collector always tries the usual path last; critical rests on that step .
+        // The collector always tries the usual path last; critical rests on that step.
         documents: {
           documents: [defaultDocuments().documents[0]!],
           attempts: [{ kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' }],

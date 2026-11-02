@@ -1,8 +1,8 @@
 /**
- * robustness of the orchestrator : the global timeout after a partial browser collection ,
- * a browser collector that hands over nothing , texts of the diagnostics SCAN-BLOCKED / SCAN-TIMEOUT /
- * SCAN-PRIVATE-REQUEST-BLOCKED , the Nutzungshinweise wording and the CA setting of the
- * process .
+ * Orchestrator robustness: the global timeout after a partial browser collection,
+ * a browser collector that hands over nothing, texts of the diagnostics SCAN-BLOCKED / SCAN-TIMEOUT /
+ * SCAN-PRIVATE-REQUEST-BLOCKED, the Nutzungshinweise wording and the CA setting of the
+ * process.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -75,7 +75,7 @@ describe('checks that lack data because the deadline cut the browser collection 
     expect(r.limitations).toEqual(['deadline:insufficient-pages']);
   });
 
-  // : the reason belongs to a phase; only a phase the deadline cut makes the deadline the cause.
+  // the reason belongs to a phase; only a phase the deadline cut makes the deadline the cause.
   describe('a reason from a phase that ended by itself stays inconclusive when only a later phase was cut', () => {
     const cutC = makePhase('C', { status: 'partial', reason: 'timeout' });
     const skippedC = makePhase('C', { status: 'skipped', reason: 'timeout' });
@@ -224,7 +224,7 @@ describe('scan after the deadline cut phase B', () => {
     expectValidReport(r.report);
     const byId = Object.fromEntries((r.report.checks ?? []).map((c) => [c.id, c]));
     expect(byId['CONSENT-05']).toMatchObject({ status: 'error', reason: 'timeout' });
-    // : one page in a completed phase A is the site's fact, not the deadline's doing.
+    // one page in a completed phase A is the site's fact, not the deadline's doing.
     expect(byId['CONSENT-03']).toMatchObject({ status: 'inconclusive', reason: 'insufficient-pages' });
     const diag = r.report.diagnostics?.find((d) => d.code === 'SCAN-TIMEOUT');
     expect(diag?.affects).toEqual(['CONSENT-05']);
@@ -317,7 +317,7 @@ describe('no hand-over after the global timeout', () => {
   });
 });
 
-// : the failure texts of the orchestrator are data (data/texts), in the language of the scan.
+// the failure texts of the orchestrator are data (data/texts), in the language of the scan.
 describe('the failure message of a scan cut by the global timeout is a text of data/texts', () => {
   const failed = async (lang: 'de' | 'en', browser: Collectors['browser']) => {
     const r = await scan({
@@ -444,7 +444,7 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
     expect(unresolved).not.toContain('{');
   });
 
-  // : navigations that a retry loaded afterwards are named as such, not as documents that were not fetched.
+  // navigations that a retry loaded afterwards are named as such, not as documents that were not fetched.
   it.each([
     ['de', /nach Wiederholung geladen/, /Eine weitere Navigation/, /2 weitere Navigationen/],
     ['en', /loaded after a retry/, /One more navigation/, /2 more navigations/],

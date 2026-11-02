@@ -1,4 +1,4 @@
-/** : Borlabs Cookie v3 and v2 adapters against the own simulators, plus the cookiesForBots branch. */
+/** Borlabs Cookie v3 and v2 adapters against the own simulators, plus the cookiesForBots branch. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
 import { CHROME_UA, describeCmpScenarios, recognized } from './helpers.ts';

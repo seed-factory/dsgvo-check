@@ -285,7 +285,7 @@ describe('TRACK-01 stage per timing', () => {
       afterReject: false,
       afterAccept: true,
       stageBeforeInteraction: 'loaded',
-      // No phase B in the snapshot: the reject was not carried out, so nothing is "not found" after it .
+      // No phase B in the snapshot: the reject was not carried out, so nothing is "not found" after it.
       stageAfterReject: 'not-checked',
       stageAfterAccept: 'event-sent',
       stage: 'event-sent',

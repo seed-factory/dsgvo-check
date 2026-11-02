@@ -211,7 +211,7 @@ describe('CONSENT-03 no consent dialog', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-observed' });
   });
 
-  // : banners found by the extended heuristic (other languages, static notice) are CONSENT-04 territory.
+  // banners found by the extended heuristic (other languages, static notice) are CONSENT-04 territory.
   it.each(['heuristic:static', 'heuristic:fixed'])(
     'counterexample: a heuristic candidate with signal %s is a banner, not "no banner"',
     (signal) => {
@@ -245,7 +245,7 @@ describe('CONSENT-03 no consent dialog', () => {
     },
   );
 
-  // : a visible consent-looking iframe whose content could not be resolved limits the "no banner" conclusion.
+  // a visible consent-looking iframe whose content could not be resolved limits the "no banner" conclusion.
   describe('unresolved consent iframe', () => {
     const frameCandidate = (p: Partial<CmpFacts['firstLayer']> = {}) =>
       makeCmpFacts({

@@ -1,5 +1,5 @@
 /**
- * the HTTP collector against local HTTP/HTTPS servers (random ports, test PKI trusted only for the test),
+ * The HTTP collector against local HTTP/HTTPS servers (random ports, test PKI trusted only for the test),
  * followed by the pure checks on the collected section.
  */
 import { createServer } from 'node:http';
@@ -25,7 +25,7 @@ import { ALL_ROUTES } from './sites.ts';
 let server: FixtureServer;
 let closed: number;
 const fast = createHttpCollector({ minIntervalMs: 20 });
-/** Production pacing : at most 2 requests per second to one host. */
+/** Production pacing: at most 2 requests per second to one host. */
 const PACER_INTERVAL_MS = 500;
 const START_JITTER_MS = 50;
 
@@ -102,7 +102,7 @@ describe('HTTP collector: http → https redirect site', () => {
     ]);
     expect(res.probes?.length).toBe(6);
 
-    // : honest UA token only, no cookies are ever sent back.
+    // Only the honest UA token is sent; cookie values never go back to the server.
     expect(new Set(server.requests.map((r) => r.userAgent))).toEqual(new Set([uaToken()]));
     expect(server.requests.every((r) => r.cookieNames.length === 0)).toBe(true);
     expect(server.unexpected).toEqual([]);
@@ -222,6 +222,35 @@ describe('HTTP collector: problem sites', () => {
 
   it('three 429 of one host → Retry-After pause, one retry, then that host only is stopped', async () => {
     server.reset();
+    const seen = new Set<string>();
+    const retriedRequest = Promise.withResolvers<void>();
+    server.addHandler({
+      host: 'busy.test',
+      path: /.*/,
+      handle: async (_req, response, ctx) => {
+        const key = `${ctx.scheme}:${ctx.url.pathname}`;
+        const repeated = seen.has(key);
+        seen.add(key);
+        if (repeated) retriedRequest.resolve();
+        if (!repeated && seen.size === 4) {
+          // A concurrent fourth response could stop the host before the paused retry starts. Let the retry
+          // arrive first so this test isolates the pause/retry contract from response-order scheduling.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              retriedRequest.promise,
+              new Promise<void>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('The overload retry was not requested')), 5_000);
+              }),
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        response.writeHead(429, { 'retry-after': '60' });
+        response.end();
+      },
+    });
     const collector = createHttpCollector({ minIntervalMs: 20, maxRetryAfterMs: 300 });
     const res = await collect('https://busy.test/', {}, collector);
     const http = res.sections.http as HttpSection;

@@ -83,7 +83,7 @@ services:
     aliasesDe: [iubenda]
     aliasesEn: [iubenda]
 
-  # no anyHost signatures, so first-party proxies of these CMPs stay unclassified. CMP recognition
+  # Without `anyHost` signatures, first-party proxies of these CMPs stay unclassified. CMP recognition
   # stays with the adapters in src/cmp.
   - id: sourcepoint
     name: Sourcepoint

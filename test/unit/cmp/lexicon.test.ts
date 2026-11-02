@@ -130,7 +130,7 @@ describe('classifyLabel: lexicon de/en', () => {
     expect(classifyLabel('Speichern oder ablehnen', lexicon)).toMatchObject({ kind: null });
   });
 
-  // : a decision combined with closing ("… und schließen") is the decision, not an unclassified button.
+  // a decision combined with closing ("… und schließen") is the decision, not an unclassified button.
   it('"Ablehnen und schließen" / "Ablehnen und weiter" are rejects (lexicon phrases → high)', () => {
     expect(classifyLabel('Ablehnen und schließen', lexicon)).toMatchObject({
       kind: 'reject',
@@ -166,7 +166,7 @@ describe('classifyLabel: lexicon de/en', () => {
   });
 });
 
-// : "save the selection" phrased with accept/allow verbs is a save button, not "accept all".
+// "save the selection" phrased with accept/allow verbs is a save button, not "accept all".
 describe('classifyLabel: save-selection phrasing', () => {
   const saves = [
     'Ausgewählte Cookies akzeptieren',
@@ -202,7 +202,7 @@ describe('classifyLabel: save-selection phrasing', () => {
   });
 });
 
-// : the generic heuristic and the button kinds must also work for non-de/en banners (facts only, info).
+// the generic heuristic and the button kinds must also work for non-de/en banners (facts only, info).
 describe('classifyLabel: further languages', () => {
   const cases: Array<[string, string]> = [
     ['Hylkää kaikki', 'reject'],

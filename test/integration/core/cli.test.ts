@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/offline-network-hook.ts';
 import { expectValidReport } from '../../utils/report-validator.ts';
@@ -11,12 +12,12 @@ import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 const cli = path.join(REPO_ROOT, 'src/cli.ts');
 
 /**
- * is loopback-only (test/README.md): the CLI runs with a preload that replaces the system resolver by one that
+ * The test is loopback-only (test/README.md): the CLI runs with a preload that replaces the system resolver by one that
  * answers ENOTFOUND for every host and logs each lookup, so no DNS query leaves the machine.
  */
 function run(...args: string[]) {
   const lookupLog = path.join(mkdtempSync(path.join(tmpdir(), 'cli-dns-')), 'lookups.log');
-  const r = spawnSync(process.execPath, ['--import', OFFLINE_HOOK, cli, ...args], {
+  const r = spawnSync(process.execPath, ['--import', pathToFileURL(OFFLINE_HOOK).href, cli, ...args], {
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', ...offlineHookEnv(lookupLog) },
     timeout: 60_000,

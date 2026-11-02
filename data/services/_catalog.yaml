@@ -153,7 +153,7 @@ allowlist:
       - _iub_cs-*
       - usprivacy
       - SOCS
-      # consent state of consentmanager, Sourcepoint and Google Funding Choices. `*` also covers the
+      # Consent state of consentmanager, Sourcepoint and Google Funding Choices. `*` also covers the
       # `_expire` companions. __cmpiuid and consentUUID are visitor identifiers and stay out (cmp-cookie-with-uid).
       # Sourcepoint is listed by the observed names: `_sp_v1_*` would also cover `_sp_v1_uid`, presumed to be an
       # identifier (not yet checked against vendor documentation, required for each pattern).
@@ -266,7 +266,7 @@ allowlist:
       - klaro
       - cookieyes-consent
       - __cmpconsent*
-      # consentmanager state (same names as the cookies above), Usercentrics v3 (`ucData_<settingsId>`)
+      # Consentmanager state (same names as the cookies above), Usercentrics v3 (`ucData_<settingsId>`)
       # and Sourcepoint local state. `__cmpiuid` stays out (identifier).
       - __cmpcpc*
       - __cmpcvc*

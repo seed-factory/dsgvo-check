@@ -1,4 +1,4 @@
-/** : Real Cookie Banner adapter against the own simulator, including accept-all-for-bots with our honest UA. */
+/** Real Cookie Banner adapter against the own simulator, including accept-all-for-bots with our honest UA. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { browserUserAgent } from '../../../src/core/user-agent.ts';

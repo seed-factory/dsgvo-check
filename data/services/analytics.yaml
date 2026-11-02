@@ -406,8 +406,8 @@ services:
     aliasesEn: [ScorecardResearch, comScore]
 
   # The domains also cover identity, experience, checkout and REST hosts of the vendor. A domain-only match
-  # classifies the request, but a xhr/fetch/image/ping without a signature becomes a `hit` in derive (open question
-  # the event classification, which CONSENT-01 reads as `cookieless-ping` and TRACK-01 as "event sent". Therefore every service
+  # classifies the request, but an xhr/fetch/image/ping without a signature becomes a `hit` in derive.
+  # CONSENT-01 reads that as `cookieless-ping` and TRACK-01 as "event sent". Therefore every service
   # endpoint of the vendor (Piano ID, experience, checkout, REST) is a `resource` signature, EU and non-EU host alike;
   # the domains stay broad so that PRIV-01 still names the service.
   - id: piano

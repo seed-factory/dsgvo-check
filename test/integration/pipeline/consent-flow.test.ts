@@ -1,6 +1,6 @@
 /**
- * integration of all browser-side modules: the real browser collector with the real CMP subsystem ,
- * derive and the browser checks , assess/gate (core) and the reporters , on a hand-written shop that uses
+ * integration of all browser-side modules: the real browser collector with the real CMP subsystem,
+ * derive and the browser checks, assess/gate (core) and the reporters, on a hand-written shop that uses
  * the Cookiebot simulator. Three variants: consent respected, tracker before consent, blocking banner without reject.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';

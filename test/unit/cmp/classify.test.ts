@@ -388,7 +388,7 @@ describe('classifyFirstLayer: variants', () => {
   });
 });
 
-// : the probe keeps at most N buttons. When first-layer candidates were dropped, "no reject" is not a finding.
+// the probe keeps at most N buttons. When first-layer candidates were dropped, "no reject" is not a finding.
 describe('classifyFirstLayer: truncated button set', () => {
   const truncated = (buttons: CmpButton[], p: Partial<CmpFacts> = {}): CmpFacts => {
     const f = facts(buttons, p);
@@ -454,7 +454,7 @@ describe('classifyFirstLayer: truncated button set', () => {
   });
 });
 
-// : geometry measured during the appearance animation says nothing about reachability.
+// geometry measured during the appearance animation says nothing about reachability.
 describe('classifyFirstLayer: unsettled geometry', () => {
   const rejectBelowViewport = (p: { geometryUnsettled?: boolean }): CmpFacts => {
     const f = facts([
@@ -488,7 +488,7 @@ describe('classifyFirstLayer: unsettled geometry', () => {
   });
 });
 
-// : the only actionable "accept" is a save-selection button → no accept target (phase C must not click it).
+// the only actionable "accept" is a save-selection button → no accept target (phase C must not click it).
 describe('classifyFirstLayer: save-selection button', () => {
   it('a lone "Ausgewählte Cookies akzeptieren" with vendor role save is no accept', () => {
     const r = classifyFirstLayer(

@@ -1,4 +1,4 @@
-/** Pure: deterministic page selection with reasons and B/C control pages . */
+/** Pure: deterministic page selection with reasons and B/C control pages. */
 import { describe, expect, it } from 'vitest';
 import {
   type CandidateLink,

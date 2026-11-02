@@ -1,8 +1,8 @@
 /**
- * how the first screen is measured (canary fixes). Own Cookiebot simulator, real Chromium.
- * - : a long list of hidden vendor toggles before the visible buttons must not push the buttons of the first
+ * How the first screen is measured. Own Cookiebot simulator, real Chromium.
+ * - a long list of hidden vendor toggles before the visible buttons must not push the buttons of the first
  * layer out of the measurement; a truncation that does lose first-layer candidates is reported.
- * - : the first screen is measured after the appearance animation has finished; a banner that never settles is
+ * - the first screen is measured after the appearance animation has finished; a banner that never settles is
  * reported as such instead of being judged by an intermediate frame.
  */
 import { describe, expect, it } from 'vitest';

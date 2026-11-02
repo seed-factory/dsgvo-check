@@ -1,6 +1,5 @@
 /**
- * Pure tests (no browser) for cross-zone fixes made by the integrator after the
- * (the collector contract): the CMP bridge executes the target core decided .
+ * The CMP bridge executes the click target selected by core, without making a second decision.
  */
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';

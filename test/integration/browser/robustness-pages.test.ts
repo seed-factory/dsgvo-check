@@ -1,6 +1,6 @@
 /**
- * navigations that end somewhere else than a page — the browser's own error page and an inline PDF
- * . Synthetic hosts only (`*.example.test`), served by dynamic handlers of the fixture server.
+ * Navigations that end somewhere other than an HTML page: the browser's own error page and an inline PDF.
+ * Synthetic hosts only (`*.example.test`), served by dynamic handlers of the fixture server.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { legal01 } from '../../../src/checks/browser/legal-01.ts';
@@ -110,7 +110,7 @@ beforeAll(async () => {
         '/impressum/': send(IMPRESSUM),
         '/datenschutz/': send(minimalPdf(), 'application/pdf'),
       }),
-      // : a 403 on the fallback probe /impressum (the start page has no legal links).
+      // a 403 on the fallback probe /impressum (the start page has no legal links).
       site('probe403.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>`)),
         '/kontakt/': send(html('Kontakt', `<main><h1>Kontakt</h1></main>`)),
@@ -119,7 +119,7 @@ beforeAll(async () => {
           html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`),
         ),
       }),
-      // : a Cloudflare-like challenge on the linked privacy page.
+      // a Cloudflare-like challenge on the linked privacy page.
       site('challenge.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1></main>${FOOTER}`)),
         '/impressum/': send(IMPRESSUM),
@@ -128,7 +128,7 @@ beforeAll(async () => {
           res.end(html('Just a moment...', '<p>Checking if the site connection is secure</p>'));
         },
       }),
-      // : the start page is fine in phase A and challenged afterwards (phase B).
+      // the start page is fine in phase A and challenged afterwards (phase B).
       ((): DynamicHandler => {
         let starts = 0;
         return {

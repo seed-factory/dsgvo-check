@@ -356,7 +356,7 @@ describe('scan — pipeline', () => {
       }),
     );
     expect(result.report.scan.status).toBe('failed');
-    // The collector handed over nothing: whether the start page was captured is unknown , the code says so.
+    // The collector handed over nothing: whether the start page was captured is unknown, the code says so.
     if (result.report.scan.status === 'failed')
       expect(result.report.scan.failure.code).toBe('browser-no-handover');
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({

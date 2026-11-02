@@ -20,6 +20,7 @@ import { buildReportView, findingText } from '../../../src/reporters/report-view
 import { escapeHtml } from '../../../src/reporters/template.ts';
 import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { cspOf, htmlSafetyProblems, tagsOf } from './html-safety.ts';
+import { reportLabelKeys, usedReportLabelKeys } from './report-label-keys.ts';
 
 const ctx = (lang: 'de' | 'en' = 'de', outDir = '/nonexistent-out'): ReporterContext => {
   const texts = loadTexts(lang);
@@ -410,12 +411,12 @@ describe('report labels', () => {
     const params = (t: string) => templateParams(t).sort();
     const de = loadTexts('de').ui;
     const en = loadTexts('en').ui;
-    const keys = Object.keys(de).filter((key) => key.startsWith('report.'));
-    expect(keys.sort()).toEqual(
-      Object.keys(en)
-        .filter((key) => key.startsWith('report.'))
-        .sort(),
+    const keys = reportLabelKeys(de);
+    const usedKeys = usedReportLabelKeys();
+    expect(keys, 'de report keys must match the template, view, Summary and CLI/PDF consumers').toEqual(
+      usedKeys,
     );
+    expect(reportLabelKeys(en), 'en report keys must match the same consumers').toEqual(usedKeys);
     for (const key of keys) {
       const d = de[key]?.text;
       const e = en[key]?.text;

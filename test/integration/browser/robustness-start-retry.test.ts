@@ -1,9 +1,9 @@
 /**
- * the repeated navigation to the start page is not silent ( of the live rescan). The start page of phase A is
+ * Repeated navigation to the start page remains visible in the snapshot and log. The start page of phase A is
  * navigated once more after a failure (timeout, connection error, 5xx; spec 7.4 / table 5.2: "timeout or 5xx of the
- * start page twice" is unreachable). The first attempt used to be wiped (`pages.pop`), so neither the snapshot nor
- * the log showed that 30 s of the budget had gone. Now the failed attempt stays in the snapshot as an error of the
- * phase (code of the failure, attempt, duration, pause, navigation id) and in the log. Synthetic hosts only.
+ * start page twice" is unreachable). The failed attempt stays as a phase error in the snapshot and log, including
+ * its code, attempt, duration, pause and navigation id, so the time spent before recovery remains visible.
+ * Synthetic hosts only.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { silentLogger } from '../../../src/core/logger.ts';
@@ -151,8 +151,7 @@ describe('start page repeated after a failed navigation', () => {
   it('no answer at all, then a good answer: the repeat is a second request, not an instant ERR_ABORTED', async () => {
     const run = await collect(server, { url: `https://${HOSTS.silentThenOk}/`, deps: { timing: TIMING } });
 
-    // Before the fix Chromium took the repeat for the same, still unfinished navigation and aborted it within a few
-    // milliseconds without a request: one hit on the server, `start-page-unreachable` with `ERR_ABORTED`.
+    // Recovery needs a distinct request; reusing an unfinished navigation could abort without contacting the server.
     expect(run.result.fatal).toBeUndefined();
     expect(rootHits(HOSTS.silentThenOk)).toHaveLength(2);
     const phaseA = run.result.sections.browser?.phases[0];

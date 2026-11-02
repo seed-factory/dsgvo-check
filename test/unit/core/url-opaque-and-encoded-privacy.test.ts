@@ -276,7 +276,7 @@ describe('an address in the opaque part of a URL with another scheme is masked',
     ];
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
     // not `foo://` + pieces: a host made of pieces is often no host, and an unparsable URL that ends in a blank is
-    // not stable (the blank is cut by the next parse; the same before , not part of it)
+    // not stable because the next parse removes the trailing blank
     const schemes = ['foo:', 'javascript:', 'sms:', 'x-y+z.w:', 'foo://h.test/', 'ws://h.test/'];
     for (let i = 0; i < 40_000; i++) {
       const scheme = schemes[Math.floor(rnd() * schemes.length)] as string;
@@ -431,8 +431,8 @@ describe('an address encoded two or three times in a path segment is masked', ()
       expect(redactTarget(input)).toBe(expected);
     });
 
-    // found by the differential fuzz: what the decoded pieces write back must not turn into a query, a fragment or the
-    // userinfo of the next pass, and must not stand next to an escape that the mask of bare addresses takes for a local part
+    // Decoded pieces must not become a query, fragment or userinfo on the next pass, or adjoin an escape that the
+    // bare-address mask could mistake for a local part.
     it.each([
       `https://exa mple.test/%5C%5Ck=vzq7%40${M}_%3F%25`,
       `https://exa mple.test/%23%3F%3Fv=2-%ZZzq7%40${M}#`,

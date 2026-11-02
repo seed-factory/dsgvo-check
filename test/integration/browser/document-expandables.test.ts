@@ -1,8 +1,7 @@
 /**
- * collapsed elements are counted in the manifest of a legal document only when they belong to
- * the text of the document. An empty menu panel in the navigation used to be counted as an unopened part and made the
- * whole privacy statement `document-incomplete` (expand-failed). A collapsed section of the policy itself still
- * counts, so that an unopened part is not silently treated as read.
+ * Collapsed elements count in a legal document's manifest only when they belong to its text.
+ * Empty navigation panels must not make the policy `document-incomplete`; unopened policy sections must
+ * still count so that unread content is not silently treated as evaluated.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

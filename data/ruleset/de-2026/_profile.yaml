@@ -3,5 +3,5 @@ profile:
   id: de-2026
   version: "2026.10.0"
   rechtsstand: "2026-10-30"
-  # Draft until signed off by the customer (); release is blocked while true.
+  # Draft until signed off by the customer; release is blocked while true.
   draft: true

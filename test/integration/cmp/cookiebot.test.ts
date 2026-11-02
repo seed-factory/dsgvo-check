@@ -1,4 +1,4 @@
-/** : Cookiebot adapter against the own simulator, including the bot branch (isSpider) and the geo branch. */
+/** Cookiebot adapter against the own simulator, including the bot branch (isSpider) and the geo branch. */
 import { expect, it } from 'vitest';
 import { classifyFirstLayer, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { CHROME_UA, decideAndAct, describeCmpScenarios, recognized } from './helpers.ts';

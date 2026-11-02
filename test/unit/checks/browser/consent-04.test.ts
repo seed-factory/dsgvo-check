@@ -387,7 +387,7 @@ describe('CONSENT-04 with the first-layer classifier', () => {
   });
 });
 
-// : the CMP markup role of a button is a fact of the adapter and belongs to the report evidence.
+// the CMP markup role of a button is a fact of the adapter and belongs to the report evidence.
 describe('CONSENT-04 evidence: vendorRole', () => {
   const firstLayer = (buttons: CmpButton[]): CmpFacts['firstLayer'] => ({
     bannerPresent: true,
@@ -464,7 +464,7 @@ describe('CONSENT-04 limitations from the classifier reasons', () => {
   });
 });
 
-// : an adapter below `high` is no better a source than the heuristic, so the heuristic banner with buttons and
+// an adapter below `high` is no better a source than the heuristic, so the heuristic banner with buttons and
 // screenshot of phase B is the evidence, not an empty adapter fact of a page where the banner is hidden.
 describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
   const OTHER = 'https://www.example.de/impressum';

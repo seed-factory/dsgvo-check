@@ -1,5 +1,5 @@
 /**
- * The check example from the extension contract, compiled and executed as an test.
+ * An example check compiled and executed to document the extension contract.
  * It is NOT registered (id EXAMPLE-01); it documents the pattern for module tests.
  */
 import { describe, expect, it } from 'vitest';
@@ -54,7 +54,7 @@ const dmarc = (rcode: 'NOERROR' | 'NXDOMAIN' | 'SERVFAIL', value?: string) =>
     }),
   });
 
-describe('contract example ( pattern)', () => {
+describe('example check follows the module contract', () => {
   it('violation: no record', () => {
     const r = runCheck(example01, dmarc('NXDOMAIN'));
     expect(r.status).toBe('completed');

@@ -5,7 +5,7 @@
  * (Borlabs) and a non-EU government site. Reports go to DSGVO_LIVE_OUT (default: a temp dir) and are kept.
  *
  * Sanity checks only, no verdicts about the sites: exit code and report agree, JSON is schema-valid, the console and
- * HTML carry no CRM codes, the HTML is self-contained, no cookie or storage values appear (D20), and every
+ * HTML carry no CRM codes, the HTML is self-contained, no cookie or storage values appear, and every
  * critical finding is printed for manual review.
  */
 import { spawn } from 'node:child_process';
@@ -25,7 +25,7 @@ const SITES = (process.env.DSGVO_LIVE_SITES ?? DEFAULT_SITES.join(','))
   .map((s) => s.trim())
   .filter(Boolean);
 const OUT = process.env.DSGVO_LIVE_OUT ?? mkdtempSync(path.join(tmpdir(), 'dsgvo-live-'));
-/** Pause between sites (politeness, D09). */
+/** Pause between sites to limit traffic to each host. */
 const PAUSE_MS = 10_000;
 
 interface Run {

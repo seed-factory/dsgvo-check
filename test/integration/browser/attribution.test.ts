@@ -1,11 +1,11 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: in-page callbacks run in Chromium; tsconfig has no DOM lib
 /**
  * attribution of requests to pages and to the B/C click on the `browser/cmp-stub` site.
- * - : a redirected start page (apex → www) attributes its requests and CMP facts to the final URL in every
+ * - a redirected start page (apex → www) attributes its requests and CMP facts to the final URL in every
  * phase, the same URL as `plan.pages[0]`.
- * - : the click moment is the actual press of the button, not the call of the adapter: requests started while
+ * - the click moment is the actual press of the button, not the call of the adapter: requests started while
  * the adapter was still preparing are not "after the click"; a failed click changes nothing.
- * - : a reject confirmed only after the reload counts as verified (marked `verified-after-reload-only`).
+ * - a reject confirmed only after the reload counts as verified (marked `verified-after-reload-only`).
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

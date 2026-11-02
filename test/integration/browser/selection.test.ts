@@ -1,4 +1,4 @@
-/** : page selection is deterministic, keeps reasons, honours robots.txt for additional pages and maxPages. */
+/** Page selection is deterministic, keeps reasons, honours robots.txt for additional pages and maxPages. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { collect } from './helpers.ts';

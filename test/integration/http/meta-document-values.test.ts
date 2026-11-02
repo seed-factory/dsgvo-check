@@ -60,7 +60,7 @@ beforeAll(async () => {
           '<meta name="referrer" content="unsafe-url">',
         ].join(''),
       ),
-      // 56 000-character values of untrusted markup: they must not hold up the event loop (S-*, follow-up)
+      // 56 000-character values of untrusted markup must not hold up the event loop.
       httpPage(
         'www.metaredos-refresh.test',
         `<meta http-equiv="refresh" content="0;x${' '.repeat(56_000)}y">`,
@@ -70,13 +70,13 @@ beforeAll(async () => {
         'www.metaredos-referrer.test',
         `<meta name="referrer" content="${'a,'.repeat(28_000)}no-referrer">`,
       ),
-      // : a tag of about 56 KB made of tokens that are no Referrer-Policy keyword, and one made of keywords
+      // A tag of about 56 KB made of tokens that are no Referrer-Policy keyword, and one made of keywords
       httpPage('www.metareferrer-junk.test', `<meta name="referrer" content="${'a,'.repeat(28_000)}">`),
       httpPage(
         'www.metareferrer-many.test',
         `<meta name="referrer" content="${'no-referrer,'.repeat(4_500)}origin">`,
       ),
-      // m2: names of http-equiv tags are untrusted text too: long ones, ones with an address, a thousand distinct short ones
+      // Names of http-equiv tags are untrusted text too: long ones, ones with an address, a thousand distinct short ones
       httpPage(
         'www.metaequiv-junk.test',
         [
@@ -201,7 +201,7 @@ async function longestStall<T>(run: () => Promise<T>): Promise<{ value: T; stall
   }
 }
 
-describe('S-*: big meta values of the start document are read in linear time', () => {
+describe('large meta values of the start document are read in linear time', () => {
   const STALL_LIMIT_MS = 1000;
 
   it('a refresh of 56 000 characters: stored cut and flagged, the loop is not held up', async () => {
@@ -225,7 +225,7 @@ describe('S-*: big meta values of the start document are read in linear time', (
   it('a referrer of 28 000 tokens: the loop is not held up, the keyword is kept and the filler is not', async () => {
     const { value: http, stallMs } = await longestStall(() => collectHttpOnly('www.metaredos-referrer.test'));
     expect(stallMs).toBeLessThan(STALL_LIMIT_MS);
-    // the `a` tokens are no Referrer-Policy keyword : they used to be stored as `a, a, …, no-referrer`
+    // Unrecognized `a` tokens must not enlarge the stored policy or hide its last recognized keyword.
     expect(start(http)?.metaReferrer).toBe('no-referrer');
     expect(server.unexpected).toEqual([]);
   });
@@ -253,7 +253,7 @@ describe('S-*: big meta values of the start document are read in linear time', (
     expect(server.unexpected).toEqual([]);
   });
 
-  it('m2: http-equiv names that are no header names are not stored, and the records are bounded', async () => {
+  it('ignores invalid http-equiv names and bounds the stored records', async () => {
     const http = await collectHttpOnly('www.metaequiv-junk.test');
     const doc = start(http);
     expect(JSON.stringify(http)).not.toContain('zq7');

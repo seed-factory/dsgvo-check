@@ -1,4 +1,4 @@
-/** : coverage rows of the report (5.1 `coverage.pages`): one row per page, also when the start page redirected. */
+/** Coverage rows of the report (5.1 `coverage.pages`): one row per page, also when the start page redirected. */
 import { describe, expect, it } from 'vitest';
 import { coverageOf } from '../../../src/core/report.ts';
 import {

@@ -1,6 +1,6 @@
 /**
  * DNS collector logic with a fake resolver client (no network): query plan, Tree Walk, SPF tree, budget,
- * redaction , retries and the circuit breaker. The real node:dns client is covered in test/integration/dns.
+ * redaction, retries and the circuit breaker. The real node:dns client is covered in test/integration/dns.
  */
 import { describe, expect, it } from 'vitest';
 import { mail01 } from '../../../../src/checks/dns/mail-01.ts';

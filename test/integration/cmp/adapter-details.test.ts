@@ -1,6 +1,6 @@
 /**
- * details of the adapters found by the canary analysis: the version read for Complianz and the category
- * set of a CookieHub installation . Own simulators, real Chromium.
+ * Adapter facts: the version read for Complianz and the category
+ * set of a CookieHub installation. Own simulators, real Chromium.
  */
 import { describe, expect, it } from 'vitest';
 import { waitForBanner, waitForCmp } from '../../../src/cmp/index.ts';

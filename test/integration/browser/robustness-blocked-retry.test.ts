@@ -1,8 +1,8 @@
 /**
  * SCAN-BLOCKED follows the final outcome of a logical navigation. A legal subpage that answers
- * 503 with a bot-protection page and then, on the one repeat of the overload policy , delivers its content, is an
+ * 503 with a bot-protection page and then, on the one repeat of the overload policy, delivers its content, is an
  * evaluated page: the report must not say that its content was not evaluated. The first blocked attempt stays a fact
- * of the phase (`PhaseRecord.errors`, like the start-page retry of ), without a new field. Synthetic hosts only.
+ * of the phase (`PhaseRecord.errors`, like a retried start-page navigation), without a new field. Synthetic hosts only.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type DynamicHandler, type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';

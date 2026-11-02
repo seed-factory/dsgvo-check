@@ -58,7 +58,7 @@ describe('parseTarget', () => {
   });
 });
 
-describe('redactTarget ( for the scan target)', () => {
+describe('redactTarget for scan targets', () => {
   it.each([
     ['https://example.de/?token=secret', `https://example.de/?token=${REDACTED}`],
     ['https://demo-user:demo-password@example.de/?sid=demo-session', `https://example.de/?sid=${REDACTED}`],

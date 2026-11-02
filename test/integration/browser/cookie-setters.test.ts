@@ -1,8 +1,8 @@
 /**
- * who set a cookie, in a real Chromium against local hosts ( groups and ).
- * - : three origins set a cookie named `uid` (two trackers by `Set-Cookie`, the page by script): each jar record
+ * Cookie setters in real Chromium against local hosts.
+ * - three origins set a cookie named `uid` (two trackers by `Set-Cookie`, the page by script): each jar record
  * keeps its own setter instead of the first HTTP setter of that name.
- * - : a script of a third-party host writes a cookie that never reaches the jar. On the first-party page the record
+ * - a script of a third-party host writes a cookie that never reaches the jar. On the first-party page the record
  * belongs to the target (`firstParty`, domain = target host), inside a third-party frame to the host of that frame;
  * `setterHost` is the script host in both cases.
  */

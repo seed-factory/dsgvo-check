@@ -1,6 +1,6 @@
 /**
  * phases B and C with a stub CMP on the fixture site — observation before the click, first screen and
- * banner screenshot , reject via the adapter, verify, reload, control pages; accept in C. A second test runs
+ * banner screenshot, reject via the adapter, verify, reload, control pages; accept in C. A second test runs
  * the collector with the real CMP subsystem (`src/cmp/index.ts`) on a site without banner.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';

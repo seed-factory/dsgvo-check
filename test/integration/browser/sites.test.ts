@@ -120,7 +120,7 @@ site('maps', (get) => {
       pageUrl: 'https://www.example.test/kontakt/',
       url: 'https://www.google.com/maps/embed?pb=[redacted]',
     });
-    // The page with the embed becomes a B/C control page ( DOM/network signals).
+    // The page with the embed becomes a B/C control page (DOM/network signals).
     expect(plan?.controlPages[0]).toMatchObject({
       url: 'https://www.example.test/kontakt/',
       reasons: ['iframe-signal', 'network-signal', 'role:contact'],

@@ -1,6 +1,6 @@
 /**
- * the global timeout and a browser that does not close , what a cut collection looks like , and the
- * reason of a partial result. Synthetic hosts only (`*.example.test`).
+ * Global timeouts and browsers that do not close must preserve collected facts and explain partial results.
+ * Synthetic hosts only (`*.example.test`).
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
@@ -69,7 +69,7 @@ afterAll(async () => {
   for (const fn of cleanup) await fn().catch(() => undefined);
   for (const dir of leftovers) rmSync(dir, { recursive: true, force: true });
   await server?.close();
-  // No profile of this process is left behind by the collectors above .
+  // No profile of this process is left behind by the collectors above.
   expect(profilesOfPid(process.pid)).toEqual([]);
 });
 
@@ -121,7 +121,8 @@ describe('a phase browser that does not close', () => {
     expect(Date.now() - t0).toBeLessThan(60_000);
     for (const dir of h.dirs) {
       expect(existsSync(dir)).toBe(false);
-      expect(processesUsing(dir)).toBe(false);
+      // SIGKILL is asynchronous: the OS may still list the exiting browser after profile cleanup returns.
+      await expect.poll(() => processesUsing(dir), { timeout: 3_000, interval: 25 }).toBe(false);
     }
   });
 
@@ -208,7 +209,7 @@ describe('a collection cut by the deadline', () => {
     expect(phases[0]?.pages.length).toBeGreaterThanOrEqual(1);
   });
 
-  // : the deadline that cuts the queue of phase A or the phases after it is `timeout`, never the local `time-budget`.
+  // A deadline that cuts the queue of phase A or later phases means `timeout`, never the local `time-budget`.
   it('the abort while pages are still queued in phase A: A is partial/timeout (not time-budget), B and C skipped/timeout', async () => {
     server.reset();
     const ac = new AbortController();
@@ -295,8 +296,8 @@ describe('a collection cut by the deadline', () => {
 });
 
 /**
- * Crosszone of : the probe of the fallback paths skipped for lack of time is an unfinished phase A, as is a cut
- * queue. LEGAL-01 is guarded without it (`fallback-skipped`), but the phase and the collector must say so as well.
+ * Skipping fallback probes for lack of time leaves phase A unfinished, just like cutting its page queue.
+ * LEGAL-01 is guarded by `fallback-skipped`, but the phase and collector must expose the limitation as well.
  */
 describe('the fallback probe skipped by the time budget', () => {
   const BUDGET_MS = 5_000;

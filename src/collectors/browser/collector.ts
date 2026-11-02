@@ -823,7 +823,7 @@ export class BrowserCollection {
   }
 
   /**
-   * The first navigation to the start page failed and is repeated (L2): the budget it used and the pause are a fact of
+   * The first navigation to the start page failed and is repeated: the budget it used and the pause are a fact of
    * the scan. The entry of the phase carries the code of the failure (`navigation-timeout`, `ERR_…`, `http-503`), the
    * attempt, its duration, the pause and the navigation id of the attempt, whose requests stay in the phase.
    */

@@ -1,5 +1,5 @@
 /**
- * what the generic heuristic recognizes (canary fixes). Facts only: an unknown banner is
+ * What the generic heuristic recognizes. Facts only: an unknown banner is
  * `banner-not-recognized` (info), nothing is clicked (5.5).
  */
 import { mkdtemp, rm } from 'node:fs/promises';

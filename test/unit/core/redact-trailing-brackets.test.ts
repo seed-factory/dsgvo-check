@@ -1,3 +1,8 @@
+/**
+ * Legal-document text can contain long runs of closing brackets after a URL or mailto token.
+ * Recounting the whole prefix for every removed bracket would be quadratic, and synchronous work
+ * cannot be interrupted by the scan's timeout. Redaction must preserve bracket semantics in linear time.
+ */
 import { describe, expect, it } from 'vitest';
 import { redactText } from '../../../src/core/redact.ts';
 import { REDACTED } from '../../../src/core/url.ts';

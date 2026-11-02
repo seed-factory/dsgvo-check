@@ -4,9 +4,9 @@
  * derived facts.
  *
  * The text is untrusted, so every function here is linear in its size: a search never restarts at each
- * candidate (`<a `, `<form `, `<!--`… repeated without their `>` or closing part used to cost O(n²): 128 KiB held the
- * event loop for seconds). Where a regexp like `<a\b([^>]*)>([\s\S]*?)<\/a>` was the model, `elements` and
- * `startTags` give the same matches with `indexOf` scans, and say why a failed candidate ends the search.
+ * candidate. Repeated unclosed `<a `, `<form ` or `<!--` prefixes must not cause quadratic rescanning or block
+ * the event loop. `elements` and `startTags` preserve the intended matches with `indexOf` scans and make the
+ * stopping condition explicit when a candidate cannot be completed.
  */
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
 import { parseUrl } from '../../core/url.ts';

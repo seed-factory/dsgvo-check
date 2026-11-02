@@ -1,5 +1,5 @@
 /**
- * temp profiles of killed scans . A process killed with SIGKILL runs no exit hook: its profile (real cookies
+ * Temporary profiles of killed scans. A process killed with SIGKILL runs no exit hook: its profile (real cookies
  * of the scanned site) stays in the temp dir. The profile names its owner; the next scan removes profiles of dead
  * owners and leaves profiles of running processes alone.
  */

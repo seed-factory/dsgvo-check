@@ -78,7 +78,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe('follow-up: the retry takes no queue item away from the other kind', () => {
+describe('a retry leaves the queued candidates of the other document kind intact', () => {
   it('the next Impressum candidate is queued as the policy: the page is read for both kinds', async () => {
     const run = await collect(server, { url: 'https://crossqueue.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];

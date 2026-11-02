@@ -49,7 +49,7 @@ describe('SSRF guard (documents and frames)', () => {
     expect(server.requestsTo('unresolvable.example.test')).toEqual([]);
     expect(metadataHits()).toEqual([]);
     expect(run.result.sections.browser?.guard).toMatchObject({ enabled: true, blocked: 5 });
-    // One diagnostic; its params name the address classes, `unresolved` separately .
+    // One diagnostic; its params name the address classes, `unresolved` separately.
     const diag = run.result.diagnostics?.find((d) => d.code === 'SCAN-PRIVATE-REQUEST-BLOCKED');
     expect(diag).toMatchObject({ affects: [], params: { count: 5 } });
     expect(String(diag?.params?.addressClass).split(', ')).toEqual([

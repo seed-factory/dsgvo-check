@@ -37,11 +37,11 @@ function probePurposes(): Set<string> {
 const DESCRIBED: Record<string, RegExp> = {
   'robots.txt': /`robots\.txt`/,
   sitemap: /at most 2 sitemap requests/,
-  // : an explicit port of the target URL adds the chain of that port.
+  // an explicit port of the target URL adds the chain of that port.
   'redirect-chain':
     /`http:\/\/` and `https:\/\/` redirect chains of the target host and of its `www\.` and apex variants, plus the chain on an explicit port of the target URL/,
   'security-headers:': /Impressum and Datenschutz pages linked from the start page/,
-  // : after a redirect to another domain the HTTP collector reads the final host's certificates as well.
+  // after a redirect to another domain the HTTP collector reads the final host's certificates as well.
   certificate:
     /one TLS handshake per host variant \(at most 3\).*after a redirect to another domain, at most 3 more for the final host and its `www\.` and apex variants/,
 };

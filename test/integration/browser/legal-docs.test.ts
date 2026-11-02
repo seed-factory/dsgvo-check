@@ -1,7 +1,7 @@
 /**
- * legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them .
+ * Legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them.
  * a fallback path that redirects to the home page is no Impressum; a policy in another language is a document
- * whose language comes from its headings (the lang attribute says "en"). : localised link labels.
+ * whose language comes from its headings (the lang attribute says "en"). Localised link labels are recognised.
  * a heading of the navigation or footer ("Impressum" as a column title) does not confirm the type.
  * an empty navigation panel is no part of the policy; an unopened section of the policy is a limitation.
  * e-mail addresses in a document are masked before the snapshot is written.
@@ -103,7 +103,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
-      // : /impressum redirects to the home page whose footer has a column titled "Impressum"
+      // /impressum redirects to the home page whose footer has a column titled "Impressum"
       site('footerheading.example.test', {
         '/': send(
           html(
@@ -115,7 +115,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
-      // : the policy link redirects to the home page whose language switcher is a navigation heading in French and
+      // the policy link redirects to the home page whose language switcher is a navigation heading in French and
       // whose footer (a div named like a footer) has a column "Datenschutz & Sicherheit"
       site('navheading.example.test', {
         '/': send(
@@ -128,7 +128,7 @@ beforeAll(async () => {
         '/datenschutz': redirect('/'),
         '/datenschutz/': redirect('/'),
       }),
-      // : /impressum (fallback) is an ordinary page whose only "Impressum" is the h1 of the navigation
+      // /impressum (fallback) is an ordinary page whose only "Impressum" is the h1 of the navigation
       site('navh1.example.test', {
         '/': send(
           html(
@@ -276,7 +276,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
     const impressum = observationsOf(runCheck(legal01, snapshotOf(run))).filter(
       (o) => o.subject === 'impressum',
     );
-    // No link on the start page and the fallback is not the document: not found (it used to be "found" through the nav h1).
+    // A navigation h1 cannot confirm a document when neither a start-page link nor the fallback supplies one.
     expect(impressum.map((o) => o.variant)).toEqual(['document-not-found']);
   });
 

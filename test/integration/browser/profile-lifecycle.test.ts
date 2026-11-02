@@ -27,7 +27,7 @@ describe('stale temp profiles are swept, profiles of running processes are not',
     const dir = path.join(root, `${PROFILE_PREFIX}${name}`);
     mkdirSync(path.join(dir, 'Default'), { recursive: true });
     writeFileSync(path.join(dir, 'Default', 'Cookies'), 'x');
-    // The marker as `launch` writes it, with the host of the owner .
+    // The marker as `launch` writes it, with the host of the owner.
     if (owner)
       writeFileSync(
         path.join(dir, OWNER_MARKER),

@@ -1,5 +1,5 @@
 /**
- * EMBED-01 (P0): fonts loaded from external font services (category `fonts`) before consent (phase A) or after
+ * EMBED-01: fonts loaded from external font services (category `fonts`) before consent (phase A) or after
  * the reject (phase B); a load after accepting (C) is not counted. A completed stylesheet/font/kit request →
  * `fonts-loaded`; only preconnect/dns-prefetch hints or an unconfirmed attempt → `preconnect-only` (info).
  * Self-hosted fonts and local proxies are first party and never match. `p.typekit.net` (purpose ⚠) alone is

@@ -132,7 +132,7 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
   const opts = toScanOptions(url, raw);
   const lang = opts.lang === 'en' ? 'en' : 'de';
   const outDir = path.resolve(raw.out);
-  // the target in the minimal failed reports written here is redacted like in scan().
+  // The target in the minimal failed reports written here is redacted like in scan().
   const target = url ? redactTarget(url) : (raw.fromSnapshot ?? '');
 
   if (opts.invalid) {

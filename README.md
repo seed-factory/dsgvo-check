@@ -8,7 +8,8 @@ und wie Header, TLS und E-Mail-Authentifizierung der Domain konfiguriert sind.
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
 > **Status: Prototyp 0.1.0.** 15 Prüfungen, sieben CMP-Adapter, Berichte als JSON, Konsole, HTML und Markdown-Summary;
-> PDF bei ausdrücklicher Auswahl. Umfang und Vereinfachungen: [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md).
+> PDF bei ausdrücklicher Auswahl. Noch nicht veröffentlicht: kein npm-Paket. Umfang, Vereinfachungen und bekannte
+> Lücken: [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md).
 
 
 ## Was geprüft wird
@@ -121,9 +122,8 @@ schreibgeschütztes Dateisystem, ohne Secrets), hängt die Summary an den Job an
 Artefakt `dsgvo-check-report` hoch (14 Tage). Ihr Standardformat ist `console,json,html`; mit `job-summary: true`
 kommt die Summary hinzu. Das Image ist `ghcr.io/seed-factory/dsgvo-check:0.1.0`. Mit `format: console,json,html,pdf`
 wird ein erzeugtes PDF ebenfalls hochgeladen; der Output `pdf-path` bleibt bei einem Druckfehler leer.
-In öffentlichen GitHub-Repositories können angemeldete Nutzer die Artefakte herunterladen. Berichte über Websites
-Dritter werden nicht veröffentlicht. Den Scan in einem eigenen Job ohne Secrets und ohne Schreibrechte laufen lassen: der
-Scanner öffnet fremde Seiten. Beispiel mit absichtlich rotem Build:
+Den Scan in einem eigenen Job ohne Secrets und ohne Schreibrechte laufen lassen: der Scanner öffnet fremde Seiten.
+Beispiel mit absichtlich rotem Build:
 [examples/github-failing](examples/github-failing/README.md).
 
 ### GitLab CI
@@ -138,8 +138,8 @@ variables:
 ```
 
 Hinweise zu Sandbox auf self-managed Runnern: [docker/README.md](docker/README.md).
-Das [GitLab-Template](templates/gitlab/dsgvo-check.gitlab-ci.yml) speichert das Berichtsverzeichnis auch bei einem
-fehlgeschlagenen Job für 14 Tage mit `artifacts: access: developer`. Ein ausdrücklich gewähltes PDF ist enthalten.
+Das [GitLab-Template](templates/gitlab/dsgvo-check.gitlab-ci.yml) verwendet ein Image nach Versions-Tag.
+Ein ausdrücklich gewähltes PDF ist im Berichtsartefakt enthalten.
 
 ## Optionen
 
@@ -218,9 +218,10 @@ das: eine Zahl (`DSGVO_TEST_WORKERS=4 corepack pnpm test:integration`) oder ein 
 mit `1` laufen die Dateien nacheinander. Ein ungültiger Wert bricht den Lauf mit einer Fehlermeldung ab. Jede Testdatei
 bekommt ein eigenes temporäres Verzeichnis (`TMPDIR`), das nach der Datei gelöscht wird.
 
-Regeln für Beiträge (auch für KI-Agenten): [AGENTS.md](AGENTS.md). Die Kanarienvogel-Messung und ihre Regeln:
+Regeln für Beiträge (auch für KI-Agenten): [AGENTS.md](AGENTS.md). Die Kanarienvogel-Messung über 100 öffentliche
+Websites und ihre Regeln:
 [canary/README.md](canary/README.md). Der reale Korpus und die Ergebnisse bleiben lokal; im Repository liegt nur
-[sites.example.yaml](canary/sites.example.yaml) mit fiktiven Hosts. Eine feste Anzahl von Websites ist optional.
+[sites.example.yaml](canary/sites.example.yaml) mit fiktiven Hosts.
 
 ## Dokumentation
 

@@ -132,6 +132,40 @@ describe('PDF conversion of the finished HTML report', () => {
     expect(fake.context.close).toHaveBeenCalledOnce();
   });
 
+  it('counts browser startup against the PDF deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = browserDouble();
+      let printing!: () => void;
+      const printStarted = new Promise<void>((resolve) => {
+        printing = resolve;
+      });
+      fake.launch.mockImplementationOnce(async () => {
+        vi.advanceTimersByTime(400);
+        return fake.context as unknown as BrowserContext;
+      });
+      fake.page.pdf.mockImplementationOnce(() => {
+        printing();
+        return new Promise<typeof fake.bytes>(() => undefined);
+      });
+      const result = renderPdf('<p>report</p>', ctx(), { chromium: fake.chromium, timeoutMs: 1_000 });
+      const rejected = expect(result).rejects.toThrow('PDF print timed out');
+      await printStarted;
+      expect(fake.page.setContent.mock.calls[0]?.[1].timeout).toBe(600);
+      let settled = false;
+      void result.catch(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(599);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await rejected;
+      expect(fake.context.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('closes Chromium and removes its temporary profile when printing never completes', async () => {
     const fake = browserDouble();
     fake.page.pdf.mockImplementationOnce(() => new Promise<typeof fake.bytes>(() => undefined));

@@ -1,7 +1,7 @@
 /**
  * Pure: the network recorder with fake Playwright objects (no browser). 5.3 request fields
  * one monotonic `atMs` scale from the scan start, `navigationId`, `actionId`, `frameId`,
- * `parentRequestId`, independent `delivery` / `result`; a body error after the response keeps the response .
+ * `parentRequestId`, independent `delivery` / `result`; a body error after the response keeps the response.
  */
 import { EventEmitter } from 'node:events';
 import type { BrowserContext, Request, Response } from 'playwright-core';
@@ -102,7 +102,7 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     }
   });
 
-  it('a body error after the response keeps delivery `sent` and result `response` ( root cause)', async () => {
+  it('a body error after the response keeps delivery `sent` and result `response`', async () => {
     const { ctx, rec } = setup();
     rec.beginNavigation('https://www.example.de/');
     const hit = request('https://www.google-analytics.com/g/collect?en=page_view');

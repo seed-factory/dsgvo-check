@@ -1,6 +1,6 @@
 /**
- * with the real browser collector and the browser checks: the canary fixes and must hold end to end (the
- * collector waits for the banner, measures the first screen, core decides the click, CONSENT-04 judges the facts).
+ * First-screen measurement end to end: the collector waits for the banner and measures it,
+ * core decides the click, and CONSENT-04 judges the facts.
  * Hand-written shops on the Cookiebot simulator (test/fixture-server/sites/cmp/shops).
  */
 import { mkdtempSync } from 'node:fs';
@@ -45,7 +45,7 @@ async function run(host: string) {
   return { result, report, bPhase, first };
 }
 
-describe('collector: first-screen measurement of the canary findings', () => {
+describe('collector: first-screen measurement through the browser checks', () => {
   it('dialog slides in 1 s after the API is ready (1.2 s transition) → reject measured, clicked, no CONSENT-04 finding', async () => {
     const { result, report, bPhase, first } = await run('www.animated-shop.test');
     expect(first?.firstLayer.bannerVisible).toBe(true);

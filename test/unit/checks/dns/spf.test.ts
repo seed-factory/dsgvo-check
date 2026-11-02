@@ -73,7 +73,7 @@ describe('parseSpfRecord (RFC 7208 §4.6, §5, §6)', () => {
     ['v=spf1 ip4:300.1.1.1 -all', 'invalid-ip4'],
     ['v=spf1 ip4:192.0.2.0/33 -all', 'invalid-ip4'],
     ['v=spf1 ip6:zz::1 -all', 'invalid-ip6'],
-    // : syntactically impossible IPv6 addresses (hextet length, group count, misplaced IPv4 tail).
+    // syntactically impossible IPv6 addresses (hextet length, group count, misplaced IPv4 tail).
     ['v=spf1 ip6:12345::1 -all', 'invalid-ip6'],
     ['v=spf1 ip6:1:2:3:4:5:6:7:8:9 -all', 'invalid-ip6'],
     ['v=spf1 ip6:1:2:3:4:5:6:7 -all', 'invalid-ip6'],

@@ -1,4 +1,4 @@
-/** : adapter registry shape (catalog order, contract members) — no browser needed. */
+/** Adapter registry shape (catalog order, contract members) — no browser needed. */
 import { describe, expect, it } from 'vitest';
 import { adapters } from '../../../src/cmp/index.ts';
 

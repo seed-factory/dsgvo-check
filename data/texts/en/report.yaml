@@ -21,7 +21,6 @@ ui:
   report.meta.rulesetValue: "{profile} {version}, legal status as of {rechtsstand}"
   report.meta.failOn: Threshold (--fail-on)
   report.meta.schemaVersion: Report schema
-  report.status.label: Status
   report.status.complete: Scan complete
   report.status.partial: Scan partially completed
   report.status.failed: Scan not performed

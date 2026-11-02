@@ -16,7 +16,7 @@ import { uaToken } from '../../../src/core/user-agent.ts';
 import type { FixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot } from '../../utils/snapshot-builder.ts';
 
-/** Same algorithm as production , scaled down so that a full A/B/C run takes seconds. */
+/** Same algorithm as production, scaled down so that a full A/B/C run takes seconds. */
 export const FAST_TIMING: BrowserTiming = {
   quietWindowMs: 300,
   maxInflight: 1,

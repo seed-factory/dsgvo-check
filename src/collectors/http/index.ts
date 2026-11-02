@@ -211,8 +211,8 @@ const MAX_REFERRER_KEYWORDS = 8;
 
 /**
  * The referrer policy of a `<meta name="referrer">` as stored: its Referrer-Policy keywords as written, comma
- * separated, the last eight at most, nothing else the tag may say. A tag is untrusted text of any size: every token
- * that looked like a word (`a, a, a, …`) used to be kept, which grew a 64 KiB tag into a 96 KiB snapshot value.
+ * separated, the last eight at most, nothing else the tag may say. Restricting both the vocabulary and count
+ * keeps an arbitrarily long, untrusted tag from expanding the snapshot value.
  */
 export function storedMetaReferrer(content: string | null): string | null {
   const text = content ?? '';

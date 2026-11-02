@@ -241,6 +241,16 @@ describe.skipIf(!IMAGE)('docker image', () => {
       return { ...r, outputs, summary: readFileSync(summaryFile, 'utf8'), workspace };
     }
 
+    function outputAfterResume(stdout: string): string[] {
+      const lines = stdout.split(/\r?\n/);
+      const stopIndex = lines.findIndex((line) => /^::stop-commands::[0-9a-f]{32}$/.test(line));
+      expect(stopIndex).toBeGreaterThanOrEqual(0);
+      const token = lines[stopIndex]!.slice('::stop-commands::'.length);
+      const resumeIndex = lines.indexOf(`::${token}::`, stopIndex + 1);
+      expect(resumeIndex).toBeGreaterThan(stopIndex);
+      return lines.slice(resumeIndex + 1).filter(Boolean);
+    }
+
     it('runs the hardened container, sets outputs and appends the Job Summary', () => {
       const r = runStep({});
       expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
@@ -253,24 +263,20 @@ describe.skipIf(!IMAGE)('docker image', () => {
       expect(report.disclaimer.lang).toBe('en');
       expect(r.summary).toMatch(/^## dsgvo-check/);
       expect(r.stdout).toMatch(/^::stop-commands::[0-9a-f]{32}$/m);
-      expect(r.stdout).toContain(
-        '::error title=dsgvo-check::The scan did not complete (exit code 2). Reasons: invalid-input.',
-      );
+      expect(outputAfterResume(r.stdout)).toEqual([
+        '::error title=dsgvo-check::The scan did not complete (exit code 2).',
+      ]);
     });
 
     it.each([
-      [
-        'warning',
-        1,
-        /^::error title=dsgvo-check::Findings at or above the threshold \(fail-on: warning\)\. Reasons: threshold[.,]/m,
-      ],
-      ['none', 0, /^::stop-commands::/m],
+      ['warning', 1],
+      ['none', 0],
     ] as const)(
       'scan with findings and fail-on %s → exit-code %i, reports, Job Summary, job result',
-      (failOn, code, line) => {
+      (failOn, code) => {
         const r = runStep(
           {
-            DC_URL: 'https://www.example.de/',
+            DC_URL: 'https://www.example.test/',
             DC_FAIL_ON: failOn,
             DC_EXTRA_ARGS: '--from-snapshot /out/snapshot.json --lang en',
           },
@@ -280,10 +286,22 @@ describe.skipIf(!IMAGE)('docker image', () => {
         expect(r.outputs['exit-code']).toBe(String(code));
         const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
         expectValidReport(report);
+        expect(report.scan.status).not.toBe('failed');
         expect(report.summary.exitCode).toBe(code);
+        expect(report.summary.exitReasons).toEqual(code === 1 ? ['threshold'] : []);
+        expect(report.findings?.some((finding) => finding.checkId === 'CONSENT-01')).toBe(true);
         expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
+        expect(htmlSafetyProblems(readFileSync(r.outputs['html-path'] as string, 'utf8'))).toEqual([]);
         expect(r.summary).toMatch(/^## dsgvo-check/);
-        expect(r.stdout).toMatch(line);
+        expect(r.summary).toContain(`Exit code **${code}**`);
+        expect(r.summary).toContain('CONSENT-01');
+        expect(outputAfterResume(r.stdout)).toEqual(
+          code === 1
+            ? [
+                '::error title=dsgvo-check::Findings at or above the threshold (fail-on: warning). See the Job Summary and the report.',
+              ]
+            : [],
+        );
         // The last step of the action turns the scan's exit code into the job result.
         const result = spawnSync('bash', ['-c', resultScript], { env: { DC_EXIT_CODE: String(code) } });
         expect(result.status).toBe(code);
@@ -297,18 +315,24 @@ describe.skipIf(!IMAGE)('docker image', () => {
         expect(r.status, r.stderr).toBe(0);
         expect(r.outputs['exit-code']).toBe('2');
         const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+        expectValidReport(report);
+        expect(report.scan.status).toBe('failed');
+        expect(report.summary.exitCode).toBe(2);
         expect(report.summary.exitReasons).toContain('invalid-input');
-        expect(r.stdout).toContain('::error title=dsgvo-check::The scan did not complete');
+        expect(r.summary).toContain('Exit code **2**');
+        expect(outputAfterResume(r.stdout)).toEqual([
+          '::error title=dsgvo-check::The scan did not complete (exit code 2).',
+        ]);
       },
     );
 
     it('uses explicit Action options after repeated options from extra-args', () => {
       const r = runStep(
         {
-          DC_URL: 'https://www.example.de/',
+          DC_URL: 'https://www.example.test/',
           DC_FAIL_ON: 'warning',
           DC_EXTRA_ARGS:
-            '--from-snapshot /out/snapshot.json --out /tmp/ignored --format pdf --fail-on none --lang en',
+            '--from-snapshot /out/snapshot.json --out /etc --format pdf --fail-on none --lang en',
         },
         { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
       );
@@ -318,16 +342,27 @@ describe.skipIf(!IMAGE)('docker image', () => {
       expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
       expect(r.outputs['pdf-path']).toBe('');
       const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+      expectValidReport(report);
       expect(report.scan.options?.failOn).toBe('warning');
+      expect(report.summary.exitReasons).toEqual(['threshold']);
+      expect(r.summary).toContain('Exit code **1**');
     });
 
-    it.each(['.', mkdtempSync(path.join(tmpdir(), 'dsgvo-action-report-'))])(
-      'uses the workflow author report directory %s',
-      (out) => {
+    it.each(['workspace', 'parent', 'absolute'] as const)(
+      'uses the workflow author report directory: %s',
+      (location) => {
+        const authored = mkdtempSync(path.join(tmpdir(), 'dsgvo-action-report-'));
+        const out =
+          location === 'workspace' ? '.' : location === 'parent' ? `../${path.basename(authored)}` : authored;
         const r = runStep({ DC_OUT: out });
         expect(r.status, r.stderr).toBe(0);
         expect(r.outputs['exit-code']).toBe('2');
-        expect(readFileSync(r.outputs['json-path'] as string, 'utf8')).toContain('invalid-input');
+        expect(path.dirname(r.outputs['json-path'] as string)).toBe(path.resolve(r.workspace, out));
+        const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+        expectValidReport(report);
+        expect(report.summary.exitReasons).toEqual(['invalid-input']);
+        expect(readFileSync(r.outputs['html-path'] as string, 'utf8')).toContain('dsgvo-check');
+        expect(r.summary).toContain('Exit code **2**');
       },
     );
 
@@ -336,6 +371,46 @@ describe.skipIf(!IMAGE)('docker image', () => {
       const r = runStep({ DC_URL: `ftp://example.test/$(touch ${marker})` });
       expect(r.status, r.stderr).toBe(0);
       expect(r.outputs['exit-code']).toBe('2');
+      expect(() => readFileSync(marker)).toThrow();
+    });
+
+    it('keeps a newline URL and stale report commands outside the active workflow command stream', () => {
+      const command = '::set-output name=unsafe::injected';
+      const r = runStep(
+        {
+          DC_URL: `https://example.test/\n${command}`,
+          DC_FAIL_ON: 'none',
+          DC_EXTRA_ARGS: '--from-snapshot /out/snapshot.json --lang en',
+        },
+        {
+          'dsgvo-check-report/snapshot.json': trackerSnapshot(),
+          'dsgvo-check-report/annotations.txt': `${command}\n::warning::stale report command\n`,
+        },
+      );
+      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+      expect(r.outputs['exit-code']).toBe('0');
+      const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+      expectValidReport(report);
+      expect(report.findings?.some((finding) => finding.checkId === 'CONSENT-01')).toBe(true);
+      expect(r.summary).toContain('Exit code **0**');
+      expect(outputAfterResume(r.stdout)).toEqual([]);
+      expect(r.stdout).not.toContain(command);
+      expect(r.stdout).not.toContain('stale report command');
+    });
+
+    it('passes shell syntax in an image name as data and reports the Docker invocation failure', () => {
+      const marker = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-action-image-')), 'injected');
+      const r = runStep({ DC_IMAGE: `invalid image;$(touch ${marker})` });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.outputs['exit-code']).toBe('125');
+      expect(r.outputs['json-path']).toBe('');
+      expect(r.outputs['html-path']).toBe('');
+      expect(r.outputs['pdf-path']).toBe('');
+      expect(r.summary).toBe('');
+      expect(r.stderr).toMatch(/invalid reference format/i);
+      expect(outputAfterResume(r.stdout)).toEqual([
+        '::error title=dsgvo-check::The scan did not complete (exit code 125).',
+      ]);
       expect(() => readFileSync(marker)).toThrow();
     });
   });

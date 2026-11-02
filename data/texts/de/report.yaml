@@ -21,7 +21,6 @@ ui:
   report.meta.rulesetValue: "{profile} {version}, Rechtsstand {rechtsstand}"
   report.meta.failOn: Schwelle (--fail-on)
   report.meta.schemaVersion: Berichtsschema
-  report.status.label: Status
   report.status.complete: Scan vollständig
   report.status.partial: Scan teilweise durchgeführt
   report.status.failed: Scan nicht durchgeführt

@@ -1,3 +1,8 @@
+/**
+ * HTTP heuristics read untrusted markup: legal-link selection accepts the whole bounded body, while the
+ * other probes inspect its prefix. Repeated incomplete tags must not restart a scan at every candidate.
+ * Hostile input shapes check scaling; ordinary markup cases preserve the extracted facts.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   detectClientRedirect,
@@ -6,6 +11,7 @@ import {
   findLegalLinks,
   parseAttributes,
 } from '../../../../src/collectors/http/html.ts';
+import { expectLinearGrowth } from '../../../utils/scaling.ts';
 
 const BASE = 'http://www.example.test/start';
 const KIB = 1024;
@@ -22,17 +28,10 @@ function expectLinear(
 ): void {
   const small = build(bytes);
   const large = build(4 * bytes);
-  run(small);
-  run(large);
-  const best = (input: string) =>
-    Math.min(
-      ...Array.from({ length: 5 }, () => {
-        const started = performance.now();
-        run(input);
-        return performance.now() - started;
-      }),
-    );
-  expect(best(large) / Math.max(best(small), 0.05)).toBeLessThan(12);
+  expectLinearGrowth(
+    () => run(small),
+    () => run(large),
+  );
 }
 
 type Run = (html: string) => unknown;

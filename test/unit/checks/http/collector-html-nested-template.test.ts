@@ -1,5 +1,5 @@
 /**
- * inert `<template>` content with nesting . The first `</template>` closes the innermost template only;
+ * Inert `<template>` content with nesting. The first `</template>` closes the innermost template only;
  * markup anywhere inside the outer one is not part of the document. A real `<meta>` after the outer template stays
  * visible, and so does a form.
  */

@@ -1,4 +1,4 @@
-/** : Complianz adapter against the own simulator (close button is not a reject). */
+/** Complianz adapter against the own simulator (close button is not a reject). */
 import { expect, it } from 'vitest';
 import { extract } from '../../../src/cmp/index.ts';
 import { describeCmpScenarios, recognized } from './helpers.ts';

@@ -1,4 +1,4 @@
-/** Pure: safe request features are extracted before redaction . */
+/** Pure: safe request features are extracted before redaction. */
 import { describe, expect, it } from 'vitest';
 import {
   extractRequestFeatures,

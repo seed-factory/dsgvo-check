@@ -1,5 +1,5 @@
 /**
- * CONSENT-05 (P1 → release): tracking after a technically confirmed reject (phase B, requests started after the
+ * CONSENT-05: tracking after a technically confirmed reject (phase B, requests started after the
  * click on the reload and control pages). The reject is confirmed by CMP state only, never by network silence
  * (03-checks §4 steps 3–4): `verify` confirms the reject, a ready state produced by our click
  * (`origin: action`, decision not refused), the reload ran and the reject persisted (`persistedAfterReload: true`)

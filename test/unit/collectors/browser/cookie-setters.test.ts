@@ -1,11 +1,11 @@
 /**
  * Pure tests (no browser) for the attribution of cookies to their setters and for the bounded metadata reads of the
- * recorder and the jar ( groups , , and the recorder/jar part of ):
- * - : a cookie is attributed to a `Set-Cookie` response only when name, domain, path and partition match; a
+ * recorder and the jar:
+ * - A cookie is attributed to a `Set-Cookie` response only when name, domain, path and partition match; a
  * same-named cookie of another domain keeps its own setter; ambiguity → `unknown`.
- * - : the domain of an `attempted` script cookie is the Domain= attribute or the host of the DOCUMENT of the frame
+ * - The domain of an `attempted` script cookie is the Domain= attribute or the host of the DOCUMENT of the frame
  * (never the host of the script); `firstParty` is judged against the target, `setterHost` stays the script host.
- * - : `headersArray`, `serverAddr` and `frame.evaluate` that never settle end by a local budget, keep the
+ * - `headersArray()`, `serverAddr()` and `frame.evaluate()` that never settle end by a local budget, keep the
  * facts collected so far and do not change a stored record afterwards.
  */
 import { EventEmitter } from 'node:events';

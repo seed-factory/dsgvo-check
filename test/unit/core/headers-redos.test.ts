@@ -1,6 +1,12 @@
+/**
+ * Headers and meta values contain untrusted text. Long whitespace tails and incomplete Link fields must
+ * not cause quadratic backtracking that blocks the event loop beyond the scan's deadline.
+ * Tables and differential comparisons preserve the accepted values while scaling checks bound the work.
+ */
 import { describe, expect, it } from 'vitest';
 import { MAX_HEADER_VALUE, storedHeaderRecord } from '../../../src/core/headers.ts';
 import { REDACTED, sanitizeUrl } from '../../../src/core/url.ts';
+import { expectLinearGrowth } from '../../utils/scaling.ts';
 
 /** The size of the biggest untrusted text that reaches the normalizer (`HEURISTIC_BYTES` of the start document). */
 const SIZE = 64 * 1024;
@@ -9,17 +15,10 @@ const identity = (u: string) => u;
 
 /** Scale the same hostile shape fourfold; absolute latency depends on the worker load. */
 function expectLinear(run: (size: number) => unknown): void {
-  run(SIZE / 4);
-  run(SIZE);
-  const best = (size: number) =>
-    Math.min(
-      ...Array.from({ length: 5 }, () => {
-        const started = performance.now();
-        run(size);
-        return performance.now() - started;
-      }),
-    );
-  expect(best(SIZE) / Math.max(best(SIZE / 4), 0.05)).toBeLessThan(12);
+  expectLinearGrowth(
+    () => run(SIZE / 4),
+    () => run(SIZE),
+  );
 }
 
 const stored = (name: string, value: string, sanitize = sanitizeUrl) =>

@@ -158,7 +158,7 @@ dsgvo-check/
 | npm-пакет `dsgvo-check` | npm; способ публикации — ОВ-25 | `dist/` (ESM), скомпилированные данные, `schema/`, `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES`, атрибуции наборов данных | Состав поставки (§2.1) |
 | Docker-образ | GHCR, `ghcr.io/seed-factory/dsgvo-check:<версия package.json>` | `node:24-bookworm-slim`, полный Chrome for Testing (new headless), CLI, tini, non-root, seccomp-профиль, `THIRD_PARTY_NOTICES`; amd64 сразу, arm64 после нативного smoke | — |
 | GitHub Action | `action.yml` в корне этого репозитория | composite → `docker run` по тегу версии; outputs `exit-code` и пути | — |
-| GitLab-шаблон | `templates/gitlab/dsgvo-check.gitlab-ci.yml` | `include:remote` + `integrity`, `artifacts: when: always`, `expire_in: 14 days`, `access: developer`, `allow_failure: false` | — |
+| GitLab-шаблон | `templates/gitlab/dsgvo-check.gitlab-ci.yml` | `include:remote` + `integrity`, `artifacts: when: always`, `allow_failure: false` | — |
 | JSON Schema | в npm-пакете и по `$id` на домене проекта | `report`, `config`, `suppressions`, `baseline` | — |
 
 Порядок релиза: версия из `package.json` → образ с этим тегом → тег релиза. Отдельные репозитории: `example` (красная и зелёная сборки, коды `0/1/2`) и приватная приёмочная канарейка; корпус прототипа хранится локально вне репозитория. GitLab Catalog-компонент — после релиза. Детали поставки — в [качестве и поставке](04-quality-and-delivery.md).
@@ -215,7 +215,7 @@ dsgvo-check/
 
 ### 4.2 Браузерный коллектор
 
-**Запуск.** Четыре свежих профиля через `launchPersistentContext(tmpdir)`: A (A′ в конце), B, C, M. Почему persistent, а не `newContext()`: по эксперименту раунда 1 `newContext()` ведёт себя как Incognito как минимум по preconnect — ⚠ проверить спайком С2. Настройки:
+**Запуск.** Четыре свежих профиля через `launchPersistentContext(tmpdir)`: A (A′ в конце), B, C, M. Почему persistent, а не `newContext()`: по предварительному эксперименту `newContext()` ведёт себя как Incognito как минимум по preconnect — ⚠ проверить спайком С2. Настройки:
 
 | Параметр | Значение | Основание |
 |---|---|---|
@@ -368,7 +368,7 @@ undici 8 через egress-прокси и `EgressPolicy` (инжектируе�
 | `--save-artifacts <dir>` | Обычный скан плюс запись каталога. Источник L1-фикстур (срез по `requires`) | да |
 | `--from-artifacts <dir>` | Вместо `<url>`: загрузить снимок → `derive` по текущим данным пакета → проверки → assess → gate → репортеры. `scan.target`, `startedAt`, `environment` берутся из снимка; время оценки = `scan.startedAt` | нет |
 
-Используется пара `--save-artifacts`/`--from-artifacts` (ОВ-23). В `--from-artifacts` онлайн-источники VULN не опрашиваются: VULN-проверки дают `inconclusive` с причиной `offline-reevaluation`, а `scan.reevaluatedAt` фиксирует время повторной оценки и передаётся гейту для проверки срока подавлений — **предложение автора, не согласовано (ОВ-11)**. Если словарь кнопок изменился после скана и классификация CONSENT-04 расходится с `plan.click`, проверка получает limitation `lexicon-changed-since-scan`.
+В этой спецификации используется пара `--save-artifacts`/`--from-artifacts` (ОВ-23). В `--from-artifacts` онлайн-источники VULN не опрашиваются: VULN-проверки дают `inconclusive` с причиной `offline-reevaluation`, а `scan.reevaluatedAt` фиксирует время повторной оценки и передаётся гейту для проверки срока подавлений — **предложение автора, не согласовано (ОВ-11)**. Если словарь кнопок изменился после скана и классификация CONSENT-04 расходится с `plan.click`, проверка получает limitation `lexicon-changed-since-scan`.
 
 ---
 
@@ -1279,7 +1279,7 @@ export function gate(input: {
 
 **`exitReasons[]`** — пишутся все, не только победившая: `threshold`, `check-error:<id>`, `unreachable`, `blocked`, `timeout`, `sandbox-unavailable`, `invalid-input`, `internal-error`, `report-write-failed`, `strict:inconclusive:<id>`, `strict:sandbox-off`, `strict:egress-unverified`. `--strict` даёт `2` за `inconclusive` включённой проверки, когда нет `1`, независимо от `--fail-on none`; отдельные strict-причины — sandbox off и неизвестный регион при включённых CONSENT-проверках. Находки, собранные до сбоя, сохраняются при любом коде.
 
-**Мягкий режим** GitLab (`allow_failure: exit_codes: [1]`) — только явная документированная опция, не значение шаблона по умолчанию. Если среди причин есть `check-error`, GitHub Action печатает `::warning::` и строку в Summary, GitLab — все причины в stderr и `<error>` в JUnit, даже при коде `1`. При `allow_failure: exit_codes: [1]` наличие находки делает job мягким и при ошибке проверки; на GitHub мягкий режим — `continue-on-error`, он пропускает любой ненулевой код, включая fatal `2`. Это цена мягкого режима; шаг, роняющий job при `exit-code == '2'`, — предложение [качества и поставки, §9](04-quality-and-delivery.md#9-github-action), не согласовано.
+**Мягкий режим** GitLab (`allow_failure: exit_codes: [1]`) — только явная документированная опция, не значение шаблона по умолчанию. Если среди причин есть `check-error`, Summary содержит отдельное предупреждение; GitLab выводит все причины в stderr и `<error>` в JUnit, даже при коде `1`. GitHub Action формирует аннотацию только по коду выхода после возобновления workflow-команд; файлы из контейнера в stdout раннера не печатаются. При `allow_failure: exit_codes: [1]` наличие находки делает job мягким и при ошибке проверки; на GitHub мягкий режим — `continue-on-error`, он пропускает любой ненулевой код, включая fatal `2`. Это цена мягкого режима; шаг, роняющий job при `exit-code == '2'`, — предложение [качества и поставки, §9](04-quality-and-delivery.md#9-github-action), не согласовано.
 
 ---
 
@@ -1331,7 +1331,7 @@ categoryTerms: ["Webanalyse", "Reichweitenmessung"]
 source: { origin: customer-audit-export, ref: "<Audit-ID>", check87a: true }
 ```
 
-Формулировка в отчёте: «Anbieter laut Dienstekatalog v[X]: Google Ireland Ltd. (IE), Konzernmutter Google LLC (US); „Google LLC“ am [Datum] in der DPF-Liste geführt. Ort der Verarbeitung und Übermittlungsinstrument wurden nicht geprüft.» Сигнатуры GA4 (`/g/collect` с `cid`, `gtag/js?id=G-`) зафиксированы в каталоге; поле `source` — **предложение автора, не согласовано (ОВ-2)**.
+Формулировка в отчёте: «Anbieter laut Dienstekatalog v[X]: Google Ireland Ltd. (IE), Konzernmutter Google LLC (US); „Google LLC“ am [Datum] in der DPF-Liste geführt. Ort der Verarbeitung und Übermittlungsinstrument wurden nicht geprüft.» Сигнатуры GA4: `/g/collect` с `cid`, `gtag/js?id=G-`; поле `source` — **предложение автора, не согласовано (ОВ-2)**.
 
 ### 13.3 `adequacy.json`
 
@@ -1398,9 +1398,10 @@ HTML строится из `data/report/report.html`: один файл с ра�
 
 **JUnit — согласовано:** testsuite на модуль, testcase на проверку; `<failure>` — учитываемые находки, `<error>` — `check-error`, `<skipped>` — `inconclusive`/`not_applicable`/`skipped`. Подавленные, baseline-known и `info` — в `<system-out>`; `<properties>` — `exitCode`, `exitReasons`, `failOn`. Полный `Report` остаётся источником деталей, включая одновременные находки и ошибки.
 
-Форматы по умолчанию сохраняются: CLI — `console,json`, Action и GitLab-шаблон — `console,json,html` плюс Summary. PDF по умолчанию не включён. Явно запрошенный PDF попадает в каталог отчёта и CI-артефакты; `pdf-path` Action пуст, если файла нет.
+PDF по умолчанию не включён. Явно запрошенный PDF попадает в каталог отчёта и CI-артефакты; `pdf-path` Action пуст, если файла нет.
 
 **Предложение автора, не согласовано (ОВ-17):**
+- Форматы по умолчанию: `json,html`; Action и шаблон передают `--format json,html,junit,summary`.
 - Разделы HTML: Kopf, Zusammenfassung, Befunde, Abdeckung, Messumgebung, Diagnosen, Rechtlicher Kontext, Datensätze und Attribution, Hinweis.
 
 ---
@@ -1474,8 +1475,10 @@ rules:                           # overrides уровня (раздел 10.2)
 |---|---|
 | `DSGVO_CHECK_PROXY` | Альтернатива `--proxy`, чтобы учётные данные не попадали в argv и список процессов |
 | `NO_COLOR` | Без ANSI в консоли; в не-TTY ANSI выключен всегда |
-| `CI` | Санитизация workflow-команд в выводе, без интерактивных подсказок |
+| `CI`, `GITHUB_ACTIONS` | Санитизация workflow-команд в выводе, без интерактивных подсказок |
 | `PLAYWRIGHT_BROWSERS_PATH` | Где искать браузер; в образе `/ms-playwright` |
+
+В контейнер Action передаются только `HOME=/tmp` и `NO_COLOR=1`; перечень переменных CLI не расширяет окружение контейнера.
 
 `HTTP_PROXY` и `HTTPS_PROXY` неявно не читаются: скрытая смена egress исказила бы `environment.egress`.
 
@@ -1581,9 +1584,9 @@ rules:                           # overrides уровня (раздел 10.2)
 | ОВ-14 | Текущий контракт: только reject/accept; автоматического перехода через настройки нет. Расширение на второй уровень — вопрос заказчику, вне текущей 1.0 | Не расширять разрешённые действия без решения | Заказчик · отдельный вопрос, после 1.0 |
 | ОВ-15 | Стартовые пороги эвристики: перекрытие ≥ 15 % вьюпорта или полоса у края, ≥ 2 consent-слова | Эвристика даёт только `info`, но нужны исходные значения | Разработка · калибровка 3а |
 | ОВ-16 | сериализация составного `subject` по §11.8; `baselineStatus: new / known / raised`; форма `ButtonRef`/`ClickFact`, поля `ProbeSpec` `purpose` и `keep`; порядок массивов в JSON | Контракт задаёт смысл, но не форму полей | Разработка · alpha-схема, этап 1 |
-| ОВ-17 | Разделы HTML; умолчания закрыты решением заказчика: CLI `console,json`, CI `console,json,html` плюс Summary, PDF только явно | Маппинг JUnit уже определён в §14 | Разработка · этап 3а |
+| ОВ-17 | Форматы по умолчанию `json,html`; разделы HTML | Маппинг JUnit уже определён в §14 | Разработка · этап 3а |
 | ОВ-18 | Флаги `--out`, `--format`, `--config`, `--suppressions` и их умолчания; коды подкоманд `0/2`; «флаг > конфиг > умолчание»; конфиг 1.0 — только `version`, `pages`, `rules`, неизвестный ключ — ошибка | CLI без этих флагов не пишет отчёты в заданное место | Разработка · этап 1 |
-| ОВ-19 | Переменные `DSGVO_CHECK_PROXY`, `NO_COLOR`, `CI`, `PLAYWRIGHT_BROWSERS_PATH`; `HTTP(S)_PROXY` не читаются | Секреты вне argv; честный `egress` | Разработка · этап 2 |
+| ОВ-19 | Переменные `DSGVO_CHECK_PROXY`, `NO_COLOR`, `CI`/`GITHUB_ACTIONS`, `PLAYWRIGHT_BROWSERS_PATH`; `HTTP(S)_PROXY` не читаются | Секреты вне argv; честный `egress` | Разработка · этап 2 |
 | ОВ-20 | Лимиты контейнера `--memory=3g`, `--shm-size=1g`, `--pids-limit=1024`; `timeout-minutes: 15` в шаблонах | Наличие лимитов обязательно; их значения требуют замеров | Разработка · этап 2, по замерам |
 | ОВ-21 | Телеметрии нет; онлайн-запросы VULN передают только продукт и версию, без URL сайта | Минимизация передачи третьим лицам | Заказчик · до этапа 3б |
 | ОВ-22 | `CODEOWNERS`: заказчик — `texts/de.yaml`, `legal/*`, `ruleset/*`, `crm/*`; разработка — каталог, адаптеры, fingerprints | Процесс подписи ruleset и текстов | Заказчик · этап 1 |

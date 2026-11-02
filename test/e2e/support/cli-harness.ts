@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Report } from '../../../src/core/report-schema.ts';
 import { type FixtureServer, type RouteSpec, startFixtureServer } from '../../fixture-server/server.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
@@ -133,7 +133,7 @@ export function runCli(
   if (opts.stepSummary) childEnv.GITHUB_STEP_SUMMARY = opts.stepSummary;
   for (const k of Object.keys(childEnv)) if (childEnv[k] === undefined) delete childEnv[k];
 
-  const nodeArgs = env ? ['--import', HOOK, CLI] : [CLI];
+  const nodeArgs = env ? ['--import', pathToFileURL(HOOK).href, CLI] : [CLI];
   const child = spawn(process.execPath, [...nodeArgs, ...args, '--out', outDir], {
     cwd: outDir,
     env: childEnv,

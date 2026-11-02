@@ -1,8 +1,7 @@
 /**
- * the cap on collected links must not cut off the footer with Impressum and Datenschutz. A page
- * with a long article list used to lose every link after the 1500th in document order, so LEGAL-01 saw no legal link
- * on the page. Over the cap the collector reads legal-looking links and the footer/nav regions first, then the rest
- * in document order, and says that the list is truncated.
+ * The link cap must not exclude a footer's legal links on a page with a long article list: otherwise
+ * LEGAL-01 could infer a missing link from truncated input. Over the cap the collector prioritizes legal-looking
+ * links and footer/nav regions, fills the rest in document order, and reports that the list is truncated.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

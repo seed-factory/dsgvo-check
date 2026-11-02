@@ -1,4 +1,4 @@
-/** : recognition confidence (≥ 2 independent signal kinds), version helpers and the state verdict (CONSENT-05). */
+/** Recognition confidence (≥ 2 independent signal kinds), version helpers and the state verdict (CONSENT-05). */
 import { describe, expect, it } from 'vitest';
 import {
   confidenceFromSignals,
@@ -43,7 +43,7 @@ describe('version helpers', () => {
     expect(versionFromUrl('not a url')).toBeNull();
   });
 
-  // : a cache-busting timestamp in `?ver=` is not a plugin version.
+  // a cache-busting timestamp in `?ver=` is not a plugin version.
   it('a timestamp or a bare counter is not a version; a dotted version is', () => {
     expect(versionFromUrl('https://x.test/c.js?ver=1793004134')).toBeNull();
     expect(versionFromUrl('https://x.test/c.js?ver=1785843825')).toBeNull();
@@ -79,7 +79,7 @@ describe('stateVerdict', () => {
     });
   });
 
-  // : only a positive answer recorded by the CMP confirms a reject; `unknown` or a missing decision does not.
+  // only a positive answer recorded by the CMP confirms a reject; `unknown` or a missing decision does not.
   it('default-denied with an unknown answer is not a confirmed reject', () => {
     const r = stateVerdict(
       [st({ origin: 'default', decision: { responded: 'unknown', method: 'unknown' } })],
@@ -150,7 +150,7 @@ describe('stateVerdict', () => {
   });
 });
 
-// : CookieHub cannot list the categories of an installation; a category that stays denied after "accept all"
+// CookieHub cannot list the categories of an installation; a category that stays denied after "accept all"
 // may simply not exist there, so it must not turn a working accept into `not-all-granted`.
 describe('stateVerdict: categories the CMP does not offer', () => {
   const afterAccept = st({

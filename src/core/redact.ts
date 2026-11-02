@@ -26,8 +26,8 @@ export { maskEmails, maskMailto };
 /**
  * A quoted address that sits right behind a token, without a blank (`https://x.test/p?id="alice"@example.test`,
  * `mailto:a@x.test"b"@y.test`): the `"` ends the token, but the mask of the bare address eats that `"`, so on the
- * second pass the address would join the token and change it. The address belongs to the token from the start
- *. Each repetition starts with `"` and its tail cannot contain one: no ambiguity, at most 64 characters
+ * second pass the address would join the token and change it. The address belongs to the token from the start.
+ * Each repetition starts with `"` and its tail cannot contain one: no ambiguity, at most 64 characters
  * looked at per attempt.
  */
 const quotedTail = (char: string) => `(?:${QUOTED_LOCAL}@${char}+)*`;

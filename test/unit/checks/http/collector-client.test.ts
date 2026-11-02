@@ -1,4 +1,4 @@
-/** for pure parts of the HTTP/TLS collectors: header redaction , outcome mapping, pacing, host variants. */
+/** Pure parts of the HTTP/TLS collectors: header redaction, outcome mapping, pacing, host variants. */
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {

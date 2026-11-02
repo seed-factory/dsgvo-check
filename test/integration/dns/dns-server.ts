@@ -1,5 +1,5 @@
 /**
- * Fake authoritative DNS for (dns2 on 127.0.0.1:<random>, UDP). Zone keys are `"<TYPE> <name>"`.
+ * Fake authoritative DNS for integration tests (dns2 on 127.0.0.1:<random>, UDP). Zone keys are `"<TYPE> <name>"`.
  * Values: TXT records (a string, or an array of chunks for one multi-string record), MX as "<prio> <exchange>"
  * ("0 ." = Null MX), A addresses; or an rcode `SERVFAIL` / `REFUSED` / `NXDOMAIN`, or `DROP` (never answer).
  * A name with records of other types only answers NOERROR without data (NODATA); unknown names → NXDOMAIN.
