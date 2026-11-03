@@ -1,10 +1,4 @@
-/**
- * EMBED-01: fonts loaded from external font services (category `fonts`) before consent (phase A) or after
- * the reject (phase B); a load after accepting (C) is not counted. A completed stylesheet/font/kit request →
- * `fonts-loaded`; only preconnect/dns-prefetch hints or an unconfirmed attempt → `preconnect-only` (info).
- * Self-hosted fonts and local proxies are first party and never match. `p.typekit.net` (purpose ⚠) alone is
- * not a font load. Bot or geo signal → inconclusive.
- */
+/** EMBED-01: fonts from external font services loaded before consent or after the reject; self-hosted fonts are first party. */
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import {

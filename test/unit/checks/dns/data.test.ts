@@ -1,8 +1,8 @@
 /** Rendering of every emitted MAIL-* observation in de and en without unresolved placeholders. */
 import { describe, expect, it } from 'vitest';
 import { dnsChecks } from '../../../../src/checks/dns/index.ts';
-import { loadTexts } from '../../../../src/core/data.ts';
-import { renderMessage } from '../../../../src/core/messages.ts';
+import { loadTexts } from '../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../src/core/data/messages.ts';
 import { checkFixtures } from '../../../utils/completeness.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { dnsSnapshot, type ZoneSpec } from './zone.ts';

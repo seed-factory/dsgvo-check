@@ -1,24 +1,20 @@
-/**
- * TLS collector. One handshake per host variant (target, www, apex) with node:tls (see `probe.ts`):
- * port 443, or the explicit port of an https target URL for the target itself.
- */
-import type { TlsCollector } from '../../core/collector.ts';
-import { errorMessage } from '../../core/errors.ts';
-import type { ProbeRecord } from '../../core/snapshot-http.ts';
-import type { TlsSection } from '../../core/snapshot-tls.ts';
+// TLS collector: one handshake per host variant (target, www, apex), port 443 or the explicit port of an https target
+// URL for the target itself (see `probe.ts`).
+
+import { errorMessage } from '../../core/runtime/errors.ts';
+import type { TlsCollector } from '../../core/snapshot/collector.ts';
+import type { ProbeRecord } from '../../core/snapshot/http.ts';
+import type { TlsSection } from '../../core/snapshot/tls.ts';
 import { hostVariants } from '../http/hosts.ts';
 import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from './probe.ts';
 
 export { certificateInfo, chainOf, probeTlsEndpoint } from './probe.ts';
 
 export interface TlsCollectorOptions {
-  /** Connect + handshake budget per endpoint. */
   timeoutMs?: number;
-  /** Port for the host variants (default 443). An explicit port of an https target URL wins for the target. */
   port?: number;
 }
 
-/** Explicit non-default port of an https target URL, else null. */
 export function targetTlsPort(url: string): number | null {
   const u = new URL(url);
   return u.protocol === 'https:' && u.port ? Number(u.port) : null;

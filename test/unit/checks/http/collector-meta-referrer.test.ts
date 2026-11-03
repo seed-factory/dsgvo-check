@@ -1,7 +1,6 @@
 /**
- * The HTTP collector stores only the Referrer-Policy keywords of `<meta name="referrer">`, at most the last eight.
- * HDR-01 needs the last recognized keyword. Keeping unrelated tokens from an arbitrarily long, untrusted tag
- * would enlarge the snapshot without adding a policy fact.
+ * The HTTP collector stores only the Referrer-Policy keywords of `<meta name="referrer">`, at most the last eight:
+ * HDR-01 needs the last recognized keyword, other tokens of an untrusted tag would only enlarge the snapshot.
  */
 import { describe, expect, it } from 'vitest';
 import { effectiveReferrerPolicy } from '../../../../src/checks/http/hdr-01.ts';

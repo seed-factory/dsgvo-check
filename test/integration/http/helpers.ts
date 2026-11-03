@@ -1,4 +1,4 @@
-/** helpers for the HTTP/TLS collectors: collector context, routing overrides, a chain PKI, a local proxy. */
+/** Helpers for the HTTP/TLS collectors: collector context, routing overrides, a chain PKI, a local proxy. */
 import 'reflect-metadata';
 import { webcrypto } from 'node:crypto';
 import http from 'node:http';
@@ -6,12 +6,12 @@ import https from 'node:https';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as x509 from '@peculiar/x509';
-import type { CollectorContext } from '../../../src/core/collector.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import type { NetworkConfig } from '../../../src/core/net.ts';
-import type { Snapshot } from '../../../src/core/snapshot.ts';
-import { parseTarget } from '../../../src/core/url.ts';
-import { uaToken } from '../../../src/core/user-agent.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
+import { uaToken } from '../../../src/core/runtime/user-agent.ts';
+import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
+import type { Snapshot } from '../../../src/core/snapshot/index.ts';
+import type { NetworkConfig } from '../../../src/core/url/net.ts';
+import { parseTarget } from '../../../src/core/url/url.ts';
 
 x509.cryptoProvider.set(webcrypto as unknown as Parameters<typeof x509.cryptoProvider.set>[0]);
 

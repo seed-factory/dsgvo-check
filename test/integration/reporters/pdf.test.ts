@@ -5,13 +5,13 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { type BrowserType, chromium } from 'playwright-core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { launchPhase } from '../../../src/collectors/browser/launch.ts';
-import { loadTexts } from '../../../src/core/data.ts';
-import { defaultNetworkConfig } from '../../../src/core/net.ts';
-import type { ReporterContext } from '../../../src/core/reporter.ts';
+import { launchPhase } from '../../../src/collectors/browser/launch/launch.ts';
+import { loadTexts } from '../../../src/core/data/load.ts';
+import type { ReporterContext } from '../../../src/core/report/reporter.ts';
+import { defaultNetworkConfig } from '../../../src/core/url/net.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderPdf } from '../../../src/reporters/pdf.ts';
-import { HOSTILE_TEXT, sampleFullReport } from '../../utils/report-fixtures.ts';
+import { HOSTILE_TEXT, sampleFullReport } from '../../utils/report/fixtures.ts';
 import { TEST_SANDBOX } from '../browser/helpers.ts';
 
 const outputDirectories: string[] = [];

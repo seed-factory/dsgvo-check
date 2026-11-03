@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ReportSchema } from '../../src/core/report-schema.ts';
+import { ReportSchema } from '../../src/core/report/schema.ts';
 
 assert.equal(process.env.OUTCOME, 'failure');
 assert.equal(process.env.EXIT_CODE, '2');

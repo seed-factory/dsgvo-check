@@ -1,11 +1,9 @@
 /**
- * Fake authoritative DNS for integration tests (dns2 on 127.0.0.1:<random>, UDP). Zone keys are `"<TYPE> <name>"`.
- * Values: TXT records (a string, or an array of chunks for one multi-string record), MX as "<prio> <exchange>"
- * ("0 ." = Null MX), A addresses; or an rcode `SERVFAIL` / `REFUSED` / `NXDOMAIN`, or `DROP` (never answer).
- * A name with records of other types only answers NOERROR without data (NODATA); unknown names → NXDOMAIN.
+ * Fake authoritative DNS (dns2, UDP on 127.0.0.1:<random>). Zone keys are `"<TYPE> <name>"`; values are TXT strings
+ * (an array of chunks = one multi-string record), MX `"<prio> <exchange>"`, A, an rcode or `DROP` (never answer).
  */
 import dns2 from 'dns2';
-import type { NetworkConfig } from '../../../src/core/net.ts';
+import type { NetworkConfig } from '../../../src/core/url/net.ts';
 
 const { Packet } = dns2;
 

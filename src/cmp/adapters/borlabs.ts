@@ -1,15 +1,10 @@
-/**
- * Borlabs Cookie (WordPress) v2 and v3. Signals: `window.BorlabsCookie` / `borlabsCookieConfig`, plugin script
- * path, `#BorlabsCookieBox` (v3 `.brlbs-cmpnt-dialog`, v2 `._brlbs-box-wrap` / `._brlbs-bar-wrap`), cookie
- * `borlabs-cookie` (JSON with `consents: { group: [services] }`). Geo: GeoIP dialog hidden; bot: `cookiesForBots` with
- * a bot-like UA (Borlabs 3.5 `isBot` pattern). Config facts: `dialogHideDialogOnPages` for CONSENT-03.
- */
+/** Borlabs Cookie (WordPress) v2 and v3; bot detection mirrors the Borlabs 3.5 `isBot` pattern. */
 import type { Page } from 'playwright-core';
 import { majorSupported, versionFromUrl } from '../detection.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
 
-/** Default optional service groups of Borlabs (essential is never optional). */
+/** Optional service groups; essential is never optional. */
 const OPTIONAL_GROUPS = ['statistics', 'marketing', 'external-media'];
 
 interface BorlabsRead {
@@ -25,7 +20,6 @@ interface BorlabsRead {
   uaBot: boolean;
 }
 
-/** In-page, self-contained. */
 function readBorlabs(): BorlabsRead {
   interface El {
     getBoundingClientRect(): { width: number; height: number };

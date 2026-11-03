@@ -5,17 +5,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CaSetting } from '../../../scripts/canary-results.ts';
-import { runCanary } from '../../../scripts/canary-runner.ts';
+import type { CaSetting } from '../../../scripts/canary/results.ts';
+import { runCanary } from '../../../scripts/canary/runner.ts';
 import {
   caSetting,
   cliScanner,
   KILL_GRACE_MS,
   type SiteJob,
   type SiteScanner,
-} from '../../../scripts/canary-scanners.ts';
-import { parseSites } from '../../../scripts/canary-sites.ts';
-import { OWNER_MARKER, PROFILE_PREFIX } from '../../../src/collectors/browser/launch.ts';
+} from '../../../scripts/canary/scanners.ts';
+import { parseSites } from '../../../scripts/canary/sites.ts';
+import { OWNER_MARKER, PROFILE_PREFIX } from '../../../src/collectors/browser/launch/launch.ts';
 
 afterEach(() => vi.unstubAllEnvs());
 

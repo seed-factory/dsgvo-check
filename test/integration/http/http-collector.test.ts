@@ -1,7 +1,4 @@
-/**
- * The HTTP collector against local HTTP/HTTPS servers (random ports, test PKI trusted only for the test),
- * followed by the pure checks on the collected section.
- */
+/** The HTTP collector against local HTTP/HTTPS servers (test PKI), followed by the pure checks on its section. */
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import zlib from 'node:zlib';
@@ -12,11 +9,11 @@ import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { MAX_DECODED_BYTES } from '../../../src/collectors/http/client.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
 import { createTlsCollector } from '../../../src/collectors/tls/index.ts';
-import type { CollectorContext } from '../../../src/core/collector.ts';
-import type { NetworkConfig } from '../../../src/core/net.ts';
-import type { HttpSection } from '../../../src/core/snapshot-http.ts';
-import type { TlsSection } from '../../../src/core/snapshot-tls.ts';
-import { uaToken } from '../../../src/core/user-agent.ts';
+import { uaToken } from '../../../src/core/runtime/user-agent.ts';
+import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
+import type { HttpSection } from '../../../src/core/snapshot/http.ts';
+import type { TlsSection } from '../../../src/core/snapshot/tls.ts';
+import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, httpProxy, silentServer, withRoutes } from './helpers.ts';
@@ -117,13 +114,9 @@ describe('HTTP collector: http → https redirect site', () => {
       'https://www.redirect.test/datenschutz',
       'https://www.redirect.test/impressum',
     ]);
-    // ≤ 2 requests per second per host: starts to www.redirect.test are ≥ 500 ms apart. The pacer acts at the
-    // client, so that is where it is measured: the server sees the arrival, which trails the start by the TLS
-    // handshake (the server issues the certificate of a host on its first connection, in this very process) and by
-    // the load of the machine, and that differs from request to request. The exact rule (real start to real start,
-    // also after a late wake-up) is tested with a virtual clock in test/unit/checks/http/collector-client.test.ts.
-    // Here `START_JITTER_MS` covers what the process cannot control between the pacer's release and the timestamp
-    // taken a few microseconds later: a descheduled process or a garbage collection on a busy machine.
+    // ≤ 2 requests per second per host: starts to www.redirect.test are ≥ 500 ms apart. Measured at the client, where the
+    // pacer acts (server arrival trails the start by TLS handshakes and machine load). The exact rule is tested with a
+    // virtual clock in test/unit/checks/http/collector-client.test.ts; `START_JITTER_MS` covers descheduling and GC.
     const apexStarts = new Set(
       http.chains
         .flatMap((c) => c.hops)
@@ -233,8 +226,7 @@ describe('HTTP collector: problem sites', () => {
         seen.add(key);
         if (repeated) retriedRequest.resolve();
         if (!repeated && seen.size === 4) {
-          // A concurrent fourth response could stop the host before the paused retry starts. Let the retry
-          // arrive first so this test isolates the pause/retry contract from response-order scheduling.
+          // A concurrent fourth response could stop the host before the paused retry starts; let the retry arrive first.
           let timer: ReturnType<typeof setTimeout> | undefined;
           try {
             await Promise.race([

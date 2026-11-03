@@ -38,8 +38,8 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e --passWithNoTests",
     "test:live": "vitest run --project live --passWithNoTests",
-    "canary": "node scripts/canary.ts",
-    "canary:summary": "node scripts/canary.ts summary",
+    "canary": "node scripts/canary/main.ts",
+    "canary:summary": "node scripts/canary/main.ts summary",
     "registry": "node scripts/emit-registry.ts",
     "registry:check": "node scripts/emit-registry.ts --check"
   },

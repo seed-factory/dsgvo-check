@@ -1,10 +1,9 @@
 /**
- * Node-side routing through `NetworkConfig.test` (reference for / collectors):
- * an undici Agent whose connector sends every connection to `test.connect(host, port)` while keeping the
- * original hostname for SNI and certificate checks, trusting the test CA.
+ * Node-side routing through `NetworkConfig.test`: an undici Agent whose connector sends every connection to
+ * `test.connect(host, port)` but keeps the original hostname for SNI and certificate checks, trusting the test CA.
  */
 import { Agent, buildConnector } from 'undici';
-import type { NetworkConfig } from '../../src/core/net.ts';
+import type { NetworkConfig } from '../../src/core/url/net.ts';
 
 export function testDispatcher(network: NetworkConfig, opts: { rejectUnauthorized?: boolean } = {}): Agent {
   const test = network.test;

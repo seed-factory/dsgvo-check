@@ -1,22 +1,10 @@
-/**
- * Browser collection: phase A (≤ maxPages, no interaction), phase B (start page:
- * observation before the click, first screen via the CMP subsystem, reject via the adapter, verify, reload, ≤ 2
- * control pages), phase C (accept on the start page, same control pages). Every phase runs in a fresh persistent
- * profile. Fatal start-page conditions are returned in `fatal` (5.2).
- *
- * This file holds the collection state and the phase lifecycle; the phases live in `phase-a.ts` and
- * `consent-phase.ts`, navigations under the overload policy in `navigate.ts`. They read and write the state of
- * `BrowserCollection` directly, so its shared members are not private.
- */
+// Browser collection: phase A (≤ maxPages, no interaction), phase B (observe the start page, reject via the adapter,
+// verify, reload, ≤ 2 control pages), phase C (accept, same control pages), each in a fresh persistent profile. Fatal
+// start-page conditions go into `fatal`. The phases live in `phase-a.ts` and `consent-phase.ts` and share the
+// `BrowserCollection` state, so its members are not private.
 import type { BrowserType, Page } from 'playwright-core';
 import type { CmpAdapter, CmpFacts, CmpPhaseFacts, CmpSection } from '../../cmp/types.ts';
-import type {
-  BrowserSections,
-  CollectorContext,
-  CollectorResult,
-  FatalSignal,
-} from '../../core/collector.ts';
-import type { DiagnosticInput } from '../../core/snapshot.ts';
+import { browserUserAgent } from '../../core/runtime/user-agent.ts';
 import type {
   BrowserPlan,
   BrowserSection,
@@ -24,10 +12,16 @@ import type {
   PhaseRecord,
   PlannedPage,
   ScreenshotRecord,
-} from '../../core/snapshot-browser.ts';
-import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot-common.ts';
-import type { ProbeRecord } from '../../core/snapshot-http.ts';
-import { browserUserAgent } from '../../core/user-agent.ts';
+} from '../../core/snapshot/browser.ts';
+import type {
+  BrowserSections,
+  CollectorContext,
+  CollectorResult,
+  FatalSignal,
+} from '../../core/snapshot/collector.ts';
+import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
+import type { ProbeRecord } from '../../core/snapshot/http.ts';
+import type { DiagnosticInput } from '../../core/snapshot/index.ts';
 import { type CmpApi, CmpBridge } from './cmp-bridge.ts';
 import {
   BASE_KNOWN_GAPS,
@@ -37,11 +31,8 @@ import {
   TIMEZONE,
   VIEWPORT,
 } from './config.ts';
-import { phaseB, phaseC } from './consent-phase.ts';
-import { sanitizeRequestUrl } from './features.ts';
-import { inputHookInit } from './in-page-input.ts';
-import { cookieHookInit, storageHookInit } from './in-page-storage.ts';
-import { JarTracker, type Moment } from './jar.ts';
+import { inputHookInit } from './in-page/input.ts';
+import { cookieHookInit, storageHookInit } from './in-page/storage.ts';
 import {
   classifyLaunchError,
   type EngineProbe,
@@ -49,15 +40,23 @@ import {
   type PhaseBrowser,
   probeEngine,
   removeStaleProfiles,
-} from './launch.ts';
-import { linkDocuments } from './legal-documents.ts';
-import { type BlockedPage, blockedDiagnostic, privateBlockedDiagnostic } from './navigate.ts';
-import type { ControlChoice } from './pages.ts';
-import { phaseA } from './phase-a.ts';
-import { localScanClock, NetworkRecorder, type RequestCounter, type ScanClock } from './recorder.ts';
-import { type GuardHandle, type GuardVerdict, installSsrfGuard, type LookupError } from './ssrf.ts';
+} from './launch/launch.ts';
+import { type GuardHandle, type GuardVerdict, installSsrfGuard, type LookupError } from './launch/ssrf.ts';
+import { linkDocuments } from './legal/queue.ts';
+import { type BlockedPage, blockedDiagnostic, privateBlockedDiagnostic } from './pages/navigate.ts';
+import type { ControlChoice } from './pages/pages.ts';
+import { type VisitResult, valueWithin } from './pages/visit.ts';
+import { phaseB, phaseC } from './phases/consent-phase.ts';
+import { phaseA } from './phases/phase-a.ts';
+import { sanitizeRequestUrl } from './recording/features.ts';
+import { JarTracker, type Moment } from './recording/jar.ts';
+import {
+  localScanClock,
+  NetworkRecorder,
+  type RequestCounter,
+  type ScanClock,
+} from './recording/recorder.ts';
 import { errorText, sleep } from './util.ts';
-import { type VisitResult, valueWithin } from './visit.ts';
 
 export interface BrowserCollectorDeps {
   cmp: CmpApi;
@@ -66,11 +65,8 @@ export interface BrowserCollectorDeps {
   phases: readonly BrowserPhase[];
   requestLimit: number;
   executablePath?: string;
-  /** Budget of closing a phase browser before it is killed (default `CLOSE_BUDGET_MS`). */
   closeBudgetMs?: number;
-  /** After the global abort: how long an orderly shutdown may take before the collector hands over what it has. */
   abortOrderlyMs?: number;
-  /** SSRF guard: lookup retry policy for transient resolver errors (tests shorten the backoff). */
   lookupBackoffMs?: readonly number[];
 }
 
@@ -85,7 +81,6 @@ export interface Session {
   record: PhaseRecord;
   cmpFacts: CmpPhaseFacts;
   t0: number;
-  /** The one end-of-phase pass (records copied into the phase record, pushed to the sections); shared by all callers. */
   sealing?: Promise<void>;
 }
 
@@ -97,18 +92,14 @@ export interface AVisit {
 
 export type PhaseAOutcome = { kind: 'ok' } | { kind: 'fatal'; fatal: FatalSignal } | { kind: 'tls-blocked' };
 
-/** A `Page` view without frames: the jar then reads cookies only (PDF viewer, error pages: nothing to read in-page). */
+/** Without frames the jar reads cookies only (PDF viewer, error pages: nothing to read in-page). */
 function withoutFrames(page: Page): Page {
   return new Proxy(page, { get: (t, p) => (p === 'frames' ? () => [] : Reflect.get(t, p, t)) });
 }
 
-/** How long the recorder may keep a phase waiting for response metadata at the end of the phase. */
 const FLUSH_BUDGET_MS = 2_000;
-/**
- * After the global abort the orderly shutdown (browser closed, profile removed) normally takes milliseconds and at most
- * about `FLUSH_BUDGET_MS` + `CLOSE_BUDGET_MS`. If it takes longer, the collector hands over what it has instead of
- * being given up by the orchestrator (`ABORT_GRACE_MS` = 10 s).
- */
+// The orderly shutdown (browser closed, profile removed) takes milliseconds, at most about FLUSH_BUDGET_MS +
+// CLOSE_BUDGET_MS; after that the collector hands over what it has, before the orchestrator gives up (10 s).
 const ABORT_ORDERLY_MS = 5_500;
 
 export class BrowserCollection {
@@ -128,13 +119,11 @@ export class BrowserCollection {
   private readonly knownGaps = new Set<string>(BASE_KNOWN_GAPS);
   guard = { enabled: false, blocked: 0 };
   private guardScope: GuardHandle['scope'];
-  /** Verdicts of documents refused by the SSRF guard (address classes for the diagnostic). */
   readonly guardVerdicts: GuardVerdict[] = [];
-  /** Verdicts of refusals that a successful repeat of the same navigation made good: no document is missing. */
+  /** A successful repeat of the same navigation made good: no document is missing. */
   readonly guardRecovered: GuardVerdict[] = [];
-  /** Hosts of documents the guard refused (in memory only): tells a redirect from a non-public start host. */
+  /** In memory only: tells a redirect from a non-public start host. */
   readonly guardBlockedHosts = new Set<string>();
-  /** The target host answered with 429/503: no new navigation to it. */
   throttled = false;
   startRaw = '';
   scope = { finalHost: '', etld1: null as string | null };
@@ -142,16 +131,13 @@ export class BrowserCollection {
   control: ControlChoice[] = [];
   cmpRecognized: boolean | null = null;
   stoppedEarly: string | null = null;
-  /** The phase session that is open (not yet closed), for the hand-over after an abort. */
+  /** The open phase session, for the hand-over after an abort. */
   session: Session | null = null;
-  /** Pages with a challenge or an access block other than the start page of phase A (SCAN-BLOCKED). */
   readonly blockedPages: BlockedPage[] = [];
-  /** Resolver errors of the SSRF guard: code and scan-clock time. */
   readonly lookupErrors: Array<LookupError & { atMs: number }> = [];
 
   readonly ctx: CollectorContext;
   readonly deps: BrowserCollectorDeps;
-  /** 5.3 `tMs` scale: the scan clock of the orchestrator, else one clock for all phases of this collection. */
   private readonly clock: ScanClock;
 
   constructor(ctx: CollectorContext, deps: BrowserCollectorDeps) {
@@ -163,7 +149,7 @@ export class BrowserCollection {
 
   async run(): Promise<CollectorResult<BrowserSections>> {
     const signal = this.ctx.signal;
-    // Abort: close the running phase browser at once; every later close() awaits the same cleanup.
+    // Abort closes the running phase browser at once; every later close() awaits the same cleanup.
     let onAbort: () => void = () => undefined;
     const aborted = new Promise<'aborted'>((resolve) => {
       onAbort = () => {
@@ -178,7 +164,6 @@ export class BrowserCollection {
     try {
       const first = await Promise.race([body, aborted]);
       if (first !== 'aborted') return first;
-      // The orderly shutdown closes the browser and removes the profile, and returns the aborted result.
       const orderly = await valueWithin(
         body,
         this.deps.abortOrderlyMs ?? ABORT_ORDERLY_MS,
@@ -193,7 +178,7 @@ export class BrowserCollection {
 
   private async runBody(): Promise<CollectorResult<BrowserSections>> {
     try {
-      // Profiles of scans that were killed (SIGKILL, crash) hold cookies of the scanned site: remove them first.
+      // Profiles of killed scans hold cookies of the scanned site: remove them first.
       try {
         const removed = removeStaleProfiles();
         if (removed.length > 0) this.ctx.log.info(`removed ${removed.length} stale browser profile(s)`);
@@ -231,7 +216,7 @@ export class BrowserCollection {
           error: { code: 'phase-a-failed', message },
         };
       }
-      // A failure caused by the abort (closed browser → navigation error) is not a fatal of the site.
+      // A failure caused by the abort is not a fatal of the site.
       if (this.ctx.signal.aborted) return this.abortedResult();
       if (a.kind === 'tls-blocked') return { status: 'skipped', reason: 'tls-blocked', sections: {} };
       if (a.kind === 'fatal') return { ...this.result('error'), fatal: a.fatal, reason: a.fatal.code };
@@ -250,17 +235,12 @@ export class BrowserCollection {
         );
       return this.result(partial ? 'partial' : 'ok');
     } finally {
-      // Awaits the cleanup an abort may already have started (browser closed, temp profile removed).
       await this.current?.close();
     }
   }
 
-  /**
-   * Result after the abort (global --timeout): before the start page was visited nothing is delivered (5.2: the
-   * orchestrator reports failed/SCAN-TIMEOUT); afterwards what was collected is kept. Phases that did not run are
-   * recorded as skipped by the deadline, so that checks can tell "cut by the deadline" from "not planned".
-   * Never a fatal of the site.
-   */
+  // Nothing is delivered before the start page was visited (the orchestrator reports SCAN-TIMEOUT); afterwards the
+  // collected data is kept and phases that did not run are marked skipped by the deadline.
   private abortedResult(): CollectorResult<BrowserSections> {
     if (!this.startRaw || !this.engine) return { status: 'error', reason: 'timeout', sections: {} };
     for (const phase of this.deps.phases) {
@@ -271,11 +251,8 @@ export class BrowserCollection {
     return { ...this.result('partial'), reason: 'timeout' };
   }
 
-  /**
-   * The orderly shutdown after an abort did not finish in time (a browser that does not close, a call without
-   * timeout): hand over what the phases hold now, from the running phase too. The orderly flow may still run in the
-   * background, so the sections are a copy it can no longer change.
-   */
+  // The orderly shutdown did not finish in time: hand over what the phases hold now. The orderly flow may still run in
+  // the background, so the sections are a copy.
   private async handover(): Promise<CollectorResult<BrowserSections>> {
     this.ctx.log.warn(
       'browser collector: shutdown after the abort timed out, handing over the collected facts',
@@ -300,10 +277,8 @@ export class BrowserCollection {
     return !this.ctx.signal.aborted && Date.now() < this.ctx.deadline - this.deps.timing.deadlineReserveMs;
   }
 
-  /**
-   * A phase stopped because the time ran out. The global deadline (abort) is `timeout`; only the local reserve before it
-   * is `time-budget` and marks the collector as stopped early (7.6).
-   */
+  // Only the local reserve before the global deadline (`timeout`) is `time-budget` and marks the collector stopped
+  // early.
   cutByTime(record: PhaseRecord): void {
     record.status = 'partial';
     if (this.ctx.signal.aborted) record.reason = 'timeout';
@@ -389,10 +364,7 @@ export class BrowserCollection {
     return session;
   }
 
-  /**
-   * Cookie/storage tracker; a `Set-Cookie` on a request started after the click is a write after the click. Its
-   * in-page reads are bounded by time and by the scan signal; a read that ran out of time is a phase error.
-   */
+  /** A read that ran out of time becomes a phase error. */
   newJar(
     recorder: NetworkRecorder,
     target: { etld1: string | null; host: string },
@@ -428,7 +400,6 @@ export class BrowserCollection {
     };
   }
 
-  /** Wait for the recorder's response handlers, at most `FLUSH_BUDGET_MS`, and never past the abort. */
   async flushRecorder(s: Session): Promise<void> {
     await valueWithin(
       s.recorder.flush({ timeoutMs: FLUSH_BUDGET_MS, signal: this.ctx.signal }),
@@ -438,10 +409,8 @@ export class BrowserCollection {
     );
   }
 
-  /**
-   * End of a phase: the recorder's, the jar's facts go into the phase record, which joins the sections. Done once
-   * per session, whoever asks first (the phase itself or the hand-over after an abort); needs no working browser.
-   */
+  // Recorder and jar facts go into the phase record. Once per session, whoever asks first (the phase or the abort
+  // hand-over); needs no working browser.
   private sealPhase(s: Session): Promise<void> {
     s.sealing ??= (async () => {
       await this.flushRecorder(s);
@@ -455,7 +424,6 @@ export class BrowserCollection {
         s.record.status = 'partial';
         s.record.reason = 'request-cap';
       }
-      // A phase the global deadline cut off did not run to its end.
       if (this.ctx.signal.aborted && s.record.status === 'completed') {
         s.record.status = 'partial';
         s.record.reason = 'timeout';
@@ -473,7 +441,7 @@ export class BrowserCollection {
     if (this.session === s) this.session = null;
   }
 
-  /** Run phase B or C; an exception marks the phase failed but keeps everything collected so far. */
+  /** An exception marks the phase failed but keeps everything collected so far. */
   private async runPhase(phase: 'B' | 'C', fn: () => Promise<void>): Promise<void> {
     try {
       await fn();
@@ -514,18 +482,15 @@ export class BrowserCollection {
     };
   }
 
-  /**
-   * Cookies/storage snapshot and identifier correlation; CMP facts when `moment` is given. A page that is no readable
-   * HTML document (PDF viewer, the browser's error page, a failed DOM read) gets its cookies from the jar only: in-page
-   * reads and the CMP calls would wait for frames that never answer.
-   */
+  // A page that is no readable HTML document (PDF viewer, error page, failed DOM read) gets cookies from the jar only:
+  // in-page reads and CMP calls would wait for frames that never answer.
   async afterPage(
     s: Session,
     r: VisitResult,
     cmpMoment: CmpFacts['moment'] | null,
     adapter: CmpAdapter | null = null,
   ): Promise<CmpFacts | null> {
-    // Facts of a page are attributed to the page as shown (final URL after redirects), like its requests.
+    // Facts are attributed to the page as shown (final URL), like its requests.
     const pageUrl = r.visit.finalUrl;
     const readable = !r.error && r.visit.dom !== null;
     const values = await s.jar.snapshot(
@@ -543,7 +508,7 @@ export class BrowserCollection {
     return facts;
   }
 
-  /** Why the collection is partial: the first unfinished phase (7.6 "незавершённые"); `cmp-not-recognized` is normal. */
+  /** First unfinished phase; `cmp-not-recognized` is normal. */
   private partialReason(): string | undefined {
     const order: BrowserPhase[] = ['A', 'B', 'C'];
     const phases = [...this.phases].sort((a, b) => order.indexOf(a.phase) - order.indexOf(b.phase));

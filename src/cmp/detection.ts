@@ -1,10 +1,7 @@
 /** Pure helpers for CMP recognition (`high` needs ≥ 2 independent signals) and consent-state verdicts. */
 import type { CmpDetection, Confidence, ConsentStateFact } from './types.ts';
 
-/**
- * Independent signal kinds: `global`, `script`, `dom`, and the stored consent (`cookie`/`storage` count as one
- * kind: both are "consent cookie by name"). Several signals of one kind stay one signal.
- */
+/** Independent signal kinds: `global`, `script`, `dom` and stored consent (`cookie` and `storage` count as one). */
 export function signalKinds(signals: readonly string[]): Set<string> {
   const kinds = new Set<string>();
   for (const s of signals) {
@@ -31,15 +28,14 @@ export const NOT_DETECTED: CmpDetection = {
   signals: [],
 };
 
-/** A dotted version (`7.6.2`, `2.2.67`): a bare integer is a cache-busting counter or a timestamp, not a version. */
+/** A dotted version; a bare integer is a cache-busting counter or timestamp, not a version. */
 export const VERSION_PATTERN = /^\d{1,4}(\.\d+){1,3}$/;
 
-/** A version string read from the CMP's own config object, or null when it is not a dotted version. */
 export function cleanVersion(v: string | undefined): string | null {
   return v !== undefined && VERSION_PATTERN.test(v) ? v : null;
 }
 
-/** WordPress-style `?ver=1.2.3` (or `v=`) from a script URL; a timestamp such as `?ver=1793004134` is no version. */
+/** WordPress-style `?ver=1.2.3` (or `v=`) from a script URL; a timestamp is no version. */
 export function versionFromUrl(url: string | undefined): string | null {
   if (!url) return null;
   try {
@@ -73,11 +69,8 @@ export interface StateVerdict {
 const SOURCE_ORDER: ReadonlyArray<ConsentStateFact['source']> = ['api', 'cookie', 'tcf'];
 
 /**
- * Reject/accept confirmed by state (CONSENT-05, 5.3 `decision`): CMP ready, the user's answer positively recorded
- * (`decision.responded === true` — `false`, `unknown` or no decision never confirm), an origin that matches an answer
- * (`action` or `stored`; `default` and `special-branch` never confirm) and every optional category denied (reject)
- * or granted (accept). The API wins over the cookie. `requireAction` (right after our click, same document): only a
- * state that changed through the click (`origin: action`, see `originAfterClick`) confirms.
+ * Confirms reject/accept by recorded state (`decision.responded === true`, origin `action` or `stored`, every optional
+ * category denied/granted); the API wins over the cookie. `requireAction` accepts only `origin: action`.
  */
 export function stateVerdict(
   states: readonly ConsentStateFact[],
@@ -118,10 +111,8 @@ export function stateVerdict(
 }
 
 /**
- * Categories of the first source that stayed `denied` through our accept click while at least one other category was
- * turned `granted` by it. For a CMP whose API cannot list the categories of an installation (CookieHub) such a category
- * may simply not exist there; it then does not take part in the accept verdict. A click that granted nothing excludes
- * nothing (an inert accept stays unverified). `before` is the state read right before the click.
+ * Categories of the first source that stayed `denied` through our accept click while another was granted by it. A CMP
+ * whose API cannot list its categories (CookieHub) may simply lack such a category, so it is left out of the verdict.
  */
 export function unchangedDeniedAfterAccept(
   before: readonly ConsentStateFact[] | null,
@@ -146,10 +137,8 @@ function sameCategories(a: ConsentStateFact['categories'], b: ConsentStateFact['
 }
 
 /**
- * `origin: action` (5.3) only for a state our click produced: same document as the click, the CMP records an answer
- * (`decision.responded === true`) and that answer is new — the source had no recorded answer before the click, did
- * not exist yet (consent cookie written by the click) or its categories changed. Everything else keeps the origin
- * the adapter read (`default`, `stored`, `special-branch`). `before` is the state read right before the click.
+ * `origin: action` only for a state our click produced: same document, an answer recorded that was not there before
+ * (new source or changed categories). Everything else keeps the origin the adapter read.
  */
 export function originAfterClick(
   now: readonly ConsentStateFact[],

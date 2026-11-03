@@ -2,15 +2,15 @@
 import { describe, expect, it } from 'vitest';
 import type { CmpFacts } from '../../../../src/cmp/types.ts';
 import { normalizeFacts } from '../../../../src/collectors/browser/cmp-bridge.ts';
-import { judgeDocument } from '../../../../src/collectors/browser/documents.ts';
-import { parseLinkHeader } from '../../../../src/collectors/browser/dom.ts';
-import { mapCookie } from '../../../../src/collectors/browser/jar.ts';
-import { classifyLaunchError } from '../../../../src/collectors/browser/launch.ts';
-import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/ssrf.ts';
-import { navigationErrorCode } from '../../../../src/collectors/browser/visit.ts';
-import { loadTexts } from '../../../../src/core/data.ts';
-import { uiText } from '../../../../src/core/messages.ts';
-import { defaultNetworkConfig } from '../../../../src/core/net.ts';
+import { classifyLaunchError } from '../../../../src/collectors/browser/launch/launch.ts';
+import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/launch/ssrf.ts';
+import { judgeDocument } from '../../../../src/collectors/browser/legal/documents.ts';
+import { parseLinkHeader } from '../../../../src/collectors/browser/pages/dom-facts.ts';
+import { navigationErrorCode } from '../../../../src/collectors/browser/pages/visit.ts';
+import { mapCookie } from '../../../../src/collectors/browser/recording/jar.ts';
+import { loadTexts } from '../../../../src/core/data/load.ts';
+import { uiText } from '../../../../src/core/data/messages.ts';
+import { defaultNetworkConfig } from '../../../../src/core/url/net.ts';
 import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
 
 const moment = {

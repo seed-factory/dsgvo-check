@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { loadTexts } from '../../src/core/data.ts';
-import { uiText } from '../../src/core/messages.ts';
-import { sampleFullReport } from '../utils/report-fixtures.ts';
+import { loadTexts } from '../../src/core/data/load.ts';
+import { uiText } from '../../src/core/data/messages.ts';
+import { sampleFullReport } from '../utils/report/fixtures.ts';
 import { CLI, ensureBuilt, runCli } from './support/cli-harness.ts';
 
 const tempDirs: string[] = [];

@@ -1,7 +1,6 @@
 /**
- * The first-layer scenarios (blocking-no-reject … pur-abo) go through the real `classifyFirstLayer` and
- * the shipped lexicon: they exercise the first-layer classification end to end, from adapter facts to the finding.
- * The other scenarios use check-level variants or paths that return before the classifier.
+ * The first-layer scenarios (blocking-no-reject … pur-abo) run through the real `classifyFirstLayer` and the shipped
+ * lexicon, end to end from adapter facts to the finding; the others use check-level variants or early-return paths.
  */
 
 import type { CmpButton, CmpFacts } from '../../../../../src/cmp/types.ts';

@@ -1,32 +1,20 @@
 /** Arguments and raw result of `cmpPageProbe`, shared by the probe and its Node side (measure.ts). */
-import type { Box, Viewport } from '../../core/snapshot-common.ts';
+import type { Box, Viewport } from '../../core/snapshot/common.ts';
 
 export interface ProbeArgs {
   mode: 'banner' | 'heuristic';
-  /** Banner mode: container selectors in priority order (searched in the document and open shadow roots). */
+  /** Container selectors in priority order, searched in the document and open shadow roots. */
   containers: string[];
-  /** Overlay/backdrop selectors of the CMP. */
   overlays: string[];
-  /** CMP markup roles, e.g. `{ selector: '#CybotCookiebotDialogBodyButtonDecline', role: 'reject' }`. */
   vendorRoles: Array<{ selector: string; role: string }>;
-  /** Regex sources (pay-or-OK wording). */
   purAbo: string[];
-  /** Regex sources (consent wording). */
   keywords: string[];
   /** Heuristic in a child frame: the frame body itself may be the banner. */
   frameMode: boolean;
   maxButtons: number;
-  /**
-   * Normalized phrases (token sequences, or `*suffix`) of the accept/reject/settings/save lexicon classes. A
-   * non-modal fixed/sticky or static heuristic candidate needs at least one control whose name contains one of them
-   * (navigation links do not count). Empty → not required.
-   */
+  /** Accept/reject/settings/save phrases (token sequences or `*suffix`); a non-modal candidate needs a control with one. */
   controlPhrases?: string[];
-  /**
-   * Normalized phrases (same form) of the accept and reject classes only. A candidate inside a `header`/`footer`
-   * (or role banner/contentinfo) landmark counts as a banner only when it has a control with one of them:
-   * a footer strip with a "Cookie-Einstellungen" link offers no choice. Empty → such a candidate is page chrome.
-   */
+  /** Accept/reject phrases only: a candidate inside a header/footer landmark needs a control with one, else it is chrome. */
   choicePhrases?: string[];
   /** Explicit container (an iframe element handle when the banner lives in a child frame). */
   containerEl?: unknown;
@@ -71,17 +59,13 @@ export interface ProbeResult {
   purAbo: boolean;
   keywordHits: string[];
   buttons: RawButton[];
-  /** Controls dropped by `maxButtons` that could belong to the first layer (rendered, or with a CMP markup role). */
+  /** Controls dropped by `maxButtons` that could belong to the first layer. */
   buttonsTruncated: boolean;
   /** A finite animation/transition runs in the container, its subtree or an ancestor. */
   animating: boolean;
   blocking: RawBlocking;
   viewport: Viewport;
-  /**
-   * Links outside the banner whose centre lies in the first screen under the banner (or its overlay), by hit test,
-   * whatever they are called. The probe holds no legal wording: which of them are Impressum or privacy links, and
-   * which links of the banner are, is decided on the Node side with the lexicon of test/data/legal.
-   */
+  /** Links under the banner or its overlay at the first screen (hit test); which are legal is decided on the Node side. */
   coveredLinks: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
   heuristic: { score: number; signals: string[] } | null;
 }

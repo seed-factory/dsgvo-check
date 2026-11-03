@@ -19,7 +19,6 @@ export function writeSite(files: Record<string, string>): SiteDir {
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-/** Minimal HTML page. */
 export function page(body: string, head = ''): string {
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Beispiel GmbH</title>${head}</head><body>${body}</body></html>`;
 }

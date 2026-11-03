@@ -1,8 +1,6 @@
 /**
- * Snapshot fixtures of the browser checks, built in memory (the dns ones are the table in dns/fixtures.ts, the http
- * ones JSON files in test/fixtures/snapshots), one file per check: `SCENARIOS` holds one violation, clean and inconclusive case per
- * check, `VARIANT_SCENARIOS` one case for every further variant a snapshot can produce. The completeness test runs
- * each.
+ * Browser-check snapshot fixtures built in memory (dns: dns/fixtures.ts, http: JSON in test/fixtures/snapshots):
+ * `SCENARIOS` has a violation, clean and inconclusive case per check, `VARIANT_SCENARIOS` one per further variant.
  */
 
 import type { RawFixture } from '../../../../utils/snapshot-builder.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTestWorkers } from '../../utils/test-workers.ts';
+import { resolveTestWorkers } from '../../utils/run/test-workers.ts';
 
 describe('resolveTestWorkers (DSGVO_TEST_WORKERS)', () => {
   it('defaults to the number of logical cores', () => {

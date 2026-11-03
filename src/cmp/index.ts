@@ -1,23 +1,6 @@
-/**
- * CMP subsystem: seven own adapters in catalog order, recognition with ≥ 2 independent signals for
- * `high`, the generic heuristic for unknown banners (facts only, 5.5) and the pure table.
- *
- * Collector usage, phase B — one decision, made by core:
- *   const { adapter, detection } = await waitForCmp(page, { timeoutMs });
- *   await waitForBanner(page, adapter, { timeoutMs });   // banner visible and its geometry settled (≤ 2 s extra)
- *   const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });   // before any action
- *   const target = classifyFirstLayer(facts, lexicon).targets?.reject ?? null;     // → plan.click
- *   const click = adapter?.act ? await adapter.act(page, 'reject', target) : null; // clicks exactly `target`
- *   const verify = adapter && click?.clicked ? await adapter.verify(page, 'reject') : undefined;
- * `reject(page, { target })` is the same as `act`; `reject(page, { facts })` (transitional) applies the same pure
- * decision to the passed facts; without both nothing is clicked. `verify` reloads the page itself unless
- * `{ reload: false }`; it confirms only a recorded answer (`decision.responded === true`) and, in the document of
- * our click, only a state the click produced (`consent-state.origin: action`); after any reload the origin is
- * `stored`.
- * Checks import the pure parts from `src/cmp/classify.ts` / `src/cmp/lexicon.ts` (no browser, no fs).
- */
+/** CMP subsystem: the seven own adapters, a generic heuristic for unknown banners (facts only) and the pure table. */
 import type { Page } from 'playwright-core';
-import { sanitizeUrl } from '../core/url.ts';
+import { sanitizeUrl } from '../core/url/url.ts';
 import { tcfGeoSignals } from './adapters/base.ts';
 import { borlabs } from './adapters/borlabs.ts';
 import { ccm19 } from './adapters/ccm19.ts';
@@ -38,7 +21,7 @@ export { classifyButton, classifyLabel, lexiconFromData, normalizeLabel } from '
 export { loadLexicon } from './lexicon-file.ts';
 export type * from './types.ts';
 
-/** Catalog order (BRIEF / catalog): Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub. */
+/** In catalog order, which also breaks recognition ties. */
 export const adapters: readonly CmpAdapter[] = [
   borlabs,
   cookiebot,
@@ -51,10 +34,7 @@ export const adapters: readonly CmpAdapter[] = [
 
 const RANK = { high: 2, medium: 1, low: 0 } as const;
 
-/**
- * Best adapter detection (highest recognition, ties in catalog order); otherwise the generic heuristic
- * (`method: 'heuristic'`, never `high`) or `none`. A snapshot at call time — see `waitForCmp` for polling.
- */
+/** Best adapter detection, else the generic heuristic (never `high`) or `none`; a snapshot, see `waitForCmp` for polling. */
 export async function detectCmp(
   page: Page,
 ): Promise<{ adapter: CmpAdapter | null; detection: CmpDetection }> {
@@ -63,7 +43,7 @@ export async function detectCmp(
   return { adapter: null, detection: await heuristicDetection(page) };
 }
 
-/** Adapters only (cheap presence probes): highest recognition wins, ties in catalog order. */
+/** Adapters only (cheap probes); ties go to the earlier adapter. */
 async function detectAdapter(page: Page): Promise<{ adapter: CmpAdapter; detection: CmpDetection } | null> {
   let best: { adapter: CmpAdapter; detection: CmpDetection } | null = null;
   for (const adapter of adapters) {
@@ -81,10 +61,7 @@ async function heuristicDetection(page: Page): Promise<CmpDetection> {
   return heuristic?.detection ?? NOT_DETECTED;
 }
 
-/**
- * Poll the adapters until one is recognized with `high` and its API is ready (or the timeout ends); the generic
- * heuristic (a full-DOM walk) runs once at the end when no adapter matched. Returns the last detection.
- */
+/** Polls until an adapter is `high` and ready; the full-DOM heuristic runs once at the end if none matched. */
 export async function waitForCmp(
   page: Page,
   opts: { timeoutMs?: number; stepMs?: number } = {},
@@ -100,12 +77,11 @@ export async function waitForCmp(
   }
 }
 
-/** Interval between two geometry readings while a freshly shown banner settles (≥ 200 ms). */
 const SETTLE_STEP_MS = 200;
-/** A banner whose geometry has not settled after this long is measured as it is and marked `geometryUnsettled`. */
+/** A banner that has not settled after this long is measured as is and marked `geometryUnsettled`. */
 const SETTLE_MAX_MS = 2000;
 
-/** The result of the last `waitForBanner` per page, consumed by the next first-screen `extract` of that page. */
+/** Result of the last `waitForBanner` per page, consumed by the next first-screen `extract`. */
 const settleResults = new WeakMap<Page, { url: string; unsettled: boolean }>();
 
 function geometrySignature(layer: CmpFirstLayer): string {
@@ -114,11 +90,7 @@ function geometrySignature(layer: CmpFirstLayer): string {
   return [box(layer.containerBox), ...layer.buttons.map((b) => box(b.box))].join('|');
 }
 
-/**
- * After the first visibility an appearance animation (slide-in, fade-in) may still be running and the buttons are at
- * intermediate positions. Settled = two consecutive readings, at least `SETTLE_STEP_MS` apart, with the same container
- * and button boxes and no finite animation running in the container. Bounded by `SETTLE_MAX_MS`.
- */
+/** Settled = two consecutive readings with equal container and button boxes and no animation running. */
 async function geometrySettled(page: Page, adapter: CmpAdapter, first: CmpFirstLayer): Promise<boolean> {
   const end = Date.now() + SETTLE_MAX_MS;
   let prev = first;
@@ -138,11 +110,7 @@ async function geometrySettled(page: Page, adapter: CmpAdapter, first: CmpFirstL
   }
 }
 
-/**
- * Poll until the adapter's banner is rendered (late widgets such as CCM19), then until its geometry has settled.
- * Returns whether it appeared. A banner that never settles is recorded for the next first-screen `extract`
- * (`firstLayer.geometryUnsettled`), so that a half-way position is not judged as an unreachable reject.
- */
+/** Waits for the banner and its geometry to settle; a banner that never settles is flagged `geometryUnsettled`. */
 export async function waitForBanner(
   page: Page,
   adapter: CmpAdapter,
@@ -165,12 +133,8 @@ export async function waitForBanner(
 }
 
 /**
- * First-screen facts of an adapter whose recognition is below `high`, or whose own banner is not there, may hide a
- * visible banner of another kind: the generic heuristic is run as well. When it finds one, its container, buttons
- * and blocking replace the adapter's (which were measured on a banner that is not there); the adapter's state, bot/geo
- * signals and config stay. The result is a heuristic detection (`info` only, never clicked) with the adapter as a hint.
- * An adapter whose own banner was measured and is visible keeps its facts whatever its confidence: another element on
- * the page (a newsletter dialog) must not replace the container, buttons and screenshot of the measured banner.
+ * If the adapter's banner is not there or recognition is below `high`, a banner found by the generic heuristic
+ * replaces its container, buttons and blocking (result `info` only). A measured, visible adapter banner is kept.
  */
 async function withHeuristicBanner(page: Page, facts: CmpFacts, lexicon: ReturnType<typeof loadLexicon>) {
   if (facts.moment !== 'first-screen') return facts;
@@ -194,7 +158,7 @@ async function withHeuristicBanner(page: Page, facts: CmpFacts, lexicon: ReturnT
   };
 }
 
-/** `geometryUnsettled`: the settle wait ran out for this page, or a finite animation is running right now. */
+/** Marks `geometryUnsettled` when the settle wait ran out or an animation is still running. */
 function markGeometry(page: Page, facts: CmpFacts): CmpFacts {
   if (facts.moment !== 'first-screen') return facts;
   const settle = settleResults.get(page);
@@ -206,7 +170,7 @@ function markGeometry(page: Page, facts: CmpFacts): CmpFacts {
   return facts;
 }
 
-/** Facts with the given adapter, or the generic heuristic when `adapter` is null (5.5: only `info`). */
+/** Facts via the adapter, or the generic heuristic when `adapter` is null (`info` only). */
 export async function extract(
   page: Page,
   adapter: CmpAdapter | null,

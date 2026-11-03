@@ -1,9 +1,6 @@
 /**
- * Real Cookie Banner (devowl.io, WordPress). Signals: `window.consentApi` / `realCookieBanner`, plugin script,
- * `div[consent-skip-blocker="1"][data-bg]` (random id per request, obfuscated classes → structural selectors only),
- * consent cookie `real_cookie_banner*` (`uuid:revision:{groupId: [cookieIds]}`). Bot: `accept-all-for-bots` (default
- * on) with a UA that RCB's isbot-like pattern matches and a decision without a banner. ⚠ The options object
- * (`isAcceptAllForBots`, `groups`) is read defensively.
+ * Real Cookie Banner (devowl.io, WordPress). Random ids and obfuscated classes, so structural selectors only; the
+ * options object (`isAcceptAllForBots`, `groups`) is read defensively.
  */
 import type { Page } from 'playwright-core';
 import { versionFromUrl } from '../detection.ts';
@@ -19,7 +16,6 @@ interface RcbRead {
   bannerVisible: boolean;
 }
 
-/** In-page, self-contained. */
 function readRcb(): RcbRead {
   interface El {
     getBoundingClientRect(): { width: number; height: number };

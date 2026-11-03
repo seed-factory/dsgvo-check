@@ -1,12 +1,10 @@
 /** Programmatic API (used by the canary runner and tests). */
 
 export { allChecks, createRegistry } from './checks/index.ts';
-export { FINGERPRINT_VERSION, fingerprint, subjects } from './core/fingerprint.ts';
-export type { ExitCode, GateInput, GateResult } from './core/gate.ts';
-export { gate } from './core/gate.ts';
-export type { Logger, LogLevel } from './core/logger.ts';
-export { createLogger, silentLogger } from './core/logger.ts';
-export type { NetworkConfig, TestNetwork } from './core/net.ts';
+export { FINGERPRINT_VERSION, fingerprint, subjects } from './core/evaluation/fingerprint.ts';
+export type { ExitCode, GateInput, GateResult } from './core/evaluation/gate.ts';
+export { gate } from './core/evaluation/gate.ts';
+export type { ReportFormat } from './core/report/reporter.ts';
 export type {
   CheckResult,
   CheckStatus,
@@ -19,11 +17,13 @@ export type {
   FullReport,
   Report,
   Severity,
-} from './core/report-schema.ts';
-export { ReportSchema, reportJsonSchema, SCHEMA_VERSION } from './core/report-schema.ts';
-export type { ReportFormat } from './core/reporter.ts';
-export type { Snapshot, SnapshotSectionKey, TargetInfo } from './core/snapshot.ts';
-export { TOOL_VERSION } from './core/version.ts';
+} from './core/report/schema.ts';
+export { ReportSchema, reportJsonSchema, SCHEMA_VERSION } from './core/report/schema.ts';
+export type { Logger, LogLevel } from './core/runtime/logger.ts';
+export { createLogger, silentLogger } from './core/runtime/logger.ts';
+export { TOOL_VERSION } from './core/runtime/version.ts';
+export type { Snapshot, SnapshotSectionKey, TargetInfo } from './core/snapshot/index.ts';
+export type { NetworkConfig, TestNetwork } from './core/url/net.ts';
 export type { WriteResult } from './reporters/write.ts';
 export { writeReports } from './reporters/write.ts';
 export type { ScanResult } from './scan.ts';

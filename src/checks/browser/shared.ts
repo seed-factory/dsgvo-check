@@ -1,7 +1,4 @@
-/**
- * Pure helpers shared by the browser checks: bot/geo signals, evidence builders, lookups between `browser`
- * records and their `derived` classification. No I/O.
- */
+/** Pure helpers shared by the browser checks: signals, evidence builders and record/classification lookups. */
 import type { BotSignal, CmpFacts, CmpSection, GeoSignal } from '../../cmp/types.ts';
 import type { BrowserPhase, CheckOutcome, EvidenceInput, Observation } from '../../core/api.ts';
 import type {
@@ -12,7 +9,7 @@ import type {
   PageVisit,
   RequestRecord,
   StorageRecord,
-} from '../../core/snapshot-browser.ts';
+} from '../../core/snapshot/browser.ts';
 import type {
   ClassifiedCookie,
   ClassifiedRequest,
@@ -39,9 +36,8 @@ export function sortedUniq(xs: Iterable<string>): string[] {
 }
 
 /**
- * A hit carries a persistent identifier (03-checks §3.3, §4). A match with stored tracking data or a
- * user/click id holds even under Consent Mode `denied`; a catalog identifier param counts only when the hit is not a
- * denied (cookieless) ping, where the catalog's persistence assumption does not hold. `per-load` / `none` never count.
+ * A hit carries a persistent identifier: stored tracking data or a user/click id holds even under Consent Mode
+ * `denied`; a catalog identifier param counts only when the hit is not a denied (cookieless) ping.
  */
 export function persistentIdentifier(c: ClassifiedRequest): boolean {
   const kind = c.identifierKind ?? 'none';
@@ -68,10 +64,7 @@ export function consentSignals(cmp: CmpSection, phases: readonly BrowserPhase[])
   return { bot, geo };
 }
 
-/**
- * A direct bot or geo signal makes the consent evaluation inconclusive (5.2); the check emits the
- * matching diagnostic. Returns null when there is no signal.
- */
+/** A direct bot or geo signal makes the consent evaluation inconclusive; null when there is none. */
 export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome | null {
   if (s.bot.length > 0) {
     return {
@@ -108,10 +101,7 @@ export function phaseRecord(browser: BrowserSection, phase: BrowserPhase) {
   return browser.phases.find((p) => p.phase === phase);
 }
 
-/**
- * Phase A ran and at least one of its pages could be evaluated: the "before consent" observation exists. A phase A
- * whose only page is a 429/503 or challenge page is no observation.
- */
+/** Phase A has an evaluable page; a lone 429/503 or challenge page is no observation. */
 export function hasPhaseA(browser: BrowserSection): boolean {
   const a = phaseRecord(browser, 'A');
   return !!a && a.status !== 'skipped' && a.pages.some((p) => p.evaluable);
@@ -122,10 +112,7 @@ export function noPhaseAReason(browser: BrowserSection, fallback: string): strin
   return phaseRecord(browser, 'A')?.reason === 'throttled' ? 'throttled' : fallback;
 }
 
-/**
- * Throttling stopped navigations to the target in one of `phases`, so the observation is incomplete. A
- * `completed` outcome becomes `partial` with limitation `throttled`; other statuses stay.
- */
+/** Throttling stopped navigations in one of `phases`: `completed` becomes `partial` with limitation `throttled`. */
 export function throttleAware(
   browser: BrowserSection,
   outcome: CheckOutcome,
@@ -162,7 +149,7 @@ function cookieKey(
   return [phase, name, normDomain(domain), path, pk ?? '', state, after].join('|');
 }
 
-/** Pair cookie records with their classification (derive keeps one classification per record). */
+/** Pairs cookie records with their classification (one per record). */
 export function classifiedCookies(
   browser: BrowserSection,
   derived: DerivedSection,
@@ -235,18 +222,19 @@ export function visitedPages(
 /** Errors by which the collector marks a fetched page as not being the legal document. */
 const NOT_A_DOCUMENT: ReadonlySet<string> = new Set(['soft-404', 'keyword-missing', 'unconfirmed']);
 
+/** The probe's page was judged an error page (`soft-404`) or not confirmed as the document. */
+export function judgedNotDocument(a: DocumentsSection['attempts'][number]): boolean {
+  return a.outcome === 'soft-404' || a.outcome === 'unconfirmed';
+}
+
 /**
- * A usable legal document: 2xx and not judged "no document" by the collector, neither on the document
- * (`soft-404`, `keyword-missing`, `unconfirmed`) nor on the attempt that fetched it (outcome `soft-404` or
- * `unconfirmed`). A linked PDF counts even when it was not fetched (status null).
+ * 2xx and not judged "no document" by the collector, neither on the document nor on the attempt that fetched it.
+ * A linked PDF counts even when it was not fetched (status null).
  */
 export function usableDocument(d: DocumentRecord, attempts: DocumentsSection['attempts']): boolean {
   if (d.errors.some((e) => NOT_A_DOCUMENT.has(e))) return false;
   const judgedNot = attempts.some(
-    (a) =>
-      a.kind === d.kind &&
-      (a.outcome === 'soft-404' || a.outcome === 'unconfirmed') &&
-      (a.url === d.url || a.url === d.finalUrl),
+    (a) => a.kind === d.kind && judgedNotDocument(a) && (a.url === d.url || a.url === d.finalUrl),
   );
   if (judgedNot) return false;
   if (d.status === null) return d.format === 'pdf';
@@ -285,21 +273,23 @@ export function serviceFields(
   return out;
 }
 
-/** Parser version of snapshots written before the collector recorded one (5.3 `features.parserVersion`). */
+/** Parser version of snapshots written before the collector recorded one. */
 const LEGACY_PARSER_VERSION = 'request-features/1';
 
 type RequestDelivery = NonNullable<RequestRecord['delivery']>;
 type RequestResult = NonNullable<RequestRecord['result']>;
 
-/** 5.3 `delivery` / `result` of a record; older snapshots without them are mapped from the legacy `state`. */
+/** Delivery of a record that has only the legacy `state`; any other state means the request did not get that far. */
+const LEGACY_STATE_DELIVERY: ReadonlyMap<RequestRecord['state'], RequestDelivery> = new Map([
+  ['blocked-by-browser', 'blocked-by-browser'],
+  ['completed', 'sent'],
+  ['from-sw', 'sent'],
+  ['from-cache', 'sent'],
+]);
+
+/** `delivery` / `result` of a record; older snapshots without them are mapped from the legacy `state`. */
 function deliveryAndResult(r: RequestRecord): { delivery: RequestDelivery; result: RequestResult } {
-  const delivery: RequestDelivery =
-    r.delivery ??
-    (r.state === 'blocked-by-browser'
-      ? 'blocked-by-browser'
-      : r.state === 'completed' || r.state === 'from-sw' || r.state === 'from-cache'
-        ? 'sent'
-        : 'attempted');
+  const delivery: RequestDelivery = r.delivery ?? LEGACY_STATE_DELIVERY.get(r.state) ?? 'attempted';
   const result: RequestResult =
     r.result ??
     (r.status !== undefined
@@ -310,7 +300,7 @@ function deliveryAndResult(r: RequestRecord): { delivery: RequestDelivery; resul
   return { delivery, result };
 }
 
-/** Identifier kind without a classification: only what the collector recorded (no catalog signature). */
+/** Identifier kind without a classification: only what the collector recorded. */
 function unclassifiedIdentifier(r: RequestRecord): { kind: IdentifierKind; param?: string } {
   const param = r.identifierNames?.[0];
   if (r.matchesStoredIdentifier === true)
@@ -320,9 +310,8 @@ function unclassifiedIdentifier(r: RequestRecord): { kind: IdentifierKind; param
 }
 
 /**
- * `request` evidence (5.3). A pure function of the record and its classification, so the same request gives
- * the same evidence (and evidence id) in every check. Times relative to the navigation or the click are not stored:
- * they follow from `tMs` and the `navigationId` / `actionId` of the page visit and the click.
+ * `request` evidence: a pure function of the record and its classification, so a request gives the same evidence (and
+ * evidence id) in every check. Times relative to navigation or click follow from `tMs` and the ids, so are not stored.
  */
 export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | undefined): EvidenceInput {
   const identifier = c?.identifierKind
@@ -374,7 +363,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
   return ev;
 }
 
-/** 5.3 time scale and ids of a cookie/storage record (the legacy relative `tMs` is not exported). */
+/** Time scale and ids of a cookie/storage record (the legacy relative `tMs` is not exported). */
 function observationIds(x: Pick<CookieRecord, 'atMs' | 'navigationId' | 'actionId'>) {
   return {
     ...(x.atMs !== undefined ? { tMs: x.atMs } : {}),

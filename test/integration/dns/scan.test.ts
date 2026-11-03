@@ -1,17 +1,14 @@
-/**
- * full `scan` with only the MAIL-* checks against a fake authoritative DNS (dns2). Only the DNS collector
- * runs (no browser, no HTTP). No internet.
- */
+/** Full `scan` with only the MAIL-* checks against a fake authoritative DNS: no browser, no HTTP, no internet. */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dnsChecks } from '../../../src/checks/dns/index.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import { CheckRegistry } from '../../../src/core/registry.ts';
-import type { FullReport } from '../../../src/core/report-schema.ts';
+import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import type { FullReport } from '../../../src/core/report/schema.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 import { type FakeDnsServer, localDnsNetwork, MAIL_SITE, startFakeDns } from './dns-server.ts';
 
 let dns: FakeDnsServer;

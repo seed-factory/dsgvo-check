@@ -1,15 +1,9 @@
-/**
- * Small heuristics over an HTML prefix (≤ 64 KiB for TLS-01 signals; `findLegalLinks` reads the whole body, up to
- * `MAX_DECODED_BYTES`). No DOM: the collector never executes page content. Bodies are never stored, only these
- * derived facts.
- *
- * The text is untrusted, so every function here is linear in its size: a search never restarts at each
- * candidate. Repeated unclosed `<a `, `<form ` or `<!--` prefixes must not cause quadratic rescanning or block
- * the event loop. `elements` and `startTags` preserve the intended matches with `indexOf` scans and make the
- * stopping condition explicit when a candidate cannot be completed.
- */
-import type { HeaderRecord } from '../../core/snapshot-common.ts';
-import { parseUrl } from '../../core/url.ts';
+// Small heuristics over an HTML prefix (≤ 64 KiB for TLS-01 signals; `findLegalLinks` reads the whole body up to
+// `MAX_DECODED_BYTES`). No DOM: page content is never executed, bodies are never stored, only derived facts. The text
+// is untrusted, so every function is linear in its size (`indexOf` scans, no restart at each candidate): repeated
+// unclosed `<a `, `<form ` or `<!--` must not cause quadratic rescanning.
+import type { HeaderRecord } from '../../core/snapshot/common.ts';
+import { parseUrl } from '../../core/url/url.ts';
 
 export const HEURISTIC_BYTES = 64 * 1024;
 
@@ -36,11 +30,8 @@ function decodeEntities(s: string): string {
     .replace(/&#x2f;|&#0*47;/gi, '/');
 }
 
-/**
- * The text without its comments: each `<!--` up to the first `-->` after it (`/<!--[\s\S]*?-->/g`). A `<!--` that has
- * no `-->` behind it stays as text, and so does everything after it: a later `<!--` has no `-->` either, which ends
- * the search (a restart at each of them is O(n²)).
- */
+// A `<!--` without `-->` stays as text together with everything after it: a later one has no `-->` either, which ends
+// the search (a restart at each is O(n²)).
 function withoutComments(html: string): string {
   let open = html.indexOf('<!--');
   if (open < 0) return html;
@@ -57,11 +48,8 @@ function withoutComments(html: string): string {
   return parts.join('');
 }
 
-/**
- * Raw-text and escapable raw-text elements (plus `<noscript>`): their content is text, not markup (`<script>`
- * strings, `<textarea>` text…). The first matching closing tag ends them; they do not nest. An unclosed element
- * runs to the end.
- */
+// Raw-text and escapable raw-text elements (plus `<noscript>`): their content is text, not markup. The first closing
+// tag ends them; they do not nest; an unclosed one runs to the end.
 const RAW_TEXT_NAMES: ReadonlySet<string> = new Set([
   'script',
   'style',
@@ -74,29 +62,19 @@ const RAW_TEXT_NAMES: ReadonlySet<string> = new Set([
   'noframes',
 ]);
 
-/**
- * The start of a tag: `<` or `</` and its name, which ends at whitespace (of HTML), `/` or `>`. `<template-card>` and
- * `<style-guide>` are custom elements, not `<template>` and `<style>`.
- */
+// Tag start: `<` or `</` and a name ending at whitespace, `/` or `>` (`<template-card>` is a custom element, not
+// `<template>`).
 const TAG_START = '<(/?)([a-z][^ \\t\\n\\f\\r/>]*)';
 
 const isHtmlSpace = (c: number): boolean => c === 32 || c === 9 || c === 10 || c === 12 || c === 13;
 
-/**
- * Finder of tag ends in one text: `tagEnd(i)` is the index after the `>` of the tag whose name ends at `i`, or -1 when
- * the tag is not closed. A quoted attribute value (`name="…"`, `name='…'`, also with spaces around `=`) belongs to the
- * tag, so a `>` or a `<template>` inside it is text; a quote anywhere else (`<p don't>`, `a=b'c`) is no
- * quote. A text without any `>` behind the position answers at once.
- *
- * Linear over all calls on one text. The walk from a position is fixed (it jumps over quoted values and over the
- * spaces after `=`), so when it ends without a `>`, every position it passed ends without one too: those are
- * remembered, and a later tag whose walk reaches one of them stops there. Without it, a text whose every `>` sits
- * inside a quoted value (`<a x=">" <a x=">" …`) was walked to its end once per tag.
- */
+// `tagEnd(i)`: index after the `>` of the tag whose name ends at `i`, or -1 when it is not closed. A quoted attribute
+// value belongs to the tag (a `>` inside is text); a quote elsewhere (`<p don't>`) is no quote. Linear over all calls:
+// a walk that ends without `>` makes every position it passed end without one too, so those are remembered; otherwise a
+// text whose every `>` sits inside a quoted value would be walked to its end once per tag.
 function tagEnder(html: string): (i: number) => number {
   const lastGt = html.lastIndexOf('>');
   let dead: Uint8Array | null = null;
-  /** The position after `i` on the walk (`i` is no `>`), or -1 when a quoted value is not closed. */
   const after = (i: number): number => {
     if (html.charCodeAt(i) !== 61) return i + 1;
     let j = i + 1;
@@ -122,7 +100,6 @@ function tagEnder(html: string): (i: number) => number {
 
 const RAW_TEXT_CLOSE = new Map<string, RegExp>();
 
-/** Index after the first closing tag of the raw-text element `name` at or after `from`; the end if it is unclosed. */
 function rawTextEnd(html: string, name: string, from: number): number {
   let close = RAW_TEXT_CLOSE.get(name);
   if (!close) {
@@ -134,13 +111,9 @@ function rawTextEnd(html: string, name: string, from: number): number {
   return m ? m.index + m[0].length : html.length;
 }
 
-/**
- * Index after the `</template>` that closes the template whose opening tag ends at `from`. Templates nest: the
- * first `</template>` closes the innermost one only, and what lies inside the outer template stays inert up to its
- * own closing tag. The content of a raw-text element inside the template is text (a `"</template>"` string in a
- * script closes nothing), and so is a quoted attribute value (a `"</template>"` in a `title` closes nothing). An
- * unclosed template runs to the end.
- */
+// Index after the `</template>` that closes the template whose opening tag ends at `from`. Templates nest; raw-text
+// content and quoted attribute values inside are text (a `"</template>"` string closes nothing). An unclosed template
+// runs to the end.
 function templateEnd(html: string, from: number, tagEnd: (i: number) => number): number {
   const tag = new RegExp(TAG_START, 'gi');
   tag.lastIndex = from;
@@ -160,17 +133,13 @@ function templateEnd(html: string, from: number, tagEnd: (i: number) => number):
   return html.length;
 }
 
-/**
- * HTML without comments and without the content of raw-text / inert elements. A `<textarea>` itself
- * is a form control, so its (empty) tag is kept. Markup after the closing tag of an outer `<template>` is the
- * document's again. The tags are read with their quoted attribute values: a `<template>` or `<script>` in a
- * value is no element.
- */
+// HTML without comments and without the content of raw-text / inert elements. A `<textarea>` is a form control, so its
+// empty tag stays. Markup after the closing tag of an outer `<template>` is the document's again; quoted attribute
+// values are read, so a `<template>` in a value is no element.
 function documentMarkup(html: string): string {
   return markupOf(withoutComments(html));
 }
 
-/** `documentMarkup` of a text whose comments are removed already. */
 function markupOf(source: string): string {
   const tagEnd = tagEnder(source);
   const tag = new RegExp(TAG_START, 'gi');
@@ -190,13 +159,10 @@ function markupOf(source: string): string {
   return out + source.slice(pos);
 }
 
-/**
- * The elements `<name …>body</name>` of a text in document order, as `/<name\b([^>]*)>([\s\S]*?)<\/name>/gi` finds
- * them (`attrs` is what stands between the name and the first `>`; with `closeOrEnd` an element without a closing tag
- * runs to the end of the text, like `(?:<\/name>|$)`). One forward scan: a candidate without a `>` behind it, or
- * (unless `closeOrEnd`) without a closing tag behind its `>`, ends the search, because every later candidate has its
- * `>` no earlier and so finds neither either. The regexp restarted at each of them: O(n²).
- */
+// Elements `<name …>body</name>` of a text in document order, as `/<name\b([^>]*)>([\s\S]*?)<\/name>/gi` finds them
+// (with `closeOrEnd` an unclosed element runs to the end). One forward scan: a candidate without a `>` (or, unless
+// `closeOrEnd`, without a closing tag) ends the search because every later one fails too; the regexp restarted at each
+// one (O(n²)).
 function* elements(
   text: string,
   name: string,
@@ -219,7 +185,7 @@ function* elements(
   }
 }
 
-/** The start tags `<name …>` of a text as their source (`/<name\b[^>]*>/gi`), by the same scan as `elements`. */
+/** Start tags by the same scan as `elements`. */
 function* startTags(text: string, name: string): Generator<string> {
   const open = new RegExp(`<${name}\\b`, 'gi');
   for (let m = open.exec(text); m; m = open.exec(text)) {
@@ -247,7 +213,6 @@ function stripTags(text: string): string {
   return parts.join('');
 }
 
-/** The opening tags `<name …>` of a markup text (see `documentMarkup`), each as its source text. */
 function openTags(markup: string, name: string): string[] {
   const tagEnd = tagEnder(markup);
   const tag = new RegExp(TAG_START, 'gi');
@@ -272,10 +237,8 @@ function withHttps(base: string): string | null {
   return u.href;
 }
 
-/**
- * `<meta http-equiv>` pairs and `<meta name="referrer">` of the document: a meta inside a `<template>`, `<noscript>`,
- * `<script>`… is inert and does not count. The values are as written; the collector stores them reduced.
- */
+// A meta inside `<template>`, `<noscript>` or `<script>` is inert and does not count. Values are as written; the
+// collector stores them reduced.
 export function extractMeta(html: string): { httpEquiv: HeaderRecord[]; referrer: string | null } {
   const httpEquiv: HeaderRecord[] = [];
   let referrer: string | null = null;
@@ -289,7 +252,7 @@ export function extractMeta(html: string): { httpEquiv: HeaderRecord[]; referrer
   return { httpEquiv, referrer };
 }
 
-/** Meta refresh or a JS navigation in inline scripts. `url` is absolute or null when it cannot be resolved. */
+/** `url` is absolute, or null when it cannot be resolved. */
 export function detectClientRedirect(
   html: string,
   base: string,
@@ -321,10 +284,8 @@ export function detectClientRedirect(
 const NON_DATA_INPUTS = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'search']);
 const SEARCH_NAMES = new Set(['s', 'q', 'search', 'query', 'suche', 'keyword', 'keywords', 'searchword']);
 
-/**
- * A form that takes user input other than a site search (TLS-01 "form on an http page"). Markup inside
- * `<script>`, `<template>`, `<noscript>`, `<textarea>`… is not a form of the document.
- */
+// A form that takes user input other than a site search (TLS-01). Markup inside `<script>`, `<template>`, `<noscript>`
+// or `<textarea>` is no form.
 export function detectForm(html: string): boolean {
   const clean = documentMarkup(html);
   for (const f of elements(clean, 'form', true)) {
@@ -350,7 +311,6 @@ const PRIVACY_TEXT = /datenschutz|privacy|dsgvo|data protection/i;
 const PRIVACY_HREF = /datenschutz|privacy|dsgvo/i;
 const SETTINGS_TEXT = /einstellung|setting|cookie|widerruf|opt-?out/i;
 
-/** First same-document-order links to Impressum and Datenschutzerklärung (absolute URLs). */
 export function findLegalLinks(html: string, base: string): { impressum?: string; privacy?: string } {
   const out: { impressum?: string; privacy?: string } = {};
   for (const a of elements(withoutComments(html), 'a', false)) {

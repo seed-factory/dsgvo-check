@@ -1,10 +1,6 @@
 /**
- * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works (5.5).
- * The first-layer verdict comes only from the pure `classifyFirstLayer` on first-screen facts of a
- * supported CMP recognised with `high` confidence (≥ 2 independent signals). Heuristic candidates, `medium`
- * recognition or unsupported versions → `banner-not-recognized` / `cmp-not-supported` (info, inconclusive,
- * crmCode null, locked). Check-level variants: `reject-ineffective` (click done, state not denied) and
- * `consent-without-action` (CMP state granted without click, origin default/stored). Bot/geo → inconclusive.
+ * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works. The verdict comes only from the
+ * pure `classifyFirstLayer` for a CMP recognised with `high`; otherwise `banner-not-recognized` or `cmp-not-supported`.
  */
 import { classifyFirstLayer } from '../../cmp/classify.ts';
 import { lexiconFromData } from '../../cmp/lexicon.ts';
@@ -25,7 +21,7 @@ import {
   type Phase,
   subjects,
 } from '../../core/api.ts';
-import type { BrowserPlan, BrowserSection } from '../../core/snapshot-browser.ts';
+import type { BrowserPlan, BrowserSection } from '../../core/snapshot/browser.ts';
 import { allCmpFacts, consentSignals, signalOutcome, startPageUrl } from './shared.ts';
 
 const ID = 'CONSENT-04';
@@ -82,12 +78,13 @@ export function lexiconFrom(data: unknown): CmpLexicon | null {
 export type FirstLayerClassifier = (facts: CmpFacts, lexicon: CmpLexicon) => FirstLayerClassification;
 
 /**
- * Source of a detection: only an own adapter with `high` recognition ranks above the heuristic. An adapter below `high`
- * (one kind of signal) is as much a hint as the heuristic itself, and its fact may be an empty one from a page where the
- * banner is hidden.
+ * Only an own adapter with `high` recognition ranks above the heuristic: below `high` it is as much a hint as the
+ * heuristic, and its fact may be empty on a page where the banner is hidden.
  */
-const rankOf = (d: CmpFacts['detection']): number =>
-  d.method === 'none' ? 0 : d.method === 'adapter' && d.recognitionConfidence === 'high' ? 2 : 1;
+function rankOf(d: CmpFacts['detection']): number {
+  if (d.method === 'none') return 0;
+  return d.method === 'adapter' && d.recognitionConfidence === 'high' ? 2 : 1;
+}
 
 /** The facts the verdict is based on: best detection, first screen of B, then A, then C. */
 function primaryFacts(cmp: CmpSection, start: string | null): CmpFacts | null {
@@ -225,7 +222,7 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
         }) satisfies Observation;
       const factsEvidence = [cmpEvidence(primary, plan.browser), ...screenshotEvidence(browser, primary)];
 
-      // 5.5: only own adapters with `high` recognition and a supported version give a verdict.
+      // Only own adapters with `high` recognition and a supported version give a verdict.
       const notSupported =
         (det.method === 'adapter' && det.versionSupported === false) ||
         (det.method === 'heuristic' && det.cmpId !== null && !KNOWN_CMPS.has(det.cmpId));

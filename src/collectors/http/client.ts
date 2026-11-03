@@ -1,20 +1,17 @@
-/**
- * Polite HTTP client for passive probes:
- * - undici, no automatic redirects, no cookies, no HSTS cache, honest UA (token only);
- * - ≤ 2 requests per second per host (pacing by request start);
- * - TLS with `rejectUnauthorized: false`: the request is sent, Node's verdict is recorded per connection;
- * - SSRF guard: every connection goes to an address from `network.lookup` that passed `isPublicAddress`
- *   (unless `allowPrivateAddresses`); tests route through `network.test.connect` and trust `network.test.caPem`.
- */
+// Polite HTTP client for passive probes: undici, no redirects, cookies or HSTS cache, honest UA (token only); ≤ 2
+// requests per second per host (by request start); TLS with `rejectUnauthorized: false` (Node's verdict is recorded per
+// connection); SSRF guard: connections go only to addresses from `network.lookup` that passed `isPublicAddress` (tests
+// route through `network.test.connect` and trust `network.test.caPem`).
 import { isIP, type Socket } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { TLSSocket } from 'node:tls';
 import zlib from 'node:zlib';
 import { Agent, buildConnector, type Dispatcher, ProxyAgent } from 'undici';
-import { snapshotHeaderRecords } from '../../core/headers.ts';
-import { isPublicAddress, type NetworkConfig } from '../../core/net.ts';
-import type { HeaderRecord } from '../../core/snapshot-common.ts';
-import { ACCEPT_LANGUAGE } from '../../core/user-agent.ts';
+import { snapshotHeaderRecords } from '../../core/redaction/headers.ts';
+import { ACCEPT_LANGUAGE } from '../../core/runtime/user-agent.ts';
+import type { HeaderRecord } from '../../core/snapshot/common.ts';
+import { isPublicAddress, type NetworkConfig } from '../../core/url/net.ts';
+import { defaultHttpPort } from '../../core/url/url.ts';
 
 export const DEFAULT_MIN_INTERVAL_MS = 500;
 
@@ -22,7 +19,6 @@ export interface ClientTimeouts {
   connectMs: number;
   headersMs: number;
   bodyMs: number;
-  /** Whole request including the limited body read. */
   requestMs: number;
 }
 
@@ -47,7 +43,7 @@ export interface FetchResult {
   status: number;
   headers: HeaderRecord[];
   setCookieNames: string[];
-  /** Absolute, unsanitized `Location` (needed to follow the chain; sanitize before storing). */
+  /** Unsanitized: sanitize before storing. */
   location: string | null;
   contentType: string | null;
   /** Decoded body prefix (never stored). */
@@ -59,7 +55,6 @@ export interface FetchResult {
   requestedAt: string;
 }
 
-/** Errors carry a stable `code` (Node / undici code, or our own). */
 export class ProbeError extends Error {
   readonly code: string;
   constructor(code: string, message: string, options?: { cause?: unknown }) {
@@ -81,14 +76,9 @@ const REAL_CLOCK: PacerClock = {
   },
 };
 
-/**
- * Per-host pacing: request starts to one host are at least `intervalMs` apart.
- *
- * Slots are handed out in order when `wait` is called (`#nextAt`), so queued requests keep their order. The gap is
- * measured between the real starts though (`#lastStart`): a wake-up can be late (blocked event loop, busy machine)
- * while the slot of the next request was planned from the schedule, and the two would end up closer than the
- * interval. A request that wakes up too early for that sleeps the rest.
- */
+// Per-host pacing: request starts to one host are at least `intervalMs` apart. Slots are handed out in call order
+// (`#nextAt`); the gap is measured between real starts (`#lastStart`) because a late wake-up could leave two requests
+// closer than the interval, so a request that wakes too early sleeps the rest.
 export class HostPacer {
   readonly #intervalMs: number;
   readonly #clock: PacerClock;
@@ -113,7 +103,6 @@ export class HostPacer {
       await this.#clock.sleep(earliest - start, signal);
     }
   }
-  /** No request start to `host` before `ms` from now (Retry-After pause). */
   defer(host: string, ms: number): void {
     this.#nextAt.set(host, Math.max(this.#nextAt.get(host) ?? 0, this.#clock.now() + ms));
   }
@@ -121,9 +110,7 @@ export class HostPacer {
 
 /** Pause after the third 429/503 in a row when the server sends no usable Retry-After. */
 export const DEFAULT_THROTTLE_PAUSE_MS = 2_000;
-/** `Retry-After` is honoured up to 30 s. */
 export const MAX_RETRY_AFTER_MS = 30_000;
-/** Three 429/503 responses in a row on probes to one host trigger the overload policy. */
 export const THROTTLE_SERIES = 3;
 
 /** `Retry-After` as delay-seconds or HTTP-date (RFC 9110 §10.2.3); null when absent or unusable. */
@@ -137,10 +124,8 @@ export function retryAfterMs(value: string | null, now: number): number | null {
 
 const isOverload = (status: number) => status === 429 || status === 503;
 
-/**
- * Where to connect for the HTTP and TLS probes: test routing, or a resolved address that passed the SSRF guard
- * (a host with no public address is refused unless private addresses are allowed).
- */
+// Test routing, or a resolved address that passed the SSRF guard (a host without a public address is refused unless
+// private addresses are allowed).
 export async function routeToPublic(
   network: NetworkConfig,
   hostname: string,
@@ -158,7 +143,7 @@ export async function routeToPublic(
   return { host: allowed.address, port };
 }
 
-/** Overload state is isolated per host, so one host cannot stop probes to another. */
+/** Isolated per host, so one host cannot stop probes to another. */
 interface HostThrottle {
   consecutive: number;
   retried: boolean;
@@ -171,11 +156,8 @@ function cookieName(setCookie: string): string {
   return (setCookie.split(';')[0] ?? '').split('=')[0]?.trim() ?? '';
 }
 
-/**
- * Header records for the snapshot: the core normalizer shared with the browser — no Set-Cookie
- * values (names only), URL headers resolved against `base` and sanitized, values only for security and technical
- * headers. `base` is the response URL.
- */
+// Header records for the snapshot via the core normalizer shared with the browser: no Set-Cookie values (names only),
+// URL headers resolved against `base` (the response URL) and sanitized.
 export function snapshotHeaders(
   raw: Record<string, string | string[] | undefined>,
   base = 'https://invalid.invalid/',
@@ -210,7 +192,7 @@ function originKey(protocol: string, hostname: string, port: number): string {
   return `${protocol}//${hostname.toLowerCase()}:${port}`;
 }
 
-/** Upper bound of a decoded (decompressed) body; the compressed read is limited separately. */
+/** Bound of the decoded body; the compressed read is limited separately. */
 export const MAX_DECODED_BYTES = 4 * 1024 * 1024;
 
 function decompressor(enc: string): zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | null {
@@ -222,11 +204,9 @@ function decompressor(enc: string): zlib.Gunzip | zlib.Inflate | zlib.BrotliDeco
   return null;
 }
 
-/**
- * Decode a (possibly cut) body by `Content-Encoding`, streaming, with at most `maxOutput` decoded bytes: a small
- * compressed response cannot expand into hundreds of megabytes. A corrupt or cut stream yields the
- * prefix decoded so far. `truncated` = the decoded output hit the limit.
- */
+// Decodes a (possibly cut) body by `Content-Encoding`, streaming, with at most `maxOutput` decoded bytes so a small
+// compressed response cannot expand into hundreds of megabytes. A corrupt or cut stream yields the prefix decoded so
+// far; `truncated` = the output hit the limit.
 export function decodeBody(
   buf: Buffer,
   encoding: string | null,
@@ -275,9 +255,7 @@ export interface HttpClientOptions {
   minIntervalMs?: number;
   timeouts?: Partial<ClientTimeouts>;
   now?: () => Date;
-  /** Decoded body cap (default `MAX_DECODED_BYTES`). */
   maxDecodedBytes?: number;
-  /** Cap of the `Retry-After` pause before the one retry (default 30 s). Tests lower it. */
   maxRetryAfterMs?: number;
 }
 
@@ -295,7 +273,6 @@ export class HttpClient {
   readonly #throttle = new Map<string, HostThrottle>();
   readonly #maxRetryAfterMs: number;
   requestsIssued = 0;
-  /** At least one host was stopped after 429/503 (SCAN-THROTTLED). */
   throttled = false;
 
   constructor(o: HttpClientOptions) {
@@ -326,7 +303,7 @@ export class HttpClient {
       headersTimeout: this.#timeouts.headersMs,
       bodyTimeout: this.#timeouts.bodyMs,
       connect: (opts, cb) => {
-        const port = opts.port ? Number(opts.port) : opts.protocol === 'https:' ? 443 : 80;
+        const port = opts.port ? Number(opts.port) : defaultHttpPort(opts.protocol);
         const key = originKey(opts.protocol, opts.hostname, port);
         const bare = opts.hostname.replace(/^\[|\]$/g, '');
         routeToPublic(this.#network, bare, port).then(
@@ -368,10 +345,8 @@ export class HttpClient {
     };
   }
 
-  /**
-   * GET `url` (no redirect following), reading at most `readLimit` body bytes. Within one scan every URL is
-   * requested once: chains of www/apex often end at the same start page (politeness; GET without cookies).
-   */
+  // No redirect following. Within one scan every URL is requested once: www/apex chains often end at the same start
+  // page.
   get(url: string, readLimit: number): Promise<FetchResult> {
     const key = `${readLimit} ${url}`;
     let p = this.#memo.get(key);
@@ -382,7 +357,6 @@ export class HttpClient {
     return p;
   }
 
-  /** Hosts where probing stopped after 429/503 (sorted). */
   get throttledHosts(): string[] {
     return [...this.#throttle.entries()]
       .filter(([, t]) => t.stopped)
@@ -399,11 +373,8 @@ export class HttpClient {
     return t;
   }
 
-  /**
-   * Overload policy per host: the third 429/503 in a row → pause by `Retry-After` (≤ 30 s, within the scan
-   * deadline) and one retry of that request; a further 429/503 stops new requests to that host (SCAN-THROTTLED).
-   * Other hosts are not affected and do not reset the series.
-   */
+  // Overload policy per host: the third 429/503 in a row → pause by `Retry-After` (≤ 30 s, within the scan deadline)
+  // and one retry; a further 429/503 stops new requests to that host (SCAN-THROTTLED). Other hosts are unaffected.
   async #fetch(url: string, readLimit: number): Promise<FetchResult> {
     const host = new URL(url).hostname.toLowerCase();
     const t = this.#hostThrottle(host);
@@ -496,7 +467,7 @@ export class HttpClient {
     }
     const decoded = await decodeBody(Buffer.concat(chunks), first('content-encoding'), this.#maxDecoded);
     const body = decoded.body;
-    const port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80;
+    const port = u.port ? Number(u.port) : defaultHttpPort(u.protocol);
     return {
       url,
       status,
@@ -551,10 +522,8 @@ export type ChainOutcome =
   | 'throttled'
   | 'error';
 
-/** Resolver error codes reported as `dns-error` by the HTTP and TLS probes. */
 export const DNS_ERROR_CODES = ['ENOTFOUND', 'EAI_AGAIN', 'EAI_NODATA', 'EAI_NONAME', 'ENODATA', 'ESERVFAIL'];
 
-/** Map a probe error code to a chain outcome (RedirectChain.outcome). */
 export function outcomeOf(code: string): ChainOutcome {
   if (code === 'ECONNREFUSED') return 'connection-refused';
   if (DNS_ERROR_CODES.includes(code)) return 'dns-error';

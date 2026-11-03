@@ -2,8 +2,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_DATA_DIR } from '../core/data.ts';
-import type { RenderReport } from '../core/reporter.ts';
+import { DEFAULT_DATA_DIR } from '../core/data/load.ts';
+import type { RenderReport } from '../core/report/reporter.ts';
 import { buildReportView } from './report-view.ts';
 import { renderTemplate } from './template.ts';
 
@@ -11,12 +11,8 @@ import { renderTemplate } from './template.ts';
 const SOURCE_LAYOUT = /(<style>[\s\S]*?<\/style>)|\{\{nl\}\}|(?<=>|\}\})[ \t\n]+(?=<|\{\{)/g;
 
 /**
- * The template is indented for reading, and the layout must not reach the output or the CSP hash:
- * - Whitespace that contains a line break and sits between `>`/`}}` and `<`/`{{` is dropped. A single space on one
- *   line stays, because it separates inline elements; text next to a line break is never touched.
- * - `{{nl}}` becomes one `\n`, for the few line breaks the document itself needs.
- * - Inside <style> every line break with its indentation is folded away, so CSS can be written one declaration
- *   per line and the hashed text is the same as for the minified form.
+ * The template is indented for reading, which must not reach the output or the CSP hash: whitespace with a line break
+ * between markup tokens is dropped, `{{nl}}` becomes `\n`, and line breaks inside <style> are folded away.
  */
 export function normalizeTemplateLayout(source: string): string {
   return source.replace(SOURCE_LAYOUT, (match, style?: string) => {

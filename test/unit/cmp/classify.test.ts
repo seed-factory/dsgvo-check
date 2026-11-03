@@ -1,6 +1,6 @@
 /**
- * the pure table `classifyFirstLayer(facts, lexicon)` — every variant plus counterexamples
- * (Verbergen / × are not a reject, a link instead of a button, reject only on the second layer…).
+ * The pure table `classifyFirstLayer(facts, lexicon)`: every variant plus counterexamples (hide/× is no reject, a
+ * link instead of a button, reject only on the second layer).
  */
 import { describe, expect, it } from 'vitest';
 import { classifyFirstLayer, isBlocking } from '../../../src/cmp/classify.ts';
@@ -137,7 +137,7 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.variant).toBe('blocking-no-reject');
   });
 
-  // / 5.5: warning/critical only with an unambiguous first layer; an unknown button might be the reject.
+  // Warning/critical only with an unambiguous first layer; an unknown button might be the reject.
   it('blocking, accept, an unclassified button and no reject → banner-not-recognized (5.5), not blocking-no-reject', () => {
     const r = classifyFirstLayer(facts([btn('Alle akzeptieren'), btn('Weiter')], { blocking }), lexicon);
     expect(r.variant).toBe('banner-not-recognized');
@@ -381,7 +381,7 @@ describe('classifyFirstLayer: variants', () => {
 
   it('a changed lexicon changes the outcome (basis for lexicon-changed-since-scan)', () => {
     const f = facts([btn('Weiter mit Basis'), btn('Alle akzeptieren')], { blocking });
-    // An unknown button might be the reject: no verdict (5.5) until the lexicon knows it.
+    // An unknown button might be the reject: no verdict until the lexicon knows it.
     expect(classifyFirstLayer(f, lexicon).variant).toBe('banner-not-recognized');
     const extended = { ...lexicon, version: 'test', reject: [...lexicon.reject, 'weiter mit basis'] };
     expect(classifyFirstLayer(f, extended).variant).toBe('ok');

@@ -1,6 +1,6 @@
 /**
- * phase A on small fixture sites — clean site, Google Fonts, map embed on Kontakt, no legal links,
- * privacy policy extraction, cookies and storage without values.
+ * Phase A on small fixture sites (clean, Google Fonts, map embed on Kontakt, no legal links), policy extraction,
+ * cookies and storage without values.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';

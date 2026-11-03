@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { tls02 } from '../../../../src/checks/http/tls-02.ts';
-import type { HttpSection } from '../../../../src/core/snapshot-http.ts';
-import type { TlsEndpoint } from '../../../../src/core/snapshot-tls.ts';
+import type { HttpSection } from '../../../../src/core/snapshot/http.ts';
+import type { TlsEndpoint } from '../../../../src/core/snapshot/tls.ts';
 import {
   FIXED_NOW,
   makeCert,

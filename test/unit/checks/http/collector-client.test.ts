@@ -135,9 +135,8 @@ describe('outcomeOf', () => {
 });
 
 /**
- * Virtual time for the pacer: `sleep` registers a timer, `run` fires the timers in order and moves the clock to each
- * of them. `lateBy[n]` makes the n-th sleep wake up that many ms late (a blocked event loop, a busy machine).
- * The assertions do not depend on the load of the machine.
+ * Virtual time for the pacer: `sleep` registers a timer, `run` fires the timers in order; `lateBy[n]` makes the n-th
+ * sleep wake up that many ms late (a blocked event loop, a busy machine).
  */
 function virtualClock(lateBy: number[] = []) {
   let time = 1_000;

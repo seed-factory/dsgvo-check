@@ -1,6 +1,6 @@
 /**
- * Test Chromium: Chrome for Testing in new headless (`channel: 'chromium'`, same as production), fresh persistent
- * profile, every host routed to the fixture server via `--host-resolver-rules` (see test/README.md).
+ * Test Chromium: Chrome for Testing in new headless (`channel: 'chromium'`, as in production), fresh persistent profile,
+ * every host routed to the fixture server via `--host-resolver-rules` (see test/README.md).
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

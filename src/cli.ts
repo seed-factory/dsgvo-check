@@ -1,27 +1,32 @@
 #!/usr/bin/env node
-/** CLI (BRIEF "CLI"). Exit codes strictly per table 5.2; stdout = console report, stderr = messages. */
+/** CLI: stdout is the console report, stderr the messages. */
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Command, CommanderError } from 'commander';
-import { loadTexts } from './core/data.ts';
-import { parseDuration } from './core/duration.ts';
-import { errorMessage } from './core/errors.ts';
-import { createLogger } from './core/logger.ts';
-import { uiText } from './core/messages.ts';
-import { buildFailedReport } from './core/report.ts';
+import { loadTexts } from './core/data/load.ts';
+import { uiText } from './core/data/messages.ts';
+import { buildFailedReport } from './core/report/build.ts';
+import { REPORT_FILES, REPORT_FORMATS, type ReportFormat } from './core/report/reporter.ts';
 import {
+  AssumeRegionSchema,
   type FailOn,
+  type Lang,
+  LangSchema,
   type MessageParams,
   type Report,
   ReportSchema,
+  type SandboxMode,
+  SandboxModeSchema,
   SCHEMA_VERSION,
-} from './core/report-schema.ts';
-import { REPORT_FILES, REPORT_FORMATS, type ReportFormat } from './core/reporter.ts';
-import { redactTarget } from './core/url.ts';
-import { TOOL_VERSION } from './core/version.ts';
+} from './core/report/schema.ts';
+import { parseDuration } from './core/runtime/duration.ts';
+import { errorMessage } from './core/runtime/errors.ts';
+import { createLogger } from './core/runtime/logger.ts';
+import { TOOL_VERSION } from './core/runtime/version.ts';
+import { redactTarget } from './core/url/url.ts';
 import { renderJson } from './reporters/json.ts';
 import { writeReports } from './reporters/write.ts';
 import { scan } from './scan.ts';
@@ -97,9 +102,9 @@ export function toScanOptions(
     timeoutMs,
     proxy: raw.proxy ?? null,
     assumeRegion: (raw.assumeRegion ?? null) as ScanOptions['assumeRegion'],
-    lang: raw.lang as 'de' | 'en',
+    lang: raw.lang as Lang,
     strict: Boolean(raw.strict),
-    sandbox: raw.sandbox as 'require' | 'off',
+    sandbox: raw.sandbox as SandboxMode,
     screenshots: raw.screenshots,
     saveSnapshot: raw.saveSnapshot ?? null,
     fromSnapshot: raw.fromSnapshot ?? null,
@@ -112,13 +117,24 @@ export function toScanOptions(
     log: createLogger(raw.verbose ? 'debug' : 'warn'),
   };
   if (url) opts.url = url;
-  if (badFormat) opts.invalid = { option: '--format', value: badFormat };
-  else if (!['de', 'en'].includes(raw.lang)) opts.invalid = { option: '--lang', value: raw.lang };
-  else if (!['require', 'off'].includes(raw.sandbox))
-    opts.invalid = { option: '--sandbox', value: raw.sandbox };
-  else if (raw.assumeRegion && !['eea', 'de'].includes(raw.assumeRegion))
-    opts.invalid = { option: '--assume-region', value: raw.assumeRegion };
+  const invalid = firstInvalidOption(raw, badFormat);
+  if (invalid) opts.invalid = invalid;
   return opts;
+}
+
+/** The first option whose value is outside its allowed set; `--format` is checked first. */
+function firstInvalidOption(raw: RawOptions, badFormat: string | undefined): InvalidOption | undefined {
+  if (badFormat) return { option: '--format', value: badFormat };
+  const choices: ReadonlyArray<{ option: string; value: string | undefined; allowed: readonly string[] }> = [
+    { option: '--lang', value: raw.lang, allowed: LangSchema.options },
+    { option: '--sandbox', value: raw.sandbox, allowed: SandboxModeSchema.options },
+    // Optional: absent (or empty) is allowed.
+    { option: '--assume-region', value: raw.assumeRegion || undefined, allowed: AssumeRegionSchema.options },
+  ];
+  for (const { option, value, allowed } of choices) {
+    if (value !== undefined && !allowed.includes(value)) return { option, value };
+  }
+  return undefined;
 }
 
 /** Minimal failed report written synchronously (signals, crashes, invalid CLI values). */
@@ -128,7 +144,7 @@ function writeFailedSync(
   code: string,
   params: MessageParams,
   reason: string,
-  lang: 'de' | 'en',
+  lang: Lang,
 ): string {
   let texts = null;
   try {
@@ -240,7 +256,7 @@ async function runReport(file: string, raw: ReportOptions): Promise<never> {
   const texts = loadTexts(lang);
   const { formats, bad } = parseFormats(raw.format);
   try {
-    if (!['de', 'en'].includes(raw.lang) || formats.length === 0 || bad !== undefined) {
+    if (!LangSchema.safeParse(raw.lang).success || formats.length === 0 || bad !== undefined) {
       throw new Error('invalid options');
     }
     const input: unknown = JSON.parse(readFileSync(file, 'utf8'));
@@ -281,7 +297,7 @@ function installBrowser(withDeps: boolean): Promise<number> {
   });
 }
 
-/** Nutzungshinweise for `--help` (wording guide §6); the text lives in test/data/texts. */
+/** Nutzungshinweise for `--help`; the text lives in test/data/texts. */
 function usageNotes(): string {
   try {
     const texts = loadTexts('de');

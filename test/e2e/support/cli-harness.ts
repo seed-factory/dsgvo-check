@@ -1,13 +1,13 @@
 /**
- * CLI harness: builds dist/, starts the fixture server (test/fixture-server) with the e2e sites plus a fake DNS
- * server, and runs `node dist/cli.js` as a subprocess whose network is routed to them by `network-hook.ts`.
+ * Builds dist/, starts the fixture server and a fake DNS for the e2e sites and runs `node dist/cli.js` as a
+ * subprocess whose network `network-hook.ts` routes to them.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Report } from '../../../src/core/report-schema.ts';
+import type { Report } from '../../../src/core/report/schema.ts';
 import { type FixtureServer, type RouteSpec, startFixtureServer } from '../../fixture-server/server.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 import { type FakeDnsServer, startFakeDns } from './dns-server.ts';

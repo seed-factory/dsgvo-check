@@ -1,4 +1,4 @@
-/** helpers for the browser collector: fast timings, a CollectorContext against the fixture server. */
+/** Helpers for the browser collector: fast timings, a CollectorContext against the fixture server. */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,12 +7,16 @@ import {
   type BrowserTiming,
   createBrowserCollector,
 } from '../../../src/collectors/browser/index.ts';
-import type { BrowserSections, CollectorContext, CollectorResult } from '../../../src/core/collector.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import type { NetworkConfig } from '../../../src/core/net.ts';
-import type { RequestRecord } from '../../../src/core/snapshot-browser.ts';
-import { parseTarget } from '../../../src/core/url.ts';
-import { uaToken } from '../../../src/core/user-agent.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
+import { uaToken } from '../../../src/core/runtime/user-agent.ts';
+import type { RequestRecord } from '../../../src/core/snapshot/browser.ts';
+import type {
+  BrowserSections,
+  CollectorContext,
+  CollectorResult,
+} from '../../../src/core/snapshot/collector.ts';
+import type { NetworkConfig } from '../../../src/core/url/net.ts';
+import { parseTarget } from '../../../src/core/url/url.ts';
 import type { FixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot } from '../../utils/snapshot-builder.ts';
 

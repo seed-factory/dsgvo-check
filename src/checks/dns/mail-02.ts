@@ -1,8 +1,6 @@
 /**
- * MAIL-02: SPF (RFC 7208) on the mail domain, evaluated together with DMARC (BSI TR-03182 accepts `~all` when
- * DMARC is enforced). Static analysis only: no statement about actual sending. Variant names: registry
- * docs/03-checks.md §2.1. A Null-MX domain (RFC 7505) is evaluated like any other domain (§3.11 has no Null-MX
- * exception; M3AAWG recommends `v=spf1 -all` for it), the texts mention the Null MX.
+ * MAIL-02: SPF (RFC 7208) on the mail domain, evaluated together with DMARC (BSI TR-03182 accepts `~all` when DMARC is
+ * enforced). Static analysis only. A Null-MX domain is evaluated like any other (M3AAWG recommends `v=spf1 -all`).
  */
 import { defineCheck, type EvidenceInput, type Observation, subjects } from '../../core/api.ts';
 import { analyzeDmarc, dmarcEnforcement } from './lib/dmarc.ts';

@@ -1,11 +1,7 @@
 /**
- * Container isolation and the Action's scan step, with every exit code (0/1/2). Opt-in: set
- * DSGVO_E2E_IMAGE to a built image, e.g.
- *   docker build -t dsgvo-check:dev . && DSGVO_E2E_IMAGE=dsgvo-check:dev corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
- * Containers run with the hardened flags of action.yml and `--network none`. Exit codes 0 and 1 come from a saved
- * snapshot (`--from-snapshot`, no network) of a site that loads Google Analytics before consent; exit code 2 from
- * an unresolvable host and, in the Action test, from a loopback address that the scanner refuses.
- * The Action script needs bash 4+; DSGVO_E2E_ACTION_PATH can provide a suitable PATH outside Linux.
+ * Container isolation and the Action's scan step with every exit code. Opt-in: set DSGVO_E2E_IMAGE to a built image
+ * (`docker build -t dsgvo-check:dev .`). Exit 0/1 come from a saved snapshot (`--from-snapshot`), exit 2 from an
+ * unresolvable host or a loopback target. The Action script needs bash 4+; DSGVO_E2E_ACTION_PATH adds a PATH for it.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -13,11 +9,11 @@ import { tmpdir, userInfo } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import type { Report } from '../../src/core/report-schema.ts';
-import { toSavedSnapshot } from '../../src/core/snapshot.ts';
+import type { Report } from '../../src/core/report/schema.ts';
+import { toSavedSnapshot } from '../../src/core/snapshot/index.ts';
 import { SCENARIOS } from '../unit/checks/browser/scenarios/index.ts';
-import { htmlSafetyProblems } from '../unit/reporters/html-safety.ts';
-import { expectValidReport } from '../utils/report-validator.ts';
+import { htmlSafetyProblems } from '../utils/report/html-safety.ts';
+import { expectValidReport } from '../utils/report/validator.ts';
 import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const IMAGE = process.env.DSGVO_E2E_IMAGE;

@@ -6,7 +6,7 @@ import {
   parseSites,
   regionOfCountry,
   SitesValidationError,
-} from '../../../scripts/canary-sites.ts';
+} from '../../../scripts/canary/sites.ts';
 
 type RawSite = Record<string, unknown>;
 

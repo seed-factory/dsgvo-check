@@ -1,14 +1,12 @@
-/**
- * Writes the requested report files of a scan result (json, html, summary, pdf) and the console text. A failed
- * write turns the exit code into 2 (`report-write-failed`, 5.2); PDF printing is best effort.
- */
+/** Writes the requested report files and the console text of a scan result; a failed write turns the exit code into 2 (`report-write-failed`), PDF printing is best effort. */
 import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_DATA_DIR, loadTexts } from '../core/data.ts';
-import { errorMessage } from '../core/errors.ts';
-import type { ExitCode } from '../core/gate.ts';
-import { uiText } from '../core/messages.ts';
-import { REPORT_FILES, type ReporterContext, type ReportFormat } from '../core/reporter.ts';
+import { DEFAULT_DATA_DIR, loadTexts } from '../core/data/load.ts';
+import { uiText } from '../core/data/messages.ts';
+import type { ExitCode } from '../core/evaluation/gate.ts';
+import { REPORT_FILES, type ReporterContext, type ReportFormat } from '../core/report/reporter.ts';
+import type { Lang } from '../core/report/schema.ts';
+import { errorMessage } from '../core/runtime/errors.ts';
 import type { ScanResult } from '../scan.ts';
 import { renderConsole } from './console.ts';
 import { renderHtml } from './html.ts';
@@ -28,16 +26,13 @@ export interface WriteResult {
 
 const RENDERERS = { json: renderJson, html: renderHtml, summary: renderSummary } as const;
 
-/**
- * Write requested report files to `outDir` (json first). A failed write turns the exit code into 2
- * (`report-write-failed`, 5.2) and the JSON is rewritten with the updated summary when possible.
- */
+/** Writes the requested report files to `outDir` (json first); a failed write sets exit code 2 and the JSON is rewritten with the updated summary when possible. */
 export async function writeReports(
   result: ScanResult,
   opts: {
     outDir: string;
     formats: ReportFormat[];
-    lang: 'de' | 'en';
+    lang: Lang;
     color?: boolean;
     dataDir?: string;
     /** Directory containing source artifacts when reissuing a saved report. */

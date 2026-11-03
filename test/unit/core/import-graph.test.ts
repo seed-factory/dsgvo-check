@@ -1,6 +1,5 @@
 /**
- * import graph : checks are pure. Biome forbids direct I/O imports in src/checks/**; this test also follows
- * runtime imports transitively, so a check cannot reach playwright-core or node I/O through a helper module.
+ * Checks are pure: Biome forbids direct I/O imports in src/checks, this test also follows runtime imports transitively.
  * The core imports none of the layers built on it (checks, collectors, reporters), not even for types.
  */
 import { readdirSync, readFileSync } from 'node:fs';

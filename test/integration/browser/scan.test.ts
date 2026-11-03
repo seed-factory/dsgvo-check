@@ -1,15 +1,15 @@
 /**
- * the real browser collector inside `scan` — the orchestrator accepts the sections, the report is valid
- * (Ajv), coverage lists the visited pages and the environment shows the browser; fatal start pages fail the scan.
+ * The real browser collector inside `scan`: the report is valid (Ajv), coverage lists the visited pages and the
+ * environment shows the browser; fatal start pages fail the scan.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import { defineCheck } from '../../../src/core/api.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import { CheckRegistry } from '../../../src/core/registry.ts';
+import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 import { fakeCollectors, testDataDir } from '../../utils/scan-harness.ts';
 import { FAST_TIMING, TEST_SANDBOX } from './helpers.ts';
 

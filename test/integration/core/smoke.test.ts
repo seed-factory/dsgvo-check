@@ -1,16 +1,16 @@
 /**
- * smoke: real Chromium (CfT new headless) and Node clients reach only the local fixture server.
- * A fake site loads a fake www.google-analytics.com; the request is visible in Playwright events.
+ * Smoke: real Chromium and Node clients reach only the local fixture server; the fake www.google-analytics.com
+ * request is visible in Playwright events.
  */
 import { request } from 'undici';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { silentLogger } from '../../../src/core/logger.ts';
-import { CheckRegistry } from '../../../src/core/registry.ts';
+import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
 import { testDispatcher } from '../../utils/network.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 
 let server: FixtureServer;
 let browser: TestBrowser;

@@ -1,12 +1,6 @@
 /**
- * TLS-01: does `http://` of the host, www and apex lead to https? Variant names: registry
- * docs/03-checks.md §2.1.
- * critical: http serves content while https is unavailable or invalid (`https-unavailable`), or a form on an http
- * page (`form-on-http-page`). warning: http 2xx without redirect while https works (`no-redirect`); redirect only
- * via meta/JS (`client-side-redirect-only`). info (`redirect-chain-detail`): the first hop is not https or goes to
- * another host. A chain that reaches https but ends on http again (downgrade) is evaluated on its final http page
- * A closed port is not "serving content"; a stub of ≤ 1 KiB gives no finding; a timeout → inconclusive.
- * Prototype gap: http links to own subdomains (browser phase A) are not evaluated here.
+ * TLS-01: does `http://` of the host, www and apex lead to https? A closed port is not "serving content", a stub of
+ * ≤ 1 KiB gives no finding, a timeout is inconclusive. Prototype gap: http links to own subdomains are not evaluated.
  */
 
 import {
@@ -17,7 +11,7 @@ import {
   subjects,
   tlsHostRole,
 } from '../../core/api.ts';
-import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot-http.ts';
+import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot/http.ts';
 import { browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
 
 const ID = 'TLS-01';
@@ -26,20 +20,19 @@ const HOST_VARIANTS: readonly HostVariant[] = ['target', 'www', 'apex'];
 
 type HttpsState = 'ok' | 'unavailable' | 'invalid' | 'unknown';
 
+/** What a chain without a single hop says about HTTPS; its other outcomes (timeout, throttled, …) say nothing. */
+const HTTPS_STATE_OF_EMPTY_CHAIN: ReadonlyMap<RedirectChain['outcome'], HttpsState> = new Map([
+  ['connection-refused', 'unavailable'],
+  ['dns-error', 'unavailable'],
+  ['tls-error', 'invalid'],
+]);
+
 function httpsState(c: RedirectChain | undefined): HttpsState {
   if (!c) return 'unknown';
   const httpsHops = c.hops.filter((h) => h.url.startsWith('https:'));
   if (httpsHops.some((h) => !browserAcceptsTls(h.tlsAuthorized, h.tlsAuthorizationError))) return 'invalid';
   if (c.hops.length > 0) return 'ok';
-  switch (c.outcome) {
-    case 'connection-refused':
-    case 'dns-error':
-      return 'unavailable';
-    case 'tls-error':
-      return 'invalid';
-    default:
-      return 'unknown';
-  }
+  return HTTPS_STATE_OF_EMPTY_CHAIN.get(c.outcome) ?? 'unknown';
 }
 
 function chainEvidence(c: RedirectChain): EvidenceInput {
@@ -63,9 +56,8 @@ interface Verdict {
 }
 
 /**
- * Subject `http-entry:<role>` (5.4): the role of the chain's host relative to the final host of the start page, so
- * the same entry gets the same fingerprint whether `example.de` or `www.example.de` was typed. The variant
- * group tells the variants of one entry apart.
+ * Subject `http-entry:<role>` is the chain host's role relative to the start page's final host, so typing `example.de`
+ * or `www.example.de` gives the same fingerprint.
  */
 function observation(
   variant: string,

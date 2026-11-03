@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import { toMeasured } from '../../../src/cmp/page/measure.ts';
 import type { ProbeResult, RawButton } from '../../../src/cmp/page/probe-types.ts';
-import { legalLexiconFromData } from '../../../src/collectors/browser/legal-lexicon.ts';
-import { loadDataDir } from '../../../src/core/data.ts';
+import { legalLexiconFromData } from '../../../src/collectors/browser/legal/lexicon.ts';
+import { loadDataDir } from '../../../src/core/data/load.ts';
 
 const BOX = { x: 10, y: 700, width: 120, height: 20 };
 const PAGE = 'https://www.example.test/';

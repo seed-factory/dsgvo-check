@@ -1,15 +1,12 @@
 /**
- * the `<meta>` facts of the start document. They come from the markup of the document,
- * not from inert elements (`<template>`, `<noscript>`), and what is stored is reduced like a response header: URLs
- * sanitized, a value outside the allowlist `[redacted]`, a cookie never stored (AGENTS rule 2: the collector edits
- * before it writes). The collector runs for real against a local server; HDR-01 reads the section it produced.
- * Every marker starts with `zq7`.
+ * `<meta>` facts of the start document come from real markup, not inert elements (`<template>`, `<noscript>`), and are
+ * reduced like a response header (URLs sanitized, unlisted values `[redacted]`, no cookies). Markers start with `zq7`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
-import { MAX_HEADER_VALUE } from '../../../src/core/headers.ts';
-import type { HttpSection } from '../../../src/core/snapshot-http.ts';
+import { MAX_HEADER_VALUE } from '../../../src/core/redaction/headers.ts';
+import type { HttpSection } from '../../../src/core/snapshot/http.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, withRoutes } from './helpers.ts';
@@ -182,8 +179,8 @@ describe('inert meta tags are no facts of the document', () => {
 });
 
 /**
- * The longest gap between two ticks of a 10 ms timer while `run` works. A synchronous stall (a backtracking regular
- * expression) shows up as one big gap, past every deadline timer of the scan: the quadratic parsers took 7 s here.
+ * The longest gap between two ticks of a 10 ms timer while `run` works: a synchronous stall (a backtracking regular
+ * expression) shows up as one big gap, past every deadline timer of the scan.
  */
 async function longestStall<T>(run: () => Promise<T>): Promise<{ value: T; stallMs: number }> {
   let last = performance.now();

@@ -1,11 +1,8 @@
 /**
- * CONSENT-03 (P0): no consent dialog candidate (adapter or heuristic) on the start page and ≥ 1 further page,
- * while services that need consent were observed before interaction: analytics/ads/session-recording, or an
- * embed provider writing cookies/storage. Fonts or CDNs alone are not enough (that is EMBED-01 / CONSENT-01).
- * `critical` variant only with strong tracking (identifier or tracking storage), no bot/geo signal and an EEA
- * region asserted by the user ("Region laut Nutzerangabe"). A heuristic banner candidate → CONSENT-04.
+ * CONSENT-03 (P0): no consent dialog candidate on the start page and one further page although services that need
+ * consent loaded before interaction. `critical` needs strong tracking, no bot/geo signal and a user-asserted EEA region.
  */
-import { defineCheck, type EvidenceInput, type Phase, subjects } from '../../core/api.ts';
+import { defineCheck, type EvidenceInput, isCookieHeld, type Phase, subjects } from '../../core/api.ts';
 import type { ServiceCategory } from '../../derive/types.ts';
 import {
   allCmpFacts,
@@ -56,8 +53,8 @@ export const consent03 = defineCheck({
     const facts = allCmpFacts(cmp);
     if (facts.length === 0)
       return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [], coverage };
-    // A resolved candidate (adapter or heuristic) means a banner exists. An iframe that merely looks like a consent
-    // dialog but could not be read is no candidate: it limits the conclusion instead (§3.5 "недоступные фреймы").
+    // A resolved candidate means a banner exists. An iframe that only looks like a consent dialog but could not be read
+    // limits the conclusion instead.
     const resolved = facts.filter((f) => !f.firstLayer.consentFrameUnresolved);
     if (resolved.some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent)) {
       return { status: 'completed', observations: [], coverage };
@@ -75,10 +72,7 @@ export const consent03 = defineCheck({
         (c.thirdParty || c.firstPartyProxy || c.selfHosted),
     );
     const cookies = classifiedCookies(browser, derived).filter(
-      ({ record, cls }) =>
-        before(record.phase, cls.timing) &&
-        !cls.allowlisted &&
-        (record.state === 'accepted' || record.state === 'sent'),
+      ({ record, cls }) => before(record.phase, cls.timing) && !cls.allowlisted && isCookieHeld(record.state),
     );
     const storage = classifiedStorage(browser, derived).filter(
       ({ record, cls }) => before(record.phase, cls.timing) && !cls.allowlisted,

@@ -1,5 +1,5 @@
 /** Loads the default lexicon from test/data/cmp (collector side; checks get it via `ctx.data.cmp`). */
-import { DEFAULT_DATA_DIR, loadDataDir } from '../core/data.ts';
+import { DEFAULT_DATA_DIR, loadDataDir } from '../core/data/load.ts';
 import { lexiconFromData } from './lexicon.ts';
 import type { CmpLexicon } from './types.ts';
 

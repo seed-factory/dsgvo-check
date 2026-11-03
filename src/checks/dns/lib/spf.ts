@@ -1,9 +1,8 @@
 /**
- * SPF (RFC 7208) record parser and a static analysis of the include/redirect tree: lookup count (≤ 10, §4.6.4),
- * void lookups (≤ 2), loops, nested records, the effective `all` qualifier and `ptr`. No evaluation for a client IP.
- * Pure; the collector resolves `pending` queries until the analysis is complete.
+ * SPF (RFC 7208) record parser and a static analysis of the include/redirect tree: lookup and void limits, loops,
+ * the effective `all` qualifier and `ptr`. Pure; the collector resolves `pending` queries until it is complete.
  */
-import type { DnsQueryRecord, DnsRecordType } from '../../../core/snapshot-dns.ts';
+import type { DnsQueryRecord, DnsRecordType } from '../../../core/snapshot/dns.ts';
 import {
   type DnsLookup,
   isFailure,
@@ -54,10 +53,7 @@ function validIp4(s: string): boolean {
   return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
-/**
- * RFC 4291 §2.2 text form (pure; `node:net` is not available to checks): 1–4 hex digits per group, at most one
- * `::` standing for at least one group, an optional dotted IPv4 tail counting as two groups, 8 groups in total.
- */
+/** RFC 4291 §2.2 text form (`node:net` is not available to checks); an optional dotted IPv4 tail counts as two groups. */
 export function validIp6(s: string): boolean {
   if (!s.includes(':') || !/^[0-9a-f:.]+$/i.test(s)) return false;
   const halves = s.split('::');
@@ -173,32 +169,26 @@ export type SpfPermerrorReason =
 
 export interface SpfPermerror {
   reason: SpfPermerrorReason;
-  /** Domain whose record (or lookup) causes the permerror. */
   domain: string;
   detail?: string;
 }
 
 export interface SpfAnalysis {
-  /** Top-level state of `<domain> TXT`. */
   state: 'pending' | 'failed' | 'none' | 'multiple' | 'found';
   domain: string;
   query: DnsQueryRecord | null;
-  /** `v=spf1` records at the domain. */
   records: string[];
   record: SpfRecord | null;
   /** Effective `all` qualifier (record or redirect chain; `?` by default); null = unknown or permerror. */
   all: SpfQualifier | null;
   allSource: 'record' | 'redirect' | 'default' | null;
-  /** DNS-querying terms counted (stops at the first one over the limit). */
   lookups: number;
   voidLookups: number;
   permerrors: SpfPermerror[];
-  /** `ptr` in the domain's own record or its redirect chain (deprecated, §5.5). */
+  /** `ptr` in the domain's own record or redirect chain (deprecated). */
   ptr: boolean;
   pending: PendingQuery[];
-  /** Nested lookups that failed temporarily (include/redirect/void checks). */
   failures: DnsQueryRecord[];
-  /** Every query record the analysis read (evidence). */
   queries: DnsQueryRecord[];
   /** True when nothing is pending and no nested lookup failed (or a limit already decided the result). */
   complete: boolean;
@@ -264,9 +254,7 @@ class SpfWalker {
     if (q) this.void(q, domain);
   }
 
-  /**
-   * Resolve and walk a referenced record. Returns its effective `all` (for redirect), `undefined` when unknown.
-   */
+  /** Resolves and walks a referenced record; returns its effective `all` (for redirect), `undefined` when unknown. */
   follow(
     target: string,
     kind: 'include' | 'redirect',

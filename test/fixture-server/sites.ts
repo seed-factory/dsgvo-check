@@ -1,8 +1,6 @@
 /**
- * Fixture sites, keyed by their directory under test/fixture-server/sites/.
- * `hosts` maps a hostname to its docroot inside the site directory, `tls` picks the certificate kind per host
- * (default valid), `routes` are fixed responses, and `fileHeaders` adds response headers to a static file
- * (path relative to the site directory).
+ * Fixture sites keyed by their directory under test/fixture-server/sites/. `hosts` maps a hostname to its docroot, `tls`
+ * the certificate kind per host (default valid), `routes` are fixed responses, `fileHeaders` per-file response headers.
  */
 import type { CertKind } from '../utils/certs.ts';
 import type { RouteSpec } from './server.ts';

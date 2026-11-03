@@ -35,7 +35,7 @@ export const scenarios: Scenario[] = [
               }),
               cookie('XSRF-TOKEN', { setter: 'http-response' }),
               cookie('borlabs-cookie'),
-              // Consent state on the origin of the consent vendor : third-party, persistent.
+              // Consent state on the origin of the consent vendor: third-party, persistent.
               ...['__cmpcpc', '__cmpcccx144007_expire', 'FCNEC', '_sp_su'].map((name) =>
                 cookie(name, {
                   domain: 'cmp.consent-vendor.test',

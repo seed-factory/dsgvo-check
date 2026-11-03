@@ -7,7 +7,7 @@ import type {
   DnsQueryRecord,
   DnsRcode,
   DnsRecordType,
-} from '../../../../src/core/snapshot-dns.ts';
+} from '../../../../src/core/snapshot/dns.ts';
 import type { FixtureExpect, RawFixture } from '../../../utils/snapshot-builder.ts';
 
 type Query = Pick<DnsQueryRecord, 'type' | 'qname' | 'purpose'> &

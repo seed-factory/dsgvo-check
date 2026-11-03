@@ -1,15 +1,14 @@
 /**
- * the built CLI (`node dist/cli.js`) against local fixture sites, no internet. Checks exit codes 0/1/2 (5.2),
- * reports (JSON valid against schema/report.schema.json, HTML safe, Job Summary) and that no cookie or storage
- * value reaches any output.
+ * The built CLI (`node dist/cli.js`) against local fixture sites: exit codes 0/1/2, valid JSON/HTML/Job Summary, and
+ * no cookie or storage value in any output.
  */
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FullReport, Report } from '../../src/core/report-schema.ts';
-import { htmlSafetyProblems } from '../unit/reporters/html-safety.ts';
-import { expectValidReport } from '../utils/report-validator.ts';
+import type { FullReport, Report } from '../../src/core/report/schema.ts';
+import { htmlSafetyProblems } from '../utils/report/html-safety.ts';
+import { expectValidReport } from '../utils/report/validator.ts';
 import { makeDocumentResponse, makeHttp, makeSnapshot, makeTarget } from '../utils/snapshot-builder.ts';
 import {
   type CliRun,

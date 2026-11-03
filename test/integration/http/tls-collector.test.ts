@@ -1,13 +1,13 @@
 /**
- * the TLS collector (node:tls) against local HTTPS servers with certificates from test/utils/certs.ts (the test
- * CA is trusted only for the test) and a separate root → intermediate → leaf hierarchy for chain cases; then TLS-02.
+ * The TLS collector (node:tls) against local HTTPS servers (test CA from test/utils/certs.ts, a separate chain PKI for
+ * chain cases), then TLS-02.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { createTlsCollector } from '../../../src/collectors/tls/index.ts';
-import type { NetworkConfig } from '../../../src/core/net.ts';
-import { detectTrustStore } from '../../../src/core/snapshot.ts';
-import type { TlsEndpoint, TlsSection } from '../../../src/core/snapshot-tls.ts';
+import { detectTrustStore } from '../../../src/core/snapshot/index.ts';
+import type { TlsEndpoint, TlsSection } from '../../../src/core/snapshot/tls.ts';
+import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeHttp, makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import {
@@ -259,7 +259,7 @@ describe('TLS collector through --proxy (no test routing)', () => {
         collectorContext('https://www.valid.test/', proxyNetwork(proxy.url)),
       );
       const ep = target(res.sections.tls as TlsSection);
-      // The label follows the CA setting of this process : `system` with NODE_USE_SYSTEM_CA=1, else the bundle.
+      // The label follows the CA setting of this process: `system` with NODE_USE_SYSTEM_CA=1, else the bundle.
       expect(ep).toMatchObject({
         outcome: 'handshake',
         ip: null,

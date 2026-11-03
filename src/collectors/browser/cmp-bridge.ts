@@ -1,8 +1,5 @@
-/**
- * Bridge to the CMP subsystem. The collector calls it ONLY through `src/cmp/index.ts` (the default
- * `CmpApi`, loaded lazily so that a broken CMP module costs CMP facts, not the whole collection); tests may inject a
- * stub with the same shape. Every call is time-boxed and failures are recorded, never thrown.
- */
+// Bridge to the CMP subsystem, reached ONLY through `src/cmp/index.ts` and loaded lazily, so a broken CMP module costs
+// CMP facts, not the collection. Calls are time-boxed; failures are recorded, never thrown. Tests may inject a stub.
 import type { Page } from 'playwright-core';
 import type {
   ClickOutcome,
@@ -13,9 +10,9 @@ import type {
   CmpFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
-import type { ClickPlan } from '../../core/snapshot-browser.ts';
-import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot-common.ts';
-import { sanitizeRequestUrl } from './features.ts';
+import type { ClickPlan } from '../../core/snapshot/browser.ts';
+import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
+import { sanitizeRequestUrl } from './recording/features.ts';
 import { errorText, redactFreeText, withTimeout } from './util.ts';
 
 export type Detected = { adapter: CmpAdapter | null; detection: CmpDetection };
@@ -23,9 +20,7 @@ export type ClickTargets = { reject: CmpButton | null; accept: CmpButton | null 
 
 export interface CmpApi {
   detectCmp(page: Page): Promise<Detected>;
-  /** Poll until a recognized CMP is ready (optional; falls back to `detectCmp`). */
   waitForCmp?(page: Page, timeoutMs: number): Promise<Detected>;
-  /** Poll until the adapter's banner is rendered (late banners); resolves whether it appeared (optional). */
   waitForBanner?(page: Page, adapter: CmpAdapter, timeoutMs: number): Promise<boolean>;
   extract(
     page: Page,
@@ -33,11 +28,10 @@ export interface CmpApi {
     moment: CmpFacts['moment'],
     phase: BrowserPhase,
   ): Promise<CmpFacts>;
-  /** The click decision of the pure `classifyFirstLayer` (optional; else the facts' unique button). */
   chooseTargets?(facts: CmpFacts): Promise<ClickTargets | null>;
 }
 
-/** `src/cmp/index.ts` (type only): signature drift between M1 and M2 is a compile error, not a runtime surprise. */
+/** Type only: signature drift is a compile error, not a runtime surprise. */
 type CmpModule = typeof import('../../cmp/index.ts');
 
 let modulePromise: Promise<CmpModule> | null = null;
@@ -59,13 +53,9 @@ export const defaultCmpApi: CmpApi = {
   },
 };
 
-/**
- * The collector owns phase and page attribution, and the snapshot only holds sanitized URLs: overwrite
- * `phase`/`pageUrl` and sanitize URL fields the CMP subsystem may have filled from the live page. Strings that the
- * probe copied from the page (accessible names of controls, text of the legal links of the banner, labels of covered
- * footer links) pass `redactFreeText`: an address in a link text loses its local part before it is stored.
- * The click `selector` is no free text; the probe does not build it from an attribute value that holds an address.
- */
+// The collector owns phase and page attribution: overwrite `phase`/`pageUrl` and sanitize URL fields the CMP subsystem
+// filled from the live page. Strings copied from the page (control names, legal-link texts, footer labels) pass
+// `redactFreeText`, so an address in a link text loses its local part before it is stored.
 export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: SanitizedUrl): CmpFacts {
   facts.phase = phase;
   facts.pageUrl = pageUrl;
@@ -87,11 +77,8 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
   return facts;
 }
 
-/**
- * Verification of B: `v1` right after the click, `v2` after the collector's reload. A CMP that updates its
- * state asynchronously may confirm the reject only after the reload: then the reject counts as verified, marked
- * `verified-after-reload-only` in `method`. `persistedAfterReload` is the reload result (null without one).
- */
+// `v1` right after the click, `v2` after the collector's reload. A CMP that updates asynchronously may confirm the
+// reject only after the reload: it then counts as verified, marked `verified-after-reload-only` in `method`.
 export function combineVerify(v1: VerifyResult | null, v2: VerifyResult | null): VerifyResult | undefined {
   const persistedAfterReload = v2 ? v2.verified : null;
   if (v1?.verified || (v1 && !v2?.verified)) return { ...v1, persistedAfterReload };
@@ -139,7 +126,6 @@ export class CmpBridge {
     );
   }
 
-  /** Wait for a late banner before the first screen is measured; false when it did not appear (or no support). */
   async waitForBanner(page: Page, adapter: CmpAdapter, url: string, waitMs: number): Promise<boolean> {
     const wait = this.api.waitForBanner;
     if (!wait || waitMs <= 0) return false;
@@ -163,10 +149,8 @@ export class CmpBridge {
     return this.call('classify', url, () => choose(facts));
   }
 
-  /**
-   * `act(page, target)`: the adapter clicks exactly the element core chose (`plan.click[phase].target`) and
-   * decides nothing. `null` means "nothing to click"; the adapter then reports `no-unambiguous-<action>`.
-   */
+  // The adapter clicks exactly the element core chose and decides nothing; `null` means nothing to click
+  // (`no-unambiguous-<action>`).
   act(
     page: Page,
     adapter: CmpAdapter,

@@ -1,13 +1,10 @@
-/**
- * What the generic heuristic recognizes. Facts only: an unknown banner is
- * `banner-not-recognized` (info), nothing is clicked (5.5).
- */
+/** Generic heuristic: facts only; an unknown banner is `banner-not-recognized` (info), nothing is clicked. */
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { classifyFirstLayer, detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
-import { bannerScreenshot } from '../../../src/collectors/browser/screenshot.ts';
+import { bannerScreenshot } from '../../../src/collectors/browser/phases/screenshot.ts';
 import { useCmpServer } from './helpers.ts';
 
 describe('generic heuristic: recognition of unknown banners', () => {
@@ -194,7 +191,7 @@ describe('generic heuristic: recognition of unknown banners', () => {
       );
       expect(facts.firstLayer.containerBox).toBeTruthy();
       expect(classifyFirstLayer(facts, lexicon).targets).toEqual({ reject: null, accept: null });
-      // The banner can be photographed for the report : the container is unique and small.
+      // The banner can be photographed for the report: the container is unique and small.
       const dir = await mkdtemp(path.join(tmpdir(), 'dsgvo-check-shot-'));
       try {
         const shot = await bannerScreenshot(page, facts, {

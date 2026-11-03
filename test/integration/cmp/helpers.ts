@@ -1,7 +1,6 @@
 /**
  * Shared scenarios for the seven CMP adapters against our own simulators in test/fixture-server/sites/cmp/<cmp>/
- * (hand-written HTML/JS that mimics DOM ids, the global API and the consent cookie — no vendor code).
- * Every scenario runs in a fresh persistent profile (like a fresh phase) with a plain Chrome UA.
+ * (hand-written HTML/JS, no vendor code), each in a fresh persistent profile with a plain Chrome UA.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';

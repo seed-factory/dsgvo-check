@@ -1,14 +1,10 @@
 /**
- * finding texts of the browser module follow the wording guide docs/legal/wording-guide.md §2 beyond the
- * stop words of rule 1 (test/unit/core/stopwords.test.ts): no claim about (missing) consent (rule 2), no
- * qualification as "tracker"/"Tracking-…" without evidence of purpose (rule 3; only "Tracking-Signatur" in
- * "First-party-Endpunkt mit Tracking-Signatur"), no necessity verdict outside quotes (rule 6), no evaluative terms
- * (rule 7), no "missing imprint" (rule 10), no obligations (rule 13), no statement that consent was given (rule 17).
- * Rendered titles and bodies are checked for every browser variant (legal notes quote statutes and are exempt).
+ * Finding texts of the browser module follow docs/legal/wording-guide.md §2 beyond the stop words: no claims about
+ * consent, "tracker" labels, necessity verdicts, evaluative terms, "missing imprint" or obligations. Legal notes are exempt.
  */
 import { describe, expect, it } from 'vitest';
 import { browserChecks } from '../../../../src/checks/browser/index.ts';
-import { loadTexts } from '../../../../src/core/data.ts';
+import { loadTexts } from '../../../../src/core/data/load.ts';
 
 const RULES: Record<'de' | 'en', Array<[string, RegExp]>> = {
   de: [

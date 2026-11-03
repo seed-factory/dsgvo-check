@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../src/core/data.ts';
-import type { Finding } from '../../../src/core/report-schema.ts';
-import type { ReporterContext } from '../../../src/core/reporter.ts';
+import { loadTexts } from '../../../src/core/data/load.ts';
+import type { ReporterContext } from '../../../src/core/report/reporter.ts';
+import type { Finding } from '../../../src/core/report/schema.ts';
 import { renderSummary, SUMMARY_MAX_FINDINGS } from '../../../src/reporters/summary.ts';
-import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
+import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
 
 const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => {
   const texts = loadTexts(lang);
-  // A template with external params, so escaping of params is exercised (browser texts belong to M3).
+  // A template with external params, so escaping of params is exercised.
   texts.messages['CONSENT-01.tracker-hit'] = {
     title: 'Tracker {service} auf {host} beobachtet',
     body: 'Anfrage an {host} vor einer Einwilligung beobachtet.',

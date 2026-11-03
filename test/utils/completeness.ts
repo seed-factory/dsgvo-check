@@ -1,10 +1,11 @@
 /**
- * Registry completeness rules (BRIEF "Тесты обязательны") as a function returning human-readable problems,
- * so the test shows every gap at once and the rules themselves are unit-tested.
+ * Registry completeness rules as a function returning human-readable problems: the test shows every gap at once and
+ * the rules themselves are unit-tested.
  */
-import type { AnyCheck } from '../../src/core/check.ts';
-import type { Ruleset, Texts } from '../../src/core/data.ts';
-import { MessageSyntaxError, templateParams, validateTemplate } from '../../src/core/messages.ts';
+
+import type { Ruleset, Texts } from '../../src/core/data/load.ts';
+import { MessageSyntaxError, templateParams, validateTemplate } from '../../src/core/data/messages.ts';
+import type { AnyCheck } from '../../src/core/evaluation/check.ts';
 import { scenarioFixture, scenariosOf } from '../unit/checks/browser/scenarios/index.ts';
 import { DNS_FIXTURES, dnsFixture } from '../unit/checks/dns/fixtures.ts';
 import { fixtureFrom, loadFixtures, runCheck, type SnapshotFixture, variantsOf } from './snapshot-builder.ts';

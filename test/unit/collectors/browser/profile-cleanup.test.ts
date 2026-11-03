@@ -2,8 +2,8 @@ import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { BrowserType } from 'playwright-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { launchPhase } from '../../../../src/collectors/browser/launch.ts';
-import { defaultNetworkConfig } from '../../../../src/core/net.ts';
+import { launchPhase } from '../../../../src/collectors/browser/launch/launch.ts';
+import { defaultNetworkConfig } from '../../../../src/core/url/net.ts';
 
 const fake = vi.hoisted(() => ({ dir: '', alive: false }));
 vi.mock('node:fs', async (importOriginal) => {

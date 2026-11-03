@@ -1,9 +1,8 @@
 /**
- * DMARC record parser (RFC 9989 tags plus the legacy RFC 7489 `pct`) and the policy discovery Tree Walk
- * (RFC 9989 §4.10). Pure; the collector drives the walk with `analyzeDmarc(...).next`.
- * Prototype simplification: the organizational domain comes from tldts (PSL), not from a second walk with `psd`.
+ * DMARC record parser (RFC 9989 tags plus the legacy RFC 7489 `pct`) and the policy discovery Tree Walk. Pure; the
+ * collector drives the walk with `analyzeDmarc(...).next`. The organizational domain comes from tldts, not a `psd` walk.
  */
-import type { DnsQueryRecord } from '../../../core/snapshot-dns.ts';
+import type { DnsQueryRecord } from '../../../core/snapshot/dns.ts';
 import { type DnsLookup, isFailure, normalizeName, txtValues } from './records.ts';
 
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';
@@ -16,7 +15,6 @@ export type DmarcInvalidReason =
 
 export interface DmarcRecord {
   raw: string;
-  /** Lower-case tag names → raw values. */
   tags: Record<string, string>;
   p: DmarcPolicy | null;
   sp: DmarcPolicy | null;
@@ -103,8 +101,8 @@ export function parseDmarcRecord(raw: string): DmarcRecord {
 }
 
 /**
- * RFC 9989 §4.10: start at the host; with ≥ 5 labels jump to the last 4 labels, otherwise drop the left-most
- * label; then drop one label at a time down to the TLD (public suffix domains may publish a PSD policy).
+ * RFC 9989 §4.10: start at the host; with ≥ 5 labels jump to the last 4, otherwise drop the left-most label; then drop
+ * one label at a time down to the TLD (public suffixes may publish a PSD policy).
  */
 export function dmarcTreeWalkNames(host: string): string[] {
   const labels = normalizeName(host).split('.').filter(Boolean);
@@ -130,12 +128,10 @@ export type DmarcScope = 'host' | 'intermediate' | 'org' | 'psd';
 
 export interface DmarcFound {
   step: DmarcWalkStep;
-  /** All DMARC-like TXT records at that name. */
   records: string[];
   /** Parsed record; null when several records were published. */
   record: DmarcRecord | null;
   invalid: DmarcInvalidReason | null;
-  /** Where the record sits relative to the scanned host and its organizational domain. */
   scope: DmarcScope;
 }
 
@@ -143,15 +139,10 @@ export interface DmarcAnalysis {
   state: 'found' | 'missing' | 'failed' | 'incomplete';
   host: string;
   orgDomain: string;
-  /** Steps walked so far (each with its query record). */
   steps: DmarcWalkStep[];
-  /**
-   * Step whose query failed (SERVFAIL, TIMEOUT, REFUSED, ERROR) after the retry. The walk stops there with
-   * state `failed`: discovery is not proven, so a parent's record is never used in its place.
-   */
+  /** Query failed after the retry: the walk stops with state `failed`; a parent's record never stands in. */
   failures: DmarcWalkStep[];
   found: DmarcFound | null;
-  /** The next query the walk needs (state `incomplete`). */
   next: { qname: string; step: number } | null;
 }
 

@@ -1,24 +1,13 @@
-/**
- * HTTP collector. Passive probes for TLS-01 and HDR-01:
- * - manual redirect chains (≤ 5 redirects, no HSTS cache, no cookies) for http:// and https:// of the target host,
- *   its www and its apex variant;
- * - main documents for headers: the start page (target chain) and Impressum / Datenschutz when the start page links
- *   to them on the same site (the browser plan is not available yet: http runs before the browser);
- * - meta / JS redirect and form heuristics on http pages (body prefix ≤ 64 KiB; bodies are never stored);
- * - a target URL with an explicit port: the start document comes from exactly that origin, which also decides
- *   reachability; the standard-port chains stay TLS-01 probes;
- * - the start page ends on a host outside target/www/apex: TLS handshakes with that host and its www/apex for
- *   TLS-02 (`finalTls`).
- * Pacing ≤ 2 requests/s per host; 429/503 per host with Retry-After pause and one retry; UA = token with
- * repository link.
- */
+// HTTP collector: passive probes for TLS-01 and HDR-01: manual redirect chains (≤ 5 hops) for http:// and https:// of
+// the target, its www and apex; the start page and the legal pages it links (http runs before the browser plan exists);
+// meta / JS redirect and form heuristics. With an explicit port the start document and reachability come from exactly
+// that origin. A final host outside target/www/apex gets TLS handshakes (`finalTls`).
 
 import { startFinalHost } from '../../checks/http/shared.ts';
-import type { CollectorContext, HttpCollector } from '../../core/collector.ts';
-import { errorMessage } from '../../core/errors.ts';
-import { storedHeaderRecord } from '../../core/headers.ts';
-import type { CollectorError, DiagnosticInput } from '../../core/snapshot.ts';
-import type { HeaderRecord } from '../../core/snapshot-common.ts';
+import { storedHeaderRecord } from '../../core/redaction/headers.ts';
+import { errorMessage } from '../../core/runtime/errors.ts';
+import type { CollectorContext, HttpCollector } from '../../core/snapshot/collector.ts';
+import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import type {
   DocumentResponse,
   HostVariant,
@@ -26,9 +15,10 @@ import type {
   HttpSection,
   ProbeRecord,
   RedirectChain,
-} from '../../core/snapshot-http.ts';
-import type { TlsEndpoint } from '../../core/snapshot-tls.ts';
-import { isSameSite, registrableDomain, sanitizeUrl } from '../../core/url.ts';
+} from '../../core/snapshot/http.ts';
+import type { CollectorError, DiagnosticInput } from '../../core/snapshot/index.ts';
+import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
+import { isHttpUrl, isSameSite, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
 import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from '../tls/probe.ts';
 import {
   type ChainOutcome,
@@ -42,16 +32,13 @@ import { type HostTarget, hostVariants } from './hosts.ts';
 import { detectClientRedirect, detectForm, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
 
 export const MAX_REDIRECTS = 5;
-/** Body read limit for the documents (link discovery on the start page); heuristics use the first 64 KiB. */
+/** Link discovery on the start page reads this much; the heuristics use the first 64 KiB. */
 const DOCUMENT_READ_BYTES = 512 * 1024;
 
 export interface HttpCollectorOptions {
-  /** Pacing per host (default 500 ms = 2 requests/s). Tests may lower it. */
   minIntervalMs?: number;
   timeouts?: HttpClientOptions['timeouts'];
-  /** Cap of the Retry-After pause (default 30 s). Tests may lower it. */
   maxRetryAfterMs?: number;
-  /** Handshake budget for the final-host TLS probe. */
   tlsTimeoutMs?: number;
 }
 
@@ -66,7 +53,6 @@ const isRedirectStatus = (s: number) => [301, 302, 303, 307, 308].includes(s);
 
 interface ChainRun {
   chain: RedirectChain;
-  /** Final response (body prefix kept in memory only). */
   last: FetchResult | null;
 }
 
@@ -143,7 +129,7 @@ async function followChain(
     last = r;
     if (isRedirectStatus(r.status) && r.location) {
       const next = new URL(r.location);
-      if (next.protocol !== 'http:' && next.protocol !== 'https:') {
+      if (!isHttpUrl(next)) {
         chain.outcome = 'error';
         chain.error = { code: 'unsupported-redirect', message: next.protocol, phase: 'http', url: hop.url };
         return { chain, last: null };
@@ -160,27 +146,20 @@ async function followChain(
   }
 }
 
-/**
- * A `<meta http-equiv>` as stored (AGENTS rule 2): reduced like the response header of the same name, which
- * keeps the URLs sanitized, a value outside the allowlist `[redacted]` (a `set-cookie` meta never keeps its value).
- * A meta CSP has no effect on `frame-ancestors`, so the derived fact is not stored with it.
- */
+// A `<meta http-equiv>` as stored: reduced like the response header of the same name (URLs sanitized, a value outside
+// the allowlist `[redacted]`). A meta CSP has no effect on `frame-ancestors`, so the derived fact is not stored with
+// it.
 function storedMeta(meta: HeaderRecord, base: string): HeaderRecord {
   const { frameAncestors: _fact, ...record } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
   return record;
 }
 
-/** The shape of a stored `<meta http-equiv>` name: a header name (HDR-01 reads `content-security-policy`). */
 const META_NAME = /^[a-z][a-z0-9._-]{0,39}$/;
-/** Limit for ordinary records; CSP remains available to the security-header check regardless of document order. */
+/** Limit for ordinary records; CSP stays available to the security-header check regardless of document order. */
 const MAX_META_HTTP_EQUIV = 32;
 
-/**
- * The `<meta http-equiv>` records of the start document as stored. The name is untrusted text of the page,
- * and `storedMeta` edits only the value: a name of 30 000 characters, or one with an address in it, went into the
- * snapshot as written, and so did every one of 1 500 distinct short names. A name that has not the shape of a header
- * name is not stored. The first 32 valid records are stored in document order.
- */
+// The name is untrusted page text and `storedMeta` edits only the value, so a name that is not shaped like a header
+// name (30 000 characters, an address in it) is not stored. The first 32 valid records are kept in document order.
 export function storedMetaHttpEquiv(records: readonly HeaderRecord[], base: string): HeaderRecord[] {
   const out: HeaderRecord[] = [];
   for (const record of records) {
@@ -191,11 +170,8 @@ export function storedMetaHttpEquiv(records: readonly HeaderRecord[], base: stri
   return out;
 }
 
-/**
- * The Referrer-Policy keywords (W3C Referrer Policy §3) HDR-01 recognises (`effectiveReferrerPolicy`; a unit test pins
- * the two lists together). The old `<meta name="referrer">` values (`never`, `default`, `always`,
- * `origin-when-crossorigin`) are not among them: the check does not read them, so they are not stored.
- */
+// Referrer-Policy keywords HDR-01 recognises (`effectiveReferrerPolicy`; a unit test pins the two lists together). Old
+// `<meta name="referrer">` values (`never`, `default`, `always`) are not read by the check, so they are not stored.
 const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
   'no-referrer',
   'no-referrer-when-downgrade',
@@ -206,14 +182,11 @@ const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
   'strict-origin-when-cross-origin',
   'unsafe-url',
 ]);
-/** The policy in force is the last recognised keyword, so a longer list keeps its last ones. */
+/** The last recognised keyword is in force, so a longer list keeps its last ones. */
 const MAX_REFERRER_KEYWORDS = 8;
 
-/**
- * The referrer policy of a `<meta name="referrer">` as stored: its Referrer-Policy keywords as written, comma
- * separated, the last eight at most, nothing else the tag may say. Restricting both the vocabulary and count
- * keeps an arbitrarily long, untrusted tag from expanding the snapshot value.
- */
+// Keywords as written, comma separated, the last eight at most: restricting vocabulary and count keeps an untrusted tag
+// from expanding the snapshot.
 export function storedMetaReferrer(content: string | null): string | null {
   const text = content ?? '';
   const kept: string[] = [];
@@ -280,7 +253,6 @@ function startUrlFor(ctx: CollectorContext, t: HostTarget, scheme: 'http' | 'htt
   return `${scheme}://${t.host}/`;
 }
 
-/** Explicit non-default port of the target URL, else null. */
 function explicitPort(url: string): number | null {
   const port = new URL(url).port;
   return port ? Number(port) : null;
@@ -289,11 +261,8 @@ function explicitPort(url: string): number | null {
 const unreachable = (c: RedirectChain | undefined) =>
   !c || (c.hops.length === 0 && ['connection-refused', 'dns-error', 'timeout'].includes(c.outcome));
 
-/**
- * The start page ended on a host outside target/www/apex (redirect to another registrable domain). The TLS
- * collector runs in parallel and cannot know it, so its certificate (and that of its www/apex) is probed here with
- * the same TLS probe; TLS-02 reads `HttpSection.finalTls`. A TLS handshake only, no HTTP request.
- */
+// The start page ended on a host outside target/www/apex. The parallel TLS collector cannot know it, so its certificate
+// (and the www/apex ones) is probed here: a handshake only, no HTTP request; TLS-02 reads `finalTls`.
 async function probeFinalHost(
   ctx: CollectorContext,
   section: Pick<HttpSection, 'chains' | 'documents'>,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tls01 } from '../../../../src/checks/http/tls-01.ts';
-import type { HostVariant, HttpHop, RedirectChain } from '../../../../src/core/snapshot-http.ts';
+import type { HostVariant, HttpHop, RedirectChain } from '../../../../src/core/snapshot/http.ts';
 import {
   makeChain,
   makeHop,

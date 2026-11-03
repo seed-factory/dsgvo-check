@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { loadSites } from '../../../scripts/canary-sites.ts';
+import { loadSites } from '../../../scripts/canary/sites.ts';
 
 const example = fileURLToPath(new URL('../../../canary/sites.example.yaml', import.meta.url));
 const sites = loadSites(example);

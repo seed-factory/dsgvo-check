@@ -1,10 +1,6 @@
 /**
- * HDR-01: security headers of the main documents (start page, Impressum, Datenschutz) after
- * redirects. One observation per mechanism; pages where it is missing are united. Variant names: registry
- * docs/03-checks.md §2.1.
- * warning: no (effective) HSTS (https only), no anti-framing (X-Frame-Options or `frame-ancestors` in a CSP
- * *header*), Referrer-Policy `unsafe-url` / `no-referrer-when-downgrade`. info (`header-missing`, one per header):
- * no CSP, no nosniff, no Permissions-Policy, no Referrer-Policy.
+ * HDR-01: security headers of the main documents (start page, Impressum, Datenschutz) after redirects. One observation
+ * per mechanism; pages where it is missing are united.
  */
 
 import {
@@ -16,7 +12,7 @@ import {
   type Observation,
   subjects,
 } from '../../core/api.ts';
-import type { DocumentResponse } from '../../core/snapshot-http.ts';
+import type { DocumentResponse } from '../../core/snapshot/http.ts';
 import { browserAcceptsTls, evidenceValue, headerValues, isSuccess } from './shared.ts';
 
 const ID = 'HDR-01';
@@ -33,7 +29,6 @@ const HEADER_NAMES: Readonly<Record<string, string>> = {
 
 interface Problem {
   variant: Variant;
-  /** Mechanism key = fingerprint subject. */
   mechanism: string;
   evidence: { name: string; value: string | null }[];
   params?: Record<string, string>;
@@ -77,18 +72,14 @@ export function effectiveReferrerPolicy(values: readonly string[]): string | nul
   return out;
 }
 
-/**
- * A CSP header (several policies may be comma-joined) restricts framing when one policy has frame-ancestors
- * without a wildcard source (`frame-ancestors * https://a.example` still allows everybody).
- */
+/** A CSP restricts framing when one policy has frame-ancestors without a wildcard source. */
 function cspRestrictsFraming(values: readonly string[]): boolean {
   return values.some((v) => cspFrameAncestors(v).restricts);
 }
 
 /**
- * What the enforced CSP headers say about framing. The collector stores the fact next to a value of the limit length
- * or longer; such a value without it (snapshot of an older version) proves nothing about the directive:
- * `unknown`.
+ * What the enforced CSP headers say about framing. A value of the limit length or longer without the collector's
+ * stored fact (older snapshot) proves nothing: `unknown`.
  */
 function cspFraming(records: readonly HeaderRecord[]): 'restricts' | 'open' | 'unknown' {
   let unknown = false;
@@ -191,7 +182,6 @@ function problemsOf(doc: DocumentResponse): { problems: Problem[]; limitations: 
   return { problems: out, limitations };
 }
 
-/** `header-missing` (info): one finding per header, the subject is the header (mechanism). */
 function headerMissing(mechanism: string, value: string | null): Problem {
   return {
     variant: 'header-missing',

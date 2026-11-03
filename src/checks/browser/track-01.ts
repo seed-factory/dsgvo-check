@@ -1,12 +1,14 @@
-/**
- * TRACK-01 (P0): inventory of analytics, ads, session-recording and tag managers by catalog signatures, with
- * the proven stage (loaded → initialised → event-sent) and timing (before interaction / after reject /
- * after accept). `info` only: the gating level belongs to the related CONSENT finding (same serviceId).
- * A reference in source code without an executed request is no finding.
- */
+/** TRACK-01 (P0): inventory of tracking services by stage and timing; `info` only, gating belongs to the related CONSENT finding. */
 
-import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type { BrowserSection } from '../../core/snapshot-browser.ts';
+import {
+  defineCheck,
+  type EvidenceInput,
+  isCookieHeld,
+  type Observation,
+  type Phase,
+  subjects,
+} from '../../core/api.ts';
+import type { BrowserSection } from '../../core/snapshot/browser.ts';
 import type {
   ClassifiedRequest,
   DerivedSection,
@@ -32,10 +34,7 @@ const INVENTORY: ReadonlySet<ServiceCategory> = new Set([
   'tag-manager',
 ]);
 const STAGES: readonly TrackingStage[] = ['loaded', 'initialised', 'event-sent'];
-/**
- * The proven stage of one timing. `none` = the timing was carried out and no request of the service followed;
- * `not-checked` = the timing never took place (no banner click of that action), so absence proves nothing.
- */
+/** `none`: the timing took place and no request followed; `not-checked`: it never took place, so absence proves nothing. */
 type TimingStage = TrackingStage | 'none' | 'not-checked';
 
 /** Timings in the order of the text, each with the param that carries its own stage. */
@@ -49,9 +48,8 @@ const higher = (a: TrackingStage, b: TrackingStage): TrackingStage =>
   STAGES.indexOf(b) > STAGES.indexOf(a) ? b : a;
 
 /**
- * Was the timing carried out? Before any interaction is always observed (the run needs an evaluable page); "after
- * reject" / "after accept" need a successful click of that action in a phase that was not skipped — a banner that
- * was not recognised, a skipped phase or a failed click leaves the timing unobserved.
+ * "Before interaction" is always observed; "after reject/accept" needs a successful click of that action in a phase
+ * that was not skipped.
  */
 function timingObserved(browser: BrowserSection, timing: InteractionTiming): boolean {
   if (timing === 'before-interaction') return true;
@@ -62,9 +60,8 @@ function timingObserved(browser: BrowserSection, timing: InteractionTiming): boo
 }
 
 /**
- * The stage a service reached AT one timing: the highest stage of its loaded requests of that timing; a tracking
- * cookie or storage key of the service seen at the same timing proves at least `initialised`. A stage of another
- * timing never raises it (library before the interaction, event only after accept → two different pairs).
+ * The highest stage a service reached at one timing; a tracking cookie or storage key seen then proves at least
+ * `initialised`. A stage of another timing never raises it.
  */
 function stageAt(
   browser: BrowserSection,
@@ -78,11 +75,7 @@ function stageAt(
   let stage = at.reduce<TrackingStage>((best, c) => higher(best, c.stage ?? 'loaded'), 'loaded');
   const initialisedProof =
     derived.cookies.some(
-      (c) =>
-        c.serviceId === serviceId &&
-        c.tracking &&
-        (c.state === 'accepted' || c.state === 'sent') &&
-        c.timing === timing,
+      (c) => c.serviceId === serviceId && c.tracking && isCookieHeld(c.state) && c.timing === timing,
     ) || derived.storage.some((c) => c.serviceId === serviceId && c.tracking && c.timing === timing);
   if (initialisedProof) stage = higher(stage, 'initialised');
   return stage;

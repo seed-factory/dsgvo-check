@@ -1,9 +1,9 @@
 /** Node side of the in-page probe: runs it in a frame and turns raw facts into `CmpFirstLayer` / `BlockingFacts`. */
 import type { ElementHandle, Frame, Page } from 'playwright-core';
-import { LEGAL_KINDS, type LegalLexicon, matchLegalLink } from '../../collectors/browser/legal-lexicon.ts';
-import { loadLegalLexicon } from '../../collectors/browser/legal-lexicon-file.ts';
-import type { Box, Viewport } from '../../core/snapshot-common.ts';
-import { parseUrl, sanitizeUrl } from '../../core/url.ts';
+import { LEGAL_KINDS, type LegalLexicon, matchLegalLink } from '../../collectors/browser/legal/lexicon.ts';
+import { loadLegalLexicon } from '../../collectors/browser/legal/lexicon-file.ts';
+import type { Box, Viewport } from '../../core/snapshot/common.ts';
+import { parseUrl, sanitizeUrl } from '../../core/url/url.ts';
 import { classifyButton, labelTokens, normalizeLabel } from '../lexicon.ts';
 import type {
   BlockingFacts,
@@ -17,7 +17,6 @@ import { cmpPageProbe } from './probe.ts';
 import type { ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
 
 export interface BannerSpec {
-  /** Container selectors in priority order (document + open shadow roots). */
   containers: readonly string[];
   overlays?: readonly string[];
   vendorRoles?: ReadonlyArray<{ selector: string; role: ButtonKind }>;
@@ -27,22 +26,19 @@ export interface Measured {
   firstLayer: CmpFirstLayer;
   blocking: BlockingFacts;
   viewport: Viewport;
-  /** The probe result the facts come from (absent for a consent-frame candidate that was not probed into). */
+  /** Absent for a consent-frame candidate that was not probed into. */
   raw?: ProbeResult;
 }
 
 const MAX_BUTTONS = 40;
 
-/** At most this many covered legal links are reported (evidence, not a census). */
 const MAX_COVERED_LEGAL_LINKS = 5;
 
-/** Different banner keywords the body of a large frame needs when its title, aria-label and name give no hint. */
+/** Banner keywords the body of a large frame needs when its title, aria-label and name give no hint. */
 const MIN_BODY_KEYWORDS = 2;
 
-/** A visible iframe must cover at least this share of the viewport to be a consent-frame candidate. */
 const FRAME_CANDIDATE_MIN_SHARE = 0.5;
 
-/** Lexicon phrases of the given classes, normalized for the probe. */
 function phrasesOf(
   lexicon: CmpLexicon,
   kinds: ReadonlyArray<'accept' | 'reject' | 'settings' | 'save'>,
@@ -133,9 +129,8 @@ export function toButton(
 }
 
 /**
- * Does the label name the Impressum or the privacy policy? The lexicon of test/data/legal decides, with the code the
- * collector uses to choose the documents (`matchLegalLink`): every language of the lexicon counts, and a link to a
- * cookie settings dialog ("Datenschutz-Einstellungen") does not. The probe holds no legal wording.
+ * Whether the label names the Impressum or privacy policy, matched like `matchLegalLink` (a cookie-settings link does
+ * not count). The probe holds no legal wording.
  */
 function namesLegalDocument(lex: LegalLexicon, label: string): boolean {
   return LEGAL_KINDS.some((kind) => matchLegalLink(lex, kind, { text: label, path: '' }) !== null);
@@ -149,7 +144,6 @@ export function toMeasured(
     offset?: { x: number; y: number } | null;
     blockingFrom?: ProbeResult;
     closeMeansAccept?: boolean | null;
-    /** Legal-link lexicon (default: test/data/legal). */
     legal?: LegalLexicon;
   } = {},
 ): Measured {
@@ -211,7 +205,6 @@ export async function measureBanner(
   return toMeasured(raw, lexicon, page.url(), { closeMeansAccept });
 }
 
-/** Generic heuristic (unknown banner): main frame, open shadow DOM and child frames. Facts only (5.5). */
 export async function measureHeuristic(
   page: Page,
   lexicon: CmpLexicon,
@@ -254,7 +247,7 @@ export async function measureHeuristic(
     method: 'heuristic',
     version: null,
     versionSupported: null,
-    // A heuristic is never `high` (5.5): it only feeds `banner-not-recognized`.
+    // A heuristic is never `high`: it only feeds `banner-not-recognized`.
     recognitionConfidence: score >= 5 ? 'medium' : 'low',
     signals,
     ...(best.frameEl ? { frameUrl: sanitizeUrl(best.frame.url()) } : {}),
@@ -263,11 +256,8 @@ export async function measureHeuristic(
 }
 
 /**
- * A visible iframe that covers at least half of the viewport and looks like a consent dialog — its title, aria-label
- * or name matches the banner keywords, or its own wording gave at least two different keyword hits — while the probe found no
- * banner inside it. The content is not resolved: it is reported as a candidate (`consentFrameUnresolved`) so that
- * "no banner" is not concluded from it. It carries no buttons and is never clicked. Ordinary video or map frames
- * without such a hint are no candidates.
+ * A visible iframe covering half the viewport that looks like a consent dialog (title, aria-label, name or two
+ * keyword hits in its body) but holds no banner the probe could read: reported as a candidate, never clicked.
  */
 async function unresolvedConsentFrame(
   page: Page,
@@ -303,8 +293,7 @@ async function unresolvedConsentFrame(
       () => null,
     );
     const hits = inner?.keywordHits.length ?? 0;
-    // The wording of the body alone needs two different keywords (as for any non-dialog candidate): one "Privacy" link
-    // in the footer of a large booking or app frame is no sign of a consent dialog.
+    // The body wording alone needs two keywords: one "Privacy" link in a large booking frame is no consent dialog.
     if (!byAttribute && hits < MIN_BODY_KEYWORDS) continue;
     const outer = await runProbe(main, probeArgs(lexicon, { mode: 'banner', containerEl: frameEl })).catch(
       () => null,

@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { newRunId, parseRunnerArgs } from '../../../scripts/canary-args.ts';
-import type { SiteMeta } from '../../../scripts/canary-results.ts';
-import { reanalyzeRun, runCanary, runPool } from '../../../scripts/canary-runner.ts';
-import { apiScanner, type SiteJob, type SiteScanner } from '../../../scripts/canary-scanners.ts';
-import { type CanarySite, parseSites } from '../../../scripts/canary-sites.ts';
-import { CheckRegistry } from '../../../src/core/registry.ts';
-import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
+import { newRunId, parseRunnerArgs } from '../../../scripts/canary/args.ts';
+import type { SiteMeta } from '../../../scripts/canary/results.ts';
+import { reanalyzeRun, runCanary, runPool } from '../../../scripts/canary/runner.ts';
+import { apiScanner, type SiteJob, type SiteScanner } from '../../../scripts/canary/scanners.ts';
+import { type CanarySite, parseSites } from '../../../scripts/canary/sites.ts';
+import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import { sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
 import { fakeCollectors, publicLookup } from '../../utils/scan-harness.ts';
 import { FIXED_NOW } from '../../utils/snapshot-builder.ts';
 
@@ -134,6 +134,22 @@ describe('parseRunnerArgs', () => {
       screenshots: false,
       confirm: true,
     });
+  });
+
+  it.each([
+    [['--sandbox', 'off'], { sandbox: 'off', assumeRegion: null }],
+    [['--assume-region', 'eea'], { sandbox: 'require', assumeRegion: 'eea' }],
+    [['--assume-region', 'de'], { sandbox: 'require', assumeRegion: 'de' }],
+  ])('takes %j from the report schema values', (argv, expected) => {
+    expect(parseRunnerArgs(argv, FIXED_NOW)).toMatchObject(expected);
+  });
+
+  it.each([
+    [['--sandbox', 'maybe'], '--sandbox: expected require|off'],
+    [['--assume-region', 'us'], '--assume-region: expected eea|de'],
+    [['--assume-region', ''], '--assume-region: expected eea|de'],
+  ])('rejects %j with the allowed values', (argv, message) => {
+    expect(() => parseRunnerArgs(argv, FIXED_NOW)).toThrow(message);
   });
 
   it('names a reanalysis run after its source run', () => {

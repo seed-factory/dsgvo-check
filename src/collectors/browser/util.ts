@@ -1,9 +1,7 @@
-/** Small async helpers for the browser collector. */
 import { createHash } from 'node:crypto';
-import { redactText } from '../../core/redact.ts';
+import { redactText } from '../../core/redaction/redact.ts';
 import { REQUEST_QUERY_ALLOWLIST } from './config.ts';
 
-/** Sleep that resolves early (without throwing) when the signal aborts. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0 || signal?.aborted) return Promise.resolve();
   return new Promise((resolve) => {
@@ -24,7 +22,7 @@ export class TimeoutError extends Error {
   }
 }
 
-/** Reject after `ms` (the underlying promise keeps running; callers must tolerate that). */
+/** The underlying promise keeps running; callers must tolerate that. */
 export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new TimeoutError(what, ms)), ms);
@@ -45,17 +43,14 @@ export function sha256Hex(data: string | Uint8Array): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-/** NFC + whitespace collapse (documents keep case and umlauts; matching normalization is done by derive/checks). */
+/** NFC + whitespace collapse; case and umlauts stay. */
 export function normalizeText(s: string): string {
   return s.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Redaction of free text before it is stored, hashed or used for evidence: e-mail addresses and `mailto:` values
- * lose their local part, URLs in the text get the query allowlist of the collector, matrix parameters and addresses
- * in their path are masked. Use it for every string copied from a page (link text, accessible names, titles,
- * document parts). Idempotent.
- */
+// Redaction of free text before it is stored, hashed or used as evidence: addresses lose their local part, URLs get the
+// collector's query allowlist, matrix parameters and addresses in paths are masked. Use it for every string copied from
+// a page. Idempotent.
 export function redactFreeText(s: string): string {
   return redactText(s, REQUEST_QUERY_ALLOWLIST);
 }

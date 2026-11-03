@@ -1,14 +1,17 @@
 /**
- * CONSENT-02 (P0): cookies and Web Storage written before any interaction (phase A, phase B before the click).
- * Known tracking identifiers from the catalog; persistent entries that are not known identifiers by party;
- * the allowlist (consent, session, load balancer, CSRF, language, bot protection) is "nicht bewertet", not
- * "notwendig". One observation per cookie key (name, party, path, partitioned) or storage key.
- * Values are never read, so `cmp-cookie-with-uid` (registry §2.1) is declared but not emitted: the collector
- * has no safe "consent cookie carries a UID" feature yet. Bot or geo signal → inconclusive.
+ * CONSENT-02 (P0): cookies and Web Storage written before any interaction. The allowlist is "nicht bewertet", not
+ * "notwendig". Values are never read, so `cmp-cookie-with-uid` is declared but not emitted.
  */
 
-import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type { CookieRecord, StorageRecord } from '../../core/snapshot-browser.ts';
+import {
+  defineCheck,
+  type EvidenceInput,
+  isCookieHeld,
+  type Observation,
+  type Phase,
+  subjects,
+} from '../../core/api.ts';
+import type { CookieRecord, StorageRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedCookie, ClassifiedStorage } from '../../derive/types.ts';
 import {
   classifiedCookies,
@@ -113,7 +116,7 @@ export const consent02 = defineCheck({
         allowlisted++;
         continue;
       }
-      const v = variantFor(cls, record.state === 'accepted' || record.state === 'sent');
+      const v = variantFor(cls, isCookieHeld(record.state));
       if (!v) continue;
       const subject = subjects.cookie({
         name: record.name,
@@ -191,7 +194,7 @@ export const consent02 = defineCheck({
   },
 });
 
-/** Written before any click: phase A or phase B before the click (A, A′, B before the click). */
+/** Written in phase A or in phase B before the click. */
 function beforeInteraction(r: CookieRecord | StorageRecord): boolean {
   return (r.phase === 'A' || r.phase === 'B') && !r.afterClick;
 }

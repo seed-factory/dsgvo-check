@@ -1,14 +1,11 @@
 /**
- * GitHub Job Summary / Markdown reporter. Written to `summary.md`; scan.ts also appends it to
- * $GITHUB_STEP_SUMMARY when that variable is set.
- * Safety: external strings are sanitized (`sanitizeExternal`), HTML-escaped and Markdown-escaped; URLs are never
- * turned into links (no autolinks), no images, no crmCode / `T[0-9]_` strings (5.6). Size stays far below the
- * 1 MiB step summary limit.
+ * GitHub Job Summary / Markdown reporter, written to `summary.md` (scan.ts also appends it to $GITHUB_STEP_SUMMARY).
+ * External strings are sanitized and escaped, URLs never become links, there are no images and no crmCode strings.
  */
-import { renderMessage } from '../core/messages.ts';
-import type { Finding, MessageParams, Report } from '../core/report-schema.ts';
-import type { RenderReport, ReporterContext } from '../core/reporter.ts';
-import { sanitizeExternal } from '../core/sanitize.ts';
+import { renderMessage } from '../core/data/messages.ts';
+import { sanitizeExternal } from '../core/redaction/sanitize.ts';
+import type { RenderReport, ReporterContext } from '../core/report/reporter.ts';
+import type { Finding, MessageParams, Report } from '../core/report/schema.ts';
 import { disclaimerParagraphs } from './disclaimer.ts';
 import {
   draftStamp,
@@ -24,11 +21,7 @@ const MAX_BYTES = 512 * 1024;
 
 const WORD_JOINER = '⁠';
 
-/**
- * Inline text for Markdown: sanitized (no newlines, so it never starts a block), HTML special characters as
- * entities, inline Markdown punctuation backslash-escaped, autolink triggers (`www.`, `scheme://`, e-mail `@`)
- * broken so scanned URLs never become clickable links.
- */
+/** Inline Markdown text: sanitized, HTML and Markdown punctuation escaped, autolink triggers broken so scanned URLs never become links. */
 export function mdText(value: unknown, max = 300): string {
   if (value === null || value === undefined) return '–';
   return sanitizeExternal(String(value), max)

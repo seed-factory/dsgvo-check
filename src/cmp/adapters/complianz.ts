@@ -1,8 +1,4 @@
-/**
- * Complianz (WordPress). Signals: `window.complianz` / `cmplz_has_consent`, plugin script, `#cmplz-cookiebanner-container`,
- * cookies `<prefix><category>` = allow|deny and `<prefix>banner-status`. Geo: `complianz.region` ≠ eu; bot:
- * `cmplz_is_bot()` / `cmplz_is_speedbot()` (read-only calls).
- */
+/** Complianz (WordPress). Bot detection uses the read-only `cmplz_is_bot()` / `cmplz_is_speedbot()` calls. */
 import type { Page } from 'playwright-core';
 import { cleanVersion, versionFromUrl } from '../detection.ts';
 import type { ConsentStateFact } from '../types.ts';

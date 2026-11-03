@@ -8,10 +8,10 @@ import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { collectMailDns } from '../../../../src/collectors/dns/collect.ts';
 import { collectDns } from '../../../../src/collectors/dns/index.ts';
 import { type DnsClient, errorToRcode, type RawDnsResult } from '../../../../src/collectors/dns/resolver.ts';
-import type { CollectorContext } from '../../../../src/core/collector.ts';
-import { silentLogger } from '../../../../src/core/logger.ts';
-import { defaultNetworkConfig } from '../../../../src/core/net.ts';
-import type { DnsRecordType } from '../../../../src/core/snapshot-dns.ts';
+import { silentLogger } from '../../../../src/core/runtime/logger.ts';
+import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
+import type { DnsRecordType } from '../../../../src/core/snapshot/dns.ts';
+import { defaultNetworkConfig } from '../../../../src/core/url/net.ts';
 import {
   FIXED_NOW,
   makeSnapshot,
@@ -316,6 +316,7 @@ describe('errorToRcode (node:dns error codes)', () => {
     ['EREFUSED', 'REFUSED'],
     ['ECONNREFUSED', 'ERROR'],
     ['EBADRESP', 'ERROR'],
+    ['constructor', 'ERROR'],
     [undefined, 'ERROR'],
   ])('%s → %s', (code, rcode) => {
     expect(errorToRcode(code)).toBe(rcode);

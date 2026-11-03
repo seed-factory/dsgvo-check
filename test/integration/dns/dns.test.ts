@@ -1,14 +1,11 @@
-/**
- * the real node:dns client and the DNS collector against a fake authoritative DNS (dns2, random UDP port,
- * `Resolver.setServers`). No internet. The full `scan` path is in scan.test.ts.
- */
+/** The real node:dns client and the DNS collector against a fake DNS server; the full `scan` path is in scan.test.ts. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mail01 } from '../../../src/checks/dns/mail-01.ts';
 import { mail02 } from '../../../src/checks/dns/mail-02.ts';
 import { collectDns } from '../../../src/collectors/dns/index.ts';
 import { createNodeDnsClient } from '../../../src/collectors/dns/resolver.ts';
-import type { CollectorContext } from '../../../src/core/collector.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
+import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
 import { FIXED_NOW, makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { type FakeDnsServer, localDnsNetwork, MAIL_SITE, startFakeDns } from './dns-server.ts';
 

@@ -1,8 +1,6 @@
 /**
- * Usercentrics v3 (`web.cmp.usercentrics.eu/ui/loader.js`, `window.__ucCmp`, shadow host `#usercentrics-cmp-ui`)
- * and v2 (`app.usercentrics.eu/browser-ui/…`, `window.UC_UI`, shadow host `#usercentrics-root`). The banner lives in
- * open shadow DOM (measured and clicked through it). Geo: v3 `isConsentRequired() === false` without an explicit
- * answer. ⚠ The `getConsentDetails()` shape is read defensively (categories as `{state}` or boolean).
+ * Usercentrics v3 and v2. The banner lives in open shadow DOM (measured and clicked through it); the shape of
+ * `getConsentDetails()` is read defensively.
  */
 import type { Page } from 'playwright-core';
 import { majorSupported } from '../detection.ts';

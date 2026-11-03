@@ -1,19 +1,18 @@
 /**
- * Derive: pure classification of snapshot facts by the own service catalog.
- * Third party = registrable domain (eTLD+1) differs from the target's (www/apex are one party). First-party
- * tracker proxies (sGTM, tag gateway) are recognised by catalog path signatures on the site's own host.
- * Recomputed on `--from-snapshot`; never persisted.
+ * Derive: pure classification of snapshot facts by the own service catalog; recomputed on `--from-snapshot`, never
+ * persisted. Third party = registrable domain differs from the target's (www/apex are one party).
  */
 
-import type { Snapshot } from '../core/snapshot.ts';
-import type {
-  CookieRecord,
-  PageVisit,
-  PhaseRecord,
-  RequestRecord,
-  StorageRecord,
-} from '../core/snapshot-browser.ts';
-import { parseUrl, registrableDomain } from '../core/url.ts';
+import {
+  type CookieRecord,
+  isCookieHeld,
+  type PageVisit,
+  type PhaseRecord,
+  type RequestRecord,
+  type StorageRecord,
+} from '../core/snapshot/browser.ts';
+import type { Snapshot } from '../core/snapshot/index.ts';
+import { parseUrl, registrableDomain } from '../core/url/url.ts';
 import { loadServiceCatalog, type RequestMatch, type ServiceCatalog, type ServiceEntry } from './catalog.ts';
 import type {
   ClassificationSource,
@@ -46,15 +45,12 @@ const STAGE_ORDER: readonly TrackingStage[] = ['loaded', 'initialised', 'event-s
 /** Request states that prove the resource reached the page (network, SW or cache). */
 const LOADED_STATES: ReadonlySet<string> = new Set(['completed', 'from-sw', 'from-cache']);
 
-/** Provenance values of an answer that is no new network exchange (5.3 `provenance`). */
+/** Provenance values of an answer that is no new network exchange. */
 const NON_NETWORK_PROVENANCE: ReadonlySet<string> = new Set(['service-worker', 'http-cache', 'memory-cache']);
 
 /**
- * 5.3: the request left the browser (`delivery: sent`) and a network response arrived (`result: response`, or the
- * response status the recorder kept when a later body error overwrote `result`). Delivery and response are
- * independent of the final `state`: an error while reading the body does not undo a received response.
- * Service-worker or cache answers are no new network exchange; that is a fact about the ANSWER (`provenance`,
- * `state`). `fromServiceWorker` marks the INITIATOR of the request and says nothing about who answered it.
+ * The request left the browser and a network response arrived, even if a later body error ended the record. Answers
+ * from a service worker or cache are no network exchange (`provenance`); `fromServiceWorker` marks only the initiator.
  */
 export function responseReceived(r: RequestRecord): boolean {
   if (r.provenance !== undefined && NON_NETWORK_PROVENANCE.has(r.provenance)) return false;
@@ -63,7 +59,6 @@ export function responseReceived(r: RequestRecord): boolean {
   return r.delivery === 'sent' && (r.result?.kind === 'response' || typeof r.status === 'number');
 }
 
-/** The resource reached the page: a network response or an answer from the service worker or cache. */
 function loaded(r: RequestRecord): boolean {
   return LOADED_STATES.has(r.state) || responseReceived(r);
 }
@@ -153,55 +148,57 @@ function parseHttpUrl(raw: string): URL | null {
   return parseUrl(raw, undefined, true);
 }
 
-function kindFromResourceType(resourceType: string, category: ServiceCategory): RequestKind {
-  switch (resourceType) {
-    case 'script':
-      return 'library';
-    case 'stylesheet':
-      return 'stylesheet';
-    case 'font':
-      return 'font';
-    case 'document':
-      return 'embed';
-    case 'image':
-      if (TRACKING_CATEGORIES.has(category)) return 'hit';
-      return category === 'maps' ? 'tile' : 'image';
-    case 'xhr':
-    case 'fetch':
-    case 'ping':
-    case 'beacon':
-    case 'websocket':
-    case 'eventsource':
-      return TRACKING_CATEGORIES.has(category) ? 'hit' : 'resource';
-    case 'other':
-      // Chromium's catch-all (e.g. Compression Dictionary Transport) is no event transport: without a catalog
-      // signature it proves a loaded resource only (03-checks §3.7 step 4).
-      return 'resource';
-    default:
-      return 'resource';
+/** Playwright resource types whose kind does not depend on the service. */
+const KIND_BY_RESOURCE_TYPE: ReadonlyMap<string, RequestKind> = new Map([
+  ['script', 'library'],
+  ['stylesheet', 'stylesheet'],
+  ['font', 'font'],
+  ['document', 'embed'],
+]);
+
+/** Resource types that can carry an event: a hit of a tracking service, a plain resource of any other. */
+const EVENT_TRANSPORT_TYPES: ReadonlySet<string> = new Set([
+  'xhr',
+  'fetch',
+  'ping',
+  'beacon',
+  'websocket',
+  'eventsource',
+]);
+
+export function kindFromResourceType(resourceType: string, category: ServiceCategory): RequestKind {
+  const fixed = KIND_BY_RESOURCE_TYPE.get(resourceType);
+  if (fixed) return fixed;
+  const tracking = TRACKING_CATEGORIES.has(category);
+  if (resourceType === 'image') {
+    if (tracking) return 'hit';
+    return category === 'maps' ? 'tile' : 'image';
   }
+  if (EVENT_TRANSPORT_TYPES.has(resourceType)) return tracking ? 'hit' : 'resource';
+  // Chromium's catch-all `other` (e.g. Compression Dictionary Transport) is no event transport: without a catalog
+  // signature it proves a loaded resource only, like any type not listed here.
+  return 'resource';
 }
 
-function stageFromKind(kind: RequestKind): TrackingStage {
-  if (kind === 'hit') return 'event-sent';
-  if (kind === 'config') return 'initialised';
-  return 'loaded';
+const STAGE_BY_KIND: ReadonlyMap<RequestKind, TrackingStage> = new Map([
+  ['hit', 'event-sent'],
+  ['config', 'initialised'],
+]);
+
+export function stageFromKind(kind: RequestKind): TrackingStage {
+  return STAGE_BY_KIND.get(kind) ?? 'loaded';
 }
 
-function integrationFromKind(category: ServiceCategory, kind: RequestKind): string | undefined {
+const INTEGRATION_BY_KIND: ReadonlyMap<RequestKind, string> = new Map([
+  ['embed', 'iframe'],
+  ['library', 'js-api'],
+  ['tile', 'tiles'],
+]);
+
+export function integrationFromKind(category: ServiceCategory, kind: RequestKind): string | undefined {
   if (category !== 'maps' && category !== 'video') return undefined;
-  switch (kind) {
-    case 'embed':
-      return 'iframe';
-    case 'library':
-      return 'js-api';
-    case 'tile':
-      return 'tiles';
-    case 'image':
-      return category === 'video' ? 'thumbnail' : 'static';
-    default:
-      return 'other';
-  }
+  if (kind === 'image') return category === 'video' ? 'thumbnail' : 'static';
+  return INTEGRATION_BY_KIND.get(kind) ?? 'other';
 }
 
 const GCD_DENIED = new Set(['p', 'q', 'm', 'u']);
@@ -214,10 +211,7 @@ function gcdLetter(ch: string | undefined): 'granted' | 'denied' | null {
   return null;
 }
 
-/**
- * Google Consent Mode state that the request transmitted (browser research §6.2):
- * `gcs=G1<ad><analytics>` (1 granted, 0 denied); `gcd=1<x><ad><x><analytics>…` with community-documented letters.
- */
+/** Consent Mode state in `gcs=G1<ad><analytics>` (1 granted, 0 denied) or the community-documented `gcd`. */
 export function decodeConsentMode(
   gcs: string | undefined,
   gcd: string | undefined,
@@ -239,8 +233,8 @@ export function decodeConsentMode(
 }
 
 /**
- * User or ad-click identifiers supplied with the visit or by the site (`user-supplied`): not generated per page
- * load. Names are compared lower-case with the collector's `identifierNames` (extracted before redaction).
+ * User or ad-click identifiers supplied with the visit, not generated per page load; compared lower-case with the
+ * collector's `identifierNames` (extracted before redaction).
  */
 const USER_SUPPLIED_PARAMS: ReadonlySet<string> = new Set([
   'user_id',
@@ -262,8 +256,8 @@ const PERSISTENT_KINDS: ReadonlySet<IdentifierKind> = new Set([
 ]);
 
 /**
- * 5.3 `identifier.kind` from collector facts only. The query keys of the sanitized URL are not evidence:
- * a key survives redaction even when its value was empty, and its presence says nothing about persistence.
+ * `identifier.kind` from collector facts only: a key of the sanitized URL is no evidence, since it survives redaction
+ * even when its value was empty.
  */
 export function identifierOf(
   catalog: ServiceCatalog,
@@ -522,7 +516,7 @@ function aggregateServices(
     add(s.phases, c.phase);
     if ('key' in c && typeof c.key === 'object') add(s.cookieNames, c.key.name);
     if (c.timing) add(s.timings as InteractionTiming[], c.timing);
-    const accepted = 'state' in c ? c.state === 'accepted' || c.state === 'sent' : true;
+    const accepted = 'state' in c ? isCookieHeld(c.state) : true;
     if (c.tracking && accepted) add(s.stages, 'initialised');
   }
   for (const s of byId.values()) {

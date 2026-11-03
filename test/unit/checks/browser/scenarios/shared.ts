@@ -1,4 +1,4 @@
-import type { Snapshot } from '../../../../../src/core/snapshot.ts';
+import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import type { FixtureExpect } from '../../../../utils/snapshot-builder.ts';
 import { req } from '../helpers.ts';
 

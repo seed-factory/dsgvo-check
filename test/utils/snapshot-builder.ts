@@ -1,17 +1,16 @@
 /**
- * helpers: factories for snapshot sections, a deterministic CheckContext and fixture loading.
- * Every factory takes a partial override; nested arrays are replaced, not merged.
+ * Factories for snapshot sections, a deterministic CheckContext and fixture loading. Every factory takes a partial
+ * override; nested arrays are replaced, not merged.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CmpFacts, CmpSection } from '../../src/cmp/types.ts';
-import type { ExecutedCheck } from '../../src/core/assess.ts';
-import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/check.ts';
-import { loadDataDir, loadRouting } from '../../src/core/data.ts';
-import { executeCheck } from '../../src/core/execute.ts';
-import type { CheckStatus } from '../../src/core/report-schema.ts';
-import { SNAPSHOT_VERSION, type Snapshot, type TargetInfo } from '../../src/core/snapshot.ts';
+import { loadDataDir, loadRouting } from '../../src/core/data/load.ts';
+import type { ExecutedCheck } from '../../src/core/evaluation/assess.ts';
+import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/evaluation/check.ts';
+import { executeCheck } from '../../src/core/evaluation/execute.ts';
+import type { CheckStatus } from '../../src/core/report/schema.ts';
 import type {
   BrowserPlan,
   BrowserSection,
@@ -23,11 +22,12 @@ import type {
   PhaseRecord,
   RequestRecord,
   StorageRecord,
-} from '../../src/core/snapshot-browser.ts';
-import type { DnsQueryRecord, DnsSection } from '../../src/core/snapshot-dns.ts';
-import type { DocumentResponse, HttpHop, HttpSection, RedirectChain } from '../../src/core/snapshot-http.ts';
-import type { CertificateInfo, TlsEndpoint, TlsSection } from '../../src/core/snapshot-tls.ts';
-import { parseTarget } from '../../src/core/url.ts';
+} from '../../src/core/snapshot/browser.ts';
+import type { DnsQueryRecord, DnsSection } from '../../src/core/snapshot/dns.ts';
+import type { DocumentResponse, HttpHop, HttpSection, RedirectChain } from '../../src/core/snapshot/http.ts';
+import { SNAPSHOT_VERSION, type Snapshot, type TargetInfo } from '../../src/core/snapshot/index.ts';
+import type { CertificateInfo, TlsEndpoint, TlsSection } from '../../src/core/snapshot/tls.ts';
+import { parseTarget } from '../../src/core/url/url.ts';
 import { derive } from '../../src/derive/index.ts';
 import type { DerivedSection } from '../../src/derive/types.ts';
 

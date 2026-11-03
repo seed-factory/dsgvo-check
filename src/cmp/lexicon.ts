@@ -1,7 +1,4 @@
-/**
- * Pure button lexicon: label normalization, phrase matching and button kind. No I/O — checks may import it.
- * Data: test/data/cmp/lexicon.yaml (`lexicon:` block), loaded by `lexicon-file.ts` or by a check via `data: ['cmp']`.
- */
+/** Pure button lexicon: label normalization, phrase matching and button kind. Data: test/data/cmp/lexicon.yaml. */
 import { z } from 'zod';
 import type { ButtonKind, CmpButton, CmpLexicon, Confidence } from './types.ts';
 
@@ -32,7 +29,7 @@ const LexiconSchema = z.object({
   bannerKeywords: z.array(z.string()).optional(),
 });
 
-/** Parse either the merged `test/data/cmp` object (`{ lexicon: … }`) or a bare lexicon object. */
+/** Accepts the merged `test/data/cmp` object (`{ lexicon: … }`) or a bare lexicon object. */
 export function lexiconFromData(data: unknown): CmpLexicon {
   const raw =
     data !== null && typeof data === 'object' && 'lexicon' in data
@@ -103,10 +100,7 @@ export interface LabelMatch {
 const DISMISS_KINDS: ReadonlySet<LexiconKind> = new Set(['close', 'hide', 'later']);
 const DECISION_KINDS: ReadonlySet<LexiconKind> = new Set(['reject', 'accept']);
 
-/**
- * Of equally scored matches of different kinds, the one decision (reject or accept) when every other kind only
- * dismisses the dialog; otherwise null (reject vs accept, or a decision vs settings/save stays unclassified).
- */
+/** Of equally scored kinds, the one decision when every other kind only dismisses the dialog; otherwise null. */
 function breakTie(kinds: ReadonlySet<LexiconKind>): LexiconKind | null {
   const decisions = [...kinds].filter((k) => DECISION_KINDS.has(k));
   if (decisions.length !== 1) return null;
@@ -116,9 +110,8 @@ function breakTie(kinds: ReadonlySet<LexiconKind>): LexiconKind | null {
 }
 
 /**
- * Exact phrase → high; phrase inside a longer label (or a `*suffix` token) → medium (low for long text blobs);
- * longest phrase wins; equal best scores of different kinds → unclassified, except a single decision (reject or
- * accept) tied only with close/hide/later ("Ablehnen und schließen"), which counts as that decision.
+ * Exact phrase → high; phrase inside a longer label (or a `*suffix` token) → medium (low for long text blobs); the
+ * longest phrase wins; ties between kinds stay unclassified unless `breakTie` decides.
  */
 export function classifyLabel(label: string, lexicon: CmpLexicon): LabelMatch {
   const tokens = labelTokens(label);

@@ -7,7 +7,7 @@ import {
   normalizeLabel,
 } from '../../../src/cmp/lexicon.ts';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
-import { loadDataDir } from '../../../src/core/data.ts';
+import { loadDataDir } from '../../../src/core/data/load.ts';
 
 const lexicon = loadLexicon();
 

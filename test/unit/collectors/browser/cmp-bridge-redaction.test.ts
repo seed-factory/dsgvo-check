@@ -1,7 +1,6 @@
 /**
- * AGENTS rule 2: text copied from the page into the CMP facts (accessible names of buttons,
- * text of the legal links of the banner, labels of the covered footer links) is redacted by the collector before it is
- * stored: an e-mail address loses its local part. The click selector of a button is no free text and stays usable.
+ * Text copied from the page into the CMP facts (button names, banner legal link text, covered footer link labels) is
+ * redacted by the collector before storing: an e-mail address loses its local part; the click selector stays usable.
  */
 import { describe, expect, it } from 'vitest';
 import type { CmpButton, CmpFacts } from '../../../../src/cmp/types.ts';

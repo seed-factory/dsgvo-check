@@ -1,17 +1,16 @@
 /**
  * Tiny zone DSL for DNS tests: `{ 'TXT _dmarc.example.de': ['v=DMARC1; p=reject'], 'MX example.de': 'NXDOMAIN' }`.
- * A string array is a NOERROR answer (MX entries as "<priority> <exchange>"); `[]` is NOERROR without relevant
- * answers (filtered); a string is the rcode.
+ * A string array is a NOERROR answer (MX as "<priority> <exchange>"), `[]` NOERROR without relevant answers, a string the rcode.
  */
 import { lookupFromQueries } from '../../../../src/checks/dns/lib/records.ts';
-import type { Snapshot } from '../../../../src/core/snapshot.ts';
 import type {
   DnsAnswer,
   DnsQueryRecord,
   DnsRcode,
   DnsRecordType,
   DnsSection,
-} from '../../../../src/core/snapshot-dns.ts';
+} from '../../../../src/core/snapshot/dns.ts';
+import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import { makeDns, makeDnsQuery, makeSnapshot, makeTarget } from '../../../utils/snapshot-builder.ts';
 
 export type ZoneEntry = readonly string[] | Exclude<DnsRcode, 'NOERROR'>;

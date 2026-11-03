@@ -1,12 +1,10 @@
-/**
- * The CMP bridge executes the click target selected by core, without making a second decision.
- */
+/** The CMP bridge executes the click target selected by core without a second decision. */
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { ActOptions, ClickOutcome, ClickTarget, CmpAdapter } from '../../../../src/cmp/types.ts';
 import { type CmpApi, CmpBridge } from '../../../../src/collectors/browser/cmp-bridge.ts';
-import type { ClickPlan } from '../../../../src/core/snapshot-browser.ts';
-import type { CollectorError } from '../../../../src/core/snapshot-common.ts';
+import type { ClickPlan } from '../../../../src/core/snapshot/browser.ts';
+import type { CollectorError } from '../../../../src/core/snapshot/common.ts';
 
 const page = {} as Page;
 const api = {} as CmpApi;

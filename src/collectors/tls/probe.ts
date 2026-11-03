@@ -1,19 +1,14 @@
-/**
- * One TLS handshake with node:tls, shared by the TLS collector and the HTTP collector (final host of
- * a redirect to another domain): SNI = host (none for IP targets), `rejectUnauthorized: false`, default
- * Node trust store (Mozilla bundle) or the test CA. Own name check via `X509Certificate.checkHost` / `checkIP`:
- * Node does not check the name when chain verification already failed (e.g. self-signed). Chain from
- * `getPeerCertificate(true)` (Node appends trusted issuers from its store), `chainComplete` = the walk ends at a
- * self-signed certificate. SSRF guard as in the HTTP client; `--proxy` → HTTP CONNECT tunnel (peer
- * address unknown).
- */
+// One TLS handshake with node:tls for the TLS and HTTP collectors: SNI = host (none for IP targets),
+// `rejectUnauthorized: false`, default Node trust store or the test CA. Own name check via `X509Certificate.checkHost`
+// / `checkIP`: Node skips it when chain verification already failed. `chainComplete` = the chain ends at a self-signed
+// certificate. SSRF guard as in the HTTP client; `--proxy` → CONNECT tunnel.
 import { X509Certificate } from 'node:crypto';
 import { isIP, type Socket } from 'node:net';
 import tls, { type DetailedPeerCertificate, type TLSSocket } from 'node:tls';
-import type { CollectorContext } from '../../core/collector.ts';
-import { errorMessage } from '../../core/errors.ts';
-import { detectTrustStore } from '../../core/snapshot.ts';
-import type { CertificateInfo, TlsEndpoint } from '../../core/snapshot-tls.ts';
+import { errorMessage } from '../../core/runtime/errors.ts';
+import type { CollectorContext } from '../../core/snapshot/collector.ts';
+import { detectTrustStore } from '../../core/snapshot/index.ts';
+import type { CertificateInfo, TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { DNS_ERROR_CODES, ProbeError, routeToPublic } from '../http/client.ts';
 import type { HostTarget } from '../http/hosts.ts';
 import { openTunnel } from './tunnel.ts';
@@ -121,10 +116,8 @@ function handshake(
   });
 }
 
-/**
- * Handshake with `t.host:port` and the certificate facts. `role: 'final'` marks the final host of a redirect to
- * another registrable domain and its www/apex (`hostVariant` is then relative to that domain).
- */
+// `role: 'final'` marks the final host of a redirect to another registrable domain and its www/apex (`hostVariant` is
+// then relative to that domain).
 export async function probeTlsEndpoint(
   ctx: Pick<CollectorContext, 'network' | 'signal' | 'now'>,
   t: HostTarget,

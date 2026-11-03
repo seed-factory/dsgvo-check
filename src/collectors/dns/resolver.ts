@@ -1,15 +1,13 @@
-/**
- * Resolver abstraction for the DNS collector. `createNodeDnsClient` wraps `node:dns/promises` `Resolver`
- * (c-ares) with a per-attempt timeout and exactly one retry for SERVFAIL/TIMEOUT, and maps errors to rcodes
- * while keeping NXDOMAIN and NODATA apart. DNS never goes through `--proxy`.
- */
+// Resolver abstraction for the DNS collector: `createNodeDnsClient` wraps `node:dns/promises` (c-ares) with a
+// per-attempt timeout and one retry for SERVFAIL/TIMEOUT, and keeps NXDOMAIN and NODATA apart. DNS never goes through
+// `--proxy`.
 import { Resolver } from 'node:dns/promises';
-import type { CollectorError } from '../../core/snapshot-common.ts';
-import type { DnsAnswer, DnsRcode, DnsRecordType, DnsSection } from '../../core/snapshot-dns.ts';
+import type { CollectorError } from '../../core/snapshot/common.ts';
+import type { DnsAnswer, DnsRcode, DnsRecordType, DnsSection } from '../../core/snapshot/dns.ts';
 
 export interface RawDnsResult {
   rcode: DnsRcode;
-  /** Raw answers (not yet masked or filtered: the collector does that before anything is stored). */
+  /** Raw answers: the collector masks and filters them before anything is stored. */
   answers: DnsAnswer[];
   attempts: number;
   durationMs: number;
@@ -19,37 +17,29 @@ export interface RawDnsResult {
 export interface DnsClient {
   readonly resolver: DnsSection['resolver'];
   query(qname: string, type: DnsRecordType): Promise<RawDnsResult>;
-  /** Cancel outstanding queries (scan timeout). */
   cancel(): void;
 }
 
 export interface NodeDnsClientOptions {
-  /** `host[:port]` list; empty = system resolver configuration. */
   servers: readonly string[];
-  /** Per attempt. */
   timeoutMs?: number;
-  /** Extra attempts for SERVFAIL/TIMEOUT (default 1). */
   retries?: number;
 }
 
 export const DEFAULT_DNS_TIMEOUT_MS = 3000;
 
-/** node:dns (c-ares) error code → rcode. ENOTFOUND is NXDOMAIN, ENODATA is NOERROR without answers. */
+/** ENOTFOUND is NXDOMAIN, ENODATA is NOERROR without answers. */
+const RCODE_BY_ERROR_CODE: ReadonlyMap<string, DnsRcode> = new Map([
+  ['ENOTFOUND', 'NXDOMAIN'],
+  ['ENODATA', 'NODATA'],
+  ['ESERVFAIL', 'SERVFAIL'],
+  ['ETIMEOUT', 'TIMEOUT'],
+  ['EREFUSED', 'REFUSED'],
+]);
+
+/** node:dns (c-ares) error code → rcode; any other code is a plain `ERROR`. */
 export function errorToRcode(code: string | undefined): DnsRcode {
-  switch (code) {
-    case 'ENOTFOUND':
-      return 'NXDOMAIN';
-    case 'ENODATA':
-      return 'NODATA';
-    case 'ESERVFAIL':
-      return 'SERVFAIL';
-    case 'ETIMEOUT':
-      return 'TIMEOUT';
-    case 'EREFUSED':
-      return 'REFUSED';
-    default:
-      return 'ERROR';
-  }
+  return (code !== undefined && RCODE_BY_ERROR_CODE.get(code)) || 'ERROR';
 }
 
 const RETRYABLE: ReadonlySet<DnsRcode> = new Set(['SERVFAIL', 'TIMEOUT']);

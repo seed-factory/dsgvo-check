@@ -5,4 +5,4 @@ export {
   disclaimerParagraphs,
   disclaimerText,
   phaseCPerformed,
-} from '../core/disclaimer.ts';
+} from '../core/data/disclaimer.ts';

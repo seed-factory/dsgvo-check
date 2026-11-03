@@ -1,8 +1,6 @@
 /**
- * static check: the traffic that canary/README.md promises (rule 1, "Passive only") matches the class T probes the
- * collectors actually send. A site owner who asks "what did you send us?" gets this list, so it must not name a
- * probe that does not exist (e.g. `security.txt` while SEC-01 is not part of the prototype) nor miss one.
- * No network, no build.
+ * The traffic that canary/README.md promises ("Passive only") matches the class T probes the collectors send, so a
+ * site owner asking "what did you send us?" gets a list without a missing or invented probe. No network, no build.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -33,7 +31,7 @@ function probePurposes(): Set<string> {
   return out;
 }
 
-/** How rule 1 of the canary README must describe each probe purpose. */
+/** How the canary README must describe each probe purpose. */
 const DESCRIBED: Record<string, RegExp> = {
   'robots.txt': /`robots\.txt`/,
   sitemap: /at most 2 sitemap requests/,

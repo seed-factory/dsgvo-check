@@ -1,13 +1,11 @@
 /**
- * an inert `<meta http-equiv="refresh">` inside nested `<template>` elements of an http page is no
- * redirect, so with an unavailable HTTPS the verdict of TLS-01 stays `https-unavailable` (critical) and does not
- * drop to `client-side-redirect-only` (warning). The collector runs for real against a local server; the check reads
- * the section it produced.
+ * An inert `<meta http-equiv="refresh">` inside nested `<template>` elements of an http page is no redirect, so TLS-01
+ * stays `https-unavailable` (critical) instead of `client-side-redirect-only` (warning). The collector runs for real.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
-import type { HttpSection } from '../../../src/core/snapshot-http.ts';
+import type { HttpSection } from '../../../src/core/snapshot/http.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, withRoutes } from './helpers.ts';

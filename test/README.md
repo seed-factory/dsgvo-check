@@ -1,24 +1,24 @@
 # Tests
 
-| Level | Where                                                                                       | What                                                                                                           | Network       |
-| ----- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------- |
-| L0    | `test/unit/core/{registry-completeness,stopwords,no-crm-codes,schema,import-graph}.test.ts` | registry completeness, stop words, no `T[0-9]_` outside JSON, report JSON Schema (Ajv), import graph of checks | none          |
-| L1    | `test/unit/**`                                                                              | checks on snapshot slices (`test/utils/snapshot-builder.ts`), core (gate, assess, …)                           | none          |
-| L2    | `test/integration/**`                                                                       | real Chromium (Chrome for Testing, new headless), undici, `node:tls`, dns2, local servers                      | loopback only |
-| L3    | `test/e2e/**`                                                                               | packed CLI, Docker image, Action                                                                               | loopback only |
-| live  | `test/live/**`                                                                              | real sites; never part of `pnpm test`                                                                          | internet      |
+| Level | Where                                                                                                                         | What                                                                                                           | Network       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------- |
+| L0    | `test/unit/core/**/{registry-completeness,stopwords,schema,import-graph}.test.ts`, `test/unit/reporters/no-crm-codes.test.ts` | registry completeness, stop words, no `T[0-9]_` outside JSON, report JSON Schema (Ajv), import graph of checks | none          |
+| L1    | `test/unit/**`                                                                                                                | checks on snapshot slices (`test/utils/snapshot-builder.ts`), core (gate, assess, …)                           | none          |
+| L2    | `test/integration/**`                                                                                                         | real Chromium (Chrome for Testing, new headless), undici, `node:tls`, dns2, local servers                      | loopback only |
+| L3    | `test/e2e/**`                                                                                                                 | packed CLI, Docker image, Action                                                                               | loopback only |
+| live  | `test/live/**`                                                                                                                | real sites; never part of `pnpm test`                                                                          | internet      |
 
 Commands: `corepack pnpm test` (unit + integration), `test:unit`, `test:integration`, `test:e2e`, `test:live`.
-One file: `corepack pnpm vitest run test/unit/core/gate.test.ts`.
+One file: `corepack pnpm vitest run test/unit/core/evaluation/gate.test.ts`.
 The Docker part of L3 is opt-in: set `DSGVO_E2E_IMAGE` (see `test/e2e/docker.e2e.test.ts`).
 
 ## Parallel runs
 
 One worker per logical core. `DSGVO_TEST_WORKERS=4`, `=50%` or `=1` (one file at a time) overrides it
-(`test/utils/test-workers.ts`). L2 and L3 files must not depend on each other:
+(`test/utils/run/test-workers.ts`). L2 and L3 files must not depend on each other:
 
-- **Temp dir.** `test/utils/worker-tmpdir.ts` sets `TMPDIR` to `<tmp>/dsgvo-test-<run pid>/w<pool>-<pid>` for each
-  file; `test/utils/global-tmpdir.ts` removes the run directory. Create temp files with `os.tmpdir()` and never look
+- **Temp dir.** `test/utils/run/worker-tmpdir.ts` sets `TMPDIR` to `<tmp>/dsgvo-test-<run pid>/w<pool>-<pid>` for each
+  file; `test/utils/run/global-tmpdir.ts` removes the run directory. Create temp files with `os.tmpdir()` and never look
   into the real temp dir.
 - **Ports.** Listen on port 0. Hostnames are virtual (`--host-resolver-rules`); only the fixture server's ports are
   real.

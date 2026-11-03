@@ -1,12 +1,11 @@
 /**
- * The link cap must not exclude a footer's legal links on a page with a long article list: otherwise
- * LEGAL-01 could infer a missing link from truncated input. Over the cap the collector prioritizes legal-looking
- * links and footer/nav regions, fills the rest in document order, and reports that the list is truncated.
+ * The link cap must not drop a footer's legal links on a page with a long article list (LEGAL-01 would infer a missing
+ * link from truncated input): legal-looking and footer/nav links go first, the list is reported as truncated.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { collectDom } from '../../../src/collectors/browser/dom.ts';
-import { domFactsInPage } from '../../../src/collectors/browser/in-page-dom.ts';
+import { domFactsInPage } from '../../../src/collectors/browser/in-page/dom.ts';
+import { collectDom } from '../../../src/collectors/browser/pages/dom-facts.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
 import { page as html, type SiteDir, writeSite } from './site-dir.ts';

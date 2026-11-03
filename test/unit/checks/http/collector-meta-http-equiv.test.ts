@@ -1,9 +1,6 @@
 /**
- * What the HTTP collector stores of the `<meta http-equiv>` names. The name is
- * untrusted text of the page (the value is edited before it is stored, the name was not): `storedMeta` lower-cased it
- * and kept it, so a 64 KiB prefix of the document grew the snapshot by 64 KB, and a name could carry an address.
- * HDR-01 reads one name, `content-security-policy`. A name is kept when it has the shape of a header name (at most 40
- * characters of `[a-z0-9._-]`), and the number of records is bounded. The type of the record does not change.
+ * What the HTTP collector stores of `<meta http-equiv>` names: the name is untrusted page text, so it is kept only in
+ * the shape of a header name (≤ 40 characters of `[a-z0-9._-]`) and the record count is bounded. HDR-01 reads one name.
  */
 import { describe, expect, it } from 'vitest';
 import { extractMeta } from '../../../../src/collectors/http/html.ts';

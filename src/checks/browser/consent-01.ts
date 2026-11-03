@@ -1,12 +1,7 @@
-/**
- * CONSENT-01 (P0): third-party and first-party-proxy requests started before any interaction with the banner
- * (phase A and phase B before the click). Owns analytics, ads, session-recording, tag-manager and the remainder
- * of categories by test/data/routing.yaml; one observation per service, unknown hosts per registrable domain.
- * Bot or geo signal → inconclusive (5.2).
- */
+/** CONSENT-01 (P0): third-party and first-party-proxy requests before any banner interaction; bot or geo signal → inconclusive. */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type { RequestRecord } from '../../core/snapshot-browser.ts';
+import type { RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import {
   consentSignals,
@@ -48,7 +43,7 @@ export function variantOf(c: ClassifiedRequest): Variant {
   if (c.firstPartyProxy) return 'first-party-proxy';
   if (TRACKING_CATEGORIES.has(c.category)) {
     if (c.kind !== 'hit') return 'library-loaded';
-    // 03-checks §3.3: critical only for a persistent identifier; a cookieless ping, per-load or none → warning.
+    // Critical only for a persistent identifier; a cookieless ping, per-load or none is a warning.
     return persistentIdentifier(c) ? 'tracking-completed' : 'cookieless-ping';
   }
   if (c.category === 'unknown') return 'unknown-host';

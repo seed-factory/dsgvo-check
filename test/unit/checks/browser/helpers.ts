@@ -1,10 +1,8 @@
 /**
- * Scenario builders for browser-check tests and the fixture generator (generate-fixtures.ts).
- * A "site" is the target https://www.example.de/ with phase A pages start/impressum/datenschutz/kontakt that link
- * to both legal documents in the footer, documents found via link, and no CMP detected unless given.
+ * Scenario builders for browser-check tests: a "site" is https://www.example.de/ with phase A pages
+ * start/impressum/datenschutz/kontakt linking both legal documents in the footer, and no CMP unless given.
  */
 import type { CmpFacts, CmpPhaseFacts, CmpSection } from '../../../../src/cmp/types.ts';
-import type { Snapshot, SnapshotEnvironment } from '../../../../src/core/snapshot.ts';
 import type {
   BrowserPlan,
   CookieRecord,
@@ -15,7 +13,8 @@ import type {
   PhaseRecord,
   RequestRecord,
   StorageRecord,
-} from '../../../../src/core/snapshot-browser.ts';
+} from '../../../../src/core/snapshot/browser.ts';
+import type { Snapshot, SnapshotEnvironment } from '../../../../src/core/snapshot/index.ts';
 import {
   makeBrowser,
   makeCmpFacts,

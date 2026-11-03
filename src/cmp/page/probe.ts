@@ -1,13 +1,8 @@
 /**
- * In-page measurement of a consent banner (runs via `frame.evaluate`). SELF-CONTAINED: no references outside the
- * function bodies (they are serialized into the page). Reads only; never clicks, never changes the DOM.
- *
- * Banner mode: container from vendor selectors (open shadow DOM included). Heuristic mode: best fixed/modal
- * candidate with consent wording (5.5: facts only, the verdict stays `info`).
- * Measured before any action: buttons (role, accessible name, box, rendered, in viewport, enabled, hit test,
- * contrast), blocking (overlay via grid hit test, scroll lock on html/body, inert, coveredRatio).
+ * In-page measurement of a consent banner (`frame.evaluate`). SELF-CONTAINED: the functions are serialized into the
+ * page, so they reference nothing outside their bodies. Reads only; never clicks or changes the DOM.
  */
-import type { Box } from '../../core/snapshot-common.ts';
+import type { Box } from '../../core/snapshot/common.ts';
 import type { DAnimation, DElement, DNode, DQueryRoot, DShadowRoot, DStyle, DWindow } from './dom.ts';
 import type { ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
 
@@ -247,11 +242,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return false;
   };
   /**
-   * Page chrome. `navigation`: the element or an ancestor is a navigation landmark (nav, aside, role
-   * navigation/complementary), always chrome. `section`: the element itself is a header/footer (role banner/
-   * contentinfo), chrome for a non-dialog candidate. `inside-section`: an ancestor is one; a real banner may sit in a
-   * footer or header partial, so the caller decides by whether the candidate offers an accept/reject control.
-   * A true dialog may sit in a header or footer.
+   * `navigation`: nav/aside landmark on the element or an ancestor, always chrome. `section`: the element is a header or
+   * footer, chrome unless a dialog. `inside-section`: the caller decides, since a banner may sit in a footer partial.
    */
   const pageChromeOf = (el: DElement): 'navigation' | 'section' | 'inside-section' | null => {
     let found: 'section' | 'inside-section' | null = null;
@@ -266,7 +258,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     }
     return found;
   };
-  /** A finite animation or transition is running on the element's subtree or on one of its ancestors. */
   const animatingAround = (el: DElement): boolean => {
     const runningFinite = (a: DAnimation): boolean => {
       if (a.playState !== 'running' && a.playState !== 'pending') return false;
@@ -337,8 +328,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const esc = (v: string): string => (w.CSS?.escape ? w.CSS.escape(v) : v.replace(/[^\w-]/g, '\\$&'));
   const uniqueIn = (el: DElement, root: DQueryRoot): string | null => {
-    // A selector is good when it finds exactly this element: one match that is `el` itself. "One match" alone would
-    // accept a selector that points at a neighbour.
+    // One match that is `el` itself; "one match" alone would accept a selector pointing at a neighbour.
     const isOnly = (sel: string): boolean => {
       try {
         const found = root.querySelectorAll(sel);
@@ -356,10 +346,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
     const tag = el.tagName.toLowerCase();
     const tries: string[] = [];
-    // A value with an "@" may be an address (an aria-label "Fragen an name@firma.de", a class "kontakt-name@firma.de"):
-    // no selector is built from it, the selector is stored in the snapshot. A class token with an
-    // address is left out, the other tokens may still make the selector unique; otherwise the structural path below
-    // is used.
+    // A value with an "@" may be an address: no selector is built from it, since selectors are stored in the snapshot.
+    // A class token with an address is left out (the others may still be unique), else the structural path is used.
     const plain = (v: string): boolean => !v.includes('@');
     if (el.id && plain(el.id)) tries.push(`#${esc(el.id)}`);
     for (const attr of [
@@ -375,8 +363,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       if (v !== null && v.length < 80 && plain(v) && !/[\n\r"\\]/.test(v))
         tries.push(`${tag}[${attr}="${v}"]`);
     }
-    // The class attribute is split by the whitespace of HTML (space, tab, LF, FF, CR), not by JavaScript `\s`: a token
-    // with a no-break space and an address is one token for the browser and is dropped as a whole.
+    // HTML whitespace, not JS `\s`: a token with a no-break space and an address is one token to the browser.
     const cls = (el.getAttribute('class') ?? '')
       .split(/[ \t\n\f\r]+/)
       .filter(Boolean)
@@ -475,8 +462,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         !['main', 'article'].includes(tag) &&
         (role === 'region' || (label !== '' && keywordHitsOf(label.toLowerCase()).length > 0));
       if (!dialogish && !fixed && !staticCandidate) continue;
-      // Page chrome (header/nav/footer/aside with a "Datenschutz" link, or anything inside a navigation) is no banner.
-      // A candidate inside a header/footer is kept for now: it needs an accept/reject control (checked below).
+      // Page chrome is no banner; one inside a header/footer needs an accept/reject control (checked below).
       const chrome = pageChromeOf(el);
       if (chrome === 'navigation' || (chrome === 'section' && !dialogish)) continue;
       const inSection = chrome === 'inside-section' && !dialogish;
@@ -500,8 +486,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         !controlEls.slice(0, 80).some((c) => !inNavigation(c, el) && isLexiconControl(c))
       )
         continue;
-      // Inside a header/footer landmark the control must be an accept or reject (a footer strip with settings links
-      // is chrome); without choice phrases the landmark stays chrome.
+      // Inside a header/footer the control must be an accept or reject: a footer strip with settings links is chrome.
       if (inSection && !controlEls.slice(0, 80).some((c) => !inNavigation(c, el) && isChoiceControl(c)))
         continue;
       const score = (dialogish ? 2 : 0) + (fixed ? 1 : 0) + Math.min(hits.length, 4) + (controls > 0 ? 1 : 0);
@@ -668,7 +653,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     backdropCache.set(el, result);
     return result;
   };
-  /** The hit element lies under a full-viewport backdrop that belongs to the banner. */
   const underOverlay = (hit: DElement): boolean => {
     let c: DElement | null = hit;
     for (let k = 0; c && k < 80 && c !== doc.body && c !== doc.documentElement; k++) {
@@ -753,12 +737,10 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     if (c.getAttribute('aria-modal') === 'true') ariaModal = true;
   }
 
-  // Links of the page (outside the banner) that are visible at the first screen and lie under the banner or its
-  // backdrop: a hit test at the centre of each link, not the geometry of the container. Which of them are legal
-  // links is not decided here.
+  // Hit test at each link's centre, not the container geometry; which links are legal is decided on the Node side.
   const coveredLinks: ProbeResult['coveredLinks'] = [];
-  // At most this many are reported (a full-screen backdrop covers every link of the first screen). Kept inside the
-  // function: the probe is serialized into the page and sees no module scope.
+  // Capped because a full-screen backdrop covers every link of the first screen. Defined inside the function: the probe
+  // is serialized into the page and sees no module scope.
   const MAX_COVERED_LINKS = 200;
   if (visible) {
     for (const a of deepQueryAll('a[href], [role="link"]')) {

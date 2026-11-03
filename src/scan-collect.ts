@@ -1,21 +1,23 @@
-/**
- * Collector phase of a scan: runs the collectors the checks need under the global deadline and merges what they
- * hand over into the snapshot.
- */
+/** Collector phase of a scan: runs the collectors the checks need under the global deadline and merges their sections into the snapshot. */
 import path from 'node:path';
-import type { AnyCheck } from './core/check.ts';
-import type { CollectorContext, CollectorResult, Collectors, FatalSignal } from './core/collector.ts';
-import { errorMessage, ScanFatalError } from './core/errors.ts';
-import type { Logger } from './core/logger.ts';
+import type { AnyCheck } from './core/evaluation/check.ts';
+import { errorMessage, ScanFatalError } from './core/runtime/errors.ts';
+import type { Logger } from './core/runtime/logger.ts';
+import { uaToken } from './core/runtime/user-agent.ts';
+import type {
+  CollectorContext,
+  CollectorResult,
+  Collectors,
+  FatalSignal,
+} from './core/snapshot/collector.ts';
 import {
   type CollectorName,
   SECTION_PRODUCER,
   type Snapshot,
   type SnapshotSectionKey,
   type TargetInfo,
-} from './core/snapshot.ts';
-import { sanitizeUrl } from './core/url.ts';
-import { uaToken } from './core/user-agent.ts';
+} from './core/snapshot/index.ts';
+import { sanitizeUrl } from './core/url/url.ts';
 import type { ResolvedScanOptions } from './scan-options.ts';
 
 /** Collectors needed by the given checks (`derived` implies `browser`). */
@@ -96,8 +98,7 @@ async function runCollector<S extends object>(
     const res = await untilDeadline(pending, ctx.signal);
     if (res.timedOut) {
       state.timedOut = true;
-      // 5.2: findings collected before the timeout are kept — give the collector a bounded chance to stop and
-      // return what it has (e.g. the browser with phase A done and phase B cut).
+      // findings collected before the timeout are kept: give the collector a bounded chance to stop and return what it has
       const late = await withinGrace(pending, graceMs);
       const durationMs = Math.round(performance.now() - t0);
       if (!late) {
@@ -146,7 +147,7 @@ async function runCollector<S extends object>(
   }
 }
 
-/** The browser visited the start page in phase A (5.2: a timeout before that is fatal). */
+/** The browser visited the start page in phase A (a timeout before that is fatal). */
 function startPageDone(snapshot: Snapshot): boolean {
   return (snapshot.browser?.phases ?? []).some(
     (p) => p.phase === 'A' && p.pages.some((v) => v.role === 'start'),
@@ -245,7 +246,7 @@ export async function collect(
     const start = snapshot.http?.documents.find((d) => d.role === 'start' && d.status !== null);
     if (start?.finalUrl) setFinalUrl(snapshot, start.finalUrl);
   }
-  // 5.2: the global timeout before phase A finished on the start page is fatal (`timeout`). Without a planned
+  // the global timeout before phase A finished on the start page is fatal (`timeout`). Without a planned
   // browser run (not needed, or skipped as tls-blocked) a timeout only leaves the unfinished checks in error.
   const browserPlanned = needed.has('browser') && snapshot.collection.browser?.status !== 'skipped';
   if (state.timedOut && !state.fatal && browserPlanned && !startPageDone(snapshot)) {

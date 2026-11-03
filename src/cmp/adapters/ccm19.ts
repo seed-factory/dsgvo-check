@@ -1,8 +1,6 @@
 /**
- * CCM19 (Papoo Software). Signals: `window.CCM`, script `…ccm19…/app.js?apiKey=…`, `#ccm-widget`, stored consent
- * `ccm_consent*` (cookie or localStorage, depending on the installation). ⚠ The JS API is not publicly documented:
- * state is derived from `CCM.acceptedEmbeddings` (optional = not CCM19/essential) and is validated only against our
- * simulator; geo and bot signals are not known (gap).
+ * CCM19 (Papoo Software). The JS API is not publicly documented: state is derived from `CCM.acceptedEmbeddings` and
+ * validated only against our simulator; geo and bot signals are not known.
  */
 import type { Page } from 'playwright-core';
 import type { CategoryState, ConsentStateFact } from '../types.ts';
@@ -15,7 +13,6 @@ interface Ccm19Read {
   embeddings: CategoryState | null;
 }
 
-/** In-page, self-contained. */
 function readCcm19(): Ccm19Read {
   const w = globalThis as unknown as {
     CCM?: { acceptedEmbeddings?: unknown; embeddings?: unknown };

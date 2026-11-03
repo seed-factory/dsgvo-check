@@ -1,7 +1,6 @@
 /**
- * Inert `<template>` content with nesting. The first `</template>` closes the innermost template only;
- * markup anywhere inside the outer one is not part of the document. A real `<meta>` after the outer template stays
- * visible, and so does a form.
+ * Inert `<template>` content with nesting: the first `</template>` closes the innermost one only, markup inside the
+ * outer one is not part of the document, a real `<meta>` or form after it stays visible.
  */
 import { describe, expect, it } from 'vitest';
 import { detectClientRedirect, detectForm, extractMeta } from '../../../../src/collectors/http/html.ts';

@@ -52,7 +52,7 @@ node dist/cli.js report <report.json> --format html,pdf
 
 ## Как добавить проверку
 
-Образец чистой проверки — [contract-example.test.ts](test/unit/core/contract-example.test.ts).
+Образец чистой проверки — [contract-example.test.ts](test/unit/core/evaluation/contract-example.test.ts).
 
 1. Создай `src/checks/<module>/<id>.ts` и добавь строку в `src/checks/<module>/index.ts`.
 2. Добавь варианты с уровнем и `crm` (код каталога или `null`) в `test/data/ruleset/de-2026/<module>.yaml` и тексты в `test/data/texts/{de,en}/<module>.yaml`. Затем выполни `corepack pnpm registry`.

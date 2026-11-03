@@ -1,15 +1,12 @@
-/**
- * end-to-end: scan with the real HTTP and TLS collectors and the http module checks only. The browser collector
- * is replaced by a spy: http checks must not start a browser (and this test stays independent of the browser stack).
- */
+/** `scan` with the real HTTP and TLS collectors and only the http checks; a spy browser collector must stay unused. */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { httpChecks } from '../../../src/checks/http/index.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import { CheckRegistry } from '../../../src/core/registry.ts';
-import type { FullReport, Report } from '../../../src/core/report-schema.ts';
+import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import type { FullReport, Report } from '../../../src/core/report/schema.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 import { closedPort, withRoutes } from './helpers.ts';
 import { ALL_ROUTES } from './sites.ts';
 

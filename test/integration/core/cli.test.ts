@@ -1,19 +1,18 @@
-/** CLI exit codes and failed reports (5.2 rows "invalid input" / "unreachable"). Runs src/cli.ts via type stripping. */
+/** CLI exit codes and failed reports ("invalid input" / "unreachable"). Runs src/cli.ts via type stripping. */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/offline-network-hook.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/preload/offline-network-hook.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 
 const cli = path.join(REPO_ROOT, 'src/cli.ts');
 
 /**
- * The test is loopback-only (test/README.md): the CLI runs with a preload that replaces the system resolver by one that
- * answers ENOTFOUND for every host and logs each lookup, so no DNS query leaves the machine.
+ * Loopback-only (test/README.md): a preload makes the resolver answer ENOTFOUND for every host and log each lookup.
  */
 function run(...args: string[]) {
   const lookupLog = path.join(mkdtempSync(path.join(tmpdir(), 'cli-dns-')), 'lookups.log');

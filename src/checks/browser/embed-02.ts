@@ -1,9 +1,4 @@
-/**
- * EMBED-02 (P0): external map services (iframe, JS API, static maps, tiles) loaded before consent (phase A)
- * or after the reject (phase B). A plain link, a local image or a two-click placeholder without a request is no
- * finding; a load only after accepting (C) neither. Storage written by the provider is CONSENT-02's axis.
- * If the contact page could not be evaluated and nothing was found → inconclusive. Bot or geo → inconclusive.
- */
+/** EMBED-02 (P0): external map services loaded before consent or after the reject. */
 import { defineCheck, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import {

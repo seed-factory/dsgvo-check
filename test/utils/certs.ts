@@ -1,11 +1,7 @@
 /**
- * Test PKI (@peculiar/x509, WebCrypto P-256). One test CA plus leaf certificates for any host set.
- *
- * Trust model in :
- * - Node (undici, node:tls): trust `pki.caPem` via the `ca` option → expired / wrong-name / self-signed produce the
- * real Node errors (CERT_HAS_EXPIRED, ERR_TLS_CERT_ALTNAME_INVALID, DEPTH_ZERO_SELF_SIGNED_CERT).
- * - Chromium: `--ignore-certificate-errors-spki-list=<pki.trustedSpki>` — all "good" leaves share ONE key pair,
- * so a single SPKI hash covers every host. Broken certificates use their own keys and stay broken for Chromium.
+ * Test PKI (@peculiar/x509, WebCrypto P-256): one test CA plus leaf certificates for any host set. Node (undici,
+ * node:tls) trusts `pki.caPem`, so expired / wrong-name / self-signed leaves give the real Node errors. Chromium uses
+ * `--ignore-certificate-errors-spki-list=<pki.trustedSpki>`: valid leaves share ONE key pair, broken ones have their own.
  */
 import 'reflect-metadata'; // required by @peculiar/x509 (tsyringe)
 import { createHash, webcrypto } from 'node:crypto';

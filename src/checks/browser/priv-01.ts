@@ -1,15 +1,10 @@
 /**
- * PRIV-01 (P0, simplified per BRIEF): a loaded catalog service with `policyRelevance: required` is looked up in
- * the evaluated text of the Datenschutzerklärung by levels named > company > domain > category. Negations are
- * not parsed, so `not-named` is capped at `medium`. Category-only description and matches only in
- * `hidden-irrelevant` parts → info for manual review. PDF, incomplete document, language not de/en →
- * inconclusive; expandable parts not opened (banner open) → partial, also when that is the only error of the
- * document. A page whose type the collector could not confirm is no policy. The evidence of a
- * negative search carries the manifest of the processed document. No policy found is LEGAL-01's finding.
+ * PRIV-01 (P0): a loaded catalog service is looked up in the Datenschutzerklärung by levels named > company > domain >
+ * category. Negations are not parsed, so `not-named` is capped at `medium`. A missing policy is LEGAL-01's finding.
  */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type { DocumentRecord } from '../../core/snapshot-browser.ts';
+import type { DocumentRecord } from '../../core/snapshot/browser.ts';
 import type { ServiceInfo } from '../../derive/types.ts';
 import {
   MAX_EVIDENCE,
@@ -72,9 +67,8 @@ function quote(text: string, term: string): string {
 }
 
 /**
- * The only thing missing is the content of expandable parts that were not opened. With the banner open (phase B not
- * possible) such parts are marked in the manifest and reported as limitation `banner-open`; every other error
- * (truncation, unreadable frame, too short) still makes the document incomplete.
+ * The only thing missing is the content of expandable parts that were not opened (banner open); it is reported as
+ * limitation `banner-open`. Every other error still makes the document incomplete.
  */
 function onlyUnopened(d: DocumentRecord): boolean {
   return d.errors.length > 0 && d.errors.every((e) => e === 'expand-failed');
@@ -90,8 +84,7 @@ export const priv01 = defineCheck({
     { variant: 'ambiguous-match', variantGroup: 'policy-mention' },
   ],
   run({ browser, documents, derived }) {
-    // A page the collector judged "not the document" or could not confirm as such is no policy to search:
-    // LEGAL-01 reports it.
+    // A page judged "not the document" or unconfirmed is no policy to search; LEGAL-01 reports it.
     const policies = documents.documents.filter(
       (d) => d.kind === 'privacy' && usableDocument(d, documents.attempts),
     );

@@ -1,6 +1,6 @@
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import { bannerBox, clipForBox } from '../../../../src/collectors/browser/screenshot.ts';
+import { bannerBox, clipForBox } from '../../../../src/collectors/browser/phases/screenshot.ts';
 import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
 
 /** A page that must not be touched: the CMP measured the container already. */

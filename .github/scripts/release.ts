@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
-import { loadRuleset, loadTexts } from '../../src/core/data.ts';
+import { loadRuleset, loadTexts } from '../../src/core/data/load.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   version: string;

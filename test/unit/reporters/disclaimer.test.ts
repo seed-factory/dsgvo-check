@@ -1,19 +1,18 @@
 /**
- * Disclaimer with conditional paragraphs (wording guide §6): each paragraph is rendered only when its
- * condition holds in the report, in every human-readable format and in `disclaimer.text` of the JSON report.
- * Every condition is tested in both states.
+ * Disclaimer with conditional paragraphs (wording guide §6): each is rendered only when its condition holds in the
+ * report, in every human-readable format and in `disclaimer.text` of the JSON report; every condition in both states.
  */
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../src/core/data.ts';
-import { templateParams, uiText } from '../../../src/core/messages.ts';
-import type { FullReport, MessageParams, Report } from '../../../src/core/report-schema.ts';
-import type { ReporterContext } from '../../../src/core/reporter.ts';
+import { loadTexts } from '../../../src/core/data/load.ts';
+import { templateParams, uiText } from '../../../src/core/data/messages.ts';
+import type { ReporterContext } from '../../../src/core/report/reporter.ts';
+import type { FullReport, MessageParams, Report } from '../../../src/core/report/schema.ts';
 import { renderConsole } from '../../../src/reporters/console.ts';
 import { DISCLAIMER_KEYS, disclaimerParagraphs } from '../../../src/reporters/disclaimer.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { renderSummary } from '../../../src/reporters/summary.ts';
-import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
+import { sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
 
 const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => ({
   texts: loadTexts(lang),

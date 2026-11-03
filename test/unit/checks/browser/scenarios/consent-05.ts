@@ -1,7 +1,7 @@
 import { click, cmpFacts, cmpWith, phase, req, site } from '../helpers.ts';
 import { ga, type Scenario } from './shared.ts';
 
-/** Reject confirmed by state (03-checks §4): changed by our click (`action`), then read back after the reload. */
+/** Reject confirmed by state: changed by our click (`action`), then read back after the reload. */
 const confirmedReject = () => {
   const denied = {
     source: 'api',

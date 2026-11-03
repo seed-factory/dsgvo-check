@@ -1,11 +1,10 @@
 /**
- * `request` evidence follows specification 5.3 : independent `delivery` / `result` /
- * `provenance`, one monotonic `tMs` from the scan start, navigation/action/frame/parent ids and the versioned safe
- * `features` (identifier kind, stored-identifier match, event type, Consent Mode signal). No legacy relative times.
+ * `request` evidence: independent `delivery` / `result` / `provenance`, one monotonic `tMs` from the scan start,
+ * navigation/action/frame/parent ids and the versioned safe `features`. No legacy relative times.
  */
 import { describe, expect, it } from 'vitest';
 import { cookieEvidence, requestEvidence, storageEvidence } from '../../../../src/checks/browser/shared.ts';
-import { EvidenceSchema } from '../../../../src/core/report-schema.ts';
+import { EvidenceSchema } from '../../../../src/core/report/schema.ts';
 import type { ClassifiedRequest } from '../../../../src/derive/types.ts';
 import { makeCookie, makeRequest, makeStorage } from '../../../utils/snapshot-builder.ts';
 
@@ -84,7 +83,7 @@ describe('requestEvidence (5.3)', () => {
       thirdPartyETLD1: 'google-analytics.com',
       serviceId: 'google-analytics-4',
     });
-    // Times relative to navigation/click are computed from the ids, not stored (5.3).
+    // Times relative to navigation/click are computed from the ids, not stored.
     for (const legacy of ['state', 'status', 'tStartMs', 'tRef', 'identifierPresent'])
       expect(ev).not.toHaveProperty(legacy);
     expect(EvidenceSchema.safeParse({ id: 'ev-1', ...ev }).success).toBe(true);

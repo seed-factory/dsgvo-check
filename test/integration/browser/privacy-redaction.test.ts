@@ -1,7 +1,6 @@
 /**
- * (AGENTS rule 2; groups): the real browser collector writes no e-mail local part, no
- * query value inside link text or accessible names, and no identifier from matrix or `prefix:k=v` path segments into
- * the snapshot. Every marker below starts with `zq7`; none of them may appear in anything the collector persists.
+ * The real browser collector writes no e-mail local part, no query value inside link text or accessible names and no
+ * identifier from matrix or `prefix:k=v` path segments into the snapshot. Markers start with `zq7`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';

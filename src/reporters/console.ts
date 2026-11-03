@@ -1,11 +1,8 @@
-/**
- * Console reporter. No crmCode / `T[0-9]_` strings (5.6); every string that may come from a scanned site is passed
- * through `sanitizeExternal` (ANSI, bidi, control chars, workflow commands). Labels come from test/data/texts ui keys.
- */
-import { renderMessage, uiText } from '../core/messages.ts';
-import type { Finding, Report, Severity } from '../core/report-schema.ts';
-import type { RenderReport, ReporterContext } from '../core/reporter.ts';
-import { sanitizeExternal } from '../core/sanitize.ts';
+/** Console reporter: no crmCode strings; every string from a scanned site goes through `sanitizeExternal`. */
+import { renderMessage, uiText } from '../core/data/messages.ts';
+import { sanitizeExternal } from '../core/redaction/sanitize.ts';
+import type { RenderReport, ReporterContext } from '../core/report/reporter.ts';
+import type { Finding, Report, Severity } from '../core/report/schema.ts';
 import { disclaimerParagraphs } from './disclaimer.ts';
 
 const COLORS: Record<Severity, string> = {

@@ -1,11 +1,9 @@
 /**
- * Shared adapter machinery. An adapter is a declarative spec (signals, banner selectors, vendor roles) plus
- * read-only state/geo/bot readers: `extract / act / verify`. What counts as reject/accept and where to click is
- * decided by the pure `classifyFirstLayer` in core; `act(page, action, target)` only executes that target with
- * `locator.click()` without `force`, on exactly one matching element.
+ * Shared adapter machinery: a declarative spec plus read-only readers that run in the page (serialized, so
+ * self-contained). Clicking executes core's target on exactly one element.
  */
 import type { Page } from 'playwright-core';
-import { sanitizeUrl } from '../../core/url.ts';
+import { sanitizeUrl } from '../../core/url/url.ts';
 import { classifyFirstLayer } from '../classify.ts';
 import {
   confidenceFromSignals,
@@ -36,13 +34,10 @@ import type {
 } from '../types.ts';
 
 export interface DetectSpec {
-  /** Global paths, e.g. `Cookiebot`, `BorlabsCookie.Consents`. */
   globals?: string[];
-  /** Global paths holding the CMP's own version string, e.g. `complianz.version` (preferred over a script URL). */
+  /** Globals holding the CMP's own version string; preferred over a script URL. */
   versionGlobals?: string[];
-  /** Script URL regex sources with a stable label for the signal. */
   scripts?: Array<{ label: string; pattern: string }>;
-  /** Light-DOM selectors (shadow hosts included). */
   dom?: string[];
   /** Consent cookie name regex sources (names only). */
   cookies?: string[];
@@ -66,18 +61,13 @@ export interface AdapterSpec {
   version?(raw: DetectRaw): string | null;
   versionSupported?(version: string | null): boolean | null;
   banner: BannerSpec;
-  /** Read-only state. `origin` is `stored` when an answer is recorded, `default` otherwise, `special-branch` for geo/bot. */
+  /** Read-only; `origin` is `stored` with a recorded answer, `default` without, `special-branch` for geo/bot. */
   readState(page: Page): Promise<ConsentStateFact[]>;
   readGeo?(page: Page): Promise<GeoSignal[]>;
   readBot?(page: Page): Promise<BotSignal[]>;
   readConfig?(page: Page): Promise<AdapterConfig>;
-  /** CMP initialized (API loaded). */
   isReady(page: Page): Promise<boolean>;
-  /**
-   * The API cannot list the categories an installation offers, only answer per name (CookieHub). A category that
-   * stays `denied` through our accept click, while the click granted another one, may not exist there: it is left
-   * out of the accept verdict (`categories-ignored:<names>` in `method`). Default false.
-   */
+  /** The API cannot list the installation's categories (CookieHub), so a category left `denied` by our accept click may not exist. */
   categoriesUnlisted?: boolean;
 }
 
@@ -164,13 +154,11 @@ async function documentOrigin(page: Page): Promise<number | null> {
 }
 
 interface ClickRecord {
-  /** Document in which our last click happened. */
   document: number;
   /** Consent state read right before that click (`action` only for a state the click changed). */
   before: ConsentStateFact[];
 }
 
-/** Page → our last click. */
 const clicks = new WeakMap<Page, ClickRecord>();
 
 /** The record of our last click when it happened in the current document, else null (any reload since). */
@@ -311,7 +299,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     ready: (page) => safe(spec.isReady(page), false),
   };
 
-  /** `act(page, target)`: click exactly the target core chose; no classification here. */
+  /** Clicks exactly the target core chose; no classification here. */
   async function execute(
     page: Page,
     action: 'reject' | 'accept',
@@ -337,8 +325,8 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
   }
 
   /**
-   * `reject`/`accept`: the target passed by core; transitional without one, the same pure decision over the passed
-   * first-screen facts. Never a fresh measurement of its own (the click must be the one written to `plan.click`).
+   * Core's target, or (transitional) the same pure decision over the passed facts. Never measures on its own: the click
+   * must be the one recorded in `plan.click`.
    */
   async function decideOrExecute(
     page: Page,

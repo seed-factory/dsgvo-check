@@ -1,9 +1,6 @@
-/**
- * Own service catalog (Apache-2.0): test/data/services/*.yaml → validated, compiled matcher.
- * Loaded synchronously once per data dir; matching is pure.
- */
+/** Own service catalog (Apache-2.0): test/data/services/*.yaml compiled into a pure matcher, loaded once per data dir. */
 import { z } from 'zod';
-import { DataError, DEFAULT_DATA_DIR, loadDataDir } from '../core/data.ts';
+import { DataError, DEFAULT_DATA_DIR, loadDataDir } from '../core/data/load.ts';
 import type { RequestKind, ServiceCategory, ServiceInfo, TrackingStage } from './types.ts';
 
 const CATEGORIES = [
@@ -67,13 +64,11 @@ const RegexSchema = z.string().refine((s) => {
 const SignatureSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
-    /** Vendor hosts (exact host or domain suffix). */
     hosts: z.array(HostSchema).default([]),
     /** Also match on any other host (first-party proxy, tag gateway, self-hosted install). */
     anyHost: z.boolean().default(false),
-    /** Regex tested against the URL path. */
     path: RegexSchema,
-    /** Regex per query parameter value (only allowlisted values survive sanitizing, e.g. `id`, `tid`). */
+    /** Regex per query parameter value; only allowlisted values survive sanitizing. */
     query: z.record(z.string(), RegexSchema).optional(),
     kind: z.enum(KINDS),
     stage: z.enum(STAGES).optional(),
@@ -105,9 +100,8 @@ const ServiceSchema = z
     signatures: z.array(SignatureSchema).default([]),
     /** Tracking identifier cookies: `name`, glob `name_*`, optional `@domain` restriction. */
     cookies: z.array(z.string().min(1)).default([]),
-    /** Known cookies of the service that are not identifiers. */
     otherCookies: z.array(z.string().min(1)).default([]),
-    /** Tracking identifier keys in local/session storage or IndexedDB names (same syntax as cookies). */
+    /** Tracking identifier keys in Web Storage or IndexedDB names (same syntax as cookies). */
     storageKeys: z.array(z.string().min(1)).default([]),
     /** Consent Mode storage type relevant for cookieless pings. */
     consentStorage: z.enum(['ad', 'analytics']).optional(),
@@ -253,8 +247,8 @@ export class ServiceCatalog {
   }
 
   /**
-   * Classify a URL: vendor-host signature > any-host signature > longest domain suffix.
-   * Hosts with signatures of several services fall back to the domain index when no signature matches.
+   * Vendor-host signature > any-host signature > longest domain suffix. A host with signatures of several services falls
+   * back to the domain index when no signature matches.
    */
   matchUrl(url: URL): RequestMatch | null {
     const host = url.hostname.toLowerCase();
@@ -292,13 +286,11 @@ export class ServiceCatalog {
     return this.#allowStorage.find((a) => a.p.re.test(key))?.cls ?? null;
   }
 
-  /** Category terms (de + en) for a category. */
   categoryTerms(category: ServiceCategory): string[] {
     const c = this.data.categories[category];
     return c ? [...c.de, ...c.en] : [];
   }
 
-  /** Check-facing fields of a catalog entry. */
   info(id: string): ServiceInfo | null {
     const s = this.byId.get(id);
     if (!s) return null;

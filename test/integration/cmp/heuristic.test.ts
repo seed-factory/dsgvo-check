@@ -1,7 +1,4 @@
-/**
- * unknown banners (no adapter) — generic heuristic in the main document, open shadow DOM and a cross-origin
- * iframe. Facts only: the classification is always `banner-not-recognized` (5.5), nothing is clicked.
- */
+/** Unknown banners (no adapter) in the main document, open shadow DOM and a cross-origin iframe: facts only. */
 import { describe, expect, it } from 'vitest';
 import { classifyFirstLayer, detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { useCmpServer } from './helpers.ts';

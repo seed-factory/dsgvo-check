@@ -1,8 +1,6 @@
-/**
- * Derived classification. Pure function of the snapshot + catalog data; recomputed on `--from-snapshot`
- * and never persisted.
- */
-import type { BrowserPhase, SanitizedUrl } from '../core/snapshot-common.ts';
+/** Derived classification: a pure function of the snapshot and catalog data, recomputed on `--from-snapshot`, never persisted. */
+import type { CookieState } from '../core/snapshot/browser.ts';
+import type { BrowserPhase, SanitizedUrl } from '../core/snapshot/common.ts';
 
 /** Catalog categories and check ownership for finding deduplication. */
 export type ServiceCategory =
@@ -21,7 +19,7 @@ export type ServiceCategory =
   | 'social'
   | 'reviews'
   | 'chat'
-  /** Error/performance monitoring (Sentry …); added by M3, routed to CONSENT-01 as "remainder". */
+  /** Error/performance monitoring (Sentry …), routed to CONSENT-01 as "remainder". */
   | 'monitoring'
   | 'unknown';
 
@@ -40,14 +38,11 @@ export type RequestKind =
   | 'image'
   | 'resource';
 
-/** TRACK-01 stages. */
 export type TrackingStage = 'loaded' | 'initialised' | 'event-sent';
 
 /**
- * 5.3 `identifier.kind`. Persistent (critical-capable): `stored-match` (the value matched a stored cookie/storage
- * value in memory, or a known tracking cookie was sent), `persistent-param` (a parameter the catalog signature names
- * as identifier, non-empty before redaction), `user-supplied` (user or ad-click id such as `user_id`, `gclid`).
- * `per-load`: an identifier name was present but persistence is not evidenced; `none`: no identifier.
+ * `stored-match`, `persistent-param` and `user-supplied` are persistent (critical-capable); `per-load` is an
+ * identifier name without evidenced persistence.
  */
 export type IdentifierKind = 'stored-match' | 'persistent-param' | 'user-supplied' | 'per-load' | 'none';
 
@@ -63,7 +58,6 @@ export interface Party {
   country: string | null;
 }
 
-/** Catalog entry fields needed by checks. */
 export interface ServiceInfo {
   serviceId: string;
   name: string;
@@ -105,28 +99,20 @@ export interface ClassifiedRequest {
   /** Catalog signature that matched (`<serviceId>:<signatureId>`), absent for a domain-only match. */
   signatureId?: string;
   kind?: RequestKind;
-  /** TRACK-01 stage this request proves (only for catalog matches). */
   stage?: TrackingStage;
-  /** Map/video integration type, e.g. `iframe`, `js-api`, `static`, `tiles`. */
+  /** Map/video integration type (`iframe`, `js-api`, `static`, `tiles`). */
   integration?: string;
-  /**
-   * A persistent identifier is evidenced (`identifierKind` stored-match / persistent-param / user-supplied).
-   * Never inferred from a query key in the redacted URL: only from collector facts extracted before redaction.
-   */
+  /** A persistent identifier is evidenced: from collector facts extracted before redaction, never a query key. */
   identifier?: boolean;
-  /** 5.3 `identifier.kind`; see IdentifierKind. */
   identifierKind?: IdentifierKind;
   /** Name of the parameter or cookie that carried the identifier (never its value). */
   identifierParam?: string;
   consentMode?: ConsentModeSignal | null;
   /** Consent Mode says the storage relevant for this service was denied (cookieless ping). */
   cookieless?: boolean;
-  /**
-   * 5.3 `delivery: sent` and `result: response` over the network (not SW/cache). Independent of a later body error
-   * that ends the record in `state: failed`.
-   */
+  /** A network response arrived (not from a service worker or cache), even if a later body error ended the record. */
   delivered?: boolean;
-  /** The resource reached the page: network response, service worker or cache (TRACK-01 stages). */
+  /** The resource reached the page: network response, service worker or cache. */
   loaded?: boolean;
   timing?: InteractionTiming;
   /** Matched on the site's own host for a self-hostable service (no third party involved). */
@@ -145,20 +131,18 @@ export interface CookieKey {
 export interface ClassifiedCookie {
   key: CookieKey;
   phase: BrowserPhase;
-  state: 'attempted' | 'accepted' | 'rejected' | 'sent';
+  state: CookieState;
   afterClick: boolean;
   serviceId: string | null;
   category: ServiceCategory;
   /** Known tracking identifier (`_ga`, `_fbp`, …). */
   tracking: boolean;
-  /** Allowlisted (consent cookie, session, LB, CSRF, language) → "nicht bewertet (Allowlist vX)". */
+  /** Allowlisted (consent, session, LB, CSRF, language) → "nicht bewertet". */
   allowlisted: boolean;
   persistent: boolean;
   thirdParty: boolean;
   source: ClassificationSource;
-  /** Allowlist class: consent, session, load-balancer, csrf, language, security. */
   allowlistClass?: string;
-  /** Registrable domain of the cookie domain. */
   etld1?: string | null;
   timing?: InteractionTiming;
 }
@@ -178,7 +162,6 @@ export interface ClassifiedStorage {
   allowlistClass?: string;
   /** localStorage / IndexedDB persist; sessionStorage does not. */
   persistent?: boolean;
-  /** Registrable domain of the storage origin. */
   etld1?: string | null;
   timing?: InteractionTiming;
 }
@@ -203,30 +186,26 @@ export interface ServiceObservation {
   pages: SanitizedUrl[];
   requestIds: string[];
   cookieNames: string[];
-  /** TRACK-01 stages. */
   stages: Array<'loaded' | 'initialised' | 'event-sent'>;
   identifierSeen: boolean;
   timings?: InteractionTiming[];
-  /** At least one request of the service completed with a response. */
   delivered?: boolean;
   firstPartyProxy?: boolean;
 }
 
-/** External/vendored dataset used for classification (report `datasets[]`, 5.6). */
+/** External or vendored dataset used for classification (report `datasets[]`). */
 export interface DatasetRef {
   name: string;
   version: string | null;
   date?: string | null;
   sha256?: string | null;
   license: string;
-  /** Attribution text (5.8), required for CC BY sources. */
+  /** Attribution text, required for CC BY sources. */
   attribution?: string | null;
 }
 
 export interface DerivedSection {
-  /** Catalog version used; null if no catalog loaded. */
   catalogVersion: string | null;
-  /** Datasets used (service catalog, third-party-web, Open Cookie Database…). */
   datasets: DatasetRef[];
   target: { host: string; etld1: string | null };
   requests: ClassifiedRequest[];
@@ -239,6 +218,6 @@ export interface DerivedSection {
   hints?: ClassifiedHint[];
   /** Registrable domains treated as first party (final host and input host). */
   firstPartyEtld1s?: string[];
-  /** Version of the cookie/storage allowlist ("nicht bewertet (Allowlist vX)"). */
+  /** Version of the cookie/storage allowlist. */
   allowlistVersion?: string | null;
 }

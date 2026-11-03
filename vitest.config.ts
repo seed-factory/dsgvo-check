@@ -1,6 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
-import { resolveTestWorkers } from './test/utils/test-workers.ts';
+import { resolveTestWorkers } from './test/utils/run/test-workers.ts';
 
 const shared = {
   environment: 'node' as const,
@@ -10,7 +10,7 @@ const shared = {
 
 /**
  * Test files run in parallel, one forked worker per file, as many workers as the machine has logical cores.
- * `DSGVO_TEST_WORKERS` overrides it: a number ("4") or a share of the cores ("50%"), see test/utils/test-workers.ts.
+ * `DSGVO_TEST_WORKERS` overrides it: a number ("4") or a share of the cores ("50%"), see test/utils/run/test-workers.ts.
  * `maxWorkers` is global in Vitest 5: it is one pool for all projects of a run.
  */
 const maxWorkers = resolveTestWorkers(process.env.DSGVO_TEST_WORKERS, availableParallelism());
@@ -23,9 +23,9 @@ const maxWorkers = resolveTestWorkers(process.env.DSGVO_TEST_WORKERS, availableP
  * - repo files: tests write only below their temp dir.
  */
 const isolated = {
-  setupFiles: ['test/utils/worker-tmpdir.ts'],
+  setupFiles: ['test/utils/run/worker-tmpdir.ts'],
   // The temp dir of the run: removed after the run with whatever terminated workers and skipped files left in it.
-  globalSetup: ['test/utils/global-tmpdir.ts'],
+  globalSetup: ['test/utils/run/global-tmpdir.ts'],
 };
 
 export default defineConfig({

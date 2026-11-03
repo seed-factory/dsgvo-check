@@ -1,14 +1,21 @@
 /** Scan options: what callers pass, the defaults, validation and the subset recorded in the report. */
 import path from 'node:path';
-import type { SeverityOverride } from './core/assess.ts';
-import type { Collectors } from './core/collector.ts';
-import { DEFAULT_DATA_DIR } from './core/data.ts';
-import { InvalidInputError } from './core/errors.ts';
-import type { Logger } from './core/logger.ts';
-import { defaultNetworkConfig, type NetworkConfig } from './core/net.ts';
-import type { CheckRegistry } from './core/registry.ts';
-import type { FailOn, ReportScanOptions } from './core/report-schema.ts';
-import type { ReportFormat } from './core/reporter.ts';
+import { DEFAULT_DATA_DIR } from './core/data/load.ts';
+import type { SeverityOverride } from './core/evaluation/assess.ts';
+import type { CheckRegistry } from './core/evaluation/registry.ts';
+import type { ReportFormat } from './core/report/reporter.ts';
+import {
+  type AssumeRegion,
+  type FailOn,
+  FailOnSchema,
+  type Lang,
+  type ReportScanOptions,
+  type SandboxMode,
+} from './core/report/schema.ts';
+import { InvalidInputError } from './core/runtime/errors.ts';
+import type { Logger } from './core/runtime/logger.ts';
+import type { Collectors } from './core/snapshot/collector.ts';
+import { defaultNetworkConfig, type NetworkConfig } from './core/url/net.ts';
 
 export interface ScanOptions {
   /** Target URL (required unless `fromSnapshot`). */
@@ -19,10 +26,10 @@ export interface ScanOptions {
   maxPages?: number;
   timeoutMs?: number;
   proxy?: string | null;
-  assumeRegion?: 'eea' | 'de' | null;
-  lang?: 'de' | 'en';
+  assumeRegion?: AssumeRegion | null;
+  lang?: Lang;
   strict?: boolean;
-  sandbox?: 'require' | 'off';
+  sandbox?: SandboxMode;
   screenshots?: boolean;
   saveSnapshot?: string | null;
   fromSnapshot?: string | null;
@@ -49,10 +56,10 @@ export interface ResolvedScanOptions {
   maxPages: number;
   timeoutMs: number;
   proxy: string | null;
-  assumeRegion: 'eea' | 'de' | null;
-  lang: 'de' | 'en';
+  assumeRegion: AssumeRegion | null;
+  lang: Lang;
   strict: boolean;
-  sandbox: 'require' | 'off';
+  sandbox: SandboxMode;
   screenshots: boolean;
   saveSnapshot: string | null;
   fromSnapshot: string | null;
@@ -77,15 +84,12 @@ export const DEFAULTS = {
 /** Reserve on top of `--timeout` for writing reports. */
 export const REPORT_WRITE_RESERVE_MS = 30_000;
 
-/**
- * After the global timeout, collectors get this long to stop and hand over what they collected (5.2: findings
- * collected before the failure are kept). Must stay well below `REPORT_WRITE_RESERVE_MS`.
- */
+/** After the global timeout, collectors get this long to stop and hand over what they have; must stay well below `REPORT_WRITE_RESERVE_MS`. */
 export const ABORT_GRACE_MS = 10_000;
 
 export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
   const failOn = o.failOn ?? DEFAULTS.failOn;
-  if (!['critical', 'warning', 'none'].includes(failOn)) {
+  if (!FailOnSchema.options.includes(failOn)) {
     throw new InvalidInputError('invalid-fail-on', { value: failOn });
   }
   const maxPages = o.maxPages ?? DEFAULTS.maxPages;

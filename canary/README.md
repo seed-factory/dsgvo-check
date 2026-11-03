@@ -69,7 +69,7 @@ Fields of an entry:
 - `url`: start page; http(s), no query, no fragment, no credentials. URL, host and registrable domain are unique.
 - `region`: `de`, `eu` (other EU/EEA) or `non-eu`; must match `country`.
 - `country`: ISO 3166-1 alpha-2 (`GB`, not `UK`; `GR`, not `EL`).
-- `sector`: one of `SECTORS` in [scripts/canary-sites.ts](../scripts/canary-sites.ts), for example `media`, `retail`,
+- `sector`: one of `SECTORS` in [scripts/canary/sites.ts](../scripts/canary/sites.ts), for example `media`, `retail`,
   `government`, `technology`.
 - `sizeClass`: `large`, `medium` or `small-business`.
 - `expectedCmp`: `borlabs`, `cookiebot`, `complianz`, `usercentrics`, `ccm19`, `real-cookie-banner`, `cookiehub`,
@@ -101,19 +101,19 @@ node node_modules/playwright-core/cli.js install --no-shell chromium
 cp canary/sites.example.yaml canary/sites.yaml   # then replace the fictional entries
 ```
 
-Commands (all options: `node scripts/canary.ts --help`):
+Commands (all options: `node scripts/canary/main.ts --help`):
 
 ```sh
-node scripts/canary.ts --dry-run                       # print the plan, scan nothing
-node scripts/canary.ts --confirm                       # full run, new run id (UTC timestamp)
-node scripts/canary.ts --confirm --region de --limit 5 # first 5 German sites
-node scripts/canary.ts --confirm --id de-example-media,at-example-retail # selected local entries
-node scripts/canary.ts --confirm --run-id 20261030-120000              # resume: finished sites are skipped
-node scripts/canary.ts --confirm --run-id 20261030-120000 --retry-errors   # re-run sites with runner errors
-node scripts/canary.ts --confirm --engine cli          # one CLI process per site (isolation, hard kill)
-node scripts/canary.ts --reanalyze 20261030-120000     # recompute checks from saved snapshots, no network
-node scripts/canary.ts summary 20261030-120000         # SUMMARY.md + summary.json (no site names)
-node scripts/canary.ts summary 20261030-120000 --with-sites --stdout   # local analysis only
+node scripts/canary/main.ts --dry-run                       # print the plan, scan nothing
+node scripts/canary/main.ts --confirm                       # full run, new run id (UTC timestamp)
+node scripts/canary/main.ts --confirm --region de --limit 5 # first 5 German sites
+node scripts/canary/main.ts --confirm --id de-example-media,at-example-retail # selected local entries
+node scripts/canary/main.ts --confirm --run-id 20261030-120000              # resume: finished sites are skipped
+node scripts/canary/main.ts --confirm --run-id 20261030-120000 --retry-errors   # re-run sites with runner errors
+node scripts/canary/main.ts --confirm --engine cli          # one CLI process per site (isolation, hard kill)
+node scripts/canary/main.ts --reanalyze 20261030-120000     # recompute checks from saved snapshots, no network
+node scripts/canary/main.ts summary 20261030-120000         # SUMMARY.md + summary.json (no site names)
+node scripts/canary/main.ts summary 20261030-120000 --with-sites --stdout   # local analysis only
 ```
 
 `corepack pnpm canary …` and `corepack pnpm canary:summary …` are aliases.
@@ -130,7 +130,7 @@ as "unknown" unless `--assume-region eea|de` is passed.
 ```
 canary/results/<runId>/
   run.json              plan, options, tool and Node version, sha256 of sites.yaml, site list
-  SUMMARY.md            written by `canary.ts summary`
+  SUMMARY.md            written by `main.ts summary`
   summary.json
   <siteId>/
     report.json         the scanner's JSON report
@@ -151,7 +151,7 @@ on the same raw data. Sites whose scan failed, or that have no snapshot, keep th
 
 ## Summary
 
-`node scripts/canary.ts summary` writes `SUMMARY.md` and `summary.json` into the run directory: scan status, diagnostics
+`node scripts/canary/main.ts summary` writes `SUMMARY.md` and `summary.json` into the run directory: scan status, diagnostics
 (sites per `SCAN-*` code), findings, check statuses, CMP recognition, durations and top errors (machine codes only).
 The scan-status, diagnostics and findings tables have one column per region group: all, EU/EEA (DE + other EU/EEA), DE,
 EU/EEA without DE, non-EU. How the numbers are formed:

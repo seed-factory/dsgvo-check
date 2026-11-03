@@ -1,7 +1,4 @@
-/**
- * Orchestrator: validate → preflight → collectors → snapshot → derive → checks over `requires` slices →
- * assess → gate → report. Fatal conditions end in a minimal `failed` report (5.1) with exit code 2.
- */
+/** Orchestrator: validate → preflight → collectors → snapshot → derive → checks → assess → gate → report; fatal conditions yield a minimal `failed` report (exit 2). */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import path from 'node:path';
@@ -10,18 +7,20 @@ import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
-import { assess, type ExecutedCheck, isGating, lockedOverrides, mergeDiagnostics } from './core/assess.ts';
-import type { AnyCheck, CheckContext } from './core/check.ts';
-import type { Collectors } from './core/collector.ts';
-import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data.ts';
-import { errorMessage, type FatalReason, InvalidInputError, ScanFatalError } from './core/errors.ts';
-import { executeCheck } from './core/execute.ts';
-import { type ExitCode, gate } from './core/gate.ts';
-import { createLogger, type Logger } from './core/logger.ts';
-import { uiText } from './core/messages.ts';
-import { classifyAddress, type NetworkConfig } from './core/net.ts';
-import { CheckRegistry } from './core/registry.ts';
-import { buildFailedReport, buildFullReport } from './core/report.ts';
+import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data/load.ts';
+import { uiText } from './core/data/messages.ts';
+import {
+  assess,
+  type ExecutedCheck,
+  isGating,
+  lockedOverrides,
+  mergeDiagnostics,
+} from './core/evaluation/assess.ts';
+import type { AnyCheck, CheckContext } from './core/evaluation/check.ts';
+import { executeCheck } from './core/evaluation/execute.ts';
+import { type ExitCode, type GateCheck, type GateFinding, gate } from './core/evaluation/gate.ts';
+import { CheckRegistry } from './core/evaluation/registry.ts';
+import { buildFailedReport, buildFullReport } from './core/report/build.ts';
 import type {
   CheckResult,
   Diagnostic,
@@ -29,7 +28,12 @@ import type {
   Finding,
   MessageParams,
   Report,
-} from './core/report-schema.ts';
+} from './core/report/schema.ts';
+import { errorMessage, type FatalReason, InvalidInputError, ScanFatalError } from './core/runtime/errors.ts';
+import { createLogger, type Logger } from './core/runtime/logger.ts';
+import { uaToken } from './core/runtime/user-agent.ts';
+import { TOOL_NAME, TOOL_VERSION } from './core/runtime/version.ts';
+import type { Collectors } from './core/snapshot/collector.ts';
 import {
   type DiagnosticInput,
   detectTrustStore,
@@ -37,10 +41,9 @@ import {
   type Snapshot,
   type TargetInfo,
   toSavedSnapshot,
-} from './core/snapshot.ts';
-import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } from './core/url.ts';
-import { uaToken } from './core/user-agent.ts';
-import { TOOL_NAME, TOOL_VERSION } from './core/version.ts';
+} from './core/snapshot/index.ts';
+import { classifyAddress, type NetworkConfig } from './core/url/net.ts';
+import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } from './core/url/url.ts';
 import { derive } from './derive/index.ts';
 import { type CollectState, collect, requiredCollectors } from './scan-collect.ts';
 import { type ResolvedScanOptions, reportOptions, resolveOptions, type ScanOptions } from './scan-options.ts';
@@ -86,8 +89,8 @@ async function preflight(target: TargetInfo, network: NetworkConfig): Promise<vo
     if (blocked.length === addresses.length) {
       throw new InvalidInputError('target-not-public', { host });
     }
-    // One policy for all collectors: the browser cannot pin a checked address, so its guard refuses a host with
-    // any non-public address. Refuse it here, before any collector runs, with a precise message.
+    // the browser cannot pin a checked address and its guard refuses a host with any non-public address: refuse it
+    // here, before any collector runs, with a precise message
     if (blocked.length > 0) {
       const list = blocked
         .slice(0, 3)
@@ -194,16 +197,87 @@ function runChecks(
   return executed;
 }
 
-/**
- * Run one scan. Never throws for scan problems: fatal conditions produce a `failed` report with exit code 2.
- * Report files are NOT written here (see `writeReports`), except `--save-snapshot`.
- */
+/** Writes the snapshot to `file`; false (and a log line) when that fails. */
+async function saveSnapshotFile(snapshot: Snapshot, file: string, log: Logger): Promise<boolean> {
+  try {
+    await mkdir(path.dirname(path.resolve(file)), { recursive: true });
+    await writeFile(file, `${JSON.stringify(toSavedSnapshot(snapshot), null, 2)}\n`);
+    return true;
+  } catch (err) {
+    log.error(`snapshot not written: ${errorMessage(err)}`);
+    return false;
+  }
+}
+
+/** What the collectors and checks raised, plus what follows from how the scan ended (timeout, sandbox off, fatal start page). */
+function scanDiagnostics(
+  snapshot: Snapshot,
+  executed: ReadonlyMap<string, ExecutedCheck>,
+  state: CollectState,
+  o: ResolvedScanOptions,
+): Diagnostic[] {
+  const inputs: DiagnosticInput[] = [...snapshot.diagnostics];
+  for (const e of executed.values()) inputs.push(...(e.outcome?.diagnostics ?? []));
+  if (state.timedOut) {
+    const affected = [...executed.entries()].filter(([, e]) => e.reason === 'timeout').map(([id]) => id);
+    inputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
+  }
+  if (o.sandbox === 'off') inputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
+  if (state.fatal?.reason === 'unreachable') inputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
+  if (state.fatal?.reason === 'blocked') {
+    const challenge = snapshot.browser?.phases.find((p) => p.phase === 'A')?.pages[0]?.challenge;
+    inputs.push({
+      code: 'SCAN-BLOCKED',
+      affects: [],
+      params: {
+        scope: 'start',
+        count: 1,
+        page: snapshot.target.url,
+        pages: snapshot.target.url,
+        ...(challenge?.signals.length ? { signals: challenge.signals.slice(0, 10).join(', ') } : {}),
+      },
+    });
+  }
+  return mergeDiagnostics(inputs);
+}
+
+function toGateChecks(checks: readonly CheckResult[], disabledIds: ReadonlySet<string>): GateCheck[] {
+  return checks.map((c) => ({
+    id: c.id,
+    status: c.status,
+    reason: c.reason,
+    gating: c.gating ?? false,
+    maxSeverity: c.maxSeverity ?? null,
+    enabled: !disabledIds.has(c.id),
+  }));
+}
+
+function toGateFindings(findings: readonly Finding[], ruleset: CoreData['ruleset']): GateFinding[] {
+  return findings.map((f) => ({
+    checkId: f.checkId,
+    severity: f.severity,
+    suppressed: Boolean(f.suppression && !f.suppression.expired),
+    gating: isGating(ruleset, f.checkId, f.variant),
+    ...(f.baselineStatus ? { baselineStatus: f.baselineStatus } : {}),
+  }));
+}
+
+/** The result is `partial` when the deadline hit, a check failed or a collector did not finish cleanly. */
+function isPartial(snapshot: Snapshot, checks: readonly CheckResult[], state: CollectState): boolean {
+  return (
+    state.timedOut ||
+    checks.some((c) => c.status === 'error') ||
+    Object.values(snapshot.collection).some((c) => c?.status === 'error' || c?.status === 'partial')
+  );
+}
+
+/** Runs one scan; fatal conditions produce a `failed` report (exit 2) instead of throwing. Report files are written by `writeReports`. */
 export async function scan(options: ScanOptions): Promise<ScanResult> {
   const startedAtDate = options.now?.() ?? new Date();
   const startedAt = startedAtDate.toISOString();
   const t0 = performance.now();
   const log = options.log ?? createLogger('warn');
-  // the target in any report (also the minimal failed one) is redacted.
+  // the target in any report (also the minimal failed one) is redacted
   const targetForReport = options.url ? redactTarget(options.url) : (options.fromSnapshot ?? '');
   let o: ResolvedScanOptions | null = null;
   let core: CoreData | null = null;
@@ -293,13 +367,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     // A requested file that cannot be written → exit 2 (report-write-failed), the scan result is kept.
     let snapshotWriteFailed = false;
     if (o.saveSnapshot && !o.fromSnapshot) {
-      try {
-        await mkdir(path.dirname(path.resolve(o.saveSnapshot)), { recursive: true });
-        await writeFile(o.saveSnapshot, `${JSON.stringify(toSavedSnapshot(snapshot), null, 2)}\n`);
-      } catch (err) {
-        snapshotWriteFailed = true;
-        log.error(`snapshot not written: ${errorMessage(err)}`);
-      }
+      snapshotWriteFailed = !(await saveSnapshotFile(snapshot, o.saveSnapshot, log));
     }
 
     if (snapshot.browser) snapshot.derived = derive(snapshot, { dataDir: o.dataDir });
@@ -315,47 +383,9 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       texts: core.texts,
     });
 
-    const diagnosticInputs: DiagnosticInput[] = [...snapshot.diagnostics];
-    for (const e of executed.values()) diagnosticInputs.push(...(e.outcome?.diagnostics ?? []));
-    if (state.timedOut) {
-      const affected = [...executed.entries()].filter(([, e]) => e.reason === 'timeout').map(([id]) => id);
-      diagnosticInputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
-    }
-    if (o.sandbox === 'off') diagnosticInputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
-    if (state.fatal?.reason === 'unreachable')
-      diagnosticInputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
-    if (state.fatal?.reason === 'blocked') {
-      const challenge = snapshot.browser?.phases.find((p) => p.phase === 'A')?.pages[0]?.challenge;
-      diagnosticInputs.push({
-        code: 'SCAN-BLOCKED',
-        affects: [],
-        params: {
-          scope: 'start',
-          count: 1,
-          page: snapshot.target.url,
-          pages: snapshot.target.url,
-          ...(challenge?.signals.length ? { signals: challenge.signals.slice(0, 10).join(', ') } : {}),
-        },
-      });
-    }
-    const diagnostics = mergeDiagnostics(diagnosticInputs);
-
-    const disabledIds = new Set(disabled.map((c) => c.id));
-    const gateChecks = assessed.checks.map((c) => ({
-      id: c.id,
-      status: c.status,
-      reason: c.reason,
-      gating: c.gating ?? false,
-      maxSeverity: c.maxSeverity ?? null,
-      enabled: !disabledIds.has(c.id),
-    }));
-    const gateFindings = assessed.findings.map((f) => ({
-      checkId: f.checkId,
-      severity: f.severity,
-      suppressed: Boolean(f.suppression && !f.suppression.expired),
-      gating: isGating(core!.ruleset, f.checkId, f.variant),
-      ...(f.baselineStatus ? { baselineStatus: f.baselineStatus } : {}),
-    }));
+    const diagnostics = scanDiagnostics(snapshot, executed, state, o);
+    const gateChecks = toGateChecks(assessed.checks, new Set(disabled.map((c) => c.id)));
+    const gateFindings = toGateFindings(assessed.findings, core.ruleset);
 
     if (state.fatal) {
       return fail(state.fatal.reason, state.fatal.code, state.fatal.params, {
@@ -378,10 +408,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       egressRegion: snapshot.environment.egress.region,
       timedOut: state.timedOut,
     });
-    const partial =
-      state.timedOut ||
-      assessed.checks.some((c) => c.status === 'error') ||
-      Object.values(snapshot.collection).some((c) => c?.status === 'error' || c?.status === 'partial');
+    const partial = isPartial(snapshot, assessed.checks, state);
     const report = buildFullReport({
       snapshot,
       status: partial ? 'partial' : 'complete',

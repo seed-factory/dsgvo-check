@@ -1,12 +1,9 @@
-/**
- * DNS collector. Resolver: `node:dns/promises` with `ctx.network.dnsServers` when non-empty
- * (system configuration otherwise), direct even with `--proxy`. ≤ 60 queries, SERVFAIL/TIMEOUT
- * retried once, NXDOMAIN vs NODATA kept apart, `mailto:` masked before storing.
- */
+// DNS collector: `node:dns/promises` with `ctx.network.dnsServers` when non-empty (system configuration otherwise),
+// direct even with `--proxy`. ≤ 60 queries; `mailto:` masked before storing.
 import { isIP } from 'node:net';
-import type { DnsCollector } from '../../core/collector.ts';
-import type { DnsSection } from '../../core/snapshot-dns.ts';
-import { registrableDomain } from '../../core/url.ts';
+import type { DnsCollector } from '../../core/snapshot/collector.ts';
+import type { DnsSection } from '../../core/snapshot/dns.ts';
+import { registrableDomain } from '../../core/url/url.ts';
 import { collectMailDns, DNS_QUERY_BUDGET } from './collect.ts';
 import { createNodeDnsClient, type DnsClient } from './resolver.ts';
 

@@ -1,10 +1,14 @@
 import { EventEmitter } from 'node:events';
 import type { BrowserContext, Page, Request, Response } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NetworkRecorder } from '../../../../src/collectors/browser/recorder.ts';
-import { hostClassifier, type LookupError } from '../../../../src/collectors/browser/ssrf.ts';
-import { navigationErrorCode, valueWithin, visitPage } from '../../../../src/collectors/browser/visit.ts';
-import { defaultNetworkConfig, type Lookup } from '../../../../src/core/net.ts';
+import { hostClassifier, type LookupError } from '../../../../src/collectors/browser/launch/ssrf.ts';
+import {
+  navigationErrorCode,
+  valueWithin,
+  visitPage,
+} from '../../../../src/collectors/browser/pages/visit.ts';
+import { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
+import { defaultNetworkConfig, type Lookup } from '../../../../src/core/url/net.ts';
 import { FAST_TIMING } from '../../../integration/browser/helpers.ts';
 
 const never = <T>() => new Promise<T>(() => {});

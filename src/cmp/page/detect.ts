@@ -3,7 +3,6 @@ import type { DWindow } from './dom.ts';
 
 export interface DetectArgs {
   globals: string[];
-  /** Global paths whose string value is the CMP's own version (e.g. `complianz.version`). */
   versionGlobals?: string[];
   scripts: Array<{ label: string; pattern: string }>;
   dom: string[];
@@ -13,9 +12,7 @@ export interface DetectArgs {
 
 export interface DetectRaw {
   globals: string[];
-  /** Short string values of `versionGlobals` by path (validated by the Node side). */
   versions: Record<string, string>;
-  /** Labels of matched script patterns. */
   scripts: string[];
   /** Matched script URLs (raw; only used to read a version, never stored). */
   scriptUrls: string[];

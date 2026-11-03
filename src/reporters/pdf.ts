@@ -1,17 +1,18 @@
 /** Print the already rendered, self-contained HTML using the scanner's Chromium sandbox and cleanup. */
 import { type BrowserType, chromium } from 'playwright-core';
-import { launchPhase } from '../collectors/browser/launch.ts';
-import { uiText } from '../core/messages.ts';
-import { defaultNetworkConfig } from '../core/net.ts';
-import type { ReporterContext } from '../core/reporter.ts';
-import { sanitizeExternal } from '../core/sanitize.ts';
+import { launchPhase } from '../collectors/browser/launch/launch.ts';
+import { uiText } from '../core/data/messages.ts';
+import { sanitizeExternal } from '../core/redaction/sanitize.ts';
+import type { ReporterContext } from '../core/report/reporter.ts';
+import type { SandboxMode } from '../core/report/schema.ts';
+import { defaultNetworkConfig } from '../core/url/net.ts';
 
 export const PDF_TIMEOUT_MS = 15_000;
 
 export interface PdfOptions {
   chromium?: BrowserType;
   executablePath?: string;
-  sandbox?: 'require' | 'off';
+  sandbox?: SandboxMode;
   timeoutMs?: number;
 }
 

@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
-import { loadTexts } from '../../../src/core/data.ts';
-import { uiText } from '../../../src/core/messages.ts';
+import { loadTexts } from '../../../src/core/data/load.ts';
+import { uiText } from '../../../src/core/data/messages.ts';
 import { PDF_TIMEOUT_MS } from '../../../src/reporters/pdf.ts';
-import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/offline-network-hook.ts';
+import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/preload/offline-network-hook.ts';
 import {
   makeDocumentResponse,
   makeHttp,
@@ -17,7 +17,7 @@ import {
 } from '../../utils/snapshot-builder.ts';
 import { TEST_SANDBOX } from '../browser/helpers.ts';
 
-const hook = fileURLToPath(new URL('../../utils/stalled-pdf-hook.ts', import.meta.url));
+const hook = fileURLToPath(new URL('../../utils/preload/stalled-pdf-hook.ts', import.meta.url));
 
 it('a real browser stalled at PDF printing preserves the scan result and exits within the print budget', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'pdf-timeout-'));

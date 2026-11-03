@@ -1,21 +1,16 @@
 /**
- * Live smoke (internet; never part of `pnpm test`): the built CLI against a few real sites, one at a time.
- *   corepack pnpm build && corepack pnpm test:live
- * Sites: DSGVO_LIVE_SITES (comma-separated URLs), default: a German federal portal, a German CMP vendor site
- * (Borlabs) and a non-EU government site. Reports go to DSGVO_LIVE_OUT (default: a temp dir) and are kept.
- *
- * Sanity checks only, no verdicts about the sites: exit code and report agree, JSON is schema-valid, the console and
- * HTML carry no CRM codes, the HTML is self-contained, no cookie or storage values appear, and every
- * critical finding is printed for manual review.
+ * Live smoke (internet, never part of `pnpm test`): the built CLI against a few real sites, one at a time. Run with
+ * `corepack pnpm build && corepack pnpm test:live`; DSGVO_LIVE_SITES (comma-separated) overrides the sites,
+ * DSGVO_LIVE_OUT the report directory. Sanity checks only, no verdicts; critical findings are printed for manual review.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { FullReport, Report } from '../../src/core/report-schema.ts';
-import { htmlSafetyProblems } from '../unit/reporters/html-safety.ts';
-import { validateReport } from '../utils/report-validator.ts';
+import type { FullReport, Report } from '../../src/core/report/schema.ts';
+import { htmlSafetyProblems } from '../utils/report/html-safety.ts';
+import { validateReport } from '../utils/report/validator.ts';
 import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const CLI = path.join(REPO_ROOT, 'dist/cli.js');

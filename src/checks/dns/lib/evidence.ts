@@ -1,7 +1,7 @@
-/** `dns` evidence (5.3) built from recorded queries: qname, type, rcode, masked records, resolver, Tree Walk path. */
+/** `dns` evidence built from recorded queries: qname, type, rcode, masked records, resolver, Tree Walk path. */
 
 import type { EvidenceInput } from '../../../core/api.ts';
-import type { DnsQueryRecord, DnsSection } from '../../../core/snapshot-dns.ts';
+import type { DnsQueryRecord, DnsSection } from '../../../core/snapshot/dns.ts';
 import { formatAnswer, resolverLabel } from './records.ts';
 
 export function dnsEvidence(

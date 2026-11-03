@@ -1,9 +1,7 @@
-/**
- * DNS collection for MAIL-*: MX of the mail domain, the DMARC Tree Walk (RFC 9989) from the scanned host and
- * from the mail domain, and the SPF include/redirect tree (RFC 7208). The same pure analyses the checks use decide what to query next,
- * so the snapshot always contains what the checks need. Budget ≤ 60 queries. Redaction happens here,
- * before anything is stored: `mailto:` and bare addresses are masked by the shared `redactText`, unrelated TXT at SPF names is dropped (count only).
- */
+// DNS collection for MAIL-*: MX of the mail domain, the DMARC Tree Walk (RFC 9989) from the scanned host and from the
+// mail domain, and the SPF include/redirect tree (RFC 7208). The checks' own pure analyses decide what to query next,
+// so the snapshot has what they need (≤ 60 queries). Redaction happens here before storing: addresses are masked by
+// `redactText`, unrelated TXT at SPF names is dropped (count only).
 import { analyzeDmarc, DMARC_MAX_WALK } from '../../checks/dns/lib/dmarc.ts';
 import {
   type DnsLookup,
@@ -13,10 +11,10 @@ import {
   queryKey,
 } from '../../checks/dns/lib/records.ts';
 import { analyzeSpf, isSpfCandidate } from '../../checks/dns/lib/spf.ts';
-import type { Logger } from '../../core/logger.ts';
-import { redactText } from '../../core/redact.ts';
-import type { CollectorError } from '../../core/snapshot-common.ts';
-import type { DnsAnswer, DnsQueryRecord, DnsSection } from '../../core/snapshot-dns.ts';
+import { redactText } from '../../core/redaction/redact.ts';
+import type { Logger } from '../../core/runtime/logger.ts';
+import type { CollectorError } from '../../core/snapshot/common.ts';
+import type { DnsAnswer, DnsQueryRecord, DnsSection } from '../../core/snapshot/dns.ts';
 import type { DnsClient, RawDnsResult } from './resolver.ts';
 
 export const DNS_QUERY_BUDGET = 60;
@@ -25,9 +23,7 @@ export const MAX_TIMEOUT_RESULTS = 3;
 const SPF_ROUNDS = 16;
 
 export interface MailDnsOptions {
-  /** Scanned host: start of the DMARC Tree Walk. */
   host: string;
-  /** Mail domain (registrable domain of the host): MX and SPF. */
   domain: string;
   client: DnsClient;
   now: () => Date;
@@ -39,7 +35,6 @@ export interface MailDnsOptions {
 
 export interface MailDnsResult {
   status: 'ok' | 'partial';
-  /** Why the collection stopped early: `dns-budget-exhausted`, `resolver-unresponsive`, `aborted`. */
   reason?: string;
   section: DnsSection;
 }
@@ -48,11 +43,8 @@ interface Planned extends PendingQuery {
   step?: number;
 }
 
-/**
- * Chunks re-cut from the already redacted value at the original boundaries (the last chunk takes the rest), so
- * `chunks.join('') === value`. Masking each chunk on its own would miss a `mailto:` split across
- * character-strings.
- */
+// Chunks re-cut from the redacted value at the original boundaries, so `chunks.join('') === value`; masking each chunk
+// on its own would miss a `mailto:` split across character-strings.
 export function rechunk(value: string, original: readonly string[]): string[] {
   const out: string[] = [];
   let at = 0;

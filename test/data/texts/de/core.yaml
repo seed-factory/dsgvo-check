@@ -64,7 +64,7 @@ ui:
   # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts).
   failure.scan-timeout: "Globales Zeitlimit (--timeout {seconds} s) erreicht, bevor die Startseite in Phase A vollständig erfasst war."
   failure.browser-no-handover: "Globales Zeitlimit (--timeout {seconds} s) erreicht. Der Browser-Kollektor hat danach keine Daten übergeben; ob die Startseite erfasst war, ist nicht bekannt."
-  # Reasons of a failed scan (`scan.failure.code`), thrown by src/scan.ts, src/cli.ts, src/core/url.ts and the collectors.
+  # Reasons of a failed scan (`scan.failure.code`), thrown by src/scan.ts, src/cli.ts, src/core/url/url.ts and the collectors.
   failure.target-missing: "Keine Ziel-URL angegeben."
   failure.target-invalid-url: "Ungültige URL: {url}"
   failure.target-unsupported-scheme: "Nur http(s)-URLs werden unterstützt: {scheme}"

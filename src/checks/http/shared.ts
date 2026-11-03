@@ -1,9 +1,9 @@
 /** Pure helpers shared by HDR-01, TLS-01 and TLS-02 (no I/O); the HTTP collector uses them too. */
 
 import type { HeaderRecord } from '../../core/api.ts';
-import type { HttpSection } from '../../core/snapshot-http.ts';
+import type { HttpSection } from '../../core/snapshot/http.ts';
 
-/** What a Node `authorizationError` means for a visitor (research http-dns-tls-mail §2.1). */
+/** What a Node `authorizationError` means for a visitor. */
 export type TlsProblem =
   | 'expired'
   | 'not-yet-valid'
@@ -39,7 +39,6 @@ export function browserAcceptsTls(authorized: boolean | null | undefined, error:
   return tlsProblemOf(error) === 'incomplete-chain';
 }
 
-/** All values of a (lower-case) header name, in order. */
 export function headerValues(headers: readonly HeaderRecord[], name: string): string[] {
   const n = name.toLowerCase();
   return headers.filter((h) => h.name.toLowerCase() === n).map((h) => h.value);
@@ -61,10 +60,7 @@ export function evidenceValue(value: string | undefined | null, max = 300): stri
 
 export const DAY_MS = 86_400_000;
 
-/**
- * Host where the start document's redirect chain ended: the final hop, else the redirect target the chain
- * could not complete. Lower case; null when unknown.
- */
+/** Lower-case host where the start document's redirect chain ended, else the target it could not complete; null if unknown. */
 export function startFinalHost(http: Pick<HttpSection, 'chains' | 'documents'>): string | null {
   const start = http.documents.find((d) => d.role === 'start');
   const chain = start?.chainId ? http.chains.find((c) => c.id === start.chainId) : undefined;

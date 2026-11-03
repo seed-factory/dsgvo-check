@@ -1,8 +1,8 @@
 /** Rendering of every emitted HDR-01 / TLS-01 / TLS-02 observation in de and en without unresolved placeholders. */
 import { describe, expect, it } from 'vitest';
 import { httpChecks } from '../../../../src/checks/http/index.ts';
-import { loadTexts } from '../../../../src/core/data.ts';
-import { renderMessage } from '../../../../src/core/messages.ts';
+import { loadTexts } from '../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../src/core/data/messages.ts';
 import { loadFixtures, observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 
 describe('texts render for every emitted observation', () => {

@@ -2,7 +2,7 @@
 
 Минимальный рабочий прототип по утверждённым контрактам: проверка архитектуры на живых сайтах, не релиз 1.0. Он честно сканирует сайт, выдаёт отчёты в JSON, консоли и HTML, возвращает коды выхода и покрыт тестами. Канареечный прогон по локальному корпусу измеряет сканер (доля `inconclusive`, бот- и гео-режим, ошибки сбора), а не служит критерием приёмки.
 
-Контракты — в [архитектуре](../02-architecture.md) и [спецификации проверок](../03-checks.md); всё, что не названо упрощением, следует им. Имена вариантов и `messageId` задаёт `test/data/ruleset/de-2026/*.yaml`: таблицу [`docs/03-checks.md`](../03-checks.md) §2.1 генерирует `corepack pnpm registry`, расхождение ловит L0-тест `test/unit/core/registry-completeness.test.ts`.
+Контракты — в [архитектуре](../02-architecture.md) и [спецификации проверок](../03-checks.md); всё, что не названо упрощением, следует им. Имена вариантов и `messageId` задаёт `test/data/ruleset/de-2026/*.yaml`: таблицу [`docs/03-checks.md`](../03-checks.md) §2.1 генерирует `corepack pnpm registry`, расхождение ловит L0-тест `test/unit/core/evaluation/registry-completeness.test.ts`.
 
 ## Проверки
 
@@ -84,7 +84,7 @@ dsgvo-check report <report.json> --format html,pdf [--lang de|en] [--out dir]
 Подробности — в [canary/README.md](../../canary/README.md).
 
 - `canary/sites.yaml` — локальный корпус пользователя, в git не попадает. Пример — `canary/sites.example.yaml` с вымышленными хостами.
-- Раннер `scripts/canary.ts`, сводка — `node scripts/canary.ts summary`. Результаты в `canary/results/` в git не попадают.
+- Раннер `scripts/canary/main.ts`, сводка — `node scripts/canary/main.ts summary`. Результаты в `canary/results/` в git не попадают.
 - Это разовое измерение (классы действий O и T), а не приёмка. Приёмочную канарейку (10 сайтов с письменным согласием владельцев, `mustFind` / `mustNotFind`) оно не заменяет. Разовый замер подтверждён заказчиком; условия приёмочной остаются отдельными.
 
 ## Упрощения прототипа

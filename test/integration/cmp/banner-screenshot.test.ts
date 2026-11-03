@@ -1,13 +1,13 @@
 /**
- * Banner screenshot. The metadata of the record must describe the image that was saved: Playwright
- * crops a clip at the viewport edge, so the record is built from the intersection of the container with the viewport.
+ * The metadata of the banner screenshot record describes the saved image: Playwright crops a clip at the viewport
+ * edge, so the record uses the intersection of the container with the viewport.
  */
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CmpFacts } from '../../../src/cmp/types.ts';
-import { bannerScreenshot } from '../../../src/collectors/browser/screenshot.ts';
+import { bannerScreenshot } from '../../../src/collectors/browser/phases/screenshot.ts';
 import { makeCmpFacts } from '../../utils/snapshot-builder.ts';
 import { useCmpServer } from './helpers.ts';
 

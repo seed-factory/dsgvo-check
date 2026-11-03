@@ -1,19 +1,18 @@
 /**
- * integration of all browser-side modules: the real browser collector with the real CMP subsystem,
- * derive and the browser checks, assess/gate (core) and the reporters, on a hand-written shop that uses
- * the Cookiebot simulator. Three variants: consent respected, tracker before consent, blocking banner without reject.
+ * All browser-side modules together: real browser collector and CMP subsystem, derive, browser checks, assess/gate and
+ * reporters on a hand-written shop with the Cookiebot simulator. Variants: consent respected, tracker before consent, blocking banner.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import type { FullReport } from '../../../src/core/report-schema.ts';
+import type { FullReport } from '../../../src/core/report/schema.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { writeReports } from '../../../src/reporters/write.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { expectValidReport } from '../../utils/report-validator.ts';
+import { expectValidReport } from '../../utils/report/validator.ts';
 import { FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';
 
 const BROWSER_CHECKS = [
@@ -113,7 +112,7 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
       'CONSENT-02.tracking-identifier-stored:google-analytics',
       'CONSENT-05.tracking-after-reject:google-analytics',
     ]);
-    // Related findings share the service (grouping in HTML, 5.1).
+    // Related findings share the service (grouping in HTML).
     const c01 = critical.find((f) => f.checkId === 'CONSENT-01');
     expect(c01?.related?.length ?? 0).toBeGreaterThan(0);
   });

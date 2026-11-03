@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { ReportSchema } from '../../src/core/report-schema.ts';
+import { ReportSchema } from '../../src/core/report/schema.ts';
 
 const run = (args: string[]) => spawnSync(process.execPath, ['dist/cli.js', ...args], { encoding: 'utf8' });
 assert.equal(run(['--help']).status, 0);

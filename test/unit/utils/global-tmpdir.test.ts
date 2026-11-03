@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { RUN_TMP_PREFIX, sweepDeadRunDirs } from '../../utils/global-tmpdir.ts';
+import { RUN_TMP_PREFIX, sweepDeadRunDirs } from '../../utils/run/global-tmpdir.ts';
 
 describe('sweepDeadRunDirs', () => {
   let base: string;

@@ -1,11 +1,6 @@
 /**
- * Fixture server: one HTTP and one HTTPS listener on random ports serving virtual hosts by the Host header
- * (HTTPS: certificate by SNI from the test PKI). Target and third-party hostnames are served locally;
- * nothing goes to the internet.
- *
- * Sites live in test/fixture-server/sites/<module>/<site>/ and are declared in ./sites.ts (hosts, TLS kinds,
- * routes, per-file response headers). Static files: `<docroot>/<path>` (`/` → index.html).
- * Unknown host → 599 and an entry in `unexpected` (a test bug: undeclared third party).
+ * Fixture server: one HTTP and one HTTPS listener (random ports) serving virtual hosts by Host header, certificates by
+ * SNI from the test PKI. Sites are declared in ./sites.ts; an unknown host gives 599 and an entry in `unexpected`.
  */
 import { readFileSync, statSync } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
@@ -14,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import tls, { type SecureContext } from 'node:tls';
 import { fileURLToPath } from 'node:url';
-import type { NetworkConfig } from '../../src/core/net.ts';
+import type { NetworkConfig } from '../../src/core/url/net.ts';
 import { type CertKind, createTestPki, type TestPki } from '../utils/certs.ts';
 import { SITES } from './sites.ts';
 
@@ -92,15 +87,12 @@ export interface FixtureServer {
   httpPort: number;
   httpsPort: number;
   pki: TestPki;
-  /** All requests received, in order. */
   requests: RecordedRequest[];
   /** Requests to hosts not declared by any site (should stay empty). */
   unexpected: RecordedRequest[];
   /** Chrome background requests (BROWSER_INTERNAL_HOSTS), answered with 404. */
   browserInternal: RecordedRequest[];
-  /** Hosts served (declared). */
   hosts(): string[];
-  /** Add handlers/routes at runtime (e.g. per test). */
   addHandler(h: DynamicHandler): void;
   addRoute(r: RouteSpec): void;
   /** NetworkConfig that routes every host to this server (for scan and collectors). */

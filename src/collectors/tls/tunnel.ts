@@ -1,10 +1,9 @@
-/**
- * HTTP CONNECT tunnel for `--proxy`, so the TLS collector uses the same egress as the other collectors.
- * The proxy resolves the hostname; the peer address is then unknown to us.
- */
+// HTTP CONNECT tunnel for `--proxy`, so the TLS collector uses the same egress as the other collectors. The proxy
+// resolves the hostname; the peer address is then unknown to us.
 import http from 'node:http';
 import https from 'node:https';
 import type { Socket } from 'node:net';
+import { defaultHttpPort, isHttpUrl } from '../../core/url/url.ts';
 
 export class TunnelError extends Error {
   readonly code: string;
@@ -22,8 +21,7 @@ export async function openTunnel(
   timeoutMs: number,
 ): Promise<Socket> {
   const u = new URL(proxy);
-  if (u.protocol !== 'http:' && u.protocol !== 'https:')
-    throw new TunnelError('proxy-unsupported', `unsupported proxy scheme ${u.protocol}`);
+  if (!isHttpUrl(u)) throw new TunnelError('proxy-unsupported', `unsupported proxy scheme ${u.protocol}`);
   return new Promise((resolve, reject) => {
     const auth =
       u.username || u.password
@@ -33,7 +31,7 @@ export async function openTunnel(
         : {};
     const req = (u.protocol === 'https:' ? https : http).request({
       host: u.hostname,
-      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      port: u.port || defaultHttpPort(u.protocol),
       method: 'CONNECT',
       path: `${host}:${port}`,
       headers: { host: `${host}:${port}`, ...auth },

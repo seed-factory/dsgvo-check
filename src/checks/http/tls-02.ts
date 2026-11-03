@@ -1,18 +1,10 @@
 /**
- * TLS-02: certificate of the target host and its www/apex variant (port 443, or the explicit
- * port of an https target), plus the final host of a redirect to another domain and its www/apex (recorded
- * by the HTTP collector). Variant names: registry docs/03-checks.md §2.1.
- * critical (`certificate-invalid`, one finding per endpoint listing every cause): expired / not yet valid, name
- * mismatch (own `checkHost`, also when Node stops at another error), self-signed, unknown root (also an issuer
- * Node did not find although the server sent the issuer of the leaf), other verification error. warning: incomplete
- * chain (`chain-incomplete`; the server did not send the issuer of the leaf; no AIA in Node, browsers complete it).
- * Expiry relative to lifetime L: < min(14 d, 25 % L) → `certificate-expiring` (warning), < min(30 d, 50 % L) →
- * `certificate-expiry-approaching` (info); no expiry finding when L ≤ 10 d. Closed port / no DNS → no finding;
- * handshake without a cause → inconclusive `handshake-inconclusive` (target) or a limitation (other endpoints).
+ * TLS-02: certificate of the target host and its www/apex variant (port 443 or the explicit https port), plus the final
+ * host of a redirect to another domain. A handshake without a cause is inconclusive, not a finding.
  */
 
 import { defineCheck, type EvidenceInput, type Observation, subjects, tlsHostRole } from '../../core/api.ts';
-import type { TlsEndpoint } from '../../core/snapshot-tls.ts';
+import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { DAY_MS, startFinalHost, type TlsProblem, tlsProblemOf } from './shared.ts';
 
 const ID = 'TLS-02';
@@ -66,7 +58,6 @@ function sanNames(ep: TlsEndpoint): string {
 }
 
 interface Problems {
-  /** Causes of an invalid certificate, in `CAUSES` order. */
   invalid: InvalidCause[];
   chainIncomplete: boolean;
   expiry: 'certificate-expiring' | 'certificate-expiry-approaching' | null;
@@ -77,7 +68,6 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/** Problems of one endpoint after a completed handshake. */
 function problemsOf(ep: TlsEndpoint, now: Date): Problems {
   const causes = new Set<InvalidCause>();
   const fromNode = tlsProblemOf(ep.authorizationError);
@@ -158,7 +148,7 @@ export const tls02 = defineCheck({
         lifetimeDays: lifetimeDaysOf(ep),
         issuer: leaf?.issuer ?? null,
       };
-      // `certificate:<role>` relative to the final host (5.4): independent of how the target was typed.
+      // Relative to the final host, so independent of how the target was typed.
       const subject = subjects.tlsEndpoint('certificate', tlsHostRole(ep.host, roleBase));
       const emit = (variant: string, extra: Observation['params'] = {}) =>
         observations.push({
@@ -194,7 +184,7 @@ export const tls02 = defineCheck({
     }
 
     if (targetUndecided) {
-      // Registry §2.1: the reason is `handshake-inconclusive`; how it ended is a limitation.
+      // The reason is `handshake-inconclusive`; how it ended is a limitation.
       return {
         status: 'inconclusive',
         reason: 'handshake-inconclusive',

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { writeReports } from '../../../src/reporters/write.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
 import { type FixtureServer, SITES_DIR, startFixtureServer } from '../../fixture-server/server.ts';

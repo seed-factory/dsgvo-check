@@ -1,13 +1,6 @@
 /**
- * Test-only preload for the built CLI: `node --import test/e2e/support/network-hook.ts dist/cli.js <url> …`.
- *
- * The CLI has no switch for a test network (and must not have one). This hook does for the subprocess what
- * `server.network()` does for in-process `scan()` calls: it rewrites `dist/core/net.js` at load time so that
- * `defaultNetworkConfig()` returns a network that routes every host to the local fixture server
- * (`--host-resolver-rules` for Chromium, `test.connect` + test CA for Node clients, a local fake DNS server).
- * Hosts that are not declared fail with ENOTFOUND, so nothing leaves the machine.
- *
- * Configuration: env `DSGVO_E2E_NETWORK` = JSON of `E2eNetworkConfig`.
+ * Preload for the built CLI (`node --import test/e2e/support/network-hook.ts dist/cli.js <url>`): the CLI has no switch
+ * for a test network, so this rewrites `dist/core/url/net.js` to route declared hosts (env `DSGVO_E2E_NETWORK`) locally.
  */
 import { registerHooks } from 'node:module';
 
@@ -53,11 +46,13 @@ const MARK = 'export function defaultNetworkConfig(';
 registerHooks({
   load(url, context, nextLoad) {
     const result = nextLoad(url, context);
-    if (!url.endsWith('/dist/core/net.js')) return result;
+    if (!url.endsWith('/dist/core/url/net.js')) return result;
     const src = result.source;
     const source = typeof src === 'string' ? src : Buffer.from(src as Uint8Array).toString('utf8');
     if (!source.includes(MARK)) {
-      throw new Error('network-hook: `export function defaultNetworkConfig(` not found in dist/core/net.js');
+      throw new Error(
+        'network-hook: `export function defaultNetworkConfig(` not found in dist/core/url/net.js',
+      );
     }
     return {
       ...result,

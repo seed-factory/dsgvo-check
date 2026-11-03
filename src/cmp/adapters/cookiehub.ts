@@ -1,7 +1,6 @@
 /**
- * CookieHub. Signals: `window.cookiehub` (`hasAnswered`, `hasConsented(category)`), script `cdn.cookiehub.eu/c2/…`,
- * `.ch2-container` / `.ch2-dialog`, cookie `cookiehub`. Only read-only API calls (`denyAll()` etc. are never used:
- * CookieHub itself forbids bypassing the UI). Geo and bot signals are not known (gap).
+ * CookieHub. Only read-only API calls: `denyAll()` and the like are never used, since CookieHub forbids bypassing the
+ * UI. Geo and bot signals are not known.
  */
 import type { Page } from 'playwright-core';
 import { defineAdapter, toCategoryStates } from './base.ts';
@@ -14,7 +13,6 @@ interface CookiehubRead {
   cookiePresent: boolean;
 }
 
-/** In-page, self-contained. */
 function readCookiehub(): CookiehubRead {
   const w = globalThis as unknown as {
     cookiehub?: { hasAnswered?: () => unknown; hasConsented?: (c: string) => unknown };

@@ -1,8 +1,8 @@
 /** Small strict HTML template language. There is deliberately no unescaped output operation. */
-import { formatMessage, templateParams } from '../core/messages.ts';
-import type { MessageParams } from '../core/report-schema.ts';
-import type { ReporterContext } from '../core/reporter.ts';
-import { sanitizeExternal } from '../core/sanitize.ts';
+import { formatMessage, templateParams } from '../core/data/messages.ts';
+import { sanitizeExternal } from '../core/redaction/sanitize.ts';
+import type { ReporterContext } from '../core/report/reporter.ts';
+import type { MessageParams } from '../core/report/schema.ts';
 
 type Node =
   | { kind: 'text'; text: string }

@@ -1,7 +1,4 @@
-/**
- * Pure table over first-screen `CmpFacts` (no page access; checks may import it). It also picks the only
- * elements the collector may click (adapters never decide what a reject is).
- */
+/** Pure table over first-screen `CmpFacts` (no page access); it also picks the only elements the collector may click. */
 import { classifyButton, isLinkRole, normalizeLabel } from './lexicon.ts';
 import type {
   BlockingFacts,
@@ -113,10 +110,8 @@ export function classifyFirstLayer(facts: CmpFacts, lexicon: CmpLexicon): FirstL
   if (reject.ambiguous) reasons.push('reject-target-ambiguous');
   if (accept.ambiguous) reasons.push('accept-target-ambiguous');
 
-  // 5.5: a verdict about a missing or broken reject needs every first-layer button classified — an unknown button
-  // might be the reject. The same holds when the measurement itself is incomplete: first-layer candidates dropped by
-  // the probe limit or a geometry that was still moving (only for the reachability verdict). The accept
-  // stays a target (it is unambiguous); no reject is clicked.
+  // A verdict about a missing or broken reject needs every first-layer button classified (an unknown one might be the
+  // reject) and a complete, settled measurement. The accept stays a target; no reject is clicked.
   const noVerdict: string[] = [];
   if (AMBIGUOUS_WITH_UNKNOWN_BUTTON.has(variant)) {
     if (unclassified.length > 0) noVerdict.push(`ambiguous-first-layer:${variant}`);

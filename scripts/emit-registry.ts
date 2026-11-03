@@ -1,10 +1,7 @@
-/**
- * Writes the variant table of the implemented checks into docs/03-checks.md §2.1 from test/data/ruleset, which is the
- * single source of variants, default severities and `locked` marks. `--check` fails on drift.
- */
+/** Writes the variant table of the implemented checks into docs/03-checks.md §2.1 from test/data/ruleset, the single source of variants, severities and `locked` marks; `--check` fails on drift. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { loadRuleset } from '../src/core/data.ts';
+import { loadRuleset } from '../src/core/data/load.ts';
 
 const doc = fileURLToPath(new URL('../docs/03-checks.md', import.meta.url));
 const BEGIN =

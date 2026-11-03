@@ -4,14 +4,14 @@ import type { BrowserContext, Cookie, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { VerifyResult } from '../../../../src/cmp/types.ts';
 import { combineVerify } from '../../../../src/collectors/browser/cmp-bridge.ts';
-import { extractDocument } from '../../../../src/collectors/browser/documents.ts';
-import type { RawDocument } from '../../../../src/collectors/browser/in-page-document.ts';
-import type { RawStorage } from '../../../../src/collectors/browser/in-page-storage.ts';
-import { JarTracker, type Moment, mapCookie } from '../../../../src/collectors/browser/jar.ts';
-import type { SetCookieOrigin } from '../../../../src/collectors/browser/recorder.ts';
-import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/ssrf.ts';
-import { snapshotResponseHeaders } from '../../../../src/collectors/browser/visit.ts';
-import { defaultNetworkConfig, type Lookup } from '../../../../src/core/net.ts';
+import type { RawDocument } from '../../../../src/collectors/browser/in-page/document.ts';
+import type { RawStorage } from '../../../../src/collectors/browser/in-page/storage.ts';
+import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/launch/ssrf.ts';
+import { extractDocument } from '../../../../src/collectors/browser/legal/documents.ts';
+import { snapshotResponseHeaders } from '../../../../src/collectors/browser/pages/visit.ts';
+import { JarTracker, type Moment, mapCookie } from '../../../../src/collectors/browser/recording/jar.ts';
+import type { SetCookieOrigin } from '../../../../src/collectors/browser/recording/recorder.ts';
+import { defaultNetworkConfig, type Lookup } from '../../../../src/core/url/net.ts';
 
 const target = { etld1: 'example.de', host: 'www.example.de' };
 const pre: Moment = {

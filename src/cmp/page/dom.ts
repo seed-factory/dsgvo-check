@@ -1,7 +1,6 @@
 /**
- * Minimal DOM typings for code that runs inside the page (`page.evaluate`). The project compiles without
- * `lib.dom`, and in-page functions must not reference anything outside their own body, so they cast
- * `globalThis` to these interfaces. Type-only module.
+ * Minimal DOM typings for in-page code: the project compiles without `lib.dom`, and in-page functions may reference
+ * nothing outside their own body, so they cast `globalThis` to these interfaces.
  */
 
 export interface DRect {

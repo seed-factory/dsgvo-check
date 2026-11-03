@@ -1,15 +1,14 @@
 /**
- * First-screen measurement end to end: the collector waits for the banner and measures it,
- * core decides the click, and CONSENT-04 judges the facts.
- * Hand-written shops on the Cookiebot simulator (test/fixture-server/sites/cmp/shops).
+ * First-screen measurement end to end: the collector waits for and measures the banner, core decides the click,
+ * CONSENT-04 judges the facts (hand-written shops on the Cookiebot simulator, test/fixture-server/sites/cmp/shops).
  */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
-import { silentLogger } from '../../../src/core/logger.ts';
-import type { FullReport } from '../../../src/core/report-schema.ts';
+import type { FullReport } from '../../../src/core/report/schema.ts';
+import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';

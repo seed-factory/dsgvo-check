@@ -1,12 +1,8 @@
-/**
- * Browser collector. Phases A/B/C, each in a fresh `chromium.launchPersistentContext(tmpdir)` with
- * `channel: 'chromium'` (Chrome for Testing, new headless); `chromiumSandbox: ctx.options.sandbox === 'require'`;
- * extra args from `ctx.network.test?.browserArgs`; UA = browserUserAgent(navigator.userAgent).
- * Fatal conditions are returned in `fatal` (unreachable/blocked start page, sandbox, browser missing).
- * The CMP subsystem is used only through `src/cmp/index.ts` (`defaultCmpApi`); tests may inject a stub.
- */
+// Browser collector: phases A/B/C, each in a fresh `chromium.launchPersistentContext` (Chrome for Testing, new
+// headless; sandbox per `ctx.options.sandbox`, extra args from `ctx.network.test?.browserArgs`). Fatal conditions are
+// returned in `fatal`. The CMP subsystem is reached only through `src/cmp/index.ts`; tests may inject a stub.
 import { chromium } from 'playwright-core';
-import type { BrowserCollector } from '../../core/collector.ts';
+import type { BrowserCollector } from '../../core/snapshot/collector.ts';
 import { defaultCmpApi } from './cmp-bridge.ts';
 import { BrowserCollection, type BrowserCollectorDeps } from './collector.ts';
 import { DEFAULT_TIMING, REQUEST_LIMIT } from './config.ts';

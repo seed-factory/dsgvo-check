@@ -1,6 +1,4 @@
-/**
- * The only core module checks should import (import boundary). Everything here is pure.
- */
+/** The only core module checks should import (import boundary); everything here is pure. */
 
 export type {
   AnyCheck,
@@ -13,12 +11,13 @@ export type {
   EvidenceInput,
   Observation,
   RelatedRef,
-} from './check.ts';
-export { defineCheck, normalizeOutcome, variantGroupOf } from './check.ts';
-export type { TlsHostRole } from './fingerprint.ts';
-export { fingerprint, subjects, tlsHostRole } from './fingerprint.ts';
-export { cspFrameAncestors, MAX_HEADER_VALUE } from './headers.ts';
-export { maskEmails, maskMailto, redactText } from './redact.ts';
-export type { Confidence, MessageParams, Severity } from './report-schema.ts';
-export type * from './snapshot.ts';
-export { isSameSite, parseUrl, registrableDomain, sanitizeUrl } from './url.ts';
+} from './evaluation/check.ts';
+export { defineCheck, normalizeOutcome, variantGroupOf } from './evaluation/check.ts';
+export type { TlsHostRole } from './evaluation/fingerprint.ts';
+export { fingerprint, subjects, tlsHostRole } from './evaluation/fingerprint.ts';
+export { cspFrameAncestors, MAX_HEADER_VALUE } from './redaction/headers.ts';
+export { maskEmails, maskMailto, redactText } from './redaction/redact.ts';
+export type { Confidence, MessageParams, Severity } from './report/schema.ts';
+export { isCookieHeld, isHttpHref } from './snapshot/browser.ts';
+export type * from './snapshot/index.ts';
+export { isSameSite, parseUrl, registrableDomain, sanitizeUrl } from './url/url.ts';

@@ -1,7 +1,6 @@
 /**
- * HTTP heuristics read untrusted markup: legal-link selection accepts the whole bounded body, while the
- * other probes inspect its prefix. Repeated incomplete tags must not restart a scan at every candidate.
- * Hostile input shapes check scaling; ordinary markup cases preserve the extracted facts.
+ * HTTP heuristics read untrusted markup: legal-link selection accepts the whole bounded body, other probes its prefix;
+ * repeated incomplete tags must not restart a scan at every candidate, ordinary markup keeps the extracted facts.
  */
 import { describe, expect, it } from 'vitest';
 import {

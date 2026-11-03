@@ -1,19 +1,15 @@
-/**
- * Pure helpers over DNS query records, shared by the MAIL-* checks and the DNS collector (which uses the same
- * analysis to decide what to query next). No I/O here.
- */
+/** Pure helpers over DNS query records, shared by the MAIL-* checks and the DNS collector. */
 import type {
   DnsAnswer,
   DnsQueryRecord,
   DnsRcode,
   DnsRecordType,
   DnsSection,
-} from '../../../core/snapshot-dns.ts';
+} from '../../../core/snapshot/dns.ts';
 
 /** Lookup of a recorded query by (name, type); `undefined` = not queried (yet). */
 export type DnsLookup = (qname: string, type: DnsRecordType) => DnsQueryRecord | undefined;
 
-/** A query the analysis needs but that is not in the record set yet. */
 export interface PendingQuery {
   qname: string;
   type: DnsRecordType;
@@ -70,7 +66,6 @@ export function mxState(q: DnsQueryRecord | undefined): MxState {
   return mx.some((a) => !isNull(a)) ? 'present' : 'null';
 }
 
-/** Resolver label for evidence. */
 export function resolverLabel(section: Pick<DnsSection, 'resolver'>): string {
   return section.resolver.kind === 'system' || section.resolver.servers.length === 0
     ? 'system'

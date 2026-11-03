@@ -3,8 +3,8 @@ import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import type { CollectorResult, Collectors } from '../../src/core/collector.ts';
-import type { Lookup } from '../../src/core/net.ts';
+import type { CollectorResult, Collectors } from '../../src/core/snapshot/collector.ts';
+import type { Lookup } from '../../src/core/url/net.ts';
 import { REPO_ROOT } from './snapshot-builder.ts';
 
 export interface ExtraCheckData {

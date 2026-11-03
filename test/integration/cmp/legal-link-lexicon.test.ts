@@ -10,7 +10,6 @@ interface Footer {
   links: ReadonlyArray<readonly [string, string]>;
   /** Where the fixed bar sits: at the bottom it covers the footer, at the top it does not. */
   bar: 'bottom' | 'top';
-  /** Links inside the banner itself. */
   inBanner?: ReadonlyArray<readonly [string, string]>;
 }
 

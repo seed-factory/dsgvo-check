@@ -1,9 +1,6 @@
 /**
- * Throttling and browser-check guards:
- * - A phase A cut short by throttling (429/503) is not a clean observation. With evaluable pages
- * the affected checks are `partial` (limitation `throttled`, 5.2); without any evaluable page they are
- * `inconclusive` (reason `throttled`) instead of `completed` without findings.
- * - Counterexamples pin down the browser-check guard conditions.
+ * Throttling and browser-check guards: a phase A cut short by throttling (429/503) is not a clean observation (`partial`
+ * with limitation `throttled`, or `inconclusive` without evaluable pages); counterexamples pin down the guard conditions.
  */
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../src/checks/browser/consent-01.ts';
@@ -13,7 +10,7 @@ import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
 import { track01 } from '../../../../src/checks/browser/track-01.ts';
-import type { AnyCheck } from '../../../../src/core/check.ts';
+import type { AnyCheck } from '../../../../src/core/evaluation/check.ts';
 import { runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { CONTACT, click, cookie, defaultPages, page, phase, req, START, site } from './helpers.ts';
 
