@@ -42,4 +42,4 @@ docker/seccomp-chromium.json
   for the Chromium sandbox. The same approach is used by
   jessfraz/dotfiles etc/docker/seccomp/chrome.json (MIT, Copyright (c) Jessie
   Frazelle) and microsoft/playwright utils/docker/seccomp_profile.json
-  (Apache-2.0, Copyright (c) Microsoft Corporation). Details: docker/README.md.
+  (Apache-2.0, Copyright (c) Microsoft Corporation). Details: README.md, section Docker.

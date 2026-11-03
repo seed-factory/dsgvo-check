@@ -6,7 +6,7 @@ ui:
     legal advice and not a legal assessment. If a check has no finding, this does not mean that a requirement
     is met. Results may depend on location, time, consent banner configuration and detection as an automated
     visitor.
-  # Further paragraphs of the disclaimer (wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # Further paragraphs of the disclaimer. src/reporters/disclaimer.ts renders each conditional
   # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
   disclaimer.data: >-
     Values of cookies, Web Storage entries and consent strings are stored neither in clear text nor as a checksum;
@@ -45,7 +45,7 @@ ui:
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
     third-party websites are not intended for publication. The software is provided under the Apache License 2.0
     without warranty.
-  # Usage notes for `--help` and the project README (wording guide §6, 5.7).
+  # Usage notes for `--help` and the project README (section `## Nutzungshinweise`).
   usageNotes.title: "Usage notes"
   usageNotes: >-
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about

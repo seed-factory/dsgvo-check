@@ -6,7 +6,7 @@ ui:
     Zeitpunkt. Er ist keine Rechtsberatung und keine rechtliche Bewertung. Wenn zu einer Prüfung kein Befund
     vorliegt, bedeutet das nicht, dass eine Anforderung erfüllt ist. Ergebnisse können von Standort, Zeitpunkt,
     Konfiguration des Einwilligungsbanners und der Erkennung als automatisierter Besucher abhängen.
-  # Further paragraphs of the disclaimer (wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # Further paragraphs of the disclaimer. src/reporters/disclaimer.ts renders each conditional
   # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
   disclaimer.data: >-
     Werte von Cookies, Web-Storage-Einträgen und Consent-Strings werden weder im Klartext noch als Prüfsumme
@@ -47,7 +47,7 @@ ui:
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
     Dritter sind nicht zur Veröffentlichung vorgesehen. Die Software wird unter der Apache License 2.0 ohne
     Gewährleistung bereitgestellt.
-  # Nutzungshinweise for `--help` and the project README (wording guide §6, 5.7).
+  # Nutzungshinweise for `--help` and the project README (section `## Nutzungshinweise`).
   usageNotes.title: "Nutzungshinweise"
   usageNotes: >-
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites

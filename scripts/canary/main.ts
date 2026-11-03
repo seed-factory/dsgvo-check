@@ -1,6 +1,6 @@
 /**
  * Canary runner: passive scans of canary/sites.yaml with low parallelism into canary/results/<runId>/; `summary [runId]`
- * aggregates a run (no site names without --with-sites). Usage and ethics: canary/README.md.
+ * aggregates a run (no site names without --with-sites). Usage and ethics: README.md, section Canary.
  */
 import { readdirSync } from 'node:fs';
 import { stat, writeFile } from 'node:fs/promises';
@@ -85,7 +85,7 @@ async function main(argv: string[]): Promise<number> {
   if (args.dryRun || !args.confirm) {
     for (const s of sites) log(`  ${s.id.padEnd(32)} ${s.region.padEnd(7)} ${s.url}`);
     if (args.dryRun) return 0;
-    warn('live scans need --confirm (passive only, results stay local: see canary/README.md)');
+    warn('live scans need --confirm (passive only, results stay local: see README.md, section Canary)');
     return 1;
   }
 

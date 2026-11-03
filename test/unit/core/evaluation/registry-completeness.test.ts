@@ -27,7 +27,7 @@ describe('registry completeness', () => {
     expect(completenessProblems(new CheckRegistry(allChecks).all(), data())).toEqual([]);
   });
 
-  it('the variant table in docs/03-checks.md §2.1 is generated from the current ruleset', () => {
+  it('the variant table in README.md is generated from the current ruleset', () => {
     expect(() =>
       execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/emit-registry.ts'), '--check'], {
         stdio: 'pipe',

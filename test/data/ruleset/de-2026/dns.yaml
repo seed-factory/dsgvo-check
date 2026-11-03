@@ -1,8 +1,9 @@
 # Ruleset de-2026, module dns. Per (checkId, variant): default severity and CRM catalog code (or explicit null,
 # JSON report only). T3 codes stay at warning or below (test). MAIL-02 follows the DMARC matrix of BSI TR-03182.
 # Variants that describe missing or weak spoofing protection map to the catalog code; hygiene hints (deprecated
-# ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings: Q2.
-# The variant table in docs/03-checks.md §2.1 is generated from these files (`corepack pnpm registry`).
+# ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings stay null until the customer
+# maps them.
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   MAIL-01:
     gating: true

@@ -6,13 +6,14 @@ import { renderEnvExample } from '../../../../src/core/config/env-example.ts';
 import { configFields, envValue } from '../../../../src/core/config/fields.ts';
 import { resolveConfig } from '../../../../src/core/config/load.ts';
 import { DEFAULT_CONFIG } from '../../../../src/core/config/schema.ts';
+import { TEST_ENV_EXAMPLE } from '../../../utils/run/test-workers.ts';
 import { REPO_ROOT } from '../../../utils/snapshot-builder.ts';
 
 const committed = readFileSync(path.join(REPO_ROOT, '.env.example'), 'utf8');
 
 describe('.env.example', () => {
-  it('is what the schema generates (run `corepack pnpm env:example` after changing a setting)', () => {
-    expect(committed).toBe(renderEnvExample());
+  it('is what the schema generates, followed by the test block (run `corepack pnpm env:example` after a change)', () => {
+    expect(committed).toBe(renderEnvExample() + TEST_ENV_EXAMPLE);
   });
 
   it('the generator script agrees in --check mode', () => {

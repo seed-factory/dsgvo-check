@@ -2,7 +2,7 @@
 # JSON report only). T3 codes stay at most `warning` (test). Confidence caps apply on top (medium ≤ warning,
 # low ≤ info). Catalog: HDR-01 → T3_NO_SECURITY_HEADERS, TLS-01/TLS-02 → T1_UNENCRYPTED.
 # TLS-01.redirect-chain-detail has no code: https is reached, only the redirect path is unusual (no "unencrypted" case).
-# The variant table in docs/03-checks.md §2.1 is generated from these files (`corepack pnpm registry`).
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   HDR-01:
     gating: true

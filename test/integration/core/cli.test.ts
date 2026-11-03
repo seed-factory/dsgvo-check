@@ -12,7 +12,7 @@ import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 const cli = path.join(REPO_ROOT, 'src/cli.ts');
 
 /**
- * Loopback-only (test/README.md): a preload makes the resolver answer ENOTFOUND for every host and log each lookup.
+ * Loopback-only, no internet: a preload makes the resolver answer ENOTFOUND for every host and log each lookup.
  */
 function run(...args: string[]) {
   const lookupLog = path.join(mkdtempSync(path.join(tmpdir(), 'cli-dns-')), 'lookups.log');
@@ -33,7 +33,7 @@ describe('dsgvo-check CLI', () => {
     expect(r.stdout).toContain('install');
   });
 
-  it('help carries the Nutzungshinweise (wording guide §6: own sites, UA token, phase C, DNS with --proxy)', () => {
+  it('help carries the Nutzungshinweise (own sites, UA token, phase C, DNS with --proxy)', () => {
     const r = run('--help');
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('Nutzungshinweise');

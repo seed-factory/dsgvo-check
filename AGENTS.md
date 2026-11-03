@@ -4,20 +4,20 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 
 ## Где правда
 
-Приоритет: решение заказчика → [ТЗ](specs/dsgvo-check_TZ.md) → [каталог проверок](specs/dsgvo-check_katalog-proverok.md) → [архитектура](docs/02-architecture.md) и [спецификация проверок](docs/03-checks.md) → остальные документы.
+Приоритет: решение заказчика → [ТЗ](specs/dsgvo-check_TZ.md) → [каталог проверок](specs/dsgvo-check_katalog-proverok.md) → `test/data/ruleset` и код с его тестами → [README.md](README.md) и [docs/architecture.md](docs/architecture.md).
 
-Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в `docs/03-checks.md` §2.1 генерируется из него.
+Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в [README.md](README.md) (раздел «Was geprüft wird») генерируется из него.
 
-| Нужно                           | Документ                                                                                                                                   |
+| Нужно                           | Где смотреть                                                                                                                               |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Что строим и почему             | [docs/00-brief.md](docs/00-brief.md)                                                                                                       |
+| Что строим и почему             | [specs/dsgvo-check_TZ.md](specs/dsgvo-check_TZ.md), [README.md](README.md)                                                                 |
 | Архитектура одним взглядом      | [docs/architecture.md](docs/architecture.md)                                                                                               |
-| Контракты, модули, поля         | [docs/02-architecture.md](docs/02-architecture.md)                                                                                         |
-| Поведение проверок, `messageId` | [docs/03-checks.md](docs/03-checks.md); варианты — `test/data/ruleset`                                                                     |
-| Тексты находок и стоп-слова     | [docs/legal/wording-guide.md](docs/legal/wording-guide.md)                                                                                 |
-| Тесты, CI, Docker, Action       | [docs/04-quality-and-delivery.md](docs/04-quality-and-delivery.md)                                                                         |
+| Контракты, модули, поля         | [docs/architecture.md](docs/architecture.md); схемы в `src/core/snapshot` и `src/core/report`                                              |
+| Поведение проверок, `messageId` | `src/checks/**` и их тесты; варианты — `test/data/ruleset`                                                                                 |
+| Тексты находок и стоп-слова     | `test/data/texts/**`; правило 3 ниже и `test/unit/core/data/stopwords.test.ts`                                                             |
+| Тесты, CI, Docker, Action       | [README.md](README.md), разделы «Entwicklung», «Docker», «CI-Integration»                                                                  |
 | Словари, сигнатуры, селекторы   | `test/data/{cmp,legal,browser,http,services}`; перечень — в [docs/architecture.md](docs/architecture.md), раздел «Словари и сопоставления» |
-| Устройство прототипа            | [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md)                                                                                         |
+| Устройство прототипа            | [README.md](README.md): примечание о статусе и раздел «Grenzen»                                                                            |
 
 Решение противоречит этим документам — остановись и спроси. Документ «под код» молча не переписывай.
 
@@ -30,7 +30,7 @@ corepack pnpm typecheck && corepack pnpm lint
 corepack pnpm test:unit          # L0–L1, без браузера и сети; `corepack pnpm test` запускает только их
 corepack pnpm test:integration   # L2: настоящий Chromium, локальные серверы, без интернета
 corepack pnpm build && corepack pnpm test:e2e   # build пишет и schema/report.schema.json из zod
-corepack pnpm registry           # перегенерировать таблицу §2.1 в docs/03-checks.md
+corepack pnpm registry           # перегенерировать таблицу вариантов в README.md
 corepack pnpm env:example        # перегенерировать .env.example из схемы настроек (env:example:check — проверка)
 node dist/cli.js https://example.test --format console,json,html
 node dist/cli.js report <report.json> --format html,pdf
@@ -65,4 +65,4 @@ node dist/cli.js report <report.json> --format html,pdf
    - dns: строки в `test/unit/checks/dns/fixtures.ts`;
    - http: JSON в `test/fixtures/snapshots/http/<ID>/`.
 
-Имена вариантов запланированной проверки бери из второй таблицы `docs/03-checks.md` §2.1. После `corepack pnpm registry` проверка переходит в первую.
+Имена вариантов запланированной проверки бери из таблицы «Geplante Prüfungen» в [README.md](README.md). После `corepack pnpm registry` проверка переходит в таблицу реализованных.

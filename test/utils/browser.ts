@@ -1,6 +1,6 @@
 /**
  * Test Chromium: Chrome for Testing in new headless (`channel: 'chromium'`, as in production), fresh persistent profile,
- * every host routed to the fixture server via `--host-resolver-rules` (see test/README.md).
+ * every host routed to the fixture server via `--host-resolver-rules`, so integration tests never reach the internet.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

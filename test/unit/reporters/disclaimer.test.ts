@@ -1,6 +1,6 @@
 /**
- * Disclaimer with conditional paragraphs (wording guide §6): each is rendered only when its condition holds in the
- * report, in every human-readable format and in `disclaimer.text` of the JSON report; every condition in both states.
+ * Disclaimer with conditional paragraphs: each is rendered only when its condition holds in the report, in every
+ * human-readable format and in `disclaimer.text` of the JSON report; every condition in both states.
  */
 import { describe, expect, it } from 'vitest';
 import { loadTexts } from '../../../src/core/data/load.ts';

@@ -1,6 +1,6 @@
 # Finding texts (en), module http. ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
-# Keys follow the registry docs/03-checks.md §2.1. Wording: "observed", "not found in …" — no legal verdicts
-# (stop-word test). Draft until reviewed.
+# Keys are the variants of test/data/ruleset (`<checkId>.<variant>`). Wording: "observed", "not found in …" — no
+# legal verdicts (stop-word test). Draft until reviewed.
 draft: true
 messages:
   # HDR-01

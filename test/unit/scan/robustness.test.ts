@@ -464,7 +464,7 @@ describe('Nutzungshinweise', () => {
     expect(text).toMatch(/Phase C discloses the scanning machine's IP address to the third parties/);
   });
 
-  it('de: stays the wording of the guide §6 (allowlist by ) — also in the README', () => {
+  it('de: the Phase C sentence and the README section Nutzungshinweise match the data text', () => {
     const de = uiText(loadTexts('de'), 'usageNotes', { version: '<version>' }).replace(/\s+/g, ' ');
     const phaseC =
       'Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach der Annahme im Banner lädt.';

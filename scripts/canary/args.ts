@@ -48,7 +48,7 @@ export interface RunnerArgs {
 export const RUNNER_USAGE = `Usage: node scripts/canary/main.ts [options]
        node scripts/canary/main.ts summary [runId] [--help]
 
-Passive canary run over canary/sites.yaml (see canary/README.md). Live scans need --confirm.
+Passive canary run over canary/sites.yaml (see README.md, section Canary). Live scans need --confirm.
 
   --confirm                 really scan the live sites (without it: print the plan only)
   --dry-run                 print the plan and exit

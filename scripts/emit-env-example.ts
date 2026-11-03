@@ -1,10 +1,11 @@
-/** Writes .env.example from the settings schema in src/core/config, its only source; `--check` fails on drift. */
+/** Writes .env.example from the settings schema in src/core/config plus the test block; `--check` fails on drift. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { renderEnvExample } from '../src/core/config/env-example.ts';
+import { TEST_ENV_EXAMPLE } from '../test/utils/run/test-workers.ts';
 
 const file = fileURLToPath(new URL('../.env.example', import.meta.url));
-const next = renderEnvExample();
+const next = renderEnvExample() + TEST_ENV_EXAMPLE;
 
 if (process.argv.includes('--check')) {
   let current = '';

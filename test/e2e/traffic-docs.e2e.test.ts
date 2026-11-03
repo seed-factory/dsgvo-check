@@ -1,5 +1,5 @@
 /**
- * The traffic that canary/README.md promises ("Passive only") matches the class T probes the collectors send, so a
+ * The traffic that README.md lists under "Was der Scanner sendet" matches the class T probes the collectors send, so a
  * site owner asking "what did you send us?" gets a list without a missing or invented probe. No network, no build.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -31,25 +31,29 @@ function probePurposes(): Set<string> {
   return out;
 }
 
-/** How the canary README must describe each probe purpose. */
+/** How the README section must describe each probe purpose (German wording, whitespace normalised). */
 const DESCRIBED: Record<string, RegExp> = {
   'robots.txt': /`robots\.txt`/,
-  sitemap: /at most 2 sitemap requests/,
+  sitemap: /höchstens 2 Sitemap-Anfragen/,
   // an explicit port of the target URL adds the chain of that port.
   'redirect-chain':
-    /`http:\/\/` and `https:\/\/` redirect chains of the target host and of its `www\.` and apex variants, plus the chain on an explicit port of the target URL/,
-  'security-headers:': /Impressum and Datenschutz pages linked from the start page/,
+    /die Umleitungsketten von `http:\/\/` und `https:\/\/` für den Zielhost und seine `www\.`- und Apex-Varianten, dazu die Kette auf einem in der Ziel-URL ausdrücklich genannten Port/,
+  'security-headers:':
+    /je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung/,
   // after a redirect to another domain the HTTP collector reads the final host's certificates as well.
   certificate:
-    /one TLS handshake per host variant \(at most 3\).*after a redirect to another domain, at most 3 more for the final host and its `www\.` and apex variants/,
+    /ein Handshake je Host-Variante \(höchstens 3\).*nach einer Umleitung auf eine andere Domain höchstens 3 weitere für den Zielhost und seine `www\.`- und Apex-Varianten/,
 };
 
-describe('canary/README.md rule 1 describes the probes the scanner sends', () => {
-  const readme = read('canary/README.md');
-  const rule1 = readme.slice(readme.indexOf('1. **Passive only.**'), readme.indexOf('\n2. **'));
+describe('README.md section "Was der Scanner sendet" describes the probes the scanner sends', () => {
+  const readme = read('README.md');
+  const from = readme.indexOf('\n## Was der Scanner sendet');
+  const section = readme.slice(from, readme.indexOf('\n## ', from + 1));
+  const flat = section.replace(/\s+/g, ' ');
 
-  it('finds the rule and the probes', () => {
-    expect(rule1.length).toBeGreaterThan(100);
+  it('finds the section and the probes', () => {
+    expect(from).toBeGreaterThan(0);
+    expect(section.length).toBeGreaterThan(100);
     expect([...probePurposes()].sort()).toEqual(
       expect.arrayContaining(['certificate', 'redirect-chain', 'robots.txt', 'sitemap']),
     );
@@ -58,17 +62,17 @@ describe('canary/README.md rule 1 describes the probes the scanner sends', () =>
   it('every probe purpose in the collectors is described', () => {
     for (const purpose of probePurposes()) {
       expect(Object.keys(DESCRIBED), `undocumented probe "${purpose}"`).toContain(purpose);
-      expect(rule1.replace(/\s+/g, ' ')).toMatch(DESCRIBED[purpose] as RegExp);
+      expect(flat).toMatch(DESCRIBED[purpose] as RegExp);
     }
   });
 
   it('names DNS lookups with the real query budget', () => {
-    expect(rule1.replace(/\s+/g, ' ')).toContain(`at most ${DNS_QUERY_BUDGET} queries`);
-    expect(rule1).toMatch(/MX, SPF and DMARC/);
+    expect(flat).toContain(`höchstens ${DNS_QUERY_BUDGET} Abfragen`);
+    expect(flat).toMatch(/MX-, SPF- und DMARC-Abfragen/);
   });
 
   it('promises no probe that the code does not send', () => {
-    expect(rule1).not.toMatch(/security\.txt|\.well-known/);
+    expect(section).not.toMatch(/security\.txt|\.well-known/);
     expect(sources('src').some((rel) => read(rel).includes('security.txt'))).toBe(false);
   });
 });
