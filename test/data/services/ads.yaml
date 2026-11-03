@@ -1,0 +1,646 @@
+# Advertising, conversion tracking and remarketing. Format: see _catalog.yaml.
+services:
+  - id: google-ads
+    name: Google Ads
+    category: ads
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    consentStorage: ad
+    domains: [googleadservices.com, googleads.g.doubleclick.net]
+    signatures:
+      - id: gtag-aw
+        hosts: [googletagmanager.com]
+        anyHost: true
+        path: "/gtag/js$"
+        query: { id: "^AW-" }
+        kind: library
+        stage: loaded
+      - id: conversion-js
+        hosts: [googleadservices.com]
+        path: '^/pagead/conversion(_async)?\.js$'
+        kind: library
+        stage: loaded
+      - id: conversion
+        hosts: [googleadservices.com, googleads.g.doubleclick.net]
+        path: "^/pagead/"
+        kind: hit
+        stage: event-sent
+      - id: google-domain-hit
+        hosts: [www.google.com, www.google.de]
+        path: "^/(pagead|ccm|rmkt)/"
+        kind: hit
+        stage: event-sent
+    cookies: [_gcl_au, _gcl_aw, _gcl_dc, _gcl_gb, _gcl_gs, _gcl_ag]
+    storageKeys: [_gcl_ls]
+    aliasesDe: [Google Ads, Google AdWords, AdWords, Google Ads Conversion Tracking, Google Remarketing]
+    aliasesEn: [Google Ads, Google AdWords, Google Ads Conversion Tracking]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: google-marketing-platform
+    name: Google Marketing Platform (DoubleClick)
+    category: ads
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    consentStorage: ad
+    domains: [doubleclick.net]
+    signatures:
+      - id: gtag-floodlight
+        hosts: [googletagmanager.com]
+        anyHost: true
+        path: "/gtag/js$"
+        query: { id: "^DC-" }
+        kind: library
+        stage: loaded
+      # The ids of the sinks below sit in matrix parameters of the path (`;dc_pre=…`); the collector reads them before
+      # the path is redacted, the names here make them persistent identifiers.
+      - id: floodlight
+        hosts: [ad.doubleclick.net, fls.doubleclick.net]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+        identifierParams: [dc_pre, _dc_unique_id, dc_dbm_token, dc_ext_key, gdid]
+      - id: ddm-activity
+        hosts: [ade.googlesyndication.com]
+        path: "^/ddm/activity/"
+        kind: hit
+        stage: event-sent
+        identifierParams: [dc_pre, _dc_unique_id, dc_dbm_token, dc_ext_key, gdid]
+      - id: gmp-conversion
+        hosts: [www.google.com, www.google.de]
+        path: "^/gmp/conversion/"
+        kind: hit
+        stage: event-sent
+        identifierParams: [dc_pre, _dc_unique_id, dc_dbm_token, dc_ext_key, gdid]
+    cookies: [IDE@doubleclick.net, DSID@doubleclick.net, id@doubleclick.net]
+    otherCookies: [test_cookie@doubleclick.net]
+    aliasesDe: [DoubleClick, Google Marketing Platform, Campaign Manager 360, Display & Video 360, Floodlight]
+    aliasesEn: [DoubleClick, Google Marketing Platform, Campaign Manager 360, Floodlight]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: google-ad-manager
+    name: Google Ad Manager
+    category: ads
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    consentStorage: ad
+    domains: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net, googletagservices.com]
+    signatures:
+      # Compression Dictionary Transport of the ad scripts: a downloaded resource, no event.
+      - id: compression-dictionary
+        hosts: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net]
+        path: "^/pagead/managed/"
+        kind: resource
+        stage: loaded
+      - id: ad-request
+        hosts: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net]
+        path: "^/gampad/ads"
+        kind: hit
+        stage: event-sent
+      - id: gpt-library
+        hosts: [securepubads.g.doubleclick.net, pubads.g.doubleclick.net, googletagservices.com]
+        path: '^/tag/js/gpt\.js$'
+        kind: library
+        stage: loaded
+    aliasesDe: [Google Ad Manager, Google Publisher Tag, DoubleClick for Publishers]
+    aliasesEn: [Google Ad Manager, Google Publisher Tag]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: google-adsense
+    name: Google AdSense
+    category: ads
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    consentStorage: ad
+    domains: [googlesyndication.com, adservice.google.com, adservice.google.de, adtrafficquality.google]
+    cookies: [__gads, __gpi, __eoi]
+    aliasesDe: [Google AdSense, AdSense]
+    aliasesEn: [Google AdSense, AdSense]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  # Cookies set by google.com for several services (ads personalisation per Google's cookie documentation).
+  # No domains: requests to google.com without a service signature stay `unknown`.
+  - id: google-cookies
+    name: Google
+    category: ads
+    policyRelevance: none
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    cookies: [NID@google.com, NID@google.de, __Secure-ENID@google.com, __Secure-ENID@google.de]
+    otherCookies: [AEC@google.com, AEC@google.de, CONSENT@google.com, 1P_JAR@google.com]
+
+  - id: meta-pixel
+    name: Meta Pixel
+    category: ads
+    policyRelevance: required
+    provider: { name: Meta Platforms Ireland Limited, country: IE }
+    parent: { name: "Meta Platforms, Inc.", country: US }
+    dpfEntity: { name: "Meta Platforms, Inc." }
+    signatures:
+      - id: fbevents
+        hosts: [connect.facebook.net]
+        path: '/fbevents(\.plugins\.[a-z]+)?\.js$'
+        kind: library
+        stage: loaded
+      - id: signals-config
+        hosts: [connect.facebook.net]
+        path: "^/signals/(config|plugins)/"
+        kind: config
+        stage: initialised
+      - id: tr
+        hosts: [facebook.com]
+        path: "^/tr/?$"
+        kind: hit
+        stage: event-sent
+        identifierParams: [fbp, fbc]
+      - id: privacy-sandbox
+        hosts: [facebook.com]
+        path: "^/privacy_sandbox/pixel/register/"
+        kind: hit
+        stage: event-sent
+    cookies: [_fbp, _fbc]
+    aliasesDe:
+      [
+        Meta Pixel,
+        Meta-Pixel,
+        Facebook Pixel,
+        Facebook-Pixel,
+        Facebook Custom Audiences,
+        Meta Conversions API,
+      ]
+    aliasesEn: [Meta Pixel, Facebook Pixel, Facebook Custom Audiences]
+    companyAliases: [Meta Platforms Ireland Ltd, Facebook Ireland Limited, Facebook Ireland Ltd]
+
+  - id: linkedin-insight-tag
+    name: LinkedIn Insight Tag
+    category: ads
+    policyRelevance: required
+    provider: { name: LinkedIn Ireland Unlimited Company, country: IE }
+    parent: { name: Microsoft Corporation, country: US }
+    dpfEntity: { name: LinkedIn Corporation }
+    domains: [px.ads.linkedin.com, dc.ads.linkedin.com, snap.licdn.com]
+    signatures:
+      - id: insight-js
+        hosts: [snap.licdn.com]
+        path: '^/li\.lms-analytics/'
+        kind: library
+        stage: loaded
+      - id: collect
+        hosts: [px.ads.linkedin.com, dc.ads.linkedin.com]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    cookies:
+      [
+        li_fat_id,
+        li_sugr@linkedin.com,
+        bcookie@linkedin.com,
+        UserMatchHistory@linkedin.com,
+        AnalyticsSyncHistory@linkedin.com,
+      ]
+    aliasesDe: [LinkedIn Insight Tag, LinkedIn Insight-Tag, LinkedIn Conversion Tracking]
+    aliasesEn: [LinkedIn Insight Tag]
+    companyAliases: [LinkedIn Ireland]
+
+  - id: tiktok-pixel
+    name: TikTok Pixel
+    category: ads
+    policyRelevance: required
+    provider: { name: TikTok Technology Limited, country: IE }
+    domains: [analytics.tiktok.com]
+    signatures:
+      - id: events-js
+        hosts: [analytics.tiktok.com]
+        path: '/pixel/events\.js$'
+        kind: library
+        stage: loaded
+      - id: config
+        hosts: [analytics.tiktok.com]
+        path: "^/i18n/pixel/(static|config)/"
+        kind: config
+        stage: initialised
+      - id: track
+        hosts: [analytics.tiktok.com]
+        path: "^/api/v2/pixel"
+        kind: hit
+        stage: event-sent
+    cookies: [_ttp, ttcsid, ttcsid_*]
+    otherCookies: [_tt_enable_cookie]
+    aliasesDe: [TikTok Pixel, TikTok-Pixel]
+    aliasesEn: [TikTok Pixel]
+
+  - id: pinterest-tag
+    name: Pinterest Tag
+    category: ads
+    policyRelevance: required
+    provider: { name: Pinterest Europe Limited, country: IE }
+    parent: { name: "Pinterest, Inc.", country: US }
+    dpfEntity: { name: "Pinterest, Inc." }
+    domains: [ct.pinterest.com]
+    signatures:
+      - id: core-js
+        hosts: [s.pinimg.com]
+        path: "^/ct/"
+        kind: library
+        stage: loaded
+      - id: event
+        hosts: [ct.pinterest.com]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    cookies: [_pin_unauth, _epik, _pinterest_ct_ua@pinterest.com]
+    aliasesDe: [Pinterest Tag, Pinterest-Tag, Pinterest Conversion Tag]
+    aliasesEn: [Pinterest Tag]
+
+  - id: microsoft-advertising
+    name: Microsoft Advertising (UET)
+    category: ads
+    policyRelevance: required
+    parent: { name: Microsoft Corporation, country: US }
+    dpfEntity: { name: Microsoft Corporation }
+    domains: [bat.bing.com]
+    signatures:
+      - id: bat-js
+        hosts: [bat.bing.com]
+        path: '^/bat\.js$'
+        kind: library
+        stage: loaded
+      - id: action
+        hosts: [bat.bing.com]
+        path: "^/action/"
+        kind: hit
+        stage: event-sent
+    cookies: [_uetsid, _uetvid, MUID]
+    storageKeys: [_uetsid, _uetvid]
+    aliasesDe: [Microsoft Advertising, Bing Ads, Universal Event Tracking]
+    aliasesEn: [Microsoft Advertising, Bing Ads, Universal Event Tracking]
+
+  - id: criteo
+    name: Criteo
+    category: ads
+    policyRelevance: required
+    provider: { name: Criteo SA, country: FR }
+    domains: [criteo.com, criteo.net]
+    cookies: [cto_bundle, cto_bidid, uid@criteo.com]
+    aliasesDe: [Criteo]
+    aliasesEn: [Criteo]
+
+  - id: x-ads
+    name: X (Twitter) Pixel
+    category: ads
+    policyRelevance: required
+    provider: { name: Twitter International Unlimited Company, country: IE }
+    domains: [static.ads-twitter.com, ads-twitter.com, analytics.twitter.com, t.co]
+    cookies: [muc_ads@t.co, personalization_id@twitter.com, personalization_id@x.com]
+    aliasesDe: [X Pixel, Twitter Pixel, Twitter Conversion Tracking, X Ads, Twitter Ads]
+    aliasesEn: [X Pixel, Twitter Pixel, X Ads, Twitter Ads]
+
+  # programmatic ad tech
+  # Hosts and paths come from observed traffic, generalised to each vendor's endpoints. Cookie-sync pixels are
+  # `hit` with stage `loaded` (a sync, not an event). No provider or DPF claim without vendor documentation.
+  # `identifierParams` only where the identifier parameter was seen in the traffic.
+  - id: the-trade-desk
+    name: The Trade Desk
+    category: ads
+    policyRelevance: required
+    domains: [adsrvr.org]
+    signatures:
+      - id: universal-pixel
+        hosts: [js.adsrvr.org]
+        path: '^/universal_pixel\.js$'
+        kind: library
+        stage: loaded
+      - id: conversion
+        hosts: [insight.adsrvr.org, match.adsrvr.org]
+        path: "^/track/(cei|realtimeconversion)$"
+        kind: hit
+        stage: event-sent
+      - id: cookie-match
+        hosts: [match.adsrvr.org]
+        path: "^/track/(rid|usersync|cmf/generic)$"
+        kind: hit
+        stage: loaded
+    aliasesDe: [The Trade Desk, Trade Desk]
+    aliasesEn: [The Trade Desk, Trade Desk]
+
+  - id: xandr
+    name: Xandr (AppNexus)
+    category: ads
+    policyRelevance: required
+    domains: [adnxs.com]
+    signatures:
+      - id: user-sync
+        hosts: [ib.adnxs.com, secure.adnxs.com, acdn.adnxs.com]
+        path: '^/(async_usersync|getuid|seg|dmp/async_usersync\.html)$'
+        kind: hit
+        stage: loaded
+      - id: bid-request
+        hosts: [ib.adnxs.com]
+        path: "^/ut/v[0-9]+/prebid$"
+        kind: resource
+    aliasesDe: [Xandr, AppNexus]
+    aliasesEn: [Xandr, AppNexus]
+
+  - id: pubmatic
+    name: PubMatic
+    category: ads
+    policyRelevance: required
+    domains: [pubmatic.com]
+    signatures:
+      - id: user-sync
+        hosts: [pubmatic.com]
+        path: '^/AdServer/(js/user_sync\.html|UCookieSetPug|ImgSync|Pug|SPug)$'
+        kind: hit
+        stage: loaded
+      - id: pwt
+        hosts: [ads.pubmatic.com]
+        path: '^/AdServer/js/pwt/[0-9]+/[0-9]+/pwt\.js$'
+        kind: library
+        stage: loaded
+      - id: bid-request
+        hosts: [hbopenbid.pubmatic.com]
+        path: "^/translator$"
+        kind: resource
+      - id: geo
+        hosts: [ut.pubmatic.com]
+        path: "^/geo$"
+        kind: resource
+    aliasesDe: [PubMatic]
+    aliasesEn: [PubMatic]
+
+  - id: magnite
+    name: Magnite (Rubicon Project)
+    category: ads
+    policyRelevance: required
+    domains: [rubiconproject.com]
+    signatures:
+      - id: user-sync
+        hosts: [eus.rubiconproject.com, pixel.rubiconproject.com]
+        path: '^/(usync\.html|exchange/sync\.php|tap\.php)$'
+        kind: hit
+        stage: loaded
+      - id: bid-request
+        hosts: [fastlane.rubiconproject.com]
+        path: '^/a/api/(fastlane|prebid-exchange)\.json$'
+        kind: resource
+    aliasesDe: [Magnite, Rubicon Project]
+    aliasesEn: [Magnite, Rubicon Project]
+
+  - id: bidswitch
+    name: BidSwitch
+    category: ads
+    policyRelevance: required
+    domains: [bidswitch.net]
+    cookies: [tuuid@bidswitch.net]
+    otherCookies: [tuuid_lu@bidswitch.net]
+    signatures:
+      - id: user-sync
+        hosts: [x.bidswitch.net]
+        path: "^/(ul_cb/)?sync$"
+        kind: hit
+        stage: loaded
+        identifierParams: [user_id]
+    aliasesDe: [BidSwitch]
+    aliasesEn: [BidSwitch]
+
+  - id: equativ
+    name: Equativ (Smart AdServer)
+    category: ads
+    policyRelevance: required
+    domains: [smartadserver.com]
+    signatures:
+      - id: user-sync
+        hosts:
+          [
+            rtb-csync.smartadserver.com,
+            sync.smartadserver.com,
+            ssbsync.smartadserver.com,
+            csync.smartadserver.com,
+          ]
+        path: '^/(redir/|getuid$|api/sync$|diff/rtb/csync/CookieSync\.html$)'
+        kind: hit
+        stage: loaded
+      - id: bid-request
+        hosts: [prg.smartadserver.com]
+        path: "^/prebid/v[0-9]+$"
+        kind: resource
+    aliasesDe: [Equativ, Smart AdServer]
+    aliasesEn: [Equativ, Smart AdServer]
+
+  - id: amazon-ads
+    name: Amazon Ads (Publisher Services)
+    category: ads
+    policyRelevance: required
+    domains: [amazon-adsystem.com]
+    cookies: [ad-id@amazon-adsystem.com]
+    otherCookies: [ad-privacy@amazon-adsystem.com]
+    signatures:
+      - id: apstag
+        hosts: [c.amazon-adsystem.com]
+        path: '^/aax[0-9]+/apstag\.js$'
+        kind: library
+        stage: loaded
+      - id: ad-request
+        hosts: [aax-eu.amazon-adsystem.com]
+        path: "^/s/iu[0-9]+$"
+        kind: resource
+        identifierParams: [uuid]
+      - id: bid-request
+        hosts: [web-banner.ads.aps.amazon-adsystem.com, web-video.ads.aps.amazon-adsystem.com]
+        path: "^/e/dtb/bid$"
+        kind: resource
+    aliasesDe: [Amazon Ads, Amazon Publisher Services]
+    aliasesEn: [Amazon Ads, Amazon Publisher Services]
+
+  - id: lotame
+    name: Lotame
+    category: ads
+    policyRelevance: required
+    domains: [crwdcntrl.net]
+    signatures:
+      - id: sync-script
+        hosts: [tags.crwdcntrl.net]
+        path: '^/lt/c/[0-9]+/sync\.min\.js$'
+        kind: library
+        stage: loaded
+      - id: user-sync
+        hosts: [id.crwdcntrl.net, sync.crwdcntrl.net]
+        path: "^/(id|qmap)$"
+        kind: hit
+        stage: loaded
+    aliasesDe: [Lotame]
+    aliasesEn: [Lotame]
+
+  - id: id5
+    name: ID5
+    category: ads
+    policyRelevance: required
+    domains: [id5-sync.com]
+    storageKeys: [id5id]
+    signatures:
+      - id: id-api
+        hosts: [cdn.id5-sync.com]
+        path: '^/api/[0-9.]+/(id5-api|esp)\.js$'
+        kind: library
+        stage: loaded
+      - id: analytics
+        hosts: [api.id5-sync.com]
+        path: "^/analytics/[0-9]+/id5-api-js$"
+        kind: hit
+        stage: loaded
+      - id: prebid-config
+        hosts: [id5-sync.com]
+        path: "^/api/config/prebid$"
+        kind: resource
+    aliasesDe: [ID5]
+    aliasesEn: [ID5]
+
+  - id: teads
+    name: Teads
+    category: ads
+    policyRelevance: required
+    domains: [teads.tv]
+    signatures:
+      - id: bid-request
+        hosts: [a.teads.tv]
+        path: "^/hb/bid-request$"
+        kind: resource
+      - id: user-sync
+        hosts: [sync.teads.tv, criteo-sync.teads.tv]
+        path: "^/um$"
+        kind: hit
+        stage: loaded
+        identifierParams: [uid]
+    aliasesDe: [Teads]
+    aliasesEn: [Teads]
+
+  - id: taboola
+    name: Taboola
+    category: ads
+    policyRelevance: required
+    domains: [taboola.com]
+    signatures:
+      - id: loader
+        hosts: [cdn.taboola.com]
+        path: '^/libtrc/(unip/[0-9]+/tfa|[^/]+/loader)\.js$'
+        kind: library
+        stage: loaded
+      - id: recommendations
+        hosts: [trc.taboola.com]
+        path: "/trc/[0-9]+/json$"
+        kind: resource
+      - id: event-log
+        hosts: [trc-events.taboola.com, am-trc-events.taboola.com]
+        path: "/log/[0-9]+/"
+        kind: hit
+        stage: event-sent
+      - id: thumbnails
+        hosts: [images.taboola.com, cdn.taboola.com]
+        path: "^/(taboola/image/|libtrc/static/thumbnails/)"
+        kind: image
+        stage: loaded
+    aliasesDe: [Taboola]
+    aliasesEn: [Taboola]
+
+  - id: outbrain
+    name: Outbrain
+    category: ads
+    policyRelevance: required
+    domains: [outbrain.com]
+    signatures:
+      - id: loader
+        hosts: [amplify.outbrain.com]
+        path: '^/cp/obtp\.js$'
+        kind: library
+        stage: loaded
+      - id: cookie-sync
+        hosts: [sync.outbrain.com]
+        path: "^/cookie-sync$"
+        kind: hit
+        stage: loaded
+        identifierParams: [uid]
+    aliasesDe: [Outbrain]
+    aliasesEn: [Outbrain]
+
+  - id: index-exchange
+    name: Index Exchange
+    category: ads
+    policyRelevance: required
+    domains: [casalemedia.com, indexww.com]
+    signatures:
+      - id: bid-request
+        hosts: [htlb.casalemedia.com]
+        path: "^/openrtb/pbjs$"
+        kind: resource
+      - id: user-match
+        hosts: [js-sec.indexww.com]
+        path: '^/um/ixmatch\.html$'
+        kind: hit
+        stage: loaded
+    aliasesDe: [Index Exchange]
+    aliasesEn: [Index Exchange]
+
+  - id: openx
+    name: OpenX
+    category: ads
+    policyRelevance: required
+    domains: [openx.net, openxcdn.net]
+    signatures:
+      - id: bid-request
+        hosts: [rtb.openx.net]
+        path: "^/(esp|openrtbb/prebidjs)$"
+        kind: resource
+      - id: user-sync
+        hosts: [rtb.openx.net]
+        path: "^/sync/prebid$"
+        kind: hit
+        stage: loaded
+      - id: esp-loader
+        hosts: [oa.openxcdn.net]
+        path: '^/esp\.js$'
+        kind: library
+        stage: loaded
+    aliasesDe: [OpenX]
+    aliasesEn: [OpenX]
+
+  - id: adform
+    name: Adform
+    category: ads
+    policyRelevance: required
+    domains: [adform.net]
+    cookies: [uid@adform.net]
+    signatures:
+      - id: cookie-match
+        hosts: [c1.adform.net, cm.adform.net]
+        path: "^/(serving/cookie/match|cookie)$"
+        kind: hit
+        stage: loaded
+    aliasesDe: [Adform]
+    aliasesEn: [Adform]
+
+  - id: google-ima
+    name: Google Interactive Media Ads (IMA)
+    category: ads
+    policyRelevance: required
+    domains: [imasdk.googleapis.com]
+    signatures:
+      - id: sdk-loader
+        hosts: [imasdk.googleapis.com]
+        path: '^/js/sdkloader/(ima[0-9]*|loader)\.js$'
+        kind: library
+        stage: loaded
+      - id: bridge
+        hosts: [imasdk.googleapis.com]
+        path: "^/js/core/bridge"
+        kind: embed
+        stage: loaded
+    aliasesDe: [Google IMA, Interactive Media Ads]
+    aliasesEn: [Google IMA, Interactive Media Ads]

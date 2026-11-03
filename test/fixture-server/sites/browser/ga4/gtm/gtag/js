@@ -1,0 +1,8 @@
+// Fake gtag loader (fixture, hand-written; no vendor code): sets _ga and sends one GA4-like hit.
+(function () {
+  var cid = '987654321.1700000000';
+  document.cookie = '_ga=GA1.1.' + cid + '; path=/; max-age=63072000';
+  var u = 'https://www.google-analytics.com/g/collect?v=2&tid=G-TEST123&gcs=G111&cid=' + cid +
+    '&en=page_view&dl=' + encodeURIComponent(location.href);
+  fetch(u, { method: 'POST', mode: 'no-cors', keepalive: true });
+})();

@@ -1,0 +1,411 @@
+# Fonts, maps, video and captcha embeds. Format: see _catalog.yaml.
+# Integration types (EMBED-02): iframe, js-api, static, tiles.
+services:
+  # fonts (EMBED-01)
+  - id: google-fonts
+    name: Google Fonts
+    category: fonts
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [fonts.googleapis.com, fonts.gstatic.com]
+    signatures:
+      - id: css
+        hosts: [fonts.googleapis.com]
+        path: "^/"
+        kind: stylesheet
+        stage: loaded
+      - id: font
+        hosts: [fonts.gstatic.com]
+        path: "^/"
+        kind: font
+        stage: loaded
+    aliasesDe: [Google Fonts, Google Web Fonts, Google Webfonts]
+    aliasesEn: [Google Fonts, Google Web Fonts]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: adobe-fonts
+    name: Adobe Fonts
+    category: fonts
+    policyRelevance: required
+    provider: { name: Adobe Systems Software Ireland Limited, country: IE }
+    parent: { name: Adobe Inc., country: US }
+    dpfEntity: { name: Adobe Inc. }
+    domains: [typekit.net, typekit.com]
+    signatures:
+      - id: kit-css
+        hosts: [use.typekit.net, use.typekit.com]
+        path: '\.css$'
+        kind: stylesheet
+        stage: loaded
+      - id: kit-js
+        hosts: [use.typekit.net, use.typekit.com]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: font
+        hosts: [use.typekit.net]
+        path: "^/af/"
+        kind: font
+        stage: loaded
+      # ⚠ p.typekit.net: purpose not verified (usage/page-view counting); not counted as a font load.
+      - id: p-typekit
+        hosts: [p.typekit.net]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Adobe Fonts, Typekit, Adobe Typekit]
+    aliasesEn: [Adobe Fonts, Typekit]
+
+  - id: font-awesome-cdn
+    name: Font Awesome CDN
+    category: fonts
+    policyRelevance: required
+    parent: { name: "Fonticons, Inc.", country: US }
+    domains:
+      [
+        use.fontawesome.com,
+        kit.fontawesome.com,
+        ka-f.fontawesome.com,
+        ka-p.fontawesome.com,
+        pro.fontawesome.com,
+      ]
+    signatures:
+      - id: css
+        hosts: [fontawesome.com]
+        path: '\.css$'
+        kind: stylesheet
+        stage: loaded
+      - id: kit
+        hosts: [kit.fontawesome.com]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: webfont
+        hosts: [fontawesome.com]
+        path: '\.(woff2?|ttf|otf|eot|svg)$'
+        kind: font
+        stage: loaded
+    aliasesDe: [Font Awesome]
+    aliasesEn: [Font Awesome]
+
+  - id: bunny-fonts
+    name: Bunny Fonts
+    category: fonts
+    policyRelevance: required
+    provider: { name: BunnyWay d.o.o., country: SI }
+    domains: [fonts.bunny.net]
+    signatures:
+      - id: css
+        hosts: [fonts.bunny.net]
+        path: "^/css"
+        kind: stylesheet
+        stage: loaded
+      - id: font
+        hosts: [fonts.bunny.net]
+        path: '\.(woff2?|ttf|otf)$'
+        kind: font
+        stage: loaded
+    aliasesDe: [Bunny Fonts, bunny.net]
+    aliasesEn: [Bunny Fonts, bunny.net]
+
+  - id: monotype-fonts
+    name: Monotype Fonts (fonts.net)
+    category: fonts
+    policyRelevance: required
+    parent: { name: Monotype Imaging Inc., country: US }
+    domains: [fast.fonts.net, fonts.net]
+    aliasesDe: [Monotype, Fonts.com, fonts.net]
+    aliasesEn: [Monotype, Fonts.com]
+
+  # maps (EMBED-02)
+  - id: google-maps
+    name: Google Maps
+    category: maps
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [maps.googleapis.com, maps.gstatic.com, maps.google.com, maps.google.de]
+    signatures:
+      - id: embed
+        hosts: [www.google.com, www.google.de, maps.google.com, maps.google.de, google.com, google.de]
+        path: "^/maps/embed"
+        kind: embed
+        stage: loaded
+        integration: iframe
+      - id: embed-legacy
+        hosts: [www.google.com, www.google.de, maps.google.com, maps.google.de]
+        path: "^/maps"
+        query: { output: "^embed$" }
+        kind: embed
+        stage: loaded
+        integration: iframe
+      - id: js-api
+        hosts: [maps.googleapis.com]
+        path: "^/maps/api/js"
+        kind: library
+        stage: loaded
+        integration: js-api
+      - id: static
+        hosts: [maps.googleapis.com]
+        path: "^/maps/api/staticmap"
+        kind: image
+        stage: loaded
+        integration: static
+      - id: tiles
+        hosts:
+          [
+            maps.googleapis.com,
+            www.google.com,
+            mt0.google.com,
+            mt1.google.com,
+            mt2.google.com,
+            mt3.google.com,
+            khms0.google.com,
+            khms1.google.com,
+          ]
+        path: "^/(maps/)?vt"
+        kind: tile
+        stage: loaded
+        integration: tiles
+    aliasesDe: [Google Maps, Google Maps API, Google Maps Platform]
+    aliasesEn: [Google Maps, Google Maps Platform]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: openstreetmap
+    name: OpenStreetMap
+    category: maps
+    policyRelevance: required
+    provider: { name: OpenStreetMap Foundation, country: GB }
+    domains: [openstreetmap.org]
+    signatures:
+      - id: tiles
+        hosts: [tile.openstreetmap.org]
+        path: "^/"
+        kind: tile
+        stage: loaded
+        integration: tiles
+      - id: embed
+        hosts: [www.openstreetmap.org, openstreetmap.org]
+        path: '^/export/embed\.html'
+        kind: embed
+        stage: loaded
+        integration: iframe
+    aliasesDe: [OpenStreetMap]
+    aliasesEn: [OpenStreetMap]
+
+  - id: openstreetmap-de
+    name: OpenStreetMap Deutschland (FOSSGIS)
+    category: maps
+    policyRelevance: required
+    provider: { name: FOSSGIS e.V., country: DE }
+    domains: [openstreetmap.de]
+    signatures:
+      - id: tiles
+        hosts: [tile.openstreetmap.de]
+        path: "^/"
+        kind: tile
+        stage: loaded
+        integration: tiles
+    aliasesDe: [OpenStreetMap, FOSSGIS]
+    aliasesEn: [OpenStreetMap, FOSSGIS]
+
+  - id: mapbox
+    name: Mapbox
+    category: maps
+    policyRelevance: required
+    parent: { name: "Mapbox, Inc.", country: US }
+    domains: [mapbox.com]
+    signatures:
+      - id: static
+        hosts: [api.mapbox.com]
+        path: "^/styles/v1/.+/static/"
+        kind: image
+        stage: loaded
+        integration: static
+      - id: gl-js
+        hosts: [api.mapbox.com]
+        path: "^/mapbox(-gl)?(-js)?/"
+        kind: library
+        stage: loaded
+        integration: js-api
+      - id: tiles
+        hosts: [api.mapbox.com, api.tiles.mapbox.com, tiles.mapbox.com]
+        path: "^/(v4|styles|fonts|raster|tiles|v1)/"
+        kind: tile
+        stage: loaded
+        integration: tiles
+      - id: telemetry
+        hosts: [events.mapbox.com]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Mapbox]
+    aliasesEn: [Mapbox]
+
+  - id: here-maps
+    name: HERE Maps
+    category: maps
+    policyRelevance: required
+    provider: { name: HERE Global B.V., country: NL }
+    domains: [js.api.here.com, hereapi.com, api.here.com]
+    aliasesDe: [HERE Maps, HERE Technologies, HERE Location Services]
+    aliasesEn: [HERE Maps, HERE Technologies]
+
+  - id: apple-mapkit
+    name: Apple MapKit JS
+    category: maps
+    policyRelevance: required
+    parent: { name: Apple Inc., country: US }
+    domains: [apple-mapkit.com]
+    aliasesDe: [Apple MapKit, MapKit JS, Apple Maps]
+    aliasesEn: [Apple MapKit, MapKit JS, Apple Maps]
+
+  # video
+  - id: youtube
+    name: YouTube
+    category: video
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [youtube.com, ytimg.com, googlevideo.com, youtube.googleapis.com, youtu.be]
+    signatures:
+      - id: embed
+        hosts: [youtube.com]
+        path: "^/embed/"
+        kind: embed
+        stage: loaded
+        integration: iframe
+      - id: iframe-api
+        hosts: [youtube.com]
+        path: "^/(iframe_api|player_api)$"
+        kind: library
+        stage: loaded
+        integration: js-api
+      - id: thumbnail
+        hosts: [ytimg.com]
+        path: "^/vi(_webp)?/"
+        kind: image
+        stage: loaded
+        integration: thumbnail
+    cookies:
+      [
+        VISITOR_INFO1_LIVE@youtube.com,
+        YSC@youtube.com,
+        VISITOR_PRIVACY_METADATA@youtube.com,
+        __Secure-ROLLOUT_TOKEN@youtube.com,
+      ]
+    storageKeys: [yt-remote-device-id, yt-remote-connected-devices]
+    aliasesDe: [YouTube]
+    aliasesEn: [YouTube]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: youtube-nocookie
+    name: YouTube (erweiterter Datenschutzmodus)
+    category: video
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [youtube-nocookie.com]
+    signatures:
+      - id: embed
+        hosts: [youtube-nocookie.com]
+        path: "^/embed/"
+        kind: embed
+        stage: loaded
+        integration: iframe
+    aliasesDe: [YouTube, youtube-nocookie]
+    aliasesEn: [YouTube, youtube-nocookie]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: vimeo
+    name: Vimeo
+    category: video
+    policyRelevance: required
+    parent: { name: "Vimeo.com, Inc.", country: US }
+    domains: [vimeo.com, vimeocdn.com]
+    signatures:
+      - id: embed
+        hosts: [player.vimeo.com]
+        path: "^/video/"
+        kind: embed
+        stage: loaded
+        integration: iframe
+      - id: api
+        hosts: [player.vimeo.com]
+        path: '^/api/player\.js$'
+        kind: library
+        stage: loaded
+        integration: js-api
+    cookies: [vuid@vimeo.com]
+    aliasesDe: [Vimeo]
+    aliasesEn: [Vimeo]
+
+  # captcha
+  - id: google-recaptcha
+    name: Google reCAPTCHA
+    category: captcha
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [recaptcha.net]
+    signatures:
+      - id: api
+        hosts: [www.google.com, www.google.de, recaptcha.net]
+        path: "^/recaptcha/"
+        kind: library
+        stage: loaded
+      - id: static
+        hosts: [www.gstatic.com]
+        path: "^/recaptcha/"
+        kind: library
+        stage: loaded
+    otherCookies: [_GRECAPTCHA@google.com]
+    aliasesDe: [reCAPTCHA, Google reCAPTCHA]
+    aliasesEn: [reCAPTCHA, Google reCAPTCHA]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: hcaptcha
+    name: hCaptcha
+    category: captcha
+    policyRelevance: required
+    parent: { name: "Intuition Machines, Inc.", country: US }
+    domains: [hcaptcha.com]
+    aliasesDe: [hCaptcha]
+    aliasesEn: [hCaptcha]
+
+  - id: cloudflare-turnstile
+    name: Cloudflare Turnstile
+    category: captcha
+    policyRelevance: required
+    parent: { name: "Cloudflare, Inc.", country: US }
+    dpfEntity: { name: "Cloudflare, Inc." }
+    domains: [challenges.cloudflare.com]
+    signatures:
+      - id: api
+        hosts: [challenges.cloudflare.com]
+        path: "^/turnstile/"
+        kind: library
+        stage: loaded
+    aliasesDe: [Cloudflare Turnstile, Turnstile]
+    aliasesEn: [Cloudflare Turnstile, Turnstile]
+
+  - id: friendly-captcha
+    name: Friendly Captcha
+    category: captcha
+    policyRelevance: required
+    provider: { name: Friendly Captcha GmbH, country: DE }
+    domains: [friendlycaptcha.com, friendlycaptcha.eu]
+    signatures:
+      - id: widget-cdn
+        hosts: [cdn.jsdelivr.net, unpkg.com]
+        path: "^/(npm/)?(friendly-challenge|@friendlycaptcha/)"
+        kind: library
+        stage: loaded
+    aliasesDe: [Friendly Captcha, FriendlyCaptcha]
+    aliasesEn: [Friendly Captcha, FriendlyCaptcha]

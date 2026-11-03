@@ -1,0 +1,95 @@
+name: dsgvo-check
+description: Passive website scan with findings, CI thresholds and report artifacts.
+author: seed-factory
+branding: { icon: shield, color: blue }
+inputs:
+  url: { description: "Target URL (http:// or https://).", required: true }
+  fail-on: { description: "Finding threshold: critical, warning or none.", default: critical }
+  format:
+    {
+      description: "Comma-separated formats: console, json, html, summary, pdf. PDF is opt-in; job-summary adds summary.",
+      default: "console,json,html",
+    }
+  out:
+    { description: "Report directory, relative to the workspace or absolute.", default: dsgvo-check-report }
+  extra-args:
+    { description: "Additional CLI options split on spaces; action options take precedence.", default: "" }
+  image: { description: "Scanner image by version tag.", default: "ghcr.io/seed-factory/dsgvo-check:0.1.0" }
+  memory: { description: Container memory limit., default: 3g }
+  cpus: { description: Container CPU limit., default: "2" }
+  pids-limit: { description: Container process limit., default: "1024" }
+  job-summary: { description: Append the report to the GitHub Job Summary., default: "true" }
+  upload-artifact: { description: Upload the complete report directory., default: "true" }
+  artifact-name: { description: Uploaded artifact name., default: dsgvo-check-report }
+  retention-days: { description: Artifact retention in days., default: "14" }
+outputs:
+  exit-code: { description: "Scan exit code (0, 1 or 2).", value: "${{ steps.scan.outputs.exit-code }}" }
+  json-path:
+    { description: "report.json path, empty if absent.", value: "${{ steps.scan.outputs.json-path }}" }
+  html-path:
+    { description: "report.html path, empty if absent.", value: "${{ steps.scan.outputs.html-path }}" }
+  pdf-path: { description: "report.pdf path, empty if absent.", value: "${{ steps.scan.outputs.pdf-path }}" }
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        DC_URL: ${{ inputs.url }}
+        DC_FAIL_ON: ${{ inputs.fail-on }}
+        DC_FORMAT: ${{ inputs.format }}
+        DC_OUT: ${{ inputs.out }}
+        DC_EXTRA_ARGS: ${{ inputs.extra-args }}
+        DC_IMAGE: ${{ inputs.image }}
+        DC_MEMORY: ${{ inputs.memory }}
+        DC_CPUS: ${{ inputs.cpus }}
+        DC_PIDS_LIMIT: ${{ inputs.pids-limit }}
+        DC_JOB_SUMMARY: ${{ inputs.job-summary }}
+      run: |
+        set -euo pipefail
+        out="$DC_OUT"
+        [[ "$out" = /* ]] || out="$GITHUB_WORKSPACE/$out"
+        mkdir -p -- "$out"
+        out="$(cd -- "$out" && pwd)"
+        formats="$DC_FORMAT"
+        [[ "$DC_JOB_SUMMARY" != true ]] || formats="$formats,summary"
+        read -r -a extra <<< "$DC_EXTRA_ARGS"
+        profile="$GITHUB_ACTION_PATH/docker/seccomp-chromium.json"
+        token="$(openssl rand -hex 16)"
+        echo "::stop-commands::$token"
+        code=0
+        docker run --rm --user "$(id -u):$(id -g)" \
+          --cap-drop=ALL --security-opt no-new-privileges --security-opt "seccomp=$profile" \
+          --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g --shm-size=512m \
+          --memory="$DC_MEMORY" --memory-swap="$DC_MEMORY" --cpus="$DC_CPUS" --pids-limit="$DC_PIDS_LIMIT" \
+          --env HOME=/tmp --env NO_COLOR=1 --volume "$out:/out" --workdir /out \
+          "$DC_IMAGE" "$DC_URL" ${extra[@]+"${extra[@]}"} --fail-on "$DC_FAIL_ON" --format "$formats" --out /out || code=$?
+        echo "::$token::"
+        {
+          echo "exit-code=$code"
+          echo "out-dir=$out"
+          for kind in json html pdf; do
+            file=""
+            [[ ! -f "$out/report.$kind" ]] || file="$out/report.$kind"
+            echo "$kind-path=$file"
+          done
+        } >> "$GITHUB_OUTPUT"
+        if [[ "$DC_JOB_SUMMARY" == true && -f "$out/summary.md" ]]; then
+          cat -- "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        if [[ "$code" == 1 ]]; then
+          echo "::error title=dsgvo-check::Findings at or above the threshold (fail-on: $DC_FAIL_ON). See the Job Summary and the report."
+        elif [[ "$code" != 0 ]]; then
+          echo "::error title=dsgvo-check::The scan did not complete (exit code $code)."
+        fi
+    - uses: actions/upload-artifact@v7
+      if: always() && inputs.upload-artifact == 'true' && steps.scan.outputs.out-dir != ''
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.scan.outputs.out-dir }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn
+    - shell: bash
+      env:
+        DC_EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+      run: exit "${DC_EXIT_CODE:-2}"

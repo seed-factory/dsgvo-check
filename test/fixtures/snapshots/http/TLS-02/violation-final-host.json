@@ -1,0 +1,185 @@
+{
+  "$description": "the start page redirects to another domain whose certificate expired; the target certificate is valid",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "certificate-invalid"
+    ]
+  },
+  "tls": {
+    "endpoints": [
+      {
+        "id": "tls-target",
+        "hostVariant": "target",
+        "host": "www.example.de",
+        "port": 443,
+        "servername": "www.example.de",
+        "ip": "203.0.113.10",
+        "family": 4,
+        "outcome": "handshake",
+        "protocol": "TLSv1.3",
+        "cipher": null,
+        "authorized": true,
+        "authorizationError": null,
+        "hostnameMatches": true,
+        "chainComplete": true,
+        "trustStore": "node-bundled",
+        "chain": [
+          {
+            "subject": "CN=www.example.de",
+            "issuer": "CN=Example CA R1, O=Example CA",
+            "subjectAltNames": [
+              "DNS:www.example.de"
+            ],
+            "notBefore": "2026-09-01T00:00:00.000Z",
+            "notAfter": "2026-11-30T00:00:00.000Z",
+            "serialNumber": "0A",
+            "fingerprint256": "AA:BB",
+            "isCa": false,
+            "selfSigned": false
+          }
+        ],
+        "observedAt": "2026-10-30T12:00:00.000Z"
+      },
+      {
+        "id": "tls-apex",
+        "hostVariant": "apex",
+        "host": "example.de",
+        "port": 443,
+        "servername": "example.de",
+        "ip": "203.0.113.10",
+        "family": 4,
+        "outcome": "connection-refused",
+        "protocol": null,
+        "cipher": null,
+        "authorized": false,
+        "authorizationError": null,
+        "hostnameMatches": null,
+        "chainComplete": null,
+        "trustStore": "node-bundled",
+        "chain": [],
+        "observedAt": "2026-10-30T12:00:00.000Z"
+      }
+    ],
+    "errors": []
+  },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      {
+        "id": "chain-target-https",
+        "hostVariant": "target",
+        "host": "www.example.de",
+        "scheme": "https",
+        "startUrl": "https://www.example.de/",
+        "hops": [
+          {
+            "url": "https://www.example.de/",
+            "status": 301,
+            "location": "https://www.moved.de/",
+            "headers": [],
+            "setCookieNames": [],
+            "durationMs": 10,
+            "requestedAt": "2026-10-30T12:00:00.000Z"
+          },
+          {
+            "url": "https://www.moved.de/",
+            "status": 200,
+            "headers": [],
+            "setCookieNames": [],
+            "durationMs": 10,
+            "requestedAt": "2026-10-30T12:00:00.000Z"
+          }
+        ],
+        "final": {
+          "url": "https://www.moved.de/",
+          "status": 200,
+          "headers": [],
+          "setCookieNames": [],
+          "durationMs": 10,
+          "requestedAt": "2026-10-30T12:00:00.000Z"
+        },
+        "outcome": "ok"
+      }
+    ],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.moved.de/",
+        "status": 200,
+        "headers": [],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "metaReferrer": null,
+        "chainId": "chain-target-https",
+        "foundVia": "target"
+      }
+    ],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": [],
+    "finalTls": [
+      {
+        "id": "tls-final-target",
+        "hostVariant": "target",
+        "host": "www.moved.de",
+        "port": 443,
+        "servername": "www.moved.de",
+        "ip": "203.0.113.20",
+        "family": 4,
+        "outcome": "handshake",
+        "protocol": "TLSv1.3",
+        "cipher": null,
+        "authorized": false,
+        "authorizationError": "CERT_HAS_EXPIRED",
+        "hostnameMatches": true,
+        "chainComplete": true,
+        "trustStore": "node-bundled",
+        "chain": [
+          {
+            "subject": "CN=www.moved.de",
+            "issuer": "CN=Example CA R1, O=Example CA",
+            "subjectAltNames": [
+              "DNS:www.moved.de",
+              "DNS:moved.de"
+            ],
+            "notBefore": "2026-07-01T00:00:00.000Z",
+            "notAfter": "2026-09-29T00:00:00.000Z",
+            "serialNumber": "0A",
+            "fingerprint256": "AA:BB",
+            "isCa": false,
+            "selfSigned": false
+          }
+        ],
+        "observedAt": "2026-10-30T12:00:00.000Z",
+        "role": "final"
+      },
+      {
+        "id": "tls-final-apex",
+        "hostVariant": "apex",
+        "role": "final",
+        "host": "moved.de",
+        "port": 443,
+        "servername": "moved.de",
+        "ip": null,
+        "family": null,
+        "outcome": "connection-refused",
+        "protocol": null,
+        "cipher": null,
+        "authorized": false,
+        "authorizationError": null,
+        "hostnameMatches": null,
+        "chainComplete": null,
+        "trustStore": "node-bundled",
+        "chain": [],
+        "observedAt": "2026-10-30T12:00:00.000Z",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED",
+          "phase": "tls"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+# include:
+#   - remote: https://raw.githubusercontent.com/seed-factory/dsgvo-check/v0.1.0/templates/gitlab/dsgvo-check.gitlab-ci.yml
+#     integrity: sha256-<base64 SHA-256 of this file>
+variables:
+  DSGVO_CHECK_IMAGE: ghcr.io/seed-factory/dsgvo-check:0.1.0
+  DSGVO_CHECK_URL: ""
+  DSGVO_CHECK_FAIL_ON: critical
+  DSGVO_CHECK_FORMAT: console,json,html,summary
+  DSGVO_CHECK_OUT: dsgvo-check-report
+  DSGVO_CHECK_SANDBOX: require
+  DSGVO_CHECK_EXTRA_ARGS: ""
+
+.dsgvo-check:
+  image:
+    name: $DSGVO_CHECK_IMAGE
+    entrypoint: [""]
+  stage: test
+  needs: []
+  allow_failure: false
+  interruptible: true
+  variables:
+    GIT_STRATEGY: none
+    NO_COLOR: "1"
+  script:
+    - |
+      set -eu
+      set -f
+      out="$CI_PROJECT_DIR/$DSGVO_CHECK_OUT"
+      mkdir -p "$out"
+      dsgvo-check "$DSGVO_CHECK_URL" $DSGVO_CHECK_EXTRA_ARGS \
+        --fail-on "$DSGVO_CHECK_FAIL_ON" --format "$DSGVO_CHECK_FORMAT" \
+        --sandbox "$DSGVO_CHECK_SANDBOX" --out "$out"
+  artifacts:
+    when: always
+    name: dsgvo-check-report
+    paths:
+      - $DSGVO_CHECK_OUT/
+    expire_in: 14 days
+    access: developer
+
+dsgvo-check:
+  extends: .dsgvo-check
+  rules:
+    - if: $DSGVO_CHECK_URL

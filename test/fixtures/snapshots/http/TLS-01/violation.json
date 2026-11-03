@@ -1,0 +1,14 @@
+{
+  "$description": "http serves content, https port closed: site effectively unencrypted",
+  "$expect": { "status": "completed", "variants": ["https-unavailable"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      { "id": "chain-http", "hostVariant": "target", "host": "www.example.de", "scheme": "http", "startUrl": "http://www.example.de/", "hops": [ { "url": "http://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "hasForm": false } ], "final": { "url": "http://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "hasForm": false }, "outcome": "ok" }, { "id": "chain-https", "hostVariant": "target", "host": "www.example.de", "scheme": "https", "startUrl": "https://www.example.de/", "hops": [], "final": null, "outcome": "connection-refused", "error": { "code": "ECONNREFUSED", "message": "connect ECONNREFUSED" } }
+    ],
+    "documents": [],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

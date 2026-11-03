@@ -1,0 +1,147 @@
+/**
+ * Registry completeness rules as a function returning human-readable problems: the test shows every gap at once and
+ * the rules themselves are unit-tested.
+ */
+
+import type { Ruleset, Texts } from '../../src/core/data/load.ts';
+import { MessageSyntaxError, templateParams, validateTemplate } from '../../src/core/data/messages.ts';
+import type { AnyCheck } from '../../src/core/evaluation/check.ts';
+import { scenarioFixture, scenariosOf } from '../unit/checks/browser/scenarios/index.ts';
+import { DNS_FIXTURES, dnsFixture } from '../unit/checks/dns/fixtures.ts';
+import { fixtureFrom, loadFixtures, runCheck, type SnapshotFixture, variantsOf } from './snapshot-builder.ts';
+
+/** Fixtures of a check: browser and dns ones are built from TS tables, the http ones are JSON files. */
+export function checkFixtures(check: AnyCheck): SnapshotFixture[] {
+  if (check.module === 'dns')
+    return (DNS_FIXTURES[check.id] ?? []).map((f) =>
+      fixtureFrom(f.file, dnsFixture(f), `test/unit/checks/dns/fixtures.ts (${check.id}/${f.file})`),
+    );
+  if (check.module !== 'browser') return loadFixtures(check.module, check.id);
+  return scenariosOf(check.id).map((s) =>
+    fixtureFrom(
+      s.file,
+      scenarioFixture(s),
+      `test/unit/checks/browser/scenarios/${check.id.toLowerCase()}.ts (${check.id}/${s.file})`,
+    ),
+  );
+}
+
+export interface CompletenessData {
+  ruleset: Ruleset;
+  texts: { de: Texts; en: Texts };
+  /** Override fixture names (tests); default: `checkFixtures`. */
+  fixtures?: (check: AnyCheck) => string[];
+  /** Skip running fixtures (self-test of the rules). */
+  runFixtures?: boolean;
+}
+
+function params(t: Texts, key: string): string[] | null {
+  const m = t.messages[key];
+  if (!m) return null;
+  return [...new Set([...templateParams(m.title), ...templateParams(m.body)])].sort();
+}
+
+export function completenessProblems(checks: readonly AnyCheck[], d: CompletenessData): string[] {
+  const problems: string[] = [];
+  const known = new Set(checks.map((c) => c.id));
+
+  for (const id of Object.keys(d.ruleset.checks))
+    if (!known.has(id)) problems.push(`ruleset: unregistered check ${id}`);
+  for (const lang of ['de', 'en'] as const) {
+    for (const key of Object.keys(d.texts[lang].messages)) {
+      if (key.startsWith('diagnostic.')) continue;
+      if (!known.has(key.split('.')[0] as string))
+        problems.push(`texts/${lang}: unregistered check in ${key}`);
+    }
+  }
+
+  for (const check of checks) {
+    const id = check.id;
+    const entry = d.ruleset.checks[id];
+    const declared = check.variants.map((v) => v.variant);
+    if (!entry) problems.push(`${id}: no ruleset entry (test/data/ruleset/de-2026/${check.module}.yaml)`);
+    else {
+      for (const v of declared) if (!entry.variants[v]) problems.push(`${id}.${v}: no ruleset severity`);
+      for (const [v, rule] of Object.entries(entry.variants)) {
+        if (!declared.includes(v)) problems.push(`${id}.${v}: ruleset variant not declared by the check`);
+        // Ruleset rule: a T3 catalog code stays at most `warning`.
+        if (rule.crm?.startsWith('T3_') && rule.severity === 'critical')
+          problems.push(`${id}.${v}: T3 code ${rule.crm} with severity critical`);
+      }
+    }
+    for (const lang of ['de', 'en'] as const) {
+      if (!d.texts[lang].legalNotes[id])
+        problems.push(`${id}: no legalNote in test/data/texts/${lang}/${check.module}.yaml`);
+    }
+    for (const v of declared) {
+      const key = `${id}.${v}`;
+      for (const lang of ['de', 'en'] as const) {
+        const m = d.texts[lang].messages[key];
+        if (!m) {
+          problems.push(`${key}: no ${lang} text (test/data/texts/${lang}/${check.module}.yaml)`);
+          continue;
+        }
+        for (const part of [m.title, m.body]) {
+          try {
+            validateTemplate(part);
+          } catch (err) {
+            if (err instanceof MessageSyntaxError)
+              problems.push(`${key}: ${lang} template error: ${err.message}`);
+          }
+        }
+      }
+      const pde = params(d.texts.de, key);
+      const pen = params(d.texts.en, key);
+      if (pde && pen && pde.join(',') !== pen.join(',')) {
+        problems.push(`${key}: de/en use different params (${pde.join(',')} vs ${pen.join(',')})`);
+      }
+    }
+
+    const fixtures = d.runFixtures === false ? [] : checkFixtures(check);
+    const files = d.fixtures ? d.fixtures(check) : fixtures.map((f) => f.name);
+    const dir =
+      {
+        browser: `test/unit/checks/browser/scenarios/${id.toLowerCase()}.ts ${id}/`,
+        dns: `test/unit/checks/dns/fixtures.ts ${id}/`,
+      }[check.module as string] ?? `test/fixtures/snapshots/${check.module}/${id}/`;
+    if (!files.some((f) => f.startsWith('violation'))) problems.push(`${id}: no ${dir}violation*.json`);
+    if (!files.some((f) => f.startsWith('clean'))) problems.push(`${id}: no ${dir}clean*.json`);
+    if (!files.some((f) => f.startsWith('inconclusive') || f.startsWith('error'))) {
+      problems.push(`${id}: no ${dir}inconclusive*.json or error*.json`);
+    }
+
+    if (d.runFixtures === false) continue;
+    for (const fx of fixtures) {
+      if (!fx.expect) {
+        problems.push(`${id}/${fx.name}: missing $expect`);
+        continue;
+      }
+      const result = runCheck(check, fx.snapshot);
+      const got = variantsOf(result);
+      const want = [...(fx.expect.variants ?? [])].sort();
+      if (result.status !== fx.expect.status) {
+        problems.push(
+          `${id}/${fx.name}: status ${result.status} (${result.reason ?? ''}) ≠ expected ${fx.expect.status}`,
+        );
+      }
+      if (got.join(',') !== want.join(','))
+        problems.push(`${id}/${fx.name}: variants [${got}] ≠ expected [${want}]`);
+      if (fx.expect.reason && result.reason !== fx.expect.reason) {
+        problems.push(`${id}/${fx.name}: reason ${result.reason} ≠ expected ${fx.expect.reason}`);
+      }
+      if (fx.kind === 'violation' && got.length === 0)
+        problems.push(`${id}/${fx.name}: violation fixture emits nothing`);
+    }
+  }
+  return problems;
+}
+
+/** Lists declared variants without a snapshot fixture so gaps remain visible under the fixture rule. */
+export function variantsWithoutFixture(checks: readonly AnyCheck[]): string[] {
+  const out: string[] = [];
+  for (const check of checks) {
+    const seen = new Set(checkFixtures(check).flatMap((f) => f.expect?.variants ?? []));
+    for (const v of check.variants) if (!seen.has(v.variant)) out.push(`${check.id}.${v.variant}`);
+  }
+  return out.sort();
+}

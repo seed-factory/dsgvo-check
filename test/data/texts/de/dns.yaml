@@ -1,0 +1,115 @@
+# Finding texts (de), module dns. ICU-like templates: {param}, {n, plural, …}, {x, select, …}.
+# Keys follow the registry docs/03-checks.md §2.1. Wording: "beobachtet", "nicht gefunden in …" — no legal
+# verdicts (stop-word test). Textentwurf.
+draft: true
+messages:
+  MAIL-01.record-not-found:
+    title: "Kein DMARC-Eintrag gefunden"
+    body: >-
+      Für {domain} wurde kein DMARC-Eintrag gefunden (abgefragt: _dmarc beim gescannten Host und entlang des
+      DNS Tree Walk nach RFC 9989).{inherited, select, psd { Beobachtet wurde nur eine Richtlinie der
+      übergeordneten Public-Suffix-Domain.} other {}} Ohne eigene DMARC-Richtlinie können Empfänger gefälschte
+      Absenderadressen dieser Domain nicht anhand einer veröffentlichten Vorgabe abweisen. Orientierung
+      (BSI TR-03182): DMARC-Eintrag mit p=quarantine oder p=reject und einer rua-Adresse veröffentlichen.
+  MAIL-01.policy-none:
+    title: "DMARC im Beobachtungsmodus (p=none)"
+    body: >-
+      Der DMARC-Eintrag von {domain} enthält p=none. Damit werden nur Berichte angefordert; Empfänger erhalten
+      keine Vorgabe, gefälschte Nachrichten abzuweisen oder zurückzuhalten. Orientierung (BSI TR-03182): nach
+      Auswertung der Berichte auf p=quarantine oder p=reject umstellen.
+  MAIL-01.record-invalid:
+    title: "DMARC-Eintrag nicht auswertbar"
+    body: >-
+      Für {domain} wurde ein DMARC-Eintrag beobachtet, den Empfänger nicht wie vorgesehen auswerten können
+      ({reason, select, multiple-records {mehrere DMARC-Einträge unter demselben Namen} version-not-first
+      {v=DMARC1 steht nicht am Anfang} p-missing {das Tag p fehlt} p-invalid {ungültiger Wert für p} other
+      {Syntaxfehler}}). Empfänger ignorieren solche Einträge oder behandeln sie wie p=none.
+  MAIL-01.weak-option:
+    title: "DMARC-Optionen mit eingeschränkter Wirkung"
+    body: >-
+      {kind, select, null-mx {{domain} veröffentlicht einen Null-MX-Eintrag (RFC 7505) und nimmt damit keine
+      E-Mails an. {policy, select, missing {Ein eigener DMARC-Eintrag wurde nicht gefunden.} none {Der
+      DMARC-Eintrag enthält p=none.} quarantine {Der DMARC-Eintrag enthält p=quarantine.} other {Der
+      DMARC-Eintrag ist nicht auswertbar.}} Für Domains ohne E-Mail-Verkehr wird DMARC mit p=reject empfohlen
+      (M3AAWG), damit Nachrichten mit gefälschtem Absender abgewiesen werden.} other {Im DMARC-Eintrag von
+      {domain} wurden {count, plural, one {eine Option} other {# Optionen}} mit eingeschränkter Wirkung
+      beobachtet:{spNone, select, yes { sp=none – für Absender unter Subdomains wird trotz p={policy} keine
+      Durchsetzung angefordert.} other {}}{testing, select, yes { t=y – Testmodus nach RFC 9989, Empfänger
+      wenden p={policy} nur abgeschwächt an.} other {}}{noRua, select, yes { kein rua-Tag – ohne aggregierte
+      Berichte (RFC 9990) ist nicht erkennbar, welche Server im Namen der Domain E-Mails versenden.} other
+      {}}}}
+  MAIL-01.legacy-pct:
+    title: "DMARC-Eintrag mit Legacy-Tag pct={pct}"
+    body: >-
+      Der DMARC-Eintrag von {domain} enthält das Tag pct={pct}. Es stammt aus RFC 7489 und ist in RFC 9989
+      entfallen; die Richtlinie wurde nach RFC 9989 ausgewertet. Empfänger, die das Tag noch auswerten, wenden
+      p={policy} nur auf {pct} % der Nachrichten an.
+  MAIL-02.record-not-found:
+    title: "Kein SPF-Eintrag gefunden"
+    body: >-
+      Für {domain} wurde kein TXT-Eintrag mit v=spf1 gefunden. Empfänger können damit nicht prüfen, welche
+      Server E-Mails im Namen der Domain versenden dürfen.{nullMx, select, yes { Die Domain veröffentlicht einen
+      Null-MX-Eintrag (RFC 7505); für Domains ohne E-Mail-Versand wird v=spf1 -all empfohlen (M3AAWG).} other
+      {}} Orientierung (BSI TR-03182): SPF-Eintrag mit den genutzten Versandservern und abschließendem -all
+      (oder ~all bei durchgesetztem DMARC) veröffentlichen.
+  MAIL-02.permissive-qualifier:
+    title: "SPF ohne Ausschluss nicht gelisteter Server"
+    body: >-
+      Der SPF-Eintrag von {domain} {qualifier, select, +all {endet mit +all. Damit ist jeder Server als
+      Absender für die Domain zugelassen; SPF bietet so keinen Schutz vor gefälschten Absendern.} ?all {endet
+      mit ?all. Für nicht gelistete Server ergibt sich das Ergebnis neutral; Empfänger erhalten keine Aussage,
+      dass solche Server nicht berechtigt sind.} other {enthält keinen all-Mechanismus. Für nicht gelistete
+      Server ergibt sich das Ergebnis neutral; Empfänger erhalten keine Aussage, dass solche Server nicht
+      berechtigt sind.}}{nullMx, select, yes { Die Domain veröffentlicht einen Null-MX-Eintrag (RFC 7505); für
+      Domains ohne E-Mail-Versand wird v=spf1 -all empfohlen (M3AAWG).} other {}}
+  MAIL-02.record-invalid:
+    title: "SPF-Eintrag nicht auswertbar"
+    body: >-
+      Bei der statischen Auswertung des SPF-Eintrags von {domain} wurde {reason, select, multiple-records
+      {festgestellt, dass {count} TXT-Einträge mit v=spf1 veröffentlicht sind} syntax {ein Syntaxfehler im
+      Eintrag festgestellt} too-many-lookups {festgestellt, dass mehr als 10 DNS-Abfragen über include, a, mx,
+      ptr, exists und redirect nötig sind} void-lookups {festgestellt, dass mehr als 2 DNS-Abfragen ohne
+      Ergebnis bleiben} loop {eine Schleife über include oder redirect festgestellt} include-no-record
+      {festgestellt, dass ein per include eingebundener Name keinen SPF-Eintrag hat} redirect-no-record
+      {festgestellt, dass das redirect-Ziel keinen SPF-Eintrag hat} include-multiple-records {festgestellt,
+      dass ein per include eingebundener Name mehrere SPF-Einträge hat} redirect-multiple-records
+      {festgestellt, dass das redirect-Ziel mehrere SPF-Einträge hat} other {ein Fehler im Eintrag
+      festgestellt}}. Nach RFC 7208 ist das ein permanenter Fehler (permerror); Empfänger werten SPF dann
+      nicht aus. Bis zum Abbruch gezählte DNS-Abfragen: {lookups}.
+  MAIL-02.softfail-without-enforcement:
+    title: "SPF ~all ohne durchgesetztes DMARC"
+    body: >-
+      Der SPF-Eintrag von {domain} endet mit ~all (softfail). Eine anwendbare DMARC-Richtlinie mit
+      p=quarantine oder p=reject wurde im ausgewerteten Suchpfad nicht gefunden ({dmarcPolicy, select, none
+      {der DMARC-Eintrag enthält p=none} invalid {der DMARC-Eintrag ist nicht auswertbar} other {ein
+      DMARC-Eintrag wurde nicht gefunden}}). Ohne DMARC-Durchsetzung werden nicht berechtigte Absender in der
+      Regel nur markiert, nicht abgewiesen. Orientierung (BSI TR-03182): DMARC mit p=quarantine oder p=reject
+      veröffentlichen oder SPF mit -all abschließen.
+  MAIL-02.softfail-with-enforcement:
+    title: "SPF ~all bei durchgesetztem DMARC"
+    body: >-
+      Der SPF-Eintrag von {domain} endet mit ~all (softfail). DMARC ist mit p={dmarcPolicy} veröffentlicht und
+      bestimmt die Behandlung nicht berechtigter Absender; BSI TR-03182 lässt diese Kombination zu. Hinweis
+      zur Information.
+  MAIL-02.ptr-mechanism:
+    title: "SPF verwendet den Mechanismus ptr"
+    body: >-
+      Der SPF-Eintrag von {domain} enthält ptr. RFC 7208 rät davon ab (langsam und unzuverlässig); manche
+      Empfänger werten ptr nicht aus.
+legalNotes:
+  MAIL-01:
+    text: >-
+      Technischer Standard, keine unmittelbare Rechtsnorm: DMARC nach RFC 9989 sowie BSI TR-03108-1 und
+      TR-03182. Mittelbarer Bezug: Art. 32 DSGVO (geeignete technische Maßnahmen zur Sicherheit der
+      Verarbeitung); ob eine bestimmte Maßnahme geboten ist, hängt vom Einzelfall ab.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  MAIL-02:
+    text: >-
+      Technischer Standard, keine unmittelbare Rechtsnorm: SPF nach RFC 7208, bewertet zusammen mit DMARC nach
+      BSI TR-03182. Mittelbarer Bezug: Art. 32 DSGVO; ob eine bestimmte Maßnahme geboten ist, hängt vom
+      Einzelfall ab. Aus dem SPF-Eintrag folgt keine Aussage über den tatsächlichen E-Mail-Versand.
+    status: technical
+    reviewedAt: null
+    reviewBy: null

@@ -1,0 +1,592 @@
+# First-layer button lexicon for classifyFirstLayer.
+# Matching (src/cmp/lexicon.ts): labels are normalized (NFKC, lower case, close glyphs → "×") and tokenized on
+# letters/digits. A label equal to a phrase → confidence high; a phrase inside a longer label → medium; the longest
+# phrase wins, a tie between two kinds → unclassified, except one decision (reject/accept) tied only with
+# close/hide/later ("Ablehnen und schließen" → reject). "*suffix" matches any token ending with the suffix
+# (German compounds such as "Datenschutzeinstellungen"). close/hide/later alone are never a reject.
+# After the German and English phrases of each class follow fr, es, it, pt, nl, da, no, sv, fi, is and pl phrases:
+# they classify the buttons of unknown banners (generic heuristic, info only). A phrase may stand in one class only.
+lexicon:
+  version: "2026.10.2"
+  reject:
+    - ablehnen
+    - alle ablehnen
+    - alles ablehnen
+    - ablehnen und schließen
+    - alle ablehnen und schließen
+    - ablehnen und weiter
+    - alle ablehnen und weiter
+    - cookies ablehnen
+    - alle cookies ablehnen
+    - optionale cookies ablehnen
+    - nicht zustimmen
+    - nicht einverstanden
+    - ich stimme nicht zu
+    - ich lehne ab
+    - verweigern
+    - alle verweigern
+    - einwilligung verweigern
+    - zustimmung verweigern
+    - nur notwendige
+    - nur notwendige cookies
+    - nur notwendige akzeptieren
+    - nur notwendige cookies akzeptieren
+    - nur notwendige cookies zulassen
+    - nur notwendige cookies erlauben
+    - nur notwendige cookies verwenden
+    - nur technisch notwendige
+    - nur technisch notwendige cookies
+    - nur technisch notwendige cookies akzeptieren
+    - nur technisch notwendige cookies zulassen
+    - nur essenzielle
+    - nur essenzielle cookies
+    - nur essenzielle cookies akzeptieren
+    - nur essenzielle cookies zulassen
+    - nur essentielle cookies
+    - nur essentielle cookies akzeptieren
+    - nur erforderliche
+    - nur erforderliche cookies
+    - nur erforderliche cookies akzeptieren
+    - nur funktionale cookies
+    - mit notwendigen fortfahren
+    - mit notwendigen cookies fortfahren
+    - nur mit notwendigen cookies fortfahren
+    - weiter ohne einwilligung
+    - weiter ohne zustimmung
+    - fortfahren ohne einwilligung
+    - fortfahren ohne zustimmung
+    - ohne einwilligung fortfahren
+    - ohne zustimmung fortfahren
+    - ohne zustimmung weiter
+    - reject
+    - reject all
+    - reject all cookies
+    - reject cookies
+    - decline
+    - decline all
+    - decline cookies
+    - decline and close
+    - reject and close
+    - deny
+    - deny all
+    - refuse
+    - refuse all
+    - necessary only
+    - necessary cookies only
+    - only necessary
+    - only necessary cookies
+    - only essential cookies
+    - essential cookies only
+    - accept only necessary
+    - accept only necessary cookies
+    - accept necessary only
+    - accept only essential cookies
+    - use necessary cookies only
+    - continue without accepting
+    - continue without consent
+    - do not consent
+    - i do not accept
+    # fr, es, it, pt, nl, da, no, sv, fi, is, pl
+    - refuser
+    - tout refuser
+    - refuser tout
+    - refuser les cookies
+    - refuser et fermer
+    - continuer sans accepter
+    - rechazar
+    - rechazar todo
+    - rechazar todas
+    - rechazar todas las cookies
+    - rechazar cookies
+    - denegar
+    - denegar todo
+    - solo necesarias
+    - solo las necesarias
+    - solo cookies necesarias
+    - continuar sin aceptar
+    - rifiuta
+    - rifiuta tutti
+    - rifiuta tutto
+    - rifiuta i cookie
+    - rifiuto
+    - solo necessari
+    - solo cookie necessari
+    - continua senza accettare
+    - rejeitar
+    - rejeitar tudo
+    - rejeitar todos
+    - rejeitar cookies
+    - recusar
+    - recusar tudo
+    - recusar todos
+    - apenas necessários
+    - somente necessários
+    - apenas cookies necessários
+    - weigeren
+    - alles weigeren
+    - alle weigeren
+    - afwijzen
+    - alles afwijzen
+    - alleen noodzakelijke
+    - alleen noodzakelijke cookies
+    - alleen functionele cookies
+    - afvis
+    - afvis alle
+    - afvis alt
+    - afvis cookies
+    - kun nødvendige
+    - kun nødvendige cookies
+    - fravælg
+    - fravælg alle
+    - nej tak
+    - avvis
+    - avvis alle
+    - avslå
+    - avslå alle
+    - bare nødvendige
+    - bare nødvendige informasjonskapsler
+    - nei takk
+    - avvisa
+    - avvisa alla
+    - avvisa alla cookies
+    - avböj
+    - avböj alla
+    - endast nödvändiga
+    - endast nödvändiga cookies
+    - neka
+    - neka alla
+    - bara nödvändiga
+    - hylkää
+    - hylkää kaikki
+    - hylkää evästeet
+    - hylkää kaikki evästeet
+    - vain välttämättömät
+    - vain välttämättömät evästeet
+    - kieltäydy
+    - ei kiitos
+    - jatka ilman hyväksymistä
+    - hafna
+    - hafna öllu
+    - hafna öllum
+    - hafna vafrakökum
+    - aðeins nauðsynlegar
+    - aðeins nauðsynlegar vafrakökur
+    - odrzuć
+    - odrzuć wszystkie
+    - odrzuć wszystko
+    - odrzuć cookies
+    - tylko niezbędne
+    - tylko niezbędne pliki cookie
+    - tylko wymagane
+    - nie zgadzam się
+  accept:
+    - akzeptieren
+    - alle akzeptieren
+    - alles akzeptieren
+    - alle cookies akzeptieren
+    - cookies akzeptieren
+    - akzeptieren und schließen
+    - akzeptieren und weiter
+    - alle akzeptieren und weiter
+    - zustimmen
+    - alle zustimmen
+    - allen zustimmen
+    - zustimmen und weiter
+    - ich stimme zu
+    - einverstanden
+    - ich bin einverstanden
+    - annehmen
+    - alle annehmen
+    - alles annehmen
+    - erlauben
+    - alle erlauben
+    - alle cookies erlauben
+    - zulassen
+    - alle zulassen
+    - alle cookies zulassen
+    - einwilligen
+    - ok
+    - okay
+    - verstanden
+    - ok verstanden
+    - accept
+    - accept all
+    - accept all cookies
+    - accept cookies
+    - allow all
+    - allow all cookies
+    - allow cookies
+    - agree
+    - i agree
+    - agree and close
+    - got it
+    # fr, es, it, pt, nl, da, no, sv, fi, is, pl
+    - accepter
+    - tout accepter
+    - accepter tout
+    - accepter les cookies
+    - accepter et fermer
+    - j'accepte
+    - autoriser
+    - tout autoriser
+    - aceptar
+    - aceptar todo
+    - aceptar todas
+    - aceptar todas las cookies
+    - aceptar cookies
+    - acepto
+    - permitir todas
+    - permitir todo
+    - accetta
+    - accetta tutti
+    - accetta tutto
+    - accetta i cookie
+    - accetta tutti i cookie
+    - accetto
+    - accetta e chiudi
+    - consenti tutti
+    - aceitar
+    - aceitar tudo
+    - aceitar todos
+    - aceitar cookies
+    - aceitar todos os cookies
+    - aceito
+    - concordo
+    - concordar e fechar
+    - permitir todos
+    - accepteren
+    - alles accepteren
+    - alle accepteren
+    - alle cookies accepteren
+    - akkoord
+    - ik ga akkoord
+    - toestaan
+    - alles toestaan
+    - alle cookies toestaan
+    - accepter alle
+    - accepter alle cookies
+    - accepter cookies
+    - godkend
+    - godkend alle
+    - tillad alle
+    - tillad alle cookies
+    - jeg accepterer
+    - godta
+    - godta alle
+    - godta alle informasjonskapsler
+    - aksepter
+    - aksepter alle
+    - tillat alle
+    - jeg godtar
+    - acceptera
+    - acceptera alla
+    - acceptera alla cookies
+    - acceptera cookies
+    - godkänn
+    - godkänn alla
+    - tillåt alla
+    - tillåt alla cookies
+    - jag godkänner
+    - jag accepterar
+    - hyväksy
+    - hyväksy kaikki
+    - hyväksy kaikki evästeet
+    - hyväksy evästeet
+    - hyväksyn
+    - salli kaikki
+    - salli kaikki evästeet
+    - salli evästeet
+    - hyväksy ja sulje
+    - samþykkja
+    - samþykkja allt
+    - samþykkja allar
+    - samþykkja allar vafrakökur
+    - leyfa allt
+    - leyfa allar
+    - leyfa vafrakökur
+    - akceptuj
+    - akceptuję
+    - akceptuj wszystkie
+    - akceptuj wszystko
+    - zaakceptuj
+    - zaakceptuj wszystkie
+    - zgadzam się
+    - zezwól
+    - zezwól na wszystkie
+    - przyjmuję
+  settings:
+    - einstellungen
+    - cookie einstellungen
+    - individuelle einstellungen
+    - individuelle datenschutzeinstellungen
+    - individuelle privatsphäre einstellungen
+    - datenschutzeinstellungen
+    - privatsphäre einstellungen
+    - mehr optionen
+    - weitere optionen
+    - optionen
+    - anpassen
+    - auswahl anpassen
+    - details
+    - details anzeigen
+    - mehr informationen
+    - konfigurieren
+    - verwalten
+    - optionen verwalten
+    - cookies verwalten
+    - einstellungen verwalten
+    - einstellungen anzeigen
+    - einstellungen ansehen
+    - "*einstellungen"
+    - settings
+    - cookie settings
+    - preferences
+    - manage preferences
+    - manage options
+    - manage cookies
+    - more options
+    - customize
+    - customise
+    - show details
+    # fr, es, pt, it, nl, da, no, sv, fi, is, pl
+    - paramétrer
+    - personnaliser
+    - paramètres
+    - paramètres des cookies
+    - gérer les cookies
+    - gérer mes choix
+    - préférences
+    - configurar
+    - configuración
+    - configurar cookies
+    - personalizar
+    - ajustes
+    - preferencias
+    - gestionar cookies
+    - gestionar preferencias
+    - más opciones
+    - configurações
+    - gerir cookies
+    - gerenciar cookies
+    - preferências
+    - definições
+    - gerir preferências
+    - personalizza
+    - impostazioni
+    - impostazioni cookie
+    - gestisci
+    - gestisci preferenze
+    - gestisci le preferenze
+    - preferenze
+    - instellingen
+    - voorkeuren
+    - aanpassen
+    - beheren
+    - voorkeuren beheren
+    - indstillinger
+    - "*indstillinger"
+    - tilpas
+    - præferencer
+    - administrer
+    - administrer cookies
+    - innstillinger
+    - "*innstillinger"
+    - tilpass
+    - preferanser
+    - administrer informasjonskapsler
+    - inställningar
+    - "*inställningar"
+    - anpassa
+    - hantera
+    - hantera cookies
+    - hantera inställningar
+    - preferenser
+    - asetukset
+    - "*asetukset"
+    - muokkaa asetuksia
+    - hallitse
+    - hallitse asetuksia
+    - muokkaa valintoja
+    - stillingar
+    - "*stillingar"
+    - sérstillingar
+    - kjörstillingar
+    - breyta stillingum
+    - stjórna vafrakökum
+    - ustawienia
+    - ustawienia cookies
+    - dostosuj
+    - zarządzaj
+    - zarządzaj ustawieniami
+    - preferencje
+    - zarządzaj cookies
+  save:
+    - speichern
+    - auswahl speichern
+    - einstellungen speichern
+    - meine auswahl speichern
+    - auswahl bestätigen
+    - auswahl akzeptieren
+    - auswahl erlauben
+    - auswahl zulassen
+    - save
+    - save settings
+    - save preferences
+    - save choices
+    - confirm choices
+    - confirm my choices
+    - allow selection
+    # "save selection" phrasing, then fr, es, pt, it, nl, da, no, sv, fi, is, pl
+    - ausgewählte cookies akzeptieren
+    - ausgewählte akzeptieren
+    - ausgewählte cookies erlauben
+    - ausgewählte cookies zulassen
+    - ausgewählte erlauben
+    - ausgewählte zulassen
+    - accept selected
+    - enregistrer
+    - enregistrer mes choix
+    - valider mes choix
+    - confirmer mes choix
+    - guardar
+    - guardar preferencias
+    - guardar configuración
+    - guardar selección
+    - aceptar selección
+    - salvar
+    - salvar preferências
+    - guardar preferências
+    - salva
+    - salva preferenze
+    - salva le preferenze
+    - salva impostazioni
+    - accetta selezione
+    - opslaan
+    - voorkeuren opslaan
+    - instellingen opslaan
+    - selectie opslaan
+    - keuze opslaan
+    - gem
+    - gem valg
+    - gem indstillinger
+    - gem præferencer
+    - lagre
+    - lagre innstillinger
+    - lagre valg
+    - lagre preferanser
+    - tallenna
+    - tallenna asetukset
+    - tallenna valinnat
+    - tallenna valintani
+    - hyväksy valitut
+    - vista
+    - vista stillingar
+    - vista val
+    - zapisz
+    - zapisz ustawienia
+    - zapisz wybór
+    - zapisz preferencje
+  close:
+    - "×"
+    - x
+    - schließen
+    - dialog schließen
+    - banner schließen
+    - fenster schließen
+    - hinweis schließen
+    - close
+    - close dialog
+    - close banner
+    - dismiss
+    # fr, es, it, pt, nl, da, no, sv, fi, is, pl
+    - fermer
+    - cerrar
+    - chiudi
+    - fechar
+    - sluiten
+    - luk
+    - lukk
+    - sulje
+    - loka
+    - zamknij
+  later:
+    - später
+    - später entscheiden
+    - später erinnern
+    - jetzt nicht
+    - not now
+    - later
+    - remind me later
+    # fr, es, it, pt, nl, sv, fi, pl
+    - plus tard
+    - más tarde
+    - più tardi
+    - mais tarde
+    - later beslissen
+    - senare
+    - myöhemmin
+    - później
+  hide:
+    - verbergen
+    - ausblenden
+    - banner ausblenden
+    - minimieren
+    - hide
+    - hide banner
+  # Regex sources, case-insensitive, tested against the normalized banner text in the page (no text is stored).
+  purAbo:
+    - "\\bpur[ -]?abo"
+    - "\\bwerbefrei"
+    - "\\bcontentpass\\b"
+    - "\\bohne werbung\\b.{0,80}\\babo"
+    - "\\bad[ -]?free\\b.{0,80}\\bsubscri"
+  bannerKeywords:
+    - "cookie"
+    - "einwillig"
+    - "zustimm"
+    - "datenschutz"
+    - "tracking"
+    - "personenbezogen"
+    - "drittanbieter"
+    - "\\bpartner"
+    - "consent"
+    - "privacy"
+    - "third[ -]part"
+    - "confidentialit"
+    - "donn[ée]es personnelles"
+    - "traceur"
+    - "partenaire"
+    - "privacidad"
+    - "datos personales"
+    - "terceros"
+    - "riservatezza"
+    - "dati personali"
+    - "terze parti"
+    - "consenso"
+    - "dados pessoais"
+    - "terceiros"
+    - "toestemming"
+    - "persoonsgegevens"
+    - "derde partijen"
+    - "samtykke"
+    - "privatliv"
+    - "persondata"
+    - "tredjepart"
+    - "samtycke"
+    - "integritet"
+    - "personuppgifter"
+    - "tredje part"
+    - "eväste"
+    - "suostumu"
+    - "tietosuoja"
+    - "henkilötied"
+    - "kolmannen osapuolen"
+    - "personvern"
+    - "informasjonskapsl"
+    - "vafrakök"
+    - "samþykk"
+    - "persónuvernd"
+    - "þriðja aðila"
+    - "zgod[aęy]"
+    - "prywatno"
+    - "dane osobowe"
