@@ -14,10 +14,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Report } from '../../src/core/report-schema.ts';
-import { type Snapshot, toSavedSnapshot } from '../../src/core/snapshot.ts';
+import { toSavedSnapshot } from '../../src/core/snapshot.ts';
+import { SCENARIOS } from '../unit/checks/browser/scenarios/index.ts';
 import { htmlSafetyProblems } from '../unit/reporters/html-safety.ts';
 import { expectValidReport } from '../utils/report-validator.ts';
-import { makeSnapshot, REPO_ROOT, SNAPSHOT_FIXTURES_DIR } from '../utils/snapshot-builder.ts';
+import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const IMAGE = process.env.DSGVO_E2E_IMAGE;
 const PROFILE = path.join(REPO_ROOT, 'docker/seccomp-chromium.json');
@@ -57,11 +58,9 @@ function docker(args: string[], timeout = 180_000) {
 
 /** Saved snapshot (JSON) of a site that sends a Google Analytics hit before any consent (CONSENT-01 finding). */
 function trackerSnapshot(): string {
-  const fixture = JSON.parse(
-    readFileSync(path.join(SNAPSHOT_FIXTURES_DIR, 'browser/CONSENT-01/violation-ga4-hit.json'), 'utf8'),
-  ) as Record<string, unknown>;
-  const sections = Object.fromEntries(Object.entries(fixture).filter(([k]) => !k.startsWith('$')));
-  return JSON.stringify(toSavedSnapshot(makeSnapshot(sections as Partial<Snapshot>)));
+  const scenario = SCENARIOS['CONSENT-01']?.find((s) => s.file === 'violation-ga4-hit.json');
+  if (!scenario) throw new Error('CONSENT-01 scenario violation-ga4-hit.json not found');
+  return JSON.stringify(toSavedSnapshot(scenario.build()));
 }
 
 const PACKAGE_VERSION = (
