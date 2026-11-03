@@ -3,7 +3,7 @@
  * void lookups (≤ 2), loops, nested records, the effective `all` qualifier and `ptr`. No evaluation for a client IP.
  * Pure; the collector resolves `pending` queries until the analysis is complete.
  */
-import type { DnsQueryRecord, DnsRecordType } from '../../../collectors/dns/types.ts';
+import type { DnsQueryRecord, DnsRecordType } from '../../../core/snapshot-dns.ts';
 import {
   type DnsLookup,
   isFailure,

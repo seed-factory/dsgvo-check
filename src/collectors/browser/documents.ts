@@ -4,12 +4,12 @@
  * included; other frames are only reported. Pure helpers decide soft-404 and completeness.
  */
 import type { Page } from 'playwright-core';
+import type { DocumentKind, DocumentPart, DocumentRecord } from '../../core/snapshot-browser.ts';
 import type { BrowserPhase, SanitizedUrl } from '../../core/snapshot-common.ts';
 import { sanitizeRequestUrl } from './features.ts';
-import { documentInPage, type RawDocument } from './in-page.ts';
+import { documentInPage, type RawDocument } from './in-page-document.ts';
 import { isNotFoundText, type LegalLexicon, markerLanguages } from './legal-lexicon.ts';
 import { loadLegalLexicon } from './legal-lexicon-file.ts';
-import type { DocumentKind, DocumentPart, DocumentRecord } from './types.ts';
 import { normalizeText, redactFreeText, sha256Hex } from './util.ts';
 
 const MAX_CHARS = 400_000;

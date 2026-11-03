@@ -3,7 +3,7 @@ import { consent05 } from '../../../../src/checks/browser/consent-05.ts';
 import type { CmpPhaseFacts } from '../../../../src/cmp/types.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, cookie, phase, req, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-05']!.find((s) => s.file === file)!.build();
 

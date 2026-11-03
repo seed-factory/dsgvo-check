@@ -10,7 +10,7 @@
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { extractDocument } from '../../../src/collectors/browser/documents.ts';
-import type { DocumentKind } from '../../../src/collectors/browser/types.ts';
+import type { DocumentKind } from '../../../src/core/snapshot-browser.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
 import { type SiteDir, writeSite } from './site-dir.ts';

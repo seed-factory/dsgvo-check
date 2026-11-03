@@ -1,6 +1,0 @@
-{
-  "hosts": {
-    "www.cookiehub.test": "www",
-    "cdn.cookiehub.eu": "ch"
-  }
-}

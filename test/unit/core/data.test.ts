@@ -2,14 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  DataError,
-  loadCrm,
-  loadDataDir,
-  loadRouting,
-  loadRuleset,
-  loadTexts,
-} from '../../../src/core/data.ts';
+import { DataError, loadDataDir, loadRouting, loadRuleset, loadTexts } from '../../../src/core/data.ts';
 
 function dir(files: Record<string, string>): string {
   const root = mkdtempSync(path.join(tmpdir(), 'data-'));
@@ -26,25 +19,24 @@ describe('data loaders', () => {
     expect(loadTexts('de').ui.disclaimer?.text).toContain('keine Rechtsberatung');
     expect(loadTexts('en').ui.disclaimer?.text).toContain('not legal advice');
     expect(loadRouting().fonts).toBe('EMBED-01');
-    expect(loadCrm()).toBeTypeOf('object');
   });
 
   it('merges module files and rejects duplicates', () => {
     const root = dir({
       'ruleset/de-2026/_profile.yaml': 'profile: {id: de-2026, version: "1", rechtsstand: "2026-10-30"}',
-      'ruleset/de-2026/a.yaml': 'checks: {A-01: {variants: {x: {severity: warning}}}}',
-      'ruleset/de-2026/b.yaml': 'checks: {B-01: {gating: false, variants: {y: {severity: info}}}}',
-      'crm/a.yaml': 'mapping: {A-01.x: T3_OTHER, B-01.y: null}',
+      'ruleset/de-2026/a.yaml': 'checks: {A-01: {variants: {x: {severity: warning, crm: T3_OTHER}}}}',
+      'ruleset/de-2026/b.yaml': 'checks: {B-01: {gating: false, variants: {y: {severity: info, crm: null}}}}',
     });
     const rs = loadRuleset(root);
     expect(Object.keys(rs.checks).sort()).toEqual(['A-01', 'B-01']);
     expect(rs.checks['A-01']?.gating).toBe(true);
     expect(rs.checks['B-01']?.gating).toBe(false);
-    expect(loadCrm(root)).toEqual({ 'A-01.x': 'T3_OTHER', 'B-01.y': null });
+    expect(rs.checks['A-01']?.variants.x?.crm).toBe('T3_OTHER');
+    expect(rs.checks['B-01']?.variants.y?.crm).toBeNull();
 
     writeFileSync(
       path.join(root, 'ruleset/de-2026/c.yaml'),
-      'checks: {A-01: {variants: {z: {severity: info}}}}',
+      'checks: {A-01: {variants: {z: {severity: info, crm: null}}}}',
     );
     expect(() => loadRuleset(root)).toThrow(DataError);
   });
@@ -63,6 +55,12 @@ describe('data loaders', () => {
       'ruleset/de-2026/a.yaml': 'checks: {A-01: {variants: {x: {severity: high}}}}',
     });
     expect(() => loadRuleset(root)).toThrow(/A-01.variants.x.severity/);
+    // A variant without a CRM decision is invalid: the mapping is a string or an explicit null.
+    writeFileSync(
+      path.join(root, 'ruleset/de-2026/a.yaml'),
+      'checks: {A-01: {variants: {x: {severity: info}}}}',
+    );
+    expect(() => loadRuleset(root)).toThrow(/A-01.variants.x.crm/);
   });
 
   it('texts inherit the file draft flag', () => {
@@ -86,6 +84,6 @@ describe('data loaders', () => {
     });
     writeFileSync(path.join(root, 'services/c.yaml'), 'meta: {version: "2"}');
     expect(() => loadDataDir('services', root)).toThrow(DataError);
-    expect(loadDataDir('missing-dir', root)).toEqual({});
+    expect(() => loadDataDir('missing-dir', root)).toThrow(/missing-dir/);
   });
 });

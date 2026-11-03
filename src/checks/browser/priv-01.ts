@@ -7,8 +7,9 @@
  * document. A page whose type the collector could not confirm is no policy. The evidence of a
  * negative search carries the manifest of the processed document. No policy found is LEGAL-01's finding.
  */
-import type { DocumentRecord } from '../../collectors/browser/types.ts';
+
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import type { DocumentRecord } from '../../core/snapshot-browser.ts';
 import type { ServiceInfo } from '../../derive/types.ts';
 import {
   MAX_EVIDENCE,

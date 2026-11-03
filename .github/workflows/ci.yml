@@ -61,7 +61,6 @@ jobs:
 
       - run: corepack pnpm typecheck
       - run: corepack pnpm lint
-      - run: corepack pnpm schema:check
       - run: corepack pnpm test:unit
       - name: Integration (real Chromium with its sandbox, local servers, fake DNS)
         run: corepack pnpm test:integration

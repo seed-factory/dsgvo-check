@@ -6,6 +6,7 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 RUN corepack pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
+COPY scripts/emit-schema.ts ./scripts/
 RUN corepack pnpm build && corepack pnpm prune --prod --ignore-scripts
 
 FROM node:24-bookworm-slim
@@ -30,7 +31,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json LICENSE NOTICE ./
 COPY data ./data
-COPY schema ./schema
+COPY --from=build /app/schema ./schema
 COPY docker/seccomp-chromium.json /etc/dsgvo-check/seccomp.json
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/dsgvo-check
 

@@ -3,7 +3,7 @@
  * (RFC 9989 §4.10). Pure; the collector drives the walk with `analyzeDmarc(...).next`.
  * Prototype simplification: the organizational domain comes from tldts (PSL), not from a second walk with `psd`.
  */
-import type { DnsQueryRecord } from '../../../collectors/dns/types.ts';
+import type { DnsQueryRecord } from '../../../core/snapshot-dns.ts';
 import { type DnsLookup, isFailure, normalizeName, txtValues } from './records.ts';
 
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';

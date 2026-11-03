@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../src/checks/browser/consent-01.ts';
-import type { RequestRecord } from '../../../../src/collectors/browser/types.ts';
+import type { RequestRecord } from '../../../../src/core/snapshot-browser.ts';
 import { loadServiceCatalog } from '../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from './helpers.ts';
 import { CONTACT, click, cmpFacts, cmpWith, phase, req, START, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-01']!.find((s) => s.file === file)!.build();
 const run = (phases: SiteSpec['phases'], extra: SiteSpec = {}) =>

@@ -14,7 +14,7 @@ export function parseDuration(input: string): number {
     consumed += m[0].length;
   }
   if (consumed !== s.length || consumed === 0 || total <= 0) {
-    throw new InvalidInputError('invalid-duration', `Ungültige Dauer: ${input}`);
+    throw new InvalidInputError('invalid-duration', { value: input });
   }
   return Math.round(total);
 }

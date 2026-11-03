@@ -118,7 +118,7 @@ dsgvo-check/
 ├─ docker/seccomp-chromium.json # профиль seccomp для Chromium sandbox
 ├─ templates/gitlab/dsgvo-check.gitlab-ci.yml # шаблон для include:remote + integrity
 ├─ Dockerfile                   # node:24-bookworm-slim + полный Chrome for Testing, tini, non-root
-├─ schema/                      # генерируются из zod, коммитятся; CI ловит расхождение
+├─ schema/                      # генерируются из zod при `corepack pnpm build`, в git не хранятся
 │  ├─ report.schema.json        # JSON Schema 2020-12, $id на домене проекта
 │  ├─ config.schema.json  suppressions.schema.json  baseline.schema.json
 ├─ src/
@@ -884,7 +884,7 @@ export const registry = [consent01, consent04 /* … */] as const;
 |---|---|
 | Уникальный `id` из каталога или из списка внекаталожных | `src/checks/index.ts` |
 | Запись ruleset на **каждый** вариант; `gating` | `data/ruleset/de-2026.yaml` |
-| `crmCode` или явный `null` с причиной на каждый вариант | `data/crm/mapping.yaml` |
+| `crmCode` или явный `null` с причиной на каждый вариант | поле `crm` варианта в ruleset |
 | Тексты `de` на каждый `checkId.variant`; `en` — если `en` выпускается | `data/texts/{de,en}.yaml` |
 | `legalNote` по `checkId` со статусом источника, `reviewedAt`, `reviewBy` | `data/texts/{de,en}.yaml`, раздел `legalNotes` (§13.4) |
 | L1-фикстура на каждый вариант; `clean`; `inconclusive` или `error`; контрпример «соседняя ложная находка» | `src/checks/<id>/fixtures/` |
@@ -929,7 +929,7 @@ ruleset:
 
 Строковая запись варианта — сокращение `{severity: …}`; загрузчик нормализует её до объекта. `when` в примере обозначает обязательное условие классификации первого экрана, а не произвольный исполняемый предикат: `classifyFirstLayer` проверяет его до выбора варианта. `locked`/`gating: false` неизвестных CMP — инвариант core, его нельзя отменить заменой YAML.
 
-`crmCode` в ruleset не хранится: он берётся из `data/crm/mapping.yaml` по `(checkId, variant)` — у VULN два кода. `messageId` = `checkId.variant`, `legalNoteId` = `checkId`.
+`crmCode` берётся из поля `crm` варианта ruleset по `(checkId, variant)` — у VULN два кода. `messageId` = `checkId.variant`, `legalNoteId` = `checkId`.
 
 ### 10.2 Порядок оценки
 
@@ -1294,8 +1294,7 @@ export function gate(input: {
 | Cookies | `data/vendor/open-cookie-database/`, `data/cookies/allowlist.yaml` | Apache-2.0 / своё | Open Cookie Database; allowlist (consent-cookie CMP, сессия, LB, CSRF, язык) | плановый PR / PR |
 | CNAME-cloaking | `data/vendor/cname-trackers/` | MIT | AdGuard `cname-trackers` | плановый PR |
 | Routing | `data/routing.yaml` | Apache-2.0 | своё | minor с «Baseline changes» |
-| Ruleset | `data/ruleset/de-2026.yaml` | Apache-2.0 | своё, подпись заказчика | CalVer `ruleset.version` |
-| Маппинг CRM | `data/crm/mapping.yaml` | Apache-2.0 | заказчик | minor с CHANGELOG |
+| Ruleset и маппинг CRM | `data/ruleset/de-2026.yaml` | Apache-2.0 | своё, подпись заказчика; CRM-коды — заказчик | CalVer `ruleset.version` |
 | Данные CMP | `src/collectors/browser/cmp/*.ts` | Apache-2.0 | свои селекторы; autoconsent 17.1.0 — зависимость без модификаций | вместе с кодом |
 | Адекватность | `data/legal/adequacy.json` | своё | решения ЕС, список DPF | PR с `verifiedAt` |
 | Правовой контекст | `data/legal/context.yaml` | своё | DPF, Digital Omnibus и т. п. с `verifiedAt`, `reviewBy` | PR; CI предупреждает о просроченном `reviewBy` |
@@ -1368,7 +1367,7 @@ source: { origin: customer-audit-export, ref: "<Audit-ID>", check87a: true }
 - Вендоренные наборы обновляются плановым PR: новый снапшот, `datasets.lock.json`, лицензионная проверка, тесты классификации, ревью изменений результатов на корпусе.
 - Онлайн-источники VULN опрашиваются во время скана; недоступный источник → `inconclusive`, а не «CVE nicht gefunden». Наружу уходят только продукт и версия, URL сайта — нет — **предложение автора, не согласовано (ОВ-21)**.
 - «Data-релизов без кода» нет: свои данные едут в пакете, их обновление — обычный patch или minor пакета.
-- Владельцы данных через `CODEOWNERS`: `texts/de.yaml`, `legal/*`, `ruleset/*`, `crm/*` ревьюит заказчик; `services`, адаптеры CMP, fingerprints — разработка — **предложение автора, не согласовано (ОВ-22)**.
+- Владельцы данных через `CODEOWNERS`: `texts/de.yaml`, `legal/*`, `ruleset/*` (включая маппинг CRM) ревьюит заказчик; `services`, адаптеры CMP, fingerprints — разработка — **предложение автора, не согласовано (ОВ-22)**.
 
 ---
 
@@ -1494,7 +1493,7 @@ rules:                           # overrides уровня (раздел 10.2)
 2. **Папка** `src/checks/<id>/index.ts`: `defineCheck({ id, requires, variants, planProbes?, run })`. `requires` — только существующие ключи `SnapshotKey`. Классификации — через `ctx.derive`, не своим кодом поверх данных.
 3. **Доп. запросы** — только `planProbes` → `ProbeSpec` класса T (или E с opt-in); валидатор движка проверяет их.
 4. **Одна строка** в `src/checks/index.ts`.
-5. **Данные:** варианты в `data/ruleset/de-2026.yaml`; `crmCode` или `null` с причиной в `data/crm/mapping.yaml`; черновые тексты `de` (и `en`, если выпускается) по `checkId.variant` с `draft: true`; `legalNote` по `checkId`; при владении категорией — строка в `data/routing.yaml`.
+5. **Данные:** варианты в `data/ruleset/de-2026.yaml`; `crmCode` или `null` с причиной в поле `crm` того же варианта; `corepack pnpm registry` обновляет таблицу 03-checks §2.1; черновые тексты `de` (и `en`, если выпускается) по `checkId.variant` с `draft: true`; `legalNote` по `checkId`; при владении категорией — строка в `data/routing.yaml`.
 6. **Фикстуры:** L1 на каждый вариант, `clean`, `inconclusive` или `error`, контрпример; для браузерных и сетевых проверок — сценарии L2 ([качество, раздел 2](04-quality-and-delivery.md#2-фикстуры-и-полнота-реестра)).
 7. **Прогон L0:** тест полноты, граф импортов, стоп-слова, lint ruleset.
 8. **Версии:** новый `checkId` и варианты — minor схемы; если проверка забирает категорию у CONSENT-01 — раздел «Baseline changes» в CHANGELOG.
@@ -1589,7 +1588,7 @@ rules:                           # overrides уровня (раздел 10.2)
 | ОВ-19 | Переменные `DSGVO_CHECK_PROXY`, `NO_COLOR`, `CI`/`GITHUB_ACTIONS`, `PLAYWRIGHT_BROWSERS_PATH`; `HTTP(S)_PROXY` не читаются | Секреты вне argv; честный `egress` | Разработка · этап 2 |
 | ОВ-20 | Лимиты контейнера `--memory=3g`, `--shm-size=1g`, `--pids-limit=1024`; `timeout-minutes: 15` в шаблонах | Наличие лимитов обязательно; их значения требуют замеров | Разработка · этап 2, по замерам |
 | ОВ-21 | Телеметрии нет; онлайн-запросы VULN передают только продукт и версию, без URL сайта | Минимизация передачи третьим лицам | Заказчик · до этапа 3б |
-| ОВ-22 | `CODEOWNERS`: заказчик — `texts/de.yaml`, `legal/*`, `ruleset/*`, `crm/*`; разработка — каталог, адаптеры, fingerprints | Процесс подписи ruleset и текстов | Заказчик · этап 1 |
+| ОВ-22 | `CODEOWNERS`: заказчик — `texts/de.yaml`, `legal/*`, `ruleset/*` (с CRM); разработка — каталог, адаптеры, fingerprints | Процесс подписи ruleset и текстов | Заказчик · этап 1 |
 | ОВ-23 | Имя режима повтора — `--from-artifacts` в паре с `--save-artifacts` | Одно имя в CLI, README и тестах | Разработка · этап 1 |
 | ОВ-24 | Пока владелец категории не зарегистрирован (EMBED-03/04/05 до этапа 3б), его категории уходят CONSENT-01 | Иначе видео, капчи и виджеты до этапа 3б не дают ни одной находки | Заказчик · до этапа 1 |
 | ОВ-25 | Actions по тегам — решение заказчика; Renovate с группой Playwright, release-please, npm trusted publishing/provenance, `actions/attest`, SBOM — предложения | Автоматизация релиза требует отдельного решения | Разработка · этап 4 |

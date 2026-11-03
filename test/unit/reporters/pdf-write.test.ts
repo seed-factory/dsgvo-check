@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadTexts } from '../../../src/core/data.ts';
 import { uiText } from '../../../src/core/messages.ts';
 import { renderPdf } from '../../../src/reporters/pdf.ts';
-import { writeReports } from '../../../src/scan.ts';
+import { writeReports } from '../../../src/reporters/write.ts';
 import { sampleFullReport } from '../../utils/report-fixtures.ts';
 
 vi.mock('../../../src/reporters/pdf.ts', () => ({ renderPdf: vi.fn(), PDF_TIMEOUT_MS: 15_000 }));

@@ -6,7 +6,7 @@ import type { Snapshot } from '../../../../src/core/snapshot.ts';
 import type { SanitizedUrl } from '../../../../src/core/snapshot-common.ts';
 import { makeBrowserPlan, observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { cmpFacts, cmpWith, phase, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-04']!.find((s) => s.file === file)!.build();
 

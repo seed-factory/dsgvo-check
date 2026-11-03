@@ -18,19 +18,19 @@ const ruleset: Ruleset = {
     'TEST-01': {
       gating: true,
       variants: {
-        hit: { severity: 'critical' },
-        soft: { severity: 'warning' },
-        inventory: { severity: 'info' },
+        hit: { severity: 'critical', crm: 'T1_TRACKER_BEFORE_CONSENT' },
+        soft: { severity: 'warning', crm: null },
+        inventory: { severity: 'info', crm: null },
       },
     },
-    'CONSENT-01': { gating: true, variants: { 'tracker-hit': { severity: 'critical' } } },
-    'EMBED-01': { gating: true, variants: { 'fonts-loaded': { severity: 'warning' } } },
-    'CONSENT-02': { gating: true, variants: { 'tracking-cookie': { severity: 'critical' } } },
+    'CONSENT-01': { gating: true, variants: { 'tracker-hit': { severity: 'critical', crm: null } } },
+    'EMBED-01': { gating: true, variants: { 'fonts-loaded': { severity: 'warning', crm: null } } },
+    'CONSENT-02': { gating: true, variants: { 'tracking-cookie': { severity: 'critical', crm: null } } },
     'CONSENT-04': {
       gating: true,
       variants: {
-        'blocking-no-reject': { severity: 'critical' },
-        'banner-not-recognized': { severity: 'info', gating: false, locked: true },
+        'blocking-no-reject': { severity: 'critical', crm: null },
+        'banner-not-recognized': { severity: 'info', crm: null, gating: false, locked: true },
       },
     },
   },
@@ -70,7 +70,6 @@ function run(checks: AnyCheck[], executed: Record<string, ExecutedCheck>, overri
     checks,
     executed: new Map(Object.entries(executed)),
     ruleset,
-    crm: { 'TEST-01.hit': 'T1_TRACKER_BEFORE_CONSENT', 'TEST-01.inventory': null },
     routing: { analytics: 'CONSENT-01', fonts: 'EMBED-01' },
     overrides,
   });
@@ -175,7 +174,6 @@ describe('ruleset resolution and overrides', () => {
         ['TEST-01', { status: 'error', reason: 'exception', outcome: null, durationMs: 1 }],
       ]),
       ruleset,
-      crm: {},
       routing: {},
       overrides: [{ rule: 'TEST-01.soft', severity: 'critical' }],
     });
@@ -195,7 +193,6 @@ describe('ruleset resolution and overrides', () => {
         ],
       ]),
       ruleset,
-      crm: {},
       routing: {},
       overrides: [{ rule: 'TEST-01.soft', severity: 'critical' }],
     });

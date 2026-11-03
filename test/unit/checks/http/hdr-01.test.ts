@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../../src/checks/http/hdr-01.ts';
-import type { DocumentResponse } from '../../../../src/collectors/http/types.ts';
 import { MAX_HEADER_VALUE, storedHeaderRecord } from '../../../../src/core/headers.ts';
 import type { HeaderRecord } from '../../../../src/core/snapshot.ts';
+import type { DocumentResponse } from '../../../../src/core/snapshot-http.ts';
 import {
   makeChain,
   makeDocumentResponse,

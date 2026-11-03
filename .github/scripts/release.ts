@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
+import { loadRuleset, loadTexts } from '../../src/core/data.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -21,6 +22,15 @@ if (process.argv[2] === 'summary') {
       `- GitLab template at \`v${version}\`: \`integrity: sha256-${integrity}\`\n`,
   );
 } else {
+  // The ruleset and the German texts ship only after customer sign-off (draft: false).
+  const texts = loadTexts('de');
+  const drafts = [texts.messages, texts.legalNotes, texts.ui]
+    .flatMap((entries) => Object.entries(entries))
+    .filter(([, entry]) => entry.draft)
+    .map(([key]) => `texts/de ${key}`);
+  if (loadRuleset().profile.draft) drafts.unshift('ruleset de-2026');
+  if (drafts.length > 0) throw new Error(`Release blocked by drafts: ${drafts.slice(0, 5).join(', ')} …`);
+
   const repository = process.env.GITHUB_REPOSITORY;
   if (!repository || !/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Invalid release repository.');
   const tag = spawnSync('gh', ['api', `repos/${repository}/git/ref/tags/v${version}`], {

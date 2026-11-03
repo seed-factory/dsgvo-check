@@ -6,6 +6,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CmpFacts, CmpSection } from '../../src/cmp/types.ts';
+import type { ExecutedCheck } from '../../src/core/assess.ts';
+import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/check.ts';
+import { loadDataDir, loadRouting } from '../../src/core/data.ts';
+import { executeCheck } from '../../src/core/execute.ts';
+import type { CheckStatus } from '../../src/core/report-schema.ts';
+import { SNAPSHOT_VERSION, type Snapshot, type TargetInfo } from '../../src/core/snapshot.ts';
 import type {
   BrowserPlan,
   BrowserSection,
@@ -17,21 +23,10 @@ import type {
   PhaseRecord,
   RequestRecord,
   StorageRecord,
-} from '../../src/collectors/browser/types.ts';
-import type { DnsQueryRecord, DnsSection } from '../../src/collectors/dns/types.ts';
-import type {
-  DocumentResponse,
-  HttpHop,
-  HttpSection,
-  RedirectChain,
-} from '../../src/collectors/http/types.ts';
-import type { CertificateInfo, TlsEndpoint, TlsSection } from '../../src/collectors/tls/types.ts';
-import type { ExecutedCheck } from '../../src/core/assess.ts';
-import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/check.ts';
-import { loadDataDir, loadRouting } from '../../src/core/data.ts';
-import { executeCheck } from '../../src/core/execute.ts';
-import type { CheckStatus } from '../../src/core/report-schema.ts';
-import { SNAPSHOT_VERSION, type Snapshot, type TargetInfo } from '../../src/core/snapshot.ts';
+} from '../../src/core/snapshot-browser.ts';
+import type { DnsQueryRecord, DnsSection } from '../../src/core/snapshot-dns.ts';
+import type { DocumentResponse, HttpHop, HttpSection, RedirectChain } from '../../src/core/snapshot-http.ts';
+import type { CertificateInfo, TlsEndpoint, TlsSection } from '../../src/core/snapshot-tls.ts';
 import { parseTarget } from '../../src/core/url.ts';
 import { derive } from '../../src/derive/index.ts';
 import type { DerivedSection } from '../../src/derive/types.ts';
@@ -483,17 +478,21 @@ export function fixtureFiles(module: string, checkId: string): string[] {
  */
 export function loadFixture(module: string, checkId: string, file: string): SnapshotFixture {
   const full = path.join(fixtureDir(module, checkId), file);
-  const raw = JSON.parse(readFileSync(full, 'utf8')) as Partial<Snapshot> & {
-    $expect?: FixtureExpect;
-    $description?: string;
-  };
+  return fixtureFrom(file, JSON.parse(readFileSync(full, 'utf8')) as RawFixture, full);
+}
+
+/** Fixture content as stored: a partial Snapshot plus `$expect` and `$description`. */
+export type RawFixture = Partial<Snapshot> & { $expect?: FixtureExpect; $description?: string };
+
+/** A fixture from its parsed content; `file` names it in messages (a path, or the scenario source). */
+export function fixtureFrom(name: string, raw: RawFixture, file: string): SnapshotFixture {
   const { $expect, $description, ...partial } = raw;
   let snapshot = makeSnapshot(partial);
   if (!partial.derived && snapshot.browser) snapshot = withDerived(snapshot);
-  const kind = FIXTURE_KINDS.find((k) => file.startsWith(k)) ?? 'other';
+  const kind = FIXTURE_KINDS.find((k) => name.startsWith(k)) ?? 'other';
   return {
-    file: full,
-    name: file,
+    file,
+    name,
     kind,
     snapshot,
     expect: $expect ?? null,

@@ -64,6 +64,55 @@ ui:
   # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts).
   failure.scan-timeout: "Globales Zeitlimit (--timeout {seconds} s) erreicht, bevor die Startseite in Phase A vollständig erfasst war."
   failure.browser-no-handover: "Globales Zeitlimit (--timeout {seconds} s) erreicht. Der Browser-Kollektor hat danach keine Daten übergeben; ob die Startseite erfasst war, ist nicht bekannt."
+  # Reasons of a failed scan (`scan.failure.code`), thrown by src/scan.ts, src/cli.ts, src/core/url.ts and the collectors.
+  failure.target-missing: "Keine Ziel-URL angegeben."
+  failure.target-invalid-url: "Ungültige URL: {url}"
+  failure.target-unsupported-scheme: "Nur http(s)-URLs werden unterstützt: {scheme}"
+  failure.target-credentials: "Zugangsdaten in der URL sind nicht erlaubt."
+  failure.invalid-duration: "Ungültige Dauer: {value}"
+  failure.invalid-fail-on: "Ungültiger Wert für --fail-on: {value}"
+  failure.invalid-max-pages: "Ungültiger Wert für --max-pages: {value}"
+  failure.invalid-timeout: "Ungültiger Wert für --timeout: {value}"
+  failure.invalid-proxy: "Ungültige Proxy-URL (nur http:// wird unterstützt)."
+  failure.invalid-cli-option: "Ungültiger Wert für {option}: {value}"
+  failure.target-nxdomain: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
+  failure.target-dns-error: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
+  failure.target-not-public: "Zielhost {host} löst nur auf nicht-öffentliche Adressen auf; der Scan ist nur für öffentliche Websites vorgesehen."
+  failure.target-mixed-addresses: "Zielhost {host} löst neben öffentlichen auch auf nicht-öffentliche Adressen auf ({addresses}); der Scan ist nur für öffentliche Websites vorgesehen."
+  failure.snapshot-unreadable: "Snapshot {file} ist nicht lesbar: {message}"
+  failure.snapshot-invalid: "Snapshot {file} hat kein unterstütztes Format."
+  failure.unknown-check: "Unbekannte Prüfung(en) in --checks: {checks}"
+  failure.locked-override: "Diese Varianten sind nicht überschreibbar: {variants}"
+  failure.start-page-unresolved: "{redirected, select, yes {Die Startseite leitet auf einen Host weiter, dessen Name nicht aufgelöst werden kann.} other {Der Name des Hosts der Startseite kann nicht aufgelöst werden.}}"
+  failure.start-page-not-public: "{redirected, select, yes {Die Startseite leitet auf eine nicht-öffentliche Adresse weiter; der Scan wurde abgebrochen.} other {Der Host der Startseite löst auf eine nicht-öffentliche Adresse auf; der Scan wurde abgebrochen.}}"
+  failure.start-page-unreachable: "Die Startseite konnte nicht geladen werden ({reason})."
+  failure.start-page-5xx: "Die Startseite antwortet wiederholt mit HTTP {status}."
+  failure.start-page-blocked: "Die Startseite zeigt eine Sperr- oder Prüfseite ({signals})."
+  failure.browser-not-installed: "Chromium ist nicht installiert. Bitte „dsgvo-check install“ ausführen."
+  failure.sandbox-failed: "Die Chromium-Sandbox konnte nicht gestartet werden (z. B. AppArmor-Einschränkung für User Namespaces oder Docker ohne Seccomp-Profil). Möglichkeiten: das Docker-Image mit dem mitgelieferten Seccomp-Profil verwenden, die Systemeinstellung selbst anpassen oder ausdrücklich --sandbox off setzen.{container, select, yes { Im Docker-Image: Profil exportieren mit „docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json“ und den Container so starten: „docker run --rm --cap-drop=ALL --security-opt no-new-privileges --security-opt seccomp=dsgvo-check-seccomp.json <image> <url>“.} other {}}"
+  failure.browser-launch-failed: "Chromium konnte nicht gestartet werden: {message}"
+  failure.interrupted: "Abbruch durch {signal}"
+  failure.watchdog-timeout: "Zeitlimit inklusive Reserve überschritten"
+  failure.internal-error: "Interner Fehler: {message}"
+  # Help of the scan and install commands (src/cli.ts; --help is always German).
+  cli.description: "Passiver Scan einer Website auf DSGVO/TDDDG/DDG-Indizien und grundlegende Sicherheitsprobleme."
+  cli.url: "Ziel-URL (http/https)"
+  cli.urlMissing: "Ziel-URL fehlt."
+  cli.failOn: "Schwelle für Exit-Code 1: critical|warning|none"
+  cli.out: Ausgabeverzeichnis
+  cli.maxPages: maximale Seitenzahl in Phase A
+  cli.timeout: "globales Zeitlimit, z. B. 8m, 90s"
+  cli.proxy: "HTTP-Proxy (http://, CONNECT) für Browser, HTTP und TLS"
+  cli.assumeRegion: "Standort laut Nutzerangabe: eea|de"
+  cli.strict: nicht eindeutige Ergebnisse, Sandbox off und ungeprüfte Region führen zu Exit-Code 2
+  cli.sandbox: "Chromium-Sandbox: require|off"
+  cli.noScreenshots: keine Screenshots des Banners
+  cli.saveSnapshot: Rohdaten-Snapshot speichern
+  cli.fromSnapshot: Snapshot neu auswerten, ohne die Website aufzurufen
+  cli.checks: "nur diese Prüfungen, z. B. EMBED-01,HDR-01"
+  cli.verbose: ausführliche Logs auf stderr
+  cli.install: Chromium (Chrome for Testing) für playwright-core herunterladen
+  cli.installWithDeps: "Systemabhängigkeiten installieren (Linux, benötigt Root)"
   console.duration: "Dauer: {seconds} s"
   console.counts: "Befunde: {critical} kritisch · {warning} Warnung · {info} Hinweis"
   console.noFindings: "Keine Befunde beobachtet. Das ist keine Bestätigung, dass Anforderungen erfüllt sind."

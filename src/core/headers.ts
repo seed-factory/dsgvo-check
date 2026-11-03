@@ -5,8 +5,10 @@
  * reads, every other header by name only (`[redacted]`), e.g. request ids of CDNs (`x-amz-cf-id`, `cf-ray`,
  * `traceparent`). Live values that are needed during collection are read from the raw headers in memory.
  */
+
+import { REDACTED } from './email.ts';
 import type { FrameAncestorsFact, HeaderRecord } from './snapshot-common.ts';
-import { REDACTED, sanitizeUrl } from './url.ts';
+import { sanitizeUrl } from './url.ts';
 
 export const MAX_HEADER_VALUE = 2048;
 

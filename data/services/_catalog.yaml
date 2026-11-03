@@ -9,11 +9,12 @@
 # parent {name, country} – group parent
 # dpfEntity {name} – organisation to look up in the DPF list; listed/checkedAt stay null until checked
 # domains – hosts or domain suffixes (longest suffix wins)
-# signatures – {id, hosts?, anyHost?, path (regex), query? {param: regex}, queryHas?, kind, stage?,
+# signatures – {id, hosts?, anyHost?, path (regex), query? {param: regex}, kind, stage?,
 # integration?, identifierParams?}; vendor-host signature > any-host signature > domain
 # cookies / storageKeys – tracking identifiers (`name`, glob `name_*`, optional `@cookie-domain`)
 # otherCookies – known cookies of the service that are not identifiers
-# aliasesDe / aliasesEn / companyAliases / categoryTerms – PRIV-01 matching levels named > company > domain > category
+# aliasesDe / aliasesEn / companyAliases – PRIV-01 matching levels named > company > domain; the category level
+# uses `categories` below
 #
 # Draft: providers, aliases and the allowlist need review by the customer.
 catalog:
@@ -22,7 +23,6 @@ catalog:
   date: "2026-10-30"
   license: Apache-2.0
   attribution: "dsgvo-check service catalog, © dsgvo-check contributors, Apache-2.0"
-  draft: true
 
 # Category description terms for PRIV-01 (`category` match level), de and en.
 categories:

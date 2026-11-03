@@ -1,18 +1,20 @@
 /**
- * completeness : every registered check and every variant has a ruleset entry, de + en texts,
- * a crm mapping (string or explicit null), a legal note, and violation/clean/inconclusive|error fixtures.
+ * completeness : every registered check and every variant has a ruleset entry (severity and crm code or explicit
+ * null), de + en texts, a legal note, and violation/clean/inconclusive|error fixtures.
  * Every fixture must declare `$expect` and is executed. Green on an empty registry.
  */
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { allChecks } from '../../../src/checks/index.ts';
 import { defineCheck } from '../../../src/core/check.ts';
-import { loadCrm, loadRuleset, loadTexts, type Texts } from '../../../src/core/data.ts';
+import { loadRuleset, loadTexts, type Texts } from '../../../src/core/data.ts';
 import { CheckRegistry } from '../../../src/core/registry.ts';
 import { completenessProblems, variantsWithoutFixture } from '../../utils/completeness.ts';
+import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 
 const data = () => ({
   ruleset: loadRuleset(),
-  crm: loadCrm(),
   texts: { de: loadTexts('de'), en: loadTexts('en') },
 });
 
@@ -22,49 +24,28 @@ describe('registry completeness', () => {
     expect(registry.ids()).toHaveLength(allChecks.length);
   });
 
-  it('every check/variant has ruleset, texts de+en, legal note, crm mapping and passing fixtures', () => {
+  it('every check/variant has ruleset, texts de+en, legal note and passing fixtures', () => {
     expect(completenessProblems(new CheckRegistry(allChecks).all(), data())).toEqual([]);
+  });
+
+  it('the variant table in docs/03-checks.md §2.1 is generated from the current ruleset', () => {
+    expect(() =>
+      execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/emit-registry.ts'), '--check'], {
+        stdio: 'pipe',
+      }),
+    ).not.toThrow();
   });
 });
 
 /**
- * Variants that no fixture expects : most are covered by targeted tests in test/unit/checks/**, the rest
- * cannot occur in the prototype (CONSENT-05 `connect-only-after-reject` needs the egress proxy). The list may only
- * shrink: a new variant without a fixture, or a stale entry after a fixture was added, fails the test.
+ * Variants that no fixture expects because the prototype cannot produce them: CONSENT-02 `cmp-cookie-with-uid`
+ * needs a collector feature that reads no values, CONSENT-05 `connect-only-after-reject` needs the egress proxy.
+ * The list may only shrink: a new variant without a fixture, or a stale entry after a fixture was added, fails
+ * the test.
  */
 const KNOWN_VARIANTS_WITHOUT_FIXTURE = [
-  'CONSENT-01.cookieless-ping',
-  'CONSENT-01.first-party-proxy',
-  'CONSENT-01.library-loaded',
-  'CONSENT-01.request-not-completed',
-  'CONSENT-01.third-party-resource',
-  'CONSENT-01.unknown-host',
   'CONSENT-02.cmp-cookie-with-uid',
-  'CONSENT-02.storage-rejected-or-attempted',
-  'CONSENT-02.unknown-first-party-persistent',
-  'CONSENT-02.unknown-third-party-persistent',
-  'CONSENT-03.no-banner-consent-services',
-  'CONSENT-04.blocking-no-reject',
-  'CONSENT-04.close-means-accept',
-  'CONSENT-04.cmp-not-supported',
-  'CONSENT-04.no-choice-at-first-layer',
-  'CONSENT-04.nonblocking-no-reject',
-  'CONSENT-04.pur-abo',
-  'CONSENT-04.reject-as-link',
-  'CONSENT-04.reject-ineffective',
-  'CONSENT-04.reject-not-actionable',
   'CONSENT-05.connect-only-after-reject',
-  'CONSENT-05.cookieless-ping-after-reject',
-  'EMBED-01.preconnect-only',
-  'LEGAL-01.footer-covered-by-banner',
-  'LEGAL-01.link-missing-on-some-pages',
-  'LEGAL-01.links-broken',
-  'LEGAL-01.reachable-via-intermediate',
-  'LEGAL-01.unresolved',
-  'MAIL-01.legacy-pct',
-  'MAIL-02.ptr-mechanism',
-  'PRIV-01.ambiguous-match',
-  'PRIV-01.category-only',
 ];
 
 describe('variants without a fixture', () => {
@@ -97,12 +78,14 @@ describe('completeness rules (self-test)', () => {
         checks: {
           'FAKE-01': {
             gating: true,
-            variants: { missing: { severity: 'warning' }, extra: { severity: 'info' } },
+            variants: {
+              missing: { severity: 'critical', crm: 'T3_OTHER' },
+              extra: { severity: 'info', crm: null },
+            },
           },
           'GHOST-01': { gating: true, variants: {} },
         },
       },
-      crm: { 'FAKE-01.missing': null },
       texts: { de: texts('de', 'Wert {a}'), en: texts('en', 'Value {b}') },
       fixtures: () => ['violation.json'],
       runFixtures: false,
@@ -110,15 +93,15 @@ describe('completeness rules (self-test)', () => {
     expect(problems).toEqual([
       'ruleset: unregistered check GHOST-01',
       'FAKE-01.weak: no ruleset severity',
+      'FAKE-01.missing: T3 code T3_OTHER with severity critical',
       'FAKE-01.extra: ruleset variant not declared by the check',
       'FAKE-01: no legalNote in data/texts/de/dns.yaml',
       'FAKE-01: no legalNote in data/texts/en/dns.yaml',
       'FAKE-01.missing: de/en use different params (a vs b)',
       'FAKE-01.weak: no de text (data/texts/de/dns.yaml)',
       'FAKE-01.weak: no en text (data/texts/en/dns.yaml)',
-      'FAKE-01.weak: no crm mapping (string or explicit null)',
-      'FAKE-01: no test/fixtures/snapshots/dns/FAKE-01/clean*.json',
-      'FAKE-01: no test/fixtures/snapshots/dns/FAKE-01/inconclusive*.json or error*.json',
+      'FAKE-01: no test/unit/checks/dns/fixtures.ts FAKE-01/clean*.json',
+      'FAKE-01: no test/unit/checks/dns/fixtures.ts FAKE-01/inconclusive*.json or error*.json',
     ]);
   });
 });

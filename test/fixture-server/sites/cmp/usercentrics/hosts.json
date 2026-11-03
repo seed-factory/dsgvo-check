@@ -1,7 +1,0 @@
-{
-  "hosts": {
-    "www.usercentrics.test": "www",
-    "web.cmp.usercentrics.eu": "uc3",
-    "app.usercentrics.eu": "uc2"
-  }
-}

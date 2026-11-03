@@ -139,15 +139,7 @@ describe('workflows', () => {
     expect(ci.jobs.test.strategy.matrix.node).toEqual(['24', '26']);
     const steps = workflowSteps('.github/workflows/ci.yml');
     const runs = steps.map((step) => step.run ?? '').join('\n');
-    for (const cmd of [
-      'typecheck',
-      'lint',
-      'schema:check',
-      'test:unit',
-      'test:integration',
-      'build',
-      'test:e2e',
-    ]) {
+    for (const cmd of ['typecheck', 'lint', 'test:unit', 'test:integration', 'build', 'test:e2e']) {
       expect(runs).toContain(`corepack pnpm ${cmd}`);
     }
     expect(runs).toContain('install --with-deps --no-shell chromium');
@@ -298,7 +290,7 @@ describe('Dockerfile and seccomp profile', () => {
       expect(existsSync(path.join(REPO_ROOT, source)), source).toBe(true);
       expect(lines, source).toContain(`!${source}`);
     }
-    for (const directory of ['src', 'data', 'schema']) expect(lines).toContain(`!${directory}/**`);
+    for (const directory of ['src', 'data']) expect(lines).toContain(`!${directory}/**`);
     expect(lines).toContain('!docker');
     expect(lines).toContain('docker/**');
   });

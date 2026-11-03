@@ -5,9 +5,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { createTlsCollector } from '../../../src/collectors/tls/index.ts';
-import type { TlsEndpoint, TlsSection } from '../../../src/collectors/tls/types.ts';
 import type { NetworkConfig } from '../../../src/core/net.ts';
 import { detectTrustStore } from '../../../src/core/snapshot.ts';
+import type { TlsEndpoint, TlsSection } from '../../../src/core/snapshot-tls.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeHttp, makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import {

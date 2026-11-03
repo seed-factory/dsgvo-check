@@ -1,5 +1,5 @@
 /**
- * Loaders for data/ (ruleset, texts, crm, routing, generic data dirs). Each directory is a catalog of YAML files
+ * Loaders for data/ (ruleset, texts, routing, generic data dirs). Each directory is a catalog of YAML files
  * that are merged (one file per module: browser.yaml, http.yaml, dns.yaml, plus shared core files).
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -23,8 +23,8 @@ function yamlFiles(dir: string): string[] {
   let entries: string[];
   try {
     entries = readdirSync(dir);
-  } catch {
-    return [];
+  } catch (err) {
+    throw new DataError(`${dir}: ${(err as Error).message}`);
   }
   return entries
     .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
@@ -70,6 +70,11 @@ const RulesetVariantSchema = z.object({
   gating: z.boolean().optional(),
   /** 5.4/5.5: level and gating cannot be changed by overrides (an override rule for it is invalid input). */
   locked: z.boolean().optional(),
+  /** CRM catalog code (JSON report only) or explicit null: every variant states its mapping. */
+  crm: z
+    .string()
+    .regex(/^T\d_[A-Z_]+$/)
+    .nullable(),
 });
 
 const RulesetCheckSchema = z.object({
@@ -95,10 +100,10 @@ export interface Ruleset {
   checks: Record<string, RulesetCheck>;
 }
 
-export function loadRuleset(dataDir = DEFAULT_DATA_DIR, profile = 'de-2026'): Ruleset {
-  const dir = path.join(dataDir, 'ruleset', profile);
+export function loadRuleset(dataDir = DEFAULT_DATA_DIR): Ruleset {
+  const dir = path.join(dataDir, 'ruleset', 'de-2026');
   const files = yamlFiles(dir);
-  if (files.length === 0) throw new DataError(`ruleset ${profile}: no files in ${dir}`);
+  if (files.length === 0) throw new DataError(`ruleset de-2026: no files in ${dir}`);
   let meta: Ruleset['profile'] | undefined;
   const checks: Record<string, RulesetCheck> = {};
   for (const file of files) {
@@ -109,7 +114,7 @@ export function loadRuleset(dataDir = DEFAULT_DATA_DIR, profile = 'de-2026'): Ru
     }
     mergeUnique(checks, parsed.checks ?? undefined, file, 'ruleset check');
   }
-  if (!meta) throw new DataError(`ruleset ${profile}: missing profile block`);
+  if (!meta) throw new DataError(`ruleset de-2026: missing profile block`);
   return { profile: meta, checks };
 }
 
@@ -184,29 +189,6 @@ export function loadTexts(lang: 'de' | 'en', dataDir = DEFAULT_DATA_DIR): Texts 
   return out;
 }
 
-const CrmFileSchema = z.object({
-  /** `<checkId>.<variant>` → CRM code (string as in the catalog) or explicit null. */
-  mapping: z
-    .record(
-      z.string(),
-      z
-        .string()
-        .regex(/^T\d_[A-Z_]+$/)
-        .nullable(),
-    )
-    .nullish(),
-});
-
-export type CrmMapping = Record<string, string | null>;
-
-export function loadCrm(dataDir = DEFAULT_DATA_DIR): CrmMapping {
-  const out: CrmMapping = {};
-  for (const file of yamlFiles(path.join(dataDir, 'crm'))) {
-    mergeUnique(out, parseFile(file, CrmFileSchema).mapping ?? undefined, file, 'crm mapping');
-  }
-  return out;
-}
-
 const RoutingFileSchema = z.object({
   version: z.literal(1),
   /** Service category → owning check id. */
@@ -257,7 +239,6 @@ export function loadDataDir(name: string, dataDir = DEFAULT_DATA_DIR): Record<st
 export interface CoreData {
   ruleset: Ruleset;
   texts: Texts;
-  crm: CrmMapping;
   routing: Routing;
 }
 
@@ -265,7 +246,6 @@ export function loadCoreData(lang: 'de' | 'en', dataDir = DEFAULT_DATA_DIR): Cor
   return {
     ruleset: loadRuleset(dataDir),
     texts: loadTexts(lang, dataDir),
-    crm: loadCrm(dataDir),
     routing: loadRouting(dataDir),
   };
 }

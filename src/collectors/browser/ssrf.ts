@@ -145,7 +145,7 @@ export function hostClassifier(
   };
 }
 
-/** Verdict for a document URL: only http(s) hosts are classified; everything else passes. */
+/** Verdict for a document URL: only http(s) hosts are classified; other schemes pass, unparsable URLs block. */
 export async function urlVerdict(
   url: string,
   classify: (host: string) => Promise<GuardVerdict>,
@@ -154,7 +154,7 @@ export async function urlVerdict(
   try {
     u = new URL(url);
   } catch {
-    return 'pass';
+    return 'unresolved';
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'pass';
   return classify(u.hostname);

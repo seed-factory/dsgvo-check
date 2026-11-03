@@ -2,7 +2,7 @@
  * Orchestrator: validate → preflight → collectors → snapshot → derive → checks over `requires` slices →
  * assess → gate → report. Fatal conditions end in a minimal `failed` report (5.1) with exit code 2.
  */
-import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import { allChecks } from './checks/index.ts';
@@ -10,43 +10,31 @@ import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
-import {
-  assess,
-  type ExecutedCheck,
-  isGating,
-  lockedOverrides,
-  mergeDiagnostics,
-  type SeverityOverride,
-} from './core/assess.ts';
+import { assess, type ExecutedCheck, isGating, lockedOverrides, mergeDiagnostics } from './core/assess.ts';
 import type { AnyCheck, CheckContext } from './core/check.ts';
-import type { CollectorContext, CollectorResult, Collectors } from './core/collector.ts';
-import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, type Texts } from './core/data.ts';
+import type { Collectors } from './core/collector.ts';
+import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data.ts';
 import { errorMessage, type FatalReason, InvalidInputError, ScanFatalError } from './core/errors.ts';
 import { executeCheck } from './core/execute.ts';
 import { type ExitCode, gate } from './core/gate.ts';
 import { createLogger, type Logger } from './core/logger.ts';
 import { uiText } from './core/messages.ts';
-import { classifyAddress, defaultNetworkConfig, type NetworkConfig } from './core/net.ts';
+import { classifyAddress, type NetworkConfig } from './core/net.ts';
 import { CheckRegistry } from './core/registry.ts';
 import { buildFailedReport, buildFullReport } from './core/report.ts';
 import type {
   CheckResult,
   Diagnostic,
   Evidence,
-  FailOn,
   Finding,
+  MessageParams,
   Report,
-  ReportScanOptions,
 } from './core/report-schema.ts';
-import { REPORT_FILES, type ReporterContext, type ReportFormat } from './core/reporter.ts';
 import {
-  type CollectorName,
   type DiagnosticInput,
   detectTrustStore,
-  SECTION_PRODUCER,
   SNAPSHOT_VERSION,
   type Snapshot,
-  type SnapshotSectionKey,
   type TargetInfo,
   toSavedSnapshot,
 } from './core/snapshot.ts';
@@ -54,65 +42,8 @@ import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } fr
 import { uaToken } from './core/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/version.ts';
 import { derive } from './derive/index.ts';
-import { renderConsole } from './reporters/console.ts';
-import { renderHtml } from './reporters/html.ts';
-import { renderJson } from './reporters/json.ts';
-import { PDF_TIMEOUT_MS, type PdfOptions, renderPdf } from './reporters/pdf.ts';
-import { renderSummary } from './reporters/summary.ts';
-
-export interface ScanOptions {
-  /** Target URL (required unless `fromSnapshot`). */
-  url?: string;
-  failOn?: FailOn;
-  formats?: ReportFormat[];
-  outDir?: string;
-  maxPages?: number;
-  timeoutMs?: number;
-  proxy?: string | null;
-  assumeRegion?: 'eea' | 'de' | null;
-  lang?: 'de' | 'en';
-  strict?: boolean;
-  sandbox?: 'require' | 'off';
-  screenshots?: boolean;
-  saveSnapshot?: string | null;
-  fromSnapshot?: string | null;
-  /** Restrict to these check ids (`--checks`). */
-  checks?: string[] | null;
-  /** Severity overrides (`CHECK-ID` or `CHECK-ID.variant`). */
-  overrides?: SeverityOverride[];
-  // programmatic only (tests, canary)
-  network?: Partial<NetworkConfig>;
-  dataDir?: string;
-  now?: () => Date;
-  registry?: CheckRegistry;
-  collectors?: Partial<Collectors>;
-  log?: Logger;
-  /** How long to wait for a collector's partial result after the global timeout (default `ABORT_GRACE_MS`). */
-  abortGraceMs?: number;
-}
-
-export interface ResolvedScanOptions {
-  url: string | null;
-  failOn: FailOn;
-  formats: ReportFormat[];
-  outDir: string;
-  maxPages: number;
-  timeoutMs: number;
-  proxy: string | null;
-  assumeRegion: 'eea' | 'de' | null;
-  lang: 'de' | 'en';
-  strict: boolean;
-  sandbox: 'require' | 'off';
-  screenshots: boolean;
-  saveSnapshot: string | null;
-  fromSnapshot: string | null;
-  checks: string[] | null;
-  overrides: SeverityOverride[];
-  network: NetworkConfig;
-  dataDir: string;
-  now: () => Date;
-  abortGraceMs: number;
-}
+import { type CollectState, collect, requiredCollectors } from './scan-collect.ts';
+import { type ResolvedScanOptions, reportOptions, resolveOptions, type ScanOptions } from './scan-options.ts';
 
 export interface ScanResult {
   report: Report;
@@ -121,105 +52,12 @@ export interface ScanResult {
   exitCode: ExitCode;
 }
 
-export const DEFAULTS = {
-  failOn: 'critical' as FailOn,
-  formats: ['console', 'json'] as ReportFormat[],
-  outDir: './dsgvo-check-report',
-  maxPages: 6,
-  timeoutMs: 8 * 60_000,
-  lang: 'de' as const,
-  sandbox: 'require' as const,
-};
-
-/** Reserve on top of `--timeout` for writing reports. */
-export const REPORT_WRITE_RESERVE_MS = 30_000;
-
-/**
- * After the global timeout, collectors get this long to stop and hand over what they collected (5.2: findings
- * collected before the failure are kept). Must stay well below `REPORT_WRITE_RESERVE_MS`.
- */
-export const ABORT_GRACE_MS = 10_000;
-
-export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
-  const failOn = o.failOn ?? DEFAULTS.failOn;
-  if (!['critical', 'warning', 'none'].includes(failOn)) {
-    throw new InvalidInputError('invalid-fail-on', `Ungültiger Wert für --fail-on: ${failOn}`);
-  }
-  const maxPages = o.maxPages ?? DEFAULTS.maxPages;
-  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 50) {
-    throw new InvalidInputError('invalid-max-pages', `Ungültiger Wert für --max-pages: ${maxPages}`);
-  }
-  const timeoutMs = o.timeoutMs ?? DEFAULTS.timeoutMs;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new InvalidInputError('invalid-timeout', `Ungültiger Wert für --timeout: ${timeoutMs}`);
-  }
-  if (!o.url && !o.fromSnapshot) throw new InvalidInputError('target-missing', 'Keine Ziel-URL angegeben.');
-  const proxy = o.proxy ?? null;
-  // The supported proxy transport is HTTP CONNECT.
-  if (proxy !== null && !/^http:\/\/[^\s]+$/i.test(proxy)) {
-    throw new InvalidInputError('invalid-proxy', 'Ungültige Proxy-URL (nur http:// wird unterstützt).');
-  }
-  return {
-    url: o.url ?? null,
-    failOn,
-    formats: o.formats ?? DEFAULTS.formats,
-    outDir: path.resolve(o.outDir ?? DEFAULTS.outDir),
-    maxPages,
-    timeoutMs,
-    proxy,
-    assumeRegion: o.assumeRegion ?? null,
-    lang: o.lang ?? DEFAULTS.lang,
-    strict: o.strict ?? false,
-    sandbox: o.sandbox ?? DEFAULTS.sandbox,
-    screenshots: o.screenshots ?? true,
-    saveSnapshot: o.saveSnapshot ?? null,
-    fromSnapshot: o.fromSnapshot ?? null,
-    checks: o.checks && o.checks.length > 0 ? o.checks : null,
-    overrides: o.overrides ?? [],
-    network: { ...defaultNetworkConfig(proxy), ...o.network },
-    dataDir: o.dataDir ?? DEFAULT_DATA_DIR,
-    now: o.now ?? (() => new Date()),
-    abortGraceMs: Math.max(0, o.abortGraceMs ?? ABORT_GRACE_MS),
-  };
-}
-
-function reportOptions(o: ResolvedScanOptions): ReportScanOptions {
-  return {
-    failOn: o.failOn,
-    strict: o.strict,
-    lang: o.lang,
-    formats: o.formats,
-    maxPages: o.maxPages,
-    timeoutMs: o.timeoutMs,
-    sandbox: o.sandbox,
-    screenshots: o.screenshots,
-    checks: o.checks,
-    proxy: o.proxy !== null,
-    assumeRegion: o.assumeRegion,
-    fromSnapshot: o.fromSnapshot !== null,
-    overrides: o.overrides.map((x) => ({ rule: x.rule, severity: x.severity })),
-  };
-}
-
 const DEFAULT_COLLECTORS: Collectors = {
   browser: collectBrowser,
   http: collectHttp,
   tls: collectTls,
   dns: collectDns,
 };
-
-/** Collectors needed by the given checks (`derived` implies `browser`). */
-export function requiredCollectors(checks: readonly AnyCheck[]): Set<CollectorName> {
-  const out = new Set<CollectorName>();
-  for (const c of checks) {
-    for (const key of c.requires as SnapshotSectionKey[]) {
-      const producer = SECTION_PRODUCER[key];
-      if (producer === 'derive') out.add('browser');
-      else if (producer !== 'core') out.add(producer);
-    }
-  }
-  return out;
-}
 
 async function preflight(target: TargetInfo, network: NetworkConfig): Promise<void> {
   // IPv6 literals keep their brackets in URL form; DNS and the address check need the bare address.
@@ -235,21 +73,18 @@ async function preflight(target: TargetInfo, network: NetworkConfig): Promise<vo
       throw new ScanFatalError(
         'unreachable',
         code === 'ENOTFOUND' ? 'target-nxdomain' : 'target-dns-error',
-        `Zielhost ${host} konnte nicht aufgelöst werden (${code}).`,
+        { host, code },
         { cause: err },
       );
     }
   }
   if (addresses.length === 0) {
-    throw new ScanFatalError('unreachable', 'target-nxdomain', `Zielhost ${host} hat keine Adressen.`);
+    throw new ScanFatalError('unreachable', 'target-nxdomain', { host, code: 'no addresses' });
   }
   if (!network.allowPrivateAddresses) {
     const blocked = addresses.filter((a) => classifyAddress(a.address) !== 'public');
     if (blocked.length === addresses.length) {
-      throw new InvalidInputError(
-        'target-not-public',
-        `Zielhost ${host} löst nur auf nicht-öffentliche Adressen auf; der Scan ist nur für öffentliche Websites vorgesehen.`,
-      );
+      throw new InvalidInputError('target-not-public', { host });
     }
     // One policy for all collectors: the browser cannot pin a checked address, so its guard refuses a host with
     // any non-public address. Refuse it here, before any collector runs, with a precise message.
@@ -258,10 +93,7 @@ async function preflight(target: TargetInfo, network: NetworkConfig): Promise<vo
         .slice(0, 3)
         .map((a) => a.address)
         .join(', ');
-      throw new InvalidInputError(
-        'target-mixed-addresses',
-        `Zielhost ${host} löst neben öffentlichen auch auf nicht-öffentliche Adressen auf (${list}); der Scan ist nur für öffentliche Websites vorgesehen.`,
-      );
+      throw new InvalidInputError('target-mixed-addresses', { host, addresses: list });
     }
   }
 }
@@ -304,14 +136,11 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   try {
     parsed = JSON.parse(await readFile(file, 'utf8'));
   } catch (err) {
-    throw new InvalidInputError(
-      'snapshot-unreadable',
-      `Snapshot ${file} ist nicht lesbar: ${errorMessage(err)}`,
-    );
+    throw new InvalidInputError('snapshot-unreadable', { file, message: errorMessage(err) });
   }
   const s = parsed as Partial<Snapshot>;
   if (s?.snapshotVersion !== SNAPSHOT_VERSION || !s.target || !s.environment || !s.plan || !s.collection) {
-    throw new InvalidInputError('snapshot-invalid', `Snapshot ${file} hat kein unterstütztes Format.`);
+    throw new InvalidInputError('snapshot-invalid', { file });
   }
   const snapshot = s as Snapshot;
   delete snapshot.derived;
@@ -322,245 +151,6 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   return snapshot;
 }
 
-type TimedResult<T> = { timedOut: true } | { timedOut: false; value: T };
-
-function untilDeadline<T>(p: Promise<T>, signal: AbortSignal): Promise<TimedResult<T>> {
-  if (signal.aborted) return Promise.resolve({ timedOut: true });
-  return new Promise((resolve, reject) => {
-    const onAbort = () => resolve({ timedOut: true });
-    signal.addEventListener('abort', onAbort, { once: true });
-    p.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort);
-        resolve({ timedOut: false, value });
-      },
-      (err) => {
-        signal.removeEventListener('abort', onAbort);
-        reject(err);
-      },
-    );
-  });
-}
-
-/** The value of `p` if it settles successfully within `ms`, else null (a late rejection counts as no result). */
-function withinGrace<T>(p: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    p.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(null);
-      },
-    );
-  });
-}
-
-interface CollectState {
-  timedOut: boolean;
-  fatal: { reason: FatalReason; code: string; message: string } | null;
-  /** Collectors that handed over nothing after the global timeout, not even within the grace period. */
-  noHandover: Set<CollectorName>;
-}
-
-async function runCollector<S extends object>(
-  name: CollectorName,
-  fn: (ctx: CollectorContext) => Promise<CollectorResult<S>>,
-  ctx: CollectorContext,
-  snapshot: Snapshot,
-  state: CollectState,
-  log: Logger,
-  graceMs: number,
-): Promise<CollectorResult<S> | null> {
-  const t0 = performance.now();
-  if (ctx.signal.aborted) {
-    // The deadline passed before this collector could start.
-    state.timedOut = true;
-    snapshot.collection[name] = { status: 'error', reason: 'timeout', durationMs: 0 };
-    return null;
-  }
-  try {
-    const pending = fn(ctx);
-    const res = await untilDeadline(pending, ctx.signal);
-    if (res.timedOut) {
-      state.timedOut = true;
-      // 5.2: findings collected before the timeout are kept — give the collector a bounded chance to stop and
-      // return what it has (e.g. the browser with phase A done and phase B cut).
-      const late = await withinGrace(pending, graceMs);
-      const durationMs = Math.round(performance.now() - t0);
-      if (!late) {
-        log.warn(
-          `collector ${name} handed over no result within ${graceMs} ms after the global timeout; its facts are lost`,
-        );
-        state.noHandover.add(name);
-        snapshot.collection[name] = { status: 'error', reason: 'timeout', durationMs };
-        return null;
-      }
-      // Failures after the abort are caused by it: the timeout is the reason, a late `fatal` is ignored.
-      snapshot.collection[name] = {
-        status: late.status === 'ok' ? 'partial' : late.status,
-        reason: late.status === 'skipped' ? (late.reason ?? 'skipped') : 'timeout',
-        durationMs,
-        ...(late.error ? { error: late.error } : {}),
-      };
-      if (late.diagnostics) snapshot.diagnostics.push(...late.diagnostics);
-      if (late.probes) snapshot.plan.probes.push(...late.probes);
-      return { ...late, fatal: undefined };
-    }
-    const durationMs = Math.round(performance.now() - t0);
-    const r = res.value;
-    snapshot.collection[name] = {
-      status: r.status,
-      durationMs,
-      ...(r.reason ? { reason: r.reason } : {}),
-      ...(r.error ? { error: r.error } : {}),
-    };
-    if (r.diagnostics) snapshot.diagnostics.push(...r.diagnostics);
-    if (r.probes) snapshot.plan.probes.push(...r.probes);
-    if (r.fatal && !state.fatal) state.fatal = r.fatal;
-    return r;
-  } catch (err) {
-    if (err instanceof ScanFatalError && !state.fatal && !ctx.signal.aborted) {
-      state.fatal = { reason: err.reason, code: err.code, message: err.message };
-    }
-    log.error(`collector ${name} failed: ${errorMessage(err)}`);
-    snapshot.collection[name] = {
-      status: 'error',
-      reason: ctx.signal.aborted ? 'timeout' : 'exception',
-      error: { code: 'collector-exception', message: errorMessage(err) },
-      durationMs: Math.round(performance.now() - t0),
-    };
-    return null;
-  }
-}
-
-/** The browser visited the start page in phase A (5.2: a timeout before that is fatal). */
-function startPageDone(snapshot: Snapshot): boolean {
-  return (snapshot.browser?.phases ?? []).some(
-    (p) => p.phase === 'A' && p.pages.some((v) => v.role === 'start'),
-  );
-}
-
-/** Node verdicts of a chain the server sent incompletely; Chrome completes such chains via AIA. */
-const INCOMPLETE_CHAIN_ERRORS: ReadonlySet<string> = new Set([
-  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-]);
-
-/** True when the TLS collector saw an invalid certificate on the target host (browser checks → `tls-blocked`). */
-function tlsBlocked(snapshot: Snapshot): boolean {
-  if (snapshot.target.scheme !== 'https') return false;
-  // Keep the target's endpoint and explicit port rather than borrowing a final-host endpoint.
-  const ep = snapshot.tls?.endpoints.find((e) => e.hostVariant === 'target' && !e.role);
-  if (ep?.outcome !== 'handshake' || ep.authorized) return false;
-  const incompleteChainOnly =
-    ep.chainComplete === false &&
-    ep.hostnameMatches !== false &&
-    INCOMPLETE_CHAIN_ERRORS.has(ep.authorizationError ?? '');
-  return !incompleteChainOnly;
-}
-
-async function collect(
-  snapshot: Snapshot,
-  rawTarget: TargetInfo,
-  needed: Set<CollectorName>,
-  collectors: Collectors,
-  o: ResolvedScanOptions,
-  signal: AbortSignal,
-  deadline: number,
-  log: Logger,
-  clock: () => number,
-  texts: Texts,
-): Promise<CollectState> {
-  const state: CollectState = { timedOut: false, fatal: null, noHandover: new Set() };
-  const artifactsRelDir = 'artifacts';
-  const ctx = (): CollectorContext => ({
-    // Collectors navigate to the URL as given; everything stored uses the redacted `snapshot.target`.
-    target: { ...snapshot.target, input: rawTarget.input, url: rawTarget.url },
-    options: {
-      maxPages: o.maxPages,
-      screenshots: o.screenshots,
-      sandbox: o.sandbox,
-      lang: o.lang,
-      assumeRegion: o.assumeRegion,
-    },
-    network: o.network,
-    userAgent: { http: uaToken(), token: uaToken() },
-    signal,
-    deadline,
-    artifactsDir: path.join(o.outDir, artifactsRelDir),
-    artifactsRelDir,
-    now: o.now,
-    clock,
-    log,
-    snapshot,
-  });
-  for (const name of ['browser', 'http', 'tls', 'dns'] as const) {
-    if (!needed.has(name))
-      snapshot.collection[name] = { status: 'not-run', reason: 'not-required', durationMs: 0 };
-  }
-
-  const grace = o.abortGraceMs;
-  const [http, tls, dns] = await Promise.all([
-    needed.has('http') ? runCollector('http', collectors.http, ctx(), snapshot, state, log, grace) : null,
-    needed.has('tls') ? runCollector('tls', collectors.tls, ctx(), snapshot, state, log, grace) : null,
-    needed.has('dns') ? runCollector('dns', collectors.dns, ctx(), snapshot, state, log, grace) : null,
-  ]);
-  if (http?.sections.http) snapshot.http = http.sections.http;
-  if (tls?.sections.tls) snapshot.tls = tls.sections.tls;
-  if (dns?.sections.dns) snapshot.dns = dns.sections.dns;
-
-  if (needed.has('browser') && !state.fatal) {
-    if (tlsBlocked(snapshot)) {
-      snapshot.collection.browser = { status: 'skipped', reason: 'tls-blocked', durationMs: 0 };
-    } else {
-      const b = await runCollector('browser', collectors.browser, ctx(), snapshot, state, log, grace);
-      if (b) {
-        const s = b.sections;
-        if (s.browser) {
-          snapshot.browser = s.browser;
-          snapshot.environment.userAgent.browser = s.browser.engine.userAgent;
-          snapshot.environment.sandbox.active = s.browser.engine.sandbox;
-        }
-        if (s.documents) snapshot.documents = s.documents;
-        if (s.cmp) snapshot.cmp = s.cmp;
-        if (s.plan) snapshot.plan.browser = s.plan;
-        if (s.finalUrl) setFinalUrl(snapshot, s.finalUrl);
-      }
-    }
-  }
-  // Prefer the browser's final URL; use the HTTP start document when the browser did not provide it.
-  if (!snapshot.target.finalUrl) {
-    const start = snapshot.http?.documents.find((d) => d.role === 'start' && d.status !== null);
-    if (start?.finalUrl) setFinalUrl(snapshot, start.finalUrl);
-  }
-  // 5.2: the global timeout before phase A finished on the start page is fatal (`timeout`). Without a planned
-  // browser run (not needed, or skipped as tls-blocked) a timeout only leaves the unfinished checks in error.
-  const browserPlanned = needed.has('browser') && snapshot.collection.browser?.status !== 'skipped';
-  if (state.timedOut && !state.fatal && browserPlanned && !startPageDone(snapshot)) {
-    const seconds = Math.round(o.timeoutMs / 1000);
-    // A browser collector that handed over nothing may have captured the start page: do not claim it had not.
-    // The texts are data (`failure.<code>` in data/texts), in the language of the scan (AGENTS rule 3).
-    const code = state.noHandover.has('browser') ? 'browser-no-handover' : 'scan-timeout';
-    state.fatal = { reason: 'timeout', code, message: uiText(texts, `failure.${code}`, { seconds }) };
-  }
-  return state;
-}
-
-function setFinalUrl(snapshot: Snapshot, raw: string): void {
-  let host: string;
-  try {
-    host = new URL(raw).hostname.toLowerCase();
-  } catch {
-    return;
-  }
-  snapshot.target.finalUrl = sanitizeUrl(raw);
-  snapshot.target.finalHost = host;
-}
-
 function selectChecks(
   registry: CheckRegistry,
   ids: string[] | null,
@@ -569,7 +159,7 @@ function selectChecks(
   if (!ids) return { enabled: all, disabled: [] };
   const unknown = ids.filter((id) => !registry.has(id));
   if (unknown.length > 0) {
-    throw new InvalidInputError('unknown-check', `Unbekannte Prüfung(en) in --checks: ${unknown.join(', ')}`);
+    throw new InvalidInputError('unknown-check', { checks: unknown.join(', ') });
   }
   return { enabled: all.filter((c) => ids.includes(c.id)), disabled: all.filter((c) => !ids.includes(c.id)) };
 }
@@ -619,12 +209,23 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
   let core: CoreData | null = null;
   let snapshot: Snapshot | null = null;
 
+  // `failure.<code>` in data/texts, in the language of the scan; the code alone when no texts can be loaded.
+  const failureMessage = (code: string, params: MessageParams): string => {
+    let texts = core?.texts;
+    try {
+      texts ??= loadTexts(options.lang === 'en' ? 'en' : 'de', options.dataDir ?? DEFAULT_DATA_DIR);
+    } catch {
+      return code;
+    }
+    return uiText(texts, `failure.${code}`, params);
+  };
   const fail = (
     reason: FatalReason,
     code: string,
-    message: string,
+    params: MessageParams = {},
     extra: Partial<FailedReportExtras> = {},
   ) => {
+    const message = failureMessage(code, params);
     const exitReasons = gate({
       failOn: o?.failOn ?? 'critical',
       strict: o?.strict ?? false,
@@ -656,10 +257,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     core = loadCoreData(o.lang, o.dataDir);
     const locked = lockedOverrides(core.ruleset, o.overrides);
     if (locked.length > 0) {
-      throw new InvalidInputError(
-        'locked-override',
-        `Diese Varianten sind nicht überschreibbar: ${locked.join(', ')}`,
-      );
+      throw new InvalidInputError('locked-override', { variants: locked.join(', ') });
     }
     const registry = options.registry ?? new CheckRegistry(allChecks);
     const { enabled, disabled } = selectChecks(registry, o.checks);
@@ -686,7 +284,6 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
           deadline,
           log,
           () => performance.now() - t0,
-          core.texts,
         );
       }
     } finally {
@@ -713,7 +310,6 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       checks: [...enabled, ...disabled].sort((a, b) => a.id.localeCompare(b.id)),
       executed,
       ruleset: core.ruleset,
-      crm: core.crm,
       routing: core.routing,
       overrides: o.overrides,
       texts: core.texts,
@@ -762,7 +358,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     }));
 
     if (state.fatal) {
-      return fail(state.fatal.reason, state.fatal.code, state.fatal.message, {
+      return fail(state.fatal.reason, state.fatal.code, state.fatal.params, {
         checks: assessed.checks,
         findings: assessed.findings,
         evidence: assessed.evidence,
@@ -803,9 +399,9 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     });
     return { report, snapshot, exitCode: result.exitCode };
   } catch (err) {
-    if (err instanceof ScanFatalError) return fail(err.reason, err.code, err.message);
+    if (err instanceof ScanFatalError) return fail(err.reason, err.code, err.params);
     log.error(`internal error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
-    return fail('internal-error', 'internal-error', errorMessage(err));
+    return fail('internal-error', 'internal-error', { message: errorMessage(err) });
   }
 }
 
@@ -816,120 +412,4 @@ interface FailedReportExtras {
   diagnostics: Diagnostic[];
   gateChecks: Parameters<typeof gate>[0]['checks'];
   gateFindings: Parameters<typeof gate>[0]['findings'];
-}
-
-// writing reports
-
-export interface WriteResult {
-  exitCode: ExitCode;
-  written: string[];
-  errors: Array<{ path: string; message: string }>;
-  /** Optional PDF printing is best effort and does not change the scan result. */
-  warnings: string[];
-  /** Console report text (when `console` is among the formats). */
-  console: string | null;
-}
-
-const RENDERERS = { json: renderJson, html: renderHtml, summary: renderSummary } as const;
-
-/**
- * Write requested report files to `outDir` (json first). A failed write turns the exit code into 2
- * (`report-write-failed`, 5.2) and the JSON is rewritten with the updated summary when possible.
- */
-export async function writeReports(
-  result: ScanResult,
-  opts: {
-    outDir: string;
-    formats: ReportFormat[];
-    lang: 'de' | 'en';
-    color?: boolean;
-    dataDir?: string;
-    /** Directory containing source artifacts when reissuing a saved report. */
-    artifactsDir?: string;
-    pdf?: PdfOptions;
-    watchdogDeadline?: number;
-    outputConsole?: (text: string) => Promise<void>;
-  },
-): Promise<WriteResult> {
-  const outDir = path.resolve(opts.outDir);
-  const texts = loadCoreData(opts.lang, opts.dataDir ?? DEFAULT_DATA_DIR).texts;
-  const ctx: ReporterContext = {
-    texts,
-    lang: opts.lang,
-    outDir: path.resolve(opts.artifactsDir ?? outDir),
-    color: opts.color ?? false,
-    dataDir: opts.dataDir,
-  };
-  const written: string[] = [];
-  const errors: WriteResult['errors'] = [];
-  const warnings: string[] = [];
-  let renderedHtml: string | undefined;
-  const fileFormats = (['json', 'html', 'summary'] as const).filter((f) => opts.formats.includes(f));
-
-  const writeOne = async (format: (typeof fileFormats)[number]) => {
-    const file = path.join(outDir, REPORT_FILES[format]);
-    try {
-      await mkdir(outDir, { recursive: true });
-      if (format === 'html' && renderedHtml === undefined) renderedHtml = renderHtml(result.report, ctx);
-      const content = format === 'html' ? renderedHtml! : RENDERERS[format](result.report, ctx);
-      await writeFile(file, content);
-      if (!written.includes(file)) written.push(file);
-    } catch (err) {
-      errors.push({ path: file, message: errorMessage(err) });
-    }
-  };
-  for (const f of fileFormats) await writeOne(f);
-
-  let exitCode = result.exitCode;
-  if (errors.length > 0) {
-    exitCode = 2;
-    const s = result.report.summary;
-    if (!s.exitReasons.includes('report-write-failed')) s.exitReasons.push('report-write-failed');
-    s.exitCode = 2;
-    if (fileFormats.includes('json') && !errors.some((e) => e.path.endsWith(REPORT_FILES.json))) {
-      await writeOne('json');
-    }
-  }
-
-  const stepSummary = process.env.GITHUB_STEP_SUMMARY;
-  if (stepSummary) {
-    try {
-      await appendFile(stepSummary, renderSummary(result.report, ctx));
-    } catch {
-      // Job Summary is best effort; not a requested report file.
-    }
-  }
-
-  const consoleText = opts.formats.includes('console') ? renderConsole(result.report, ctx) : null;
-  if (consoleText && opts.outputConsole) await opts.outputConsole(consoleText);
-
-  if (opts.formats.includes('pdf')) {
-    const file = path.join(outDir, REPORT_FILES.pdf);
-    try {
-      // Remove an earlier PDF first: a failed reprint must not leave a stale report behind.
-      await rm(file, { force: true });
-      await mkdir(outDir, { recursive: true });
-      if (opts.watchdogDeadline !== undefined && opts.watchdogDeadline - Date.now() < PDF_TIMEOUT_MS)
-        throw new Error('insufficient time');
-      const html = renderedHtml ?? renderHtml(result.report, ctx);
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = Math.min(opts.pdf?.timeoutMs ?? PDF_TIMEOUT_MS, PDF_TIMEOUT_MS);
-      const pdf = await Promise.race([
-        renderPdf(html, ctx, opts.pdf),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('PDF timeout')), timeout);
-        }),
-      ]).finally(() => clearTimeout(timer));
-      const temporary = `${file}.tmp`;
-      await writeFile(temporary, pdf);
-      await rename(temporary, file);
-      written.push(file);
-    } catch {
-      await rm(file, { force: true }).catch(() => undefined);
-      await rm(`${file}.tmp`, { force: true }).catch(() => undefined);
-      warnings.push(uiText(texts, 'report.pdf.skipped'));
-    }
-  }
-
-  return { exitCode, written, errors, warnings, console: consoleText };
 }

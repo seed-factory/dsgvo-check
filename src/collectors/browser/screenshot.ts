@@ -7,10 +7,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Page } from 'playwright-core';
 import type { CmpFacts } from '../../cmp/types.ts';
+import type { ScreenshotRecord } from '../../core/snapshot-browser.ts';
 import type { Box, BrowserPhase, SanitizedUrl } from '../../core/snapshot-common.ts';
 import { SCREENSHOT_MAX_BYTES, SCREENSHOT_MAX_VIEWPORT_SHARE, VIEWPORT } from './config.ts';
-import { bannerBoxInPage } from './in-page.ts';
-import type { ScreenshotRecord } from './types.ts';
+import { bannerBoxInPage } from './in-page-dom.ts';
 import { sha256Hex } from './util.ts';
 
 export type ShotResult = { record: ScreenshotRecord } | { skipped: string };

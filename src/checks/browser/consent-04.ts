@@ -17,7 +17,6 @@ import type {
   FirstLayerClassification,
   KnownCmpId,
 } from '../../cmp/types.ts';
-import type { BrowserPlan, BrowserSection } from '../../collectors/browser/types.ts';
 import {
   type CheckOutcome,
   defineCheck,
@@ -26,6 +25,7 @@ import {
   type Phase,
   subjects,
 } from '../../core/api.ts';
+import type { BrowserPlan, BrowserSection } from '../../core/snapshot-browser.ts';
 import { allCmpFacts, consentSignals, signalOutcome, startPageUrl } from './shared.ts';
 
 const ID = 'CONSENT-04';

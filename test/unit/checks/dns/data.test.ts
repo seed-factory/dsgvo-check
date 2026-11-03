@@ -1,61 +1,11 @@
-/**
- * Ruleset table for MAIL-* (tested separately), the rule "T3 codes not above warning", and rendering of
- * every emitted observation in de and en without unresolved placeholders.
- */
+/** Rendering of every emitted MAIL-* observation in de and en without unresolved placeholders. */
 import { describe, expect, it } from 'vitest';
 import { dnsChecks } from '../../../../src/checks/dns/index.ts';
-import { loadCrm, loadRuleset, loadTexts } from '../../../../src/core/data.ts';
+import { loadTexts } from '../../../../src/core/data.ts';
 import { renderMessage } from '../../../../src/core/messages.ts';
-import { loadFixtures, observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
+import { checkFixtures } from '../../../utils/completeness.ts';
+import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { dnsSnapshot, type ZoneSpec } from './zone.ts';
-
-const ruleset = loadRuleset();
-const crm = loadCrm();
-
-describe('ruleset de-2026 for MAIL-*', () => {
-  it('matches the registry (docs/03-checks.md §2.1)', () => {
-    const table = Object.fromEntries(
-      ['MAIL-01', 'MAIL-02'].map((id) => [
-        id,
-        Object.fromEntries(
-          Object.entries(ruleset.checks[id]?.variants ?? {}).map(([v, e]) => [v, e.severity]),
-        ),
-      ]),
-    );
-    expect(table).toEqual({
-      'MAIL-01': {
-        'record-not-found': 'warning',
-        'policy-none': 'warning',
-        'record-invalid': 'warning',
-        'weak-option': 'info',
-        'legacy-pct': 'info',
-      },
-      'MAIL-02': {
-        'record-not-found': 'warning',
-        'permissive-qualifier': 'warning',
-        'record-invalid': 'warning',
-        'softfail-without-enforcement': 'warning',
-        'softfail-with-enforcement': 'info',
-        'ptr-mechanism': 'info',
-      },
-    });
-    expect(ruleset.checks['MAIL-01']?.gating).toBe(true);
-    expect(ruleset.checks['MAIL-02']?.gating).toBe(true);
-  });
-
-  it('T3 codes are never critical', () => {
-    for (const check of dnsChecks) {
-      for (const { variant } of check.variants) {
-        const code = crm[`${check.id}.${variant}`];
-        if (code?.startsWith('T3_')) {
-          expect(ruleset.checks[check.id]?.variants[variant]?.severity, `${check.id}.${variant}`).not.toBe(
-            'critical',
-          );
-        }
-      }
-    }
-  });
-});
 
 /** Extra scenarios so that every declared variant is rendered at least once. */
 const base: ZoneSpec = { 'MX example.de': ['10 mx.example.de'], 'TXT _dmarc.www.example.de': 'NXDOMAIN' };
@@ -82,7 +32,7 @@ const SCENARIOS: ZoneSpec[] = [
 
 describe('texts render for every emitted observation', () => {
   const fromFixtures = dnsChecks.flatMap((check) =>
-    loadFixtures(check.module, check.id).map((fx) => runCheck(check, fx.snapshot)),
+    checkFixtures(check).map((fx) => runCheck(check, fx.snapshot)),
   );
   const fromScenarios = SCENARIOS.flatMap((spec) => dnsChecks.map((c) => runCheck(c, dnsSnapshot(spec))));
   const observations = [...fromFixtures, ...fromScenarios].flatMap((r) =>

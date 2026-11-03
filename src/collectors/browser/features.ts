@@ -3,6 +3,8 @@
  * Mode signals. Identifier values are returned only for the in-memory stored-identifier correlation and must never
  * be written to the snapshot, report or logs.
  */
+
+import { safeDecode } from '../../core/email.ts';
 import { QUERY_VALUE_RULES, sanitizeUrl } from '../../core/url.ts';
 import { IDENTIFIER_PARAMS, REQUEST_QUERY_ALLOWLIST } from './config.ts';
 
@@ -52,14 +54,6 @@ function paramSets(url: string, postData: string | null): URLSearchParams[] {
     }
   }
   return sets;
-}
-
-function safeDecode(v: string): string {
-  try {
-    return decodeURIComponent(v);
-  } catch {
-    return v;
-  }
 }
 
 /**

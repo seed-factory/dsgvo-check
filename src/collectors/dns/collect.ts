@@ -16,8 +16,8 @@ import { analyzeSpf, isSpfCandidate } from '../../checks/dns/lib/spf.ts';
 import type { Logger } from '../../core/logger.ts';
 import { redactText } from '../../core/redact.ts';
 import type { CollectorError } from '../../core/snapshot-common.ts';
+import type { DnsAnswer, DnsQueryRecord, DnsSection } from '../../core/snapshot-dns.ts';
 import type { DnsClient, RawDnsResult } from './resolver.ts';
-import type { DnsAnswer, DnsQueryRecord, DnsSection } from './types.ts';
 
 export const DNS_QUERY_BUDGET = 60;
 /** TIMEOUT results (each already retried) after which the resolver is treated as unresponsive. */

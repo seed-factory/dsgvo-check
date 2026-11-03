@@ -1,6 +1,7 @@
 /** WAF / bot-challenge detection on a navigated page (5.2: start page → SCAN-BLOCKED, subpage → not evaluable). */
+
+import type { ChallengeFacts } from '../../core/snapshot-browser.ts';
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
-import type { ChallengeFacts } from './types.ts';
 
 export interface ChallengeInput {
   status: number | null;

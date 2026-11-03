@@ -24,5 +24,9 @@ export { ReportSchema, reportJsonSchema, SCHEMA_VERSION } from './core/report-sc
 export type { ReportFormat } from './core/reporter.ts';
 export type { Snapshot, SnapshotSectionKey, TargetInfo } from './core/snapshot.ts';
 export { TOOL_VERSION } from './core/version.ts';
-export type { ResolvedScanOptions, ScanOptions, ScanResult, WriteResult } from './scan.ts';
-export { DEFAULTS, resolveOptions, scan, writeReports } from './scan.ts';
+export type { WriteResult } from './reporters/write.ts';
+export { writeReports } from './reporters/write.ts';
+export type { ScanResult } from './scan.ts';
+export { scan } from './scan.ts';
+export type { ResolvedScanOptions, ScanOptions } from './scan-options.ts';
+export { DEFAULTS, resolveOptions } from './scan-options.ts';

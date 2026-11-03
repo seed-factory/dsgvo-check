@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
-import type { DocumentsSection, LinkFact, PageVisit } from '../../../../src/collectors/browser/types.ts';
+import type { DocumentsSection, LinkFact, PageVisit } from '../../../../src/core/snapshot-browser.ts';
 import {
   makeDocument,
   makeDom,

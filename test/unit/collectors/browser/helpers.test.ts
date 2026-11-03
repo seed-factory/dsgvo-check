@@ -8,6 +8,8 @@ import { mapCookie } from '../../../../src/collectors/browser/jar.ts';
 import { classifyLaunchError } from '../../../../src/collectors/browser/launch.ts';
 import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/ssrf.ts';
 import { navigationErrorCode } from '../../../../src/collectors/browser/visit.ts';
+import { loadTexts } from '../../../../src/core/data.ts';
+import { uiText } from '../../../../src/core/messages.ts';
 import { defaultNetworkConfig } from '../../../../src/core/net.ts';
 import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
 
@@ -112,10 +114,14 @@ describe('classifyLaunchError (5.2)', () => {
 
   it('inside the dsgvo-check image the message names the seccomp profile and the exact docker run line', () => {
     const err = new Error('Failed to launch: No usable sandbox!');
-    const inImage = classifyLaunchError(err, 'require', { DSGVO_CHECK_CONTAINER: '1' });
-    expect(inImage.message).toContain('seccomp-profile > dsgvo-check-seccomp.json');
-    expect(inImage.message).toContain('--security-opt seccomp=dsgvo-check-seccomp.json');
-    expect(classifyLaunchError(err, 'require', {}).message).not.toContain('docker run');
+    const texts = loadTexts('de');
+    const text = (env: Record<string, string>) => {
+      const fatal = classifyLaunchError(err, 'require', env);
+      return uiText(texts, `failure.${fatal.code}`, fatal.params);
+    };
+    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).toContain('seccomp-profile > dsgvo-check-seccomp.json');
+    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).toContain('--security-opt seccomp=dsgvo-check-seccomp.json');
+    expect(text({})).not.toContain('docker run');
   });
 });
 
@@ -204,6 +210,7 @@ describe('SSRF guard verdicts', () => {
     ['https://www.example.de/', false],
     ['data:text/html,hi', false],
     ['about:blank', false],
+    ['http://[not-an-address/', true],
   ])('%s blocked=%s', async (url, blocked) => {
     expect(blocks(await urlVerdict(url, classify))).toBe(blocked);
   });

@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { matchLevel, normalizeText, priv01 } from '../../../../src/checks/browser/priv-01.ts';
+import { EvidenceSchema } from '../../../../src/core/report-schema.ts';
 import type {
   DocumentPart,
   DocumentRecord,
   DocumentsSection,
-} from '../../../../src/collectors/browser/types.ts';
-import { EvidenceSchema } from '../../../../src/core/report-schema.ts';
+} from '../../../../src/core/snapshot-browser.ts';
 import { loadServiceCatalog } from '../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['PRIV-01']!.find((s) => s.file === file)!.build();
 const part = (text: string, origin: DocumentPart['origin'] = 'visible', section?: string): DocumentPart => ({

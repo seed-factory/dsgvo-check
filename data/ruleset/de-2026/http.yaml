@@ -1,26 +1,28 @@
-# Ruleset de-2026, module http. Severity per (checkId, variant); variant names and levels follow the
-# registry docs/03-checks.md §2.1. T3 codes stay at most `warning` (lint).
-# Confidence caps apply on top (medium ≤ warning, low ≤ info).
+# Ruleset de-2026, module http. Per (checkId, variant): default severity and CRM catalog code (or explicit null,
+# JSON report only). T3 codes stay at most `warning` (test). Confidence caps apply on top (medium ≤ warning,
+# low ≤ info). Catalog: HDR-01 → T3_NO_SECURITY_HEADERS, TLS-01/TLS-02 → T1_UNENCRYPTED.
+# TLS-01.redirect-chain-detail has no code: https is reached, only the redirect path is unusual (no "unencrypted" case).
+# The variant table in docs/03-checks.md §2.1 is generated from these files (`corepack pnpm registry`).
 checks:
   HDR-01:
     gating: true
     variants:
-      hsts-missing: { severity: warning }
-      anti-framing-missing: { severity: warning }
-      referrer-policy-permissive: { severity: warning }
-      header-missing: { severity: info }
+      hsts-missing: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      anti-framing-missing: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      referrer-policy-permissive: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      header-missing: { severity: info, crm: T3_NO_SECURITY_HEADERS }
   TLS-01:
     gating: true
     variants:
-      https-unavailable: { severity: critical }
-      form-on-http-page: { severity: critical }
-      no-redirect: { severity: warning }
-      client-side-redirect-only: { severity: warning }
-      redirect-chain-detail: { severity: info }
+      https-unavailable: { severity: critical, crm: T1_UNENCRYPTED }
+      form-on-http-page: { severity: critical, crm: T1_UNENCRYPTED }
+      no-redirect: { severity: warning, crm: T1_UNENCRYPTED }
+      client-side-redirect-only: { severity: warning, crm: T1_UNENCRYPTED }
+      redirect-chain-detail: { severity: info, crm: null }
   TLS-02:
     gating: true
     variants:
-      certificate-invalid: { severity: critical }
-      chain-incomplete: { severity: warning }
-      certificate-expiring: { severity: warning }
-      certificate-expiry-approaching: { severity: info }
+      certificate-invalid: { severity: critical, crm: T1_UNENCRYPTED }
+      chain-incomplete: { severity: warning, crm: T1_UNENCRYPTED }
+      certificate-expiring: { severity: warning, crm: T1_UNENCRYPTED }
+      certificate-expiry-approaching: { severity: info, crm: T1_UNENCRYPTED }

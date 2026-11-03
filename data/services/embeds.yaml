@@ -318,7 +318,6 @@ services:
         kind: embed
         stage: loaded
         integration: iframe
-    storageKeys: [yt-remote-device-id, yt-remote-connected-devices]
     aliasesDe: [YouTube, youtube-nocookie]
     aliasesEn: [YouTube, youtube-nocookie]
     companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]

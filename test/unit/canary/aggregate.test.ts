@@ -2,16 +2,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { aggregate, type CanarySummary } from '../../../scripts/canary-aggregate.ts';
 import {
-  aggregate,
-  type CanarySummary,
   detectedCmpFromReport,
   detectedCmpFromSnapshot,
   loadRun,
-  renderMarkdown,
   type SiteResult,
-} from '../../../scripts/canary-aggregate.ts';
-import type { SiteMeta, SiteRef } from '../../../scripts/canary-runner.ts';
+} from '../../../scripts/canary-load.ts';
+import { renderMarkdown } from '../../../scripts/canary-markdown.ts';
+import type { SiteMeta, SiteRef } from '../../../scripts/canary-results.ts';
 import type { CheckResult, Finding, FullReport } from '../../../src/core/report-schema.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { makeCmp, makeCmpFacts } from '../../utils/snapshot-builder.ts';

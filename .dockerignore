@@ -8,8 +8,9 @@
 !src/**
 !data
 !data/**
-!schema
-!schema/**
+!scripts
+scripts/**
+!scripts/emit-schema.ts
 !docker
 docker/**
 !docker/entrypoint.sh

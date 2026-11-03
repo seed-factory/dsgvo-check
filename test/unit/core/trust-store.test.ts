@@ -76,6 +76,12 @@ describe('detectTrustStore over injected settings', () => {
       [],
       'system',
     ],
+    [
+      'between other options, unquoted',
+      { NODE_OPTIONS: '--max-old-space-size=2048 --use-system-ca' },
+      [],
+      'system',
+    ],
     // what Node does not read as the flag
     [
       'single quotes are plain characters in NODE_OPTIONS',
@@ -90,6 +96,12 @@ describe('detectTrustStore over injected settings', () => {
       'node-bundled',
     ],
     ['NODE_USE_SYSTEM_CA is read only as 1', { NODE_USE_SYSTEM_CA: 'true' }, [], 'node-bundled'],
+    [
+      'NODE_USE_SYSTEM_CA=0 next to a longer option name',
+      { NODE_USE_SYSTEM_CA: '0', NODE_OPTIONS: '--use-system-cache' },
+      [],
+      'node-bundled',
+    ],
     [
       'a value that merely contains the flag',
       { NODE_OPTIONS: '--require=./--use-system-ca.js' },

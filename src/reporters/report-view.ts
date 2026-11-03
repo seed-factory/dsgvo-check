@@ -531,5 +531,3 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
     rechtsstand: report.legalContext?.rechtsstand ?? report.ruleset?.rechtsstand ?? null,
   };
 }
-
-export type ReportView = ReturnType<typeof buildReportView>;

@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { describe, expect, it } from 'vitest';
-import { decodeLenient, parseUrl } from '../../../src/core/url.ts';
+import { decodeLenient } from '../../../src/core/email.ts';
+import { parseUrl } from '../../../src/core/url.ts';
 
 /** The previous decoder is the compatibility oracle for malformed percent escapes. */
 function referenceDecode(input: string): string {

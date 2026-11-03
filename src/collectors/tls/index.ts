@@ -4,10 +4,10 @@
  */
 import type { TlsCollector } from '../../core/collector.ts';
 import { errorMessage } from '../../core/errors.ts';
+import type { ProbeRecord } from '../../core/snapshot-http.ts';
+import type { TlsSection } from '../../core/snapshot-tls.ts';
 import { hostVariants } from '../http/hosts.ts';
-import type { ProbeRecord } from '../http/types.ts';
 import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from './probe.ts';
-import type { TlsSection } from './types.ts';
 
 export { certificateInfo, chainOf, probeTlsEndpoint } from './probe.ts';
 

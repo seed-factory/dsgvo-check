@@ -146,28 +146,37 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 ### 2.1. Реестр вариантов и `messageId`
 
-Полный перечень вариантов для ruleset, `data/texts/{de,en}.yaml`, `data/crm/mapping.yaml` и теста полноты; каждый `checkId.variant` назван здесь ровно один раз. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` ([архитектура](02-architecture.md) §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
+Полный перечень вариантов; каждый `checkId.variant` назван здесь ровно один раз. Для реализованных проверок источник — `data/ruleset/de-2026/*.yaml` (уровень по умолчанию, `locked`, `crm`): первая таблица генерируется из него командой `corepack pnpm registry`, тест падает при расхождении. Вторая таблица — запланированные проверки; при реализации строка переносится из неё в ruleset. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` ([архитектура](02-architecture.md) §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
 
 Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет `severity`, `messageId` и `crmCode`, а есть `reason` и `limitations[]` CheckResult. Их тексты — ключи `reason.<id>` и `limitation.<id>` (схема ключей — предложение автора, не согласовано; wording-guide, ОВ 3). Единственное исключение — два `locked`-варианта `CONSENT-04`: находка `info` при статусе `inconclusive` ([архитектура](02-architecture.md) §10.1 и §11.3). Текст диагностики `SCAN-*` — по её коду (§7), без `severity`.
 
+**Реализованные проверки.** Исходы без находки описаны в разделе каждой проверки.
+
+<!-- registry:begin: generated from data/ruleset by `corepack pnpm registry`, do not edit -->
+| ID | `critical` | `warning` | `info` |
+|---|---|---|---|
+| `CONSENT-01` | `tracking-completed` | `library-loaded`, `first-party-proxy`, `cookieless-ping` | `third-party-resource`, `unknown-host`, `request-not-completed` |
+| `CONSENT-02` | `tracking-identifier-stored` | `unknown-third-party-persistent` | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted` |
+| `CONSENT-03` | `no-banner-strong-tracking` | `no-banner-consent-services` | — |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action` | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
+| `CONSENT-05` | `tracking-after-reject` | `cookieless-ping-after-reject` | `connect-only-after-reject` |
+| `TRACK-01` | — | — | `service-inventory` |
+| `EMBED-01` | — | `fonts-loaded` | `preconnect-only` |
+| `EMBED-02` | — | `maps-loaded` | — |
+| `LEGAL-01` | `document-not-found`, `links-broken` | `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved` |
+| `PRIV-01` | — | `not-named` | `category-only`, `ambiguous-match` |
+| `MAIL-01` | — | `record-not-found`, `policy-none`, `record-invalid` | `weak-option`, `legacy-pct` |
+| `MAIL-02` | — | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement` | `softfail-with-enforcement`, `ptr-mechanism` |
+| `HDR-01` | — | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive` | `header-missing` |
+| `TLS-01` | `https-unavailable`, `form-on-http-page` | `no-redirect`, `client-side-redirect-only` | `redirect-chain-detail` |
+| `TLS-02` | `certificate-invalid` | `chain-incomplete`, `certificate-expiring` | `certificate-expiry-approaching` |
+<!-- registry:end -->
+
+**Запланированные проверки.**
+
 | ID | `critical` | `warning` | `info` | Не варианты: `reason`, limitation |
 |---|---|---|---|---|
-| `PRIV-01` | — | `not-named` | `category-only`, `ambiguous-match` | `pdf-not-evaluated`, `document-incomplete`, `language-unsupported`; `banner-open` |
 | `PRIV-02` | `contradiction-replicated` | `contradiction-single` | `wording-to-review` | `claim-ambiguous` |
-| `CONSENT-01` | `tracking-completed` | `library-loaded`, `first-party-proxy`, `cookieless-ping` | `third-party-resource`, `unknown-host`, `request-not-completed` | — |
-| `CONSENT-02` | `tracking-identifier-stored` | `unknown-third-party-persistent` | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted` | — |
-| `CONSENT-03` | `no-banner-strong-tracking` | `no-banner-consent-services` | — | — |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action` | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² | `screenshot-skipped`, `lexicon-changed-since-scan` |
-| `TRACK-01` | — | — | `service-inventory` | — |
-| `EMBED-01` | — | `fonts-loaded` | `preconnect-only` | — |
-| `EMBED-02` | — | `maps-loaded` | — | — |
-| `MAIL-01` | — | `record-not-found`, `policy-none`, `record-invalid` | `weak-option`, `legacy-pct` | — |
-| `MAIL-02` | — | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement` | `softfail-with-enforcement`, `ptr-mechanism` | — |
-| `HDR-01` | — | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive` | `header-missing` | — |
-| `TLS-01` | `https-unavailable`, `form-on-http-page` | `no-redirect`, `client-side-redirect-only` | `redirect-chain-detail` | — |
-| `TLS-02` | `certificate-invalid` | `chain-incomplete`, `certificate-expiring` | `certificate-expiry-approaching` | `handshake-inconclusive`; `tls-blocked` (у браузерных проверок) |
-| `LEGAL-01` | `document-not-found`, `links-broken` | `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved` | — |
-| `CONSENT-05` | `tracking-after-reject` | `cookieless-ping-after-reject` | `connect-only-after-reject` | `reject-not-confirmed`; `pagehide-capture-unavailable` (reason при подтверждённом отказе) |
 | `EMBED-03` | — | `video-loaded` | — | — |
 | `EMBED-04` | — | `captcha-without-form` | `captcha-with-form` | — |
 | `EMBED-05` | — | `widget-loaded` | — | — |

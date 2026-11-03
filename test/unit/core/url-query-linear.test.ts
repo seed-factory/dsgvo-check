@@ -4,13 +4,8 @@
  * The reference loop checks byte-for-byte redaction semantics on synthetic inputs.
  */
 import { describe, expect, it } from 'vitest';
-import {
-  containsAddress,
-  QUERY_ALLOWLIST,
-  QUERY_VALUE_RULES,
-  REDACTED,
-  sanitizeUrl,
-} from '../../../src/core/url.ts';
+import { containsAddress, REDACTED } from '../../../src/core/email.ts';
+import { QUERY_ALLOWLIST, QUERY_VALUE_RULES, sanitizeUrl } from '../../../src/core/url.ts';
 import { expectLinearGrowth } from '../../utils/scaling.ts';
 
 const KiB = 1024;
@@ -68,63 +63,6 @@ describe('query processing scales with parameter count and value size', () => {
       expect(sanitizeUrl(`http://h.test/?${'a&'.repeat(n)}`)).toBe(expected.slice(0, 2048));
     },
   );
-});
-
-describe('query normalization and privacy', () => {
-  it.each([
-    ['http://h.test/p?hl=de&x=1', `http://h.test/p?hl=de&x=${REDACTED}`],
-    ['http://h.test/p?a=1&a=2&a=3', `http://h.test/p?a=${REDACTED}&a=${REDACTED}&a=${REDACTED}`],
-    ['http://h.test/p?a&b&c', `http://h.test/p?a=${REDACTED}&b=${REDACTED}&c=${REDACTED}`],
-    // empty sequences, an empty key, only an empty value
-    ['http://h.test/p?&&a=1&&', `http://h.test/p?a=${REDACTED}`],
-    ['http://h.test/p?=1', `http://h.test/p?=${REDACTED}`],
-    ['http://h.test/p?a=', `http://h.test/p?a=${REDACTED}`],
-    ['http://h.test/p?a=b=c', `http://h.test/p?a=${REDACTED}`],
-    ['http://h.test/p?&&&', 'http://h.test/p'],
-    ['http://h.test/p?', 'http://h.test/p?'],
-    // "+" is a blank, "%20" too; an allowlisted name keeps the decoded value in the form-urlencoded form
-    ['http://h.test/p?family=Open+Sans:400', 'http://h.test/p?family=Open+Sans%3A400'],
-    ['http://h.test/p?family=Open%20Sans', 'http://h.test/p?family=Open+Sans'],
-    ['http://h.test/p?family=a%2Bb', 'http://h.test/p?family=a%2Bb'],
-    ['http://h.test/p?hl=%C3%BCber', 'http://h.test/p?hl=%C3%BCber'],
-    // an escape that is no valid UTF-8 turns into U+FFFD; a stray "%" stays
-    ['http://h.test/p?hl=%E9', 'http://h.test/p?hl=%EF%BF%BD'],
-    ['http://h.test/p?hl=100%', 'http://h.test/p?hl=100%25'],
-    ['http://h.test/p?hl=%ZZ', 'http://h.test/p?hl=%25ZZ'],
-    ['http://h.test/p?hl=%4', 'http://h.test/p?hl=%254'],
-    ['http://h.test/p?hl=%EF%BB%BFde', 'http://h.test/p?hl=%EF%BB%BFde'],
-    ['http://h.test/p?hl=%F0%9F%98%80', 'http://h.test/p?hl=%F0%9F%98%80'],
-    // the name is compared in lower case; the key keeps its case
-    ['http://h.test/p?HL=de&Family=Roboto', 'http://h.test/p?HL=de&Family=Roboto'],
-    // value rules of generic names
-    [
-      'https://www.googletagmanager.test/gtag/js?id=G-ABC123',
-      'https://www.googletagmanager.test/gtag/js?id=G-ABC123',
-    ],
-    ['http://h.test/p?id=12345&v=2.1.0&t=pageview', `http://h.test/p?id=${REDACTED}&v=2.1.0&t=pageview`],
-    // addresses in a key and in a kept value, written out and encoded
-    ['http://h.test/p?alice@mail.test', `http://h.test/p?${REDACTED}=${REDACTED}`],
-    ['http://h.test/p?alice%40mail.test=1', `http://h.test/p?${REDACTED}=${REDACTED}`],
-    ['http://h.test/p?hl=de%2Calice%40mail.test', `http://h.test/p?hl=${REDACTED}`],
-    ['http://h.test/p?hl=de%2Calice%2540mail.test', `http://h.test/p?hl=${REDACTED}`],
-    // a value that already is the mask, in a kept parameter
-    ['http://h.test/p?hl=[redacted]', `http://h.test/p?hl=${REDACTED}`],
-    ['http://h.test/p?hl=%5Bredacted%5D', `http://h.test/p?hl=${REDACTED}`],
-    // non-ASCII characters in the query
-    ['http://h.test/p?hl=ü&x=😀', `http://h.test/p?hl=%C3%BC&x=${REDACTED}`],
-    // the fragment is no part of the query
-    ['http://h.test/p?hl=de#a=1&b=2', 'http://h.test/p?hl=de'],
-  ])('%s', (input, expected) => {
-    expect(sanitizeUrl(input)).toBe(expected);
-    expect(sanitizeUrl(expected)).toBe(expected);
-  });
-
-  it('a custom allowlist is honoured', () => {
-    const allow = new Set(['ev', 'hl']);
-    expect(sanitizeUrl('http://h.test/p?ev=PageView&hl=de&x=1', allow)).toBe(
-      `http://h.test/p?ev=PageView&hl=de&x=${REDACTED}`,
-    );
-  });
 });
 
 /** mulberry32: the same sequence on every run, no extra dependency. */
@@ -259,13 +197,6 @@ describe('query output matches the previous implementation', () => {
       const expected = REFERENCE(url);
       expect(expected.length, 'the input is long enough to be cut').toBeLessThanOrEqual(2048);
       expect(sanitizeUrl(url), JSON.stringify(url.slice(0, 120))).toBe(expected);
-    }
-  });
-
-  it('a query of short parameters that fills the cut exactly', () => {
-    for (const n of [200, 340, 341, 342, 500, 1023, 1024, 1025, 2000]) {
-      const url = `http://h.test/?${'a&'.repeat(n)}`;
-      expect(sanitizeUrl(url), `n=${n}`).toBe(REFERENCE(url));
     }
   });
 });

@@ -21,14 +21,14 @@ import {
   pageKey,
   pathOfUrl,
 } from '../../collectors/browser/legal-lexicon.ts';
+import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type {
   DocumentKind,
   DocumentRecord,
   DocumentsSection,
   LinkFact,
   PageVisit,
-} from '../../collectors/browser/types.ts';
-import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+} from '../../core/snapshot-browser.ts';
 import {
   allCmpFacts,
   pageEvidence,

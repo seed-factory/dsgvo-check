@@ -4,7 +4,7 @@ import { loadTexts } from '../../../../src/core/data.ts';
 import { renderMessage } from '../../../../src/core/messages.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { click, cookie, phase, req, START, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['TRACK-01']!.find((s) => s.file === file)!.build();
 

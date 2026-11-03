@@ -20,7 +20,7 @@ import {
   START,
   site,
 } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['LEGAL-01']!.find((s) => s.file === file)!.build();
 const variantsByKind = (r: ReturnType<typeof runCheck>) =>

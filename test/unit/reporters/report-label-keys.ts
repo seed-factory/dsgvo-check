@@ -21,7 +21,7 @@ export function usedReportLabelKeys(): string[] {
   const keys = new Set<string>();
   const template = readFileSync(path.join(DEFAULT_DATA_DIR, 'report/report.html'), 'utf8');
   for (const match of template.matchAll(/{{t\s+"(report\.[^"]+)"/g)) keys.add(match[1]!);
-  for (const file of ['cli.ts', 'scan.ts', 'reporters/pdf.ts']) {
+  for (const file of ['cli.ts', 'reporters/write.ts', 'reporters/pdf.ts']) {
     for (const match of source(file).matchAll(/\buiText\([^,]+,\s*['"](report\.[^'"]+)['"]/g)) {
       keys.add(match[1]!);
     }

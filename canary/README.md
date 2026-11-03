@@ -82,8 +82,8 @@ node scripts/canary.ts --confirm --run-id 20261030-120000              # resume:
 node scripts/canary.ts --confirm --run-id 20261030-120000 --retry-errors   # re-run sites with runner errors
 node scripts/canary.ts --confirm --engine cli          # one CLI process per site (isolation, hard kill)
 node scripts/canary.ts --reanalyze 20261030-120000     # recompute checks from saved snapshots, no network
-node scripts/canary-summary.ts 20261030-120000         # SUMMARY.md + summary.json (no site names)
-node scripts/canary-summary.ts 20261030-120000 --with-sites --stdout   # local analysis only
+node scripts/canary.ts summary 20261030-120000         # SUMMARY.md + summary.json (no site names)
+node scripts/canary.ts summary 20261030-120000 --with-sites --stdout   # local analysis only
 ```
 
 `corepack pnpm canary …` and `corepack pnpm canary:summary …` are aliases.
@@ -100,7 +100,7 @@ egress region is reported as "unknown" unless `--assume-region` is passed.
 ```
 canary/results/<runId>/
   run.json              plan, options, tool and Node version, sha256 of sites.yaml, site list
-  SUMMARY.md            written by canary-summary
+  SUMMARY.md            written by `canary.ts summary`
   summary.json
   <siteId>/
     report.json         the scanner's JSON report
@@ -122,7 +122,7 @@ compared on the same raw data. Sites whose scan failed, or that have no snapshot
 
 ## Summary
 
-`scripts/canary-summary.ts` aggregates a run. Each table has columns for all sites, EU/EEA (DE + other EU/EEA),
+`node scripts/canary.ts summary` aggregates a run. Each table has columns for all sites, EU/EEA (DE + other EU/EEA),
 DE, EU/EEA without DE, and non-EU.
 
 - **Scan status:** complete, partial, failed, no report, pending, runner errors; failure codes, exit reasons and

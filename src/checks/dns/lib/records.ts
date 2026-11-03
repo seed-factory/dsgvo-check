@@ -8,7 +8,7 @@ import type {
   DnsRcode,
   DnsRecordType,
   DnsSection,
-} from '../../../collectors/dns/types.ts';
+} from '../../../core/snapshot-dns.ts';
 
 /** Lookup of a recorded query by (name, type); `undefined` = not queried (yet). */
 export type DnsLookup = (qname: string, type: DnsRecordType) => DnsQueryRecord | undefined;

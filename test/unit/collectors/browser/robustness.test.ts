@@ -3,7 +3,7 @@ import type { BrowserContext, Page, Request, Response } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NetworkRecorder } from '../../../../src/collectors/browser/recorder.ts';
 import { hostClassifier, type LookupError } from '../../../../src/collectors/browser/ssrf.ts';
-import { navigationErrorCode, settleWithin, visitPage } from '../../../../src/collectors/browser/visit.ts';
+import { navigationErrorCode, valueWithin, visitPage } from '../../../../src/collectors/browser/visit.ts';
 import { defaultNetworkConfig, type Lookup } from '../../../../src/core/net.ts';
 import { FAST_TIMING } from '../../../integration/browser/helpers.ts';
 
@@ -48,24 +48,24 @@ describe('the code of a failed navigation keeps its digits', () => {
   });
 });
 
-describe('settleWithin', () => {
+describe('valueWithin', () => {
   const live = new AbortController().signal;
 
   it('a promise that settles in time wins; a rejection gives the fallback without a cut', async () => {
-    expect(await settleWithin(Promise.resolve(7), 1_000, live, 0)).toEqual({ value: 7 });
-    expect(await settleWithin(Promise.reject(new Error('gone')), 1_000, live, 0)).toEqual({ value: 0 });
+    expect(await valueWithin(Promise.resolve(7), 1_000, live, 0)).toEqual({ value: 7 });
+    expect(await valueWithin(Promise.reject(new Error('gone')), 1_000, live, 0)).toEqual({ value: 0 });
   });
 
   it('a promise that never settles is cut by the budget or by the abort', async () => {
-    expect(await advance(settleWithin(never<number>(), 40, live, -1), 40)).toEqual({
+    expect(await advance(valueWithin(never<number>(), 40, live, -1), 40)).toEqual({
       value: -1,
       cut: 'timeout',
     });
     const ac = new AbortController();
-    const pending = settleWithin(never<number>(), 60_000, ac.signal, -1);
+    const pending = valueWithin(never<number>(), 60_000, ac.signal, -1);
     ac.abort();
     expect(await pending).toEqual({ value: -1, cut: 'aborted' });
-    expect(await settleWithin(never<number>(), 60_000, ac.signal, -1)).toEqual({ value: -1, cut: 'aborted' });
+    expect(await valueWithin(never<number>(), 60_000, ac.signal, -1)).toEqual({ value: -1, cut: 'aborted' });
   });
 });
 

@@ -4,6 +4,7 @@
  * to both legal documents in the footer, documents found via link, and no CMP detected unless given.
  */
 import type { CmpFacts, CmpPhaseFacts, CmpSection } from '../../../../src/cmp/types.ts';
+import type { Snapshot, SnapshotEnvironment } from '../../../../src/core/snapshot.ts';
 import type {
   BrowserPlan,
   CookieRecord,
@@ -14,8 +15,7 @@ import type {
   PhaseRecord,
   RequestRecord,
   StorageRecord,
-} from '../../../../src/collectors/browser/types.ts';
-import type { Snapshot, SnapshotEnvironment } from '../../../../src/core/snapshot.ts';
+} from '../../../../src/core/snapshot-browser.ts';
 import {
   makeBrowser,
   makeCmpFacts,

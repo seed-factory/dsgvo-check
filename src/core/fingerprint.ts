@@ -63,13 +63,6 @@ export const subjects = {
   consentUi(): string {
     return 'consent-ui';
   },
-  /**
-   * @deprecated Depends on how the target was typed (`example.de` vs `www.example.de`), so the same endpoint gets
-   * different fingerprints. Use `tlsEndpoint(kind, tlsHostRole(host, finalHost))` (5.4).
-   */
-  tls(kind: string, hostVariant: 'target' | 'www' | 'apex'): string {
-    return `${kind}|${hostVariant}`;
-  },
   /** TLS-01 (`http-entry:<role>`) and TLS-02 (`certificate:<role>`), role relative to the final host (5.4). */
   tlsEndpoint(kind: 'http-entry' | 'certificate', role: TlsHostRole): string {
     return `${kind}:${role}`;

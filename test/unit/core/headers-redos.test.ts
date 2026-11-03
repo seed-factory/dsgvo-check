@@ -4,8 +4,9 @@
  * Tables and differential comparisons preserve the accepted values while scaling checks bound the work.
  */
 import { describe, expect, it } from 'vitest';
+import { REDACTED } from '../../../src/core/email.ts';
 import { MAX_HEADER_VALUE, storedHeaderRecord } from '../../../src/core/headers.ts';
-import { REDACTED, sanitizeUrl } from '../../../src/core/url.ts';
+import { sanitizeUrl } from '../../../src/core/url.ts';
 import { expectLinearGrowth } from '../../utils/scaling.ts';
 
 /** The size of the biggest untrusted text that reaches the normalizer (`HEURISTIC_BYTES` of the start document). */

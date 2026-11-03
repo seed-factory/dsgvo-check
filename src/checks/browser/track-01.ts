@@ -4,8 +4,9 @@
  * after accept). `info` only: the gating level belongs to the related CONSENT finding (same serviceId).
  * A reference in source code without an executed request is no finding.
  */
-import type { BrowserSection } from '../../collectors/browser/types.ts';
+
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import type { BrowserSection } from '../../core/snapshot-browser.ts';
 import type {
   ClassifiedRequest,
   DerivedSection,

@@ -11,7 +11,7 @@
  * not match "kontaktlinsen".
  */
 import { z } from 'zod';
-import type { DocumentRecord, DocumentsSection } from './types.ts';
+import type { DocumentRecord, DocumentsSection } from '../../core/snapshot-browser.ts';
 
 export type LegalKind = 'impressum' | 'privacy';
 export const LEGAL_KINDS: readonly LegalKind[] = ['impressum', 'privacy'];

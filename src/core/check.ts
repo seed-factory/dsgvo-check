@@ -96,7 +96,7 @@ export interface Check<K extends SnapshotSectionKey = SnapshotSectionKey> {
   module: CheckModule;
   /** Snapshot sections the check reads. A missing section → status `error` (collector failed) or `skipped`. */
   requires: readonly K[];
-  /** All variants the check can emit (static; completeness test requires ruleset/texts/crm/fixtures for each). */
+  /** All variants the check can emit (static; completeness test requires ruleset/texts/fixtures for each). */
   variants: readonly CheckVariant[];
   /** Optional data directories under data/ to load into `ctx.data` (e.g. `cmp`, `services`). */
   data?: readonly string[];

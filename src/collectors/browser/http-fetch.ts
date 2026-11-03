@@ -78,6 +78,8 @@ export async function fetchText(
       contentType: Array.isArray(ct) ? (ct[0] ?? '') : (ct ?? ''),
     };
   } catch {
+    // robots.txt and sitemaps are optional page sources: a failed fetch means "not available", and page discovery
+    // falls back to the links of the start page.
     return null;
   } finally {
     clearTimeout(timer);

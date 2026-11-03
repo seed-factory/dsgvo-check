@@ -493,12 +493,6 @@ export function launchPhase(cfg: LaunchConfig, userAgent: string): Promise<Phase
   return launch(cfg, userAgent);
 }
 
-/** inside the dsgvo-check image (`DSGVO_CHECK_CONTAINER=1`) the sandbox error prints the exact fix. */
-const CONTAINER_SANDBOX_HINT =
-  ' Im Docker-Image: Profil exportieren mit "docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json" ' +
-  'und den Container so starten: "docker run --rm --cap-drop=ALL --security-opt no-new-privileges ' +
-  '--security-opt seccomp=dsgvo-check-seccomp.json <image> <url>".';
-
 /** Map a launch failure to a scan-level fatal (5.2: sandbox → sandbox-unavailable, missing browser → exit 2). */
 export function classifyLaunchError(
   err: unknown,
@@ -510,7 +504,6 @@ export function classifyLaunchError(
     return {
       reason: 'browser-unavailable',
       code: 'browser-not-installed',
-      message: 'Chromium ist nicht installiert. Bitte "dsgvo-check install" ausführen.',
     };
   }
   if (
@@ -520,16 +513,13 @@ export function classifyLaunchError(
     return {
       reason: 'sandbox-unavailable',
       code: 'sandbox-failed',
-      message:
-        'Die Chromium-Sandbox konnte nicht gestartet werden (z. B. AppArmor-Einschränkung für User Namespaces oder ' +
-        'Docker ohne Seccomp-Profil). Möglichkeiten: das Docker-Image mit dem mitgelieferten Seccomp-Profil ' +
-        'verwenden, die Systemeinstellung selbst anpassen oder ausdrücklich --sandbox off setzen.' +
-        (env.DSGVO_CHECK_CONTAINER === '1' ? CONTAINER_SANDBOX_HINT : ''),
+      // Inside the dsgvo-check image the text names the exact fix (seccomp profile export and docker run line).
+      params: { container: env.DSGVO_CHECK_CONTAINER === '1' ? 'yes' : 'no' },
     };
   }
   return {
     reason: 'browser-unavailable',
     code: 'browser-launch-failed',
-    message: `Chromium konnte nicht gestartet werden: ${msg.split('\n')[0]}`,
+    params: { message: msg.split('\n')[0] ?? '' },
   };
 }

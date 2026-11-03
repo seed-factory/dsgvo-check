@@ -5,7 +5,7 @@
  */
 import { Resolver } from 'node:dns/promises';
 import type { CollectorError } from '../../core/snapshot-common.ts';
-import type { DnsAnswer, DnsRcode, DnsRecordType, DnsSection } from './types.ts';
+import type { DnsAnswer, DnsRcode, DnsRecordType, DnsSection } from '../../core/snapshot-dns.ts';
 
 export interface RawDnsResult {
   rcode: DnsRcode;

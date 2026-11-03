@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
       - name: Validate release version
         id: version
         env:
@@ -38,8 +40,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           docker build --tag dsgvo-check:release --build-arg VERSION="$VERSION" --build-arg REVISION="$GITHUB_SHA" .
-      - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
       - name: End-to-end in Docker
         run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
         env:

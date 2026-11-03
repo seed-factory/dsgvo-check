@@ -18,12 +18,17 @@
  * record. Every in-page read is bounded in time and by the scan signal.
  */
 import type { BrowserContext, Cookie, Frame, Page } from 'playwright-core';
+import type { CookieRecord, StorageRecord } from '../../core/snapshot-browser.ts';
 import type { BrowserPhase } from '../../core/snapshot-common.ts';
 import { parseUrl, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
-import { cookieWritesInPage, type RawStorage, storageInPage, storageWritesInPage } from './in-page.ts';
+import {
+  cookieWritesInPage,
+  type RawStorage,
+  storageInPage,
+  storageWritesInPage,
+} from './in-page-storage.ts';
 import { type SetCookieOrigin, settleWithin } from './recorder.ts';
-import type { CookieRecord, StorageRecord } from './types.ts';
 import { TimeoutError } from './util.ts';
 
 export interface Moment {

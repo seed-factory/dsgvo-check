@@ -127,7 +127,7 @@ export const systemLookup: Lookup = async (hostname) => {
 
 /**
  * Network configuration shared by all collectors. Production uses only `proxy` and `allowPrivateAddresses: false`.
- * `test` is set exclusively by test utilities (L2): it maps every host to the local fixture server.
+ * `test` is set exclusively by test utilities: it maps every host to the local fixture server.
  */
 export interface NetworkConfig {
   /** `--proxy` (HTTP) for all collectors; null = direct. */

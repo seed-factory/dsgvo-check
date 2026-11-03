@@ -14,7 +14,7 @@ import { scan } from '../../../../src/scan.ts';
 import { expectValidReport } from '../../../utils/report-validator.ts';
 import { FIXED_NOW } from '../../../utils/snapshot-builder.ts';
 import { CONTACT, click, cookie, phase, req, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'm3-report-'));
 

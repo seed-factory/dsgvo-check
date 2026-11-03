@@ -5,15 +5,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CaSetting } from '../../../scripts/canary-results.ts';
+import { runCanary } from '../../../scripts/canary-runner.ts';
 import {
-  type CaSetting,
   caSetting,
   cliScanner,
   KILL_GRACE_MS,
-  runCanary,
   type SiteJob,
   type SiteScanner,
-} from '../../../scripts/canary-runner.ts';
+} from '../../../scripts/canary-scanners.ts';
 import { parseSites } from '../../../scripts/canary-sites.ts';
 import { OWNER_MARKER, PROFILE_PREFIX } from '../../../src/collectors/browser/launch.ts';
 

@@ -2,17 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  apiScanner,
-  newRunId,
-  parseRunnerArgs,
-  reanalyzeRun,
-  runCanary,
-  runPool,
-  type SiteJob,
-  type SiteMeta,
-  type SiteScanner,
-} from '../../../scripts/canary-runner.ts';
+import { newRunId, parseRunnerArgs } from '../../../scripts/canary-args.ts';
+import type { SiteMeta } from '../../../scripts/canary-results.ts';
+import { reanalyzeRun, runCanary, runPool } from '../../../scripts/canary-runner.ts';
+import { apiScanner, type SiteJob, type SiteScanner } from '../../../scripts/canary-scanners.ts';
 import { type CanarySite, parseSites } from '../../../scripts/canary-sites.ts';
 import { CheckRegistry } from '../../../src/core/registry.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';

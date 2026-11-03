@@ -12,21 +12,13 @@ import { isIP, type Socket } from 'node:net';
 import tls, { type DetailedPeerCertificate, type TLSSocket } from 'node:tls';
 import type { CollectorContext } from '../../core/collector.ts';
 import { errorMessage } from '../../core/errors.ts';
-import { isPublicAddress } from '../../core/net.ts';
 import { detectTrustStore } from '../../core/snapshot.ts';
+import type { CertificateInfo, TlsEndpoint } from '../../core/snapshot-tls.ts';
+import { DNS_ERROR_CODES, ProbeError, routeToPublic } from '../http/client.ts';
 import type { HostTarget } from '../http/hosts.ts';
 import { openTunnel } from './tunnel.ts';
-import type { CertificateInfo, TlsEndpoint } from './types.ts';
 
 export const DEFAULT_TLS_TIMEOUT_MS = 10_000;
-
-class ConnectError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-  }
-}
 
 function dn(value: string | undefined): string {
   return (value ?? '')
@@ -89,22 +81,14 @@ async function route(
   timeoutMs: number,
 ): Promise<{ host: string; port: number } | { socket: Socket }> {
   const { network } = ctx;
-  if (network.test) return network.test.connect(host, port);
-  if (network.proxy) return { socket: await openTunnel(network.proxy, host, port, timeoutMs) };
-  const addresses = isIP(host)
-    ? [{ address: host }]
-    : await network.lookup(host).catch((err: NodeJS.ErrnoException) => {
-        throw new ConnectError(err.code ?? 'ENOTFOUND', `DNS lookup failed for ${host}`);
-      });
-  if (addresses.length === 0) throw new ConnectError('ENOTFOUND', `no addresses for ${host}`);
-  const allowed = addresses.find((a) => network.allowPrivateAddresses || isPublicAddress(a.address));
-  if (!allowed) throw new ConnectError('private-address', `${host} resolves to non-public addresses only`);
-  return { host: allowed.address, port };
+  if (network.proxy && !network.test)
+    return { socket: await openTunnel(network.proxy, host, port, timeoutMs) };
+  return routeToPublic(network, host, port);
 }
 
 function outcomeOf(code: string): TlsEndpoint['outcome'] {
   if (code === 'ECONNREFUSED') return 'connection-refused';
-  if (['ENOTFOUND', 'EAI_AGAIN', 'EAI_NODATA', 'EAI_NONAME', 'ENODATA'].includes(code)) return 'dns-error';
+  if (DNS_ERROR_CODES.includes(code)) return 'dns-error';
   if (code === 'ETIMEDOUT' || code === 'timeout') return 'timeout';
   return 'error';
 }
@@ -123,10 +107,10 @@ function handshake(
       reject(err);
     };
     const timer = setTimeout(
-      () => fail(new ConnectError('timeout', `handshake timed out after ${timeoutMs} ms`)),
+      () => fail(new ProbeError('timeout', `handshake timed out after ${timeoutMs} ms`)),
       timeoutMs,
     );
-    const onAbort = () => fail(new ConnectError('timeout', 'scan deadline reached'));
+    const onAbort = () => fail(new ProbeError('timeout', 'scan deadline reached'));
     signal.addEventListener('abort', onAbort, { once: true });
     socket.once('secureConnect', () => {
       clearTimeout(timer);

@@ -8,6 +8,7 @@ import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { matchLegalLink } from '../../../../src/collectors/browser/legal-lexicon.ts';
 import { loadLegalLexicon } from '../../../../src/collectors/browser/legal-lexicon-file.ts';
 import { type CandidateLink, findLegalLink } from '../../../../src/collectors/browser/pages.ts';
+import { makeLink, observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import {
   defaultDocuments,
   IMPRESSUM,
@@ -16,8 +17,7 @@ import {
   phase,
   START as SITE_START,
   site,
-} from '../../../unit/checks/browser/helpers.ts';
-import { makeLink, observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
+} from '../../checks/browser/helpers.ts';
 
 const lex = loadLegalLexicon();
 const START = 'https://www.example.test/';

@@ -6,7 +6,7 @@
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { collectDom } from '../../../src/collectors/browser/dom.ts';
-import { domFactsInPage } from '../../../src/collectors/browser/in-page.ts';
+import { domFactsInPage } from '../../../src/collectors/browser/in-page-dom.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
 import { page as html, type SiteDir, writeSite } from './site-dir.ts';

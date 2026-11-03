@@ -5,10 +5,10 @@
  */
 import { isIP } from 'node:net';
 import type { DnsCollector } from '../../core/collector.ts';
+import type { DnsSection } from '../../core/snapshot-dns.ts';
 import { registrableDomain } from '../../core/url.ts';
 import { collectMailDns, DNS_QUERY_BUDGET } from './collect.ts';
 import { createNodeDnsClient, type DnsClient } from './resolver.ts';
-import type { DnsSection } from './types.ts';
 
 function notApplicable(host: string, reason: string): DnsSection {
   return {

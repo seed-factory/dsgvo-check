@@ -4,14 +4,15 @@
  */
 
 import type { CmpSection } from '../cmp/types.ts';
-import type { BrowserPlan, BrowserSection, DocumentsSection } from '../collectors/browser/types.ts';
-import type { DnsSection } from '../collectors/dns/types.ts';
-import type { HttpSection, ProbeRecord } from '../collectors/http/types.ts';
-import type { TlsSection } from '../collectors/tls/types.ts';
 import type { FatalReason } from './errors.ts';
 import type { Logger } from './logger.ts';
 import type { NetworkConfig } from './net.ts';
+import type { MessageParams } from './report-schema.ts';
 import type { CollectorError, DiagnosticInput, Snapshot, TargetInfo } from './snapshot.ts';
+import type { BrowserPlan, BrowserSection, DocumentsSection } from './snapshot-browser.ts';
+import type { DnsSection } from './snapshot-dns.ts';
+import type { HttpSection, ProbeRecord } from './snapshot-http.ts';
+import type { TlsSection } from './snapshot-tls.ts';
 
 export interface CollectorOptions {
   maxPages: number;
@@ -57,7 +58,8 @@ export interface FatalSignal {
   reason: FatalReason;
   /** `scan.failure.code`, e.g. `start-page-unreachable`, `start-page-blocked`, `sandbox-failed`. */
   code: string;
-  message: string;
+  /** Parameters of the `failure.<code>` text in data/texts. */
+  params?: MessageParams;
 }
 
 export interface CollectorResult<S> {

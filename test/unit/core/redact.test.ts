@@ -1,14 +1,24 @@
 /**
  * (AGENTS rule 2): `redactText` masks e-mail addresses, `mailto:` values and URL query/path values in free
  * text that a collector copies into the snapshot (link text, accessible names, document parts). Domains and service
- * names stay, so the matching of PRIV-01 does not change. The function is idempotent.
+ * names stay, so the matching of PRIV-01 does not change. The function is idempotent. This file covers DNS records
+ * and URLs inside text; the masking of addresses and `mailto:` recipients is in address-redaction.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import * as api from '../../../src/core/api.ts';
+import { REDACTED } from '../../../src/core/email.ts';
 import { maskEmails, maskMailto, redactText } from '../../../src/core/redact.ts';
-import { REDACTED } from '../../../src/core/url.ts';
+import { sanitizeUrl } from '../../../src/core/url.ts';
 
 const MARK = 'zq7marker';
+const D = 'example.invalid';
+
+/** The output of the first pass is a fixed point. */
+function expectStable(input: string): string {
+  const once = redactText(input);
+  expect(redactText(once), `redactText(redactText(${JSON.stringify(input)}))`).toBe(once);
+  return once;
+}
 
 describe('redactText: DNS TXT records', () => {
   it.each([
@@ -21,6 +31,15 @@ describe('redactText: DNS TXT records', () => {
       'v=DMARC1; p=reject; sp=quarantine; rua=mailto:a@x.test; pct=50',
       `v=DMARC1; p=reject; sp=quarantine; rua=mailto:${REDACTED}@x.test; pct=50`,
     ],
+    [
+      'v=DMARC1; p=none; rua=mailto:a@x.test,mailto:b@y.test; ruf=mailto:c@z.test; pct=100',
+      `v=DMARC1; p=none; rua=mailto:${REDACTED}@x.test,mailto:${REDACTED}@y.test; ruf=mailto:${REDACTED}@z.test; pct=100`,
+    ],
+    // one mailto: prefix per recipient in rua/ruf lists
+    [
+      'v=DMARC1; p=none; rua=mailto:dmarc@example.test,mailto:agg@other.test; fo=1',
+      `v=DMARC1; p=none; rua=mailto:${REDACTED}@example.test,mailto:${REDACTED}@other.test; fo=1`,
+    ],
     // a space after "mailto:", a list with a bare second recipient, the size suffix is dropped with the address
     [
       'v=DMARC1; p=none; rua=mailto: a@x.test,b@y.test;',
@@ -29,63 +48,7 @@ describe('redactText: DNS TXT records', () => {
     ['rua=mailto:a@x.test,mailto:b@y.test!10m', `rua=mailto:${REDACTED}@x.test,mailto:${REDACTED}@y.test`],
     ['v=spf1 include:_spf.example.test ~all', 'v=spf1 include:_spf.example.test ~all'],
   ])('%j → %j', (input, expected) => {
-    expect(redactText(input)).toBe(expected);
-    expect(redactText(expected)).toBe(expected);
-  });
-});
-
-describe('redactText: e-mail addresses and mailto:', () => {
-  it.each([
-    ['mailto: info@example.test', `mailto:${REDACTED}@example.test`],
-    ['mailto:Info@Example.test', `mailto:${REDACTED}@example.test`],
-    ['mailto:info@example.test?subject=Hallo&body=Text', `mailto:${REDACTED}@example.test`],
-    ['mailto:a@x.test,b@y.test', `mailto:${REDACTED}@x.test,${REDACTED}@y.test`],
-    ['mailto:%69nfo%40example.test', `mailto:${REDACTED}@example.test`],
-    ['Schreiben Sie an mailto:info@example.test.', `Schreiben Sie an mailto:${REDACTED}@example.test.`],
-    // a bare word after "mailto:" and whitespace is prose, not an address
-    ['mailto: Kontakt aufnehmen', 'mailto: Kontakt aufnehmen'],
-  ])('%j → %j', (input, expected) => {
-    expect(redactText(input)).toBe(expected);
-  });
-
-  it('masks a bare address inside a sentence and keeps the punctuation around it', () => {
-    expect(redactText('Kontakt: info@example.test.')).toBe(`Kontakt: ${REDACTED}@example.test.`);
-    expect(redactText('E-Mail (Datenschutz.Team@Example.TEST), Tel. +49 30 1234567')).toBe(
-      `E-Mail (${REDACTED}@example.test), Tel. +49 30 1234567`,
-    );
-    expect(redactText('a@one.test; b@two.test')).toBe(`${REDACTED}@one.test; ${REDACTED}@two.test`);
-  });
-
-  it('keeps the domain of an internationalized address', () => {
-    expect(redactText('info@bäckerei.test')).toBe(`${REDACTED}@bäckerei.test`);
-  });
-
-  it('leaves no local part behind', () => {
-    const out = redactText(`mailto:${MARK}.name@example.test oder ${MARK}2@example.test`);
-    expect(out).not.toContain(MARK);
-    expect(out).toContain('@example.test');
-  });
-
-  it('keeps one mailto: prefix per recipient (DMARC rua/ruf style lists)', () => {
-    expect(redactText('v=DMARC1; p=none; rua=mailto:dmarc@example.test,mailto:agg@other.test; fo=1')).toBe(
-      `v=DMARC1; p=none; rua=mailto:${REDACTED}@example.test,mailto:${REDACTED}@other.test; fo=1`,
-    );
-  });
-
-  it('does not take handles, decorators or already masked values for addresses', () => {
-    for (const s of [
-      '@media screen',
-      'Folgen Sie @beispiel auf Social Media',
-      `${REDACTED}@example.test`,
-      `mailto:${REDACTED}@example.test`,
-      'Version 2@2x',
-      // versions and image names with "@" are not addresses
-      'https://cdn.jsdelivr.example/npm/jquery@3.7.1/dist/jquery.min.js',
-      'https://www.example.test/img/logo@2x.png',
-      'react@18.3.1 und lodash@4.17.21',
-    ]) {
-      expect(redactText(s)).toBe(s);
-    }
+    expect(expectStable(input)).toBe(expected);
   });
 });
 
@@ -96,51 +59,189 @@ describe('redactText: URLs inside text', () => {
     );
   });
 
-  it('handles punctuation around the URL', () => {
-    expect(redactText(`(https://shop.example.test/?sid=${MARK}).`)).toBe(
-      `(https://shop.example.test/?sid=${REDACTED}).`,
-    );
-    expect(redactText(`„https://shop.example.test/?sid=${MARK}“`)).toBe(
-      `„https://shop.example.test/?sid=${REDACTED}“`,
-    );
-    expect(redactText(`<https://shop.example.test/?sid=${MARK}>, danach`)).toBe(
-      `<https://shop.example.test/?sid=${REDACTED}>, danach`,
-    );
-  });
-
-  it('redacts matrix parameters and prefix parameters of the path and drops credentials and the fragment', () => {
-    expect(redactText(`https://ad.example.test/activity;src=1;dc_pre=${MARK};ord=${MARK}`)).toBe(
-      `https://ad.example.test/activity;src=${REDACTED};dc_pre=${REDACTED};ord=${REDACTED}`,
-    );
-    expect(redactText(`https://u:${MARK}@sync.example.test/ibs:dpid=1&dpuuid=${MARK}#frag`)).toBe(
-      `https://sync.example.test/ibs:dpid=${REDACTED}&dpuuid=${REDACTED}`,
-    );
-  });
-
-  it('masks an address nested in the path of an archive URL', () => {
-    expect(redactText('https://web.archive.example/web/20240329064148/mailto:info@example.test')).toBe(
-      `https://web.archive.example/web/20240329064148/mailto:${REDACTED}@example.test`,
-    );
-  });
-
-  it('keeps URLs without anything sensitive as written (no normalisation of the visible text)', () => {
-    for (const s of [
-      'https://www.example.test',
-      'https://www.example.test/impressum/',
-      'Mehr unter https://www.example.test/datenschutz.',
-      'https://fonts.googleapis.example/css2?family=Roboto&display=swap',
-    ]) {
-      expect(redactText(s)).toBe(s);
-    }
-    expect(redactText('https://www.example.test/a#abschnitt')).toBe('https://www.example.test/a');
-  });
-
   it('uses the allowlist it is given', () => {
     const url = `https://shop.example.test/p?stage=beta&sid=${MARK}`;
     expect(redactText(url)).toBe(`https://shop.example.test/p?stage=${REDACTED}&sid=${REDACTED}`);
     expect(redactText(url, new Set(['stage']))).toBe(
       `https://shop.example.test/p?stage=beta&sid=${REDACTED}`,
     );
+  });
+
+  it.each([
+    [
+      `https://ad.example.test/activity;src=1;dc_pre=${MARK};ord=${MARK}`,
+      `https://ad.example.test/activity;src=${REDACTED};dc_pre=${REDACTED};ord=${REDACTED}`,
+    ],
+    [
+      `https://u:${MARK}@sync.example.test/ibs:dpid=1&dpuuid=${MARK}#frag`,
+      `https://sync.example.test/ibs:dpid=${REDACTED}&dpuuid=${REDACTED}`,
+    ],
+    [`'https://u:${MARK}@sync.example.test/a#frag' danach`, `'https://sync.example.test/a' danach`],
+    ['https://www.example.test/a#abschnitt', 'https://www.example.test/a'],
+    // an address nested in the path of an archive URL
+    [
+      'https://web.archive.example/web/20240329064148/mailto:info@example.test',
+      `https://web.archive.example/web/20240329064148/mailto:${REDACTED}@example.test`,
+    ],
+  ])('redacts path parameters and drops credentials and the fragment: %s', (input, expected) => {
+    expect(expectStable(input)).toBe(expected);
+  });
+
+  // An apostrophe or a backtick inside a URL does not end the redaction.
+  it.each([
+    [`https://${D}/'alice@${D}?token=PRIVATE_ID`, `https://${D}/${REDACTED}@${D}?token=${REDACTED}`],
+    [`https://${D}/p?token=alice's-private-id`, `https://${D}/p?token=${REDACTED}`],
+    [`https://${D}/p?token=a'${MARK}`, `https://${D}/p?token=${REDACTED}`],
+    [
+      `https://${D}/p?a=1&token='${MARK}'&b=2`,
+      `https://${D}/p?a=${REDACTED}&token=${REDACTED}&b=${REDACTED}`,
+    ],
+    [`https://${D}/it's/p?sid=${MARK}`, `https://${D}/it's/p?sid=${REDACTED}`],
+    [`https://${D}/p?token=a\`${MARK}`, `https://${D}/p?token=${REDACTED}`],
+    [`https://${D}/p;ord=a'${MARK}`, `https://${D}/p;ord=${REDACTED}`],
+    [`Siehe https://${D}/p?token=alice's-id, danach.`, `Siehe https://${D}/p?token=${REDACTED}, danach.`],
+  ])('an apostrophe inside the URL: %s', (input, expected) => {
+    const out = expectStable(input);
+    expect(out).toBe(expected);
+    expect(out).not.toContain(MARK);
+    expect(out).not.toContain("alice's");
+    expect(out).not.toContain('PRIVATE_ID');
+  });
+
+  it('agrees with sanitizeUrl on the value after an apostrophe: nothing of it survives the first pass', () => {
+    const url = `https://${D}/p?token=alice's-private-id`;
+    expect(redactText(url)).toBe(sanitizeUrl(url));
+  });
+
+  // Quotes and brackets around a URL are outer punctuation; a bracket with its opener inside the URL is part of it.
+  // The "]" of a mask is no unbalanced bracket on the second pass (otherwise the value would read "[redacted").
+  it.each([
+    [`(https://shop.example.test/?sid=${MARK}).`, `(https://shop.example.test/?sid=${REDACTED}).`],
+    [`„https://shop.example.test/?sid=${MARK}“`, `„https://shop.example.test/?sid=${REDACTED}“`],
+    [
+      `<https://shop.example.test/?sid=${MARK}>, danach`,
+      `<https://shop.example.test/?sid=${REDACTED}>, danach`,
+    ],
+    [`'https://shop.example.test/p?sid=${MARK}'`, `'https://shop.example.test/p?sid=${REDACTED}'`],
+    [`"https://shop.example.test/p?sid=${MARK}"`, `"https://shop.example.test/p?sid=${REDACTED}"`],
+    [`‘https://shop.example.test/p?sid=${MARK}’`, `‘https://shop.example.test/p?sid=${REDACTED}’`],
+    [`\`https://shop.example.test/p?sid=${MARK}\``, `\`https://shop.example.test/p?sid=${REDACTED}\``],
+    [
+      `'https://shop.example.test/p?sid=${MARK}', danach`,
+      `'https://shop.example.test/p?sid=${REDACTED}', danach`,
+    ],
+    [`('https://shop.example.test/p?sid=${MARK}')`, `('https://shop.example.test/p?sid=${REDACTED}')`],
+    [
+      `window.open('https://shop.example.test/p?sid=${MARK}');`,
+      `window.open('https://shop.example.test/p?sid=${REDACTED}');`,
+    ],
+    [
+      `Link: 'https://shop.example.test/p?sid=${MARK}'.`,
+      `Link: 'https://shop.example.test/p?sid=${REDACTED}'.`,
+    ],
+    ['[https://shop.example.test/p?sid=abc123]', `[https://shop.example.test/p?sid=${REDACTED}]`],
+    [`[https://x.test/p?sid=${MARK}]`, `[https://x.test/p?sid=${REDACTED}]`],
+    [`(siehe https://x.test/p?sid=${MARK})`, `(siehe https://x.test/p?sid=${REDACTED})`],
+    [
+      `https://x.test/p/]https://x.test/p?sid=${MARK}>`,
+      `https://x.test/p/]https://x.test/p?sid=${REDACTED}>`,
+    ],
+    [`https://x.test/]token=${MARK}`, `https://x.test/]token=${REDACTED}`],
+    [`https://x.test/a]b/p?hl=de,${MARK}@${D}\``, `https://x.test/a]b/p?hl=${REDACTED}\``],
+    // only the surplus closing brackets are cut when the token has fewer openers than closers
+    ['mailto:info@example.test)).', `mailto:${REDACTED}@example.test)).`],
+  ])('punctuation around the URL stays outside: %s', (input, expected) => {
+    expect(expectStable(input)).toBe(expected);
+  });
+
+  it.each([
+    'https://www.example.test',
+    'https://www.example.test/impressum/',
+    'https://www.example.test/a',
+    'Mehr unter https://www.example.test/datenschutz.',
+    'https://fonts.googleapis.example/css2?family=Roboto&display=swap',
+    "Siehe 'https://www.example.test/impressum' und mehr.",
+    "https://www.example.test/o'brien/kontakt",
+    "Besuchen Sie https://www.example.test/impressum's Seite.",
+    "Der Link 'https://www.example.test/a' endet hier.",
+    'https://x.test/a[1]',
+    'https://x.test/a[b]/c',
+    'Siehe [https://x.test/a] und (https://x.test/b).',
+    'https://de.wikipedia.example/wiki/Datenschutz_(Begriff)',
+    '(siehe https://shop.example.test/p)',
+    'https://shop.example.test/a_(b)).',
+    'https://shop.example.test/a_(b)))))',
+    // the brackets of the three kinds are balanced independently of each other
+    'https://x.test/a_[b](c){d}]})',
+    // no dot segment
+    'Siehe https://x.test/.well-known/security.txt',
+    'Siehe https://x.test/a/.hidden/b',
+    'Siehe https://x.test/a/..b/c',
+    'Siehe https://x.test/a/b.../c',
+    'Siehe https://x.test/a/b/c.html',
+    'Siehe https://x.test/',
+  ])('a URL without anything sensitive stays as written (no normalisation of the visible text): %s', (s) => {
+    expect(expectStable(s)).toBe(s);
+  });
+
+  describe('a path segment in front of a dot segment is an address too', () => {
+    it.each([
+      [`https://x.test/alice%40${D}/../p`, 'https://x.test/p'],
+      [`https://x.test/alice%2540${D}/../p`, 'https://x.test/p'],
+      [`https://x.test/alice%252540${D}/%2e%2e/p`, 'https://x.test/p'],
+      [`https://x.test/alice%40${D}/./p`, `https://x.test/${REDACTED}@${D}/p`],
+      ['https://x.test/a;ord=1234567/../p', 'https://x.test/p'],
+      [`https://x.test/x/alice%40${D}\\..\\p`, 'https://x.test/x/p'],
+    ])('%s', (url, expected) => {
+      expect(redactText(`Siehe ${url} Ende`)).toBe(`Siehe ${expected} Ende`);
+      expect(redactText(expected)).toBe(expected);
+    });
+
+    it('with trailing punctuation and in brackets', () => {
+      expect(redactText(`(https://x.test/alice%2540${D}/../p).`)).toBe('(https://x.test/p).');
+    });
+  });
+});
+
+// Legal-document text can contain long runs of closing brackets after a URL or mailto token. Recounting the whole
+// prefix for every removed bracket would be quadratic, and synchronous work cannot be interrupted by the scan's
+// timeout.
+describe('redactText: long runs of closing brackets after a token', () => {
+  it.each([
+    [
+      'HTTP URL with parentheses',
+      (n: number) => `https://x.test/${')'.repeat(n)}`,
+      (n: number) => `https://x.test/${')'.repeat(n)}`,
+    ],
+    [
+      'HTTP URL with square brackets',
+      (n: number) => `https://x.test/${']'.repeat(n)}`,
+      (n: number) => `https://x.test/${']'.repeat(n)}`,
+    ],
+    [
+      'mailto with parentheses',
+      (n: number) => `mailto:info@example.test${')'.repeat(n)}`,
+      (n: number) => `mailto:${REDACTED}@example.test${')'.repeat(n)}`,
+    ],
+    [
+      'mailto with braces',
+      (n: number) => `mailto:info@example.test${'}'.repeat(n)}`,
+      (n: number) => `mailto:${REDACTED}@example.test${'}'.repeat(n)}`,
+    ],
+  ] as const)('redacts and scales with %s', (_name, input, expected) => {
+    const best = (n: number) => {
+      const value = input(n);
+      redactText(value);
+      return Math.min(
+        ...Array.from({ length: 5 }, () => {
+          const started = performance.now();
+          redactText(value);
+          return performance.now() - started;
+        }),
+      );
+    };
+    expect(best(80_000) / Math.max(best(20_000), 0.05)).toBeLessThan(12);
+    expect(redactText(input(20_000))).toBe(expected(20_000));
   });
 });
 

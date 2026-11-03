@@ -6,7 +6,7 @@
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { extractDocument } from '../../../../src/collectors/browser/documents.ts';
-import type { RawDocument } from '../../../../src/collectors/browser/in-page.ts';
+import type { RawDocument } from '../../../../src/collectors/browser/in-page-document.ts';
 
 const TEXT = 'Angaben gemäß § 5 DDG: Beispiel GmbH, Musterstraße 1, 10115 Berlin. '.repeat(4);
 

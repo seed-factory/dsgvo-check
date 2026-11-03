@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { CONTACT, click, phase, req, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-02']!.find((s) => s.file === file)!.build();
 

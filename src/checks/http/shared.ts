@@ -1,6 +1,7 @@
 /** Pure helpers shared by HDR-01, TLS-01 and TLS-02 (no I/O); the HTTP collector uses them too. */
-import type { HttpSection } from '../../collectors/http/types.ts';
+
 import type { HeaderRecord } from '../../core/api.ts';
+import type { HttpSection } from '../../core/snapshot-http.ts';
 
 /** What a Node `authorizationError` means for a visitor (research http-dns-tls-mail §2.1). */
 export type TlsProblem =

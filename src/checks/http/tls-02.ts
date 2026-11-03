@@ -11,8 +11,8 @@
  * handshake without a cause → inconclusive `handshake-inconclusive` (target) or a limitation (other endpoints).
  */
 
-import type { TlsEndpoint } from '../../collectors/tls/types.ts';
 import { defineCheck, type EvidenceInput, type Observation, subjects, tlsHostRole } from '../../core/api.ts';
+import type { TlsEndpoint } from '../../core/snapshot-tls.ts';
 import { DAY_MS, startFinalHost, type TlsProblem, tlsProblemOf } from './shared.ts';
 
 const ID = 'TLS-02';

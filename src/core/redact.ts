@@ -10,16 +10,9 @@
  * touched (open question to the customer). The function is idempotent. Collectors call it before the text is
  * hashed, stored or used for evidence.
  */
-import {
-  decodeLenient,
-  maskEmails,
-  maskEmailsInUrl,
-  maskMailto,
-  QUERY_ALLOWLIST,
-  QUOTED_LOCAL,
-  REDACTED,
-  sanitizeUrl,
-} from './url.ts';
+
+import { decodeLenient, maskEmails, maskEmailsInUrl, QUOTED_LOCAL, REDACTED } from './email.ts';
+import { maskMailto, QUERY_ALLOWLIST, sanitizeUrl } from './url.ts';
 
 export { maskEmails, maskMailto };
 

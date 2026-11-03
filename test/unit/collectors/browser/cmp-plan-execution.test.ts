@@ -5,7 +5,7 @@ import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { ActOptions, ClickOutcome, ClickTarget, CmpAdapter } from '../../../../src/cmp/types.ts';
 import { type CmpApi, CmpBridge } from '../../../../src/collectors/browser/cmp-bridge.ts';
-import type { ClickPlan } from '../../../../src/collectors/browser/types.ts';
+import type { ClickPlan } from '../../../../src/core/snapshot-browser.ts';
 import type { CollectorError } from '../../../../src/core/snapshot-common.ts';
 
 const page = {} as Page;

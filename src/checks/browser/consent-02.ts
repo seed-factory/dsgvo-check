@@ -6,8 +6,9 @@
  * Values are never read, so `cmp-cookie-with-uid` (registry §2.1) is declared but not emitted: the collector
  * has no safe "consent cookie carries a UID" feature yet. Bot or geo signal → inconclusive.
  */
-import type { CookieRecord, StorageRecord } from '../../collectors/browser/types.ts';
+
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import type { CookieRecord, StorageRecord } from '../../core/snapshot-browser.ts';
 import type { ClassifiedCookie, ClassifiedStorage } from '../../derive/types.ts';
 import {
   classifiedCookies,

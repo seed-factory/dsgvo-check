@@ -3,14 +3,8 @@
  * (HTTPS: certificate by SNI from the test PKI). Target and third-party hostnames are served locally;
  * nothing goes to the internet.
  *
- * Sites live in test/fixture-server/sites/<module>/<site>/ with a `hosts.json` (see test/README.md):
- * {
- *   "hosts": { "www.example.test": "www", "service.example.test": "service" }, // host → docroot
- *   "tls": { "expired.example.test": "expired" }, // CertKind per host (default valid)
- *   "routes": [ { "host": "example.test", "scheme": "http", "path": "/", "status": 301,
- *                 "headers": { "location": "https://www.example.test/" } } ]
- * }
- * Static files: `<docroot>/<path>` (`/` → index.html), optional sidecar `<file>.headers.json` {status?, headers?}.
+ * Sites live in test/fixture-server/sites/<module>/<site>/ and are declared in ./sites.ts (hosts, TLS kinds,
+ * routes, per-file response headers). Static files: `<docroot>/<path>` (`/` → index.html).
  * Unknown host → 599 and an entry in `unexpected` (a test bug: undeclared third party).
  */
 import { readFileSync, statSync } from 'node:fs';
@@ -22,6 +16,7 @@ import tls, { type SecureContext } from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import type { NetworkConfig } from '../../src/core/net.ts';
 import { type CertKind, createTestPki, type TestPki } from '../utils/certs.ts';
+import { SITES } from './sites.ts';
 
 export const SITES_DIR = fileURLToPath(new URL('./sites/', import.meta.url));
 
@@ -82,14 +77,8 @@ export interface DynamicHandler {
   handle(req: IncomingMessage, res: ServerResponse, ctx: DynamicContext): void | Promise<void>;
 }
 
-export interface SiteConfig {
-  hosts: Record<string, string>;
-  tls?: Record<string, CertKind>;
-  routes?: RouteSpec[];
-}
-
 export interface FixtureServerOptions {
-  /** Site directories relative to SITES_DIR, e.g. `core/smoke`, `browser/fonts-google`. Merged in order. */
+  /** Site directories relative to SITES_DIR, e.g. `core/smoke`, `browser/fonts`. Merged in order. */
   sites?: string[];
   /** Extra inline hosts → absolute docroot. */
   hosts?: Record<string, string>;
@@ -123,11 +112,16 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
-function loadSite(rel: string): { root: string; config: SiteConfig } {
-  const root = path.join(SITES_DIR, rel);
-  const config = JSON.parse(readFileSync(path.join(root, 'hosts.json'), 'utf8')) as SiteConfig;
-  return { root, config };
-}
+/** Extra response headers by absolute file path; statSync fails loudly on an entry for a missing file. */
+const FILE_HEADERS = new Map(
+  Object.entries(SITES).flatMap(([rel, site]) =>
+    Object.entries(site.fileHeaders ?? {}).map(([file, headers]) => {
+      const abs = path.join(SITES_DIR, rel, file);
+      statSync(abs);
+      return [abs, headers] as const;
+    }),
+  ),
+);
 
 function cookieNames(header: string | undefined): string[] {
   if (!header) return [];
@@ -159,7 +153,9 @@ export async function startFixtureServer(opts: FixtureServerOptions = {}): Promi
   const routes: RouteSpec[] = [];
   const handlers: DynamicHandler[] = [...(opts.handlers ?? [])];
   for (const rel of opts.sites ?? []) {
-    const { root, config } = loadSite(rel);
+    const root = path.join(SITES_DIR, rel);
+    const config = SITES[rel];
+    if (!config) throw new Error(`fixture-server: site ${rel} is not declared in sites.ts`);
     for (const [host, dir] of Object.entries(config.hosts))
       docroots.set(host.toLowerCase(), path.join(root, dir));
     for (const [host, kind] of Object.entries(config.tls ?? {})) tlsKinds.set(host.toLowerCase(), kind);
@@ -244,21 +240,10 @@ export async function startFixtureServer(opts: FixtureServerOptions = {}): Promi
     try {
       if (statSync(file).isDirectory()) file = path.join(file, 'index.html');
       const body = readFileSync(file);
-      let status = 200;
-      const headers: Record<string, string | string[]> = {
+      res.writeHead(200, {
         'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
-      };
-      try {
-        const side = JSON.parse(readFileSync(`${file}.headers.json`, 'utf8')) as {
-          status?: number;
-          headers?: Record<string, string | string[]>;
-        };
-        status = side.status ?? status;
-        Object.assign(headers, side.headers);
-      } catch {
-        // no sidecar
-      }
-      res.writeHead(status, headers);
+        ...FILE_HEADERS.get(file),
+      });
       res.end(body);
     } catch {
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });

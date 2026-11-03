@@ -69,8 +69,11 @@ describe('SSRF guard (documents and frames)', () => {
       network: { allowPrivateAddresses: false, lookup },
     });
     expect(run.result.status).toBe('error');
-    expect(run.result.fatal).toMatchObject({ reason: 'invalid-input', code: 'start-page-not-public' });
-    expect(run.result.fatal?.message).toMatch(/leitet .* weiter/);
+    expect(run.result.fatal).toMatchObject({
+      reason: 'invalid-input',
+      code: 'start-page-not-public',
+      params: { redirected: 'yes' },
+    });
     const nav = run.requests.find((r) => r.url.startsWith('http://169.254.169.254'));
     expect(nav).toMatchObject({ blockedByGuard: true, isNavigation: true, isMainFrame: true });
   });
@@ -81,8 +84,11 @@ describe('SSRF guard (documents and frames)', () => {
       maxPages: 1,
       network: { allowPrivateAddresses: false, lookup },
     });
-    expect(run.result.fatal).toMatchObject({ reason: 'invalid-input', code: 'start-page-not-public' });
-    expect(run.result.fatal?.message).not.toMatch(/leitet/);
+    expect(run.result.fatal).toMatchObject({
+      reason: 'invalid-input',
+      code: 'start-page-not-public',
+      params: { redirected: 'no' },
+    });
     expect(server.requestsTo('intranet.example.test')).toEqual([]);
   });
 

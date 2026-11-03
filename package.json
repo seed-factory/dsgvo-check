@@ -29,7 +29,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/emit-schema.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
@@ -38,10 +38,10 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e --passWithNoTests",
     "test:live": "vitest run --project live --passWithNoTests",
-    "schema": "node scripts/emit-schema.ts",
     "canary": "node scripts/canary.ts",
-    "canary:summary": "node scripts/canary-summary.ts",
-    "schema:check": "node scripts/emit-schema.ts --check"
+    "canary:summary": "node scripts/canary.ts summary",
+    "registry": "node scripts/emit-registry.ts",
+    "registry:check": "node scripts/emit-registry.ts --check"
   },
   "dependencies": {
     "canonicalize": "5.1.0",

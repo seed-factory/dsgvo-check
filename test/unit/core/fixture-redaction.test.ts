@@ -4,24 +4,15 @@
  * path of an http(s) URL. This covers `text`, `accessibleName`, document `parts` and every other string of a browser
  * snapshot fixture. A fixture that needs an address writes it the way the collector stores it: `[redacted]@domain`.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { maskEmails } from '../../../src/core/redact.ts';
 import { sanitizeUrl } from '../../../src/core/url.ts';
-import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
-
-const FIXTURES = path.join(REPO_ROOT, 'test/fixtures/snapshots/browser');
-
-function jsonFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory()
-      ? jsonFiles(path.join(dir, e.name))
-      : e.name.endsWith('.json')
-        ? [path.join(dir, e.name)]
-        : [],
-  );
-}
+import {
+  SCENARIOS,
+  scenarioFixture,
+  scenariosOf,
+  VARIANT_SCENARIOS,
+} from '../checks/browser/scenarios/index.ts';
 
 function* strings(value: unknown, at = '$'): Generator<[string, string]> {
   if (typeof value === 'string') yield [at, value];
@@ -87,17 +78,15 @@ describe('findLeaks (the scanner is not vacuous)', () => {
 });
 
 describe('fixtures of browser snapshots', () => {
-  const files = jsonFiles(FIXTURES);
+  const all = Object.keys({ ...SCENARIOS, ...VARIANT_SCENARIOS }).flatMap((id) =>
+    scenariosOf(id).map((s) => [`${id}/${s.file}`, s] as const),
+  );
 
   it('exist', () => {
-    expect(files.length).toBeGreaterThan(0);
+    expect(all.length).toBeGreaterThan(0);
   });
 
-  it.each(files.map((f) => [path.relative(REPO_ROOT, f), f]))(
-    '%s has no unredacted address or path identifier',
-    (_rel, file) => {
-      const leaks = findLeaks(JSON.parse(readFileSync(file as string, 'utf8')));
-      expect(leaks).toEqual([]);
-    },
-  );
+  it.each(all)('%s has no unredacted address or path identifier', (_name, s) => {
+    expect(findLeaks(scenarioFixture(s))).toEqual([]);
+  });
 });

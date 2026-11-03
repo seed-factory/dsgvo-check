@@ -1,18 +1,10 @@
-import { execFileSync } from 'node:child_process';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EvidenceSchema, ReportSchema, reportJsonSchema } from '../../../src/core/report-schema.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report-fixtures.ts';
 import { validateReport } from '../../utils/report-validator.ts';
-import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 
 describe('report schema (Ajv, JSON Schema 2020-12)', () => {
-  it('schema/report.schema.json is up to date with the zod schema', () => {
-    expect(() =>
-      execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/emit-schema.ts'), '--check'], {
-        stdio: 'pipe',
-      }),
-    ).not.toThrow();
+  it('is JSON Schema 2020-12', () => {
     expect(reportJsonSchema().$schema).toBe('https://json-schema.org/draft/2020-12/schema');
   });
 

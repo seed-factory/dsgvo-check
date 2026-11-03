@@ -13,9 +13,6 @@ function loadTemplate(dataDir = DEFAULT_DATA_DIR): { template: string; styleHash
   if (styles.length !== 1 || styles[0]![1]!.includes('{{')) throw new Error('Invalid report style block');
   return { template, styleHash: createHash('sha256').update(styles[0]![1]!).digest('base64') };
 }
-const csp = (hash: string) =>
-  `default-src 'none'; img-src data:; style-src 'sha256-${hash}'; base-uri 'none'; form-action 'none'`;
-export const HTML_CSP = csp(loadTemplate().styleHash);
 export const renderHtml: RenderReport = (report, ctx) => {
   const { template, styleHash } = loadTemplate(ctx.dataDir);
   return renderTemplate(template, { ...buildReportView(report, ctx), styleHash }, ctx);

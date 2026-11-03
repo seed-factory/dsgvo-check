@@ -4,7 +4,7 @@ import { loadServiceCatalog } from '../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from './helpers.ts';
 import { click, cookie, phase, site, storage } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 /** Version of the catalog allowlist is catalog data: it changes with the allowlist. */
 const ALLOWLIST = `allowlist-v${loadServiceCatalog().allowlistVersion}`;

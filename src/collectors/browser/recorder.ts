@@ -5,6 +5,7 @@
  */
 import { isIP } from 'node:net';
 import type { BrowserContext, Request, Response } from 'playwright-core';
+import type { RequestRecord } from '../../core/snapshot-browser.ts';
 import type { BrowserPhase } from '../../core/snapshot-common.ts';
 import { registrableDomain } from '../../core/url.ts';
 import { IDENTIFIER_COOKIES, LONG_LIVED_RESOURCE_TYPES } from './config.ts';
@@ -16,7 +17,6 @@ import {
   splitSetCookieNames,
 } from './features.ts';
 import type { ActivitySource } from './quiet.ts';
-import type { RequestRecord } from './types.ts';
 import { truncate } from './util.ts';
 
 export interface RequestCounter {

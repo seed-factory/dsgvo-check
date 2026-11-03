@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import { toMeasured } from '../../../src/cmp/page/measure.ts';
-import type { ProbeResult, RawButton } from '../../../src/cmp/page/probe.ts';
+import type { ProbeResult, RawButton } from '../../../src/cmp/page/probe-types.ts';
 import { legalLexiconFromData } from '../../../src/collectors/browser/legal-lexicon.ts';
 import { loadDataDir } from '../../../src/core/data.ts';
 

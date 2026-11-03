@@ -5,14 +5,14 @@
  * Recomputed on `--from-snapshot`; never persisted.
  */
 
+import type { Snapshot } from '../core/snapshot.ts';
 import type {
   CookieRecord,
   PageVisit,
   PhaseRecord,
   RequestRecord,
   StorageRecord,
-} from '../collectors/browser/types.ts';
-import type { Snapshot } from '../core/snapshot.ts';
+} from '../core/snapshot-browser.ts';
 import { parseUrl, registrableDomain } from '../core/url.ts';
 import { loadServiceCatalog, type RequestMatch, type ServiceCatalog, type ServiceEntry } from './catalog.ts';
 import type {

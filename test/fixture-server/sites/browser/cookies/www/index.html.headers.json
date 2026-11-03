@@ -1,8 +1,0 @@
-{
-  "headers": {
-    "set-cookie": [
-      "sid=SECRET_HTTP_VALUE_1; Path=/; HttpOnly; Secure; SameSite=Lax",
-      "pref=SECRET_HTTP_VALUE_2; Path=/; Max-Age=86400"
-    ]
-  }
-}

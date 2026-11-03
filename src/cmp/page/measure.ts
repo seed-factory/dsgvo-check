@@ -13,7 +13,8 @@ import type {
   CmpFirstLayer,
   CmpLexicon,
 } from '../types.ts';
-import { cmpPageProbe, type ProbeArgs, type ProbeResult, type RawButton } from './probe.ts';
+import { cmpPageProbe } from './probe.ts';
+import type { ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
 
 export interface BannerSpec {
   /** Container selectors in priority order (document + open shadow roots). */

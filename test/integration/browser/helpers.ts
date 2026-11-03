@@ -7,10 +7,10 @@ import {
   type BrowserTiming,
   createBrowserCollector,
 } from '../../../src/collectors/browser/index.ts';
-import type { RequestRecord } from '../../../src/collectors/browser/types.ts';
 import type { BrowserSections, CollectorContext, CollectorResult } from '../../../src/core/collector.ts';
 import { silentLogger } from '../../../src/core/logger.ts';
 import type { NetworkConfig } from '../../../src/core/net.ts';
+import type { RequestRecord } from '../../../src/core/snapshot-browser.ts';
 import { parseTarget } from '../../../src/core/url.ts';
 import { uaToken } from '../../../src/core/user-agent.ts';
 import type { FixtureServer } from '../../fixture-server/server.ts';

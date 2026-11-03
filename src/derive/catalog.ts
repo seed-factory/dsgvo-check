@@ -75,8 +75,6 @@ const SignatureSchema = z
     path: RegexSchema,
     /** Regex per query parameter value (only allowlisted values survive sanitizing, e.g. `id`, `tid`). */
     query: z.record(z.string(), RegexSchema).optional(),
-    /** Query parameters that must be present (values may be redacted). */
-    queryHas: z.array(z.string()).optional(),
     kind: z.enum(KINDS),
     stage: z.enum(STAGES).optional(),
     integration: z.string().optional(),
@@ -117,8 +115,6 @@ const ServiceSchema = z
     aliasesDe: z.array(z.string().min(2)).default([]),
     aliasesEn: z.array(z.string().min(2)).default([]),
     companyAliases: z.array(z.string().min(2)).default([]),
-    categoryTerms: z.array(z.string().min(2)).default([]),
-    notes: z.string().optional(),
   })
   .strict();
 
@@ -133,7 +129,6 @@ const CatalogFileSchema = z
         date: z.string(),
         license: z.string(),
         attribution: z.string().optional(),
-        draft: z.boolean().default(true),
       })
       .strict(),
     categories: z.record(
@@ -318,7 +313,7 @@ export class ServiceCatalog {
       aliasesEn: s.aliasesEn,
       companyAliases: [...company],
       domains: s.domains,
-      categoryTerms: [...new Set([...this.categoryTerms(s.category), ...s.categoryTerms])],
+      categoryTerms: this.categoryTerms(s.category),
       selfHostable: s.selfHostable,
     };
     if (s.provider) info.provider = s.provider;
@@ -334,7 +329,6 @@ function signatureMatches(c: CompiledSignature, url: URL): boolean {
     const v = url.searchParams.get(k);
     if (v === null || !re.test(v)) return false;
   }
-  for (const k of c.sig.queryHas ?? []) if (!url.searchParams.has(k)) return false;
   return true;
 }
 

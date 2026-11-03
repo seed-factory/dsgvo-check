@@ -1,6 +1,7 @@
 /**
  * import graph : checks are pure. Biome forbids direct I/O imports in src/checks/**; this test also follows
  * runtime imports transitively, so a check cannot reach playwright-core or node I/O through a helper module.
+ * The core imports none of the layers built on it (checks, collectors, reporters), not even for types.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -102,6 +103,20 @@ describe('import graph of checks', () => {
           if (FORBIDDEN.includes(s)) offending.push(`${path.relative(ROOT, file)} → ${s}`);
       }
       expect(offending).toEqual([]);
+    },
+  );
+});
+
+describe('import graph of the core', () => {
+  const UPPER = ['src/checks', 'src/collectors', 'src/reporters'].map((d) => path.join(ROOT, d) + path.sep);
+  it.each(walk(path.join(ROOT, 'src/core')).map((f) => [path.relative(ROOT, f), f]))(
+    '%s imports no check, collector or reporter',
+    (_, f) => {
+      const specs = [...readFileSync(f, 'utf8').matchAll(/from\s*['"](\.[^'"]+)['"]/g)].map(
+        (m) => m[1] as string,
+      );
+      const upper = specs.filter((s) => UPPER.some((d) => path.resolve(path.dirname(f), s).startsWith(d)));
+      expect(upper).toEqual([]);
     },
   );
 });

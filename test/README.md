@@ -60,7 +60,7 @@ Chrome background traffic (`update.googleapis.com`, …) is answered with 404 an
 
 ```ts
 import { startFixtureServer, setCookieHandler, redirectHandler } from '../../fixture-server/server.ts';
-const server = await startFixtureServer({ sites: ['browser/fonts-google'] });
+const server = await startFixtureServer({ sites: ['browser/fonts'] });
 // scan with it:
 await scan({ url: 'https://www.example.test/', network: server.network(), ... });
 // or a raw browser:
@@ -69,16 +69,20 @@ expect(server.unexpected).toEqual([]);                  // every host must be de
 await b.close(); await server.close();
 ```
 
-Site layout `test/fixture-server/sites/<module>/<site>/` (module = owner path, see BRIEF):
+Site content lives in `test/fixture-server/sites/<module>/<site>/` (module = owner path, see BRIEF): static files,
+`/` → `index.html`, unknown path → 404 page. Each site is declared in `test/fixture-server/sites.ts`:
 
+```ts
+'core/smoke': {
+  hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts' },  // host → docroot
+  tls: { 'expired.example.test': 'expired' },  // valid|expired|expiring|wrong-name|self-signed
+  routes: [{ host: 'example.test', scheme: 'http', path: '/', status: 301,
+             headers: { location: 'https://www.example.test/' } }],
+  fileHeaders: { 'www/index.html': { 'set-cookie': ['a=1; Path=/'] } },  // extra headers per static file
+},
 ```
-hosts.json            { "hosts": {"www.example.test": "www", "fonts.googleapis.com": "fonts"},
-                        "tls":   {"expired.example.test": "expired"},           // valid|expired|expiring|wrong-name|self-signed
-                        "routes": [{ "host": "example.test", "scheme": "http", "path": "/", "status": 301,
-                                     "headers": {"location": "https://www.example.test/"} }] }
-www/index.html        static files; "/" → index.html; unknown path → 404 page
-www/x.html.headers.json   optional { "status": 200, "headers": { "set-cookie": ["a=1; Path=/"] } }
-```
+
+An undeclared site, or a `fileHeaders` entry for a missing file, fails the server start.
 
 Use `.test` hostnames for targets (never real domains); fake third parties may use their real hostnames because
 they never leave the machine. Fixture content must be written by hand: no copied CMP/vendor code (licenses).
@@ -90,8 +94,14 @@ Fake DNS for MAIL-* (M5): run a `dns2` UDP server on `127.0.0.1:0` in the test a
 
 ## L1 fixtures
 
-`test/fixtures/snapshots/<module>/<CHECK-ID>/{violation,clean,inconclusive|error}*.json` — a partial `Snapshot`
-(missing parts are filled by `makeSnapshot`) plus `$expect`:
+Browser checks: scenarios in `test/unit/checks/browser/scenarios/<id>.ts`, one file per check, collected into
+`SCENARIOS` and `VARIANT_SCENARIOS` by `scenarios/index.ts`. Each has a `file` name that starts with its kind
+(`violation-…`, `clean-…`, `inconclusive-…`), a `$expect` and a `build()` of the snapshot; they are built in memory,
+nothing is written to disk.
+
+DNS checks: one row per query in `test/unit/checks/dns/fixtures.ts`, built in memory the same way.
+
+HTTP checks: `test/fixtures/snapshots/http/<CHECK-ID>/{violation,clean,inconclusive|error}*.json` — a partial `Snapshot` (missing parts are filled by `makeSnapshot`) plus `$expect`:
 
 ```json
 { "$description": "Google Fonts CSS loaded before consent",

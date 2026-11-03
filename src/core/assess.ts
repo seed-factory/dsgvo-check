@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import canonicalize from 'canonicalize';
 import type { AnyCheck, CheckOutcome, EvidenceInput, Observation } from './check.ts';
-import type { CrmMapping, Routing, Ruleset, Texts } from './data.ts';
+import type { Routing, Ruleset, Texts } from './data.ts';
 import { fingerprint } from './fingerprint.ts';
 import { severityRank } from './gate.ts';
 import { renderMessage } from './messages.ts';
@@ -43,7 +43,6 @@ export interface AssessInput {
   checks: readonly AnyCheck[];
   executed: ReadonlyMap<string, ExecutedCheck>;
   ruleset: Ruleset;
-  crm: CrmMapping;
   routing: Routing;
   overrides?: readonly SeverityOverride[];
   /** When given, findings carry a rendered `text`. */
@@ -269,7 +268,7 @@ export function assess(input: AssessInput): AssessOutput {
         variantGroup: d.variantGroup,
         severity: d.severity,
         confidence: d.obs.confidence,
-        crmCode: input.crm[messageId] ?? null,
+        crmCode: input.ruleset.checks[check.id]?.variants[d.obs.variant]?.crm ?? null,
         fingerprint: d.fp,
         subject: d.obs.subject,
         phases: [...d.phases],

@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { REDACTED } from '../../../src/core/email.ts';
 import { InvalidInputError } from '../../../src/core/errors.ts';
 import { classifyAddress } from '../../../src/core/net.ts';
-import {
-  bareHost,
-  parseTarget,
-  REDACTED,
-  redactTarget,
-  registrableDomain,
-  sanitizeUrl,
-} from '../../../src/core/url.ts';
+import { bareHost, parseTarget, redactTarget, registrableDomain } from '../../../src/core/url.ts';
 
 describe('parseTarget', () => {
   it('normalizes and computes eTLD+1', () => {
@@ -71,60 +65,8 @@ describe('redactTarget for scan targets', () => {
   });
 });
 
-describe('sanitizeUrl', () => {
-  it('redacts query values outside the allowlist, drops fragment and credentials', () => {
-    expect(
-      sanitizeUrl('https://u:p@www.google-analytics.com/g/collect?v=2&tid=G-ABC&cid=123.456&en=page_view#x'),
-    ).toBe(`https://www.google-analytics.com/g/collect?v=2&tid=G-ABC&cid=${REDACTED}&en=page_view`);
-    expect(sanitizeUrl('https://fonts.googleapis.com/css2?family=Roboto&display=swap')).toBe(
-      'https://fonts.googleapis.com/css2?family=Roboto&display=swap',
-    );
-    expect(sanitizeUrl('data:image/png;base64,AAAA')).toBe(`data:${REDACTED}`);
-  });
-
-  it('keeps the Meta Pixel event name (`ev`) so core and the browser collector sanitize alike', () => {
-    expect(sanitizeUrl('https://www.facebook.com/tr?id=123&ev=PageView&fbp=fb.1.2.3')).toBe(
-      `https://www.facebook.com/tr?id=123&ev=PageView&fbp=${REDACTED}`,
-    );
-  });
-
-  it('masks the local part of mailto: addresses and drops their headers (5.3)', () => {
-    expect(sanitizeUrl('mailto:alice@example.de')).toBe(`mailto:${REDACTED}@example.de`);
-    expect(sanitizeUrl('MAILTO:Alice.Smith@Example.de?subject=Hi&cc=bob@other.de')).toBe(
-      `mailto:${REDACTED}@example.de`,
-    );
-    expect(sanitizeUrl('mailto:a@x.de,b@y.de')).toBe(`mailto:${REDACTED}@x.de,${REDACTED}@y.de`);
-    expect(sanitizeUrl('mailto:%61lice%40example.de')).toBe(`mailto:${REDACTED}@example.de`);
-    expect(sanitizeUrl('mailto:?subject=x&body=alice@example.de')).toBe(`mailto:${REDACTED}`);
-    expect(sanitizeUrl('mailto:alice@example.de')).not.toContain('alice');
-  });
-
-  it.each([
-    // generic names keep only site-level values of the expected form
-    ['https://shop.example.de/konto/bestellung?id=4711&token=abc', `?id=${REDACTED}&token=${REDACTED}`],
-    ['https://shop.example.de/x?id=visitor-secret', `?id=${REDACTED}`],
-    ['https://www.googletagmanager.com/gtag/js?id=G-ABC123', '?id=G-ABC123'],
-    ['https://www.googletagmanager.com/gtm.js?id=GTM-K7X9', '?id=GTM-K7X9'],
-    ['https://www.googletagmanager.com/gtag/js?id=AW-123456789', '?id=AW-123456789'],
-    ['https://www.googletagmanager.com/gtag/js?id=DC-9876543', '?id=DC-9876543'],
-    ['https://www.googletagmanager.com/gtag/js?id=GT-PZXQ', '?id=GT-PZXQ'],
-    ['https://www.google-analytics.com/g/collect?tid=G-T', '?tid=G-T'],
-    ['https://www.example.de/x?id=G-', `?id=${REDACTED}`],
-    ['https://www.example.de/app.js?t=1730291234567&v=8a1f2c', `?t=${REDACTED}&v=${REDACTED}`],
-    ['https://cdn.example.de/a.js?v=1793373555053', `?v=${REDACTED}`],
-    ['https://www.google.com/x?v=NhfdZHabcdefghijklmnopqr', `?v=${REDACTED}`],
-    ['https://www.example.de/wp.js?ver=6.4.2&v=2.1.0', '?ver=6.4.2&v=2.1.0'],
-    [
-      'https://www.google-analytics.com/collect?v=1&t=pageview&tid=UA-1234-1',
-      '?v=1&t=pageview&tid=UA-1234-1',
-    ],
-    ['https://metrics.example.de/b/ss?t=30%2F9%2F2026+16%3A21%3A3+5+-60', `?t=${REDACTED}`],
-    ['https://www.google-analytics.com/g/collect?tid=customer-4711', `?tid=${REDACTED}`],
-  ])('%s', (input, query) => {
-    expect(sanitizeUrl(input)).toBe(`${input.split('?')[0]}${query}`);
-  });
-
-  it('registrableDomain uses private suffixes', () => {
+describe('registrableDomain', () => {
+  it('uses private suffixes', () => {
     expect(registrableDomain('a.b.example.co.uk')).toBe('example.co.uk');
     expect(registrableDomain('foo.github.io')).toBe('foo.github.io');
     expect(registrableDomain('127.0.0.1')).toBeNull();

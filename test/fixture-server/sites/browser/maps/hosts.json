@@ -1,6 +1,0 @@
-{
-  "hosts": {
-    "www.example.test": "www",
-    "www.google.com": "google"
-  }
-}

@@ -15,8 +15,8 @@ import {
   unchangedDeniedAfterAccept,
 } from '../detection.ts';
 import { loadLexicon } from '../lexicon-file.ts';
+import { cmpDetectProbe, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
 import { type BannerSpec, measureBanner } from '../page/measure.ts';
-import { cmpDetectProbe, type DetectRaw, tcfPingProbe } from '../page/probe.ts';
 import type {
   ActOptions,
   BotSignal,

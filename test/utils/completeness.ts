@@ -3,15 +3,32 @@
  * so the test shows every gap at once and the rules themselves are unit-tested.
  */
 import type { AnyCheck } from '../../src/core/check.ts';
-import type { CrmMapping, Ruleset, Texts } from '../../src/core/data.ts';
+import type { Ruleset, Texts } from '../../src/core/data.ts';
 import { MessageSyntaxError, templateParams, validateTemplate } from '../../src/core/messages.ts';
-import { fixtureFiles, loadFixtures, runCheck, variantsOf } from './snapshot-builder.ts';
+import { scenarioFixture, scenariosOf } from '../unit/checks/browser/scenarios/index.ts';
+import { DNS_FIXTURES, dnsFixture } from '../unit/checks/dns/fixtures.ts';
+import { fixtureFrom, loadFixtures, runCheck, type SnapshotFixture, variantsOf } from './snapshot-builder.ts';
+
+/** Fixtures of a check: browser and dns ones are built from TS tables, the http ones are JSON files. */
+export function checkFixtures(check: AnyCheck): SnapshotFixture[] {
+  if (check.module === 'dns')
+    return (DNS_FIXTURES[check.id] ?? []).map((f) =>
+      fixtureFrom(f.file, dnsFixture(f), `test/unit/checks/dns/fixtures.ts (${check.id}/${f.file})`),
+    );
+  if (check.module !== 'browser') return loadFixtures(check.module, check.id);
+  return scenariosOf(check.id).map((s) =>
+    fixtureFrom(
+      s.file,
+      scenarioFixture(s),
+      `test/unit/checks/browser/scenarios/${check.id.toLowerCase()}.ts (${check.id}/${s.file})`,
+    ),
+  );
+}
 
 export interface CompletenessData {
   ruleset: Ruleset;
-  crm: CrmMapping;
   texts: { de: Texts; en: Texts };
-  /** Override fixture lookup (tests); default reads test/fixtures/snapshots/<module>/<id>/. */
+  /** Override fixture names (tests); default: `checkFixtures`. */
   fixtures?: (check: AnyCheck) => string[];
   /** Skip running fixtures (self-test of the rules). */
   runFixtures?: boolean;
@@ -29,9 +46,6 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
 
   for (const id of Object.keys(d.ruleset.checks))
     if (!known.has(id)) problems.push(`ruleset: unregistered check ${id}`);
-  for (const key of Object.keys(d.crm)) {
-    if (!known.has(key.split('.')[0] as string)) problems.push(`crm: unregistered check in ${key}`);
-  }
   for (const lang of ['de', 'en'] as const) {
     for (const key of Object.keys(d.texts[lang].messages)) {
       if (key.startsWith('diagnostic.')) continue;
@@ -47,8 +61,11 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
     if (!entry) problems.push(`${id}: no ruleset entry (data/ruleset/de-2026/${check.module}.yaml)`);
     else {
       for (const v of declared) if (!entry.variants[v]) problems.push(`${id}.${v}: no ruleset severity`);
-      for (const v of Object.keys(entry.variants)) {
+      for (const [v, rule] of Object.entries(entry.variants)) {
         if (!declared.includes(v)) problems.push(`${id}.${v}: ruleset variant not declared by the check`);
+        // Ruleset rule: a T3 catalog code stays at most `warning`.
+        if (rule.crm?.startsWith('T3_') && rule.severity === 'critical')
+          problems.push(`${id}.${v}: T3 code ${rule.crm} with severity critical`);
       }
     }
     for (const lang of ['de', 'en'] as const) {
@@ -77,11 +94,15 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
       if (pde && pen && pde.join(',') !== pen.join(',')) {
         problems.push(`${key}: de/en use different params (${pde.join(',')} vs ${pen.join(',')})`);
       }
-      if (!Object.hasOwn(d.crm, key)) problems.push(`${key}: no crm mapping (string or explicit null)`);
     }
 
-    const files = d.fixtures ? d.fixtures(check) : fixtureFiles(check.module, id);
-    const dir = `test/fixtures/snapshots/${check.module}/${id}/`;
+    const fixtures = d.runFixtures === false ? [] : checkFixtures(check);
+    const files = d.fixtures ? d.fixtures(check) : fixtures.map((f) => f.name);
+    const dir =
+      {
+        browser: `test/unit/checks/browser/scenarios/${id.toLowerCase()}.ts ${id}/`,
+        dns: `test/unit/checks/dns/fixtures.ts ${id}/`,
+      }[check.module as string] ?? `test/fixtures/snapshots/${check.module}/${id}/`;
     if (!files.some((f) => f.startsWith('violation'))) problems.push(`${id}: no ${dir}violation*.json`);
     if (!files.some((f) => f.startsWith('clean'))) problems.push(`${id}: no ${dir}clean*.json`);
     if (!files.some((f) => f.startsWith('inconclusive') || f.startsWith('error'))) {
@@ -89,7 +110,7 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
     }
 
     if (d.runFixtures === false) continue;
-    for (const fx of loadFixtures(check.module, id)) {
+    for (const fx of fixtures) {
       if (!fx.expect) {
         problems.push(`${id}/${fx.name}: missing $expect`);
         continue;
@@ -118,7 +139,7 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
 export function variantsWithoutFixture(checks: readonly AnyCheck[]): string[] {
   const out: string[] = [];
   for (const check of checks) {
-    const seen = new Set(loadFixtures(check.module, check.id).flatMap((f) => f.expect?.variants ?? []));
+    const seen = new Set(checkFixtures(check).flatMap((f) => f.expect?.variants ?? []));
     for (const v of check.variants) if (!seen.has(v.variant)) out.push(`${check.id}.${v.variant}`);
   }
   return out.sort();

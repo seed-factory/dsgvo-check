@@ -16,7 +16,6 @@ import { executeCheck } from '../../../src/core/execute.ts';
 import { createLogger } from '../../../src/core/logger.ts';
 import { renderMessage, uiText } from '../../../src/core/messages.ts';
 import { CheckRegistry } from '../../../src/core/registry.ts';
-import { detectTrustStore } from '../../../src/core/snapshot.ts';
 import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report-validator.ts';
 import { fakeCollectors, publicLookup, testDataDir } from '../../utils/scan-harness.ts';
@@ -483,21 +482,6 @@ describe('Nutzungshinweise', () => {
 });
 
 describe('trust store of the process', () => {
-  it('NODE_USE_SYSTEM_CA=1, --use-system-ca on the command line or in NODE_OPTIONS → system', () => {
-    expect(detectTrustStore({ NODE_USE_SYSTEM_CA: '1' }, [])).toBe('system');
-    expect(detectTrustStore({}, ['--use-system-ca'])).toBe('system');
-    expect(detectTrustStore({ NODE_OPTIONS: '--max-old-space-size=2048 --use-system-ca' }, [])).toBe(
-      'system',
-    );
-  });
-
-  it('counterexamples: nothing set, or an unrelated variable → node-bundled', () => {
-    expect(detectTrustStore({}, [])).toBe('node-bundled');
-    expect(detectTrustStore({ NODE_USE_SYSTEM_CA: '0', NODE_OPTIONS: '--use-system-cache' }, [])).toBe(
-      'node-bundled',
-    );
-  });
-
   it('scan: the snapshot environment records it', async () => {
     const run = async () =>
       (

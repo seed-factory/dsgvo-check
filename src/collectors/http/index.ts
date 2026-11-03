@@ -19,9 +19,17 @@ import { errorMessage } from '../../core/errors.ts';
 import { storedHeaderRecord } from '../../core/headers.ts';
 import type { CollectorError, DiagnosticInput } from '../../core/snapshot.ts';
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
+import type {
+  DocumentResponse,
+  HostVariant,
+  HttpHop,
+  HttpSection,
+  ProbeRecord,
+  RedirectChain,
+} from '../../core/snapshot-http.ts';
+import type { TlsEndpoint } from '../../core/snapshot-tls.ts';
 import { isSameSite, registrableDomain, sanitizeUrl } from '../../core/url.ts';
 import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from '../tls/probe.ts';
-import type { TlsEndpoint } from '../tls/types.ts';
 import {
   type ChainOutcome,
   type FetchResult,
@@ -32,14 +40,6 @@ import {
 } from './client.ts';
 import { type HostTarget, hostVariants } from './hosts.ts';
 import { detectClientRedirect, detectForm, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
-import type {
-  DocumentResponse,
-  HostVariant,
-  HttpHop,
-  HttpSection,
-  ProbeRecord,
-  RedirectChain,
-} from './types.ts';
 
 export const MAX_REDIRECTS = 5;
 /** Body read limit for the documents (link discovery on the start page); heuristics use the first 64 KiB. */
@@ -428,10 +428,12 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
           ? {
               reason: 'unreachable' as const,
               code: 'start-page-unreachable',
-              message:
-                port === null
-                  ? `${ctx.target.host} antwortet weder über http noch über https (${http?.outcome}/${https?.outcome}).`
-                  : `${sanitizeUrl(ctx.target.url)} antwortet nicht (${startRun.chain.outcome}).`,
+              params: {
+                reason:
+                  port === null
+                    ? `${ctx.target.host}: http ${http?.outcome}, https ${https?.outcome}`
+                    : `${sanitizeUrl(ctx.target.url)}: ${startRun.chain.outcome}`,
+              },
             }
           : undefined;
 

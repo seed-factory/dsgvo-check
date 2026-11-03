@@ -4,14 +4,14 @@
  * answers (filtered); a string is the rcode.
  */
 import { lookupFromQueries } from '../../../../src/checks/dns/lib/records.ts';
+import type { Snapshot } from '../../../../src/core/snapshot.ts';
 import type {
   DnsAnswer,
   DnsQueryRecord,
   DnsRcode,
   DnsRecordType,
   DnsSection,
-} from '../../../../src/collectors/dns/types.ts';
-import type { Snapshot } from '../../../../src/core/snapshot.ts';
+} from '../../../../src/core/snapshot-dns.ts';
 import { makeDns, makeDnsQuery, makeSnapshot, makeTarget } from '../../../utils/snapshot-builder.ts';
 
 export type ZoneEntry = readonly string[] | Exclude<DnsRcode, 'NOERROR'>;

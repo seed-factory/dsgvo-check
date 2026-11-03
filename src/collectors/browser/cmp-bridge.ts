@@ -13,9 +13,9 @@ import type {
   CmpFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
+import type { ClickPlan } from '../../core/snapshot-browser.ts';
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot-common.ts';
 import { sanitizeRequestUrl } from './features.ts';
-import type { ClickPlan } from './types.ts';
 import { errorText, redactFreeText, withTimeout } from './util.ts';
 
 export type Detected = { adapter: CmpAdapter | null; detection: CmpDetection };

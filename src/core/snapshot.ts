@@ -4,12 +4,12 @@
  */
 
 import type { CmpSection } from '../cmp/types.ts';
-import type { BrowserPlan, BrowserSection, DocumentsSection } from '../collectors/browser/types.ts';
-import type { DnsSection } from '../collectors/dns/types.ts';
-import type { HttpSection, ProbeRecord } from '../collectors/http/types.ts';
-import type { TlsSection } from '../collectors/tls/types.ts';
 import type { DerivedSection } from '../derive/types.ts';
+import type { BrowserPlan, BrowserSection, DocumentsSection } from './snapshot-browser.ts';
 import type { CollectorStatus, IsoTimestamp, SanitizedUrl } from './snapshot-common.ts';
+import type { DnsSection } from './snapshot-dns.ts';
+import type { HttpSection, ProbeRecord } from './snapshot-http.ts';
+import type { TlsSection } from './snapshot-tls.ts';
 
 export type * from './snapshot-common.ts';
 

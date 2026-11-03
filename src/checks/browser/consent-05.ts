@@ -10,8 +10,8 @@
  * (03-checks §4 step 10); established findings are kept and still gate.
  */
 import type { CmpPhaseFacts, ConsentStateFact } from '../../cmp/types.ts';
-import type { RequestRecord } from '../../collectors/browser/types.ts';
 import { defineCheck, type EvidenceInput, type Observation, subjects } from '../../core/api.ts';
+import type { RequestRecord } from '../../core/snapshot-browser.ts';
 import type { ClassifiedCookie, ClassifiedRequest, ClassifiedStorage } from '../../derive/types.ts';
 import {
   classifiedCookies,

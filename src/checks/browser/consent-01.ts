@@ -4,8 +4,9 @@
  * of categories by data/routing.yaml; one observation per service, unknown hosts per registrable domain.
  * Bot or geo signal → inconclusive (5.2).
  */
-import type { RequestRecord } from '../../collectors/browser/types.ts';
+
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import type { RequestRecord } from '../../core/snapshot-browser.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import {
   consentSignals,

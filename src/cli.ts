@@ -12,12 +12,20 @@ import { errorMessage } from './core/errors.ts';
 import { createLogger } from './core/logger.ts';
 import { uiText } from './core/messages.ts';
 import { buildFailedReport } from './core/report.ts';
-import { type FailOn, type Report, ReportSchema, SCHEMA_VERSION } from './core/report-schema.ts';
+import {
+  type FailOn,
+  type MessageParams,
+  type Report,
+  ReportSchema,
+  SCHEMA_VERSION,
+} from './core/report-schema.ts';
 import { REPORT_FILES, REPORT_FORMATS, type ReportFormat } from './core/reporter.ts';
 import { redactTarget } from './core/url.ts';
 import { TOOL_VERSION } from './core/version.ts';
 import { renderJson } from './reporters/json.ts';
-import { DEFAULTS, REPORT_WRITE_RESERVE_MS, type ScanOptions, scan, writeReports } from './scan.ts';
+import { writeReports } from './reporters/write.ts';
+import { scan } from './scan.ts';
+import { DEFAULTS, REPORT_WRITE_RESERVE_MS, type ScanOptions } from './scan-options.ts';
 
 interface RawOptions {
   failOn: string;
@@ -51,22 +59,39 @@ async function exit(code: number): Promise<never> {
   process.exit(code);
 }
 
-/** Map raw CLI strings to ScanOptions. Invalid values are passed through so scan() reports them as invalid-input. */
-export function toScanOptions(url: string | undefined, raw: RawOptions): ScanOptions & { invalid?: string } {
-  const formats = raw.format
+/** `--format` list: unique formats, and the first unknown one, if any. */
+function parseFormats(raw: string): { formats: ReportFormat[]; bad: string | undefined } {
+  const list = raw
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const badFormat = formats.find((f) => !FORMATS.has(f as ReportFormat));
+  return {
+    formats: [...new Set(list)] as ReportFormat[],
+    bad: list.find((f) => !FORMATS.has(f as ReportFormat)),
+  };
+}
+
+/** A CLI value that scan() does not check itself (`failure.invalid-cli-option`). */
+interface InvalidOption {
+  option: string;
+  value: string;
+}
+
+/** Map raw CLI strings to ScanOptions. Invalid values are passed through so scan() reports them as invalid-input. */
+export function toScanOptions(
+  url: string | undefined,
+  raw: RawOptions,
+): ScanOptions & { invalid?: InvalidOption } {
+  const { formats, bad: badFormat } = parseFormats(raw.format);
   let timeoutMs: number;
   try {
     timeoutMs = parseDuration(raw.timeout);
   } catch {
     timeoutMs = Number.NaN;
   }
-  const opts: ScanOptions & { invalid?: string } = {
+  const opts: ScanOptions & { invalid?: InvalidOption } = {
     failOn: raw.failOn as FailOn,
-    formats: [...new Set(formats)] as ReportFormat[],
+    formats,
     outDir: raw.out,
     maxPages: /^\d+$/.test(raw.maxPages) ? Number(raw.maxPages) : Number.NaN,
     timeoutMs,
@@ -87,12 +112,12 @@ export function toScanOptions(url: string | undefined, raw: RawOptions): ScanOpt
     log: createLogger(raw.verbose ? 'debug' : 'warn'),
   };
   if (url) opts.url = url;
-  if (badFormat) opts.invalid = `Ungültiges Format in --format: ${badFormat}`;
-  else if (!['de', 'en'].includes(raw.lang)) opts.invalid = `Ungültiger Wert für --lang: ${raw.lang}`;
+  if (badFormat) opts.invalid = { option: '--format', value: badFormat };
+  else if (!['de', 'en'].includes(raw.lang)) opts.invalid = { option: '--lang', value: raw.lang };
   else if (!['require', 'off'].includes(raw.sandbox))
-    opts.invalid = `Ungültiger Wert für --sandbox: ${raw.sandbox}`;
+    opts.invalid = { option: '--sandbox', value: raw.sandbox };
   else if (raw.assumeRegion && !['eea', 'de'].includes(raw.assumeRegion))
-    opts.invalid = `Ungültiger Wert für --assume-region: ${raw.assumeRegion}`;
+    opts.invalid = { option: '--assume-region', value: raw.assumeRegion };
   return opts;
 }
 
@@ -101,16 +126,17 @@ function writeFailedSync(
   outDir: string,
   target: string,
   code: string,
-  message: string,
+  params: MessageParams,
   reason: string,
   lang: 'de' | 'en',
-) {
+): string {
   let texts = null;
   try {
     texts = loadTexts(lang);
   } catch {
     texts = null;
   }
+  const message = texts ? uiText(texts, `failure.${code}`, params) : code;
   const report = buildFailedReport({
     target,
     startedAt: new Date().toISOString(),
@@ -121,11 +147,12 @@ function writeFailedSync(
   try {
     mkdirSync(outDir, { recursive: true });
     // With texts, the JSON reporter composes the conditional disclaimer paragraphs.
-    const ctx = texts ? { texts, lang, outDir, color: false } : (null as never);
+    const ctx = texts ? { texts, lang, outDir, color: false } : undefined;
     writeFileSync(path.join(outDir, REPORT_FILES.json), renderJson(report, ctx));
   } catch (err) {
     process.stderr.write(`dsgvo-check: ${errorMessage(err)}\n`);
   }
+  return message;
 }
 
 async function runScan(url: string | undefined, raw: RawOptions): Promise<never> {
@@ -136,21 +163,28 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
   const target = url ? redactTarget(url) : (raw.fromSnapshot ?? '');
 
   if (opts.invalid) {
-    process.stderr.write(`dsgvo-check: ${opts.invalid}\n`);
-    writeFailedSync(outDir, target, 'invalid-cli-option', opts.invalid, 'invalid-input', lang);
+    const message = writeFailedSync(
+      outDir,
+      target,
+      'invalid-cli-option',
+      { ...opts.invalid },
+      'invalid-input',
+      lang,
+    );
+    process.stderr.write(`dsgvo-check: ${message}\n`);
     return exit(2);
   }
 
   const onSignal = (sig: string) => {
     process.stderr.write(`dsgvo-check: ${sig} received, aborting\n`);
-    writeFailedSync(outDir, target, 'interrupted', `Abbruch durch ${sig}`, 'internal-error', lang);
+    writeFailedSync(outDir, target, 'interrupted', { signal: sig }, 'internal-error', lang);
     process.exit(2);
   };
   process.once('SIGINT', () => onSignal('SIGINT'));
   process.once('SIGTERM', () => onSignal('SIGTERM'));
   const crash = (err: unknown) => {
     process.stderr.write(`dsgvo-check: internal error: ${errorMessage(err)}\n`);
-    writeFailedSync(outDir, target, 'internal-error', errorMessage(err), 'internal-error', lang);
+    writeFailedSync(outDir, target, 'internal-error', { message: errorMessage(err) }, 'internal-error', lang);
     process.exit(2);
   };
   process.on('unhandledRejection', crash);
@@ -163,14 +197,7 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
   const watchdogDeadline = Date.now() + watchdogMs;
   setTimeout(() => {
     process.stderr.write('dsgvo-check: watchdog timeout, aborting\n');
-    writeFailedSync(
-      outDir,
-      target,
-      'watchdog-timeout',
-      'Zeitlimit inklusive Reserve überschritten',
-      'internal-error',
-      lang,
-    );
+    writeFailedSync(outDir, target, 'watchdog-timeout', {}, 'internal-error', lang);
     process.exit(2);
   }, watchdogMs).unref();
 
@@ -211,16 +238,9 @@ interface ReportOptions {
 async function runReport(file: string, raw: ReportOptions): Promise<never> {
   const lang = raw.lang === 'en' ? 'en' : 'de';
   const texts = loadTexts(lang);
-  const formats = raw.format
-    .split(',')
-    .map((f) => f.trim())
-    .filter(Boolean);
+  const { formats, bad } = parseFormats(raw.format);
   try {
-    if (
-      !['de', 'en'].includes(raw.lang) ||
-      formats.length === 0 ||
-      formats.some((f) => !FORMATS.has(f as ReportFormat))
-    ) {
+    if (!['de', 'en'].includes(raw.lang) || formats.length === 0 || bad !== undefined) {
       throw new Error('invalid options');
     }
     const input: unknown = JSON.parse(readFileSync(file, 'utf8'));
@@ -232,7 +252,7 @@ async function runReport(file: string, raw: ReportOptions): Promise<never> {
       { report, snapshot: null, exitCode: 0 },
       {
         outDir: raw.out ?? path.dirname(path.resolve(file)),
-        formats: [...new Set(formats)] as ReportFormat[],
+        formats,
         lang,
         artifactsDir: path.dirname(path.resolve(file)),
         outputConsole: (text) => write(process.stdout, text),
@@ -243,8 +263,8 @@ async function runReport(file: string, raw: ReportOptions): Promise<never> {
       await write(process.stderr, `${uiText(texts, 'console.reportWriteFailed', error)}\n`);
     }
     return exit(written.exitCode);
-  } catch {
-    await write(process.stderr, `${uiText(texts, 'report.cli.invalid')}\n`);
+  } catch (err) {
+    await write(process.stderr, `${uiText(texts, 'report.cli.invalid')} (${errorMessage(err)})\n`);
     return exit(2);
   }
 }
@@ -293,35 +313,30 @@ export function buildProgram(): Command {
   program.exitOverride();
   program
     .name('dsgvo-check')
-    .description(
-      'Passiver Scan einer Website auf DSGVO/TDDDG/DDG-Indizien und grundlegende Sicherheitsprobleme.',
-    )
+    .description(uiText(texts, 'cli.description'))
     .version(TOOL_VERSION, '-V, --version')
-    .argument('[url]', 'Ziel-URL (http/https)')
-    .option('--fail-on <level>', 'Schwelle für Exit-Code 1: critical|warning|none', 'critical')
+    .argument('[url]', uiText(texts, 'cli.url'))
+    .option('--fail-on <level>', uiText(texts, 'cli.failOn'), 'critical')
     .option('--format <list>', uiText(texts, 'report.cli.formats'), 'console,json')
-    .option('--out <dir>', 'Ausgabeverzeichnis', DEFAULTS.outDir)
-    .option('--max-pages <n>', 'maximale Seitenzahl in Phase A', String(DEFAULTS.maxPages))
-    .option('--timeout <duration>', 'globales Zeitlimit, z. B. 8m, 90s', '8m')
-    .option('--proxy <url>', 'HTTP-Proxy (http://, CONNECT) für Browser, HTTP und TLS')
-    .option('--assume-region <region>', 'Standort laut Nutzerangabe: eea|de')
-    .option('--lang <lang>', 'Sprache des Berichts: de|en', 'de')
-    .option(
-      '--strict',
-      'nicht eindeutige Ergebnisse, Sandbox off und ungeprüfte Region führen zu Exit-Code 2',
-    )
-    .option('--sandbox <mode>', 'Chromium-Sandbox: require|off', 'require')
-    .option('--no-screenshots', 'keine Screenshots des Banners')
-    .option('--save-snapshot <file>', 'Rohdaten-Snapshot speichern')
-    .option('--from-snapshot <file>', 'Snapshot neu auswerten, ohne die Website aufzurufen')
-    .option('--checks <ids>', 'nur diese Prüfungen, z. B. EMBED-01,HDR-01')
-    .option('--verbose', 'ausführliche Logs auf stderr')
+    .option('--out <dir>', uiText(texts, 'cli.out'), DEFAULTS.outDir)
+    .option('--max-pages <n>', uiText(texts, 'cli.maxPages'), String(DEFAULTS.maxPages))
+    .option('--timeout <duration>', uiText(texts, 'cli.timeout'), '8m')
+    .option('--proxy <url>', uiText(texts, 'cli.proxy'))
+    .option('--assume-region <region>', uiText(texts, 'cli.assumeRegion'))
+    .option('--lang <lang>', uiText(texts, 'report.cli.language'), 'de')
+    .option('--strict', uiText(texts, 'cli.strict'))
+    .option('--sandbox <mode>', uiText(texts, 'cli.sandbox'), 'require')
+    .option('--no-screenshots', uiText(texts, 'cli.noScreenshots'))
+    .option('--save-snapshot <file>', uiText(texts, 'cli.saveSnapshot'))
+    .option('--from-snapshot <file>', uiText(texts, 'cli.fromSnapshot'))
+    .option('--checks <ids>', uiText(texts, 'cli.checks'))
+    .option('--verbose', uiText(texts, 'cli.verbose'))
     .addHelpText('after', usageNotes)
     .showHelpAfterError()
     .action(async (url: string | undefined, raw: RawOptions) => {
       if (!url && !raw.fromSnapshot) {
         program.outputHelp({ error: true });
-        process.stderr.write('\ndsgvo-check: Ziel-URL fehlt.\n');
+        process.stderr.write(`\ndsgvo-check: ${uiText(texts, 'cli.urlMissing')}\n`);
         return exit(2);
       }
       return runScan(url, raw);
@@ -337,8 +352,8 @@ export function buildProgram(): Command {
 
   program
     .command('install')
-    .description('Chromium (Chrome for Testing) für playwright-core herunterladen')
-    .option('--with-deps', 'Systemabhängigkeiten installieren (Linux, benötigt Root)')
+    .description(uiText(texts, 'cli.install'))
+    .option('--with-deps', uiText(texts, 'cli.installWithDeps'))
     .action(async (o: { withDeps?: boolean }) =>
       exit((await installBrowser(Boolean(o.withDeps))) === 0 ? 0 : 2),
     );

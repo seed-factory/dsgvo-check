@@ -1,11 +1,11 @@
 /** Node-side mapping of raw in-page DOM facts to redacted `DomFacts` (sanitized URLs, same-site flags). */
 import type { Frame, Page } from 'playwright-core';
+import type { DomFacts, FormFact, IframeFact, LinkFact, LinkRelFact } from '../../core/snapshot-browser.ts';
 import type { HeaderRecord } from '../../core/snapshot-common.ts';
 import { parseUrl, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
-import { domFactsInPage, type RawDomFacts } from './in-page.ts';
+import { domFactsInPage, type RawDomFacts } from './in-page-dom.ts';
 import type { CandidateLink } from './pages.ts';
-import type { DomFacts, FormFact, IframeFact, LinkFact, LinkRelFact } from './types.ts';
 import { redactFreeText } from './util.ts';
 
 export interface DomResult {

@@ -2,6 +2,8 @@
  * Deterministic page selection and B/C control pages. Pure: input is the link list of the start page
  * (raw hrefs stay in memory for navigation; plans store sanitized URLs), robots.txt and sitemap entries.
  */
+
+import type { DomRegion, LinkFact, PageRole, PlannedPage } from '../../core/snapshot-browser.ts';
 import type { SanitizedUrl } from '../../core/snapshot-common.ts';
 import { parseUrl as parse, registrableDomain } from '../../core/url.ts';
 import { sanitizeRequestUrl } from './features.ts';
@@ -19,11 +21,14 @@ import {
 } from './legal-lexicon.ts';
 import { loadLegalLexicon } from './legal-lexicon-file.ts';
 import { type Robots, robotsAllows } from './robots.ts';
-import type { DomRegion, LinkFact, PageRole, PlannedPage } from './types.ts';
 
 export type { LegalKind } from './legal-lexicon.ts';
 /** Identity of a page for dedup (origin + path without trailing slash + query); shared with LEGAL-01. */
 export { pageKey };
+
+export const LEGAL_KINDS: readonly LegalKind[] = ['impressum', 'privacy'];
+/** Conventional paths probed once per kind when no link led to the document. */
+export const FALLBACK_PATHS: Record<LegalKind, string> = { impressum: '/impressum', privacy: '/datenschutz' };
 
 export interface CandidateLink {
   /** Absolute href as found (in memory only; may contain query values). */
@@ -261,7 +266,7 @@ export function findLegalLink(
   lexicon: LegalLexicon = loadLegalLexicon(),
 ): LegalLinkResult {
   const considered = links.filter((l) => !(l.region === 'banner' && !l.visible && !sameSite(l.raw, scope)));
-  // The page identity lets a weak key lose against an exact label of the other kind on another link to the same URL (L3).
+  // The page identity lets a weak key lose against an exact label of the other kind on another link to the same URL.
   const found = matchLegalLinks(
     lexicon,
     kind,

@@ -9,7 +9,6 @@
  * Prototype gap: http links to own subdomains (browser phase A) are not evaluated here.
  */
 
-import type { HostVariant, HttpHop, RedirectChain } from '../../collectors/http/types.ts';
 import {
   defineCheck,
   type EvidenceInput,
@@ -18,6 +17,7 @@ import {
   subjects,
   tlsHostRole,
 } from '../../core/api.ts';
+import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot-http.ts';
 import { browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
 
 const ID = 'TLS-01';

@@ -3,6 +3,7 @@
  * records and their `derived` classification. No I/O.
  */
 import type { BotSignal, CmpFacts, CmpSection, GeoSignal } from '../../cmp/types.ts';
+import type { BrowserPhase, CheckOutcome, EvidenceInput, Observation } from '../../core/api.ts';
 import type {
   BrowserSection,
   CookieRecord,
@@ -11,8 +12,7 @@ import type {
   PageVisit,
   RequestRecord,
   StorageRecord,
-} from '../../collectors/browser/types.ts';
-import type { BrowserPhase, CheckOutcome, EvidenceInput, Observation } from '../../core/api.ts';
+} from '../../core/snapshot-browser.ts';
 import type {
   ClassifiedCookie,
   ClassifiedRequest,

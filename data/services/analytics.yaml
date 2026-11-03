@@ -77,8 +77,8 @@ services:
     name: Matomo
     category: analytics
     policyRelevance: required
+    # Self-hosted or agency-hosted Matomo/Piwik is detected by path; the operator is not known from the catalog.
     selfHostable: true
-    notes: Self-hosted or agency-hosted Matomo/Piwik detected by path; the operator is not known from the catalog.
     signatures:
       - id: tracker-js
         anyHost: true

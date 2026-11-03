@@ -7,7 +7,6 @@
  * no CSP, no nosniff, no Permissions-Policy, no Referrer-Policy.
  */
 
-import type { DocumentResponse } from '../../collectors/http/types.ts';
 import {
   cspFrameAncestors,
   defineCheck,
@@ -17,6 +16,7 @@ import {
   type Observation,
   subjects,
 } from '../../core/api.ts';
+import type { DocumentResponse } from '../../core/snapshot-http.ts';
 import { browserAcceptsTls, evidenceValue, headerValues, isSuccess } from './shared.ts';
 
 const ID = 'HDR-01';

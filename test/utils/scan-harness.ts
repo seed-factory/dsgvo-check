@@ -14,25 +14,27 @@ export interface ExtraCheckData {
   crm?: Record<string, string | null>;
 }
 
-/** Copy data/ to a temp dir and add a `zz-test.yaml` with ruleset, texts (de, en) and crm entries. */
+/** Copy data/ to a temp dir and add a `zz-test.yaml` with ruleset (including crm) and texts (de, en). */
 export function testDataDir(extra: ExtraCheckData): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'dsgvo-data-'));
   cpSync(path.join(REPO_ROOT, 'data'), dir, { recursive: true });
   const checks: Record<string, unknown> = {};
   const messages: Record<string, { title: string; body: string }> = {};
-  const crm: Record<string, string | null> = {};
   for (const [id, variants] of Object.entries(extra.ruleset)) {
     checks[id] = {
       gating: true,
-      variants: Object.fromEntries(Object.entries(variants).map(([v, s]) => [v, { severity: s }])),
+      variants: Object.fromEntries(
+        Object.entries(variants).map(([v, s]) => [
+          v,
+          { severity: s, crm: extra.crm?.[`${id}.${v}`] ?? null },
+        ]),
+      ),
     };
     for (const v of Object.keys(variants)) {
       messages[`${id}.${v}`] = { title: `${id} ${v}`, body: `Beobachtet: {detail}` };
-      crm[`${id}.${v}`] = extra.crm?.[`${id}.${v}`] ?? null;
     }
   }
   writeFileSync(path.join(dir, 'ruleset/de-2026/zz-test.yaml'), stringify({ checks }));
-  writeFileSync(path.join(dir, 'crm/zz-test.yaml'), stringify({ mapping: crm }));
   for (const lang of ['de', 'en']) {
     writeFileSync(path.join(dir, `texts/${lang}/zz-test.yaml`), stringify({ draft: true, messages }));
   }

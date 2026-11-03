@@ -1,5 +1,5 @@
 /** Host variants probed by the HTTP and TLS collectors (pure; shared without an import cycle). */
-import type { HostVariant } from './types.ts';
+import type { HostVariant } from '../../core/snapshot-http.ts';
 
 export interface HostTarget {
   hostVariant: HostVariant;

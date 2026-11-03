@@ -137,6 +137,27 @@ export function retryAfterMs(value: string | null, now: number): number | null {
 
 const isOverload = (status: number) => status === 429 || status === 503;
 
+/**
+ * Where to connect for the HTTP and TLS probes: test routing, or a resolved address that passed the SSRF guard
+ * (a host with no public address is refused unless private addresses are allowed).
+ */
+export async function routeToPublic(
+  network: NetworkConfig,
+  hostname: string,
+  port: number,
+): Promise<{ host: string; port: number }> {
+  if (network.test) return network.test.connect(hostname, port);
+  const addresses = isIP(hostname)
+    ? [{ address: hostname }]
+    : await network.lookup(hostname).catch((err: NodeJS.ErrnoException) => {
+        throw new ProbeError(err.code ?? 'ENOTFOUND', `DNS lookup failed for ${hostname}`, { cause: err });
+      });
+  if (addresses.length === 0) throw new ProbeError('ENOTFOUND', `no addresses for ${hostname}`);
+  const allowed = addresses.find((a) => network.allowPrivateAddresses || isPublicAddress(a.address));
+  if (!allowed) throw new ProbeError('private-address', `${hostname} resolves to non-public addresses only`);
+  return { host: allowed.address, port };
+}
+
 /** Overload state is isolated per host, so one host cannot stop probes to another. */
 interface HostThrottle {
   consecutive: number;
@@ -308,7 +329,7 @@ export class HttpClient {
         const port = opts.port ? Number(opts.port) : opts.protocol === 'https:' ? 443 : 80;
         const key = originKey(opts.protocol, opts.hostname, port);
         const bare = opts.hostname.replace(/^\[|\]$/g, '');
-        this.#route(bare, port).then(
+        routeToPublic(this.#network, bare, port).then(
           (to) => {
             const servername = isIP(bare) ? undefined : bare;
             connector(
@@ -328,22 +349,6 @@ export class HttpClient {
 
   get network(): NetworkConfig {
     return this.#network;
-  }
-
-  /** Where to connect: test routing, or a resolved address that passed the SSRF guard. */
-  async #route(hostname: string, port: number): Promise<{ host: string; port: number }> {
-    const test = this.#network.test;
-    if (test) return test.connect(hostname, port);
-    const addresses = isIP(hostname)
-      ? [{ address: hostname }]
-      : await this.#network.lookup(hostname).catch((err: NodeJS.ErrnoException) => {
-          throw new ProbeError(err.code ?? 'ENOTFOUND', `DNS lookup failed for ${hostname}`, { cause: err });
-        });
-    if (addresses.length === 0) throw new ProbeError('ENOTFOUND', `no addresses for ${hostname}`);
-    const allowed = addresses.find((a) => this.#network.allowPrivateAddresses || isPublicAddress(a.address));
-    if (!allowed)
-      throw new ProbeError('private-address', `${hostname} resolves to non-public addresses only`);
-    return { host: allowed.address, port };
   }
 
   #facts(socket: Socket, tls: boolean): ConnectionFacts {
@@ -546,12 +551,13 @@ export type ChainOutcome =
   | 'throttled'
   | 'error';
 
+/** Resolver error codes reported as `dns-error` by the HTTP and TLS probes. */
+export const DNS_ERROR_CODES = ['ENOTFOUND', 'EAI_AGAIN', 'EAI_NODATA', 'EAI_NONAME', 'ENODATA', 'ESERVFAIL'];
+
 /** Map a probe error code to a chain outcome (RedirectChain.outcome). */
 export function outcomeOf(code: string): ChainOutcome {
   if (code === 'ECONNREFUSED') return 'connection-refused';
-  if (['ENOTFOUND', 'EAI_AGAIN', 'EAI_NODATA', 'EAI_NONAME', 'ENODATA', 'ESERVFAIL'].includes(code)) {
-    return 'dns-error';
-  }
+  if (DNS_ERROR_CODES.includes(code)) return 'dns-error';
   if (TIMEOUT_CODES.has(code) || code === 'aborted') return 'timeout';
   if (code === 'throttled') return 'throttled';
   if (/^(ERR_SSL|ERR_TLS|EPROTO|CERT_|UNABLE_TO|DEPTH_ZERO|SELF_SIGNED)/.test(code)) return 'tls-error';

@@ -1,7 +1,0 @@
-{
-  "hosts": {
-    "www.example.test": "www",
-    "fonts.googleapis.com": "fonts",
-    "fonts.gstatic.com": "gstatic"
-  }
-}

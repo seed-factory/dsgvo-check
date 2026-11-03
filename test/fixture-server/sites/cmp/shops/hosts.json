@@ -1,6 +1,0 @@
-{
-  "hosts": {
-    "www.animated-shop.test": "animated",
-    "www.vendors-shop.test": "vendors"
-  }
-}

@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
-import type { HttpSection } from '../../../src/collectors/http/types.ts';
+import type { HttpSection } from '../../../src/core/snapshot-http.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, withRoutes } from './helpers.ts';

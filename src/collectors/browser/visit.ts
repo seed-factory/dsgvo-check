@@ -1,15 +1,16 @@
 /** One top-level navigation with the quiet wait, response facts, DOM facts and challenge detection. */
 import type { Page, Response } from 'playwright-core';
 import { snapshotHeaderRecords } from '../../core/headers.ts';
+import type { PageRole, PageVisit } from '../../core/snapshot-browser.ts';
 import type { BrowserPhase, HeaderRecord } from '../../core/snapshot-common.ts';
+import { retryAfterMs } from '../http/client.ts';
 import { detectChallenge } from './challenge.ts';
 import type { BrowserTiming, PhaseTiming } from './config.ts';
 import { collectDom } from './dom.ts';
 import { sanitizeRequestUrl, splitSetCookieNames } from './features.ts';
 import type { CandidateLink } from './pages.ts';
 import { waitForQuiet } from './quiet.ts';
-import type { NetworkRecorder } from './recorder.ts';
-import type { PageRole, PageVisit } from './types.ts';
+import { type NetworkRecorder, settleWithin } from './recorder.ts';
 import { errorText, TimeoutError, truncate, withTimeout } from './util.ts';
 
 export interface VisitInput {
@@ -47,7 +48,7 @@ const MAX_HEADER_VALUE = 2048;
 /** Floor of the page budget left for response metadata after the quiet wait. */
 const MIN_META_BUDGET_MS = 500;
 
-export interface Settled<T> {
+export interface SettledValue<T> {
   value: T;
   /** `timeout`: the budget ran out; `aborted`: the scan deadline passed; absent: `p` settled (value or error). */
   cut?: 'timeout' | 'aborted';
@@ -57,32 +58,16 @@ export interface Settled<T> {
  * Wait for `p`, but not longer than `ms` and not past the abort of `signal`. Never rejects: a rejection and a cut
  * both give `fallback`. The pending promise keeps running; whatever it settles with later is not used.
  */
-export function settleWithin<T>(
+export async function valueWithin<T>(
   p: Promise<T>,
   ms: number,
   signal: AbortSignal,
   fallback: T,
-): Promise<Settled<T>> {
-  return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (value: T, cut?: Settled<T>['cut']) => {
-      if (timer !== undefined) clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-      resolve(cut ? { value, cut } : { value });
-    };
-    const onAbort = () => finish(fallback, 'aborted');
-    if (signal.aborted) {
-      p.catch(() => undefined);
-      finish(fallback, 'aborted');
-      return;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(() => finish(fallback, 'timeout'), Math.max(0, ms));
-    p.then(
-      (v) => finish(v),
-      () => finish(fallback),
-    );
-  });
+): Promise<SettledValue<T>> {
+  const r = await settleWithin(p, ms, signal);
+  if (r.status === 'ok') return { value: r.value };
+  if (r.status === 'error') return { value: fallback };
+  return { value: fallback, cut: signal.aborted ? 'aborted' : 'timeout' };
 }
 
 /**
@@ -109,15 +94,6 @@ export function navigationErrorCode(message: string): string {
   return 'navigation-error';
 }
 
-function retryAfterMs(headers: readonly HeaderRecord[]): number | undefined {
-  const v = headers.find((h) => h.name === 'retry-after')?.value;
-  if (!v) return undefined;
-  const secs = Number(v);
-  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
-  const at = Date.parse(v);
-  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
-}
-
 /** `ERR_…` code that the browser prints on its own error page (title and text sample), if any. */
 function errorCodeOfErrorPage(title: string, text: string): string | null {
   return /\b(ERR_[A-Z0-9_]+)\b/.exec(`${title}\n${text}`)?.[1] ?? null;
@@ -138,7 +114,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   /** Await response metadata within the page budget; on a cut keep what is known and record the limitation. */
   const bounded = async <T>(code: string, what: string, p: Promise<T>, fallback: T): Promise<T> => {
     const ms = budgetLeft();
-    const r = await settleWithin(p, ms, i.signal, fallback);
+    const r = await valueWithin(p, ms, i.signal, fallback);
     if (r.cut === 'timeout') limitations.push({ code, message: `${what} not completed within ${ms} ms` });
     return r.value;
   };
@@ -290,7 +266,8 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
     ...(notEvaluableReason ? { notEvaluableReason } : {}),
     dom,
   };
-  const retry = retryAfterMs(liveHeaders);
+  const retry =
+    retryAfterMs(liveHeaders.find((h) => h.name === 'retry-after')?.value ?? null, Date.now()) ?? undefined;
   return {
     visit,
     candidates,

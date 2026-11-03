@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, defaultPages, page, phase, req, START, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios.ts';
+import { SCENARIOS } from './scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-01']!.find((s) => s.file === file)!.build();
 const css = (id: string, p = {}) =>

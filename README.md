@@ -207,7 +207,7 @@ Derselbe Text steht in `dsgvo-check --help` (Quelle: `data/texts/de/core.yaml`, 
 ## Entwicklung
 
 ```sh
-corepack pnpm typecheck && corepack pnpm lint && corepack pnpm schema:check
+corepack pnpm typecheck && corepack pnpm lint
 corepack pnpm test:unit          # L0–L1: ohne Browser und Netz
 corepack pnpm test:integration   # L2: echtes Chromium gegen lokale Server, ohne Internet
 corepack pnpm build && corepack pnpm test:e2e   # L3: gebautes CLI; Docker und Action mit DSGVO_E2E_IMAGE

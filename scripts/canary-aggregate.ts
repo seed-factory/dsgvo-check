@@ -1,143 +1,16 @@
 /**
- * Canary aggregation: run directory → summary.json + SUMMARY.md. Pure except `loadRun`.
+ * Canary aggregation: site results → summary.json.
  * Aggregates carry no site names by default (ids, hosts and free-text messages are left out; machine codes are
  * scrubbed of site hosts). `withSites` adds a per-site table for local analysis only.
  */
-import { readdir } from 'node:fs/promises';
-import path from 'node:path';
 import type { CheckStatus, Severity } from '../src/core/report-schema.ts';
-import { FILES, type RunInfo, readJsonFile, type SiteMeta, type SiteRef } from './canary-runner.ts';
+import { type Confidence, DETECTED_CMPS, type DetectedCmpId, type SiteResult } from './canary-load.ts';
+import type { SiteRef } from './canary-results.ts';
 import { EXPECTED_CMPS, type ExpectedCmp, KNOWN_CMPS, type KnownCmp, type Region } from './canary-sites.ts';
-
-/** The parts of a report the summary reads. Reports are read defensively (older versions, partial files). */
-export interface ReportLike {
-  scan?: {
-    status?: string;
-    failure?: { code?: string };
-    coverage?: { collectors?: Record<string, { status?: string; reason?: string; durationMs?: number }> };
-  };
-  checks?: Array<{ id: string; status: string; reason?: string | null; error?: { code?: string } }>;
-  findings?: Array<{ checkId: string; variant: string; severity: string }>;
-  diagnostics?: Array<{ code: string }>;
-  evidence?: Array<{ type: string; cmpId?: string | null; recognitionConfidence?: string }>;
-  summary?: { exitCode?: number; exitReasons?: string[] };
-}
-
-export type DetectedCmpId = KnownCmp | 'other' | 'none' | 'n/a';
-export const DETECTED_CMPS: readonly DetectedCmpId[] = [...KNOWN_CMPS, 'other', 'none', 'n/a'];
-type Confidence = 'high' | 'medium' | 'low';
-
-export interface DetectedCmp {
-  id: DetectedCmpId;
-  confidence: Confidence | null;
-  source: 'snapshot' | 'report' | 'none';
-}
-
-export interface SiteResult {
-  site: SiteRef;
-  /** null: planned but not finished yet. */
-  meta: SiteMeta | null;
-  report: ReportLike | null;
-  cmp: DetectedCmp;
-}
-
-const NOT_AVAILABLE: DetectedCmp = { id: 'n/a', confidence: null, source: 'none' };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function toDetectedId(cmpId: unknown, method: unknown): DetectedCmpId {
-  if (method === 'none' || cmpId === null || cmpId === undefined || cmpId === '') return 'none';
-  if (method === 'adapter' && (KNOWN_CMPS as readonly unknown[]).includes(cmpId)) return cmpId as KnownCmp;
-  return 'other';
-}
-
-const CONF_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
-const METHOD_RANK: Record<string, number> = { adapter: 2, heuristic: 1, none: 0 };
-
-/**
- * Detected CMP of a saved snapshot: the best detection over all CMP facts (adapter > heuristic, then confidence,
- * then phase B first screen). `n/a` when the browser did not deliver CMP facts; null without a snapshot.
- */
-export function detectedCmpFromSnapshot(snapshot: unknown): DetectedCmp | null {
-  if (!isRecord(snapshot)) return null;
-  const browser = isRecord(snapshot.collection) ? snapshot.collection.browser : undefined;
-  const status = isRecord(browser) ? browser.status : undefined;
-  if ((status !== 'ok' && status !== 'partial') || !isRecord(snapshot.cmp)) return NOT_AVAILABLE;
-  const phases = Array.isArray(snapshot.cmp.phases) ? snapshot.cmp.phases : [];
-  let best: { rank: number; id: DetectedCmpId; confidence: Confidence } | null = null;
-  for (const p of phases) {
-    if (!isRecord(p) || !Array.isArray(p.facts)) continue;
-    for (const f of p.facts) {
-      if (!isRecord(f) || !isRecord(f.detection)) continue;
-      const d = f.detection;
-      const method = typeof d.method === 'string' ? d.method : 'none';
-      const id = toDetectedId(d.cmpId, method);
-      if (id === 'none') continue;
-      const confidence = (
-        CONF_RANK[String(d.recognitionConfidence)] ? d.recognitionConfidence : 'low'
-      ) as Confidence;
-      const firstScreen = f.phase === 'B' && f.moment === 'first-screen' ? 1 : 0;
-      const rank = (METHOD_RANK[method] ?? 0) * 100 + (CONF_RANK[confidence] ?? 0) * 10 + firstScreen;
-      if (!best || rank > best.rank) best = { rank, id, confidence };
-    }
-  }
-  return best
-    ? { id: best.id, confidence: best.confidence, source: 'snapshot' }
-    : { id: 'none', confidence: null, source: 'snapshot' };
-}
-
-/** Fallback without a snapshot: the strongest `cmp` evidence of the report. */
-export function detectedCmpFromReport(report: ReportLike | null): DetectedCmp | null {
-  let best: DetectedCmp | null = null;
-  for (const e of report?.evidence ?? []) {
-    if (e.type !== 'cmp' || !e.cmpId) continue;
-    const id: DetectedCmpId = (KNOWN_CMPS as readonly string[]).includes(e.cmpId)
-      ? (e.cmpId as KnownCmp)
-      : 'other';
-    const confidence = (
-      CONF_RANK[String(e.recognitionConfidence)] ? e.recognitionConfidence : 'low'
-    ) as Confidence;
-    if (!best || (CONF_RANK[confidence] ?? 0) > (CONF_RANK[best.confidence ?? ''] ?? 0)) {
-      best = { id, confidence, source: 'report' };
-    }
-  }
-  return best;
-}
-
-/** Read a run directory. Sites come from run.json (plan order) plus any site directory with a meta.json. */
-export async function loadRun(runDir: string): Promise<{ run: RunInfo | null; results: SiteResult[] }> {
-  const run = await readJsonFile<RunInfo>(path.join(runDir, FILES.run));
-  let dirs: string[] = [];
-  try {
-    dirs = (await readdir(runDir, { withFileTypes: true }))
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
-  } catch {
-    throw new Error(`run directory not found: ${runDir}`);
-  }
-  const planned = new Map<string, SiteRef>((run?.sites ?? []).map((s) => [s.id, s]));
-  const order = [...planned.keys(), ...dirs.filter((d) => !planned.has(d))];
-  const results: SiteResult[] = [];
-  for (const id of order) {
-    const dir = path.join(runDir, id);
-    const meta = await readJsonFile<SiteMeta>(path.join(dir, FILES.meta));
-    const site = meta?.site ?? planned.get(id);
-    if (!site) continue;
-    const report = await readJsonFile<ReportLike>(path.join(dir, FILES.report));
-    const validReport = isRecord(report) && isRecord(report.scan) ? report : null;
-    const snapshot = await readJsonFile<unknown>(path.join(dir, FILES.snapshot));
-    const cmp = detectedCmpFromSnapshot(snapshot) ?? detectedCmpFromReport(validReport) ?? NOT_AVAILABLE;
-    results.push({ site, meta, report: validReport, cmp });
-  }
-  return { run, results };
-}
 
 export const GROUPS = ['all', 'eu-eea', 'de', 'eu', 'non-eu'] as const;
 export type GroupKey = (typeof GROUPS)[number];
-const GROUP_LABEL: Record<GroupKey, string> = {
+export const GROUP_LABEL: Record<GroupKey, string> = {
   all: 'all',
   'eu-eea': 'EU/EEA',
   de: 'DE',
@@ -152,7 +25,7 @@ const GROUP_MEMBERS: Record<GroupKey, readonly Region[]> = {
   'non-eu': ['non-eu'],
 };
 
-const CHECK_STATUSES: readonly CheckStatus[] = [
+export const CHECK_STATUSES: readonly CheckStatus[] = [
   'completed',
   'partial',
   'inconclusive',
@@ -160,8 +33,8 @@ const CHECK_STATUSES: readonly CheckStatus[] = [
   'error',
   'skipped',
 ];
-const SEVERITIES: readonly Severity[] = ['critical', 'warning', 'info'];
-const SCAN_STATUSES = ['complete', 'partial', 'failed', 'no-report'] as const;
+export const SEVERITIES: readonly Severity[] = ['critical', 'warning', 'info'];
+export const SCAN_STATUSES = ['complete', 'partial', 'failed', 'no-report'] as const;
 type ScanStatusKey = (typeof SCAN_STATUSES)[number];
 
 export interface DurationStats {
@@ -607,213 +480,4 @@ export function aggregate(results: readonly SiteResult[], o: AggregateOptions): 
   };
   if (o.withSites) summary.sites = siteRows(results);
   return summary;
-}
-
-function cell(v: string | number | null | undefined): string {
-  if (v === null || v === undefined) return '–';
-  return String(v)
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/\|/g, '\\|');
-}
-
-function table(head: readonly string[], rows: ReadonlyArray<ReadonlyArray<string | number | null>>): string {
-  const line = (cells: ReadonlyArray<string | number | null>) => `| ${cells.map(cell).join(' | ')} |`;
-  return [line(head), `|${head.map(() => ' --- ').join('|')}|`, ...rows.map(line)].join('\n');
-}
-
-const pct = (v: number | null) => (v === null ? '–' : `${(v * 100).toFixed(1)} %`);
-const sec = (ms: number | null | undefined) =>
-  ms === null || ms === undefined ? '–' : `${(ms / 1000).toFixed(1)} s`;
-
-function keyedTable(
-  title: string,
-  pick: (g: GroupAggregate) => Record<string, number>,
-  s: CanarySummary,
-): string {
-  const keys = [...new Set(GROUPS.flatMap((g) => Object.keys(pick(s.groups[g]))))].sort();
-  if (keys.length === 0) return `${title}\n\n_none_`;
-  return `${title}\n\n${table(
-    ['code', ...GROUPS.map((g) => GROUP_LABEL[g])],
-    keys.map((k) => [k, ...GROUPS.map((g) => pick(s.groups[g])[k] ?? 0)]),
-  )}`;
-}
-
-export function renderMarkdown(s: CanarySummary): string {
-  const all = s.groups.all;
-  const out: string[] = [];
-  const modeLine =
-    s.mode === 'reanalyze'
-      ? `reanalysis of \`${s.reanalyzedFrom ?? '?'}\` (saved snapshots, no network)`
-      : 'live scan';
-  out.push(`# Canary run ${s.runId}`);
-  out.push(
-    [
-      `Generated ${s.generatedAt}; ${modeLine}.`,
-      `Sites: ${all.sites} planned, ${all.finished} finished, ${all.pending} pending.`,
-      s.withSites
-        ? '**Contains site names (`--with-sites`): local analysis only, do not share or publish.**'
-        : 'Aggregates only, no site names. Findings and check statistics cover complete and partial scans.',
-    ].join('\n'),
-  );
-
-  out.push('## Scan status');
-  out.push(
-    table(
-      ['', ...GROUPS.map((g) => GROUP_LABEL[g])],
-      [
-        ['sites', ...GROUPS.map((g) => s.groups[g].sites)],
-        ...SCAN_STATUSES.map((st) => [st, ...GROUPS.map((g) => s.groups[g].scanStatus[st])]),
-        ['pending', ...GROUPS.map((g) => s.groups[g].pending)],
-        ['runner errors', ...GROUPS.map((g) => s.groups[g].runnerErrors)],
-      ],
-    ),
-  );
-  out.push(keyedTable('### Failure codes (failed scans)', (g) => g.failureCodes, s));
-  out.push(keyedTable('### Exit reasons', (g) => g.exitReasons, s));
-  out.push(keyedTable('### Exit codes', (g) => g.exitCodes, s));
-
-  out.push(keyedTable('## Diagnostics (sites per code)', (g) => g.diagnostics, s));
-
-  out.push('## Findings');
-  out.push(
-    table(
-      ['severity', ...GROUPS.map((g) => `${GROUP_LABEL[g]} findings / sites`)],
-      SEVERITIES.map((sev) => [
-        sev,
-        ...GROUPS.map(
-          (g) => `${s.groups[g].findings.bySeverity[sev]} / ${s.groups[g].findings.sitesWithSeverity[sev]}`,
-        ),
-      ]),
-    ),
-  );
-  out.push('### By check, variant and severity');
-  out.push(
-    s.variants.length === 0
-      ? '_none_'
-      : table(
-          ['check', 'variant', 'severity', 'findings', 'sites', 'DE sites', 'EU sites', 'non-EU sites'],
-          s.variants.map((v) => [
-            v.checkId,
-            v.variant,
-            v.severity,
-            v.findings,
-            v.sites,
-            v.sitesByRegion.de,
-            v.sitesByRegion.eu,
-            v.sitesByRegion['non-eu'],
-          ]),
-        ),
-  );
-
-  out.push('## Checks: status and inconclusive share');
-  out.push('Share = inconclusive / (results − skipped).');
-  const checkIds = Object.keys(all.checks);
-  if (checkIds.length === 0) out.push('_no check results_');
-  else {
-    out.push(
-      table(
-        ['check', ...CHECK_STATUSES, 'inconclusive share', 'EU/EEA', 'non-EU'],
-        checkIds.map((id) => {
-          const c = all.checks[id] as CheckAggregate;
-          return [
-            id,
-            ...CHECK_STATUSES.map((st) => c.statuses[st]),
-            pct(c.inconclusiveShare),
-            pct(s.groups['eu-eea'].checks[id]?.inconclusiveShare ?? null),
-            pct(s.groups['non-eu'].checks[id]?.inconclusiveShare ?? null),
-          ];
-        }),
-      ),
-    );
-    const reasonRows = checkIds.flatMap((id) =>
-      Object.entries((all.checks[id] as CheckAggregate).reasons).map(([k, n]) => [id, k, n] as const),
-    );
-    out.push('### Reasons (non-completed results)');
-    out.push(reasonRows.length === 0 ? '_none_' : table(['check', 'status:reason', 'count'], reasonRows));
-  }
-
-  out.push('## CMP: expected vs detected');
-  out.push(
-    'Rows: `expectedCmp` from sites.yaml. Columns: CMP detected by the scanner (`n/a` = no CMP facts).',
-  );
-  out.push(
-    table(
-      ['expected \\ detected', ...DETECTED_CMPS],
-      EXPECTED_CMPS.map((e) => [e, ...DETECTED_CMPS.map((d) => s.cmp.matrix[e][d])]),
-    ),
-  );
-  out.push(
-    table(
-      ['CMP', 'expected', 'evaluated', 'matched', 'recall', 'detected elsewhere', 'high', 'medium', 'low'],
-      KNOWN_CMPS.map((c) => {
-        const p = s.cmp.perCmp[c];
-        const r = s.cmp.recognition[c];
-        return [c, p.expected, p.evaluated, p.matched, pct(p.recall), p.unexpected, r.high, r.medium, r.low];
-      }),
-    ),
-  );
-
-  out.push('## Durations');
-  const durRow = (label: string, d: DurationStats | null) => [
-    label,
-    d?.count ?? 0,
-    sec(d?.minMs),
-    sec(d?.p50Ms),
-    sec(d?.p90Ms),
-    sec(d?.maxMs),
-    sec(d?.meanMs),
-  ];
-  out.push(
-    table(
-      ['', 'count', 'min', 'median', 'p90', 'max', 'mean'],
-      [
-        ...GROUPS.map((g) => durRow(`scan, ${GROUP_LABEL[g]}`, s.groups[g].durations)),
-        ...Object.entries(s.collectorDurations).map(([name, d]) => durRow(`collector ${name}`, d)),
-      ],
-    ),
-  );
-  if (s.mode === 'reanalyze') out.push('Scan durations are those of the source run.');
-
-  out.push('## Top errors');
-  out.push(
-    s.topErrors.length === 0
-      ? '_none_'
-      : table(
-          ['kind', 'code', 'count'],
-          s.topErrors.map((e) => [e.kind, e.code, e.count]),
-        ),
-  );
-
-  if (s.sites) {
-    out.push('## Sites');
-    out.push(
-      table(
-        [
-          'id',
-          'region',
-          'status',
-          'exit',
-          'duration',
-          'crit/warn/info',
-          'CMP expected',
-          'CMP detected',
-          'diagnostics',
-          'failure / runner error',
-        ],
-        s.sites.map((x) => [
-          x.id,
-          x.region,
-          x.scanStatus,
-          x.exitCode,
-          sec(x.durationMs),
-          `${x.findings.critical}/${x.findings.warning}/${x.findings.info}`,
-          x.expectedCmp,
-          x.detectedCmpConfidence ? `${x.detectedCmp} (${x.detectedCmpConfidence})` : x.detectedCmp,
-          x.diagnostics.join(', ') || '–',
-          x.failureCode ?? x.runnerError ?? '–',
-        ]),
-      ),
-    );
-  }
-  return `${out.join('\n\n')}\n`;
 }
