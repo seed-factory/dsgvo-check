@@ -1,6 +1,6 @@
 /**
  * Pure: the verdict on a fetched page. The document type is decided by the title, the h1 and the section
- * headings of the whole document with localised markers from data/legal/links.yaml, not by one keyword in the
+ * headings of the whole document with localised markers from test/data/legal/links.yaml, not by one keyword in the
  * first 20 000 characters. A substantive page without a marker is `unconfirmed` (neither soft-404 nor found); the
  * language of the markers is recorded for PRIV-01 (the lang attribute alone does not decide).
  */

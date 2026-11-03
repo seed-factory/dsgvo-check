@@ -1,20 +1,16 @@
 # Example: dsgvo-check stops a GitHub pipeline
 
-This example shows a "red" build. The workflow publishes a small demo page to GitHub Pages and then scans it
-with the dsgvo-check Action. The page contains two deliberate findings:
+A deliberately "red" build. The workflow publishes a small demo page to GitHub Pages and scans it with the
+dsgvo-check Action in a separate job. The page contains two deliberate findings:
 
-| Check      | Severity | Why                                                                       |
-| ---------- | -------- | ------------------------------------------------------------------------- |
-| `LEGAL-01` | critical | No link to an Impressum or a Datenschutzerklärung was found on the page.  |
-| `EMBED-01` | warning  | The font is loaded from `fonts.googleapis.com` instead of the own server. |
+| Check      | Severity | Why                                                                      |
+| ---------- | -------- | ------------------------------------------------------------------------ |
+| `LEGAL-01` | critical | No link to an Impressum or a Datenschutzerklärung was found.             |
+| `EMBED-01` | warning  | The font is loaded from `fonts.googleapis.com`, not from the own server. |
 
-With `fail-on: critical` (the default), the critical `LEGAL-01` finding gives exit code `1`, so the job fails. The
-Job Summary lists the findings; the full report (`report.json`, `report.html`, `summary.md`) is uploaded as the
-artifact `dsgvo-check-report` and kept for 14 days.
-
-The texts describe technical observations. They are not legal advice.
-
-## Files
+With `fail-on: critical` (the default), the critical `LEGAL-01` finding gives exit code `1` and the job fails. The Job
+Summary lists the findings; the full report (`report.json`, `report.html`, `summary.md`) is uploaded as the artifact
+`dsgvo-check-report` and kept for 14 days. The texts describe technical observations, not legal advice.
 
 ```
 examples/github-failing/
@@ -24,8 +20,8 @@ examples/github-failing/
 
 ## Try it
 
-1. Create a new repository and copy the contents of this directory into it (including `.github/`).
-2. The workflow uses `seed-factory/dsgvo-check@v0.1.0`; choose the release tag to use.
+1. Create a repository and copy this directory into it (including `.github/`).
+2. In the workflow, set the Action release tag to use (`seed-factory/dsgvo-check@v0.1.0`).
 3. In the repository settings, enable GitHub Pages with the source "GitHub Actions".
 4. Push to `main`. The `deploy` job publishes the page, the `dsgvo-check` job fails with exit code 1.
 
@@ -43,17 +39,14 @@ Scan vollständig · Exit-Code 1 (`threshold`)
 ## Turn it green
 
 - Add `impressum.html` and `datenschutz.html` and link them from every page (fixes `LEGAL-01`).
-- Self-host the font: download it once, serve it from `site/fonts/` and drop the Google Fonts link (fixes
-  `EMBED-01`; it is a warning, so it does not fail the build with `fail-on: critical`, but it does with
-  `fail-on: warning`).
+- Self-host the font: serve it from `site/fonts/` and drop the Google Fonts link (fixes `EMBED-01`). It is only a
+  warning, so it fails the build with `fail-on: warning`, not with `critical`.
 
-## Notes on the setup
+## Notes
 
-- The scan runs in its own job with `permissions: contents: read` and no secrets. The Action starts the scanner
-  in a container as a non-root user with a seccomp profile for the Chromium sandbox, `--cap-drop=ALL`, a
-  read-only root filesystem and memory/CPU limits. Only the report directory is mounted.
-- Use the Action release tag `seed-factory/dsgvo-check@v0.1.0` and its matching scanner image version.
-- To report without failing the build, use `fail-on: none` (only scan errors give exit code 2) or
+- Keep the scan in its own job with `permissions: contents: read` and no secrets: the scanner opens untrusted pages.
+  The Action hardens the container itself, see the [README](../../README.md#github-action).
+- To report without failing the build, use `fail-on: none` (only scan errors give exit code 2), or
   `continue-on-error: true` on the step and read `steps.<id>.outputs.exit-code`.
-- GitHub-hosted runners are not guaranteed to be in the EU. Consent banners that depend on the visitor's location
-  can behave differently there; see the `Messumgebung` section of `report.html`.
+- GitHub-hosted runners are not guaranteed to be in the EU, so banners that depend on the visitor's location can
+  behave differently there; see the `Messumgebung` section of `report.html`.

@@ -36,7 +36,7 @@ export { loadServiceCatalog, ServiceCatalog } from './catalog.ts';
 export type * from './types.ts';
 
 export interface DeriveOptions {
-  /** Pre-loaded catalog (tests); default: data/services from `dataDir` or the package data. */
+  /** Pre-loaded catalog (tests); default: test/data/services from `dataDir` or the package data. */
   catalog?: ServiceCatalog;
   dataDir?: string;
 }

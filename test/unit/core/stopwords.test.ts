@@ -1,5 +1,5 @@
 /**
- * (wording guide §2): no legal verdicts in user-facing texts, de and en, in every module (data/texts/**) and
+ * (wording guide §2): no legal verdicts in user-facing texts, de and en, in every module (test/data/texts/**) and
  * in the rendered reports. Rule 1 (`block`) plus rules 2, 3, 6, 10 and 13 : no claim about (missing)
  * consent, no "tracker" label, no necessity verdict outside quoted button names, no "missing imprint", no
  * obligations. Rule 3 and 6 are `label` rules: quoted button names („…“, "…") of the site are exempt.
@@ -78,8 +78,8 @@ function textFiles(dir: string): string[] {
     .map((e) => path.join(e.parentPath, e.name));
 }
 
-describe('stop words in data/texts', () => {
-  const files = textFiles(path.join(REPO_ROOT, 'data/texts'));
+describe('stop words in test/data/texts', () => {
+  const files = textFiles(path.join(REPO_ROOT, 'test/data/texts'));
 
   it('finds the text files', () => {
     expect(files.length).toBeGreaterThan(0);

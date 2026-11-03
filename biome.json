@@ -15,7 +15,7 @@
       "!**/schema/report.schema.json",
       "!**/docker/seccomp-chromium.json",
       "!**/pnpm-lock.yaml",
-      "!**/data/report",
+      "!**/test/data/report",
       "!**/docs",
       "!**/specs",
       "!**/test/fixtures/snapshots/**/*.json",

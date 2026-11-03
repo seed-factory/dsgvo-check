@@ -290,7 +290,7 @@ describe('Dockerfile and seccomp profile', () => {
       expect(existsSync(path.join(REPO_ROOT, source)), source).toBe(true);
       expect(lines, source).toContain(`!${source}`);
     }
-    for (const directory of ['src', 'data']) expect(lines).toContain(`!${directory}/**`);
+    for (const directory of ['src', 'test/data']) expect(lines).toContain(`!${directory}/**`);
     expect(lines).toContain('!docker');
     expect(lines).toContain('docker/**');
   });

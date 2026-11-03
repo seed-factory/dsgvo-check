@@ -1,6 +1,6 @@
 /**
  * Disclaimer with conditional paragraphs (wording guide §6). The base text is the report's
- * `disclaimer.text` (built by core); the other paragraphs come from `data/texts/<lang>/core.yaml` (`ui.disclaimer.*`).
+ * `disclaimer.text` (built by core); the other paragraphs come from `test/data/texts/<lang>/core.yaml` (`ui.disclaimer.*`).
  * A conditional paragraph is added only when its condition holds in the report, so the text always stays true.
  * scan() composes `disclaimer.text` of the in-memory report with it; every reporter renders the paragraphs
  * again from the final report (exit reasons may change while writing). A text composed from the same base is

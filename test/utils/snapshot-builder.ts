@@ -409,7 +409,7 @@ export function makeDerived(
 
 let routingCache: Record<string, string> | null = null;
 
-/** Deterministic context (fixed clock, de, real routing.yaml, data dirs loaded from data/ on demand). */
+/** Deterministic context (fixed clock, de, real routing.yaml, data dirs loaded from test/data/ on demand). */
 export function checkContext(p: Partial<CheckContext> & { dataDirs?: readonly string[] } = {}): CheckContext {
   routingCache ??= loadRouting();
   const data: Record<string, unknown> = { ...p.data };

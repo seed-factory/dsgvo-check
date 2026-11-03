@@ -281,7 +281,7 @@ function installBrowser(withDeps: boolean): Promise<number> {
   });
 }
 
-/** Nutzungshinweise for `--help` (wording guide §6); the text lives in data/texts. */
+/** Nutzungshinweise for `--help` (wording guide §6); the text lives in test/data/texts. */
 function usageNotes(): string {
   try {
     const texts = loadTexts('de');

@@ -430,7 +430,7 @@ describe('report labels', () => {
     }
   });
 
-  it('labels can be overridden from data/texts ui keys (report.*)', () => {
+  it('labels can be overridden from test/data/texts ui keys (report.*)', () => {
     const c = ctx();
     c.texts = {
       ...c.texts,

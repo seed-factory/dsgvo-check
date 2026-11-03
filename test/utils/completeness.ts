@@ -58,7 +58,7 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
     const id = check.id;
     const entry = d.ruleset.checks[id];
     const declared = check.variants.map((v) => v.variant);
-    if (!entry) problems.push(`${id}: no ruleset entry (data/ruleset/de-2026/${check.module}.yaml)`);
+    if (!entry) problems.push(`${id}: no ruleset entry (test/data/ruleset/de-2026/${check.module}.yaml)`);
     else {
       for (const v of declared) if (!entry.variants[v]) problems.push(`${id}.${v}: no ruleset severity`);
       for (const [v, rule] of Object.entries(entry.variants)) {
@@ -70,14 +70,14 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
     }
     for (const lang of ['de', 'en'] as const) {
       if (!d.texts[lang].legalNotes[id])
-        problems.push(`${id}: no legalNote in data/texts/${lang}/${check.module}.yaml`);
+        problems.push(`${id}: no legalNote in test/data/texts/${lang}/${check.module}.yaml`);
     }
     for (const v of declared) {
       const key = `${id}.${v}`;
       for (const lang of ['de', 'en'] as const) {
         const m = d.texts[lang].messages[key];
         if (!m) {
-          problems.push(`${key}: no ${lang} text (data/texts/${lang}/${check.module}.yaml)`);
+          problems.push(`${key}: no ${lang} text (test/data/texts/${lang}/${check.module}.yaml)`);
           continue;
         }
         for (const part of [m.title, m.body]) {

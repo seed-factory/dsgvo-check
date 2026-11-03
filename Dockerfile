@@ -30,7 +30,7 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json LICENSE NOTICE ./
-COPY data ./data
+COPY test/data ./test/data
 COPY --from=build /app/schema ./schema
 COPY docker/seccomp-chromium.json /etc/dsgvo-check/seccomp.json
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/dsgvo-check

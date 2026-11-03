@@ -70,7 +70,7 @@ const EMPTY_LEXICON: CmpLexicon = {
   hide: [],
 };
 
-/** Lexicon from data/cmp: `lexicon:` block or the top level; null when the shape is invalid. */
+/** Lexicon from test/data/cmp: `lexicon:` block or the top level; null when the shape is invalid. */
 export function lexiconFrom(data: unknown): CmpLexicon | null {
   try {
     return lexiconFromData(data);

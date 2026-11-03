@@ -1,42 +1,47 @@
 # Прототип dsgvo-check — бриф для реализации
 
-Минимальный рабочий прототип по утверждённым контрактам. Это не релиз 1.0, а проверка архитектуры на живых сайтах. Он должен честно сканировать сайт и выдавать JSON, консольный и HTML-отчёт с кодами возврата. Покрыт тестами. Канареечный прогон по локальному корпусу — измерение сканера (доля `inconclusive`, бот- и гео-режим, ошибки сбора), а не критерий приёмки.
+Минимальный рабочий прототип по утверждённым контрактам: проверка архитектуры на живых сайтах, не релиз 1.0. Он честно сканирует сайт, выдаёт отчёты в JSON, консоли и HTML, возвращает коды выхода и покрыт тестами. Канареечный прогон по локальному корпусу измеряет сканер (доля `inconclusive`, бот- и гео-режим, ошибки сбора), а не служит критерием приёмки.
 
-Источники контрактов — [архитектура](../02-architecture.md) и [спецификация проверок](../03-checks.md). Прототип им следует. Если решение для прототипа упрощено, это записано ниже в разделе «Упрощения». Всё остальное следует этим документам. Имена вариантов и `messageId` реализованных проверок задаёт `data/ruleset/de-2026/*.yaml`; таблица [`docs/03-checks.md`](../03-checks.md) §2.1 генерируется из него, расхождение ловит L0-тест `test/unit/core/registry-completeness.test.ts`.
+Контракты — в [архитектуре](../02-architecture.md) и [спецификации проверок](../03-checks.md); всё, что не названо упрощением, следует им. Имена вариантов и `messageId` задаёт `test/data/ruleset/de-2026/*.yaml`: таблицу [`docs/03-checks.md`](../03-checks.md) §2.1 генерирует `corepack pnpm registry`, расхождение ловит L0-тест `test/unit/core/registry-completeness.test.ts`.
 
-## Объём
+## Проверки
 
-**Проверки** (уровни, варианты и понижения — по [спецификации проверок](../03-checks.md)):
+14 из 15 P0 (без PRIV-02) и CONSENT-05:
 
-| Модуль | Проверки |
-|---|---|
-| browser | CONSENT-01, CONSENT-02, CONSENT-03, CONSENT-04, CONSENT-05, TRACK-01, EMBED-01, EMBED-02, LEGAL-01, PRIV-01 |
-| http/tls | HDR-01, TLS-01, TLS-02 |
-| dns | MAIL-01, MAIL-02 |
+- browser: CONSENT-01…05, TRACK-01, EMBED-01, EMBED-02, LEGAL-01, PRIV-01;
+- http/tls: HDR-01, TLS-01, TLS-02;
+- dns: MAIL-01, MAIL-02.
 
-**Диагностики:** `SCAN-BOTMODE`, `SCAN-GEO`, `SCAN-UNREACHABLE`, `SCAN-BLOCKED`, `SCAN-TIMEOUT`, `SCAN-SANDBOX-OFF`; дополнительно `SCAN-THROTTLED` и `SCAN-PRIVATE-REQUEST-BLOCKED` (SSRF-граница).
+Диагностики — все `SCAN-*` из [03-checks, раздел 7](../03-checks.md): `BOTMODE`, `GEO`, `UNREACHABLE`, `BLOCKED`, `TIMEOUT`, `SANDBOX-OFF`, `THROTTLED`, `PRIVATE-REQUEST-BLOCKED` (SSRF-граница).
 
-**Фазы браузера:**
+## Фазы браузера
+
+Каждая фаза идёт в свежем `launchPersistentContext(tmpdir)`.
+
 - **A** — до 6 страниц, без взаимодействия.
 - **B** — стартовая: наблюдение ≥ 4 с до клика, снимок первого экрана, «Ablehnen», проверка отказа, reload, затем до 2 контрольных страниц.
-- **C** — «Alle akzeptieren» на стартовой, нужна для инвентаря PRIV-01.
+- **C** — «Alle akzeptieren» на стартовой и те же контрольные страницы; нужна для инвентаря PRIV-01. Пропускается, если в B не распознан CMP.
 
-Каждая фаза запускается в свежем `launchPersistentContext(tmpdir)`.
+## CMP-адаптеры
 
-**CMP-адаптеры:** Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub. Контракт адаптера — `extract / act / verify`, без решений. `extract(page) → CmpFacts` (распознавание, кнопки с ролью и геометрией, блокировка, `ConsentState`, гео- и бот-сигналы); `act(page, action, target)` — клик ровно по элементу, который выбрала core; `verify(page)` — состояние сразу после действия и после reload. Что считать отказом и согласием, блокирует ли баннер и куда кликать, решает только чистая `classifyFirstLayer(facts, lexicon)` в core; выбор пишется в `plan.click`, и коллектор передаёт адаптеру именно эту цель (`ActOptions.target` для `reject`/`accept`). Default-denied без ответа пользователя отказом не считается. Распознавание с уверенностью `high` требует ≥ 2 независимых признаков. Если баннер не распознан, CONSENT-04 даёт `info` «Banner nicht erkannt» и статус `inconclusive`.
+Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub. Контракт — `extract / act / verify`, без решений; подробности — в [архитектуре, раздел 8](../02-architecture.md).
 
-**Отчёты:**
-- **JSON** — контракт; zod 4 → JSON Schema 2020-12 в `schema/report.schema.json` (пишет `corepack pnpm build`, в git не хранится), проверка Ajv в тестах.
+- Что считать отказом и согласием и куда кликать, решает чистая `classifyFirstLayer(facts, lexicon)` в core. Выбор пишется в `plan.click` и передаётся адаптеру как `ActOptions.target`; адаптер кликает ровно по нему.
+- Default-denied без ответа пользователя отказом не считается. Распознавание `high` требует ≥ 2 независимых признаков.
+- Баннер не распознан → CONSENT-04 `info` «Banner nicht erkannt», статус `inconclusive`.
+
+## Отчёты
+
+- **JSON** — контракт: zod 4 → JSON Schema 2020-12 в `schema/report.schema.json` (пишет `corepack pnpm build`, в git не хранится), проверка Ajv в тестах.
 - **Консоль.**
-- **HTML** — один файл, без JS, без внешних ресурсов, с полной CSP: `default-src 'none'; img-src data:; style-src 'sha256-…'; base-uri 'none'; form-action 'none'` в meta-теге; скриншот баннера встроен как `data:`.
+- **HTML** — один файл без JS и внешних ресурсов, с CSP в meta-теге: `default-src 'none'; img-src data:; style-src 'sha256-…'; base-uri 'none'; form-action 'none'`. Скриншот баннера встроен как `data:`.
 - **GitHub Job Summary** — Markdown.
-- **PDF** — печать того же HTML по явному `--format pdf` или `--format html,pdf`. По умолчанию выключен; сбой печати даёт одну строку предупреждения без файла, не меняя код выхода и JSON.
+- **PDF** — печать того же HTML по явному `--format pdf` или `html,pdf`. Сбой печати — одна строка предупреждения, код выхода и JSON не меняются.
 
-
-**CLI:**
+## CLI
 
 ```
-dsgvo-check <url>
+dsgvo-check [url]                   (url не нужен при --from-snapshot)
   --fail-on critical|warning|none   (default: critical)
   --format console,json,html,pdf,summary  (default: console,json)
   --out <dir>                       (default: ./dsgvo-check-report)
@@ -51,67 +56,54 @@ dsgvo-check <url>
   --save-snapshot <file>
   --from-snapshot <file>
   --checks <ID,...>
-dsgvo-check install                 (скачивает Chromium для playwright-core)
+  --verbose                         (подробные логи в stderr)
+dsgvo-check install [--with-deps]   (скачивает Chromium для playwright-core; --with-deps — системные библиотеки Linux, нужен root)
 dsgvo-check report <report.json> --format html,pdf [--lang de|en] [--out dir]
 ```
 
-Коды возврата и приоритет — по таблице раздела 12 [архитектуры](../02-architecture.md). Функция `gate()` чистая и покрыта таблично-управляемыми тестами. `--strict` действует и при `--fail-on none`.
+- Коды выхода и приоритет — по таблице раздела 12 [архитектуры](../02-architecture.md). `gate()` — чистая функция с табличными тестами. `--strict` действует и при `--fail-on none`.
+- `--help` заканчивается «Nutzungshinweise» ([wording guide §6](../legal/wording-guide.md)); тот же текст — в `README.md`.
 
-`--help` заканчивается «Nutzungshinweise» (wording guide §6): только свои или порученные сайты, отчёты о чужих сайтах не для публикации, токен User-Agent, фаза C раскрывает IP сканера, DNS при `--proxy` идёт напрямую к резолверу. Тот же текст — в `README.md`.
+## Обязательные контракты
 
-**Обязательные контракты прототипа**:
-- `--sandbox require` ⇒ `chromiumSandbox: true` и запуск без `--no-sandbox`; не поднялась — exit 2.
+- `--sandbox require` ⇒ `chromiumSandbox: true` и запуск без `--no-sandbox`. Не поднялась — exit 2.
 - User-Agent браузера — `navigator.userAgent` запущенного Chrome for Testing (`HeadlessChrome/` → `Chrome/`) плюс честный токен сканера со ссылкой на репозиторий, а не `browser.version()`.
 - Снимок первого экрана — `page.screenshot({ clip })` по `box` контейнера баннера, без автопрокрутки и до любого действия; `locator.screenshot()` не используется. Только при однозначном контейнере ≤ 50 % viewport, иначе `screenshot-skipped`.
-- TLS-02 — пороги относительно срока действия L (`< min(14 д, 25 % L)` → `warning`, `< min(30 д, 50 % L)` → `info`, при L ≤ 10 д находки о сроке нет); для IP-цели — `X509Certificate.checkIP`, для имени — `checkHost`.
+- TLS-02 — пороги срока относительно срока действия L ([спецификация, §3.14](../03-checks.md)). Для IP-цели `X509Certificate.checkIP`, для имени `checkHost`.
 - Поля `request` в alpha-схеме: `delivery`, `result`, `provenance`, монотонный `tMs` от `scan.startedAt`, `navigationId`, `actionId`, `frameId`, `parentRequestId` и безопасные `features` (`identifier {kind, param}`, `matchesStoredIdentifier`, `eventType`, `consentSignal`, `parserVersion`, `observationSource`).
-- CONSENT-01 и CONSENT-05 — по устойчивому идентификатору и подтверждённому отказу (`origin: action`, затем `stored` после reload); документы собираются независимо от отказа.
+- CONSENT-01 и CONSENT-05 — по устойчивому идентификатору и подтверждённому отказу (`origin: action`, затем `stored` после reload). Документы собираются независимо от отказа.
 
-**Доставка:**
+## Доставка
+
 - `Dockerfile`: `node:24-bookworm-slim`, Chromium из playwright-core, non-root, tini; `.dockerignore`.
-- `action.yml`: composite → `docker run` образа по тегу версии из `package.json`; GitLab-шаблон — так же.
-- `templates/gitlab/dsgvo-check.gitlab-ci.yml`.
+- `action.yml`: composite → `docker run` образа по тегу версии из `package.json`. GitLab-шаблон `templates/gitlab/dsgvo-check.gitlab-ci.yml` — так же.
 - `.github/workflows/ci.yml` — CI самого проекта.
 
-**Канарейка:**
-- `canary/sites.yaml` — локальный корпус пользователя, исключённый из git. Пример со всеми полями схемы — `canary/sites.example.yaml` с вымышленными хостами; фиксированный размер проверяется только по `--expected-count <n>`.
-- Раннер `scripts/canary.ts` — низкая параллельность, вежливые паузы, сохранение снимков.
-- Сводка `node scripts/canary.ts summary`.
-- Результаты лежат в `canary/results/` и в git не попадают.
-- Это разовое измерение сканера (классы O и T, вежливые паузы), а не приёмка: приёмочную канарейку (10 сайтов с письменным согласием владельцев, `mustFind` / `mustNotFind`) она не заменяет. Разовый замер подтверждён заказчиком; условия приёмочной канарейки остаются отдельными.
+## Канарейка
 
+Подробности — в [canary/README.md](../../canary/README.md).
+
+- `canary/sites.yaml` — локальный корпус пользователя, в git не попадает. Пример — `canary/sites.example.yaml` с вымышленными хостами.
+- Раннер `scripts/canary.ts`, сводка — `node scripts/canary.ts summary`. Результаты в `canary/results/` в git не попадают.
+- Это разовое измерение (классы действий O и T), а не приёмка. Приёмочную канарейку (10 сайтов с письменным согласием владельцев, `mustFind` / `mustNotFind`) оно не заменяет. Разовый замер подтверждён заказчиком; условия приёмочной остаются отдельными.
 
 ## Упрощения прототипа
 
-Отличия от релизных контрактов:
-
-- Нет фаз A′ и M, нет in-process egress-прокси и `EgressPolicy` (этап 2). SSRF-граница — проверка IP в preflight и в инжектируемом `lookup`, а в браузере — блокировка private/loopback/link-local/metadata-адресов и неразрешимых имён (fail-closed) для **документов верхнего уровня, фреймов и popup** через CDP `Fetch` на уровне браузера (не `page.route`: он не видит редиректные хопы). Подресурсы и DNS rebinding не покрыты. Хост с хотя бы одним непубличным адресом отклоняется уже в preflight (`target-mixed-addresses`). В тестах хосты подменяются через `--host-resolver-rules` и `connect.lookup` у undici.
-- PRIV-01 работает только по видимому и раскрываемому тексту DSE на той же странице и фреймам. PDF → `inconclusive`. Отрицания не разбираются, поэтому уверенность не выше `medium`.
+- Нет фаз A′ и M, in-process egress-прокси и `EgressPolicy` (этап 2).
+- **SSRF-граница** вместо `EgressPolicy`:
+  - проверка IP в preflight и в инжектируемом `lookup`; хост с хотя бы одним непубличным адресом отклоняется сразу (`target-mixed-addresses`);
+  - в браузере — блокировка private/loopback/link-local/metadata-адресов и неразрешимых имён (fail-closed) для **документов верхнего уровня, фреймов и popup** через CDP `Fetch` (не `page.route`: он не видит редиректные хопы);
+  - подресурсы и DNS rebinding не покрыты;
+  - в тестах хосты подменяются через `--host-resolver-rules` и `connect.lookup` у undici.
+- PRIV-01 смотрит только видимый и раскрываемый текст DSE на той же странице и во фреймах. PDF → `inconclusive`. Отрицания не разбираются, поэтому уверенность не выше `medium`.
 - Нет PRIV-02, P1 (кроме CONSENT-05) и P2. Нет JUnit, baseline и suppressions: поля в схеме есть, логики нет.
-- autoconsent не используется. Распознавание неизвестных CMP — общая эвристика, только `info`.
+- autoconsent не используется; неизвестные CMP распознаются общей эвристикой, только `info`.
 - Тексты `de` и `en` — черновики с `draft: true`, штамп «Textentwurf».
 
-## Стек и версии
+## Стек
 
-Версии сверены с npm-реестром 2026-10-30. Пинить точно, без `^`.
+Версии — в `package.json`: пин без `^` (`.npmrc`: `save-exact=true`), правила для зависимостей — в [AGENTS.md](../../AGENTS.md).
 
-| Пакет | Версия | Назначение |
-|---|---|---|
-| Node | ≥ 24 (`.node-version`: 24) | рантайм; TS запускается через `tsc` → `dist/` |
-| pnpm | 12.16.1 через `corepack pnpm` (`packageManager: "pnpm@12.16.1"` в `package.json`; глобальный pnpm не нужен, первый запуск — с `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`) | пакетный менеджер |
-| typescript | 7.0.2 | `tsc` (нативный) |
-| playwright-core | 1.64.1 | браузер |
-| undici | 8.12.3 | HTTP |
-| tldts | 7.4.19 | eTLD+1 |
-| zod | 4.6.7 | схема отчёта |
-| yaml | 2.9.1 | данные |
-| commander | 15.0.0 | CLI |
-| canonicalize | 5.1.0 | JCS для fingerprint |
-| vitest | 5.0.5 | тесты |
-| @biomejs/biome | 2.6.4 | линт и формат |
-| ajv / ajv-formats | 8.20.0 / 3.0.1 | валидация схемы в тестах |
-| dns2 | 3.1.1 | фейковый DNS в L2 |
-| @peculiar/x509 | 3.1.0 | тестовые сертификаты |
-| @types/node | 24.19.2 | типы |
-
-Требования к зависимостям и изменениям описаны в [AGENTS.md](../../AGENTS.md).
+- Node ≥ 24 (`.node-version`: 24), TypeScript 7 (нативный `tsc` → `dist/`).
+- pnpm — через `corepack pnpm` (`packageManager` в `package.json`); глобальный pnpm не нужен, первый запуск — с `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
+- Только для тестов: `dns2` (фейковый DNS в L2), `@peculiar/x509` (тестовые сертификаты; требует `reflect-metadata`), `ajv` с `ajv-formats` (валидация схемы отчёта).

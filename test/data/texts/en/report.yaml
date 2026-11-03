@@ -1,4 +1,4 @@
-# Labels of the HTML report and the GitHub Job Summary; user-facing strings belong in data/.
+# Labels of the HTML report and the GitHub Job Summary; user-facing strings belong in test/data/.
 # Draft texts ("Textentwurf") until reviewed.
 draft: true
 ui:

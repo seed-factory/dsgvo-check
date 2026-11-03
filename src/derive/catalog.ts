@@ -1,5 +1,5 @@
 /**
- * Own service catalog (Apache-2.0): data/services/*.yaml → validated, compiled matcher.
+ * Own service catalog (Apache-2.0): test/data/services/*.yaml → validated, compiled matcher.
  * Loaded synchronously once per data dir; matching is pure.
  */
 import { z } from 'zod';
@@ -351,7 +351,7 @@ export function parseCatalog(raw: unknown): CatalogData {
   const res = CatalogFileSchema.safeParse(raw);
   if (!res.success) {
     throw new DataError(
-      `data/services: ${res.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ')}`,
+      `test/data/services: ${res.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ')}`,
     );
   }
   return res.data;
@@ -359,7 +359,7 @@ export function parseCatalog(raw: unknown): CatalogData {
 
 const cache = new Map<string, ServiceCatalog>();
 
-/** Load and compile data/services/*.yaml (cached per data dir). */
+/** Load and compile test/data/services/*.yaml (cached per data dir). */
 export function loadServiceCatalog(dataDir: string = DEFAULT_DATA_DIR): ServiceCatalog {
   let c = cache.get(dataDir);
   if (!c) {

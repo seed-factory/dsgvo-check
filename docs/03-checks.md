@@ -80,7 +80,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 | captcha | `EMBED-04` |
 | widget, social, reviews, chat | `EMBED-05` |
 
-Маршрутизация хранится в `data/routing.yaml`. Одно сетевое наблюдение даёт одну гейтящую находку. Хранилище (`CONSENT-02`), отсутствие баннера (`CONSENT-03`), поведение после отказа (`CONSENT-05`) и сигналы Consent Mode (`CONSENT-06`) — самостоятельные оси. `TRACK-01` предоставляет связанный инвентарь.
+Маршрутизация хранится в `test/data/routing.yaml`. Одно сетевое наблюдение даёт одну гейтящую находку. Хранилище (`CONSENT-02`), отсутствие баннера (`CONSENT-03`), поведение после отказа (`CONSENT-05`) и сигналы Consent Mode (`CONSENT-06`) — самостоятельные оси. `TRACK-01` предоставляет связанный инвентарь.
 
 Неизвестный хост классифицируется как `unknown`, а не как трекер. Каталог сервисов использует `policyRelevance`, сигнатуры и алиасы; версии внешних данных фиксируются в `datasets.lock.json`.
 
@@ -90,7 +90,7 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 Для каждого ID нужны нарушение, чистая, `inconclusive/error` и соседний контрпример. L1 проверяет `variant`; таблица уровней тестируется отдельно. L2 использует реальные Chromium, HTTP/TLS/DNS в закрытой сети, тестовый CA и DNS-ответы `NXDOMAIN`, `NODATA`, `SERVFAIL`, `TIMEOUT`. Для TLS обязателен положительный контроль клиента.
 
-Тексты хранятся в `data/texts/{de,en}.yaml`, ICU MF1; ключ находки — `checkId.variant` по реестру §2.1. Все формулировки ниже имеют `draft: true`. Неутверждённые немецкие тексты блокируют релиз; `en` доступен только после вычитки. `legalNote` общий по ID, со статусом источника, `reviewedAt` и `reviewBy`.
+Тексты хранятся в `test/data/texts/{de,en}.yaml`, ICU MF1; ключ находки — `checkId.variant` по реестру §2.1. Все формулировки ниже имеют `draft: true`. Неутверждённые немецкие тексты блокируют релиз; `en` доступен только после вычитки. `legalNote` общий по ID, со статусом источника, `reviewedAt` и `reviewBy`.
 
 ## 2. Сводный реестр
 
@@ -146,13 +146,13 @@ HAR, trace и NetLog выключены. Скриншот: `page.screenshot()` �
 
 ### 2.1. Реестр вариантов и `messageId`
 
-Полный перечень вариантов; каждый `checkId.variant` назван здесь ровно один раз. Для реализованных проверок источник — `data/ruleset/de-2026/*.yaml` (уровень по умолчанию, `locked`, `crm`): первая таблица генерируется из него командой `corepack pnpm registry`, тест падает при расхождении. Вторая таблица — запланированные проверки; при реализации строка переносится из неё в ruleset. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` ([архитектура](02-architecture.md) §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
+Полный перечень вариантов; каждый `checkId.variant` назван здесь ровно один раз. Для реализованных проверок источник — `test/data/ruleset/de-2026/*.yaml` (уровень по умолчанию, `locked`, `crm`): первая таблица генерируется из него командой `corepack pnpm registry`, тест падает при расхождении. Вторая таблица — запланированные проверки; при реализации строка переносится из неё в ruleset. `messageId` находки — `checkId.variant` без исключений, `legalNoteId` — `checkId` ([архитектура](02-architecture.md) §10.1). Уровень — значение ruleset по умолчанию до overrides и кэпа confidence; условия выбора варианта — в «Уровне» раздела ID.
 
 Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет `severity`, `messageId` и `crmCode`, а есть `reason` и `limitations[]` CheckResult. Их тексты — ключи `reason.<id>` и `limitation.<id>` (схема ключей — предложение автора, не согласовано; wording-guide, ОВ 3). Единственное исключение — два `locked`-варианта `CONSENT-04`: находка `info` при статусе `inconclusive` ([архитектура](02-architecture.md) §10.1 и §11.3). Текст диагностики `SCAN-*` — по её коду (§7), без `severity`.
 
 **Реализованные проверки.** Исходы без находки описаны в разделе каждой проверки.
 
-<!-- registry:begin: generated from data/ruleset by `corepack pnpm registry`, do not edit -->
+<!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
 | ID | `critical` | `warning` | `info` |
 |---|---|---|---|
 | `CONSENT-01` | `tracking-completed` | `library-loaded`, `first-party-proxy`, `cookieless-ping` | `third-party-resource`, `unknown-host`, `request-not-completed` |

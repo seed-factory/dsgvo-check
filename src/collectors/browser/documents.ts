@@ -32,7 +32,7 @@ export interface JudgeInput {
 
 /**
  * Verdict on a 2xx page that was fetched as the document `kind`. The type is decided by localised markers
- * (data/legal/links.yaml) in the title, the h1 and the section headings of the whole document, not by one keyword in
+ * (test/data/legal/links.yaml) in the title, the h1 and the section headings of the whole document, not by one keyword in
  * the first characters. `ok`: marker found, `languages` lists the languages of the markers. `soft-404`: an explicit
  * error title, or a page without a marker that has no recognisable content. `unconfirmed`: a substantive page
  * without a marker (a home page whose footer links to the Impressum, a document in a language the lexicon does not

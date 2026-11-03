@@ -58,7 +58,7 @@ export interface FatalSignal {
   reason: FatalReason;
   /** `scan.failure.code`, e.g. `start-page-unreachable`, `start-page-blocked`, `sandbox-failed`. */
   code: string;
-  /** Parameters of the `failure.<code>` text in data/texts. */
+  /** Parameters of the `failure.<code>` text in test/data/texts. */
   params?: MessageParams;
 }
 

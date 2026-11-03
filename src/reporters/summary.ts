@@ -46,7 +46,7 @@ function mdCode(value: string, max = 120): string {
   return `\`${s}\``;
 }
 
-/** Trusted label (data/texts or built-in) with external params escaped. */
+/** Trusted label (test/data/texts or built-in) with external params escaped. */
 function label(ctx: ReporterContext, key: ReportLabelKey, params: Record<string, unknown> = {}): string {
   const clean: MessageParams = {};
   for (const [k, v] of Object.entries(params)) {

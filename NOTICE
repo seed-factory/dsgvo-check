@@ -11,7 +11,7 @@ are listed in the respective packages under node_modules/ at install time.
 Data attributions
 ------------------------------------------------------------------------
 
-The data/ directory may contain vendored third-party datasets. Each dataset
+The test/data/ directory may contain vendored third-party datasets. Each dataset
 is pinned in datasets.lock.json (name, version, date, sha256, license).
 Attributions are listed below, one subsection per dataset.
 

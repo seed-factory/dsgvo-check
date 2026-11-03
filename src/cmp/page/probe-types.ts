@@ -80,7 +80,7 @@ export interface ProbeResult {
   /**
    * Links outside the banner whose centre lies in the first screen under the banner (or its overlay), by hit test,
    * whatever they are called. The probe holds no legal wording: which of them are Impressum or privacy links, and
-   * which links of the banner are, is decided on the Node side with the lexicon of data/legal.
+   * which links of the banner are, is decided on the Node side with the lexicon of test/data/legal.
    */
   coveredLinks: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
   heuristic: { score: number; signals: string[] } | null;

@@ -1,5 +1,5 @@
 /**
- * Minimal ICU-MessageFormat-1 subset for data/texts: `{name}`, `{n, number}`,
+ * Minimal ICU-MessageFormat-1 subset for test/data/texts: `{name}`, `{n, number}`,
  * `{n, plural, =0 {…} one {# Seite} other {# Seiten}}`, `{x, select, a {…} other {…}}`, `''` → `'`.
  */
 

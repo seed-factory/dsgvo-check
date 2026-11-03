@@ -48,7 +48,7 @@
 
 ## 2. Запрещённые слова и конструкции (de и en)
 
-Таблица — источник для L0-lint. Lint прогоняет все строки `data/texts/{de,en}.yaml` и `data/legal/**` («ни одной пользовательской строки вне `data/`»), а также рендер HTML, консоли, JUnit и Job Summary на фикстурах. Режимы:
+Таблица — источник для L0-lint. Lint прогоняет все строки `test/data/texts/{de,en}.yaml` и `test/data/legal/**` («ни одной пользовательской строки вне `test/data/`»), а также рендер HTML, консоли, JUnit и Job Summary на фикстурах. Режимы:
 
 - `block` — любое вхождение (регистронезависимо, по границам слов) роняет L0;
 - `label` — слово запрещено как самостоятельная метка/заголовок, разрешено только внутри перечисленных составных слов (колонка «Замена»);
@@ -174,7 +174,7 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 
 ## 4. Статусы правового якоря
 
-`legalNote` — один текст на `checkId` (не на вариант), хранится в `data/texts/{de,en}.yaml`, раздел `legalNotes`, по `legalNoteId` = `checkId` ([архитектура](../02-architecture.md) §9.4, §10.1, §13.4), имеет поля `status`, `reviewedAt`, `reviewBy`. Статус говорит о **прочности источника**, а не о тяжести находки: уровень задаёт ruleset `de-2026`, и связь статус → уровень в коде отсутствует. Отчёт выводит статус рядом с нормами, чтобы читатель видел, на чём стоит контекст.
+`legalNote` — один текст на `checkId` (не на вариант), хранится в `test/data/texts/{de,en}.yaml`, раздел `legalNotes`, по `legalNoteId` = `checkId` ([архитектура](../02-architecture.md) §9.4, §10.1, §13.4), имеет поля `status`, `reviewedAt`, `reviewBy`. Статус говорит о **прочности источника**, а не о тяжести находки: уровень задаёт ruleset `de-2026`, и связь статус → уровень в коде отсутствует. Отчёт выводит статус рядом с нормами, чтобы читатель видел, на чём стоит контекст.
 
 | `status` | Значение | Типичные источники | Отображение в HTML (de) | Отображение (en) |
 |---|---|---|---|---|
@@ -225,7 +225,7 @@ Hinweis zur manuellen Prüfung             ← что проверить чел�
 
 ## 5. Черновики текстов по `checkId` и вариантам (DRAFT)
 
-**Формат.** `data/texts/de.yaml` и `data/texts/en.yaml`, ICU MessageFormat 1, ключ `checkId.variant` = `messageId`. Под ключом — поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung) по [архитектуре](../02-architecture.md) §11.4 и §13.4; в таблицах им соответствуют колонки «Titel», «Beschreibung» и «Hinweis zur manuellen Prüfung», `en`-таблицы дают `description` одной строкой. `legalNote` лежит в тех же файлах, в разделе `legalNotes`, по `legalNoteId` = `checkId` (§13.4). Плейсхолдеры `{…}` — из `findings[].params`; множественное число — через ICU `{count, plural, one {…} other {…}}`, в черновиках для краткости показана форма `other`; перечисления (`delivery`, `result`, `identifierKind`, `targetKind`, `kind`, `basis`, `transferred`, `detail`) — через `select` с обязательной ветвью `other`. Все записи этого раздела несут `draft: true`.
+**Формат.** `test/data/texts/de.yaml` и `test/data/texts/en.yaml`, ICU MessageFormat 1, ключ `checkId.variant` = `messageId`. Под ключом — поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung) по [архитектуре](../02-architecture.md) §11.4 и §13.4; в таблицах им соответствуют колонки «Titel», «Beschreibung» и «Hinweis zur manuellen Prüfung», `en`-таблицы дают `description` одной строкой. `legalNote` лежит в тех же файлах, в разделе `legalNotes`, по `legalNoteId` = `checkId` (§13.4). Плейсхолдеры `{…}` — из `findings[].params`; множественное число — через ICU `{count, plural, one {…} other {…}}`, в черновиках для краткости показана форма `other`; перечисления (`delivery`, `result`, `identifierKind`, `targetKind`, `kind`, `basis`, `transferred`, `detail`) — через `select` с обязательной ветвью `other`. Все записи этого раздела несут `draft: true`.
 
 **Реестр ключей.** Канон вариантов и `messageId` — реестр [спецификации проверок](../03-checks.md) §2.1. Раздел 5 ему следует: у каждого `checkId.variant` реестра здесь ровно один ключ, других ключей находок нет; при переименовании в реестре ключи здесь переименовываются вслед за ним (03-checks §1). Уровень в скобках после ключа — значение ruleset по умолчанию из реестра, до overrides и кэпа confidence; текст его не повторяет. Исходы без находки (`inconclusive`, `error`, `skipped`, `not_applicable`) — не варианты: у них нет уровня, `messageId` и `crmCode`, а их тексты — ключи `reason.<id>` и `limitation.<id>` в 5.20 ([архитектура](../02-architecture.md) §9.1 и §11.3; 03-checks §2.1). Исключение — только два `locked`-варианта CONSENT-04 (`banner-not-recognized`, `cmp-not-supported`): находка `info` при статусе проверки `inconclusive`.
 
@@ -735,7 +735,7 @@ Handshake без установленной причины — не находк
 
 ## 7. Блок «Rechtlicher Kontext (Stand …)»
 
-Блок — часть HTML и PDF (раздел после дисклеймера) и поле `legalContext` в JSON. Источник — статический файл `data/legal/context.yaml` (у каждой записи `id`, `status`, `statusDate`, `verifiedAt`, `reviewBy`, `source`), версионируется вместе с пакетом; смена записи — data-релиз без правки кода. Назначение — показать читателю, в каких правовых рамках сделаны статические `legalNote`, и явно назвать подвижные точки. Блок никогда не влияет на уровень находок и не упоминает проверяемый сайт.
+Блок — часть HTML и PDF (раздел после дисклеймера) и поле `legalContext` в JSON. Источник — статический файл `test/data/legal/context.yaml` (у каждой записи `id`, `status`, `statusDate`, `verifiedAt`, `reviewBy`, `source`), версионируется вместе с пакетом; смена записи — data-релиз без правки кода. Назначение — показать читателю, в каких правовых рамках сделаны статические `legalNote`, и явно назвать подвижные точки. Блок никогда не влияет на уровень находок и не упоминает проверяемый сайт.
 
 Заголовок: «Rechtlicher Kontext (Stand {rechtsstand}; Regelwerk {rulesetVersion}; zuletzt geprüft {verifiedAt})».
 
@@ -765,7 +765,7 @@ Handshake без установленной причины — не находк
 
 ## 8. Чек-лист вычитки для заказчика
 
-Вычитка идёт по PR в `data/texts/de.yaml`, `data/legal/**` и `data/ruleset/de-2026.yaml`; одна проверка — один PR. Снятие `draft: true` — отдельный коммит заказчика. Пункты с ☐ отмечает рецензент в описании PR.
+Вычитка идёт по PR в `test/data/texts/de.yaml`, `test/data/legal/**` и `test/data/ruleset/de-2026.yaml`; одна проверка — один PR. Снятие `draft: true` — отдельный коммит заказчика. Пункты с ☐ отмечает рецензент в описании PR.
 
 **A. Для каждого ключа `checkId.variant`**
 
@@ -799,7 +799,7 @@ Handshake без установленной причины — не находк
 
 **D. Процесс**
 
-- ☐ Лицензия текстов зафиксирована (рекомендация: CC BY 4.0 для `data/texts` и `data/legal`); в шапке файлов — `license:` и `owner: customer-legal`.
+- ☐ Лицензия текстов зафиксирована (рекомендация: CC BY 4.0 для `test/data/texts` и `test/data/legal`); в шапке файлов — `license:` и `owner: customer-legal`.
 - ☐ Стоп-листы `de` и `en` вычитаны вместе с текстами; каждое исключение allowlist имеет `reason`.
 - ☐ После снятия `draft: true` у всех `de`-ключей релизного manifest L0-тест «release-ready texts» зелёный; `en` либо полностью вычитан, либо `--lang en` остаётся отключённым.
 - ☐ Канарейка (10 сайтов с письменным согласием) прогнана с финальными текстами; отчёты не публикуются.
@@ -810,10 +810,10 @@ Handshake без установленной причины — не находк
 
 Открытые решения, которые помечены как **предложение автора, не согласовано**:
 
-1. **Поля сообщения.** Поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет) и раздел `legalNotes` в `data/texts/{de,en}.yaml` взяты из [архитектуры](../02-architecture.md) §11.4 и §13.4. Там это предложение автора архитектуры, не согласовано (ОВ-2): контракт фиксирует только `messageId` + `params` и `legalNoteId`, а отрендеренные тексты в контракт `findings[]` не входят (§11.4). Для текстов важно одно: поле рекомендации нейтрально («Hinweis»), а не «remediation».
+1. **Поля сообщения.** Поля `title`, `description` и `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет) и раздел `legalNotes` в `test/data/texts/{de,en}.yaml` взяты из [архитектуры](../02-architecture.md) §11.4 и §13.4. Там это предложение автора архитектуры, не согласовано (ОВ-2): контракт фиксирует только `messageId` + `params` и `legalNoteId`, а отрендеренные тексты в контракт `findings[]` не входят (§11.4). Для текстов важно одно: поле рекомендации нейтрально («Hinweis»), а не «remediation».
 2. **Реестр вариантов.** Реестр `checkId.variant` существует — [спецификация проверок](../03-checks.md) §2.1, канон для ruleset, текстов и CRM-маппинга. Раздел 5 ему следует: у каждого варианта реестра есть ключ, лишних ключей нет, исходы без находки вынесены в 5.20 как `reason.<id>` / `limitation.<id>`. Неутверждённые имена вариантов — предложение автора 03-checks (её Q6, Q10); при их переименовании guide переименовывает ключи вслед. Открытое расхождение с реестром одно — `reason` CONSENT-05 при недоступном захвате pagehide; оно описано в блоке «Расхождения с реестром 03-checks» в начале раздела 5 и закрывается правкой 03-checks.
 3. **Ключи `reason.<id>` / `limitation.<id>` и ветки их `select`** (5.20) — предложение автора, не согласовано (так же помечено в 03-checks §2.1 и Q6). Ids берутся из реестра §2.1; набор открыт.
-4. **Режимы lint `block / label / quote`**, ограничение правил областью поля (№ 13 — `hint`), allowlist ключей для «gesendet» (№ 15) и формат allowlist с `reason` — предложение автора; обязателен только L0-lint стоп-слов для `de` и `en` с явными исключениями. Имя файла стоп-листа (предложение: `data/texts/stoplist.{de,en}.yaml`) — за архитектурой.
+4. **Режимы lint `block / label / quote`**, ограничение правил областью поля (№ 13 — `hint`), allowlist ключей для «gesendet» (№ 15) и формат allowlist с `reason` — предложение автора; обязателен только L0-lint стоп-слов для `de` и `en` с явными исключениями. Имя файла стоп-листа (предложение: `test/data/texts/stoplist.{de,en}.yaml`) — за архитектурой.
 5. **Сроки `reviewBy`** (6/12 месяцев для `legalNote`, 3/12 для `context.yaml`) — предложение автора; контракт фиксирует только наличие поля и предупреждение CI при просрочке.
 6. **Назначение `status` по проверкам** (таблица в разделе 4) — черновик автора на основе правовой карты; утверждает DSGVO-эксперт заказчика вместе с `legalNote`.
 7. **Словарь статусов `context.yaml`** (`in-force`, `in-force-contested`, `proposal`, `withdrawn`, `changed`, `current`, `dataset`) и правило «вторичные источники не рендерятся» — предложение автора.

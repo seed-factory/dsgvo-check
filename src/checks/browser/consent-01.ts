@@ -1,7 +1,7 @@
 /**
  * CONSENT-01 (P0): third-party and first-party-proxy requests started before any interaction with the banner
  * (phase A and phase B before the click). Owns analytics, ads, session-recording, tag-manager and the remainder
- * of categories by data/routing.yaml; one observation per service, unknown hosts per registrable domain.
+ * of categories by test/data/routing.yaml; one observation per service, unknown hosts per registrable domain.
  * Bot or geo signal → inconclusive (5.2).
  */
 

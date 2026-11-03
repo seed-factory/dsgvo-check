@@ -46,7 +46,7 @@ export interface Observation {
   /** Sanitized page URLs. */
   pages: string[];
   evidence: EvidenceInput[];
-  /** Message parameters for `data/texts/<lang>/*.yaml` key `<checkId>.<variant>`. Only safe values. */
+  /** Message parameters for `test/data/texts/<lang>/*.yaml` key `<checkId>.<variant>`. Only safe values. */
   params: MessageParams;
   /** e.g. `interaction-without-consent`. */
   trigger?: string;
@@ -79,9 +79,9 @@ export interface CheckContext {
   /** Injected clock (certificate expiry, suppressions). */
   readonly now: Date;
   readonly lang: 'de' | 'en';
-  /** Service category → owning check id (data/routing.yaml). */
+  /** Service category → owning check id (test/data/routing.yaml). */
   readonly routing: Readonly<Record<string, string>>;
-  /** Data directories declared in `Check.data`, loaded and merged from data/<name>/*.yaml. Validate with zod. */
+  /** Data directories declared in `Check.data`, loaded and merged from test/data/<name>/*.yaml. Validate with zod. */
   readonly data: Readonly<Record<string, unknown>>;
   readonly options: {
     readonly strict: boolean;
@@ -98,7 +98,7 @@ export interface Check<K extends SnapshotSectionKey = SnapshotSectionKey> {
   requires: readonly K[];
   /** All variants the check can emit (static; completeness test requires ruleset/texts/fixtures for each). */
   variants: readonly CheckVariant[];
-  /** Optional data directories under data/ to load into `ctx.data` (e.g. `cmp`, `services`). */
+  /** Optional data directories under test/data/ to load into `ctx.data` (e.g. `cmp`, `services`). */
   data?: readonly string[];
   /** Pure. Throwing → status `error` with `check-error:<id>` (gate decides the exit code). */
   run(slice: SnapshotSlice<K>, ctx: CheckContext): CheckRunResult;

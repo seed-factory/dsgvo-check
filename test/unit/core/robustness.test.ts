@@ -316,8 +316,8 @@ describe('no hand-over after the global timeout', () => {
   });
 });
 
-// the failure texts of the orchestrator are data (data/texts), in the language of the scan.
-describe('the failure message of a scan cut by the global timeout is a text of data/texts', () => {
+// the failure texts of the orchestrator are data (test/data/texts), in the language of the scan.
+describe('the failure message of a scan cut by the global timeout is a text of test/data/texts', () => {
   const failed = async (lang: 'de' | 'en', browser: Collectors['browser']) => {
     const r = await scan({
       url: START,
@@ -475,7 +475,7 @@ describe('Nutzungshinweise', () => {
     const section = readme.slice(readme.indexOf('## Nutzungshinweise'), readme.indexOf('## Entwicklung'));
     const flat = section.replace(/`/g, '').replace(/\s+/g, ' ');
     expect(flat).toContain(phaseC);
-    // The README paragraph is the de text of data/texts (modulo markdown backticks and typographic quotes).
+    // The README paragraph is the de text of test/data/texts (modulo markdown backticks and typographic quotes).
     const plain = (t: string) => t.replace(/[`„“]/g, '').replace(/\s+/g, ' ');
     expect(plain(section)).toContain(plain(de));
   });

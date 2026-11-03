@@ -248,7 +248,7 @@ export interface FirstLayerClassification {
   lexiconVersion?: string;
 }
 
-/** Button lexicon from data/cmp/*.yaml. */
+/** Button lexicon from test/data/cmp/*.yaml. */
 export interface CmpLexicon {
   version: string;
   accept: string[];
@@ -291,7 +291,7 @@ export interface ActOptions {
    * adapter never measures and picks a button on its own.
    */
   facts?: CmpFacts;
-  /** Lexicon of that decision (default: data/cmp). */
+  /** Lexicon of that decision (default: test/data/cmp). */
   lexicon?: CmpLexicon;
   timeoutMs?: number;
 }

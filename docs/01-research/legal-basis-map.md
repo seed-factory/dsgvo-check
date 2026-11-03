@@ -294,8 +294,8 @@
 ## 6. Сводные рекомендации для ТЗ и архитектуры (из правовой карты)
 
 1. Модель доказательств дополнить тремя слоями и запретом генерации per-site правовых текстов (RDG).
-2. `legalNote` хранить в `data/legal/<checkId>.de.md` с полями `norms[]`, `positions[]`, `status: settled|contested|single|technical`, `reviewedBy`, `reviewedAt` — заказчик вычитывает, PR-ревью фиксирует.
-3. `data/legal/context.json`: статус DPF, Digital Omnibus, версии DSK/EDPB-документов с датами — выводится в отчёт как «Rechtlicher Kontext (Stand …)».
+2. `legalNote` хранить в `test/data/legal/<checkId>.de.md` с полями `norms[]`, `positions[]`, `status: settled|contested|single|technical`, `reviewedBy`, `reviewedAt` — заказчик вычитывает, PR-ревью фиксирует.
+3. `test/data/legal/context.json`: статус DPF, Digital Omnibus, версии DSK/EDPB-документов с датами — выводится в отчёт как «Rechtlicher Kontext (Stand …)».
 4. Для «тех. стандарт»-проверок (HDR, MAIL, DNS, SEC, TLS-03/04, HDR-02, PERF) дефолтный максимум — `warning`, для DNS-01/SEC-01/PERF-01 — `info`; `critical` только у `--fail-on`-релевантных P0 с устоявшейся базой и у FILE-01 при подтверждённом формате.
 5. FILE-01 — opt-in, список путей и лимиты описать в архитектуре пассивного режима; TLS-04 — лимит соединений там же.
 6. Поле `thirdCountrySignal` как атрибут; никакой отдельной «Drittland»-проверки в MVP.

@@ -6,7 +6,7 @@
  * Separately: footer covered by the banner without legal links in it (warning). Pages behind a challenge stay
  * in the denominator; blocked legal targets make the verdict for that kind inconclusive.
  *
- * Labels come from the shared lexicon data/legal; `links-broken` needs every link of the kind
+ * Labels come from the shared lexicon test/data/legal; `links-broken` needs every link of the kind
  * to be confirmed broken, a link counts as working when its URL is a successful document; an interrupted
  * search is a limitation, not `document-not-found`; a page whose type is not confirmed is a limitation;
  * soft-404 probes are no checked pages; a blocked target comes before `unresolved`; a truncated link

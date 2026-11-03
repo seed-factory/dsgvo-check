@@ -85,7 +85,7 @@ Stage 2 зависит от отпечатков компонентов, поэ�
 |---|---|---|---|
 | `Snapshot` | `src/core/api/snapshot.ts` | Разделы сырых фактов и `plan` | Внутренний `snapshotFormat`; снимок — артефакт отладки и фикстур, не публичный контракт |
 | `CheckDefinition` | `src/core/api/check.ts` | `id`, `requires`, `variants`, `planProbes?`, `run` | Версия пакета (semver) |
-| `Ruleset` | `data/ruleset/de-2026.yaml` + zod-схема | `(checkId, variant)` → `severity`; `gating` по проверке | `ruleset.version` (CalVer) и `rechtsstand` |
+| `Ruleset` | `test/data/ruleset/de-2026.yaml` + zod-схема | `(checkId, variant)` → `severity`; `gating` по проверке | `ruleset.version` (CalVer) и `rechtsstand` |
 | `gate()` | `src/core/gate/gate.ts` | Приоритет кодов, `exitReasons[]` | Смена семантики кодов — major `schemaVersion` |
 | `Report` | zod → `schema/report.schema.json` | Публичная JSON-схема | `schemaVersion` (semver, независим от CLI) |
 
@@ -99,7 +99,7 @@ Stage 2 зависит от отпечатков компонентов, поэ�
 | `src/core/**` | `src/core/**`, данные пакета | `src/checks`, `src/collectors`, `src/engine`, `src/reporters`, любой I/O |
 | `src/collectors/**` | `src/core/api`, `src/core/consent`, `src/net`, `src/redact` | `src/checks`, `src/core/assess`, `src/core/gate` |
 | `src/reporters/**` | `src/core/api` (тип `Report`), тексты | движок, коллекторы, проверки |
-| Любой слой | — | Пользовательские строки вне `data/` (lint) |
+| Любой слой | — | Пользовательские строки вне `test/data/` (lint) |
 
 Реестр проверок передаётся в движок снаружи (из `src/cli`), поэтому ядро о конкретных проверках не знает.
 
@@ -142,8 +142,8 @@ dsgvo-check/
 │  │  ├─ index.ts               # явный реестр: одна строка на проверку
 │  │  └─ consent-04/            # index.ts (defineCheck), fixtures/, *.test.ts
 │  └─ reporters/                # json, console, html, pdf, junit, summary
-├─ data/                        # см. раздел 13
 ├─ test/
+│  ├─ data/                     # см. раздел 13
 │  ├─ fixture-server/           # мульти-хост HTTP(S) по Host и SNI, тестовый CA, dns2
 │  └─ utils/                    # нормализация снимков, фабрики фактов
 └─ docs/
@@ -167,7 +167,7 @@ dsgvo-check/
 
 ### 2.2 Где данные и тексты
 
-Все пользовательские строки и все решения, которые может менять заказчик, лежат в `data/`: каталог сервисов, routing, ruleset, маппинг `crmCode`, тексты `de` и `en`, правовой контекст, `adequacy.json`, вендоренные снапшоты и `datasets.lock.json`. Данные CMP — TS-модули адаптеров в `src/collectors/browser/cmp/`. Подробно — раздел 13.
+Все пользовательские строки и все решения, которые может менять заказчик, лежат в `test/data/`: каталог сервисов, routing, ruleset, маппинг `crmCode`, тексты `de` и `en`, правовой контекст, `adequacy.json`, вендоренные снапшоты и `datasets.lock.json`. Данные CMP — TS-модули адаптеров в `src/collectors/browser/cmp/`. Подробно — раздел 13.
 
 ---
 
@@ -812,7 +812,7 @@ export interface Observation<V extends string = string> {
 export interface CheckContext {
   readonly evaluationTime: Date;         // = scan.startedAt, также при --from-artifacts
   readonly derive: Derive;               // мемоизированные чистые функции над снимком и данными пакета
-  readonly routing: { ownerOf(category: string): CheckId };   // data/routing.yaml
+  readonly routing: { ownerOf(category: string): CheckId };   // test/data/routing.yaml
   readonly isThirdParty: (host: string) => boolean;          // eTLD+1 хоста ≠ eTLD+1 цели
 }
 
@@ -883,10 +883,10 @@ export const registry = [consent01, consent04 /* … */] as const;
 | Что | Где |
 |---|---|
 | Уникальный `id` из каталога или из списка внекаталожных | `src/checks/index.ts` |
-| Запись ruleset на **каждый** вариант; `gating` | `data/ruleset/de-2026.yaml` |
+| Запись ruleset на **каждый** вариант; `gating` | `test/data/ruleset/de-2026.yaml` |
 | `crmCode` или явный `null` с причиной на каждый вариант | поле `crm` варианта в ruleset |
-| Тексты `de` на каждый `checkId.variant`; `en` — если `en` выпускается | `data/texts/{de,en}.yaml` |
-| `legalNote` по `checkId` со статусом источника, `reviewedAt`, `reviewBy` | `data/texts/{de,en}.yaml`, раздел `legalNotes` (§13.4) |
+| Тексты `de` на каждый `checkId.variant`; `en` — если `en` выпускается | `test/data/texts/{de,en}.yaml` |
+| `legalNote` по `checkId` со статусом источника, `reviewedAt`, `reviewBy` | `test/data/texts/{de,en}.yaml`, раздел `legalNotes` (§13.4) |
 | L1-фикстура на каждый вариант; `clean`; `inconclusive` или `error`; контрпример «соседняя ложная находка» | `src/checks/<id>/fixtures/` |
 | Импорты проверки — только `src/core/api` | граф импортов |
 
@@ -897,7 +897,7 @@ export const registry = [consent01, consent04 /* … */] as const;
 ### 10.1 Уровни как данные
 
 ```yaml
-# data/ruleset/de-2026.yaml — иллюстрация; полный перечень вариантов — в 03-checks.md
+# test/data/ruleset/de-2026.yaml — иллюстрация; полный перечень вариантов — в 03-checks.md
 ruleset:
   version: 2026.11.0                # CalVer
   rechtsstand: 2026-10-30
@@ -954,7 +954,7 @@ ruleset:
 Одно наблюдение даёт одну гейтящую находку. Владелец категории задан данными:
 
 ```yaml
-# data/routing.yaml
+# test/data/routing.yaml
 version: 1
 owners:
   analytics: CONSENT-01
@@ -1010,7 +1010,7 @@ owners:
 | `findings[]` | раздел 11.4 |
 | `diagnostics[]` | раздел 11.6 |
 | `evidence[]` | раздел 11.5, общий массив; находки ссылаются через `evidenceIds` |
-| `legalContext` | статус DPF (C-703/25 P pending) и прочее из `data/legal/context.yaml` |
+| `legalContext` | статус DPF (C-703/25 P pending) и прочее из `test/data/legal/context.yaml` |
 | `summary` | `{counts, exitCode, exitReasons[]}` |
 | `disclaimer` | условные абзацы, отключить нельзя |
 
@@ -1289,31 +1289,31 @@ export function gate(input: {
 
 | Набор | Путь | Лицензия | Происхождение | Обновление |
 |---|---|---|---|---|
-| Каталог сервисов | `data/services/*.yaml` | Apache-2.0 | ~100 записей из экспорта аудитов заказчика и документации вендоров; чек-лист § 87a UrhG в PR | PR, версия пакета |
-| Fallback хостов | `data/vendor/third-party-web/` | MIT | third-party-web 0.30.0 | плановый PR, `datasets.lock.json` |
-| Cookies | `data/vendor/open-cookie-database/`, `data/cookies/allowlist.yaml` | Apache-2.0 / своё | Open Cookie Database; allowlist (consent-cookie CMP, сессия, LB, CSRF, язык) | плановый PR / PR |
-| CNAME-cloaking | `data/vendor/cname-trackers/` | MIT | AdGuard `cname-trackers` | плановый PR |
-| Routing | `data/routing.yaml` | Apache-2.0 | своё | minor с «Baseline changes» |
-| Ruleset и маппинг CRM | `data/ruleset/de-2026.yaml` | Apache-2.0 | своё, подпись заказчика; CRM-коды — заказчик | CalVer `ruleset.version` |
+| Каталог сервисов | `test/data/services/*.yaml` | Apache-2.0 | ~100 записей из экспорта аудитов заказчика и документации вендоров; чек-лист § 87a UrhG в PR | PR, версия пакета |
+| Fallback хостов | `test/data/vendor/third-party-web/` | MIT | third-party-web 0.30.0 | плановый PR, `datasets.lock.json` |
+| Cookies | `test/data/vendor/open-cookie-database/`, `test/data/cookies/allowlist.yaml` | Apache-2.0 / своё | Open Cookie Database; allowlist (consent-cookie CMP, сессия, LB, CSRF, язык) | плановый PR / PR |
+| CNAME-cloaking | `test/data/vendor/cname-trackers/` | MIT | AdGuard `cname-trackers` | плановый PR |
+| Routing | `test/data/routing.yaml` | Apache-2.0 | своё | minor с «Baseline changes» |
+| Ruleset и маппинг CRM | `test/data/ruleset/de-2026.yaml` | Apache-2.0 | своё, подпись заказчика; CRM-коды — заказчик | CalVer `ruleset.version` |
 | Данные CMP | `src/collectors/browser/cmp/*.ts` | Apache-2.0 | свои селекторы; autoconsent 17.1.0 — зависимость без модификаций | вместе с кодом |
-| Адекватность | `data/legal/adequacy.json` | своё | решения ЕС, список DPF | PR с `verifiedAt` |
-| Правовой контекст | `data/legal/context.yaml` | своё | DPF, Digital Omnibus и т. п. с `verifiedAt`, `reviewBy` | PR; CI предупреждает о просроченном `reviewBy` |
-| Тексты | `data/texts/{de,en}.yaml` | нужно решение заказчика (рекомендация CC BY 4.0) | заказчик; черновики `draft: true` | PR, ревью заказчика |
-| PRIV-02 утверждения | `data/privacy/claims.yaml` | Apache-2.0 | своё, ~6 в MVP | PR |
+| Адекватность | `test/data/legal/adequacy.json` | своё | решения ЕС, список DPF | PR с `verifiedAt` |
+| Правовой контекст | `test/data/legal/context.yaml` | своё | DPF, Digital Omnibus и т. п. с `verifiedAt`, `reviewBy` | PR; CI предупреждает о просроченном `reviewBy` |
+| Тексты | `test/data/texts/{de,en}.yaml` | нужно решение заказчика (рекомендация CC BY 4.0) | заказчик; черновики `draft: true` | PR, ревью заказчика |
+| PRIV-02 утверждения | `test/data/privacy/claims.yaml` | Apache-2.0 | своё, ~6 в MVP | PR |
 | VULN: WP | онлайн-запрос | CC0 | WPVulnerability | в момент скана; время в `datasets[]` |
-| VULN: JS | `data/vendor/retire/` | Apache-2.0 | retire.js | плановый PR |
+| VULN: JS | `test/data/vendor/retire/` | Apache-2.0 | retire.js | плановый PR |
 | VULN: npm, Packagist | онлайн-запрос | по источнику, GHSA — CC BY 4.0 | OSV/GHSA с фильтром NC-источников | в момент скана |
-| KEV | `data/vendor/cisa-kev/` | CC0 | CISA KEV (catalogVersion 2026.10.29 на дату документа) | плановый PR |
-| Манифест | `data/datasets.lock.json` | — | источник, версия или дата, sha256, лицензия и атрибуция каждого вендоренного набора | при каждом обновлении |
+| KEV | `test/data/vendor/cisa-kev/` | CC0 | CISA KEV (catalogVersion 2026.10.29 на дату документа) | плановый PR |
+| Манифест | `test/data/datasets.lock.json` | — | источник, версия или дата, sha256, лицензия и атрибуция каждого вендоренного набора | при каждом обновлении |
 
-Не используются в MVP: EasyPrivacy/EasyList (CC BY-SA), NC- и GPL-данные, Wordfence и EUVD (условия не прочитаны, ⚠ проверить), GeoIP (после релиза, opt-in `--network-attribution`, DB-IP Lite CC BY). Неизвестный хост — `unknown`, а не трекер. Пути `data/vendor/*` и `data/privacy/*` — **предложение автора, не согласовано (ОВ-2)**.
+Не используются в MVP: EasyPrivacy/EasyList (CC BY-SA), NC- и GPL-данные, Wordfence и EUVD (условия не прочитаны, ⚠ проверить), GeoIP (после релиза, opt-in `--network-attribution`, DB-IP Lite CC BY). Неизвестный хост — `unknown`, а не трекер. Пути `test/data/vendor/*` и `test/data/privacy/*` — **предложение автора, не согласовано (ОВ-2)**.
 
 ### 13.2 Запись каталога сервисов
 
 Поля записи каталога:
 
 ```yaml
-# data/services/google-analytics-4.yaml — иллюстрация
+# test/data/services/google-analytics-4.yaml — иллюстрация
 serviceId: google-analytics-4
 category: analytics                     # → routing.yaml → CONSENT-01
 policyRelevance: required               # PRIV-01 ищет сервис в DSE
@@ -1350,14 +1350,14 @@ source: { origin: customer-audit-export, ref: "<Audit-ID>", check87a: true }
 }
 ```
 
-На 30.10.2026 срок UK подтверждён [решением (EU) 2025/2574](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32025D2574), статус [C-703/25 P — CURIA](https://juris.curia.europa.eu/juris/liste.jsf?language=en&num=C-703%2F25). Статус DPF (C-703/25 P pending) хранится только в `data/legal/context.yaml` и выводится в `legalContext`. На уровень находки атрибуты не влияют.
+На 30.10.2026 срок UK подтверждён [решением (EU) 2025/2574](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32025D2574), статус [C-703/25 P — CURIA](https://juris.curia.europa.eu/juris/liste.jsf?language=en&num=C-703%2F25). Статус DPF (C-703/25 P pending) хранится только в `test/data/legal/context.yaml` и выводится в `legalContext`. На уровень находки атрибуты не влияют.
 
 ### 13.4 Каталог сообщений
 
-- `data/texts/{de,en}.yaml`, ICU MessageFormat 1, ключ `checkId.variant`; `de` по умолчанию. Поля сообщения — `title`, `description`, `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет). Структура сообщения и формулировки — в [Formulierungsleitfaden](legal/wording-guide.md).
-- `legalNote` — общий текст по `checkId` со статусом источника (`authority-consensus / court-first-instance / court-appellate / contested / technical`), `reviewedAt` и `reviewBy`. Лежит в тех же файлах (раздел `legalNotes`), а не в `data/legal/`: одна пара `de`/`en` для паритета ключей и теста полноты; в `data/legal/` — только `context.yaml` и `adequacy.json`. Имена полей и место `legalNotes` — **предложение автора, не согласовано (ОВ-2)**.
+- `test/data/texts/{de,en}.yaml`, ICU MessageFormat 1, ключ `checkId.variant`; `de` по умолчанию. Поля сообщения — `title`, `description`, `hint` (Hinweis zur manuellen Prüfung; поля «remediation» нет). Структура сообщения и формулировки — в [Formulierungsleitfaden](legal/wording-guide.md).
+- `legalNote` — общий текст по `checkId` со статусом источника (`authority-consensus / court-first-instance / court-appellate / contested / technical`), `reviewedAt` и `reviewBy`. Лежит в тех же файлах (раздел `legalNotes`), а не в `test/data/legal/`: одна пара `de`/`en` для паритета ключей и теста полноты; в `test/data/legal/` — только `context.yaml` и `adequacy.json`. Имена полей и место `legalNotes` — **предложение автора, не согласовано (ОВ-2)**.
 - Черновики: `draft: true`, в отчёте штамп «Textentwurf». Неутверждённый `de` блокирует релиз. `en` выходит только вычитанным, иначе `--lang en` в 1.0 недоступен.
-- L0: паритет ключей и плейсхолдеров, парсинг ICU, стоп-слова для `de` **и** `en`, «ни одной пользовательской строки вне `data/`».
+- L0: паритет ключей и плейсхолдеров, парсинг ICU, стоп-слова для `de` **и** `en`, «ни одной пользовательской строки вне `test/data/`».
 - Дисклеймер с условными абзацами (например, абзац про скриншоты — только когда они включены), без флага отключения.
 
 ### 13.5 Сборка и обновление
@@ -1374,7 +1374,7 @@ source: { origin: customer-audit-export, ref: "<Audit-ID>", check87a: true }
 ## 14. Репортеры
 
 
-Все репортеры читают один `Report` после `gate()`. JSON пишется первым как страховка; после остальных репортёров — атомарная перезапись (временный файл + rename) с окончательными `exitCode` и `exitReasons[]`. Ошибка запрошенного репортёра, кроме PDF, → `report-write-failed`, код `2`; уже созданные файлы сохраняются. Сбой печати PDF оставляет код выхода и `report.json` прежними, удаляет незавершённый `report.pdf` и печатает одну строку-предупреждение из `data/texts`. Если сама перезапись не удалась, расхождение JSON с кодом процесса объясняется в stderr. Всё — в `finally` с резервом 30 с.
+Все репортеры читают один `Report` после `gate()`. JSON пишется первым как страховка; после остальных репортёров — атомарная перезапись (временный файл + rename) с окончательными `exitCode` и `exitReasons[]`. Ошибка запрошенного репортёра, кроме PDF, → `report-write-failed`, код `2`; уже созданные файлы сохраняются. Сбой печати PDF оставляет код выхода и `report.json` прежними, удаляет незавершённый `report.pdf` и печатает одну строку-предупреждение из `test/data/texts`. Если сама перезапись не удалась, расхождение JSON с кодом процесса объясняется в stderr. Всё — в `finally` с резервом 30 с.
 
 | Формат | В релизе 1.0 | Файл | Содержание и ограничения |
 |---|---|---|---|
@@ -1388,11 +1388,11 @@ source: { origin: customer-audit-export, ref: "<Audit-ID>", check87a: true }
 
 В HTML один блок `<style>` с SHA-256 его точного содержимого в CSP; атрибутов `style=` нет, JS и сеть запрещены. L2 проверяет ноль сети и отображение стилей/скриншотов.
 
-HTML строится из `data/report/report.html`: один файл с разметкой и одним `<style>`. Подписи берутся через `{{t "report.…"}}` из `data/texts/{de,en}/report.yaml`; естественного языка в шаблоне нет. Запрещены `<script>`, обработчики `on*=`, атрибуты `style=`, внешние URL, `url()` и `@import`. Print-CSS задаёт A4 и раскрывает `<details>`, чтобы доказательства печатались целиком.
+HTML строится из `test/data/report/report.html`: один файл с разметкой и одним `<style>`. Подписи берутся через `{{t "report.…"}}` из `test/data/texts/{de,en}/report.yaml`; естественного языка в шаблоне нет. Запрещены `<script>`, обработчики `on*=`, атрибуты `style=`, внешние URL, `url()` и `@import`. Print-CSS задаёт A4 и раскрывает `<details>`, чтобы доказательства печатались целиком.
 
 `src/reporters/template.ts` — свой минимальный движок без зависимостей: `{{ путь }}`, `if`/`else`, `each` и `t`. Вывода без экранирования нет: все подстановки проходят `sanitizeExternal` и `escapeHtml` с разрывом `T<цифра>_`; неизвестные пути и ключи дают ошибку. `src/reporters/report-view.ts` отбирает и ограничивает поля для вывода, не включает `crmCode` и предоставляет общие сортировки для HTML и Summary. `src/reporters/html.ts` загружает шаблон, строит view, проверяет скриншоты и рендерит результат; хеш CSP вычисляется по фактическому тексту стиля.
 
-`src/reporters/pdf.ts` получает готовый HTML, запускает Chromium через `playwright-core` с той же политикой sandbox, что и сканер, и создаёт контекст с `javaScriptEnabled: false`, `offline: true`. Обработчик `route('**/*')` прерывает всё, кроме `data:` и `about:`. После `setContent(html)` вызывается `page.pdf({ format: 'A4', printBackground: true })`; колонтитул с дисклеймером и номерами страниц берёт тексты из `data/texts`. При `--format pdf` без `html` HTML рендерится в памяти.
+`src/reporters/pdf.ts` получает готовый HTML, запускает Chromium через `playwright-core` с той же политикой sandbox, что и сканер, и создаёт контекст с `javaScriptEnabled: false`, `offline: true`. Обработчик `route('**/*')` прерывает всё, кроме `data:` и `about:`. После `setContent(html)` вызывается `page.pdf({ format: 'A4', printBackground: true })`; колонтитул с дисклеймером и номерами страниц берёт тексты из `test/data/texts`. При `--format pdf` без `html` HTML рендерится в памяти.
 
 
 **JUnit — согласовано:** testsuite на модуль, testcase на проверку; `<failure>` — учитываемые находки, `<error>` — `check-error`, `<skipped>` — `inconclusive`/`not_applicable`/`skipped`. Подавленные, baseline-known и `info` — в `<system-out>`; `<properties>` — `exitCode`, `exitReasons`, `failOn`. Полный `Report` остаётся источником деталей, включая одновременные находки и ошибки.
@@ -1493,7 +1493,7 @@ rules:                           # overrides уровня (раздел 10.2)
 2. **Папка** `src/checks/<id>/index.ts`: `defineCheck({ id, requires, variants, planProbes?, run })`. `requires` — только существующие ключи `SnapshotKey`. Классификации — через `ctx.derive`, не своим кодом поверх данных.
 3. **Доп. запросы** — только `planProbes` → `ProbeSpec` класса T (или E с opt-in); валидатор движка проверяет их.
 4. **Одна строка** в `src/checks/index.ts`.
-5. **Данные:** варианты в `data/ruleset/de-2026.yaml`; `crmCode` или `null` с причиной в поле `crm` того же варианта; `corepack pnpm registry` обновляет таблицу 03-checks §2.1; черновые тексты `de` (и `en`, если выпускается) по `checkId.variant` с `draft: true`; `legalNote` по `checkId`; при владении категорией — строка в `data/routing.yaml`.
+5. **Данные:** варианты в `test/data/ruleset/de-2026.yaml`; `crmCode` или `null` с причиной в поле `crm` того же варианта; `corepack pnpm registry` обновляет таблицу 03-checks §2.1; черновые тексты `de` (и `en`, если выпускается) по `checkId.variant` с `draft: true`; `legalNote` по `checkId`; при владении категорией — строка в `test/data/routing.yaml`.
 6. **Фикстуры:** L1 на каждый вариант, `clean`, `inconclusive` или `error`, контрпример; для браузерных и сетевых проверок — сценарии L2 ([качество, раздел 2](04-quality-and-delivery.md#2-фикстуры-и-полнота-реестра)).
 7. **Прогон L0:** тест полноты, граф импортов, стоп-слова, lint ruleset.
 8. **Версии:** новый `checkId` и варианты — minor схемы; если проверка забирает категорию у CONSENT-01 — раздел «Baseline changes» в CHANGELOG.
@@ -1568,7 +1568,7 @@ rules:                           # overrides уровня (раздел 10.2)
 | № | Предложение автора, не согласовано | Зачем | Решает · когда |
 |---|---|---|---|
 | ОВ-1 | Идентификатор фазы A′ в данных и JSON — `A1` | Нужен ASCII-идентификатор для `phase` и `phases[]` | Разработка · до alpha-схемы (этап 1) |
-| ОВ-2 | Раскладка `src/` (`engine`, `net`, `redact`); лексикон кнопок — TS-константа в `src/core/consent`; `data/vendor/*`, `data/privacy/*`; свои YAML-данные → JSON на сборке, runtime-парсер только для пользовательских YAML; поле `source` в записи каталога; поля сообщения `title`/`description`/`hint` и `legalNotes` в `data/texts/{de,en}.yaml` | Зафиксированы слои, но не пути и формат сборки данных; место `legalNote` не задано | Разработка · этап 1 |
+| ОВ-2 | Раскладка `src/` (`engine`, `net`, `redact`); лексикон кнопок — TS-константа в `src/core/consent`; `test/data/vendor/*`, `test/data/privacy/*`; свои YAML-данные → JSON на сборке, runtime-парсер только для пользовательских YAML; поле `source` в записи каталога; поля сообщения `title`/`description`/`hint` и `legalNotes` в `test/data/texts/{de,en}.yaml` | Зафиксированы слои, но не пути и формат сборки данных; место `legalNote` не задано | Разработка · этап 1 |
 | ОВ-3 | Runtime-зависимости `commander` 15, `tldts`, `intl-messageformat`, реализация JCS; ≤ 8 прямых; HTML-шаблонизатор без новых зависимостей | Нужно выбрать библиотеки CLI, PSL и ICU; установленные версии — в `package.json` | Разработка · install-smoke этапа 0 |
 | ОВ-4 | Гранулярные ключи `SnapshotKey` (`http.securityTxt`, `dns.dkim`…); сбор только под `requires` включённых проверок; DNS/TLS/HTTP параллельно браузеру | Не делать запросов, которые никто не оценивает; время скана | Разработка · контракт `Snapshot`, этап 1 |
 | ОВ-5 | Desktop viewport 1440×900; навигация `domcontentloaded` с таймаутом 30 с, `load` ≤ 15 с не фатально; `serviceWorkers: 'allow'` | Воспроизводимость Messumgebung | Разработка · калибровка этапа 3а |

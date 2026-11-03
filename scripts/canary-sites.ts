@@ -92,7 +92,7 @@ const NON_ISO: Readonly<Record<string, string>> = { UK: 'GB', EL: 'GR', EU: '' }
 
 export const DOCUMENTED_CASE_PREFIX = 'öffentlich dokumentierter Fall:';
 
-/** Same verdict words the stop-word test forbids in data/texts (plus "abmahn…": the corpus is not an Abmahn list). */
+/** Same verdict words the stop-word test forbids in test/data/texts (plus "abmahn…": the corpus is not an Abmahn list). */
 const VERDICT_WORDS: readonly RegExp[] = [
   /verstößt|verstoßen|verstoss|verstoß/i,
   /rechtswidrig/i,

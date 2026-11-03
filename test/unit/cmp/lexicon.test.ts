@@ -11,7 +11,7 @@ import { loadDataDir } from '../../../src/core/data.ts';
 
 const lexicon = loadLexicon();
 
-describe('data/cmp/lexicon.yaml', () => {
+describe('test/data/cmp/lexicon.yaml', () => {
   it('loads through the generic data loader (ctx.data.cmp for checks)', () => {
     const fromData = lexiconFromData(loadDataDir('cmp'));
     expect(fromData).toEqual(lexicon);

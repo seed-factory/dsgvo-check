@@ -2,7 +2,7 @@
  * Pure lexicon of legal links: which link labels and path slugs point to the
  * Impressum or the privacy policy, with a rank by precision, which headings mark a fetched page as that document
  * (and in which language), and which navigation keys lead to an intermediate page (Kontakt, Rechtliches, Über uns).
- * No I/O: the collector reads data/legal/links.yaml through `legal-lexicon-file.ts`, LEGAL-01 gets the same data
+ * No I/O: the collector reads test/data/legal/links.yaml through `legal-lexicon-file.ts`, LEGAL-01 gets the same data
  * through `ctx.data.legal`.
  *
  * Matching works on words: both sides are normalised (NFKC, case, ä/ae, ß/ss, diacritics, punctuation → space) and a
@@ -204,7 +204,7 @@ function compile(raw: z.infer<typeof LexiconSchema>): LegalLexicon {
 
 const cache = new WeakMap<object, LegalLexicon>();
 
-/** Parse the merged `data/legal` object (`{ legal: … }`) or a bare lexicon object; throws on an invalid shape. */
+/** Parse the merged `test/data/legal` object (`{ legal: … }`) or a bare lexicon object; throws on an invalid shape. */
 export function legalLexiconFromData(data: unknown): LegalLexicon {
   if (data !== null && typeof data === 'object') {
     const hit = cache.get(data);

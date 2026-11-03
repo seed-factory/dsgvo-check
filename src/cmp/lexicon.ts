@@ -1,6 +1,6 @@
 /**
  * Pure button lexicon: label normalization, phrase matching and button kind. No I/O — checks may import it.
- * Data: data/cmp/lexicon.yaml (`lexicon:` block), loaded by `lexicon-file.ts` or by a check via `data: ['cmp']`.
+ * Data: test/data/cmp/lexicon.yaml (`lexicon:` block), loaded by `lexicon-file.ts` or by a check via `data: ['cmp']`.
  */
 import { z } from 'zod';
 import type { ButtonKind, CmpButton, CmpLexicon, Confidence } from './types.ts';
@@ -32,7 +32,7 @@ const LexiconSchema = z.object({
   bannerKeywords: z.array(z.string()).optional(),
 });
 
-/** Parse either the merged `data/cmp` object (`{ lexicon: … }`) or a bare lexicon object. */
+/** Parse either the merged `test/data/cmp` object (`{ lexicon: … }`) or a bare lexicon object. */
 export function lexiconFromData(data: unknown): CmpLexicon {
   const raw =
     data !== null && typeof data === 'object' && 'lexicon' in data

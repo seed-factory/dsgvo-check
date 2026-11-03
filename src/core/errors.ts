@@ -17,7 +17,7 @@ export type FatalReason =
 
 /**
  * A scan-level failure. Collectors throw it (or return it in `CollectorResult.fatal`) to abort the scan.
- * The user-facing text is `failure.<code>` in data/texts, rendered with `params` in the language of the report.
+ * The user-facing text is `failure.<code>` in test/data/texts, rendered with `params` in the language of the report.
  */
 export class ScanFatalError extends Error {
   readonly reason: FatalReason;

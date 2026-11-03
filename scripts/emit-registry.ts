@@ -1,5 +1,5 @@
 /**
- * Writes the variant table of the implemented checks into docs/03-checks.md §2.1 from data/ruleset, which is the
+ * Writes the variant table of the implemented checks into docs/03-checks.md §2.1 from test/data/ruleset, which is the
  * single source of variants, default severities and `locked` marks. `--check` fails on drift.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { loadRuleset } from '../src/core/data.ts';
 
 const doc = fileURLToPath(new URL('../docs/03-checks.md', import.meta.url));
-const BEGIN = '<!-- registry:begin: generated from data/ruleset by `corepack pnpm registry`, do not edit -->';
+const BEGIN =
+  '<!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->';
 const END = '<!-- registry:end -->';
 const SEVERITIES = ['critical', 'warning', 'info'] as const;
 

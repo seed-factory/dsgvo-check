@@ -1,5 +1,5 @@
 /**
- * Loaders for data/ (ruleset, texts, routing, generic data dirs). Each directory is a catalog of YAML files
+ * Loaders for test/data/ (ruleset, texts, routing, generic data dirs). Each directory is a catalog of YAML files
  * that are merged (one file per module: browser.yaml, http.yaml, dns.yaml, plus shared core files).
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -9,8 +9,8 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { SeveritySchema } from './report-schema.ts';
 
-/** Package root data directory (same relative path from src/core and dist/core). */
-export const DEFAULT_DATA_DIR = fileURLToPath(new URL('../../data/', import.meta.url));
+/** Package data directory test/data (same relative path from src/core and dist/core). */
+export const DEFAULT_DATA_DIR = fileURLToPath(new URL('../../test/data/', import.meta.url));
 
 export class DataError extends Error {
   constructor(message: string) {
@@ -222,7 +222,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Load data/<name>/*.yaml merged (objects merged deeply, arrays concatenated, scalar conflicts are errors).
+ * Load test/data/<name>/*.yaml merged (objects merged deeply, arrays concatenated, scalar conflicts are errors).
  * Used for `Check.data` (e.g. `cmp`, `services`). Callers validate the result with their own zod schema.
  */
 export function loadDataDir(name: string, dataDir = DEFAULT_DATA_DIR): Record<string, unknown> {

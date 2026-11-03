@@ -66,7 +66,7 @@ function probe(p: { buttons?: RawButton[]; covered?: string[] } = {}): ProbeResu
 const lexicon = loadLexicon();
 const measure = (p: Parameters<typeof probe>[0]) => toMeasured(probe(p), lexicon, PAGE).firstLayer;
 
-/** Every label, key and bare topic word that data/legal/links.yaml lists for the Impressum and the privacy policy. */
+/** Every label, key and bare topic word that test/data/legal/links.yaml lists for the Impressum and the privacy policy. */
 function lexiconPhrases(): Array<{ kind: string; lang: string; role: string; phrase: string }> {
   const raw = loadDataDir('legal') as {
     legal: {
@@ -84,7 +84,7 @@ function lexiconPhrases(): Array<{ kind: string; lang: string; role: string; phr
   return out;
 }
 
-describe('toMeasured: covered links are judged by the lexicon of data/legal', () => {
+describe('toMeasured: covered links are judged by the lexicon of test/data/legal', () => {
   it('the lexicon file lists phrases of many languages (the scenario is real)', () => {
     const langs = new Set(lexiconPhrases().map((p) => p.lang));
     expect(langs.has('fr') && langs.has('es') && langs.has('pl')).toBe(true);
@@ -189,7 +189,7 @@ describe('toMeasured: covered links are judged by the lexicon of data/legal', ()
   });
 });
 
-describe('toMeasured: legal links of the banner are judged by the lexicon of data/legal', () => {
+describe('toMeasured: legal links of the banner are judged by the lexicon of test/data/legal', () => {
   it('every label and key of the lexicon file is a legal link of the banner', () => {
     const missed = lexiconPhrases().filter(
       (p) => !measure({ buttons: [link(p.phrase)] }).legalLinks?.some((l) => l.text === p.phrase),

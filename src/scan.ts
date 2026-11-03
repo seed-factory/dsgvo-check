@@ -209,7 +209,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
   let core: CoreData | null = null;
   let snapshot: Snapshot | null = null;
 
-  // `failure.<code>` in data/texts, in the language of the scan; the code alone when no texts can be loaded.
+  // `failure.<code>` in test/data/texts, in the language of the scan; the code alone when no texts can be loaded.
   const failureMessage = (code: string, params: MessageParams): string => {
     let texts = core?.texts;
     try {

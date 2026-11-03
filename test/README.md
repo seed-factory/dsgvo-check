@@ -1,60 +1,66 @@
 # Tests
 
-| Level | Where                                                                          | What                                                                                                 | Network       |
-| ----- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------- |
-| L0    | `test/unit/core/{registry-completeness,stopwords,no-crm-codes,schema}.test.ts` | registry completeness, stop words, no `T[0-9]_` outside JSON, schema drift and Ajv contract          | none          |
-| L1    | `test/unit/**`                                                                 | pure checks on snapshot slices (`test/utils/snapshot-builder.ts`), core (gate, assess, fingerprint…) | none          |
-| L2    | `test/integration/**`                                                          | real Chromium (Chrome for Testing, new headless), undici, `node:tls`, dns2 against local servers     | loopback only |
-| L3    | `test/e2e/**`                                                                  | packed CLI / Docker image / Action                                                                   | loopback only |
-| live  | `test/live/**`                                                                 | real sites; never part of `pnpm test`                                                                | internet      |
+| Level | Where                                                                                       | What                                                                                                           | Network       |
+| ----- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------- |
+| L0    | `test/unit/core/{registry-completeness,stopwords,no-crm-codes,schema,import-graph}.test.ts` | registry completeness, stop words, no `T[0-9]_` outside JSON, report JSON Schema (Ajv), import graph of checks | none          |
+| L1    | `test/unit/**`                                                                              | checks on snapshot slices (`test/utils/snapshot-builder.ts`), core (gate, assess, …)                           | none          |
+| L2    | `test/integration/**`                                                                       | real Chromium (Chrome for Testing, new headless), undici, `node:tls`, dns2, local servers                      | loopback only |
+| L3    | `test/e2e/**`                                                                               | packed CLI, Docker image, Action                                                                               | loopback only |
+| live  | `test/live/**`                                                                              | real sites; never part of `pnpm test`                                                                          | internet      |
 
 Commands: `corepack pnpm test` (unit + integration), `test:unit`, `test:integration`, `test:e2e`, `test:live`.
-Single file: `corepack pnpm vitest run test/unit/core/gate.test.ts`.
+One file: `corepack pnpm vitest run test/unit/core/gate.test.ts`.
+The Docker part of L3 is opt-in: set `DSGVO_E2E_IMAGE` (see `test/e2e/docker.e2e.test.ts`).
 
 ## Parallel runs
 
-Test files run in parallel, one worker per logical core; `DSGVO_TEST_WORKERS=4` or `=50%` changes that, `=1` runs the
-files one after another (`test/utils/test-workers.ts`). L2 and L3 files must stay independent of each other:
+One worker per logical core. `DSGVO_TEST_WORKERS=4`, `=50%` or `=1` (one file at a time) overrides it
+(`test/utils/test-workers.ts`). L2 and L3 files must not depend on each other:
 
-- **Temp dir:** `test/utils/worker-tmpdir.ts` (setup file) points `TMPDIR` to `<tmp>/dsgvo-test-w<pool>-<pid>` for the
-  file and removes it afterwards. Use `os.tmpdir()` for anything a test creates, and never look into the real temp dir.
-- **Ports:** listen on port 0. Target hostnames are virtual (`--host-resolver-rules`), only the fixture server's
-  ports are real.
-- **Time:** measure what the code controls. A pacer or pause is checked at the client (the moment of sending), not at
-  the server (arrival jitter), and with a tolerance for a process that is descheduled on a busy machine. Certificates
-  are issued relative to the real clock, so a check that reads them needs `{ now: new Date() }`, not `FIXED_NOW`.
+- **Temp dir.** `test/utils/worker-tmpdir.ts` sets `TMPDIR` to `<tmp>/dsgvo-test-<run pid>/w<pool>-<pid>` for each
+  file; `test/utils/global-tmpdir.ts` removes the run directory. Create temp files with `os.tmpdir()` and never look
+  into the real temp dir.
+- **Ports.** Listen on port 0. Hostnames are virtual (`--host-resolver-rules`); only the fixture server's ports are
+  real.
+- **Time.** Check pacers and pauses at the client (the moment of sending), not at the server, with a tolerance for a
+  descheduled process. Test certificates are issued against the real clock, so a check that reads them needs
+  `{ now: new Date() }`, not `FIXED_NOW`.
 
-## L2 network: how every host reaches the fixture server
+## L2 network
 
-Requirement: Chromium must load the target _and_ fake third parties (`www.google-analytics.com`,
-`fonts.googleapis.com`, …) from `test/fixture-server` without internet, with real TLS, real cookies and a real
-third-party context; Node clients (undici, `node:tls`) must see the same hosts.
+Chromium must load the target _and_ fake third parties (`www.google-analytics.com`, `fonts.googleapis.com`, …) from
+`test/fixture-server` without internet, with real TLS, cookies and third-party context. Node clients (undici,
+`node:tls`) must see the same hosts.
 
-Options considered:
+Chosen: `--host-resolver-rules` with port remapping (`server.browserArgs()`), checked on Chromium 156.
 
-| Option                                          | Verdict                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`--host-resolver-rules` with port remapping** | **chosen.** Verified on Chromium 156 (CfT, new headless): `MAP *:80 127.0.0.1:<httpPort>, MAP *:443 127.0.0.1:<httpsPort>` maps both host _and_ port; Host header and SNI keep the original name; `serverAddr()` = 127.0.0.1. `MAP * ~NOTFOUND` makes every other port fail with `ERR_NAME_NOT_RESOLVED` (no leak). Works with random ports, so no root and no netns. |
-| Proxy on the fixture server (CONNECT + test CA) | rejected: changes browser behaviour (proxy mode, `connectedIp` is the proxy), conflicts with the user `--proxy` option, more code.                                                                                                                                                                                                                                    |
-| Bind 80/443 directly                            | rejected: allowed unprivileged on macOS, not on Linux CI without `ip_unprivileged_port_start` / netns.                                                                                                                                                                                                                                                                |
-| `page.route` / `route.fulfill`                  | rejected for L2: disables HTTP cache, no `serverAddr`/TLS details, interferes with the collector's own routes.                                                                                                                                                                                                                                                        |
+- `MAP *:80 127.0.0.1:<httpPort>, MAP *:443 127.0.0.1:<httpsPort>` maps host _and_ port. Host header and SNI keep the
+  original name; `serverAddr()` is 127.0.0.1.
+- `MAP * ~NOTFOUND` fails every other port with `ERR_NAME_NOT_RESOLVED`, so nothing leaks.
+- Random ports, no root, no netns.
 
-TLS trust:
-- **Chromium** gets `--ignore-certificate-errors-spki-list=<sha256 of the shared leaf key>`. All "good" leaf
-  certificates (any host, issued lazily by SNI) share one key pair, so one hash covers every host. Broken
-  certificates (`expired`, `wrong-name`, `self-signed`) use their own keys and stay broken in Chromium
-  (`net::ERR_CERT_*`). Do not close a page that shows a certificate error — closing `chrome-error://` pages can
-  block for many seconds; close the context instead.
-- **Node** (undici, `node:tls`) trusts the test CA (`network.test.caPem`) → real Node errors:
-  `CERT_HAS_EXPIRED`, `ERR_TLS_CERT_ALTNAME_INVALID`, `DEPTH_ZERO_SELF_SIGNED_CERT`.
+Rejected: a proxy on the fixture server (changes browser behaviour, `connectedIp` is the proxy, conflicts with the
+user's `--proxy`), binding 80/443 (needs `ip_unprivileged_port_start` or a netns on Linux CI) and `page.route`
+(disables the HTTP cache, gives no `serverAddr` or TLS details, interferes with the collector's own routes).
 
-Node routing: `NetworkConfig.test.connect(host, port)` returns `{host: '127.0.0.1', port: <mapped>}`; collectors
-connect there while keeping `servername`/`Host` = original host. Reference implementation:
-`test/utils/network.ts` (`testDispatcher`). Core preflight uses `NetworkConfig.lookup` (→ 127.0.0.1) and
-`allowPrivateAddresses: true` (tests only).
+### TLS trust
 
-Chrome background traffic (`update.googleapis.com`, …) is answered with 404 and recorded in
-`server.browserInternal`, not in `server.unexpected`.
+- **Chromium:** `--ignore-certificate-errors-spki-list=<sha256 of the shared leaf key>`. All good leaf certificates
+  (any host, issued lazily by SNI) share one key, so one hash covers every host. `expired`, `wrong-name` and
+  `self-signed` certificates have their own keys and stay broken (`net::ERR_CERT_*`). After a certificate error close
+  the context, not the page: closing a `chrome-error://` page can block for many seconds.
+- **Node:** trusts the test CA (`network.test.caPem`) and gets the real errors (`CERT_HAS_EXPIRED`,
+  `ERR_TLS_CERT_ALTNAME_INVALID`, `DEPTH_ZERO_SELF_SIGNED_CERT`).
+
+### Node routing
+
+`NetworkConfig.test.connect(host, port)` returns `{host: '127.0.0.1', port: <mapped>}`. Collectors connect there and
+keep `servername` and `Host` as the original host (reference: `testDispatcher` in `test/utils/network.ts`). In tests,
+core preflight resolves through `NetworkConfig.lookup` (always 127.0.0.1) and runs with
+`allowPrivateAddresses: true`.
+
+Chrome's background traffic (`update.googleapis.com`, …) gets a 404 and lands in `server.browserInternal`, not in
+`server.unexpected`.
 
 ## Fixture server
 
@@ -69,8 +75,10 @@ expect(server.unexpected).toEqual([]);                  // every host must be de
 await b.close(); await server.close();
 ```
 
-Site content lives in `test/fixture-server/sites/<module>/<site>/` (module = owner path, see BRIEF): static files,
-`/` → `index.html`, unknown path → 404 page. Each site is declared in `test/fixture-server/sites.ts`:
+Site content lives in `test/fixture-server/sites/<module>/<site>/` (`module`: `browser`, `cmp`, `core` or
+`pipeline`): static files, `/` → `index.html`, unknown path → 404 page. Declare each site in
+`test/fixture-server/sites.ts`; an undeclared site, or a `fileHeaders` entry for a missing file, fails the server
+start:
 
 ```ts
 'core/smoke': {
@@ -82,33 +90,29 @@ Site content lives in `test/fixture-server/sites/<module>/<site>/` (module = own
 },
 ```
 
-An undeclared site, or a `fileHeaders` entry for a missing file, fails the server start.
-
-Use `.test` hostnames for targets (never real domains); fake third parties may use their real hostnames because
-they never leave the machine. Fixture content must be written by hand: no copied CMP/vendor code (licenses).
-Dynamic behaviour: `handlers` (`setCookieHandler`, `redirectHandler`, or your own `DynamicHandler`), or
-`routes[].delayMs` for delayed tags.
-
-Fake DNS for MAIL-* (M5): run a `dns2` UDP server on `127.0.0.1:0` in the test and pass
-`network: { ...server.network(), dnsServers: ['127.0.0.1:<port>'] }`.
+- Targets use `.test` hostnames, never real domains. Fake third parties may use their real hostnames: they never leave
+  the machine.
+- Write fixture content by hand; copied CMP or vendor code is a license problem.
+- Dynamic behaviour: `handlers` (`setCookieHandler`, `redirectHandler`, your own `DynamicHandler`) or
+  `routes[].delayMs` for delayed tags.
+- Fake DNS for the MAIL checks: `startFakeDns(zone)` in `test/integration/dns/dns-server.ts` (dns2, UDP, random port
+  on `127.0.0.1`). Pass `network: { ...server.network(), dnsServers: [dns.server] }`.
 
 ## L1 fixtures
 
-Browser checks: scenarios in `test/unit/checks/browser/scenarios/<id>.ts`, one file per check, collected into
-`SCENARIOS` and `VARIANT_SCENARIOS` by `scenarios/index.ts`. Each has a `file` name that starts with its kind
-(`violation-…`, `clean-…`, `inconclusive-…`), a `$expect` and a `build()` of the snapshot; they are built in memory,
-nothing is written to disk.
+- **Browser checks:** `test/unit/checks/browser/scenarios/<id>.ts`, one file per check, collected into `SCENARIOS`
+  and `VARIANT_SCENARIOS` by `scenarios/index.ts`. A scenario has a `file` name that starts with its kind
+  (`violation-…`, `clean-…`, `inconclusive-…`), an `expect` and a `build()` that makes the snapshot in memory.
+- **DNS checks:** one row per query in `test/unit/checks/dns/fixtures.ts`, also in memory.
+- **HTTP checks:** `test/fixtures/snapshots/http/<CHECK-ID>/{violation,clean,inconclusive|error,counterexample}*.json`,
+  a partial `Snapshot` (`makeSnapshot` fills the rest) plus `$expect` (`status`, optional `variants` and `reason`):
 
-DNS checks: one row per query in `test/unit/checks/dns/fixtures.ts`, built in memory the same way.
+  ```json
+  { "$description": "Start page over https without any security header",
+    "$expect": { "status": "completed", "variants": ["anti-framing-missing", "header-missing", "hsts-missing"] },
+    "http": { "chains": [], "documents": [ … ], … } }
+  ```
 
-HTTP checks: `test/fixtures/snapshots/http/<CHECK-ID>/{violation,clean,inconclusive|error}*.json` — a partial `Snapshot` (missing parts are filled by `makeSnapshot`) plus `$expect`:
-
-```json
-{ "$description": "Google Fonts CSS loaded before consent",
-  "$expect": { "status": "completed", "variants": ["fonts-loaded"] },
-  "browser": { … }, "collection": { "browser": { "status": "ok", "durationMs": 0 } } }
-```
-
-`registry-completeness.test.ts` runs every fixture of every registered check and compares status and the sorted
-set of emitted variants. Write targeted tests with the builders (`makeRequest`, `makePage`, `runCheck`, …) in
+`registry-completeness.test.ts` runs every fixture of every registered check and compares the status and the sorted
+set of emitted variants. Targeted tests use the builders (`makeRequest`, `makePage`, `runCheck`, …) and live in
 `test/unit/checks/<module>/`.

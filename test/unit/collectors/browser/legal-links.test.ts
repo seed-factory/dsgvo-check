@@ -2,7 +2,7 @@
  * Pure: ranking and lexicon of legal links on the start page.
  * Labels are matched on word boundaries after normalisation (NFKC, case, ä/ae); an exact canonical label beats a
  * label that starts with the key, and that beats a key inside the label; the generic "rechtliche Hinweise" and
- * "DSGVO" are the last resort. Localised labels come from data/legal/links.yaml.
+ * "DSGVO" are the last resort. Localised labels come from test/data/legal/links.yaml.
  */
 import { describe, expect, it } from 'vitest';
 import { matchLegalLink } from '../../../../src/collectors/browser/legal-lexicon.ts';

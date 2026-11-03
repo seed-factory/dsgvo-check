@@ -6,8 +6,8 @@
 !tsconfig.build.json
 !src
 !src/**
-!data
-!data/**
+!test/data
+!test/data/**
 !scripts
 scripts/**
 !scripts/emit-schema.ts

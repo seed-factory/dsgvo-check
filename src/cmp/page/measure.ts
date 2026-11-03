@@ -133,7 +133,7 @@ export function toButton(
 }
 
 /**
- * Does the label name the Impressum or the privacy policy? The lexicon of data/legal decides, with the code the
+ * Does the label name the Impressum or the privacy policy? The lexicon of test/data/legal decides, with the code the
  * collector uses to choose the documents (`matchLegalLink`): every language of the lexicon counts, and a link to a
  * cookie settings dialog ("Datenschutz-Einstellungen") does not. The probe holds no legal wording.
  */
@@ -149,7 +149,7 @@ export function toMeasured(
     offset?: { x: number; y: number } | null;
     blockingFrom?: ProbeResult;
     closeMeansAccept?: boolean | null;
-    /** Legal-link lexicon (default: data/legal). */
+    /** Legal-link lexicon (default: test/data/legal). */
     legal?: LegalLexicon;
   } = {},
 ): Measured {

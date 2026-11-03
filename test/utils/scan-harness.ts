@@ -14,10 +14,10 @@ export interface ExtraCheckData {
   crm?: Record<string, string | null>;
 }
 
-/** Copy data/ to a temp dir and add a `zz-test.yaml` with ruleset (including crm) and texts (de, en). */
+/** Copy test/data/ to a temp dir and add a `zz-test.yaml` with ruleset (including crm) and texts (de, en). */
 export function testDataDir(extra: ExtraCheckData): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'dsgvo-data-'));
-  cpSync(path.join(REPO_ROOT, 'data'), dir, { recursive: true });
+  cpSync(path.join(REPO_ROOT, 'test/data'), dir, { recursive: true });
   const checks: Record<string, unknown> = {};
   const messages: Record<string, { title: string; body: string }> = {};
   for (const [id, variants] of Object.entries(extra.ruleset)) {

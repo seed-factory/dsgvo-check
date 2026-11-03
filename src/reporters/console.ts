@@ -1,6 +1,6 @@
 /**
  * Console reporter. No crmCode / `T[0-9]_` strings (5.6); every string that may come from a scanned site is passed
- * through `sanitizeExternal` (ANSI, bidi, control chars, workflow commands). Labels come from data/texts ui keys.
+ * through `sanitizeExternal` (ANSI, bidi, control chars, workflow commands). Labels come from test/data/texts ui keys.
  */
 import { renderMessage, uiText } from '../core/messages.ts';
 import type { Finding, Report, Severity } from '../core/report-schema.ts';

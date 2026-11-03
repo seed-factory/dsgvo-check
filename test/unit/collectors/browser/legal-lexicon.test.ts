@@ -1,5 +1,5 @@
 /**
- * Pure: the shared legal-link lexicon (data/legal/links.yaml) is consistent: every canonical label is found by the
+ * Pure: the shared legal-link lexicon (test/data/legal/links.yaml) is consistent: every canonical label is found by the
  * matcher with the best rank for its own kind only, every language has markers, normalisation folds the characters
  * of the supported languages, and a malformed data file is rejected with a readable message.
  */
