@@ -7,6 +7,7 @@ export type {
   CheckModule,
   CheckOutcome,
   CheckRunResult,
+  CheckThresholds,
   CheckVariant,
   EvidenceInput,
   Observation,

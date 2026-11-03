@@ -3,7 +3,6 @@
  * `getConsentDetails()` is read defensively.
  */
 import type { Page } from 'playwright-core';
-import { majorSupported } from '../detection.ts';
 import type { CategoryState } from '../types.ts';
 import { defineAdapter } from './base.ts';
 
@@ -114,48 +113,6 @@ const read = (page: Page) => page.evaluate(readUsercentrics);
 
 export const usercentrics = defineAdapter({
   id: 'usercentrics',
-  name: 'Usercentrics',
-  supportedVersions: '2.x || 3.x',
-  detect: {
-    globals: ['__ucCmp', 'UC_UI'],
-    scripts: [
-      {
-        label: 'web.cmp.usercentrics.eu/ui/loader.js',
-        pattern: '^https://web\\.cmp\\.usercentrics\\.eu/ui/loader\\.js',
-      },
-      { label: 'app.usercentrics.eu/browser-ui', pattern: '^https://app\\.usercentrics\\.eu/browser-ui/' },
-    ],
-    dom: ['#usercentrics-cmp-ui', '#usercentrics-root'],
-    storage: ['^ucData$', '^uc_settings$', '^uc_user_interaction$'],
-  },
-  version(raw) {
-    if (raw.globals.includes('__ucCmp') || raw.dom.includes('#usercentrics-cmp-ui')) return '3';
-    if (raw.globals.includes('UC_UI') || raw.dom.includes('#usercentrics-root')) return '2';
-    if (raw.scripts.includes('web.cmp.usercentrics.eu/ui/loader.js')) return '3';
-    if (raw.scripts.includes('app.usercentrics.eu/browser-ui')) return '2';
-    return null;
-  },
-  versionSupported: (v) => majorSupported(v, [2, 3]),
-  banner: {
-    containers: [
-      '#uc-main-dialog',
-      '[data-testid="uc-default-banner"]',
-      '[data-testid="uc-center-container"]',
-      '#uc-center-container',
-    ],
-    overlays: ['#uc-overlay', '[data-testid="uc-overlay"]'],
-    vendorRoles: [
-      { selector: '[data-action-type="accept"]', role: 'accept' },
-      { selector: '[data-action-type="deny"]', role: 'reject' },
-      { selector: '[data-action-type="more"]', role: 'settings' },
-      { selector: '[data-action-type="save"]', role: 'save' },
-      { selector: '[data-action-type="close"]', role: 'close' },
-      { selector: '[data-testid="uc-accept-all-button"]', role: 'accept' },
-      { selector: '[data-testid="uc-deny-all-button"]', role: 'reject' },
-      { selector: '[data-testid="uc-more-button"]', role: 'settings' },
-      { selector: '[data-testid="uc-save-button"]', role: 'save' },
-    ],
-  },
   async readState(page) {
     const r = await read(page);
     if (!r.v3 && !r.v2) return [];

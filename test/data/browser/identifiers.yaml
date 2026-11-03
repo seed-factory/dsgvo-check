@@ -1,0 +1,67 @@
+# Names the browser collector reads out of requests and cookie jars BEFORE redaction: which parameters and cookies carry
+# a user or device identifier, which carry Consent Mode signals or an event name. Only NAMES are ever recorded; values stay
+# in memory for correlation and are never written (AGENTS.md rule 2). The query allowlist (which values survive
+# redaction) is a privacy guarantee and stays in code, src/core/url/url.ts.
+identifiers:
+  # Query and form parameter names that carry an identifier (lower case; compared with the lower-cased request name).
+  params:
+    - cid # GA client id
+    - uid
+    - _gid
+    - _ga
+    - fbp
+    - fbc
+    - _fbp
+    - _fbc
+    - gclid
+    - dclid
+    - wbraid
+    - gbraid
+    - msclkid
+    - fbclid
+    - ttclid
+    - ttp
+    - _ttp
+    - li_fat_id
+    - _id # Matomo visitor id
+    - _pk_id
+    - vid
+    - ecid
+    - client_id
+    - clientid
+    - user_id
+    - userid
+    - anonymous_id
+    - ajs_anonymous_id
+    - visitor_id
+    - visitorid
+    - uuid
+    - _hjid
+    - hjuid
+    - muid
+    - _uetvid
+    - _uetsid
+
+  # Identifier names that sync and conversion endpoints carry in the URL PATH (Floodlight and Google matrix parameters,
+  # Audience Manager sync). Read before redaction rewrites the path; the service catalog decides which are persistent.
+  pathParams: [dpuuid, _dc_unique_id, dc_dbm_token, dc_pre, dc_ext_key, gdid]
+
+  # Cookie names whose value is remembered in memory to recognise it in later requests (regex sources).
+  cookies:
+    - "^_ga(_.*)?$"
+    - "^_gid$"
+    - "^_fbp$"
+    - "^_fbc$"
+    - "^_gcl_"
+    - "^_pk_id"
+    - "^_uetvid$"
+    - "^_ttp$"
+    - "^li_sugr$"
+    - "^bcookie$"
+  # The same, matched case-insensitively.
+  cookiesAnyCase: ["^ide$", "^nid$", "^muid$", "^_hjsession"]
+
+  # Google Consent Mode parameters (`gcs`, `gcd`, `npa`, `dma`) recorded as consent signals of a request.
+  consentModeParams: [gcs, gcd, npa, dma]
+  # Event name parameters: GA4 `en`, Meta Pixel `ev` (`t` counts only as a Universal Analytics hit type, in code).
+  eventParams: [en, ev]

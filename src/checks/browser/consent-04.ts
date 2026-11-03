@@ -2,7 +2,8 @@
  * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works. The verdict comes only from the
  * pure `classifyFirstLayer` for a CMP recognised with `high`; otherwise `banner-not-recognized` or `cmp-not-supported`.
  */
-import { classifyFirstLayer } from '../../cmp/classify.ts';
+import { adaptersSection, essentialCategorySection } from '../../cmp/adapters-data.ts';
+import { type ClassifyOptions, classifyFirstLayer } from '../../cmp/classify.ts';
 import { lexiconFromData } from '../../cmp/lexicon.ts';
 import type {
   CmpFacts,
@@ -11,7 +12,6 @@ import type {
   CmpSection,
   ConsentStateFact,
   FirstLayerClassification,
-  KnownCmpId,
 } from '../../cmp/types.ts';
 import {
   type CheckOutcome,
@@ -41,20 +41,6 @@ export const CONSENT04_VARIANTS = [
 ] as const;
 type Variant = (typeof CONSENT04_VARIANTS)[number];
 
-const KNOWN_CMPS: ReadonlySet<string> = new Set<KnownCmpId>([
-  'borlabs',
-  'cookiebot',
-  'complianz',
-  'usercentrics',
-  'ccm19',
-  'real-cookie-banner',
-  'cookiehub',
-]);
-
-/** Consent categories treated as essential when deciding "granted without action". */
-const ESSENTIAL_CATEGORY =
-  /^(necessary|essential|required|technical|strictly[-_ ]?necessary|technically[-_ ]?necessary|functional|functionality(_storage)?|security(_storage)?|notwendig|essenziell|essentiell|erforderlich|technisch[-_ ]?notwendig)$/i;
-
 const EMPTY_LEXICON: CmpLexicon = {
   version: 'none',
   accept: [],
@@ -75,7 +61,11 @@ export function lexiconFrom(data: unknown): CmpLexicon | null {
   }
 }
 
-export type FirstLayerClassifier = (facts: CmpFacts, lexicon: CmpLexicon) => FirstLayerClassification;
+export type FirstLayerClassifier = (
+  facts: CmpFacts,
+  lexicon: CmpLexicon,
+  options: ClassifyOptions,
+) => FirstLayerClassification;
 
 /**
  * Only an own adapter with `high` recognition ranks above the heuristic: below `high` it is as much a hint as the
@@ -107,14 +97,18 @@ function primaryFacts(cmp: CmpSection, start: string | null): CmpFacts | null {
   return candidates[0]?.f ?? null;
 }
 
-function grantedWithoutAction(cmp: CmpSection): Array<{ facts: CmpFacts; state: ConsentStateFact }> {
+/** Consent categories treated as essential when deciding "granted without action" (test/data/cmp/categories.yaml). */
+function grantedWithoutAction(
+  cmp: CmpSection,
+  essential: RegExp,
+): Array<{ facts: CmpFacts; state: ConsentStateFact }> {
   const out: Array<{ facts: CmpFacts; state: ConsentStateFact }> = [];
   for (const p of cmp.phases) {
     for (const f of p.facts) {
       if (p.phase !== 'A' && f.moment !== 'first-screen') continue;
       for (const s of f.state) {
         if (s.ready !== 'ready' || (s.origin !== 'default' && s.origin !== 'stored')) continue;
-        if (Object.entries(s.categories).some(([k, v]) => v === 'granted' && !ESSENTIAL_CATEGORY.test(k)))
+        if (Object.entries(s.categories).some(([k, v]) => v === 'granted' && !essential.test(k)))
           out.push({ facts: f, state: s });
       }
     }
@@ -225,7 +219,9 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       // Only own adapters with `high` recognition and a supported version give a verdict.
       const notSupported =
         (det.method === 'adapter' && det.versionSupported === false) ||
-        (det.method === 'heuristic' && det.cmpId !== null && !KNOWN_CMPS.has(det.cmpId));
+        (det.method === 'heuristic' &&
+          det.cmpId !== null &&
+          !Object.hasOwn(adaptersSection.parse(ctx.data.cmp), det.cmpId));
       if (
         det.method !== 'adapter' ||
         det.recognitionConfidence !== 'high' ||
@@ -246,7 +242,9 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       const lexicon = lexiconFrom(ctx.data.cmp);
       if (!lexicon) limitations.push('lexicon-unavailable');
       if (primary.firstLayer.bannerVisible) {
-        const cls = classify(primary, lexicon ?? EMPTY_LEXICON);
+        const cls = classify(primary, lexicon ?? EMPTY_LEXICON, {
+          blockingCoveredRatio: ctx.thresholds.cmp.blockingCoveredRatio,
+        });
         const v = cls.variant as string;
         if (v === 'banner-not-recognized' || v === 'cmp-not-supported') {
           inconclusiveReason = v;
@@ -283,7 +281,7 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
         } else if (!b.verify.verified) limitations.push('reject-unverified');
       }
 
-      const granted = grantedWithoutAction(cmp);
+      const granted = grantedWithoutAction(cmp, essentialCategorySection.parse(ctx.data.cmp));
       if (granted.length > 0) {
         observations.push({
           ...base('consent-without-action', 'high', [

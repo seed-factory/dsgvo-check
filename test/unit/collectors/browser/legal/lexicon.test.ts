@@ -99,6 +99,16 @@ describe('legalLexiconFromData', () => {
     expect(() => legalLexiconFromData(null)).toThrow(/legal lexicon/);
   });
 
+  it('probes the conventional paths from the file and rejects a path without a leading slash', () => {
+    const merged = loadDataDir('legal') as { legal: Record<string, unknown> };
+    expect(legalLexiconFromData(merged).fallbackPaths).toEqual({
+      impressum: '/impressum',
+      privacy: '/datenschutz',
+    });
+    const broken = { legal: { ...merged.legal, fallbackPaths: { impressum: 'impressum', privacy: '/x' } } };
+    expect(() => legalLexiconFromData(broken)).toThrow(/legal lexicon: fallbackPaths\.impressum/);
+  });
+
   it('accepts the merged data directory and the bare lexicon object alike', () => {
     const merged = loadDataDir('legal');
     const bare = (merged as { legal: unknown }).legal;

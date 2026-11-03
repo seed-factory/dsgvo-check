@@ -3,8 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { classifyFirstLayer, detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
+import { detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
 import { bannerScreenshot } from '../../../src/collectors/browser/phases/screenshot.ts';
+import { classifyFirstLayer } from '../../utils/classify.ts';
 import { useCmpServer } from './helpers.ts';
 
 describe('generic heuristic: recognition of unknown banners', () => {

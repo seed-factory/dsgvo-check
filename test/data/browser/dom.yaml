@@ -1,0 +1,112 @@
+# Vocabulary of the in-page readers (src/collectors/browser/in-page/*): how page markup is named in the wild. The readers
+# run inside Chromium and cannot import anything, so the collector hands these lists to them as an argument. Entries are
+# regular-expression fragments joined with `|` (src/collectors/browser/rules.ts composes them), always case-insensitive;
+# a plain word is a substring match on an id/class string or on text, as before.
+dom:
+  # id/class names of a consent banner container (link regions, banner box, hidden-text rules).
+  bannerNames:
+    - cookie
+    - consent
+    - cmp
+    - gdpr
+    - dsgvo
+    - borlabs
+    - cybot
+    - cookiebot
+    - usercentrics
+    - cmplz
+    - complianz
+    - ccm19
+    - cookiehub
+    - real-cookie-banner
+    - rcb-
+  # The legal-text reader skips a fixed container with these names as a banner. "dsgvo" is not here: a wrapper named after
+  # the DSGVO may hold the policy text itself.
+  documentBannerNames:
+    - cookie
+    - consent
+    - cmp
+    - gdpr
+    - borlabs
+    - cybot
+    - cookiebot
+    - usercentrics
+    - cmplz
+    - complianz
+    - ccm19
+    - cookiehub
+    - real-cookie-banner
+    - rcb-
+  # Wording that makes a fixed `role=dialog` a consent banner when its name says nothing.
+  bannerDialogText: [cookie, datenschutz, einwillig, consent, privacy]
+
+  # Link texts and paths that count as legal or navigation links when the link cap forces a choice (read first, so the
+  # footer's Impressum survives on a page with a long article list).
+  legalLinkHints:
+    - impressum
+    - imprint
+    - datenschutz
+    - privacy
+    - 'data[-\s]?protection'
+    - rechtliches
+    - legal
+    - agb
+    - nutzungsbedingungen
+    - terms
+    - kontakt
+    - contact
+    - cookie
+    - widerruf
+    - barrierefreiheit
+    - accessibility
+    - anbieter
+
+  # Placeholders of two-click embeds ("Karte laden"): by class name, or by a short text of the form
+  # <subject> .. <action> or <action> .. <object>.
+  placeholders:
+    classNames:
+      - content-blocker
+      - contentblocker
+      - cmplz-placeholder
+      - cmplz-blocked
+      - uc-embedding
+      - cookieconsent-optout
+      - consent-placeholder
+      - two-click
+      - 2-click
+      - zwei-klick
+      - ccm-blocked
+    subjects: [karte, map, video, inhalt, youtube, vimeo, google maps]
+    actions: [laden, anzeigen, aktivieren, entsperren, load]
+    leadingActions: [laden, anzeigen, aktivieren]
+    objects: [karte, video, inhalt]
+    # What a placeholder stands for, first match wins (id, class and text); anything else is `other`.
+    kinds:
+      - { kind: maps, words: [map, karte] }
+      - { kind: video, words: [video, youtube, vimeo] }
+
+  # Names of page parts in id/class tokens (`main-menu`, `site-header`, `offcanvas`): the legal-text reader treats such
+  # wrappers outside `main` as page chrome, so their collapsed panels and headings do not belong to the document.
+  pageChrome:
+    nouns:
+      - nav
+      - navbar
+      - navigation
+      - menu
+      - megamenu
+      - mainmenu
+      - flyout
+      - offcanvas
+      - sidebar
+      - "breadcrumbs?"
+      - topbar
+      - masthead
+      - header
+      - footer
+    # A layout state, not a part (`has-fixed-header`, `with-footer`): the token ends in a part name but says the page has one.
+    layoutStatePrefixes: [has, with, without, "no"]
+    # Header or footer of a component, not of the page (`accordion-header`, `card-footer`).
+    componentParts:
+      [accordion, collapse, collapsible, card, panel, expansion, faq, toggle, expand, expandable, tab, tabs]
+    # Only the header of these ambiguous nouns is a component bar: `section-footer` is as often a page footer.
+    componentHeaderOnly: [item, entry, post, article, section, block]

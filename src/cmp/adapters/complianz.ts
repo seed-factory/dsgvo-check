@@ -1,6 +1,5 @@
 /** Complianz (WordPress). Bot detection uses the read-only `cmplz_is_bot()` / `cmplz_is_speedbot()` calls. */
 import type { Page } from 'playwright-core';
-import { cleanVersion, versionFromUrl } from '../detection.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
 
@@ -81,36 +80,6 @@ const read = (page: Page) => page.evaluate(readComplianz);
 
 export const complianz = defineAdapter({
   id: 'complianz',
-  name: 'Complianz',
-  supportedVersions: null,
-  detect: {
-    globals: ['complianz', 'cmplz_has_consent'],
-    versionGlobals: ['complianz.version'],
-    scripts: [
-      { label: 'wp-content/plugins/complianz', pattern: '/wp-content/plugins/complianz-gdpr(-premium)?/' },
-      { label: 'complianz.js', pattern: '/complianz(\\.min)?\\.js' },
-    ],
-    dom: ['#cmplz-cookiebanner-container', '.cmplz-cookiebanner'],
-    cookies: ['^cmplz_'],
-  },
-  // The version the plugin reports about itself wins; `?ver=` of a script URL can be a cache-busting timestamp.
-  version: (raw) => cleanVersion(raw.versions['complianz.version']) ?? versionFromUrl(raw.scriptUrls[0]),
-  banner: {
-    containers: [
-      '#cmplz-cookiebanner-container .cmplz-cookiebanner',
-      '.cmplz-cookiebanner',
-      '#cmplz-cookiebanner-container',
-    ],
-    overlays: ['.cmplz-soft-cookiewall'],
-    vendorRoles: [
-      { selector: '.cmplz-accept', role: 'accept' },
-      { selector: '.cmplz-deny', role: 'reject' },
-      { selector: '.cmplz-view-preferences', role: 'settings' },
-      { selector: '.cmplz-manage-options', role: 'settings' },
-      { selector: '.cmplz-save-preferences', role: 'save' },
-      { selector: '.cmplz-close', role: 'close' },
-    ],
-  },
   async readState(page) {
     const r = await read(page);
     if (!r.present) return [];

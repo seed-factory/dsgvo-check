@@ -5,7 +5,8 @@ import type { BrowserContext, Request, Response } from 'playwright-core';
 import type { RequestRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase } from '../../../core/snapshot/common.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
-import { IDENTIFIER_COOKIES, LONG_LIVED_RESOURCE_TYPES } from '../config.ts';
+import { LONG_LIVED_RESOURCE_TYPES } from '../config.ts';
+import { loadIdentifierRules } from '../rules.ts';
 import { truncate } from '../util.ts';
 import {
   extractRequestFeatures,
@@ -512,7 +513,7 @@ export class NetworkRecorder implements ActivitySource {
           const sent = cookieHeader
             .split(';')
             .map((p) => p.split('=')[0]?.trim() ?? '')
-            .filter((n) => n && IDENTIFIER_COOKIES.some((re) => re.test(n)));
+            .filter((n) => n && loadIdentifierRules().cookies.some((re) => re.test(n)));
           if (sent.length > 0) {
             rec.sentCookieNames = [...new Set(sent)].sort();
             rec.identifierPresent = true;

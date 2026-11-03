@@ -1,6 +1,7 @@
 /** Borlabs Cookie v3 and v2 adapters against the own simulators, plus the cookiesForBots branch. */
 import { expect, it } from 'vitest';
-import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CHROME_UA, describeCmpScenarios, recognized } from '../helpers.ts';
 
 describeCmpScenarios(
@@ -30,7 +31,7 @@ describeCmpScenarios(
         kindConfidence: 'high',
       });
       expect(classifyFirstLayer(facts, loadLexicon()).variant).toBe('ok');
-      expect((await adapter.reject(page, { facts })).clicked).toBe(true);
+      expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(true);
       const verify = await adapter.verify(page, 'reject');
       expect(verify.verified).toBe(true);
     });

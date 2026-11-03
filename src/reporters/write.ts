@@ -1,6 +1,8 @@
 /** Writes the requested report files and the console text of a scan result; a failed write turns the exit code into 2 (`report-write-failed`), PDF printing is best effort. */
 import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { reporterLimits } from '../core/config/limits.ts';
+import type { Config } from '../core/config/schema.ts';
 import { DEFAULT_DATA_DIR, loadTexts } from '../core/data/load.ts';
 import { uiText } from '../core/data/messages.ts';
 import type { ExitCode } from '../core/evaluation/gate.ts';
@@ -11,7 +13,7 @@ import type { ScanResult } from '../scan.ts';
 import { renderConsole } from './console.ts';
 import { renderHtml } from './html.ts';
 import { renderJson } from './json.ts';
-import { PDF_TIMEOUT_MS, type PdfOptions, renderPdf } from './pdf.ts';
+import { type PdfOptions, renderPdf } from './pdf.ts';
 import { renderSummary } from './summary.ts';
 
 export interface WriteResult {
@@ -38,6 +40,8 @@ export async function writeReports(
     /** Directory containing source artifacts when reissuing a saved report. */
     artifactsDir?: string;
     pdf?: PdfOptions;
+    /** Operator settings: report size limits and the PDF time limit (built-in defaults when absent). */
+    config?: Pick<Config, 'report' | 'pdf'>;
     watchdogDeadline?: number;
     outputConsole?: (text: string) => Promise<void>;
   },
@@ -50,7 +54,9 @@ export async function writeReports(
     outDir: path.resolve(opts.artifactsDir ?? outDir),
     color: opts.color ?? false,
     dataDir: opts.dataDir,
+    limits: reporterLimits(opts.config),
   };
+  const pdfTimeoutMs = ctx.limits?.pdfTimeoutMs ?? reporterLimits().pdfTimeoutMs;
   const written: string[] = [];
   const errors: WriteResult['errors'] = [];
   const warnings: string[] = [];
@@ -100,11 +106,11 @@ export async function writeReports(
       // Remove an earlier PDF first: a failed reprint must not leave a stale report behind.
       await rm(file, { force: true });
       await mkdir(outDir, { recursive: true });
-      if (opts.watchdogDeadline !== undefined && opts.watchdogDeadline - Date.now() < PDF_TIMEOUT_MS)
+      if (opts.watchdogDeadline !== undefined && opts.watchdogDeadline - Date.now() < pdfTimeoutMs)
         throw new Error('insufficient time');
       const html = renderedHtml ?? renderHtml(result.report, ctx);
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = Math.min(opts.pdf?.timeoutMs ?? PDF_TIMEOUT_MS, PDF_TIMEOUT_MS);
+      const timeout = Math.min(opts.pdf?.timeoutMs ?? pdfTimeoutMs, pdfTimeoutMs);
       const pdf = await Promise.race([
         renderPdf(html, ctx, opts.pdf),
         new Promise<never>((_, reject) => {

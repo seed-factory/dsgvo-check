@@ -1,6 +1,7 @@
 /** Unknown banners (no adapter) in the main document, open shadow DOM and a cross-origin iframe: facts only. */
 import { describe, expect, it } from 'vitest';
-import { classifyFirstLayer, detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
+import { detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
+import { classifyFirstLayer } from '../../utils/classify.ts';
 import { useCmpServer } from './helpers.ts';
 
 describe('generic heuristic (unknown banner)', () => {

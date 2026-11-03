@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { reporterLimits } from '../core/config/limits.ts';
 import { formatMessage, renderMessage, uiText } from '../core/data/messages.ts';
 import { sanitizeExternal } from '../core/redaction/sanitize.ts';
 import type { ReporterContext } from '../core/report/reporter.ts';
@@ -83,7 +84,6 @@ export function groupByService(findings: readonly Finding[]): Group[] {
   });
 }
 
-const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
 type ScreenshotResult = { ok: true; dataUri: string } | { ok: false; reason: string };
 
 function imageMime(buf: Buffer): string | null {
@@ -99,7 +99,12 @@ function imageMime(buf: Buffer): string | null {
 }
 
 /** Canonical paths, file size, magic bytes and checksum protect the only embedded resource. */
-export function loadScreenshot(outDir: string, relPath: string, sha256: string): ScreenshotResult {
+export function loadScreenshot(
+  outDir: string,
+  relPath: string,
+  sha256: string,
+  maxBytes: number = reporterLimits().screenshotEmbedMaxBytes,
+): ScreenshotResult {
   if (!relPath || path.isAbsolute(relPath) || relPath.includes('\0')) return { ok: false, reason: 'path' };
   const base = path.resolve(outDir, 'artifacts');
   const file = path.resolve(outDir, relPath);
@@ -111,7 +116,7 @@ export function loadScreenshot(outDir: string, relPath: string, sha256: string):
     if (!realFile.startsWith(realBase + path.sep)) return { ok: false, reason: 'path' };
     const stat = statSync(realFile);
     if (!stat.isFile()) return { ok: false, reason: 'missing' };
-    if (stat.size > MAX_SCREENSHOT_BYTES) return { ok: false, reason: 'too-large' };
+    if (stat.size > maxBytes) return { ok: false, reason: 'too-large' };
     data = readFileSync(realFile);
   } catch {
     return { ok: false, reason: 'missing' };
@@ -189,7 +194,7 @@ function evidenceView(ev: Evidence, ctx: ReporterContext): EvidenceView {
   let screenshot: EvidenceView['screenshot'] = null;
   if (ev.type === 'screenshot') {
     const shotEv = ev as Extract<Evidence, { type: 'screenshot' }>;
-    const shot = loadScreenshot(ctx.outDir, shotEv.path, shotEv.sha256);
+    const shot = loadScreenshot(ctx.outDir, shotEv.path, shotEv.sha256, ctx.limits?.screenshotEmbedMaxBytes);
     screenshot = {
       dataUri: shot.ok ? shot.dataUri : null,
       missing: shot.ok
@@ -460,6 +465,15 @@ function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] 
     list('env.knownGaps', env.knownGaps),
     row('env.requests', label('env.requestsValue', { ...env.requestsIssued })),
   ];
+  const settings = Object.entries(report.scan.options?.settings ?? {});
+  if (settings.length > 0) {
+    out.push(
+      rows(
+        'env.settings',
+        settings.map(([name, value]) => item(`${text(name, 80)}=${text(String(value), 200)}`, 300, true)),
+      ),
+    );
+  }
   if (phaseCPerformed(report)) out.push(row('env.phaseC', label('env.phaseCValue')));
   out.push(row('env.node', env.node, 40), row('env.platform', env.platform, 60));
   return out;

@@ -5,6 +5,7 @@
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { documentInPage } from '../../../../src/collectors/browser/in-page/document.ts';
+import { loadDomPatterns } from '../../../../src/collectors/browser/rules.ts';
 import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../../utils/browser.ts';
 import { page as html, type SiteDir, writeSite } from '../site-dir.ts';
@@ -62,7 +63,7 @@ afterAll(async () => {
 
 async function read(name: string) {
   await tab.goto(`https://www.example.test/${name}/`);
-  return tab.evaluate(documentInPage, { maxChars: 100_000 });
+  return tab.evaluate(documentInPage, { maxChars: 100_000, patterns: loadDomPatterns().document });
 }
 
 describe('collapsed elements outside the text of the document', () => {

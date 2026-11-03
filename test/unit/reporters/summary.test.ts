@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { reporterLimits } from '../../../src/core/config/limits.ts';
 import { loadTexts } from '../../../src/core/data/load.ts';
 import type { ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { Finding } from '../../../src/core/report/schema.ts';
@@ -111,6 +112,24 @@ describe('Job Summary (Markdown)', () => {
     const rows = md.split('\n').filter((l) => l.startsWith('| ') && l.includes('CONSENT-04'));
     expect(rows).toHaveLength(SUMMARY_MAX_FINDINGS);
     expect(md).toContain('5 weitere');
+  });
+
+  it('takes the findings limit and the size limit from the settings', () => {
+    const r = sampleFullReport();
+    const base = r.findings[1]!;
+    r.findings = Array.from(
+      { length: 10 },
+      (_, i): Finding => ({ ...base, fingerprint: `sha256:${i.toString(16).padStart(64, '0')}` }),
+    );
+    const limits = { ...reporterLimits(), summaryMaxFindings: 3 };
+    const md = renderSummary(r, { ...ctx(), limits });
+    expect(md.split('\n').filter((l) => l.startsWith('| ') && l.includes('CONSENT-04'))).toHaveLength(3);
+    expect(md).toContain('7 weitere');
+
+    expect(Buffer.byteLength(md)).toBeGreaterThan(2_000);
+    const small = renderSummary(r, { ...ctx(), limits: { ...limits, summaryMaxBytes: 2_000 } });
+    expect(Buffer.byteLength(small)).toBeLessThan(2_000);
+    expect(small).toMatch(/…\n$/);
   });
 
   it('stays below the GitHub step summary limit', () => {

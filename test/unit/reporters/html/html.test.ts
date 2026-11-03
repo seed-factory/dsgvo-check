@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { reporterLimits } from '../../../../src/core/config/limits.ts';
 import { DEFAULT_DATA_DIR, loadTexts } from '../../../../src/core/data/load.ts';
 import { templateParams } from '../../../../src/core/data/messages.ts';
 import { sanitizeExternal } from '../../../../src/core/redaction/sanitize.ts';
@@ -389,6 +390,51 @@ describe('HTML report: banner screenshots', () => {
     const html = renderHtml(sampleFullReport(), ctx());
     expect(html).toContain('Screenshot nicht eingebettet');
     expect(html).toContain('artifacts/banner-B.jpg');
+  });
+
+  it('embeds images up to the size limit of the settings and no larger ones', () => {
+    const outDir = setup({ 'artifacts/banner-B.jpg': JPEG });
+    const report = withScreenshot('artifacts/banner-B.jpg', sha(JPEG));
+    const limits = (screenshotEmbedMaxBytes: number) => ({
+      ...reporterLimits(),
+      screenshotEmbedMaxBytes,
+    });
+    expect(renderHtml(report, { ...ctx('de', outDir), limits: limits(JPEG.length) })).toContain('data:image');
+    const html = renderHtml(report, { ...ctx('de', outDir), limits: limits(JPEG.length - 1) });
+    expect(html).not.toContain('data:image');
+    expect(html).toContain('Screenshot nicht eingebettet');
+  });
+});
+
+describe('HTML report: settings that differ from the defaults', () => {
+  const withSettings = (settings: Record<string, string | number | boolean>): FullReport => {
+    const r = sampleFullReport();
+    r.scan.options = { ...r.scan.options!, settings };
+    return r;
+  };
+
+  it('lists them in the measurement environment, as variable=value', () => {
+    const html = renderHtml(
+      withSettings({ DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS: 3000, DSGVO_CHECK_DNS_SERVERS: '1.1.1.1,9.9.9.9' }),
+      ctx(),
+    );
+    expect(html).toContain('Abweichende Einstellungen');
+    expect(html).toContain('<code>DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS=3000</code>');
+    expect(html).toContain('<code>DSGVO_CHECK_DNS_SERVERS=1.1.1.1,9.9.9.9</code>');
+    expect(renderHtml(withSettings({ DSGVO_CHECK_TLS_EXPIRING_DAYS: 21 }), ctx('en'))).toContain(
+      'Settings that differ from the defaults',
+    );
+  });
+
+  it('shows no row when nothing differs', () => {
+    expect(renderHtml(sampleFullReport(), ctx())).not.toContain('Abweichende Einstellungen');
+    expect(renderHtml(withSettings({}), ctx())).not.toContain('Abweichende Einstellungen');
+  });
+
+  it('escapes hostile names and values like any external string', () => {
+    const html = renderHtml(withSettings({ [`X${PAYLOAD}`]: PAYLOAD }), ctx());
+    expect(htmlSafetyProblems(html)).toEqual([]);
+    expect(html).not.toContain('<script>alert(1)</script>');
   });
 });
 

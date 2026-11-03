@@ -3,7 +3,7 @@
  * options object (`isAcceptAllForBots`, `groups`) is read defensively.
  */
 import type { Page } from 'playwright-core';
-import { versionFromUrl } from '../detection.ts';
+import { readerInput } from '../adapters-file.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
 
 interface RcbRead {
@@ -16,7 +16,7 @@ interface RcbRead {
   bannerVisible: boolean;
 }
 
-function readRcb(): RcbRead {
+function readRcb(botUserAgent: string): RcbRead {
   interface El {
     getBoundingClientRect(): { width: number; height: number };
   }
@@ -61,44 +61,18 @@ function readRcb(): RcbRead {
     categories,
     acceptAllForBots: bool(w.realCookieBanner?.isAcceptAllForBots),
     respectDnt: bool(w.realCookieBanner?.isRespectDoNotTrack),
-    uaBot:
-      /bot|crawl|spider|slurp|headless|lighthouse|http|\.com\b|scan|check|monitor|fetch|curl|wget|python/i.test(
-        w.navigator.userAgent,
-      ),
+    uaBot: new RegExp(botUserAgent, 'i').test(w.navigator.userAgent),
     bannerVisible: !!rect && rect.width > 0 && rect.height > 0,
   };
 }
 
-const read = (page: Page) => page.evaluate(readRcb);
+const read = (page: Page) => page.evaluate(readRcb, readerInput('real-cookie-banner', 'botUserAgent'));
 
 const botBranch = (r: RcbRead) =>
   r.acceptAllForBots === true && r.uaBot && r.cookiePresent && !r.bannerVisible;
 
 export const realCookieBanner = defineAdapter({
   id: 'real-cookie-banner',
-  name: 'Real Cookie Banner',
-  supportedVersions: null,
-  detect: {
-    globals: ['consentApi', 'realCookieBanner'],
-    scripts: [
-      {
-        label: 'wp-content/plugins/real-cookie-banner',
-        pattern: '/wp-content/plugins/real-cookie-banner(-pro)?/',
-      },
-    ],
-    dom: ['div[consent-skip-blocker="1"][data-bg]'],
-    cookies: ['^real_cookie_banner'],
-  },
-  version: (raw) => versionFromUrl(raw.scriptUrls[0]),
-  banner: {
-    containers: [
-      'div[consent-skip-blocker="1"][data-bg] dialog',
-      'div[consent-skip-blocker="1"][data-bg] [role="dialog"]',
-      'div[consent-skip-blocker="1"][data-bg]',
-    ],
-    overlays: ['div[consent-skip-blocker="1"][data-bg]'],
-    vendorRoles: [],
-  },
   async readState(page) {
     const r = await read(page);
     if (!r.present && !r.cookiePresent) return [];

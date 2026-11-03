@@ -1,13 +1,14 @@
 /** Print the already rendered, self-contained HTML using the scanner's Chromium sandbox and cleanup. */
 import { type BrowserType, chromium } from 'playwright-core';
 import { launchPhase } from '../collectors/browser/launch/launch.ts';
+import { reporterLimits } from '../core/config/limits.ts';
 import { uiText } from '../core/data/messages.ts';
 import { sanitizeExternal } from '../core/redaction/sanitize.ts';
 import type { ReporterContext } from '../core/report/reporter.ts';
 import type { SandboxMode } from '../core/report/schema.ts';
 import { defaultNetworkConfig } from '../core/url/net.ts';
 
-export const PDF_TIMEOUT_MS = 15_000;
+export const PDF_TIMEOUT_MS = reporterLimits().pdfTimeoutMs;
 
 export interface PdfOptions {
   chromium?: BrowserType;
@@ -28,7 +29,7 @@ function footerText(text: string): string {
 }
 
 export async function renderPdf(html: string, ctx: ReporterContext, opts: PdfOptions = {}): Promise<Buffer> {
-  const timeoutMs = opts.timeoutMs ?? PDF_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? ctx.limits?.pdfTimeoutMs ?? PDF_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, deadline - Date.now());
   const phase = await launchPhase(

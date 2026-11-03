@@ -11,15 +11,15 @@ import {
   queryKey,
 } from '../../checks/dns/lib/records.ts';
 import { analyzeSpf, isSpfCandidate } from '../../checks/dns/lib/spf.ts';
+import { DEFAULT_CONFIG } from '../../core/config/schema.ts';
 import { redactText } from '../../core/redaction/redact.ts';
 import type { Logger } from '../../core/runtime/logger.ts';
 import type { CollectorError } from '../../core/snapshot/common.ts';
 import type { DnsAnswer, DnsQueryRecord, DnsSection } from '../../core/snapshot/dns.ts';
 import type { DnsClient, RawDnsResult } from './resolver.ts';
 
-export const DNS_QUERY_BUDGET = 60;
-/** TIMEOUT results (each already retried) after which the resolver is treated as unresponsive. */
-export const MAX_TIMEOUT_RESULTS = 3;
+export const DNS_QUERY_BUDGET = DEFAULT_CONFIG.dns.queryBudget;
+/** Passes over the SPF include tree: one per nesting level, far above the 10 lookups RFC 7208 allows. */
 const SPF_ROUNDS = 16;
 
 export interface MailDnsOptions {
@@ -29,6 +29,8 @@ export interface MailDnsOptions {
   now: () => Date;
   budget?: number;
   concurrency?: number;
+  /** TIMEOUT results (each already retried) after which the resolver is treated as unresponsive. */
+  maxTimeoutResults?: number;
   signal?: AbortSignal;
   log?: Logger;
 }
@@ -72,7 +74,8 @@ export async function collectMailDns(o: MailDnsOptions): Promise<MailDnsResult> 
   const host = normalizeName(o.host);
   const domain = normalizeName(o.domain);
   const budget = o.budget ?? DNS_QUERY_BUDGET;
-  const concurrency = o.concurrency ?? 4;
+  const concurrency = o.concurrency ?? DEFAULT_CONFIG.dns.concurrency;
+  const maxTimeoutResults = o.maxTimeoutResults ?? DEFAULT_CONFIG.dns.maxTimeoutResults;
   const queries: DnsQueryRecord[] = [];
   const cache = new Map<string, DnsQueryRecord>();
   const inflight = new Set<string>();
@@ -145,8 +148,7 @@ export async function collectMailDns(o: MailDnsOptions): Promise<MailDnsResult> 
         message: `${p.type} ${rec.qname}: ${rec.rcode} after ${rec.attempts} attempt(s)`,
       });
     }
-    if (rec.rcode === 'TIMEOUT' && ++st.timeouts >= MAX_TIMEOUT_RESULTS)
-      st.stopped ??= 'resolver-unresponsive';
+    if (rec.rcode === 'TIMEOUT' && ++st.timeouts >= maxTimeoutResults) st.stopped ??= 'resolver-unresponsive';
   };
 
   const runAll = async (list: readonly Planned[]): Promise<void> => {
@@ -190,7 +192,7 @@ export async function collectMailDns(o: MailDnsOptions): Promise<MailDnsResult> 
   if (stopped) {
     const messages: Record<string, string> = {
       'dns-budget-exhausted': `DNS query budget of ${budget} exhausted; remaining lookups not performed`,
-      'resolver-unresponsive': `resolver did not answer ${MAX_TIMEOUT_RESULTS} queries; remaining lookups not performed`,
+      'resolver-unresponsive': `resolver did not answer ${maxTimeoutResults} queries; remaining lookups not performed`,
       aborted: 'scan aborted (timeout); remaining lookups not performed',
     };
     errors.push({ code: stopped, message: messages[stopped] ?? stopped });

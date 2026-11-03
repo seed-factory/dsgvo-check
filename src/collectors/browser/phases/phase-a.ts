@@ -7,11 +7,11 @@ import { registrableDomain } from '../../../core/url/url.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/client.ts';
 import type { AVisit, BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
 import { fetchText } from '../launch/http-fetch.ts';
+import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { PageQueue, type QueueItem, recordDocument } from '../legal/queue.ts';
 import { checkThrottleResponses, markThrottled, navigate, throttleStatus, visit } from '../pages/navigate.ts';
 import {
   chooseControlPages,
-  FALLBACK_PATHS,
   findLegalLink,
   LEGAL_KINDS,
   type LegalKind,
@@ -54,7 +54,7 @@ async function visitStart(c: BrowserCollection, s: Session): Promise<{ r: VisitR
     ? !/^ERR_(CERT|SSL|BLOCKED)/.test(navigationErrorCode(r.error))
     : status !== null && (status >= 500 || status === 429);
   if (retryable && c.timeLeft()) {
-    const pauseMs = Math.min(MAX_RETRY_AFTER_MS, r.retryAfterMs ?? c.deps.timing.retryDelayMs);
+    const pauseMs = Math.min(MAX_RETRY_AFTER_MS, r.retryAfterMs ?? c.timing.retryDelayMs);
     // The repeat replaces the failed attempt's visit, so its trace is kept as a phase error before the pause (the pause
     // may hit the global deadline).
     noteStartRetry(c, s, r, failedAfterMs, pauseMs);
@@ -307,7 +307,8 @@ async function probeFallbacks(
       if (s.record.status === 'completed') c.cutByTime(s.record);
       break;
     }
-    const raw = new URL(FALLBACK_PATHS[kind], origin).toString();
+    const path = loadLegalLexicon().fallbackPaths[kind];
+    const raw = new URL(path, origin).toString();
     if (visited.has(pageKey(raw))) continue;
     visited.add(pageKey(raw));
     const r = await navigate(c, s, {
@@ -321,7 +322,7 @@ async function probeFallbacks(
       url: sanitizeRequestUrl(raw),
       role: 'fallback',
       order,
-      reasons: [`fallback:${FALLBACK_PATHS[kind]}`],
+      reasons: [`fallback:${path}`],
       source: 'fallback',
     });
     order++;
@@ -384,7 +385,7 @@ async function fetchRobots(c: BrowserCollection, origin: string): Promise<Robots
   const url = `${origin}/robots.txt`;
   c.probes.push({ kind: 'http', class: 'T', target: url, purpose: 'robots.txt' });
   const res = await fetchText(url, c.ctx.network, c.ctx.userAgent.http, {
-    timeoutMs: 8_000,
+    timeoutMs: c.ctx.config.browser.sourceFetchTimeoutMs,
     maxBytes: 256 * 1024,
     signal: c.ctx.signal,
   });
@@ -400,9 +401,9 @@ async function fetchSitemapLocs(
   const first = robots?.sitemaps.find((u) => u.startsWith(origin)) ?? `${origin}/sitemap.xml`;
   const get = async (url: string) => {
     c.probes.push({ kind: 'http', class: 'T', target: sanitizeRequestUrl(url), purpose: 'sitemap' });
-    await sleep(500, c.ctx.signal); // ≤ 2 requests per second per host
+    await sleep(c.ctx.config.http.minIntervalMs, c.ctx.signal);
     const res = await fetchText(url, c.ctx.network, c.ctx.userAgent.http, {
-      timeoutMs: 8_000,
+      timeoutMs: c.ctx.config.browser.sourceFetchTimeoutMs,
       maxBytes: 512 * 1024,
       signal: c.ctx.signal,
     });

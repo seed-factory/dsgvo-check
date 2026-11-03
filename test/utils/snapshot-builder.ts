@@ -6,6 +6,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CmpFacts, CmpSection } from '../../src/cmp/types.ts';
+import { defaultConfig } from '../../src/core/config/schema.ts';
+import { checkThresholds } from '../../src/core/config/thresholds.ts';
 import { loadDataDir, loadRouting } from '../../src/core/data/load.ts';
 import type { ExecutedCheck } from '../../src/core/evaluation/assess.ts';
 import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/evaluation/check.ts';
@@ -419,6 +421,7 @@ export function checkContext(p: Partial<CheckContext> & { dataDirs?: readonly st
     lang: 'de',
     routing: routingCache,
     options: { strict: false, assumeRegion: null, fromSnapshot: false },
+    thresholds: checkThresholds(defaultConfig()),
     ...p,
     data,
   };

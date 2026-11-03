@@ -2,6 +2,7 @@
 // per-attempt timeout and one retry for SERVFAIL/TIMEOUT, and keeps NXDOMAIN and NODATA apart. DNS never goes through
 // `--proxy`.
 import { Resolver } from 'node:dns/promises';
+import { DEFAULT_CONFIG } from '../../core/config/schema.ts';
 import type { CollectorError } from '../../core/snapshot/common.ts';
 import type { DnsAnswer, DnsRcode, DnsRecordType, DnsSection } from '../../core/snapshot/dns.ts';
 
@@ -26,7 +27,7 @@ export interface NodeDnsClientOptions {
   retries?: number;
 }
 
-export const DEFAULT_DNS_TIMEOUT_MS = 3000;
+export const DEFAULT_DNS_TIMEOUT_MS = DEFAULT_CONFIG.dns.timeoutMs;
 
 /** ENOTFOUND is NXDOMAIN, ENODATA is NOERROR without answers. */
 const RCODE_BY_ERROR_CODE: ReadonlyMap<string, DnsRcode> = new Map([
@@ -99,7 +100,7 @@ async function resolveOnce(
 
 export function createNodeDnsClient(opts: NodeDnsClientOptions): DnsClient {
   const timeout = opts.timeoutMs ?? DEFAULT_DNS_TIMEOUT_MS;
-  const retries = opts.retries ?? 1;
+  const retries = opts.retries ?? DEFAULT_CONFIG.dns.retries;
   const r = new Resolver({ timeout, tries: 1 });
   const custom = opts.servers.length > 0;
   if (custom) r.setServers([...opts.servers]);

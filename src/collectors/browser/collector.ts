@@ -27,6 +27,7 @@ import {
   BASE_KNOWN_GAPS,
   BROWSER_CHANNEL,
   type BrowserTiming,
+  browserTiming,
   LOCALE,
   TIMEZONE,
   VIEWPORT,
@@ -60,10 +61,12 @@ import { errorText, sleep } from './util.ts';
 
 export interface BrowserCollectorDeps {
   cmp: CmpApi;
-  timing: BrowserTiming;
+  /** Replaces the timings of `ctx.config.browser` (tests run the same algorithm faster). */
+  timing?: BrowserTiming;
   chromium: BrowserType;
   phases: readonly BrowserPhase[];
-  requestLimit: number;
+  /** Replaces `ctx.config.browser.requestLimit`. */
+  requestLimit?: number;
   executablePath?: string;
   closeBudgetMs?: number;
   abortOrderlyMs?: number;
@@ -138,12 +141,18 @@ export class BrowserCollection {
 
   readonly ctx: CollectorContext;
   readonly deps: BrowserCollectorDeps;
+  readonly timing: BrowserTiming;
   private readonly clock: ScanClock;
 
   constructor(ctx: CollectorContext, deps: BrowserCollectorDeps) {
     this.ctx = ctx;
     this.deps = deps;
-    this.counter = { limit: deps.requestLimit, issued: 0, truncated: false };
+    this.timing = deps.timing ?? browserTiming(ctx.config.browser);
+    this.counter = {
+      limit: deps.requestLimit ?? ctx.config.browser.requestLimit,
+      issued: 0,
+      truncated: false,
+    };
     this.clock = ctx.clock ?? localScanClock();
   }
 
@@ -267,6 +276,7 @@ export class BrowserCollection {
       chromium: this.deps.chromium,
       sandbox: this.ctx.options.sandbox,
       network: this.ctx.network,
+      timeoutMs: this.ctx.config.browser.launchTimeoutMs,
       ...(this.deps.executablePath ? { executablePath: this.deps.executablePath } : {}),
       ...(this.deps.closeBudgetMs !== undefined ? { closeBudgetMs: this.deps.closeBudgetMs } : {}),
       log: this.ctx.log,
@@ -274,7 +284,7 @@ export class BrowserCollection {
   }
 
   timeLeft(): boolean {
-    return !this.ctx.signal.aborted && Date.now() < this.ctx.deadline - this.deps.timing.deadlineReserveMs;
+    return !this.ctx.signal.aborted && Date.now() < this.ctx.deadline - this.timing.deadlineReserveMs;
   }
 
   // Only the local reserve before the global deadline (`timeout`) is `time-budget` and marks the collector stopped
@@ -289,7 +299,7 @@ export class BrowserCollection {
   }
 
   async pace(): Promise<void> {
-    const wait = this.lastNavigationEnd + this.deps.timing.navigationPauseMs - Date.now();
+    const wait = this.lastNavigationEnd + this.timing.navigationPauseMs - Date.now();
     await sleep(wait, this.ctx.signal);
   }
 
@@ -308,7 +318,7 @@ export class BrowserCollection {
       this.counter,
       this.ctx.network.proxy !== null,
       this.clock,
-      { signal: this.ctx.signal },
+      { signal: this.ctx.signal, metaTimeoutMs: this.ctx.config.browser.responseMetaTimeoutMs },
     );
     recorder.attach(browser.context);
     await browser.context.addInitScript(cookieHookInit);
@@ -354,7 +364,9 @@ export class BrowserCollection {
       page,
       recorder,
       jar: this.newJar(recorder, { etld1, host }, record),
-      cmp: new CmpBridge(this.deps.cmp, this.deps.timing.cmpCallTimeoutMs, record.errors, phase),
+      cmp: new CmpBridge(this.deps.cmp, this.timing.cmpCallTimeoutMs, record.errors, phase, {
+        blockingCoveredRatio: this.ctx.config.cmp.blockingCoveredRatio,
+      }),
       guard,
       record,
       cmpFacts: { phase, facts: [] },
@@ -372,6 +384,7 @@ export class BrowserCollection {
   ): JarTracker {
     return new JarTracker(target, recorder.setCookieOrigins, {
       signal: this.ctx.signal,
+      evalTimeoutMs: this.ctx.config.browser.storageReadTimeoutMs,
       onError: (what, err) => {
         const code = 'in-page-read-timeout';
         // One entry per kind of read is enough; a PDF-heavy site would repeat it for every page.

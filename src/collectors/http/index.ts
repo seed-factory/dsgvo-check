@@ -19,7 +19,7 @@ import type {
 import type { CollectorError, DiagnosticInput } from '../../core/snapshot/index.ts';
 import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { isHttpUrl, isSameSite, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
-import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from '../tls/probe.ts';
+import { probeTlsEndpoint } from '../tls/probe.ts';
 import {
   type ChainOutcome,
   type FetchResult,
@@ -31,10 +31,10 @@ import {
 import { type HostTarget, hostVariants } from './hosts.ts';
 import { detectClientRedirect, detectForm, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
 
-export const MAX_REDIRECTS = 5;
 /** Link discovery on the start page reads this much; the heuristics use the first 64 KiB. */
 const DOCUMENT_READ_BYTES = 512 * 1024;
 
+/** Overrides of `ctx.config.http` and `ctx.config.tls.timeoutMs` (tests). */
 export interface HttpCollectorOptions {
   minIntervalMs?: number;
   timeouts?: HttpClientOptions['timeouts'];
@@ -101,6 +101,7 @@ async function followChain(
   startUrl: string,
   hostVariant: HostVariant,
   id: string,
+  maxRedirects: number,
 ): Promise<ChainRun> {
   const u = new URL(startUrl);
   const chain: RedirectChain = {
@@ -134,7 +135,7 @@ async function followChain(
         chain.error = { code: 'unsupported-redirect', message: next.protocol, phase: 'http', url: hop.url };
         return { chain, last: null };
       }
-      if (i >= MAX_REDIRECTS) {
+      if (i >= maxRedirects) {
         chain.outcome = 'redirect-limit';
         return { chain, last: null };
       }
@@ -299,13 +300,21 @@ async function probeFinalHost(
 
 export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollector {
   return async (ctx) => {
+    const cfg = ctx.config.http;
+    const maxRedirects = cfg.maxRedirects;
     const client = new HttpClient({
       network: ctx.network,
       userAgent: ctx.userAgent.http,
       signal: ctx.signal,
       now: ctx.now,
-      ...(opts.minIntervalMs !== undefined ? { minIntervalMs: opts.minIntervalMs } : {}),
-      ...(opts.timeouts ? { timeouts: opts.timeouts } : {}),
+      minIntervalMs: opts.minIntervalMs ?? cfg.minIntervalMs,
+      timeouts: {
+        connectMs: cfg.connectTimeoutMs,
+        headersMs: cfg.headersTimeoutMs,
+        bodyMs: cfg.bodyTimeoutMs,
+        requestMs: cfg.requestTimeoutMs,
+        ...opts.timeouts,
+      },
       ...(opts.maxRetryAfterMs !== undefined ? { maxRetryAfterMs: opts.maxRetryAfterMs } : {}),
     });
     const probes: ProbeRecord[] = [];
@@ -321,7 +330,15 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
             for (const scheme of ['http', 'https'] as const) {
               const start = startUrlFor(ctx, t, scheme);
               probe(start, 'redirect-chain');
-              out.push(await followChain(client, start, t.hostVariant, `chain-${t.hostVariant}-${scheme}`));
+              out.push(
+                await followChain(
+                  client,
+                  start,
+                  t.hostVariant,
+                  `chain-${t.hostVariant}-${scheme}`,
+                  maxRedirects,
+                ),
+              );
             }
             return out;
           }),
@@ -331,7 +348,13 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
             : [
                 (async () => {
                   probe(ctx.target.url, 'redirect-chain');
-                  const run = await followChain(client, ctx.target.url, 'target', `chain-target-origin`);
+                  const run = await followChain(
+                    client,
+                    ctx.target.url,
+                    'target',
+                    `chain-target-origin`,
+                    maxRedirects,
+                  );
                   run.chain.port = port;
                   return [run];
                 })(),
@@ -356,7 +379,11 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
           if (!href || !isSameSite(new URL(href).hostname, ctx.target.host)) continue;
           probe(href, `security-headers:${role}`);
           documents.push(
-            documentFrom(role, await followChain(client, href, 'target', `doc-${role}`), 'link'),
+            documentFrom(
+              role,
+              await followChain(client, href, 'target', `doc-${role}`, maxRedirects),
+              'link',
+            ),
           );
         }
       }
@@ -369,7 +396,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
             ctx,
             { chains, documents },
             targets,
-            opts.tlsTimeoutMs ?? DEFAULT_TLS_TIMEOUT_MS,
+            opts.tlsTimeoutMs ?? ctx.config.tls.timeoutMs,
           );
       if (final) probes.push(...final.probes);
       const section: HttpSection = {

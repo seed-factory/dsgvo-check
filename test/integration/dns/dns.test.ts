@@ -4,6 +4,8 @@ import { mail01 } from '../../../src/checks/dns/mail-01.ts';
 import { mail02 } from '../../../src/checks/dns/mail-02.ts';
 import { collectDns } from '../../../src/collectors/dns/index.ts';
 import { createNodeDnsClient } from '../../../src/collectors/dns/resolver.ts';
+import { parseConfigInput } from '../../../src/core/config/load.ts';
+import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
 import { FIXED_NOW, makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
@@ -67,11 +69,12 @@ describe('node:dns client against dns2', () => {
   });
 });
 
-function collectorContext(url: string): CollectorContext {
+function collectorContext(url: string, config: ConfigInput = {}): CollectorContext {
   return {
     target: makeTarget(url),
     options: { maxPages: 6, screenshots: false, sandbox: 'require', lang: 'de', assumeRegion: null },
     network: localDnsNetwork(dns),
+    config: parseConfigInput(config),
     userAgent: { http: 'test', token: 'test' },
     signal: new AbortController().signal,
     deadline: Date.now() + 60_000,
@@ -106,6 +109,25 @@ describe('collectDns with dnsServers', () => {
     const snap = makeSnapshot({ target: makeTarget('https://www.example.test/'), dns: section });
     expect(variantsOf(runCheck(mail01, snap))).toEqual(['policy-none']);
     expect(variantsOf(runCheck(mail02, snap))).toEqual(['softfail-without-enforcement']);
+  });
+
+  it('the query budget of the settings stops the collection and is recorded', async () => {
+    dns.setZone(MAIL_SITE);
+    const r = await collectDns(collectorContext('https://www.example.test/', { dns: { queryBudget: 2 } }));
+    expect(r).toMatchObject({ status: 'partial', reason: 'dns-budget-exhausted' });
+    expect(r.sections.dns?.budget).toEqual({ limit: 2, used: 2 });
+    expect(r.sections.dns?.queries).toHaveLength(2);
+  });
+
+  it('the retries of the settings decide how often a SERVFAIL is asked again', async () => {
+    dns.setZone({ 'MX example.test': 'SERVFAIL' });
+    const attempts = async (config: ConfigInput) => {
+      const r = await collectDns(collectorContext('https://www.example.test/', config));
+      return r.sections.dns?.queries.find((q) => q.type === 'MX')?.attempts;
+    };
+    expect(await attempts({})).toBe(2);
+    expect(await attempts({ dns: { retries: 0 } })).toBe(1);
+    expect(await attempts({ dns: { retries: 3 } })).toBe(4);
   });
 
   it('SERVFAIL on the DMARC names → MAIL-01 error, not "record-not-found"', async () => {

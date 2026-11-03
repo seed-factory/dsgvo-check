@@ -9,6 +9,7 @@ import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { MAX_DECODED_BYTES } from '../../../src/collectors/http/client.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
 import { createTlsCollector } from '../../../src/collectors/tls/index.ts';
+import { parseConfigInput } from '../../../src/core/config/load.ts';
 import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
@@ -211,6 +212,29 @@ describe('HTTP collector: problem sites', () => {
     );
     expect(chain?.outcome).toBe('redirect-limit');
     expect(chain?.hops).toHaveLength(6);
+  });
+
+  it('the redirect limit comes from the settings', async () => {
+    const res = await collect('https://www.loop.test/', { 'loop.test': closed }, fast, {
+      config: parseConfigInput({ http: { maxRedirects: 2 } }),
+    });
+    const chain = (res.sections.http as HttpSection).chains.find(
+      (c) => c.hostVariant === 'target' && c.scheme === 'http',
+    );
+    expect(chain?.outcome).toBe('redirect-limit');
+    expect(chain?.hops).toHaveLength(3);
+  });
+
+  it('the gap between requests to one host comes from the settings', async () => {
+    server.reset();
+    const t0 = Date.now();
+    const res = await collect('https://www.redirect.test/', {}, createHttpCollector(), {
+      config: parseConfigInput({ http: { minIntervalMs: 700 } }),
+    });
+    expect(res.status).toBe('ok');
+    expect(server.requestsTo('www.redirect.test')).toHaveLength(4);
+    // four requests to www.redirect.test: three gaps of the configured length
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(3 * 700 - START_JITTER_MS);
   });
 
   it('three 429 of one host → Retry-After pause, one retry, then that host only is stopped', async () => {

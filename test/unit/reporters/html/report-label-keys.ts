@@ -47,6 +47,8 @@ export function usedReportLabelKeys(): string[] {
     renderSummary(report, context);
   };
   const full = sampleFullReport();
+  // The settings row only appears for settings that differ from the defaults.
+  full.scan.options = { ...full.scan.options!, settings: { DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS: 3000 } };
   full.findings[0]!.trigger = 'before-interaction';
   full.checks[0]!.coverage = { planned: 2, observed: 2, evaluated: 1 };
   capture(full);

@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import { renderPdf } from '../../../../src/reporters/pdf.ts';
@@ -90,6 +91,30 @@ describe('optional PDF output', () => {
       report.summary,
     );
     expect(existsSync(path.join(outDir, 'report.pdf'))).toBe(false);
+  });
+
+  it('hands the limits of the settings to the printer and keeps the watchdog from cutting it short', async () => {
+    const config = parseConfigInput({ pdf: { timeoutMs: 30_000 }, scan: { reportWriteReserveMs: 45_000 } });
+    vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
+    const outDir = outputDir();
+    const printed = await writeReports(
+      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
+      { outDir, formats: ['pdf'], lang: 'en', config, watchdogDeadline: Date.now() + 40_000 },
+    );
+    expect(printed.warnings).toEqual([]);
+    expect(renderPdf).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ limits: expect.objectContaining({ pdfTimeoutMs: 30_000 }) }),
+      undefined,
+    );
+
+    vi.mocked(renderPdf).mockClear();
+    const skipped = await writeReports(
+      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
+      { outDir: outputDir(), formats: ['pdf'], lang: 'en', config, watchdogDeadline: Date.now() + 20_000 },
+    );
+    expect(renderPdf).not.toHaveBeenCalled();
+    expect(skipped.warnings).toEqual([uiText(loadTexts('en'), 'report.pdf.skipped')]);
   });
 
   it('does not launch Chromium unless PDF was requested', async () => {

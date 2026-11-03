@@ -8,7 +8,8 @@
 | L3    | `test/e2e/**`                                                                                                                 | packed CLI, Docker image, Action                                                                               | loopback only |
 | live  | `test/live/**`                                                                                                                | real sites; never part of `pnpm test`                                                                          | internet      |
 
-Commands: `corepack pnpm test` (unit + integration), `test:unit`, `test:integration`, `test:e2e`, `test:live`.
+Commands: `corepack pnpm test` (unit only, the same as `test:unit`: no browser), `test:integration`, `test:e2e`,
+`test:live`.
 One file: `corepack pnpm vitest run test/unit/core/evaluation/gate.test.ts`.
 The Docker part of L3 is opt-in: set `DSGVO_E2E_IMAGE` (see `test/e2e/docker.e2e.test.ts`).
 

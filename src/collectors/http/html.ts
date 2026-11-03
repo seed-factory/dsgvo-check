@@ -4,6 +4,7 @@
 // unclosed `<a `, `<form ` or `<!--` must not cause quadratic rescanning.
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import { parseUrl } from '../../core/url/url.ts';
+import { type HtmlRules, loadHtmlRules } from './rules.ts';
 
 export const HEURISTIC_BYTES = 64 * 1024;
 
@@ -281,37 +282,35 @@ export function detectClientRedirect(
   return null;
 }
 
+// HTML input types that carry nothing the visitor types in.
 const NON_DATA_INPUTS = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'search']);
-const SEARCH_NAMES = new Set(['s', 'q', 'search', 'query', 'suche', 'keyword', 'keywords', 'searchword']);
 
 // A form that takes user input other than a site search (TLS-01). Markup inside `<script>`, `<template>`, `<noscript>`
 // or `<textarea>` is no form.
-export function detectForm(html: string): boolean {
+export function detectForm(html: string, rules: HtmlRules = loadHtmlRules()): boolean {
   const clean = documentMarkup(html);
   for (const f of elements(clean, 'form', true)) {
     const formAttrs = parseAttributes(`<form ${f.attrs}>`);
     if (formAttrs.get('role')?.toLowerCase() === 'search') continue;
-    if (/search|suche/i.test(`${formAttrs.get('id') ?? ''} ${formAttrs.get('class') ?? ''}`)) continue;
+    if (rules.searchForm.test(`${formAttrs.get('id') ?? ''} ${formAttrs.get('class') ?? ''}`)) continue;
     const body = f.body;
     if (/<(textarea|select)\b/i.test(body)) return true;
     for (const input of startTags(body, 'input')) {
       const attrs = parseAttributes(input);
       const type = (attrs.get('type') ?? 'text').toLowerCase();
       if (NON_DATA_INPUTS.has(type)) continue;
-      if (SEARCH_NAMES.has((attrs.get('name') ?? '').toLowerCase())) continue;
+      if (rules.searchFieldNames.has((attrs.get('name') ?? '').toLowerCase())) continue;
       return true;
     }
   }
   return false;
 }
 
-const IMPRESSUM_TEXT = /\b(impressum|imprint|anbieterkennzeichnung|legal notice)\b/i;
-const IMPRESSUM_HREF = /impressum|imprint/i;
-const PRIVACY_TEXT = /datenschutz|privacy|dsgvo|data protection/i;
-const PRIVACY_HREF = /datenschutz|privacy|dsgvo/i;
-const SETTINGS_TEXT = /einstellung|setting|cookie|widerruf|opt-?out/i;
-
-export function findLegalLinks(html: string, base: string): { impressum?: string; privacy?: string } {
+export function findLegalLinks(
+  html: string,
+  base: string,
+  rules: HtmlRules = loadHtmlRules(),
+): { impressum?: string; privacy?: string } {
   const out: { impressum?: string; privacy?: string } = {};
   for (const a of elements(withoutComments(html), 'a', false)) {
     const attrs = parseAttributes(`<a ${a.attrs}>`);
@@ -321,11 +320,12 @@ export function findLegalLinks(html: string, base: string): { impressum?: string
     if (!url) continue;
     const text = decodeEntities(stripTags(a.body)).replace(/\s+/g, ' ').trim();
     const path = new URL(url).pathname;
-    if (!out.impressum && (IMPRESSUM_TEXT.test(text) || IMPRESSUM_HREF.test(path))) out.impressum = url;
+    if (!out.impressum && (rules.impressumText.test(text) || rules.impressumPath.test(path)))
+      out.impressum = url;
     else if (
       !out.privacy &&
-      !SETTINGS_TEXT.test(text) &&
-      (PRIVACY_TEXT.test(text) || PRIVACY_HREF.test(path))
+      !rules.settingsText.test(text) &&
+      (rules.privacyText.test(text) || rules.privacyPath.test(path))
     ) {
       out.privacy = url;
     }

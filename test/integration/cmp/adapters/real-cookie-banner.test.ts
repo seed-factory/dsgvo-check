@@ -1,7 +1,8 @@
 /** Real Cookie Banner adapter against the own simulator, including accept-all-for-bots with our honest UA. */
 import { expect, it } from 'vitest';
-import { classifyFirstLayer, extract, loadLexicon } from '../../../../src/cmp/index.ts';
+import { extract, loadLexicon } from '../../../../src/cmp/index.ts';
 import { browserUserAgent } from '../../../../src/core/runtime/user-agent.ts';
+import { classifyFirstLayer } from '../../../utils/classify.ts';
 import { CHROME_UA, describeCmpScenarios, recognized } from '../helpers.ts';
 
 describeCmpScenarios(

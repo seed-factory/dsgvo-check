@@ -6,6 +6,7 @@ import https from 'node:https';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as x509 from '@peculiar/x509';
+import { defaultConfig } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
@@ -24,6 +25,7 @@ export function collectorContext(
     target: parseTarget(url),
     options: { maxPages: 6, screenshots: false, sandbox: 'off', lang: 'de', assumeRegion: null },
     network,
+    config: defaultConfig(),
     userAgent: { http: uaToken(), token: uaToken() },
     signal: new AbortController().signal,
     deadline: Date.now() + 120_000,

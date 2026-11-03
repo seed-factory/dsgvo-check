@@ -4,6 +4,7 @@ import { LEGAL_KINDS, type LegalLexicon, matchLegalLink } from '../../collectors
 import { loadLegalLexicon } from '../../collectors/browser/legal/lexicon-file.ts';
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
 import { parseUrl, sanitizeUrl } from '../../core/url/url.ts';
+import { loadProbeData } from '../adapters-file.ts';
 import { classifyButton, labelTokens, normalizeLabel } from '../lexicon.ts';
 import type {
   BlockingFacts,
@@ -79,6 +80,7 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
     keywords: lexicon.bannerKeywords ?? [],
     frameMode: false,
     maxButtons: MAX_BUTTONS,
+    selectorAttributes: loadProbeData().selectorAttributes,
     controlPhrases: phrases.control,
     choicePhrases: phrases.choice,
     ...p,

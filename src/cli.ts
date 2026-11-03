@@ -6,6 +6,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Command, CommanderError } from 'commander';
+import { ConfigError, type ConfigProblem, describeProblems, loadConfig } from './core/config/load.ts';
+import { envName } from './core/config/names.ts';
+import { type Config, defaultConfig } from './core/config/schema.ts';
 import { loadTexts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import { buildFailedReport } from './core/report/build.ts';
@@ -22,7 +25,7 @@ import {
   SandboxModeSchema,
   SCHEMA_VERSION,
 } from './core/report/schema.ts';
-import { parseDuration } from './core/runtime/duration.ts';
+import { formatDuration, parseDuration } from './core/runtime/duration.ts';
 import { errorMessage } from './core/runtime/errors.ts';
 import { createLogger } from './core/runtime/logger.ts';
 import { TOOL_VERSION } from './core/runtime/version.ts';
@@ -30,7 +33,7 @@ import { redactTarget } from './core/url/url.ts';
 import { renderJson } from './reporters/json.ts';
 import { writeReports } from './reporters/write.ts';
 import { scan } from './scan.ts';
-import { DEFAULTS, REPORT_WRITE_RESERVE_MS, type ScanOptions } from './scan-options.ts';
+import type { ScanOptions } from './scan-options.ts';
 
 interface RawOptions {
   failOn: string;
@@ -86,6 +89,7 @@ interface InvalidOption {
 export function toScanOptions(
   url: string | undefined,
   raw: RawOptions,
+  config?: Config,
 ): ScanOptions & { invalid?: InvalidOption } {
   const { formats, bad: badFormat } = parseFormats(raw.format);
   let timeoutMs: number;
@@ -100,7 +104,8 @@ export function toScanOptions(
     outDir: raw.out,
     maxPages: /^\d+$/.test(raw.maxPages) ? Number(raw.maxPages) : Number.NaN,
     timeoutMs,
-    proxy: raw.proxy ?? null,
+    // Without the flag the proxy of the settings applies.
+    ...(raw.proxy === undefined ? {} : { proxy: raw.proxy }),
     assumeRegion: (raw.assumeRegion ?? null) as ScanOptions['assumeRegion'],
     lang: raw.lang as Lang,
     strict: Boolean(raw.strict),
@@ -116,6 +121,7 @@ export function toScanOptions(
       : null,
     log: createLogger(raw.verbose ? 'debug' : 'warn'),
   };
+  if (config) opts.config = config;
   if (url) opts.url = url;
   const invalid = firstInvalidOption(raw, badFormat);
   if (invalid) opts.invalid = invalid;
@@ -171,8 +177,43 @@ function writeFailedSync(
   return message;
 }
 
-async function runScan(url: string | undefined, raw: RawOptions): Promise<never> {
-  const opts = toScanOptions(url, raw);
+/** What `main` read from the environment and the `.env` file: the settings, a note per source, or why they are unusable. */
+export interface CliSettings {
+  config: Config;
+  /** `console.*` texts for stderr: where settings came from, names that look like typos. */
+  notes: Array<{ key: string; params: MessageParams }>;
+  /** Names of the variables that the environment or the `.env` file set; every other setting is at its built-in value. */
+  explicit: ReadonlySet<string>;
+  /** Set when a variable or the `.env` file is invalid; scans and reports then end with exit code 2. */
+  error: readonly ConfigProblem[] | null;
+}
+
+export function builtInSettings(): CliSettings {
+  return { config: defaultConfig(), notes: [], explicit: new Set(), error: null };
+}
+
+export function loadCliSettings(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  cwd: string = process.cwd(),
+): CliSettings {
+  try {
+    const loaded = loadConfig({ env, cwd });
+    const notes: CliSettings['notes'] = [];
+    if (loaded.file && loaded.fromFile.length > 0) {
+      notes.push({ key: 'console.configFile', params: { path: loaded.file, count: loaded.fromFile.length } });
+    }
+    if (loaded.unknown.length > 0) {
+      notes.push({ key: 'console.configUnknown', params: { names: loaded.unknown.join(', ') } });
+    }
+    return { config: loaded.config, notes, explicit: new Set(loaded.set), error: null };
+  } catch (err) {
+    if (err instanceof ConfigError) return { ...builtInSettings(), error: err.problems };
+    throw err;
+  }
+}
+
+async function runScan(url: string | undefined, raw: RawOptions, settings: CliSettings): Promise<never> {
+  const opts = toScanOptions(url, raw, settings.config);
   const lang = opts.lang === 'en' ? 'en' : 'de';
   const outDir = path.resolve(raw.out);
   // The target in the minimal failed reports written here is redacted like in scan().
@@ -190,6 +231,14 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
     process.stderr.write(`dsgvo-check: ${message}\n`);
     return exit(2);
   }
+  if (settings.error) {
+    const problems = describeProblems(settings.error, lang);
+    const message = writeFailedSync(outDir, target, 'invalid-config', { problems }, 'invalid-input', lang);
+    process.stderr.write(`dsgvo-check: ${message}\n`);
+    return exit(2);
+  }
+  const notes = loadTexts(lang);
+  for (const n of settings.notes) await write(process.stderr, `${uiText(notes, n.key, n.params)}\n`);
 
   const onSignal = (sig: string) => {
     process.stderr.write(`dsgvo-check: ${sig} received, aborting\n`);
@@ -208,8 +257,8 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
 
   // Watchdog: --timeout plus the reserve for writing reports. scan() itself stops collectors at the deadline.
   const watchdogMs =
-    (Number.isFinite(opts.timeoutMs) ? (opts.timeoutMs as number) : DEFAULTS.timeoutMs) +
-    REPORT_WRITE_RESERVE_MS;
+    (Number.isFinite(opts.timeoutMs) ? (opts.timeoutMs as number) : settings.config.scan.timeoutMs) +
+    settings.config.scan.reportWriteReserveMs;
   const watchdogDeadline = Date.now() + watchdogMs;
   setTimeout(() => {
     process.stderr.write('dsgvo-check: watchdog timeout, aborting\n');
@@ -218,13 +267,14 @@ async function runScan(url: string | undefined, raw: RawOptions): Promise<never>
   }, watchdogMs).unref();
 
   const result = await scan(opts);
-  const formats = opts.formats ?? DEFAULTS.formats;
+  const formats = opts.formats ?? settings.config.report.formats;
   const written = await writeReports(result, {
     outDir,
     formats,
     lang,
     color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
     pdf: { sandbox: opts.sandbox },
+    config: settings.config,
     watchdogDeadline,
     outputConsole: (text) => write(process.stdout, text),
   });
@@ -251,9 +301,14 @@ interface ReportOptions {
   out?: string;
 }
 
-async function runReport(file: string, raw: ReportOptions): Promise<never> {
+async function runReport(file: string, raw: ReportOptions, settings: CliSettings): Promise<never> {
   const lang = raw.lang === 'en' ? 'en' : 'de';
   const texts = loadTexts(lang);
+  if (settings.error) {
+    const problems = describeProblems(settings.error, lang);
+    await write(process.stderr, `dsgvo-check: ${uiText(texts, 'failure.invalid-config', { problems })}\n`);
+    return exit(2);
+  }
   const { formats, bad } = parseFormats(raw.format);
   try {
     if (!LangSchema.safeParse(raw.lang).success || formats.length === 0 || bad !== undefined) {
@@ -271,6 +326,7 @@ async function runReport(file: string, raw: ReportOptions): Promise<never> {
         formats,
         lang,
         artifactsDir: path.dirname(path.resolve(file)),
+        config: settings.config,
         outputConsole: (text) => write(process.stdout, text),
       },
     );
@@ -309,6 +365,16 @@ function usageNotes(): string {
   }
 }
 
+/** Hint on the environment and `.env` settings for `--help`. */
+function configNotes(): string {
+  try {
+    const texts = loadTexts('de');
+    return `\n${uiText(texts, 'cli.configNotes.title')}:\n${wrap(uiText(texts, 'cli.configNotes'), 100)}\n`;
+  } catch {
+    return '';
+  }
+}
+
 function wrap(text: string, width: number): string {
   const lines: string[] = [];
   let line = '';
@@ -322,7 +388,9 @@ function wrap(text: string, width: number): string {
   return lines.map((l) => `  ${l}`).join('\n');
 }
 
-export function buildProgram(): Command {
+/** `settings` fill the defaults of the flags that have a setting: flag, then environment, then `.env`, then built-in. */
+export function buildProgram(settings: CliSettings = builtInSettings()): Command {
+  const { config } = settings;
   const program = new Command();
   const texts = loadTexts('de');
   program.enablePositionalOptions();
@@ -332,21 +400,23 @@ export function buildProgram(): Command {
     .description(uiText(texts, 'cli.description'))
     .version(TOOL_VERSION, '-V, --version')
     .argument('[url]', uiText(texts, 'cli.url'))
-    .option('--fail-on <level>', uiText(texts, 'cli.failOn'), 'critical')
-    .option('--format <list>', uiText(texts, 'report.cli.formats'), 'console,json')
-    .option('--out <dir>', uiText(texts, 'cli.out'), DEFAULTS.outDir)
-    .option('--max-pages <n>', uiText(texts, 'cli.maxPages'), String(DEFAULTS.maxPages))
-    .option('--timeout <duration>', uiText(texts, 'cli.timeout'), '8m')
+    .option('--fail-on <level>', uiText(texts, 'cli.failOn'), config.scan.failOn)
+    .option('--format <list>', uiText(texts, 'report.cli.formats'), config.report.formats.join(','))
+    .option('--out <dir>', uiText(texts, 'cli.out'), config.report.outDir)
+    .option('--max-pages <n>', uiText(texts, 'cli.maxPages'), String(config.scan.maxPages))
+    .option('--timeout <duration>', uiText(texts, 'cli.timeout'), formatDuration(config.scan.timeoutMs))
+    // No default shown: the proxy of the settings may hold credentials.
     .option('--proxy <url>', uiText(texts, 'cli.proxy'))
     .option('--assume-region <region>', uiText(texts, 'cli.assumeRegion'))
-    .option('--lang <lang>', uiText(texts, 'report.cli.language'), 'de')
+    .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
     .option('--strict', uiText(texts, 'cli.strict'))
-    .option('--sandbox <mode>', uiText(texts, 'cli.sandbox'), 'require')
+    .option('--sandbox <mode>', uiText(texts, 'cli.sandbox'), config.browser.sandbox)
     .option('--no-screenshots', uiText(texts, 'cli.noScreenshots'))
     .option('--save-snapshot <file>', uiText(texts, 'cli.saveSnapshot'))
     .option('--from-snapshot <file>', uiText(texts, 'cli.fromSnapshot'))
     .option('--checks <ids>', uiText(texts, 'cli.checks'))
     .option('--verbose', uiText(texts, 'cli.verbose'))
+    .addHelpText('after', configNotes)
     .addHelpText('after', usageNotes)
     .showHelpAfterError()
     .action(async (url: string | undefined, raw: RawOptions) => {
@@ -355,16 +425,21 @@ export function buildProgram(): Command {
         process.stderr.write(`\ndsgvo-check: ${uiText(texts, 'cli.urlMissing')}\n`);
         return exit(2);
       }
-      return runScan(url, raw);
+      return runScan(url, raw, settings);
     });
 
+  // The built-in format list is for scans (console, json); a re-rendered report is read, so it defaults to html
+  // unless the operator named formats in the settings.
+  const reportFormats = settings.explicit.has(envName('report', 'formats'))
+    ? config.report.formats
+    : ['html'];
   program
     .command('report <report.json>')
     .description(uiText(texts, 'report.cli.description'))
-    .option('--format <list>', uiText(texts, 'report.cli.formats'), 'html')
-    .option('--lang <lang>', uiText(texts, 'report.cli.language'), 'de')
+    .option('--format <list>', uiText(texts, 'report.cli.formats'), reportFormats.join(','))
+    .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
     .option('--out <dir>', uiText(texts, 'report.cli.output'))
-    .action(runReport);
+    .action((file: string, raw: ReportOptions) => runReport(file, raw, settings));
 
   program
     .command('install')
@@ -378,7 +453,7 @@ export function buildProgram(): Command {
 }
 
 export async function main(argv: string[]): Promise<void> {
-  const program = buildProgram();
+  const program = buildProgram(loadCliSettings());
   try {
     await program.parseAsync(argv);
   } catch (err) {

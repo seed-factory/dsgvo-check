@@ -1,11 +1,8 @@
-/** Borlabs Cookie (WordPress) v2 and v3; bot detection mirrors the Borlabs 3.5 `isBot` pattern. */
+/** Borlabs Cookie (WordPress) v2 and v3; recognition, selectors and the bot pattern are in test/data/cmp/adapters.yaml. */
 import type { Page } from 'playwright-core';
-import { majorSupported, versionFromUrl } from '../detection.ts';
+import { readerInput } from '../adapters-file.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
-
-/** Optional service groups; essential is never optional. */
-const OPTIONAL_GROUPS = ['statistics', 'marketing', 'external-media'];
 
 interface BorlabsRead {
   hasGlobal: boolean;
@@ -20,7 +17,7 @@ interface BorlabsRead {
   uaBot: boolean;
 }
 
-function readBorlabs(): BorlabsRead {
+function readBorlabs(botUserAgent: string): BorlabsRead {
   interface El {
     getBoundingClientRect(): { width: number; height: number };
   }
@@ -76,53 +73,20 @@ function readBorlabs(): BorlabsRead {
     afterInteraction: bool(s.dialogShowDialogAfterUserInteraction),
     respectDnt: bool(s.respectDoNotTrack),
     bannerVisible,
-    uaBot: /bot|googlebot|crawler|spider|robot|crawling|lighthouse/i.test(w.navigator.userAgent),
+    uaBot: new RegExp(botUserAgent, 'i').test(w.navigator.userAgent),
   };
 }
 
-const read = (page: Page) => page.evaluate(readBorlabs);
+const read = (page: Page) => page.evaluate(readBorlabs, readerInput('borlabs', 'botUserAgent'));
 
 export const borlabs = defineAdapter({
   id: 'borlabs',
-  name: 'Borlabs Cookie',
-  supportedVersions: '2.x || 3.x',
-  detect: {
-    globals: ['BorlabsCookie', 'borlabsCookieConfig'],
-    scripts: [{ label: 'wp-content/plugins/borlabs-cookie', pattern: '/wp-content/plugins/borlabs-cookie/' }],
-    dom: ['#BorlabsCookieBox', '.brlbs-cmpnt-dialog', '._brlbs-box-wrap', '._brlbs-bar-wrap'],
-    cookies: ['^borlabs-cookie$'],
-  },
-  version(raw) {
-    const fromUrl = versionFromUrl(raw.scriptUrls[0]);
-    if (fromUrl) return fromUrl;
-    if (raw.dom.includes('.brlbs-cmpnt-dialog')) return '3';
-    if (raw.dom.includes('._brlbs-box-wrap') || raw.dom.includes('._brlbs-bar-wrap')) return '2';
-    return null;
-  },
-  versionSupported: (v) => majorSupported(v, [2, 3]),
-  banner: {
-    containers: [
-      '#BorlabsCookieBox .brlbs-cmpnt-dialog',
-      '#BorlabsCookieBox ._brlbs-box-wrap',
-      '#BorlabsCookieBox ._brlbs-bar-wrap',
-      '#BorlabsCookieBox [role="dialog"]',
-    ],
-    overlays: ['#BorlabsCookieBox .brlbs-cmpnt-dialog-backdrop', '#BorlabsCookieBox ._brlbs-bg-dark'],
-    vendorRoles: [
-      { selector: '.brlbs-btn-accept-all', role: 'accept' },
-      { selector: '.brlbs-btn-accept-only-essential', role: 'reject' },
-      { selector: '.brlbs-btn-save', role: 'save' },
-      { selector: '[data-cookie-accept-all]', role: 'accept' },
-      { selector: '[data-cookie-refuse]', role: 'reject' },
-      { selector: '[data-cookie-individual]', role: 'settings' },
-      { selector: '[data-cookie-accept]', role: 'save' },
-    ],
-  },
   async readState(page) {
     const r = await read(page);
     if (!r.hasGlobal && !r.cookiePresent) return [];
     const map: Record<string, boolean | null> = {};
-    for (const g of OPTIONAL_GROUPS) map[g] = r.cookiePresent ? r.groups.includes(g) : false;
+    for (const g of readerInput('borlabs', 'optionalGroups'))
+      map[g] = r.cookiePresent ? r.groups.includes(g) : false;
     for (const g of r.groups) if (g !== 'essential') map[g] = true;
     const special = r.cookiesForBots === true && r.uaBot;
     const fact: ConsentStateFact = {

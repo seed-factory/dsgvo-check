@@ -10,7 +10,7 @@
 
 ## Дерево репозитория
 
-Комментарий стоит после `#`. Строка `… N файлов` сворачивает однотипные файлы каталога, `(N файлов)` в конце комментария заменяет каталог целиком. `schema/` создаёт `corepack pnpm build`, в git его нет. Данные пакета (ruleset, тексты, каталог сервисов, шаблон отчёта) лежат в `test/data/`, но входят в npm-пакет и в образ.
+Комментарий стоит после `#`. Строка `… N файлов` сворачивает однотипные файлы каталога, `(N файлов)` в конце комментария заменяет каталог целиком. `schema/` создаёт `corepack pnpm build`, в git его нет. Данные пакета (ruleset, тексты, каталог сервисов, словари и сигнатуры, шаблон отчёта) лежат в `test/data/`, но входят в npm-пакет и в образ.
 
 ```text
 dsgvo-check/                                   # корень репозитория
@@ -68,6 +68,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   ├── runner.ts                          # пул заданий, watchdog, возобновление, переанализ
 │   │   ├── scanners.ts                        # сканеры: в процессе через API или CLI-подпроцесс
 │   │   └── sites.ts                           # схема и фильтры корпуса canary/sites.yaml
+│   ├── emit-env-example.ts                    # .env.example из схемы настроек; --check ловит расхождение
 │   ├── emit-registry.ts                       # таблица §2.1 в docs/03-checks.md из ruleset
 │   └── emit-schema.ts                         # schema/report.schema.json из zod-схемы
 ├── specs/                                     # исходные требования заказчика
@@ -107,7 +108,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   └── index.ts                           # явный реестр всех проверок; ядро их не импортирует
 │   ├── cmp/                                   # подсистема CMP: распознавание баннера и клик по выбору core
 │   │   ├── adapters/                          # адаптеры CMP: extract / act / verify, без решений
-│   │   │   ├── base.ts                        # общая механика адаптеров
+│   │   │   ├── base.ts                        # общая механика адаптеров; признаки и селекторы берёт из adapters.yaml
 │   │   │   ├── borlabs.ts                     # Borlabs Cookie
 │   │   │   ├── ccm19.ts                       # CCM19
 │   │   │   ├── complianz.ts                   # Complianz
@@ -121,6 +122,8 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   ├── measure.ts                     # сторона Node: замер первого слоя и блокировки
 │   │   │   ├── probe-types.ts                 # аргументы и сырой результат замера
 │   │   │   └── probe.ts                       # замер баннера внутри страницы, только чтение
+│   │   ├── adapters-data.ts                   # чистые zod-схемы adapters.yaml, categories.yaml, probe.yaml
+│   │   ├── adapters-file.ts                   # загрузка этих данных из test/data/cmp; проверка читает их из ctx.data.cmp
 │   │   ├── classify.ts                        # чистая таблица первого слоя: отказ, согласие, цель клика
 │   │   ├── detection.ts                       # уверенность распознавания: high от 2 независимых признаков
 │   │   ├── index.ts                           # вход: ожидание CMP, выбор адаптера, общая эвристика
@@ -129,7 +132,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   └── types.ts                           # факты CMP и контракт адаптера
 │   ├── collectors/                            # коллекторы: весь I/O; редактируют до записи в снимок
 │   │   ├── browser/                           # Chromium: фазы A, B, C в свежем профиле
-│   │   │   ├── in-page/                       # код, исполняемый внутри страницы, без обращений к областям модуля
+│   │   │   ├── in-page/                       # код, исполняемый внутри страницы; словари получает аргументом evaluate
 │   │   │   │   ├── document.ts                # текст юридического документа
 │   │   │   │   ├── dom.ts                     # ссылки, формы, iframe
 │   │   │   │   ├── input.ts                   # доверенные нажатия
@@ -163,6 +166,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   ├── collector.ts                   # сбор по фазам A/B/C, фатальные условия старта
 │   │   │   ├── config.ts                      # константы, тайминги, allowlist query
 │   │   │   ├── index.ts                       # вход браузерного коллектора
+│   │   │   ├── rules.ts                       # схемы и загрузка test/data/browser: идентификаторы, challenge, словарь страницы, выбор страниц
 │   │   │   └── util.ts                        # мелкие асинхронные помощники
 │   │   ├── dns/                               # DNS для MAIL-01 и MAIL-02
 │   │   │   ├── collect.ts                     # запросы MX, DMARC Tree Walk, SPF; бюджет 60 запросов
@@ -172,16 +176,29 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   ├── client.ts                      # вежливый клиент undici: до 2 запросов в секунду на хост
 │   │   │   ├── hosts.ts                       # варианты хоста: целевой, www, apex
 │   │   │   ├── html.ts                        # эвристики по префиксу HTML без выполнения страницы
-│   │   │   └── index.ts                       # цепочки редиректов и заголовки основных документов
+│   │   │   ├── index.ts                       # цепочки редиректов и заголовки основных документов
+│   │   │   └── rules.ts                       # схема и загрузка test/data/http: слова поиска и юридических ссылок в HTML
 │   │   └── tls/                               # TLS-рукопожатия
 │   │       ├── index.ts                       # по одному рукопожатию на вариант хоста
 │   │       ├── probe.ts                       # рукопожатие node:tls и собственная проверка имени
 │   │       └── tunnel.ts                      # HTTP CONNECT для --proxy
 │   ├── core/                                  # ядро: контракты и чистая логика, проверок не знает
+│   │   ├── config/                            # настройки оператора: zod-схема, чтение env и .env
+│   │   │   ├── dotenv.ts                      # чтение .env без записи в process.env
+│   │   │   ├── env-example.ts                 # текст .env.example из схемы
+│   │   │   ├── fields.ts                      # плоский список настроек: имя переменной, умолчание, описание
+│   │   │   ├── limits.ts                      # лимиты репортёров из настроек
+│   │   │   ├── load.ts                        # env и .env → проверенный Config, ConfigError
+│   │   │   ├── names.ts                       # DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>
+│   │   │   ├── overrides.ts                   # отличия от умолчаний для отчёта, без секретов
+│   │   │   ├── problems.ts                    # причина отказа настройки: id и параметры, без текста
+│   │   │   ├── schema.ts                      # единая схема настроек и умолчания (источник правды)
+│   │   │   └── thresholds.ts                  # пороги для проверок через CheckContext
 │   │   ├── data/                              # загрузка данных, тексты и дисклеймер
 │   │   │   ├── disclaimer.ts                  # дисклеймер с условными абзацами
-│   │   │   ├── load.ts                        # загрузчики test/data: ruleset, тексты, каталоги
-│   │   │   └── messages.ts                    # подмножество ICU MessageFormat для текстов
+│   │   │   ├── load.ts                        # загрузчики test/data: ruleset, тексты, каталоги, loadSection
+│   │   │   ├── messages.ts                    # подмножество ICU MessageFormat для текстов
+│   │   │   └── parse.ts                       # чистая часть: DataError и проверка секции каталога (dataSection)
 │   │   ├── evaluation/                        # от проверки до находок и кода выхода
 │   │   │   ├── assess.ts                      # наблюдения в находки: ruleset, кэп confidence, routing
 │   │   │   ├── check.ts                       # контракт проверки: defineCheck, Observation, CheckContext
@@ -240,10 +257,20 @@ dsgvo-check/                                   # корень репозитор
 │       └── dsgvo-check.gitlab-ci.yml          # шаблон GitLab CI (include:remote + integrity), тот же образ
 ├── test/                                      # тесты, данные пакета, фикстурный сервер
 │   ├── data/                                  # данные пакета: идут в npm-пакет и образ, не только в тесты
-│   │   ├── cmp/                               # лексикон кнопок CMP
-│   │   │   └── lexicon.yaml                   # лексикон кнопок первого слоя (de, en и другие языки)
+│   │   ├── browser/                           # словари браузерного коллектора
+│   │   │   ├── challenges.yaml                # сигнатуры страниц WAF и бот-защиты: заголовки, скрипты, заголовки страниц, тексты
+│   │   │   ├── dom.yaml                       # словарь разметки для кода внутри страницы: баннеры, заглушки, части страницы
+│   │   │   ├── identifiers.yaml               # имена параметров и cookies с идентификаторами, сигналы Consent Mode
+│   │   │   └── pages.yaml                     # ключевые слова доп. страниц, исключённые пути, расширения файлов
+│   │   ├── cmp/                               # данные подсистемы CMP
+│   │   │   ├── adapters.yaml                  # признаки, версии, селекторы баннера и кнопок каждого адаптера
+│   │   │   ├── categories.yaml                # имена категорий согласия, которые считаются необходимыми
+│   │   │   ├── lexicon.yaml                   # лексикон кнопок первого слоя (de, en и другие языки)
+│   │   │   └── probe.yaml                     # атрибуты, из которых замер строит селектор кнопки
+│   │   ├── http/                              # слова HTTP-коллектора
+│   │   │   └── html.yaml                      # поиск и юридические ссылки в префиксе HTML
 │   │   ├── legal/                             # лексикон юридических ссылок
-│   │   │   └── links.yaml                     # подписи и пути ссылок на Impressum и Datenschutz
+│   │   │   └── links.yaml                     # подписи и пути ссылок на Impressum и Datenschutz, пробные пути
 │   │   ├── report/                            # шаблон HTML-отчёта
 │   │   │   └── report.html                    # шаблон отчёта: один файл, без JS и внешних ресурсов
 │   │   ├── ruleset/                           # ruleset: варианты, уровни, gating, коды CRM
@@ -253,7 +280,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   │       ├── dns.yaml                   # варианты проверок DNS
 │   │   │       └── http.yaml                  # варианты проверок HTTP и TLS
 │   │   ├── services/                          # собственный каталог сервисов (Apache-2.0)
-│   │   │   ├── _catalog.yaml                  # формат записи, категории, allowlist
+│   │   │   ├── _catalog.yaml                  # формат записи, категории, allowlist, параметры визита, буквы gcd
 │   │   │   ├── ads.yaml                       # реклама
 │   │   │   ├── analytics.yaml                 # аналитика, тег-менеджеры, запись сессий, мониторинг
 │   │   │   ├── consent.yaml                   # CMP и провайдеры согласия
@@ -279,6 +306,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   └── network-hook.ts                # preload: сеть собранного CLI на стенд
 │   │   ├── cli.e2e.test.ts                    # dist/cli.js: коды 0/1/2, отчёты, нет значений в выводе
 │   │   ├── delivery-config.e2e.test.ts        # контракты поставки: изоляция, версии, артефакты
+│   │   ├── settings.e2e.test.ts               # env и .env: приоритеты, неверные значения, отчёт об отличиях
 │   │   ├── docker.e2e.test.ts                 # образ и Action; только при DSGVO_E2E_IMAGE
 │   │   ├── report.e2e.test.ts                 # команда report: HTML и PDF из JSON
 │   │   └── traffic-docs.e2e.test.ts           # описанный в canary/README трафик равен реальным пробам
@@ -331,17 +359,18 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   │   ├── zone.ts                    # мини-DSL зоны для тестов
 │   │   │   │   └── … 7 файлов тестов          # mail-01, mail-02, dmarc, spf, records, collector, data
 │   │   │   └── http/                          # HDR-01, TLS-01, TLS-02, клиент и разбор HTML (10 файлов)
-│   │   ├── cli/                               # опции CLI и входы Action (2 файла)
-│   │   ├── cmp/                               # адаптеры, первый слой, распознавание, лексикон (5 файлов)
+│   │   ├── cli/                               # опции CLI, настройки из env и входы Action (3 файла)
+│   │   ├── cmp/                               # адаптеры и их данные, первый слой, распознавание, лексикон (6 файлов)
 │   │   ├── collectors/                        # чистые части коллекторов
 │   │   │   └── browser/                       # браузерный коллектор: рекордер, cookies, страницы, документы
 │   │   │       ├── cookies/                   # установщики cookies, домены, фейки Playwright (5 файлов)
 │   │   │       ├── legal/                     # документы, лексикон, ссылки (5 файлов)
-│   │   │       ├── pages/                     # выбор страниц, robots, challenge (3 файла)
+│   │   │       ├── pages/                     # выбор страниц, robots, challenge, навигации (4 файла)
 │   │   │       ├── recording/                 # рекордер, тишина, признаки запросов (5 файлов)
-│   │   │       └── … 7 файлов                 # границы снимка, мост CMP, профили, скриншот, помощники
+│   │   │       └── … 9 файлов                 # границы снимка, мост CMP, профили, скриншот, настройки, словари, помощники
 │   │   ├── core/                              # ядро и контракты
-│   │   │   ├── data/                          # загрузчики, формат сообщений, стоп-слова (3 файла)
+│   │   │   ├── config/                        # схема настроек, причины отказа, env и .env, .env.example (4 файла)
+│   │   │   ├── data/                          # загрузчики, формат сообщений, стоп-слова, секции данных (4 файла)
 │   │   │   ├── evaluation/                    # assess, gate, fingerprint, реестр, образец проверки (5 файлов)
 │   │   │   ├── redaction/                     # редактирование текста и заголовков (5 файлов)
 │   │   │   ├── report/                        # схема отчёта, coverage, trustStore (3 файла)
@@ -368,6 +397,7 @@ dsgvo-check/                                   # корень репозитор
 │   │   │   └── worker-tmpdir.ts               # отдельный TMPDIR на файл теста
 │   │   ├── browser.ts                         # тестовый Chromium: хосты на стенд (host-resolver-rules)
 │   │   ├── certs.ts                           # тестовая PKI: CA и листья
+│   │   ├── classify.ts                        # classifyFirstLayer с порогом по умолчанию из настроек
 │   │   ├── completeness.ts                    # правила полноты реестра
 │   │   ├── network.ts                         # undici-клиент с маршрутизацией на стенд
 │   │   ├── scaling.ts                         # проверка линейного роста времени
@@ -375,8 +405,9 @@ dsgvo-check/                                   # корень репозитор
 │   │   └── snapshot-builder.ts                # фабрики снимка, CheckContext, загрузка фикстур
 │   └── README.md                              # уровни L0-L3, параллельность, сеть в L2, фикстурный сервер
 ├── .dockerignore                              # контекст сборки образа: только то, что нужно Dockerfile
+├── .env.example                               # все настройки с умолчаниями и описанием; генерируется из src/core/config
 ├── .editorconfig                              # LF, UTF-8, отступ 2 пробела
-├── .gitignore                                 # исключает dist, schema, результаты сканов, локальный корпус
+├── .gitignore                                 # исключает dist, schema, результаты сканов, локальный корпус, .env (кроме .env.example)
 ├── .node-version                              # версия Node для локальной работы (24)
 ├── .npmrc                                     # save-exact: зависимости запинены точно
 ├── action.yml                                 # composite Action: docker run образа по тегу версии
@@ -394,6 +425,34 @@ dsgvo-check/                                   # корень репозитор
 └── vitest.config.ts                           # проекты unit / integration / e2e / live, воркеры, TMPDIR
 ```
 
+## Настройки
+
+Пороги, таймауты, паузы и лимиты оператора описывает одна схема — [schema.ts](../src/core/config/schema.ts): умолчание равно прежнему значению в коде, `.env` необязателен (требование ТЗ: запуск одной командой). Приоритет: флаг CLI → переменная окружения `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>` → `.env` в текущем каталоге → умолчание. `.env` читает `util.parseEnv`: в `process.env` файл ничего не пишет, чужие переменные не доходят до Chromium. Неверное значение — код 2 (`invalid-config`): схема и разбор отдают причину как id с параметрами ([problems.ts](../src/core/config/problems.ts)), текст `config.problem.<id>` лежит в `test/data/texts/{de,en}` и подставляется на языке `--lang`. Паузы правила 1 (`DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS` ≥ 1500, `DSGVO_CHECK_BROWSER_RETRY_DELAY_MS` ≥ 3000, `DSGVO_CHECK_HTTP_MIN_INTERVAL_MS` ≥ 500) схема принимает только в сторону ужесточения: нижняя граница равна умолчанию. Подкоманда `report` берёт умолчания `--lang` и `--format` из `DSGVO_CHECK_REPORT_LANG` и `DSGVO_CHECK_REPORT_FORMATS` (флаг важнее переменной, переменная важнее `.env`); пока формат не задан настройками, `report` пишет `html`, а не `console,json` скана; `DSGVO_CHECK_REPORT_OUT_DIR` к `report` не относится. Конфиг идёт в коллекторы через `CollectorContext.config`, в проверки — через `CheckContext.thresholds` (чистые таблицы вроде `classifyFirstLayer` умолчаний порога не имеют, его передаёт вызывающий; тест графа импортов следит, что проверки не достают до `src/core/config`); отличия от умолчаний попадают в отчёт (`scan.options.settings`, без секретов).
+
+В коде остаются: константы протоколов (лимиты SPF и обход DMARC по RFC), защитные пределы приватности и разбора чужого содержимого (редактирование, длины строк, размеры тел и документов, `MAX_TIMER_MS`), порядок остановки браузера (`FLUSH_BUDGET_MS`, `ABORT_ORDERLY_MS`, `CLOSE_BUDGET_MS`), политика ответов 429/503, бюджеты выбора страниц и профиль измерения (viewport, locale, timezone, User-Agent).
+
+## Словари и сопоставления
+
+Всё, что меняется вместе с внешним миром, лежит в YAML рядом с остальными данными, а не в константах кода: слова и фразы, имена параметров и cookies, сигнатуры бот-защиты, селекторы и признаки CMP, пути и расширения страниц.
+
+| Каталог `test/data/` | Что внутри | Кто читает |
+|---|---|---|
+| `cmp/lexicon.yaml` | подписи кнопок первого слоя, слова баннера, Pur-Abo | коллектор (`loadLexicon`), CONSENT-04 |
+| `cmp/adapters.yaml` | признаки, версии, селекторы баннера и кнопок, шаблон бота каждого адаптера | адаптеры (`adapterData`), CONSENT-04 (список известных CMP) |
+| `cmp/categories.yaml` | имена необходимых категорий согласия | CONSENT-04 |
+| `cmp/probe.yaml` | атрибуты для селектора кнопки | замер баннера (в страницу — аргументом) |
+| `legal/links.yaml` | подписи, ключи и пути юридических ссылок, пробные пути | коллектор, LEGAL-01 |
+| `browser/identifiers.yaml` | имена параметров и cookies с идентификаторами, параметры Consent Mode | рекордер запросов |
+| `browser/challenges.yaml` | сигнатуры WAF и бот-защиты | `detectChallenge` |
+| `browser/dom.yaml` | словарь разметки для кода внутри страницы | `domFactsInPage`, `documentInPage`, `bannerBoxInPage` — аргументом `evaluate` |
+| `browser/pages.yaml` | ключевые слова дополнительных страниц, исключённые пути, расширения файлов | `selectPages` |
+| `http/html.yaml` | слова поиска и юридических ссылок в префиксе HTML | `detectForm`, `findLegalLinks` |
+| `services/_catalog.yaml` | параметры, заданные при визите; буквы `gcd` | derive |
+
+У каждой записи есть zod-схема и ключ верхнего уровня (`dataSection` в [parse.ts](../src/core/data/parse.ts)); каждый файл владеет своим ключом. Коллектор читает секцию через `loadSection` (один раз на каталог данных), проверка — через `ctx.data.<каталог>` (`data: ['<каталог>']` в `defineCheck`) и ту же чистую схему, код страницы получает значения аргументом `evaluate`, потому что не может ничего импортировать. Ошибка в файле — `DataError` с каталогом и путём ключа (`test/data/browser: challenges.titles.0.pattern: invalid regular expression`). [sections.test.ts](../test/unit/core/data/sections.test.ts) проверяет, что у каждого файла и ключа есть схема, а каждая схема загружается.
+
+Остаются в коде, потому что это таблицы логики, а не настройка: сопоставления внутренних типов (`RCODE_BY_ERROR_CODE`, `STAGE_BY_KIND`, `KIND_BY_RESOURCE_TYPE`, `INTEGRATION_BY_KIND`, `FATAL_REASON_CODE`), коды ошибок Node и Chromium (`TIMEOUT_CODES`, `DNS_ERROR_CODES`, `TLS_ERRORS`, `INCOMPLETE_CHAIN_ERRORS`, `BLOCKED_RE`), словарь протоколов HTTP, TLS и DNS (ключевые слова Referrer-Policy и CSP, механизмы SPF, политики DMARC, `HEADER_NAMES` в HDR-01), стандартная разметка HTML и ARIA (теги, роли, `rel` ссылок, типы полей), множества категорий сервисов и порядок вариантов внутри проверок, ключи секций снимка, коды известных пробелов измерения. Отдельно остаётся всё, что защищает приватность: allowlist query и правила значений в [url.ts](../src/core/url/url.ts), allowlist заголовков в [headers.ts](../src/core/redaction/headers.ts), списки скрытых полей в [report-view.ts](../src/reporters/report-view.ts). Они достижимы из проверок через `api.ts`, где ввода-вывода быть не может, а правка файла не должна ослаблять гарантию «значения не попадают в снимок» (правило 2).
+
 ## Куда смотреть, если нужно …
 
 | Нужно | Куда смотреть |
@@ -403,7 +462,9 @@ dsgvo-check/                                   # корень репозитор
 | Поменять текст находки | [browser.yaml](../test/data/texts/de/browser.yaml), [http.yaml](../test/data/texts/de/http.yaml), [dns.yaml](../test/data/texts/de/dns.yaml) в `test/data/texts/de/` и их зеркало в `en/`; правила формулировок — [wording-guide.md](legal/wording-guide.md), стоп-слова проверяет [stopwords.test.ts](../test/unit/core/data/stopwords.test.ts) |
 | Поменять шаблон отчёта | разметка и стили — [report.html](../test/data/report/report.html); подписи — [report.yaml](../test/data/texts/de/report.yaml) (и в `en/`); какие данные попадают в шаблон — [report-view.ts](../src/reporters/report-view.ts); язык шаблона — [template.ts](../src/reporters/template.ts); PDF печатает тот же HTML ([pdf.ts](../src/reporters/pdf.ts)). Консоль и Job Summary — [console.ts](../src/reporters/console.ts) и [summary.ts](../src/reporters/summary.ts) |
 | Добавить сервис в каталог или сменить его категорию | `test/data/services/*.yaml` (формат записи — [_catalog.yaml](../test/data/services/_catalog.yaml)); какая проверка владеет категорией — [routing.yaml](../test/data/routing.yaml) |
-| Поддержать новый CMP или подпись кнопки | адаптер в `src/cmp/adapters/` и регистрация в [src/cmp/index.ts](../src/cmp/index.ts); подписи кнопок — [lexicon.yaml](../test/data/cmp/lexicon.yaml); ручной стенд — `test/fixture-server/sites/cmp/<имя>/` и [sites.ts](../test/fixture-server/sites.ts); тесты — `test/integration/cmp/` |
+| Поддержать новый CMP или подпись кнопки | id в `KNOWN_CMP_IDS` ([types.ts](../src/cmp/types.ts)), адаптер в `src/cmp/adapters/` (чтение API) и регистрация в [src/cmp/index.ts](../src/cmp/index.ts); признаки, версии и селекторы — [adapters.yaml](../test/data/cmp/adapters.yaml); подписи кнопок — [lexicon.yaml](../test/data/cmp/lexicon.yaml); ручной стенд — `test/fixture-server/sites/cmp/<имя>/` и [sites.ts](../test/fixture-server/sites.ts); тесты — `test/integration/cmp/` |
+| Добавить или поменять слово, имя параметра или cookie, сигнатуру бот-защиты, ключевое слово страницы | YAML из таблицы «Словари и сопоставления» выше: [browser/](../test/data/browser), [cmp/](../test/data/cmp), [http/](../test/data/http), [legal/links.yaml](../test/data/legal/links.yaml); новый ключ верхнего уровня — со схемой (`dataSection`) и строкой в [sections.test.ts](../test/unit/core/data/sections.test.ts) |
+| Добавить или изменить порог, таймаут, лимит | поле в схеме [schema.ts](../src/core/config/schema.ts) (умолчание, границы, описание); имя переменной выводится из пути; затем `corepack pnpm env:example`. Коллекторы читают значение из `ctx.config`, проверки — из `ctx.thresholds`; протокольные константы и защитные пределы остаются в коде |
 | Понять или изменить код выхода и порог | [gate.ts](../src/core/evaluation/gate.ts) (чистая функция) и [gate.test.ts](../test/unit/core/evaluation/gate.test.ts) |
 | Проверить, что в снимок не попали значения | [redact.ts](../src/core/redaction/redact.ts), [email.ts](../src/core/url/email.ts), [url.ts](../src/core/url/url.ts), [headers.ts](../src/core/redaction/headers.ts); редактирует коллектор до записи |
 | CI проекта и релиз | [ci.yml](../.github/workflows/ci.yml), [release.yml](../.github/workflows/release.yml); логика шагов — в TypeScript, `.github/scripts/` |

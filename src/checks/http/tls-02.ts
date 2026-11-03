@@ -3,12 +3,18 @@
  * host of a redirect to another domain. A handshake without a cause is inconclusive, not a finding.
  */
 
-import { defineCheck, type EvidenceInput, type Observation, subjects, tlsHostRole } from '../../core/api.ts';
+import {
+  type CheckThresholds,
+  defineCheck,
+  type EvidenceInput,
+  type Observation,
+  subjects,
+  tlsHostRole,
+} from '../../core/api.ts';
 import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { DAY_MS, startFinalHost, type TlsProblem, tlsProblemOf } from './shared.ts';
 
 const ID = 'TLS-02';
-const SHORT_LIVED_MS = 10 * DAY_MS;
 
 type InvalidCause = Exclude<TlsProblem, 'incomplete-chain'>;
 /** Order of the causes in `reasons`; the first present one is `reason`. */
@@ -68,7 +74,7 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function problemsOf(ep: TlsEndpoint, now: Date): Problems {
+function problemsOf(ep: TlsEndpoint, now: Date, t: CheckThresholds['tls']): Problems {
   const causes = new Set<InvalidCause>();
   const fromNode = tlsProblemOf(ep.authorizationError);
   const leaf = ep.chain[0];
@@ -88,10 +94,13 @@ function problemsOf(ep: TlsEndpoint, now: Date): Problems {
 
   let expiry: Problems['expiry'] = null;
   const lifetime = notAfter - notBefore;
-  if (causes.size === 0 && Number.isFinite(lifetime) && lifetime > SHORT_LIVED_MS) {
+  if (causes.size === 0 && Number.isFinite(lifetime) && lifetime > t.shortLivedDays * DAY_MS) {
     const left = notAfter - now.getTime();
-    if (left < Math.min(14 * DAY_MS, 0.25 * lifetime)) expiry = 'certificate-expiring';
-    else if (left < Math.min(30 * DAY_MS, 0.5 * lifetime)) expiry = 'certificate-expiry-approaching';
+    if (left < Math.min(t.expiringDays * DAY_MS, t.expiringLifetimeShare * lifetime)) {
+      expiry = 'certificate-expiring';
+    } else if (left < Math.min(t.approachingDays * DAY_MS, t.approachingLifetimeShare * lifetime)) {
+      expiry = 'certificate-expiry-approaching';
+    }
   }
   return { invalid: CAUSES.filter((c) => causes.has(c)), chainIncomplete, expiry };
 }
@@ -162,7 +171,7 @@ export const tls02 = defineCheck({
           params: { ...params, ...extra },
         });
 
-      const p = problemsOf(ep, ctx.now);
+      const p = problemsOf(ep, ctx.now, ctx.thresholds.tls);
       if (p.invalid.length > 0) {
         const has = (c: InvalidCause) => (p.invalid.includes(c) ? 'yes' : 'no');
         emit('certificate-invalid', {

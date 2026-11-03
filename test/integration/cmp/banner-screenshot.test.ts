@@ -48,7 +48,10 @@ describe('bannerScreenshot: metadata of the saved image', () => {
     for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
   });
 
-  async function shoot(box: { x: number; y: number; width: number; height: number }) {
+  async function shoot(
+    box: { x: number; y: number; width: number; height: number },
+    limits?: { maxBytes: number; maxViewportShare: number },
+  ) {
     const { page } = await env.open('https://www.generic.test/none.html');
     const dir = await mkdtemp(path.join(tmpdir(), 'dsgvo-check-shot-'));
     dirs.push(dir);
@@ -57,6 +60,7 @@ describe('bannerScreenshot: metadata of the saved image', () => {
       artifactsRelDir: 'artifacts',
       phase: 'B',
       pageUrl: 'https://www.generic.test/none.html',
+      ...(limits ? { limits } : {}),
     });
     return { res, dir };
   }
@@ -87,5 +91,21 @@ describe('bannerScreenshot: metadata of the saved image', () => {
   it('a container above 50 % of the viewport: skipped as before', async () => {
     const { res } = await shoot({ x: 0, y: 0, width: 1366, height: 500 });
     expect(res).toEqual({ skipped: 'container-too-large' });
+  });
+
+  it('the limits of the settings decide: a larger share is photographed, a byte limit that is too small skips', async () => {
+    const box = { x: 0, y: 0, width: 1366, height: 500 };
+    const roomy = await shoot(box, { maxBytes: 204_800, maxViewportShare: 0.8 });
+    expect('record' in roomy.res).toBe(true);
+    const tooBig = await shoot(
+      { x: 0, y: 600, width: 1366, height: 168 },
+      { maxBytes: 100, maxViewportShare: 0.5 },
+    );
+    expect(tooBig.res).toEqual({ skipped: 'too-large' });
+    const strict = await shoot(
+      { x: 0, y: 600, width: 1366, height: 168 },
+      { maxBytes: 204_800, maxViewportShare: 0.1 },
+    );
+    expect(strict.res).toEqual({ skipped: 'container-too-large' });
   });
 });

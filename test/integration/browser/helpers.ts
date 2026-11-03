@@ -7,6 +7,8 @@ import {
   type BrowserTiming,
   createBrowserCollector,
 } from '../../../src/collectors/browser/index.ts';
+import { parseConfigInput } from '../../../src/core/config/load.ts';
+import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { RequestRecord } from '../../../src/core/snapshot/browser.ts';
@@ -54,6 +56,8 @@ export async function collect(
     url?: string;
     deps?: Partial<BrowserCollectorDeps>;
     network?: Partial<NetworkConfig>;
+    /** Operator settings of the scan; `deps` (FAST_TIMING) still wins for what it names. */
+    config?: ConfigInput;
     maxPages?: number;
     screenshots?: boolean;
     signal?: AbortSignal;
@@ -71,6 +75,7 @@ export async function collect(
       assumeRegion: null,
     },
     network: { ...server.network(), ...o.network },
+    config: parseConfigInput(o.config),
     userAgent: { http: uaToken(), token: uaToken() },
     signal: o.signal ?? new AbortController().signal,
     deadline: Date.now() + 110_000,

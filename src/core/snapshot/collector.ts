@@ -1,6 +1,7 @@
 /** Collector contract: collectors do all I/O, redact before storing and return snapshot sections; they know nothing about checks. */
 
 import type { CmpSection } from '../../cmp/types.ts';
+import type { Config } from '../config/schema.ts';
 import type { AssumeRegion, Lang, MessageParams, SandboxMode } from '../report/schema.ts';
 import type { FatalReason } from '../runtime/errors.ts';
 import type { Logger } from '../runtime/logger.ts';
@@ -24,9 +25,11 @@ export interface CollectorContext {
   target: TargetInfo;
   options: CollectorOptions;
   network: NetworkConfig;
+  /** Operator settings of this scan (timeouts, limits); `deps` of a collector factory override them in tests. */
+  config: Config;
   /** HTTP/TLS UA and the token appended to the browser UA. */
   userAgent: { http: string; token: string };
-  /** Aborted on the global `--timeout`: collectors stop promptly and return what they have; a result within `ABORT_GRACE_MS` is kept as `partial` / `timeout`. */
+  /** Aborted on the global `--timeout`: collectors stop promptly and return what they have; a result within `config.scan.abortGraceMs` is kept as `partial` / `timeout`. */
   signal: AbortSignal;
   /** Epoch ms when the scan deadline is reached. */
   deadline: number;

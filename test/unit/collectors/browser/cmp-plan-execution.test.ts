@@ -5,6 +5,7 @@ import type { ActOptions, ClickOutcome, ClickTarget, CmpAdapter } from '../../..
 import { type CmpApi, CmpBridge } from '../../../../src/collectors/browser/cmp-bridge.ts';
 import type { ClickPlan } from '../../../../src/core/snapshot/browser.ts';
 import type { CollectorError } from '../../../../src/core/snapshot/common.ts';
+import { DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 
 const page = {} as Page;
 const api = {} as CmpApi;
@@ -45,7 +46,13 @@ describe('CmpBridge.act executes the plan.click target', () => {
   it('passes the core decision to adapter.act; the adapter gets no facts to decide on', async () => {
     const { adapter, calls } = fakeAdapter(true);
     const errors: CollectorError[] = [];
-    const out = await new CmpBridge(api, 1_000, errors, 'B').act(page, adapter, 'reject', planTarget, 'u');
+    const out = await new CmpBridge(api, 1_000, errors, 'B', DEFAULT_CLASSIFY).act(
+      page,
+      adapter,
+      'reject',
+      planTarget,
+      'u',
+    );
     expect(out?.clicked).toBe(true);
     expect(calls).toEqual([
       {
@@ -64,7 +71,7 @@ describe('CmpBridge.act executes the plan.click target', () => {
 
   it('without act: reject/accept get `{ target }`; a null target is passed on as null (nothing is clicked)', async () => {
     const { adapter, calls } = fakeAdapter(false);
-    const bridge = new CmpBridge(api, 1_000, [], 'C');
+    const bridge = new CmpBridge(api, 1_000, [], 'C', DEFAULT_CLASSIFY);
     await bridge.act(page, adapter, 'accept', { ...planTarget, name: 'Alle akzeptieren' }, 'u');
     await bridge.act(page, adapter, 'reject', null, 'u');
     const targetOf = (o?: ActOptions) => (o && 'target' in o ? (o.target?.name ?? null) : 'absent');

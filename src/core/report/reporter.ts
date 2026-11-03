@@ -13,6 +13,14 @@ export const REPORT_FILES: Readonly<Record<Exclude<ReportFormat, 'console'>, str
   pdf: 'report.pdf',
 };
 
+/** Size and time limits of the renderers (`report.*` and `pdf.timeoutMs` of the settings). */
+export interface ReporterLimits {
+  summaryMaxFindings: number;
+  summaryMaxBytes: number;
+  screenshotEmbedMaxBytes: number;
+  pdfTimeoutMs: number;
+}
+
 export interface ReporterContext {
   texts: Texts;
   lang: Lang;
@@ -22,6 +30,8 @@ export interface ReporterContext {
   color: boolean;
   /** Optional data root, including the report template. */
   dataDir?: string;
+  /** The built-in defaults when absent. */
+  limits?: ReporterLimits;
 }
 
 export type RenderReport = (report: Report, ctx: ReporterContext) => string;

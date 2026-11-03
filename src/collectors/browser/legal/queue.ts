@@ -200,7 +200,7 @@ export async function recordDocument(
         status,
         contentType: r.contentType,
       }),
-      c.deps.timing.cmpCallTimeoutMs,
+      c.timing.cmpCallTimeoutMs,
       'document extraction',
     );
   } catch (err) {

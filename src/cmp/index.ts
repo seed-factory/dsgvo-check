@@ -15,7 +15,7 @@ import { measureHeuristic } from './page/measure.ts';
 import type { CmpAdapter, CmpDetection, CmpFacts, CmpFirstLayer, ExtractOptions } from './types.ts';
 
 export { clickButton as act, waitUntil } from './adapters/base.ts';
-export { BLOCKING_COVERED_RATIO, classifyFirstLayer, isBlocking } from './classify.ts';
+export { type ClassifyOptions, classifyFirstLayer, isBlocking } from './classify.ts';
 export { confidenceFromSignals, signalKinds, stateVerdict } from './detection.ts';
 export { classifyButton, classifyLabel, lexiconFromData, normalizeLabel } from './lexicon.ts';
 export { loadLexicon } from './lexicon-file.ts';

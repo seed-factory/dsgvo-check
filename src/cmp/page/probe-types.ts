@@ -12,6 +12,8 @@ export interface ProbeArgs {
   /** Heuristic in a child frame: the frame body itself may be the banner. */
   frameMode: boolean;
   maxButtons: number;
+  /** Attribute names a button selector may be built from, in order (test/data/cmp/probe.yaml). */
+  selectorAttributes: string[];
   /** Accept/reject/settings/save phrases (token sequences or `*suffix`); a non-modal candidate needs a control with one. */
   controlPhrases?: string[];
   /** Accept/reject phrases only: a candidate inside a header/footer landmark needs a control with one, else it is chrome. */

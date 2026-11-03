@@ -87,30 +87,6 @@ const read = (page: Page) => page.evaluate(readCookiebot);
 
 export const cookiebot = defineAdapter({
   id: 'cookiebot',
-  name: 'Cookiebot',
-  supportedVersions: null,
-  detect: {
-    globals: ['Cookiebot'],
-    scripts: [
-      { label: 'consent.cookiebot.com/uc.js', pattern: '^https://consent\\.cookiebot\\.(com|eu)/uc\\.js' },
-    ],
-    dom: ['#CybotCookiebotDialog'],
-    cookies: ['^CookieConsent$'],
-  },
-  banner: {
-    containers: ['#CybotCookiebotDialog'],
-    overlays: ['#CybotCookiebotDialogBodyUnderlay'],
-    vendorRoles: [
-      { selector: '#CybotCookiebotDialogBodyButtonDecline', role: 'reject' },
-      { selector: '#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll', role: 'reject' },
-      { selector: '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', role: 'accept' },
-      { selector: '#CybotCookiebotDialogBodyButtonAccept', role: 'accept' },
-      { selector: '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowallSelection', role: 'save' },
-      { selector: '#CybotCookiebotDialogBodyLevelButtonCustomize', role: 'settings' },
-      { selector: '#CybotCookiebotDialogBodyButtonDetails', role: 'settings' },
-      { selector: '#CybotCookiebotBannerCloseButtonE2E', role: 'close' },
-    ],
-  },
   async readState(page) {
     const r = await read(page);
     const special = r.isOutOfRegion === true || r.spider === true || r.cookieOutOfRegion;

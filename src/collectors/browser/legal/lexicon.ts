@@ -30,6 +30,7 @@ const KindSchema = z.object({
 
 const LexiconSchema = z.object({
   version: z.string().min(1),
+  fallbackPaths: z.object({ impressum: z.string().startsWith('/'), privacy: z.string().startsWith('/') }),
   kinds: z.object({ impressum: KindSchema, privacy: KindSchema }),
   navigation: z.object({
     contact: z.array(z.string()),
@@ -64,6 +65,8 @@ interface KindLexicon {
 
 export interface LegalLexicon {
   version: string;
+  /** Conventional paths probed once per kind when no link led to the document. */
+  fallbackPaths: Record<LegalKind, string>;
   kinds: Record<LegalKind, KindLexicon>;
   contact: NavPhrase[];
   hop: NavPhrase[];
@@ -180,6 +183,7 @@ function compile(raw: z.infer<typeof LexiconSchema>): LegalLexicon {
       .map((p) => ({ ...p, strict: strict.has(p.norm) }));
   return {
     version: raw.version,
+    fallbackPaths: raw.fallbackPaths,
     kinds,
     contact: nav(raw.navigation.contact),
     hop: nav(raw.navigation.hop),

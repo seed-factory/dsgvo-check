@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import type { BrowserContext, BrowserType, Route } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
+import { reporterLimits } from '../../../../src/core/config/limits.ts';
+import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
@@ -68,6 +70,25 @@ describe('PDF conversion of the finished HTML report', () => {
     expect(options.footerTemplate).toContain('pageNumber');
     expect(options.footerTemplate).toContain('totalPages');
     expect(fake.context.close).toHaveBeenCalledOnce();
+  });
+
+  it('the time limit comes from the settings unless the caller names one', async () => {
+    const limits = reporterLimits(parseConfigInput({ pdf: { timeoutMs: 18_000 } }));
+    const fake = browserDouble();
+    await renderPdf('<p>report</p>', { ...ctx(), limits }, { chromium: fake.chromium });
+    expect(fake.launch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ timeout: 18_000 }),
+    );
+    const own = browserDouble();
+    await renderPdf('<p>report</p>', { ...ctx(), limits }, { chromium: own.chromium, timeoutMs: 1_234 });
+    expect(own.launch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ timeout: 1_234 }));
+    const builtIn = browserDouble();
+    await renderPdf('<p>report</p>', ctx(), { chromium: builtIn.chromium });
+    expect(builtIn.launch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ timeout: 15_000 }),
+    );
   });
 
   it('starts with JavaScript disabled, offline and the scanner sandbox settings', async () => {

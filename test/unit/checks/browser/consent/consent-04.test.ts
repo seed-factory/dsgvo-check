@@ -6,6 +6,9 @@ import type {
   CmpLexicon,
   FirstLayerClassification,
 } from '../../../../../src/cmp/types.ts';
+import { parseConfigInput } from '../../../../../src/core/config/load.ts';
+import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
+import { loadDataDir } from '../../../../../src/core/data/load.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { SanitizedUrl } from '../../../../../src/core/snapshot/common.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
@@ -104,6 +107,20 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       recognitionConfidence: 'high',
       blocking: { overlay: true, coveredRatio: 0.6 },
     });
+  });
+
+  it('hands the blocking threshold of the settings to the classifier', () => {
+    const seen: Array<number | undefined> = [];
+    const check = createConsent04((_facts, _lexicon, options) => {
+      seen.push(options.blockingCoveredRatio);
+      return fixed('ok')();
+    });
+    const snapshot = site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) });
+    runCheck(check, snapshot);
+    runCheck(check, snapshot, {
+      thresholds: checkThresholds(parseConfigInput({ cmp: { blockingCoveredRatio: 0.6 } })),
+    });
+    expect(seen).toEqual([0.85, 0.6]);
   });
 
   it('classifier "ok" → no finding; pur-abo flag is reported in addition', () => {
@@ -584,5 +601,72 @@ describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
     const [o] = observationsOf(r);
     expect(o).toMatchObject({ variant: 'blocking-no-reject', phases: ['A'] });
     expect(o?.params).toMatchObject({ cmp: 'cookiebot' });
+  });
+});
+
+describe('CONSENT-04 takes its vocabulary from test/data/cmp', () => {
+  const cmp = loadDataDir('cmp');
+  const statisticsGranted = () =>
+    site({
+      cmp: cmpWith({
+        phase: 'B',
+        facts: [
+          visibleBanner({
+            state: [
+              {
+                source: 'api',
+                ready: 'ready',
+                categories: { statistics: 'granted', marketing: 'denied' },
+                origin: 'default',
+              },
+            ],
+          }),
+        ],
+      }),
+    });
+
+  it('a category the file lists as essential is not "granted without action"', () => {
+    const check = createConsent04(fixed('ok'));
+    expect(variantsOf(runCheck(check, statisticsGranted()))).toEqual(['consent-without-action']);
+    const custom = { ...cmp, essentialCategories: ['statistics'] };
+    expect(variantsOf(runCheck(check, statisticsGranted(), { data: { cmp: custom } }))).toEqual([]);
+  });
+
+  it('a banner named by a CMP the adapters know is not "not supported"; one they do not know is', () => {
+    const det = visibleBanner().detection;
+    const heuristic = (cmpId: string) =>
+      site({
+        cmp: cmpWith({
+          phase: 'B',
+          facts: [
+            visibleBanner({
+              detection: { ...det, cmpId, method: 'heuristic', recognitionConfidence: 'medium' },
+            }),
+          ],
+        }),
+      });
+    expect(variantsOf(runCheck(consent04, heuristic('cookiehub')))).toEqual(['banner-not-recognized']);
+    expect(variantsOf(runCheck(consent04, heuristic('onetrust')))).toEqual(['cmp-not-supported']);
+  });
+
+  it('data without the adapter section is a check error that names the section', () => {
+    const { adapters: _adapters, ...withoutAdapters } = cmp;
+    const det = visibleBanner().detection;
+    const r = runCheck(
+      consent04,
+      site({
+        cmp: cmpWith({
+          phase: 'B',
+          facts: [
+            visibleBanner({
+              detection: { ...det, cmpId: 'onetrust', method: 'heuristic', recognitionConfidence: 'medium' },
+            }),
+          ],
+        }),
+      }),
+      { data: { cmp: withoutAdapters } },
+    );
+    expect(r.status).toBe('error');
+    expect(r.error?.message).toMatch(/test\/data\/cmp: section "adapters:" is missing/);
   });
 });

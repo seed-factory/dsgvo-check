@@ -6,8 +6,8 @@ import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.t
 import type { DiagnosticInput } from '../../../core/snapshot/index.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/client.ts';
 import type { BrowserCollection, Session } from '../collector.ts';
+import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sleep } from '../util.ts';
-import { FALLBACK_PATHS } from './pages.ts';
 import { type VisitResult, type VisitSpec, visitPage } from './visit.ts';
 
 export interface BlockedPage {
@@ -42,8 +42,8 @@ export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): 
     {
       page: s.page,
       recorder: s.recorder,
-      timing: c.deps.timing,
-      phaseTiming: c.deps.timing.phases[s.phase],
+      timing: c.timing,
+      phaseTiming: c.timing.phases[s.phase],
       signal: c.ctx.signal,
       target: {
         etld1: c.scope.etld1 ?? c.ctx.target.etld1,
@@ -82,7 +82,7 @@ function fallbackRole(rawUrl: string): PageRole {
   } catch {
     // an unparsable URL names no document
   }
-  return path === FALLBACK_PATHS.privacy ? 'privacy' : 'impressum';
+  return path === loadLegalLexicon().fallbackPaths.privacy ? 'privacy' : 'impressum';
 }
 
 export function blockedAffects(spec: VisitSpec): string[] {
@@ -114,7 +114,7 @@ export async function navigate(c: BrowserCollection, s: Session, spec: VisitSpec
   const first = throttleStatus(r);
   let repeated = false;
   if (first !== null && c.timeLeft()) {
-    await sleep(Math.min(MAX_RETRY_AFTER_MS, r.retryAfterMs ?? c.deps.timing.retryDelayMs), c.ctx.signal);
+    await sleep(Math.min(MAX_RETRY_AFTER_MS, r.retryAfterMs ?? c.timing.retryDelayMs), c.ctx.signal);
     s.record.pages.pop();
     r = await visit(c, s, spec);
     repeated = true;

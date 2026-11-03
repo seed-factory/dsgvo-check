@@ -50,6 +50,50 @@ describe('report command regenerates reports without scanning', () => {
     expect(readFileSync(source, 'utf8')).toBe(original);
   });
 
+  describe('takes the defaults of its options from the settings', () => {
+    it('DSGVO_CHECK_REPORT_LANG sets the language, a flag beats it', async () => {
+      const source = reportFile();
+      const byEnv = await runCli(null, ['report', source], { env: { DSGVO_CHECK_REPORT_LANG: 'en' } });
+      tempDirs.push(byEnv.outDir);
+      expect(byEnv.code, byEnv.stderr).toBe(0);
+      expect(byEnv.html).toContain('<html lang="en">');
+      const byFlag = await runCli(null, ['report', source, '--lang', 'de'], {
+        env: { DSGVO_CHECK_REPORT_LANG: 'en' },
+      });
+      tempDirs.push(byFlag.outDir);
+      expect(byFlag.html).toContain('<html lang="de">');
+    });
+
+    it('a .env file of the working directory counts, the environment beats it', async () => {
+      const source = reportFile();
+      const dotenv = 'DSGVO_CHECK_REPORT_LANG=en\n';
+      const byFile = await runCli(null, ['report', source], { dotenv });
+      tempDirs.push(byFile.outDir);
+      expect(byFile.html).toContain('<html lang="en">');
+      const byEnv = await runCli(null, ['report', source], {
+        dotenv,
+        env: { DSGVO_CHECK_REPORT_LANG: 'de' },
+      });
+      tempDirs.push(byEnv.outDir);
+      expect(byEnv.html).toContain('<html lang="de">');
+    });
+
+    it('DSGVO_CHECK_REPORT_FORMATS sets the formats; without it html stays the default', async () => {
+      const source = reportFile();
+      const byEnv = await runCli(null, ['report', source], { env: { DSGVO_CHECK_REPORT_FORMATS: 'json' } });
+      tempDirs.push(byEnv.outDir);
+      expect(byEnv.code, byEnv.stderr).toBe(0);
+      expect(byEnv.json).not.toBeNull();
+      expect(byEnv.html).toBeNull();
+      const other = await runCli(null, ['report', source], {
+        env: { DSGVO_CHECK_REPORT_OUT_DIR: 'elsewhere' },
+      });
+      tempDirs.push(other.outDir);
+      expect(other.html).not.toBeNull();
+      expect(other.json).toBeNull();
+    });
+  });
+
   it.each([
     ['malformed JSON', '{not-json'],
     ['unrelated JSON', JSON.stringify({ message: 'example' })],

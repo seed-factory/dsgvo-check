@@ -91,7 +91,7 @@ async function consentPhase(c: BrowserCollection, phase: 'B' | 'C'): Promise<voi
     if (refusedAsUnresolved(c, start, verdictsBefore) && c.timeLeft() && !c.throttled) {
       c.ctx.log.warn(`phase ${phase}: start page refused as unresolved, retrying once`);
       const refused = c.guardVerdicts.slice(verdictsBefore);
-      await sleep(c.deps.timing.retryDelayMs, c.ctx.signal);
+      await sleep(c.timing.retryDelayMs, c.ctx.signal);
       s.record.pages.pop();
       start = await navigate(c, s, startSpec);
       // The refusal stays a fact of the request record and `guard.blocked`, but no document is missing, so the report
@@ -112,7 +112,7 @@ async function consentPhase(c: BrowserCollection, phase: 'B' | 'C'): Promise<voi
       return;
     }
     const url = start.visit.finalUrl;
-    const cmpWaitMs = Math.min(5_000, c.deps.timing.cmpCallTimeoutMs);
+    const cmpWaitMs = Math.min(c.ctx.config.cmp.waitMs, c.timing.cmpCallTimeoutMs);
     const det = await s.cmp.detect(s.page, url, cmpWaitMs);
     const adapter = det?.adapter ?? null;
     // Some CMPs render the dialog after their API is ready (e.g. Borlabs 3): measure the first screen then.
@@ -209,9 +209,9 @@ async function act(
     s.recorder,
     clickedAt,
     {
-      ...c.deps.timing.phases[s.phase],
-      quietWindowMs: c.deps.timing.quietWindowMs,
-      maxInflight: c.deps.timing.maxInflight,
+      ...c.timing.phases[s.phase],
+      quietWindowMs: c.timing.quietWindowMs,
+      maxInflight: c.timing.maxInflight,
     },
     c.ctx.signal,
   );
@@ -243,7 +243,7 @@ async function pressTime(c: BrowserCollection, page: Page, after: number): Promi
     const times = (
       await valueWithin(
         frame.evaluate(inputEventsInPage),
-        Math.min(2_000, c.deps.timing.cmpCallTimeoutMs),
+        Math.min(2_000, c.timing.cmpCallTimeoutMs),
         c.ctx.signal,
         [] as number[],
       )
@@ -266,15 +266,19 @@ async function screenshot(
         artifactsRelDir: c.ctx.artifactsRelDir,
         phase: s.phase,
         pageUrl,
+        limits: {
+          maxBytes: c.ctx.config.browser.screenshotMaxBytes,
+          maxViewportShare: c.ctx.config.browser.screenshotMaxViewportShare,
+        },
       }),
-      c.deps.timing.cmpCallTimeoutMs,
+      c.timing.cmpCallTimeoutMs,
       'banner screenshot',
     );
     if ('record' in shot) {
       c.screenshots.push(shot.record);
       facts.screenshotId = shot.record.id;
     } else if (shot.skipped !== 'no-banner') {
-      // No unique container ≤ 50 % of the viewport → no image.
+      // No unique container within the viewport share limit → no image.
       s.record.errors.push({
         code: 'screenshot-skipped',
         message: shot.skipped,

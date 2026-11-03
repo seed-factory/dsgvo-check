@@ -8,15 +8,16 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 
 Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в `docs/03-checks.md` §2.1 генерируется из него.
 
-| Нужно                           | Документ                                                               |
-| ------------------------------- | ---------------------------------------------------------------------- |
-| Что строим и почему             | [docs/00-brief.md](docs/00-brief.md)                                   |
-| Архитектура одним взглядом      | [docs/architecture.md](docs/architecture.md)                           |
-| Контракты, модули, поля         | [docs/02-architecture.md](docs/02-architecture.md)                     |
-| Поведение проверок, `messageId` | [docs/03-checks.md](docs/03-checks.md); варианты — `test/data/ruleset` |
-| Тексты находок и стоп-слова     | [docs/legal/wording-guide.md](docs/legal/wording-guide.md)             |
-| Тесты, CI, Docker, Action       | [docs/04-quality-and-delivery.md](docs/04-quality-and-delivery.md)     |
-| Устройство прототипа            | [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md)                     |
+| Нужно                           | Документ                                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Что строим и почему             | [docs/00-brief.md](docs/00-brief.md)                                                                                                       |
+| Архитектура одним взглядом      | [docs/architecture.md](docs/architecture.md)                                                                                               |
+| Контракты, модули, поля         | [docs/02-architecture.md](docs/02-architecture.md)                                                                                         |
+| Поведение проверок, `messageId` | [docs/03-checks.md](docs/03-checks.md); варианты — `test/data/ruleset`                                                                     |
+| Тексты находок и стоп-слова     | [docs/legal/wording-guide.md](docs/legal/wording-guide.md)                                                                                 |
+| Тесты, CI, Docker, Action       | [docs/04-quality-and-delivery.md](docs/04-quality-and-delivery.md)                                                                         |
+| Словари, сигнатуры, селекторы   | `test/data/{cmp,legal,browser,http,services}`; перечень — в [docs/architecture.md](docs/architecture.md), раздел «Словари и сопоставления» |
+| Устройство прототипа            | [docs/prototype/BRIEF.md](docs/prototype/BRIEF.md)                                                                                         |
 
 Решение противоречит этим документам — остановись и спроси. Документ «под код» молча не переписывай.
 
@@ -26,10 +27,11 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 corepack pnpm install
 node node_modules/playwright-core/cli.js install --no-shell chromium
 corepack pnpm typecheck && corepack pnpm lint
-corepack pnpm test:unit          # L0–L1, без браузера и сети
+corepack pnpm test:unit          # L0–L1, без браузера и сети; `corepack pnpm test` запускает только их
 corepack pnpm test:integration   # L2: настоящий Chromium, локальные серверы, без интернета
 corepack pnpm build && corepack pnpm test:e2e   # build пишет и schema/report.schema.json из zod
 corepack pnpm registry           # перегенерировать таблицу §2.1 в docs/03-checks.md
+corepack pnpm env:example        # перегенерировать .env.example из схемы настроек (env:example:check — проверка)
 node dist/cli.js https://example.test --format console,json,html
 node dist/cli.js report <report.json> --format html,pdf
 ```
@@ -49,6 +51,8 @@ node dist/cli.js report <report.json> --format html,pdf
 9. **Комментарии объясняют причину.** Без номеров ревью, раундов и канареек, имён моделей, тегов владельцев, декоративных разделителей и меток удалённых решений.
 10. **Доставка короткая.** Разбор и проверка входов — в TypeScript. YAML и shell только запускают контейнер, изолируют его и передают отчёты в CI. В `uses:` — теги версий; образ — `ghcr.io/seed-factory/dsgvo-check:<версия из package.json>`.
 11. **Тесты описывают поведение.** В именах файлов и сценариев нет истории ревью. Однотипные случаи объединяются в таблицы без потери уникальных входов и требований правила 6.
+12. **Новые пороги, таймауты и лимиты — в схему настроек.** Поле в `src/core/config/schema.ts` с умолчанием, границами и описанием (имя переменной `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>`, единица в имени: `_MS`, `_BYTES`, `_DAYS`), затем `corepack pnpm env:example`. Умолчание равно прежнему значению, `.env` остаётся необязательным. Коллектор берёт значение из `ctx.config`, проверка — из `ctx.thresholds` и не импортирует конфиг. Паузы правила 1 в схеме можно только ужесточать. Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
+13. **Словари — в `test/data/`, логика — в коде.** Всё, что меняется вместе с внешним миром (слова и фразы, имена параметров и cookies, сигнатуры бот-защиты и WAF, селекторы и признаки CMP, пути и расширения страниц), лежит в YAML рядом с `cmp/lexicon.yaml` и `legal/links.yaml`, а не в константах. У каждого ключа верхнего уровня есть zod-схема (`dataSection` из `src/core/data/parse.ts`), а файл попадает в `test/unit/core/data/sections.test.ts`. Коллектор берёт значения через `loadSection`, проверка — из `ctx.data` (`data: ['<каталог>']`) и той же чистой схемы, код страницы (`in-page/`, `cmp/page/`) получает их аргументом `evaluate`. В коде остаются таблицы логики (сопоставления внутренних типов, коды ошибок Node и Chromium, словарь протоколов HTTP/TLS/DNS, стандартная разметка) и всё, что защищает приватность: allowlist query и заголовков в `src/core/url` и `src/core/redaction`, скрытые поля в `report-view.ts`.
 
 ## Как добавить проверку
 

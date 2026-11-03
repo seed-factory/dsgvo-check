@@ -24,14 +24,13 @@ import {
 } from '../legal/lexicon.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
+import { loadPageRules, type PageRules } from '../rules.ts';
 import { type Robots, robotsAllows } from './robots.ts';
 
 export type { LegalKind } from '../legal/lexicon.ts';
 export { pageKey };
 
 export const LEGAL_KINDS: readonly LegalKind[] = ['impressum', 'privacy'];
-/** Conventional paths probed once per kind when no link led to the document. */
-export const FALLBACK_PATHS: Record<LegalKind, string> = { impressum: '/impressum', privacy: '/datenschutz' };
 
 export interface CandidateLink {
   /** In memory only; may contain query values. */
@@ -90,36 +89,10 @@ export interface PageSelection {
   extrasWanted: number;
 }
 
-const EXTRA_KEYWORDS = [
-  'video',
-  'über uns',
-  'ueber-uns',
-  'about',
-  'team',
-  'karriere',
-  'jobs',
-  'referenzen',
-  'bewertungen',
-  'termin',
-  'blog',
-  'news',
-  'aktuelles',
-  'newsletter',
-  'shop',
-  'galerie',
-  'leistungen',
-  'produkte',
-  'angebot',
-  'service',
-];
 const MAX_EXTRAS = 2;
 const MAX_HOP_GETS = 3;
 const MAX_ALTERNATIVES = 2;
 
-const FILE_RE =
-  /\.(pdf|zip|rar|7z|docx?|xlsx?|pptx?|odt|jpe?g|png|gif|svg|webp|mp[34]|mov|avi|ics|vcf|exe|dmg)$/i;
-const EXCLUDED_PATH_RE =
-  /(wp-admin|wp-login|\/login|\/logout|abmelden|warenkorb|\/cart|checkout|\/kasse|\/account|mein-konto|\/feed\/?$)/i;
 const REGION_RANK: Record<DomRegion, number> = {
   footer: 0,
   nav: 1,
@@ -161,10 +134,10 @@ function navigable(l: CandidateLink): boolean {
   return isHttpHref(l.hrefKind);
 }
 
-function excluded(raw: string): boolean {
+function excluded(raw: string, rules: PageRules): boolean {
   const u = parse(raw);
   if (!u) return true;
-  return EXCLUDED_PATH_RE.test(u.pathname) || (u.pathname.includes('search') && u.search !== '');
+  return rules.excludedPath.test(u.pathname) || (u.pathname.includes('search') && u.search !== '');
 }
 
 function isStart(raw: string, scope: Scope): boolean {
@@ -328,7 +301,11 @@ function reasonOfNav(x: NavPick): string {
   return x.m.byText ? `${x.link.region}-link:${x.m.keyword}` : `href:${x.m.keyword}`;
 }
 
-export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLexicon()): PageSelection {
+export function selectPages(
+  i: SelectInput,
+  lexicon: LegalLexicon = loadLegalLexicon(),
+  rules: PageRules = loadPageRules(),
+): PageSelection {
   const used = new Set<string>([pageKey(i.startRaw)]);
   const usedTemplates = new Set<string>([template(i.startRaw)]);
   const take = (raw: string) => {
@@ -340,8 +317,8 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
     inScope(l.raw, i) &&
     !isStart(l.raw, i) &&
     !used.has(pageKey(l.raw)) &&
-    !FILE_RE.test(parse(l.raw)?.pathname ?? '') &&
-    !excluded(l.raw);
+    !rules.file.test(parse(l.raw)?.pathname ?? '') &&
+    !excluded(l.raw, rules);
 
   const impressum = findLegalLink(i.links, 'impressum', i, lexicon);
   const privacy = findLegalLink(i.links, 'privacy', i, lexicon);
@@ -382,7 +359,7 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
     take(raw);
   };
 
-  for (const k of EXTRA_KEYWORDS) {
+  for (const k of rules.extraKeywords) {
     if (extras.length >= need) break;
     const ms: Match[] = [];
     for (const l of i.links) {
@@ -397,7 +374,12 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
     .sort((a, b) => a.order - b.order);
   for (const l of navLinks) tryExtra(l.raw, ['nav-link'], 'link');
   for (const loc of i.sitemapLocs) {
-    if (inScope(loc, i) && !isStart(loc, i) && !FILE_RE.test(parse(loc)?.pathname ?? '') && !excluded(loc)) {
+    if (
+      inScope(loc, i) &&
+      !isStart(loc, i) &&
+      !rules.file.test(parse(loc)?.pathname ?? '') &&
+      !excluded(loc, rules)
+    ) {
       tryExtra(loc, ['sitemap'], 'sitemap');
     }
   }

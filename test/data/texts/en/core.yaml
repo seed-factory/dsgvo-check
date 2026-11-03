@@ -73,6 +73,8 @@ ui:
   failure.invalid-timeout: "Invalid value for --timeout: {value}"
   failure.invalid-proxy: "Invalid proxy URL (only http:// is supported)."
   failure.invalid-cli-option: "Invalid value for {option}: {value}"
+  # `problems`: `NAME=value (source): reason`, separated by semicolons; values of secret settings are left out.
+  failure.invalid-config: "Invalid setting(s): {problems}"
   failure.target-nxdomain: "Target host {host} could not be resolved ({code})."
   failure.target-dns-error: "Target host {host} could not be resolved ({code})."
   failure.target-not-public: "Target host {host} resolves to non-public addresses only; the scan is intended for public websites only."
@@ -109,6 +111,12 @@ ui:
   cli.fromSnapshot: re-evaluate a snapshot without visiting the website
   cli.checks: "only these checks, e.g. EMBED-01,HDR-01"
   cli.verbose: verbose logs on stderr
+  cli.configNotes.title: "Settings"
+  cli.configNotes: >-
+    Thresholds, time limits and bounds can be set without flags through environment variables of the form
+    DSGVO_CHECK_<SECTION>_<NAME> or through a .env file in the current directory (template: .env.example in the
+    repository). Precedence: flag, environment variable, .env, built-in default. Without configuration the built-in
+    defaults apply.
   cli.install: Download Chromium (Chrome for Testing) for playwright-core
   cli.installWithDeps: "install system dependencies (Linux, needs root)"
   console.duration: "Duration: {seconds} s"
@@ -126,6 +134,31 @@ ui:
   console.reportWritten: "Report saved: {path}"
   console.reportWriteFailed: "Report could not be written: {path} ({message})"
   console.sandboxOff: "Warning: Chromium sandbox is disabled (--sandbox off)."
+  console.configFile: "Read settings from {path}: {count}"
+  console.configUnknown: "Ignored unknown settings: {names}"
+  # Reason a setting is refused, after `NAME=value (source): `; ids and parameters: src/core/config/problems.ts.
+  config.source.environment: "environment"
+  config.source.config: "config option"
+  config.source.default: "built-in default"
+  config.problem.integer: "expected an integer"
+  config.problem.number: "expected a number"
+  config.problem.min: "must be at least {min}"
+  config.problem.above: "must be above {min}"
+  config.problem.max: "must be at most {max}"
+  config.problem.floor: "must be at least {min}: values may only be made stricter, the scan stays passive"
+  config.problem.items-min: "needs at least {min, plural, one {# item} other {# items}}"
+  config.problem.length-min: "needs at least {min, plural, one {# character} other {# characters}}"
+  config.problem.option: "allowed values: {options}"
+  config.problem.type: "wrong type, expected {expected}"
+  config.problem.unknown-keys: "unknown keys: {keys}"
+  config.problem.proxy-scheme: "only http:// proxies (HTTP CONNECT) are supported"
+  config.problem.dns-server: "expected host, host:port or [ipv6]:port"
+  config.problem.dwell-order: "must not be below {other} ({value})"
+  config.problem.tls-days-order: "must not exceed {other} ({value})"
+  config.problem.tls-share-order: "must not exceed {other} ({value})"
+  config.problem.report-reserve: "must cover {first} plus {second} ({value}), otherwise the watchdog ends the process while reports are written"
+  config.problem.unreadable: "file cannot be read ({code})"
+  config.problem.invalid: "invalid value"
 messages:
   diagnostic.SCAN-BOTMODE:
     title: "Consent banner behaves as towards a bot"

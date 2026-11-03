@@ -175,6 +175,7 @@ describe('toMeasured: covered links are judged by the lexicon of test/data/legal
   it('the words come from the lexicon that is used: a lexicon with one invented label knows only that', () => {
     const own = legalLexiconFromData({
       version: 'test',
+      fallbackPaths: { impressum: '/impressum', privacy: '/datenschutz' },
       kinds: {
         impressum: { languages: { xx: { labels: ['Zzquux'] } } },
         privacy: { languages: {} },

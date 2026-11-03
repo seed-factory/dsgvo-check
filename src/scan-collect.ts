@@ -197,6 +197,7 @@ export async function collect(
       assumeRegion: o.assumeRegion,
     },
     network: o.network,
+    config: o.config,
     userAgent: { http: uaToken(), token: uaToken() },
     signal,
     deadline,

@@ -7,13 +7,14 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { TLSSocket } from 'node:tls';
 import zlib from 'node:zlib';
 import { Agent, buildConnector, type Dispatcher, ProxyAgent } from 'undici';
+import { DEFAULT_CONFIG } from '../../core/config/schema.ts';
 import { snapshotHeaderRecords } from '../../core/redaction/headers.ts';
 import { ACCEPT_LANGUAGE } from '../../core/runtime/user-agent.ts';
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import { isPublicAddress, type NetworkConfig } from '../../core/url/net.ts';
 import { defaultHttpPort } from '../../core/url/url.ts';
 
-export const DEFAULT_MIN_INTERVAL_MS = 500;
+export const DEFAULT_MIN_INTERVAL_MS = DEFAULT_CONFIG.http.minIntervalMs;
 
 export interface ClientTimeouts {
   connectMs: number;
@@ -23,10 +24,10 @@ export interface ClientTimeouts {
 }
 
 export const DEFAULT_TIMEOUTS: ClientTimeouts = {
-  connectMs: 5_000,
-  headersMs: 10_000,
-  bodyMs: 10_000,
-  requestMs: 20_000,
+  connectMs: DEFAULT_CONFIG.http.connectTimeoutMs,
+  headersMs: DEFAULT_CONFIG.http.headersTimeoutMs,
+  bodyMs: DEFAULT_CONFIG.http.bodyTimeoutMs,
+  requestMs: DEFAULT_CONFIG.http.requestTimeoutMs,
 };
 
 export interface ConnectionFacts {

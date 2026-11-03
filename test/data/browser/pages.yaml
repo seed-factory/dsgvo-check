@@ -1,0 +1,67 @@
+# Which pages of the target the browser collector visits besides the start page and the legal documents.
+pages:
+  # Navigation words of extra pages worth a look (lower case, plain substrings of the link text, then of the path slug
+  # with spaces as hyphens), in priority order; the page limit (`scan.maxPages`) is small, so the order decides.
+  extraKeywords:
+    - video
+    - über uns
+    - ueber-uns
+    - about
+    - team
+    - karriere
+    - jobs
+    - referenzen
+    - bewertungen
+    - termin
+    - blog
+    - news
+    - aktuelles
+    - newsletter
+    - shop
+    - galerie
+    - leistungen
+    - produkte
+    - angebot
+    - service
+
+  # Path fragments of pages that are never visited: log-in, cart and account areas, feeds. Passive scanning never logs in.
+  # Regular-expression fragments, case-insensitive.
+  excludedPaths:
+    - wp-admin
+    - wp-login
+    - /login
+    - /logout
+    - abmelden
+    - warenkorb
+    - /cart
+    - checkout
+    - /kasse
+    - /account
+    - mein-konto
+    - "/feed/?$"
+
+  # File extensions (end of the path) of links that are documents or media, not pages. Regular-expression fragments,
+  # case-insensitive.
+  fileExtensions:
+    [
+      pdf,
+      zip,
+      rar,
+      7z,
+      "docx?",
+      "xlsx?",
+      "pptx?",
+      odt,
+      "jpe?g",
+      png,
+      gif,
+      svg,
+      webp,
+      "mp[34]",
+      mov,
+      avi,
+      ics,
+      vcf,
+      exe,
+      dmg,
+    ]

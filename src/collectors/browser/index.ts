@@ -5,19 +5,16 @@ import { chromium } from 'playwright-core';
 import type { BrowserCollector } from '../../core/snapshot/collector.ts';
 import { defaultCmpApi } from './cmp-bridge.ts';
 import { BrowserCollection, type BrowserCollectorDeps } from './collector.ts';
-import { DEFAULT_TIMING, REQUEST_LIMIT } from './config.ts';
 
 export type { CmpApi } from './cmp-bridge.ts';
 export type { BrowserCollectorDeps } from './collector.ts';
-export { type BrowserTiming, DEFAULT_TIMING, type PhaseTiming, REQUEST_LIMIT } from './config.ts';
+export { type BrowserTiming, browserTiming, DEFAULT_TIMING, type PhaseTiming } from './config.ts';
 
 export function createBrowserCollector(over: Partial<BrowserCollectorDeps> = {}): BrowserCollector {
   const deps: BrowserCollectorDeps = {
     cmp: defaultCmpApi,
-    timing: DEFAULT_TIMING,
     chromium,
     phases: ['A', 'B', 'C'],
-    requestLimit: REQUEST_LIMIT,
     ...over,
   };
   return (ctx) => new BrowserCollection(ctx, deps).run();

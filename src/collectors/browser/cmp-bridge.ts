@@ -1,6 +1,7 @@
 // Bridge to the CMP subsystem, reached ONLY through `src/cmp/index.ts` and loaded lazily, so a broken CMP module costs
 // CMP facts, not the collection. Calls are time-boxed; failures are recorded, never thrown. Tests may inject a stub.
 import type { Page } from 'playwright-core';
+import type { ClassifyOptions } from '../../cmp/classify.ts';
 import type {
   ClickOutcome,
   ClickTarget,
@@ -28,7 +29,7 @@ export interface CmpApi {
     moment: CmpFacts['moment'],
     phase: BrowserPhase,
   ): Promise<CmpFacts>;
-  chooseTargets?(facts: CmpFacts): Promise<ClickTargets | null>;
+  chooseTargets?(facts: CmpFacts, options: ClassifyOptions): Promise<ClickTargets | null>;
 }
 
 /** Type only: signature drift is a compile error, not a runtime surprise. */
@@ -47,9 +48,9 @@ export const defaultCmpApi: CmpApi = {
     (await cmpModule()).waitForBanner(page, adapter, { timeoutMs }),
   extract: async (page, adapter, moment, phase) =>
     (await cmpModule()).extract(page, adapter, moment, { phase }),
-  chooseTargets: async (facts) => {
+  chooseTargets: async (facts, options) => {
     const m = await cmpModule();
-    return m.classifyFirstLayer(facts, m.loadLexicon()).targets ?? null;
+    return m.classifyFirstLayer(facts, m.loadLexicon(), options).targets ?? null;
   },
 };
 
@@ -98,12 +99,20 @@ export class CmpBridge {
   private readonly timeoutMs: number;
   private readonly errors: CollectorError[];
   private readonly phase: BrowserPhase;
+  private readonly classify: ClassifyOptions;
 
-  constructor(api: CmpApi, timeoutMs: number, errors: CollectorError[], phase: BrowserPhase) {
+  constructor(
+    api: CmpApi,
+    timeoutMs: number,
+    errors: CollectorError[],
+    phase: BrowserPhase,
+    classify: ClassifyOptions,
+  ) {
     this.api = api;
     this.timeoutMs = timeoutMs;
     this.errors = errors;
     this.phase = phase;
+    this.classify = classify;
   }
 
   private async call<T>(what: string, url: string, fn: () => Promise<T>): Promise<T | null> {
@@ -146,7 +155,7 @@ export class CmpBridge {
   targets(facts: CmpFacts, url: string): Promise<ClickTargets | null> {
     const choose = this.api.chooseTargets;
     if (!choose) return Promise.resolve(null);
-    return this.call('classify', url, () => choose(facts));
+    return this.call('classify', url, () => choose(facts, this.classify));
   }
 
   // The adapter clicks exactly the element core chose and decides nothing; `null` means nothing to click

@@ -5,6 +5,7 @@ import type { DocumentKind, DocumentPart, DocumentRecord } from '../../../core/s
 import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.ts';
 import { documentInPage, type RawDocument } from '../in-page/document.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
+import { loadDomPatterns } from '../rules.ts';
 import { normalizeText, redactFreeText, sha256Hex } from '../util.ts';
 import { isNotFoundText, type LegalLexicon, markerLanguages } from './lexicon.ts';
 import { loadLegalLexicon } from './lexicon-file.ts';
@@ -130,7 +131,8 @@ export async function extractDocument(
   const finalUrl = sanitizeRequestUrl(page.url());
   if (/application\/pdf/i.test(c.contentType)) return { ...pdfDocument(c), finalUrl };
   const errors: string[] = [];
-  const main = await page.evaluate(documentInPage, { maxChars: MAX_CHARS });
+  const patterns = loadDomPatterns().document;
+  const main = await page.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns });
   const parts = partsOf(main, finalUrl, `${c.id}-p`);
   // Headings of navigation or footer prove nothing about the page type; `documentInPage` sorts headings into chrome and
   // content.
@@ -169,7 +171,7 @@ export async function extractDocument(
       if (/^https?:/.test(frame.url())) foreignFrames++;
       continue;
     }
-    const fr = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS }).catch(() => null);
+    const fr = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }).catch(() => null);
     if (!fr) {
       unreadableFrames++;
       continue;

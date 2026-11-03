@@ -33,7 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "test": "vitest run --project unit --project integration",
+    "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e --passWithNoTests",
@@ -41,7 +41,9 @@
     "canary": "node scripts/canary/main.ts",
     "canary:summary": "node scripts/canary/main.ts summary",
     "registry": "node scripts/emit-registry.ts",
-    "registry:check": "node scripts/emit-registry.ts --check"
+    "registry:check": "node scripts/emit-registry.ts --check",
+    "env:example": "node scripts/emit-env-example.ts",
+    "env:example:check": "node scripts/emit-env-example.ts --check"
   },
   "dependencies": {
     "canonicalize": "5.1.0",

@@ -24,11 +24,23 @@ export interface RawDocument {
   truncated: boolean;
 }
 
+/** Regular-expression sources (case-insensitive in the page) from test/data/browser/dom.yaml; the page cannot import. */
+export interface DocumentPatterns {
+  /** id/class names of a banner whose container is skipped. */
+  bannerNames: string;
+  /** Page-part names in id/class tokens (`main-menu`, `site-header`). */
+  navWrapper: string;
+  /** A layout state ending in a part name (`has-fixed-header`), judged per token. */
+  layoutState: string;
+  /** Header or footer of a component (`accordion-header`); one capture group, restored with `$1`. */
+  componentBar: string;
+}
+
 // Text of a legal document by heading sections without any click: rendered text, collapsed `<details>` and
 // `aria-expanded=false` panels (`expandable`), other hidden text (`hidden-irrelevant`). Only collapsed elements inside
 // the document text count for completeness (an empty menu panel in a nav, header, footer, aside or banner must not make
 // the policy incomplete). `outsideText` is the one rule for manifest, `headingPlaces` and `h1`.
-export function documentInPage(arg: { maxChars: number }): RawDocument {
+export function documentInPage(arg: { maxChars: number; patterns: DocumentPatterns }): RawDocument {
   const SKIP = new Set([
     'SCRIPT',
     'STYLE',
@@ -40,24 +52,16 @@ export function documentInPage(arg: { maxChars: number }): RawDocument {
     'OBJECT',
     'CANVAS',
   ]);
-  const BANNER_RE =
-    /(cookie|consent|cmp|gdpr|borlabs|cybot|cookiebot|usercentrics|cmplz|complianz|ccm19|cookiehub|real-cookie-banner|rcb-)/i;
-  /** Names of page parts in id/class tokens (`main-menu`, `site-header`, `offcanvas`…). */
-  const NAV_NOUNS =
-    'nav|navbar|navigation|menu|megamenu|mainmenu|flyout|offcanvas|sidebar|breadcrumbs?|topbar|masthead|header|footer';
-  const NAV_WRAPPER_RE = new RegExp(`(?:^|[\\s_-])(?:${NAV_NOUNS})(?:$|[\\s_-])`, 'i');
+  const BANNER_RE = new RegExp(arg.patterns.bannerNames, 'i');
+  const NAV_WRAPPER_RE = new RegExp(arg.patterns.navWrapper, 'i');
   // A layout state, not a part (`has-fixed-header`, `with-footer`): the token ends in a part name but says the page has
   // one, and the wrapper holds the whole page. Judged per token: `site-header--no-border` is still the header.
-  const LAYOUT_STATE_RE = new RegExp(
-    `(?:^|[_-])(?:has|with|without|no)[_-](?:[a-z0-9]+[_-]){0,2}(?:${NAV_NOUNS})$`,
-    'i',
-  );
+  const LAYOUT_STATE_RE = new RegExp(arg.patterns.layoutState, 'i');
   // Header or footer of a component, not of the page (`accordion-header`, `card-footer`): removed before NAV_WRAPPER_RE
   // looks at the class, so an accordion of a policy outside `main` is no page chrome. Only the header of an ambiguous
   // noun (`item`, `entry`, `post`, `article`, `section`, `block`) is a component bar: `section-footer` is as often a
   // page footer, and a footer column "Impressum" in it must not confirm the page.
-  const COMPONENT_BAR_RE =
-    /(^|[\s_-])(?:(?:accordion|collapse|collapsible|card|panel|expansion|faq|toggle|expand|expandable|tab|tabs)[_-]+(?:header|footer)|(?:item|entry|post|article|section|block)[_-]+header)(?=$|[\s_-])/gi;
+  const COMPONENT_BAR_RE = new RegExp(arg.patterns.componentBar, 'gi');
   const namesPageChrome = (idc: string): boolean =>
     NAV_WRAPPER_RE.test(
       idc

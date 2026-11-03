@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Ruleset } from '../../../../src/core/data/load.ts';
 import {
+  type AssessInput,
   assess,
   capByConfidence,
   type ExecutedCheck,
@@ -65,13 +66,19 @@ const exec = (observations: Observation[]): ExecutedCheck => ({
   durationMs: 1,
 });
 
-function run(checks: AnyCheck[], executed: Record<string, ExecutedCheck>, overrides = []) {
+function run(
+  checks: AnyCheck[],
+  executed: Record<string, ExecutedCheck>,
+  overrides = [],
+  extra: Partial<AssessInput> = {},
+) {
   return assess({
     checks,
     executed: new Map(Object.entries(executed)),
     ruleset,
     routing: { analytics: 'CONSENT-01', fonts: 'EMBED-01' },
     overrides,
+    ...extra,
   });
 }
 
@@ -269,6 +276,18 @@ describe('assess', () => {
     expect(out.findings[0]?.evidenceIds).toHaveLength(20);
     expect(out.findings[0]?.evidenceTruncated).toBe(true);
     expect(out.evidence).toHaveLength(26);
+  });
+
+  it('keeps as many evidence ids as the settings allow', () => {
+    const c = check('TEST-01', ['hit']);
+    const ev = (i: number) => ({ type: 'header' as const, url: 'https://x/', name: `h${i}`, present: false });
+    const executed = { 'TEST-01': exec([obs({ evidence: Array.from({ length: 8 }, (_, i) => ev(i)) })]) };
+    const few = run([c], executed, [], { maxEvidencePerFinding: 3 });
+    expect(few.findings[0]?.evidenceIds).toHaveLength(3);
+    expect(few.findings[0]?.evidenceTruncated).toBe(true);
+    const many = run([c], executed, [], { maxEvidencePerFinding: 8 });
+    expect(many.findings[0]?.evidenceIds).toHaveLength(8);
+    expect(many.findings[0]).not.toHaveProperty('evidenceTruncated');
   });
 
   it('routing: an owner check drops observations of a category owned by another check', () => {

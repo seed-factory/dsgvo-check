@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { tls02 } from '../../../../src/checks/http/tls-02.ts';
+import { parseConfigInput } from '../../../../src/core/config/load.ts';
+import { checkThresholds } from '../../../../src/core/config/thresholds.ts';
 import type { HttpSection } from '../../../../src/core/snapshot/http.ts';
 import type { TlsEndpoint } from '../../../../src/core/snapshot/tls.ts';
 import {
@@ -237,6 +239,29 @@ describe('TLS-02 certificate', () => {
         params: { daysLeft: left, lifetimeDays: lifetime },
       });
     }
+  });
+
+  describe('expiry windows from the settings', () => {
+    const runWith = (tls: Record<string, number>, left: number, lifetime: number) =>
+      runCheck(tls02, snap(ep({}, left, lifetime - left)), {
+        thresholds: checkThresholds(parseConfigInput({ tls })),
+      });
+
+    it.each([
+      // [settings, days left, lifetime days, expected]; the first case of each pair is the built-in verdict
+      [{}, 20, 90, ['certificate-expiry-approaching']],
+      [{ expiringDays: 21 }, 20, 90, ['certificate-expiring']],
+      [{}, 40, 90, []],
+      [{ approachingDays: 45, approachingLifetimeShare: 1 }, 40, 90, ['certificate-expiry-approaching']],
+      [{}, 6, 20, ['certificate-expiry-approaching']],
+      [{ expiringLifetimeShare: 0.5 }, 6, 20, ['certificate-expiring']],
+      [{}, 2, 6, []],
+      [{ shortLivedDays: 0 }, 2, 6, ['certificate-expiry-approaching']],
+      [{ shortLivedDays: 30 }, 4, 20, []],
+      [{ expiringDays: 0, approachingDays: 0 }, 10, 90, []],
+    ] as const)('%j, %i days left of %i → %j', (tls, left, lifetime, expected) => {
+      expect(variantsOf(runWith(tls, left, lifetime))).toEqual(expected);
+    });
   });
 
   it('expiry together with an incomplete chain is still reported', () => {

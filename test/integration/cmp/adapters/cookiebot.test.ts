@@ -1,6 +1,7 @@
 /** Cookiebot adapter against the own simulator, including the bot branch (isSpider) and the geo branch. */
 import { expect, it } from 'vitest';
-import { classifyFirstLayer, extract, loadLexicon } from '../../../../src/cmp/index.ts';
+import { extract, loadLexicon } from '../../../../src/cmp/index.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CHROME_UA, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
 describeCmpScenarios(
@@ -27,7 +28,7 @@ describeCmpScenarios(
       const cls = classifyFirstLayer(facts, loadLexicon());
       expect(cls.variant).toBe('banner-not-recognized');
       expect(cls.reasons).toContain('banner-not-visible');
-      expect((await adapter.reject(page, { facts })).clicked).toBe(false);
+      expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(false);
     });
 
     it('geo branch: out of region → isOutOfRegion, CookieConsent=-1, gdprApplies=false and TCF ping', async () => {

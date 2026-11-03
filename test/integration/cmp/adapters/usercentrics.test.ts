@@ -1,6 +1,7 @@
 /** Usercentrics v3 (shadow DOM #usercentrics-cmp-ui) and v2 (#usercentrics-root) against own simulators. */
 import { expect, it } from 'vitest';
-import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
 describeCmpScenarios(
@@ -32,7 +33,7 @@ describeCmpScenarios(
       const facts = await extract(page, adapter, 'first-screen');
       expect(facts.detection.version).toBe('2');
       expect(classifyFirstLayer(facts, loadLexicon()).variant).toBe('ok');
-      expect((await adapter.reject(page, { facts })).clicked).toBe(true);
+      expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(true);
       expect((await adapter.verify(page, 'reject')).verified).toBe(true);
     });
 
@@ -55,7 +56,7 @@ describeCmpScenarios(
       expect(Object.values(facts.state[0]?.categories ?? {})).toEqual(['denied', 'denied']);
       const target = classifyFirstLayer(facts, loadLexicon()).targets?.reject ?? null;
       expect(target?.name).toBe('Ablehnen');
-      const click = await adapter.reject(page, { facts, target });
+      const click = await adapter.reject(page, { facts, target, ...DEFAULT_CLASSIFY });
       expect(click.clicked).toBe(true);
       const now = await adapter.verify(page, 'reject', { reload: false });
       expect(now.verified).toBe(false);

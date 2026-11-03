@@ -350,15 +350,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     // A class token with an address is left out (the others may still be unique), else the structural path is used.
     const plain = (v: string): boolean => !v.includes('@');
     if (el.id && plain(el.id)) tries.push(`#${esc(el.id)}`);
-    for (const attr of [
-      'data-testid',
-      'data-action-type',
-      'data-cookie-refuse',
-      'data-cookie-accept-all',
-      'data-role',
-      'name',
-      'aria-label',
-    ]) {
+    for (const attr of args.selectorAttributes) {
       const v = el.getAttribute(attr);
       if (v !== null && v.length < 80 && plain(v) && !/[\n\r"\\]/.test(v))
         tries.push(`${tag}[${attr}="${v}"]`);

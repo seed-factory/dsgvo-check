@@ -53,17 +53,39 @@ export interface RawDomFacts {
   linksTruncated: boolean;
 }
 
+/** Regular-expression sources (case-insensitive in the page) from test/data/browser/dom.yaml; the page cannot import. */
+export interface DomPatterns {
+  /** id/class names of a consent banner container. */
+  bannerNames: string;
+  /** Text that makes a fixed `role=dialog` a banner. */
+  bannerDialogText: string;
+  /** Link texts and paths read first when the link cap applies. */
+  legalLinkHints: string;
+  /** Class names of two-click placeholders. */
+  placeholderClass: string;
+  /** Short text of a placeholder ("Karte laden"). */
+  placeholderText: string;
+  /** What a placeholder stands for, first match wins. */
+  placeholderKinds: Array<{ kind: 'maps' | 'video'; source: string }>;
+}
+
 // DOM facts of the main document including open shadow roots. Links are capped at `maxLinks`; a plain cut loses the
 // footer (Impressum, Datenschutz) on pages with a long article list, so a page over the cap is read in two passes:
 // first the links that matter for legal and navigation checks (legal keywords, then `footer`, `banner`, `header`,
 // `nav`; at most `2 * maxLinks`), then the rest in document order up to `maxLinks`.
-export function domFactsInPage(arg: { maxLinks: number; maxScripts: number }): RawDomFacts {
-  const BANNER_RE =
-    /(cookie|consent|cmp|gdpr|dsgvo|borlabs|cybot|cookiebot|usercentrics|cmplz|complianz|ccm19|cookiehub|real-cookie-banner|rcb-)/i;
-  const PH_CLASS_RE =
-    /(content-blocker|contentblocker|cmplz-placeholder|cmplz-blocked|uc-embedding|cookieconsent-optout|consent-placeholder|two-click|2-click|zwei-klick|ccm-blocked)/i;
-  const PH_TEXT_RE =
-    /((karte|map|video|inhalt|youtube|vimeo|google maps)[^.]{0,40}(laden|anzeigen|aktivieren|entsperren|load))|((laden|anzeigen|aktivieren)[^.]{0,20}(karte|video|inhalt))/i;
+export function domFactsInPage(arg: {
+  maxLinks: number;
+  maxScripts: number;
+  patterns: DomPatterns;
+}): RawDomFacts {
+  const BANNER_RE = new RegExp(arg.patterns.bannerNames, 'i');
+  const BANNER_TEXT_RE = new RegExp(arg.patterns.bannerDialogText, 'i');
+  const PH_CLASS_RE = new RegExp(arg.patterns.placeholderClass, 'i');
+  const PH_TEXT_RE = new RegExp(arg.patterns.placeholderText, 'i');
+  const PH_KINDS = arg.patterns.placeholderKinds.map((k) => ({
+    kind: k.kind,
+    re: new RegExp(k.source, 'i'),
+  }));
 
   const all: any[] = [];
   const collect = (root: any, depth: number) => {
@@ -97,7 +119,7 @@ export function domFactsInPage(arg: { maxLinks: number; maxScripts: number }): R
       role === 'alertdialog' ||
       (el.getAttribute && el.getAttribute('aria-modal') === 'true')
     ) {
-      return isFixed(el) && /cookie|datenschutz|einwillig|consent|privacy/i.test(el.textContent || '');
+      return isFixed(el) && BANNER_TEXT_RE.test(el.textContent || '');
     }
     return false;
   };
@@ -133,8 +155,7 @@ export function domFactsInPage(arg: { maxLinks: number; maxScripts: number }): R
     return Boolean(root && root.host);
   };
 
-  const LEGAL_LINK_RE =
-    /(impressum|imprint|datenschutz|privacy|data[-\s]?protection|rechtliches|legal|agb|nutzungsbedingungen|terms|kontakt|contact|cookie|widerruf|barrierefreiheit|accessibility|anbieter)/i;
+  const LEGAL_LINK_RE = new RegExp(arg.patterns.legalLinkHints, 'i');
   const linkEls = all.filter((el) => {
     const t = (el.tagName || '').toLowerCase();
     return (t === 'a' || t === 'area') && el.hasAttribute('href');
@@ -252,11 +273,7 @@ export function domFactsInPage(arg: { maxLinks: number; maxScripts: number }): R
       if (hit) {
         const text = clean(el.innerText || '', 120);
         const probe = `${idc} ${text}`;
-        const kind = /map|karte/i.test(probe)
-          ? 'maps'
-          : /video|youtube|vimeo/i.test(probe)
-            ? 'video'
-            : 'other';
+        const kind = PH_KINDS.find((k) => k.re.test(probe))?.kind ?? 'other';
         if (!placeholders.some((p) => p.text === text && p.kind === kind)) placeholders.push({ kind, text });
       }
     }
@@ -284,12 +301,11 @@ export function domFactsInPage(arg: { maxLinks: number; maxScripts: number }): R
 
 // Box of the banner container holding the first-layer points (button centres), measured without scrolling: the closest
 // common ancestor that is fixed/sticky, a dialog, or named like a consent banner.
-export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }> }): {
+export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }>; bannerNames: string }): {
   box: { x: number; y: number; width: number; height: number } | null;
   reason: string;
 } {
-  const BANNER_RE =
-    /(cookie|consent|cmp|gdpr|dsgvo|borlabs|cybot|cookiebot|usercentrics|cmplz|complianz|ccm19|cookiehub|real-cookie-banner|rcb-)/i;
+  const BANNER_RE = new RegExp(arg.bannerNames, 'i');
   const parentOf = (n: any): any => {
     if (n.parentElement) return n.parentElement;
     const root = n.getRootNode ? n.getRootNode() : null;

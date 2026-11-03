@@ -10,11 +10,15 @@ import type {
   FirstLayerVariant,
 } from './types.ts';
 
-export const BLOCKING_COVERED_RATIO = 0.85;
+/** What the caller decides: the table itself holds no setting, so a check reads it from `ctx.thresholds`. */
+export interface ClassifyOptions {
+  /** Share of the viewport that makes a banner blocking (`cmp.blockingCoveredRatio`). */
+  blockingCoveredRatio: number;
+}
 
-/** Blocking as measured: overlay, scroll lock on html/body, inert content or the banner covering ≥ 85 %. */
-export function isBlocking(b: BlockingFacts): boolean {
-  return b.overlay || b.inert || b.scrollLock || (b.coveredRatio ?? 0) >= BLOCKING_COVERED_RATIO;
+/** Blocking as measured: overlay, scroll lock on html/body, inert content or the banner covering at least `coveredRatio` of the viewport. */
+export function isBlocking(b: BlockingFacts, coveredRatio: number): boolean {
+  return b.overlay || b.inert || b.scrollLock || (b.coveredRatio ?? 0) >= coveredRatio;
 }
 
 function pickTarget(candidates: CmpButton[]): { target: CmpButton | null; ambiguous: boolean } {
@@ -25,11 +29,15 @@ function pickTarget(candidates: CmpButton[]): { target: CmpButton | null; ambigu
   return { target: null, ambiguous: usable.length > 1 };
 }
 
-export function classifyFirstLayer(facts: CmpFacts, lexicon: CmpLexicon): FirstLayerClassification {
+export function classifyFirstLayer(
+  facts: CmpFacts,
+  lexicon: CmpLexicon,
+  options: ClassifyOptions,
+): FirstLayerClassification {
   const det = facts.detection;
   const fl = facts.firstLayer;
   const buttons: CmpButton[] = fl.buttons.map((b) => ({ ...b, ...classifyButton(b, lexicon) }));
-  const blocking = isBlocking(facts.blocking);
+  const blocking = isBlocking(facts.blocking, options.blockingCoveredRatio);
   const first = buttons.filter((b) => b.layer === 1);
   const acceptActionable = first.filter((b) => b.kind === 'accept' && b.actionableAtFirstScreen);
   const common = {

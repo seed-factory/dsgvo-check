@@ -5,16 +5,11 @@
 import type { Page } from 'playwright-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { signalKinds } from '../../../src/cmp/detection.ts';
-import {
-  classifyFirstLayer,
-  extract,
-  loadLexicon,
-  waitForBanner,
-  waitForCmp,
-} from '../../../src/cmp/index.ts';
+import { extract, loadLexicon, waitForBanner, waitForCmp } from '../../../src/cmp/index.ts';
 import type { ClickOutcome, CmpAdapter, CmpFacts, KnownCmpId } from '../../../src/cmp/types.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../utils/classify.ts';
 
 /** A normal desktop Chrome UA: no `HeadlessChrome`, no bot tokens. */
 export const CHROME_UA =
@@ -161,7 +156,7 @@ export function describeCmpScenarios(
       expect(cls.variant).toBe('blocking-no-reject');
       expect(cls.confidence).toBe('high');
       expect(cls.acceptAvailableAtFirstLayer).toBe(true);
-      const click = await adapter.reject(page, { facts });
+      const click = await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY });
       expect(click.clicked).toBe(false);
       expect(click.error).toMatch(/^no-unambiguous-reject:blocking-no-reject/);
       expect(await waitForBanner(page, adapter, { timeoutMs: 100 })).toBe(true);
@@ -206,7 +201,7 @@ export function describeCmpScenarios(
       const facts = await extract(page, adapter, 'first-screen');
       // The default lexicon would pick a reject here; core's decision (here: none) must win.
       expect(classifyFirstLayer(facts, lexicon).targets?.reject).not.toBeNull();
-      const click = await adapter.reject(page, { facts, target: null });
+      const click = await adapter.reject(page, { facts, target: null, ...DEFAULT_CLASSIFY });
       expect(click).toMatchObject({ clicked: false, button: null, error: 'no-unambiguous-reject' });
       const noTarget = await adapter.act?.(page, 'reject', null);
       expect(noTarget).toMatchObject({ clicked: false, error: 'no-unambiguous-reject' });

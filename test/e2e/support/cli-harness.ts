@@ -3,7 +3,7 @@
  * subprocess whose network `network-hook.ts` routes to them.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -112,14 +112,16 @@ function readIf(file: string): string | null {
 
 /**
  * Run the built CLI asynchronously (the fixture server lives in this process, so spawnSync would deadlock).
- * The child gets a minimal environment: no GITHUB_STEP_SUMMARY unless `stepSummary` is given.
+ * The child gets a minimal environment: no GITHUB_STEP_SUMMARY unless `stepSummary` is given; `env` adds variables and
+ * `dotenv` becomes the `.env` file of its working directory (the output directory).
  */
 export function runCli(
   env: E2eEnvironment | null,
   args: string[],
-  opts: { stepSummary?: string; timeoutMs?: number } = {},
+  opts: { stepSummary?: string; timeoutMs?: number; env?: Record<string, string>; dotenv?: string } = {},
 ): Promise<CliRun> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-out-'));
+  if (opts.dotenv !== undefined) writeFileSync(path.join(outDir, '.env'), opts.dotenv);
   const childEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -131,6 +133,7 @@ export function runCli(
   };
   if (env) childEnv.DSGVO_E2E_NETWORK = JSON.stringify(env.network);
   if (opts.stepSummary) childEnv.GITHUB_STEP_SUMMARY = opts.stepSummary;
+  Object.assign(childEnv, opts.env);
   for (const k of Object.keys(childEnv)) if (childEnv[k] === undefined) delete childEnv[k];
 
   const nodeArgs = env ? ['--import', pathToFileURL(HOOK).href, CLI] : [CLI];

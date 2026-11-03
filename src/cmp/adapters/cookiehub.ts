@@ -46,27 +46,8 @@ const read = (page: Page) => page.evaluate(readCookiehub);
 
 export const cookiehub = defineAdapter({
   id: 'cookiehub',
-  name: 'CookieHub',
-  supportedVersions: null,
   // `hasConsented(category)` answers per name; the categories of the installation cannot be listed.
   categoriesUnlisted: true,
-  detect: {
-    globals: ['cookiehub'],
-    scripts: [{ label: 'cdn.cookiehub.eu', pattern: '^https://cdn\\.cookiehub\\.(eu|net|com)/' }],
-    dom: ['.ch2-container', '.ch2-dialog'],
-    cookies: ['^cookiehub$'],
-  },
-  banner: {
-    containers: ['.ch2-container .ch2-dialog', '.ch2-dialog'],
-    overlays: ['.ch2-container .ch2-overlay'],
-    vendorRoles: [
-      { selector: '.ch2-allow-all-btn', role: 'accept' },
-      { selector: '.ch2-deny-all-btn', role: 'reject' },
-      { selector: '.ch2-open-settings-btn', role: 'settings' },
-      { selector: '.ch2-save-settings-btn', role: 'save' },
-      { selector: '.ch2-close-btn', role: 'close' },
-    ],
-  },
   async readState(page) {
     const r = await read(page);
     if (!r.present) return [];

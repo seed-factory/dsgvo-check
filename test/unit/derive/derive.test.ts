@@ -260,6 +260,8 @@ describe('derive: requests', () => {
       parseCatalog({
         catalog: base.catalog,
         categories: base.categories,
+        userSuppliedParams: base.userSuppliedParams,
+        consentMode: base.consentMode,
         allowlist: { version: '1', cookies: {} },
         services: [
           {
@@ -628,6 +630,23 @@ describe('helpers', () => {
     [undefined, undefined, null],
   ])('decodeConsentMode(%s, %s)', (gcs, gcd, want) => {
     expect(decodeConsentMode(gcs, gcd)).toEqual(want);
+  });
+
+  it('the gcd letters come from the catalog, not from code', () => {
+    const base = loadServiceCatalog().data;
+    const own = new ServiceCatalog(
+      parseCatalog({
+        ...base,
+        services: [],
+        consentMode: { gcdDenied: ['z'], gcdGranted: ['y'] },
+      }),
+    );
+    expect(decodeConsentMode(undefined, '11z1y1l1l', own)).toEqual({
+      adStorage: 'denied',
+      analyticsStorage: 'granted',
+      source: 'gcd',
+    });
+    expect(decodeConsentMode(undefined, '11z1y1l1l')).toBeNull();
   });
 
   it('timingOf', () => {

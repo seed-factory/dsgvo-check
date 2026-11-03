@@ -3,7 +3,8 @@
  * of the measurement, lost candidates are reported, and a banner that never settles is reported, not judged mid-animation.
  */
 import { describe, expect, it } from 'vitest';
-import { classifyFirstLayer, extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
+import { extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
+import { classifyFirstLayer } from '../../utils/classify.ts';
 import { decideAndAct, recognized, useCmpServer } from './helpers.ts';
 
 describe('first-layer measurement (Cookiebot simulator)', () => {

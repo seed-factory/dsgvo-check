@@ -538,6 +538,13 @@ export const ScanOptionsSchema = z.object({
   assumeRegion: AssumeRegionSchema.nullable(),
   fromSnapshot: z.boolean(),
   overrides: z.array(z.object({ rule: z.string(), severity: SeveritySchema })),
+  settings: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional()
+    .meta({
+      description:
+        'Operator settings that differ from the built-in defaults, keyed by environment variable name (DSGVO_CHECK_*); absent when none does. Secrets and settings shown by the options above are left out.',
+    }),
 });
 export type ReportScanOptions = z.infer<typeof ScanOptionsSchema>;
 

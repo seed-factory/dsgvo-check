@@ -8,6 +8,7 @@ import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { collectMailDns } from '../../../../src/collectors/dns/collect.ts';
 import { collectDns } from '../../../../src/collectors/dns/index.ts';
 import { type DnsClient, errorToRcode, type RawDnsResult } from '../../../../src/collectors/dns/resolver.ts';
+import { defaultConfig } from '../../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
 import type { DnsRecordType } from '../../../../src/core/snapshot/dns.ts';
@@ -286,6 +287,7 @@ describe('collectDns (collector entry point)', () => {
       target: makeTarget(url),
       options: { maxPages: 6, screenshots: false, sandbox: 'require', lang: 'de', assumeRegion: null },
       network: defaultNetworkConfig(),
+      config: defaultConfig(),
       userAgent: { http: 'test', token: 'test' },
       signal: new AbortController().signal,
       deadline: Date.now() + 60_000,

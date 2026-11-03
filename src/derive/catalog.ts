@@ -129,6 +129,27 @@ const CatalogFileSchema = z
       z.enum(CATEGORIES),
       z.object({ de: z.array(z.string().min(2)), en: z.array(z.string().min(2)) }).strict(),
     ),
+    /**
+     * Parameter names (lower case) of identifiers handed to the site with the visit, not generated per page load: ad-click
+     * ids and a user id. Compared with the collector's `identifierNames`.
+     */
+    userSuppliedParams: z.array(
+      z
+        .string()
+        .min(1)
+        .refine((n) => n === n.toLowerCase(), 'must be lower case'),
+    ),
+    /** Letters of the community-documented Google Consent Mode `gcd` value: position 3 is ad storage, 5 analytics. */
+    consentMode: z
+      .object({
+        gcdDenied: z.array(z.string().length(1)),
+        gcdGranted: z.array(z.string().length(1)),
+      })
+      .strict()
+      .refine(
+        (m) => !m.gcdDenied.some((c) => m.gcdGranted.includes(c)),
+        'a gcd letter cannot be both denied and granted',
+      ),
     services: z.array(ServiceSchema),
     allowlist: z
       .object({
@@ -199,6 +220,7 @@ function nameMatches(p: NamePattern, name: string, domain: string | null): boole
 export class ServiceCatalog {
   readonly data: CatalogData;
   readonly byId: ReadonlyMap<string, ServiceEntry>;
+  readonly userSuppliedParams: ReadonlySet<string>;
   readonly #domainIndex = new Map<string, ServiceEntry[]>();
   readonly #hostSignatures = new Map<string, CompiledSignature[]>();
   readonly #anyHostSignatures: CompiledSignature[] = [];
@@ -209,6 +231,7 @@ export class ServiceCatalog {
 
   constructor(data: CatalogData) {
     this.data = data;
+    this.userSuppliedParams = new Set(data.userSuppliedParams);
     const byId = new Map<string, ServiceEntry>();
     for (const s of data.services) {
       if (byId.has(s.id)) throw new DataError(`services: duplicate service id "${s.id}"`);

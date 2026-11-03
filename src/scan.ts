@@ -7,6 +7,7 @@ import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
+import { checkThresholds } from './core/config/thresholds.ts';
 import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import {
@@ -177,6 +178,7 @@ function runChecks(
 ): Map<string, ExecutedCheck> {
   const executed = new Map<string, ExecutedCheck>();
   const dataCache = new Map<string, Record<string, unknown>>();
+  const thresholds = checkThresholds(o.config);
   for (const check of checks) {
     const data: Record<string, unknown> = {};
     for (const name of check.data ?? []) {
@@ -189,6 +191,7 @@ function runChecks(
       routing: core.routing,
       data,
       options: { strict: o.strict, assumeRegion: o.assumeRegion, fromSnapshot: o.fromSnapshot !== null },
+      thresholds,
     };
     const result = executeCheck(check, snapshot, ctx, { timedOut });
     if (result.error) log.error(`check ${check.id}: ${result.error.message}`);
@@ -381,6 +384,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       routing: core.routing,
       overrides: o.overrides,
       texts: core.texts,
+      maxEvidencePerFinding: o.config.report.maxEvidencePerFinding,
     });
 
     const diagnostics = scanDiagnostics(snapshot, executed, state, o);

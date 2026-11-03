@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { KNOWN_CMP_IDS } from '../../src/cmp/types.ts';
 import { isHttpUrl, registrableDomain } from '../../src/core/url/url.ts';
 
 export const DEFAULT_SITES_FILE = fileURLToPath(new URL('../../canary/sites.yaml', import.meta.url));
@@ -13,16 +14,8 @@ export type Region = (typeof REGIONS)[number];
 export const SIZE_CLASSES = ['large', 'medium', 'small-business'] as const;
 export type SizeClass = (typeof SIZE_CLASSES)[number];
 
-/** The 7 CMPs of the catalog, then the catch-all values. */
-export const KNOWN_CMPS = [
-  'borlabs',
-  'cookiebot',
-  'complianz',
-  'usercentrics',
-  'ccm19',
-  'real-cookie-banner',
-  'cookiehub',
-] as const;
+/** The CMPs with an own adapter, then the catch-all values. */
+export const KNOWN_CMPS = KNOWN_CMP_IDS;
 export type KnownCmp = (typeof KNOWN_CMPS)[number];
 export const EXPECTED_CMPS = [...KNOWN_CMPS, 'other', 'none', 'unknown'] as const;
 export type ExpectedCmp = (typeof EXPECTED_CMPS)[number];

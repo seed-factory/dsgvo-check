@@ -18,3 +18,11 @@ export function parseDuration(input: string): number {
   }
   return Math.round(total);
 }
+
+/** The inverse of `parseDuration` for the help text: `480000` → `8m`, `90000` → `90s`, `1500` → `1500ms`. */
+export function formatDuration(ms: number): string {
+  if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
+  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
+  if (ms % 1000 === 0) return `${ms / 1000}s`;
+  return `${ms}ms`;
+}

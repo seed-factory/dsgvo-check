@@ -13,6 +13,7 @@ import type { HeaderRecord } from '../../../core/snapshot/common.ts';
 import { parseUrl, registrableDomain } from '../../../core/url/url.ts';
 import { domFactsInPage, type RawDomFacts } from '../in-page/dom.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
+import { loadDomPatterns } from '../rules.ts';
 import { redactFreeText } from '../util.ts';
 import type { CandidateLink } from './pages.ts';
 
@@ -102,7 +103,11 @@ export async function collectDom(
   target: { etld1: string | null; host: string },
   responseHeaders: readonly HeaderRecord[],
 ): Promise<DomResult> {
-  const raw = await page.evaluate(domFactsInPage, { maxLinks: 1500, maxScripts: 300 });
+  const raw = await page.evaluate(domFactsInPage, {
+    maxLinks: 1500,
+    maxScripts: 300,
+    patterns: loadDomPatterns().page,
+  });
   const base = page.url();
   const candidates: CandidateLink[] = [];
   const links: LinkFact[] = raw.links.map((l, order) => {

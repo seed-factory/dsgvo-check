@@ -104,6 +104,14 @@ describe('import graph of checks', () => {
       expect(offending).toEqual([]);
     },
   );
+
+  // A check reads the settings that matter to it from `ctx.thresholds`; a default taken from the config would make the
+  // verdict depend on something other than the snapshot and the context.
+  const CONFIG_DIR = path.join(ROOT, 'src/core/config') + path.sep;
+  it.each(files.map((f) => [path.relative(ROOT, f), f]))('%s reaches no module of the settings', (_, f) => {
+    const reached = [...closure(f).keys()].filter((file) => file.startsWith(CONFIG_DIR));
+    expect(reached.map((file) => path.relative(ROOT, file))).toEqual([]);
+  });
 });
 
 describe('import graph of the core', () => {

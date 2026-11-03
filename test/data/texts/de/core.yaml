@@ -75,6 +75,8 @@ ui:
   failure.invalid-timeout: "Ungültiger Wert für --timeout: {value}"
   failure.invalid-proxy: "Ungültige Proxy-URL (nur http:// wird unterstützt)."
   failure.invalid-cli-option: "Ungültiger Wert für {option}: {value}"
+  # `problems`: `NAME=Wert (Quelle): Grund`, getrennt durch Semikolon; Werte geheimer Einstellungen fehlen.
+  failure.invalid-config: "Ungültige Einstellung(en): {problems}"
   failure.target-nxdomain: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
   failure.target-dns-error: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
   failure.target-not-public: "Zielhost {host} löst nur auf nicht-öffentliche Adressen auf; der Scan ist nur für öffentliche Websites vorgesehen."
@@ -111,6 +113,11 @@ ui:
   cli.fromSnapshot: Snapshot neu auswerten, ohne die Website aufzurufen
   cli.checks: "nur diese Prüfungen, z. B. EMBED-01,HDR-01"
   cli.verbose: ausführliche Logs auf stderr
+  cli.configNotes.title: "Einstellungen"
+  cli.configNotes: >-
+    Schwellen, Zeitlimits und Grenzen lassen sich ohne Flags über Umgebungsvariablen der Form
+    DSGVO_CHECK_<ABSCHNITT>_<NAME> oder über eine Datei .env im aktuellen Verzeichnis setzen (Vorlage: .env.example im
+    Repository). Vorrang: Flag, Umgebungsvariable, .env, Standardwert. Ohne Konfiguration gelten die Standardwerte.
   cli.install: Chromium (Chrome for Testing) für playwright-core herunterladen
   cli.installWithDeps: "Systemabhängigkeiten installieren (Linux, benötigt Root)"
   console.duration: "Dauer: {seconds} s"
@@ -128,6 +135,31 @@ ui:
   console.reportWritten: "Bericht gespeichert: {path}"
   console.reportWriteFailed: "Bericht konnte nicht geschrieben werden: {path} ({message})"
   console.sandboxOff: "Achtung: Chromium-Sandbox ist ausgeschaltet (--sandbox off)."
+  console.configFile: "Einstellungen aus {path} gelesen: {count}"
+  console.configUnknown: "Unbekannte Einstellungen ignoriert: {names}"
+  # Grund einer abgelehnten Einstellung, hinter `NAME=Wert (Quelle): `; Ids und Parameter: src/core/config/problems.ts.
+  config.source.environment: "Umgebung"
+  config.source.config: "config-Option"
+  config.source.default: "Standardwert"
+  config.problem.integer: "erwartet eine ganze Zahl"
+  config.problem.number: "erwartet eine Zahl"
+  config.problem.min: "muss mindestens {min} sein"
+  config.problem.above: "muss größer als {min} sein"
+  config.problem.max: "darf höchstens {max} sein"
+  config.problem.floor: "muss mindestens {min} sein: nur strengere Werte sind erlaubt, der Scan bleibt passiv"
+  config.problem.items-min: "braucht mindestens {min, plural, one {# Eintrag} other {# Einträge}}"
+  config.problem.length-min: "braucht mindestens {min} Zeichen"
+  config.problem.option: "erlaubt sind: {options}"
+  config.problem.type: "falscher Typ, erwartet: {expected}"
+  config.problem.unknown-keys: "unbekannte Schlüssel: {keys}"
+  config.problem.proxy-scheme: "nur http://-Proxys (HTTP CONNECT) werden unterstützt"
+  config.problem.dns-server: "erwartet Host, Host:Port oder [IPv6]:Port"
+  config.problem.dwell-order: "darf nicht unter {other} ({value}) liegen"
+  config.problem.tls-days-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.tls-share-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.report-reserve: "muss {first} plus {second} ({value}) abdecken, sonst beendet der Watchdog den Prozess, während Berichte geschrieben werden"
+  config.problem.unreadable: "Datei nicht lesbar ({code})"
+  config.problem.invalid: "ungültiger Wert"
 messages:
   diagnostic.SCAN-BOTMODE:
     title: "Einwilligungsbanner verhält sich wie gegenüber einem Bot"

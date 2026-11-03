@@ -2,6 +2,8 @@
  * GitHub Job Summary / Markdown reporter, written to `summary.md` (scan.ts also appends it to $GITHUB_STEP_SUMMARY).
  * External strings are sanitized and escaped, URLs never become links, there are no images and no crmCode strings.
  */
+
+import { reporterLimits } from '../core/config/limits.ts';
 import { renderMessage } from '../core/data/messages.ts';
 import { sanitizeExternal } from '../core/redaction/sanitize.ts';
 import type { RenderReport, ReporterContext } from '../core/report/reporter.ts';
@@ -16,8 +18,7 @@ import {
   sortFindings,
 } from './report-view.ts';
 
-export const SUMMARY_MAX_FINDINGS = 50;
-const MAX_BYTES = 512 * 1024;
+export const SUMMARY_MAX_FINDINGS = reporterLimits().summaryMaxFindings;
 
 const WORD_JOINER = '⁠';
 
@@ -68,6 +69,7 @@ function findingTitle(f: Finding, ctx: ReporterContext): string {
 }
 
 export const renderSummary: RenderReport = (report: Report, ctx: ReporterContext) => {
+  const { summaryMaxFindings: maxFindings, summaryMaxBytes: maxBytes } = ctx.limits ?? reporterLimits();
   const out: string[] = [];
   const draft = isDraftReport(report, ctx) ? ` · **${mdText(draftStamp(ctx), 40)}**` : '';
   out.push(`## dsgvo-check – ${mdText(report.scan.target, 200)}${draft}`, '');
@@ -118,15 +120,15 @@ export const renderSummary: RenderReport = (report: Report, ctx: ReporterContext
         'summary.column.pages',
       ] as const;
       out.push(`| ${heads.map((h) => cell(label(ctx, h))).join(' | ')} |`, '| --- | --- | --- | ---: |');
-      for (const f of findings.slice(0, SUMMARY_MAX_FINDINGS)) {
+      for (const f of findings.slice(0, maxFindings)) {
         const service = f.serviceId ? ` (${mdCode(f.serviceId, 80)})` : '';
         out.push(
           `| ${cell(label(ctx, `severity.${f.severity}`))} | ${mdCode(f.checkId, 20)} | ${cell(findingTitle(f, ctx))}${cell(service)} | ${f.pages.length} |`,
         );
       }
       out.push('');
-      if (findings.length > SUMMARY_MAX_FINDINGS) {
-        out.push(label(ctx, 'summary.more', { count: findings.length - SUMMARY_MAX_FINDINGS }), '');
+      if (findings.length > maxFindings) {
+        out.push(label(ctx, 'summary.more', { count: findings.length - maxFindings }), '');
       }
     }
   }
@@ -152,6 +154,6 @@ export const renderSummary: RenderReport = (report: Report, ctx: ReporterContext
   for (const p of disclaimerParagraphs(report, ctx.texts)) out.push(`<sub>${mdText(p, 3000)}</sub>`, '');
 
   let md = `${out.join('\n')}\n`;
-  if (Buffer.byteLength(md) > MAX_BYTES) md = `${md.slice(0, MAX_BYTES / 4)}\n\n…\n`;
+  if (Buffer.byteLength(md) > maxBytes) md = `${md.slice(0, maxBytes / 4)}\n\n…\n`;
   return md;
 };

@@ -13,8 +13,6 @@ import { DNS_ERROR_CODES, ProbeError, routeToPublic } from '../http/client.ts';
 import type { HostTarget } from '../http/hosts.ts';
 import { openTunnel } from './tunnel.ts';
 
-export const DEFAULT_TLS_TIMEOUT_MS = 10_000;
-
 function dn(value: string | undefined): string {
   return (value ?? '')
     .split('\n')

@@ -82,7 +82,10 @@ Ein Scan dauert meist 1–3 Minuten und schreibt nach `--out`:
 - `report.pdf` nur mit `--format html,pdf`. Ein Druckfehler führt zu einer Warnzeile; Exit-Code und JSON bleiben.
 
 Einen vorhandenen JSON-Bericht gibt der Befehl `report` ohne erneuten Scan aus. Ungültiges oder fremdes JSON endet mit
-Exit-Code 2.
+Exit-Code 2. Ohne Flags rendert `report` HTML auf Deutsch; `DSGVO_CHECK_REPORT_LANG` und `DSGVO_CHECK_REPORT_FORMATS`
+(auch aus `.env`, siehe [Konfiguration](#konfiguration)) ändern diese Standardwerte, ein Flag geht vor. Ist
+`DSGVO_CHECK_REPORT_FORMATS` nicht gesetzt, bleibt es bei `html`: `console,json` ist nur der Standard eines Scans.
+`DSGVO_CHECK_REPORT_OUT_DIR` gilt nur für Scans; `report` schreibt neben die Eingabedatei oder nach `--out`.
 
 ```sh
 node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lang de --out ./report-export
@@ -105,7 +108,8 @@ docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
 
 Ohne `--user` läuft das Image als Nutzer `10001`; ihm muss das Ausgabeverzeichnis gehören, sonst endet der Scan mit
 Exit-Code 2 (Bericht nicht geschrieben). Gehärteter Lauf (`--cap-drop=ALL`, schreibgeschütztes Dateisystem,
-Ressourcenlimits): [docker/README.md](docker/README.md).
+Ressourcenlimits): [docker/README.md](docker/README.md). Einstellungen übergibt man mit `--env` oder `--env-file`,
+siehe [Konfiguration](#konfiguration).
 
 ### GitHub Action
 
@@ -161,6 +165,34 @@ Vollständig: `dsgvo-check --help`. Die wichtigsten:
 - `--checks <ids>`: nur diese Prüfungen, z. B. `EMBED-01,HDR-01`.
 - `--lang de|en`: Sprache des Berichts.
 
+## Konfiguration
+
+Der Scanner läuft ohne jede Konfiguration: Jeder Wert hat einen Standard. Schwellen, Zeitlimits und Grenzen lassen
+sich zusätzlich über Umgebungsvariablen der Form `DSGVO_CHECK_<ABSCHNITT>_<NAME>` setzen, etwa
+`DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS`, `DSGVO_CHECK_HTTP_MAX_REDIRECTS` oder `DSGVO_CHECK_TLS_EXPIRING_DAYS`. Die
+Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage). Eine Datei `.env` ist nicht nötig; liegt
+im aktuellen Verzeichnis eine, wird sie gelesen.
+
+Vorrang: Flag, Umgebungsvariable, `.env`, Standardwert. Eine bereits gesetzte Umgebungsvariable wird von `.env` nicht
+überschrieben. Aus der Datei zählen nur `DSGVO_CHECK_*`-Variablen; andere Einträge bleiben unberührt und gelangen nicht
+in die Umgebung von Chromium.
+
+Alle Einstellungen mit Standardwert und Beschreibung stehen in [.env.example](.env.example); die Datei wird aus dem
+Schema in `src/core/config` erzeugt (`corepack pnpm env:example`). Ein ungültiger Wert endet mit Exit-Code 2
+(`invalid-config`) und nennt Variable, Quelle und Grund in der Sprache von `--lang`. Die Pause zwischen zwei
+Navigationen (`DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS`, mindestens 1500), die Pause vor dem einen Wiederholungsversuch
+nach 429 oder 5xx (`DSGVO_CHECK_BROWSER_RETRY_DELAY_MS`, mindestens 3000) und der Abstand zwischen zwei Anfragen an
+denselben Host (`DSGVO_CHECK_HTTP_MIN_INTERVAL_MS`, mindestens 500) lassen sich nur verlängern. Abweichungen von den
+Standardwerten stehen im Bericht unter „Abweichende Einstellungen“ (ohne Proxy-URL).
+
+Im Docker-Image und in der GitHub Action gelangen nur `HOME` und `NO_COLOR` in den Container. Einstellungen übergibt
+man beim manuellen `docker run` mit `--env` oder `--env-file`:
+
+```sh
+docker run --rm --env HOME=/tmp --env DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS=3000 \
+  --env-file scan.env dsgvo-check:dev https://www.example.de/ --out /out
+```
+
 ## Exit-Codes
 
 - `0`: Kein Befund erreicht die Schwelle `--fail-on`.
@@ -211,7 +243,7 @@ Derselbe Text steht in `dsgvo-check --help` (Quelle: `test/data/texts/de/core.ya
 
 ```sh
 corepack pnpm typecheck && corepack pnpm lint
-corepack pnpm test:unit          # L0–L1: ohne Browser und Netz
+corepack pnpm test:unit          # L0–L1: ohne Browser und Netz (`corepack pnpm test` startet nur diese Stufe)
 corepack pnpm test:integration   # L2: echtes Chromium gegen lokale Server, ohne Internet
 corepack pnpm build && corepack pnpm test:e2e   # L3: gebautes CLI; Docker und Action mit DSGVO_E2E_IMAGE
 ```

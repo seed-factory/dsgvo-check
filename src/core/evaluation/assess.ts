@@ -4,6 +4,7 @@
  */
 import { createHash } from 'node:crypto';
 import canonicalize from 'canonicalize';
+import { DEFAULT_CONFIG } from '../config/schema.ts';
 import type { Routing, Ruleset, Texts } from '../data/load.ts';
 import { renderMessage } from '../data/messages.ts';
 import type {
@@ -19,8 +20,6 @@ import type { DiagnosticInput } from '../snapshot/index.ts';
 import type { AnyCheck, CheckOutcome, EvidenceInput, Observation } from './check.ts';
 import { fingerprint } from './fingerprint.ts';
 import { severityRank } from './gate.ts';
-
-export const MAX_EVIDENCE_PER_FINDING = 20;
 
 export interface SeverityOverride {
   /** `CHECK-ID` or `CHECK-ID.variant`. */
@@ -46,6 +45,8 @@ export interface AssessInput {
   overrides?: readonly SeverityOverride[];
   /** When given, findings carry a rendered `text`. */
   texts?: Texts;
+  /** Evidence items kept per finding (default `report.maxEvidencePerFinding`). */
+  maxEvidencePerFinding?: number;
 }
 
 export interface AssessOutput {
@@ -149,6 +150,7 @@ interface Draft {
 
 export function assess(input: AssessInput): AssessOutput {
   const overrides = input.overrides ?? [];
+  const maxEvidence = input.maxEvidencePerFinding ?? DEFAULT_CONFIG.report.maxEvidencePerFinding;
   const store = new EvidenceStore();
   const routingOwners = new Set(Object.values(input.routing));
   const findings: Finding[] = [];
@@ -269,14 +271,14 @@ export function assess(input: AssessInput): AssessOutput {
         subject: d.obs.subject,
         phases: [...d.phases],
         pages: [...d.pages].sort(),
-        evidenceIds: ids.slice(0, MAX_EVIDENCE_PER_FINDING),
+        evidenceIds: ids.slice(0, maxEvidence),
         messageId,
         params: d.obs.params,
         legalNoteId: check.id,
         related: [],
         classification: d.obs.classification ?? { source: 'check', datasetVersion: null },
       };
-      if (ids.length > MAX_EVIDENCE_PER_FINDING) finding.evidenceTruncated = true;
+      if (ids.length > maxEvidence) finding.evidenceTruncated = true;
       if (d.obs.serviceId) finding.serviceId = d.obs.serviceId;
       if (d.obs.trigger) finding.trigger = d.obs.trigger;
       if (d.obs.replicated !== undefined) finding.replicated = d.obs.replicated;

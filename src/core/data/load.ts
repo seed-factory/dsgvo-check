@@ -5,16 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { type Lang, SeveritySchema } from '../report/schema.ts';
+import { DataError, type DataSection } from './parse.ts';
+
+export { DataError };
 
 /** Package data directory test/data (same relative path from src/core and dist/core). */
 export const DEFAULT_DATA_DIR = fileURLToPath(new URL('../../../test/data/', import.meta.url));
-
-export class DataError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DataError';
-  }
-}
 
 function yamlFiles(dir: string): string[] {
   let entries: string[];
@@ -228,6 +224,19 @@ export function loadDataDir(name: string, dataDir = DEFAULT_DATA_DIR): Record<st
     deepMerge(out, content, file, '');
   }
   return out;
+}
+
+const sectionCache = new WeakMap<DataSection<unknown>, Map<string, unknown>>();
+
+/** Reads and validates one section of `test/data/<dir>`; read once per data directory. A bad file is a `DataError`. */
+export function loadSection<T>(section: DataSection<T>, dataDir = DEFAULT_DATA_DIR): T {
+  let byDir = sectionCache.get(section);
+  if (!byDir) {
+    byDir = new Map();
+    sectionCache.set(section, byDir);
+  }
+  if (!byDir.has(dataDir)) byDir.set(dataDir, section.parse(loadDataDir(section.dir, dataDir)));
+  return byDir.get(dataDir) as T;
 }
 
 export interface CoreData {

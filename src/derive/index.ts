@@ -201,13 +201,10 @@ export function integrationFromKind(category: ServiceCategory, kind: RequestKind
   return INTEGRATION_BY_KIND.get(kind) ?? 'other';
 }
 
-const GCD_DENIED = new Set(['p', 'q', 'm', 'u']);
-const GCD_GRANTED = new Set(['t', 'r', 'n', 'v']);
-
-function gcdLetter(ch: string | undefined): 'granted' | 'denied' | null {
+function gcdLetter(ch: string | undefined, catalog: ServiceCatalog): 'granted' | 'denied' | null {
   if (!ch) return null;
-  if (GCD_DENIED.has(ch)) return 'denied';
-  if (GCD_GRANTED.has(ch)) return 'granted';
+  if (catalog.data.consentMode.gcdDenied.includes(ch)) return 'denied';
+  if (catalog.data.consentMode.gcdGranted.includes(ch)) return 'granted';
   return null;
 }
 
@@ -215,6 +212,7 @@ function gcdLetter(ch: string | undefined): 'granted' | 'denied' | null {
 export function decodeConsentMode(
   gcs: string | undefined,
   gcd: string | undefined,
+  catalog: ServiceCatalog = loadServiceCatalog(),
 ): ConsentModeSignal | null {
   const m = /^G1([01-])([01-])/.exec(gcs ?? '');
   if (m) {
@@ -223,31 +221,14 @@ export function decodeConsentMode(
   }
   if (gcd && /^1[0-9a-zA-Z_-]{4,}/.test(gcd)) {
     const signal: ConsentModeSignal = {
-      adStorage: gcdLetter(gcd[2]),
-      analyticsStorage: gcdLetter(gcd[4]),
+      adStorage: gcdLetter(gcd[2], catalog),
+      analyticsStorage: gcdLetter(gcd[4], catalog),
       source: 'gcd',
     };
     return signal.adStorage || signal.analyticsStorage ? signal : null;
   }
   return null;
 }
-
-/**
- * User or ad-click identifiers supplied with the visit, not generated per page load; compared lower-case with the
- * collector's `identifierNames` (extracted before redaction).
- */
-const USER_SUPPLIED_PARAMS: ReadonlySet<string> = new Set([
-  'user_id',
-  'userid',
-  'gclid',
-  'dclid',
-  'gbraid',
-  'wbraid',
-  'msclkid',
-  'fbclid',
-  'ttclid',
-  'li_fat_id',
-]);
 
 const PERSISTENT_KINDS: ReadonlySet<IdentifierKind> = new Set([
   'stored-match',
@@ -274,7 +255,7 @@ export function identifierOf(
   const catalogParams = new Set((identifierParams ?? []).map((n) => n.toLowerCase()));
   const persistent = names.find((n) => catalogParams.has(n.toLowerCase()));
   if (persistent) return { kind: 'persistent-param', param: persistent };
-  const supplied = names.find((n) => USER_SUPPLIED_PARAMS.has(n.toLowerCase()));
+  const supplied = names.find((n) => catalog.userSuppliedParams.has(n.toLowerCase()));
   if (supplied) return { kind: 'user-supplied', param: supplied };
   if (names.length > 0 || r.identifierPresent) {
     const param = names[0];
@@ -313,6 +294,7 @@ function classifyRequest(
   const consentMode = decodeConsentMode(
     consentSignals.gcs ?? url.searchParams.get('gcs') ?? undefined,
     consentSignals.gcd ?? url.searchParams.get('gcd') ?? undefined,
+    catalog,
   );
   const base: ClassifiedRequest = {
     requestId: r.id,
