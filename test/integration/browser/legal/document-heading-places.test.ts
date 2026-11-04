@@ -170,6 +170,14 @@ row(
   `<div class="section-footer"><h4>Impressum</h4></div><main><h2>Impressum</h2>${IMPRESSUM_BODY}</main>`,
 );
 
+row(
+  'privacy-with-impressum-section',
+  'a privacy policy with an Impressum section and a footer column',
+  'privacy',
+  `<main><h1>Datenschutzerklärung</h1>${BODY_TEXT}<h2>Impressum</h2><p>Beispiel GmbH, Musterstraße 1.</p></main>` +
+    '<footer><h4>Kontakt</h4><a href="/x">x</a></footer>',
+);
+
 /** `content`: the h1 of the wrapper confirms the document; `chrome`: the wrapper is a part of the page, it does not. */
 const H1_WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['has-fixed-header', '<div class="wrapper has-fixed-header">', '</div>', 'content'],
@@ -309,4 +317,17 @@ describe('a layout state class on the wrapper of the content does not make the h
       }
     },
   );
+});
+
+describe('the record keeps the headings of the content', () => {
+  it('lists a section heading of the content and leaves a footer column out', async () => {
+    const r = rows['privacy-with-impressum-section'] as Row;
+    const doc = await extract(r.path, r.kind);
+
+    expect(doc.errors).toEqual([]);
+    expect(doc.contentHeadings).toEqual(expect.arrayContaining(['Datenschutzerklärung', 'Impressum']));
+    // The reader keeps the footer text as a part of its own; only the list of content headings leaves it out.
+    expect(doc.parts.some((p) => (p.section ?? '').split(' > ').includes('Kontakt'))).toBe(true);
+    expect(doc.contentHeadings).not.toContain('Kontakt');
+  });
 });

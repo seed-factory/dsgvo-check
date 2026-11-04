@@ -280,9 +280,8 @@ messages:
       {hopChecked, select, true {Auch über eine geprüfte Zwischenseite (z. B. Kontakt) wurde {documentKind, select,
       impressum {es} other {sie}} nicht gefunden.} other {Eine Zwischenseite (z. B. Kontakt) wurde nicht geprüft.}}{fallbackChecked,
       select, true { Unter den üblichen Pfaden wurde {documentKind, select, impressum {es} other {sie}} ebenfalls nicht
-      gefunden.} other {}}{inOtherDocument, select, true { Die gefundene {documentKind, select, impressum
-      {Datenschutzerklärung} other {Seite des Impressums}} ({otherDocument}) enthält einen Abschnitt mit der Überschrift
-      „{otherHeading}“; ein Link, der ihn als {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}}
+      gefunden.} other {}}{inOtherDocument, select, true { Die gefundene Datenschutzerklärung
+      ({otherDocument}) enthält einen Abschnitt mit der Überschrift „{otherHeading}“; ein Link, der ihn als Impressum
       benennt, wurde nicht gefunden.} other {}}
   LEGAL-01.links-broken:
     title: "{documentKind, select, impressum {Links auf das Impressum führen} privacy {Links auf die Datenschutzerklärung führen} other {Links auf Impressum und Datenschutzerklärung führen}} auf Fehlerseiten"
@@ -515,7 +514,7 @@ actions:
   EMBED-02.maps-loaded:
     text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
   LEGAL-01.document-not-found:
-    text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} gut sichtbar im Seitenfuß jeder Seite{inOtherDocument, select, true {, als eigene Seite oder direkt auf den Abschnitt „{otherHeading}“} other {}}."
+    text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} gut sichtbar im Seitenfuß jeder Seite{inOtherDocument, select, true {, als eigene Seite oder direkt auf den Abschnitt „{otherHeading}“ der Datenschutzerklärung ({otherDocument})} other {}}."
   LEGAL-01.links-broken:
     text: "Korrigieren Sie die Links auf {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}}, sodass sie auf die richtigen Seiten führen."
   LEGAL-01.link-missing-on-some-pages:

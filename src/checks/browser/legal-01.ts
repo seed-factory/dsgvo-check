@@ -67,26 +67,29 @@ function linksOfKind(lex: LegalLexicon, links: readonly LinkFact[], kind: Docume
   return own.filter((_, i) => found[i] !== null);
 }
 
-/** A heading longer than this is a sentence, not a section title; it is also cut to this length in the params. */
+/** A heading longer than this is a sentence, not a section title. */
 const MAX_HEADING_CHARS = 80;
 
 /**
- * A section of the fetched document of the other kind whose heading names `kind` ("Datenschutzerklärung > Impressum"):
- * the document exists, but no link names it. Only an exact label or a label starting with a key counts as a heading.
+ * An Impressum kept as a section of the fetched privacy policy ("Datenschutzerklärung > Impressum"): a content heading
+ * that is exactly one of the Impressum labels. Not the other way round: a short "Datenschutz" paragraph or a data
+ * protection officer's contact in an Impressum is no privacy policy. A footer or navigation column does not count.
  */
-function sectionInOtherDocument(
+function impressumSectionInPrivacy(
   lex: LegalLexicon,
-  kind: DocumentKind,
   documents: DocumentsSection,
 ): { url: string; heading: string } | null {
-  const other: DocumentKind = kind === 'impressum' ? 'privacy' : 'impressum';
   for (const d of documents.documents) {
-    if (d.kind !== other || !usableDocument(d, documents.attempts)) continue;
+    if (d.kind !== 'privacy' || !usableDocument(d, documents.attempts)) continue;
+    // Snapshots of earlier versions did not record which headings belong to the content.
+    const content = d.contentHeadings ? new Set(d.contentHeadings) : null;
     for (const part of d.parts) {
       for (const heading of (part.section ?? '').split(' > ')) {
         if (heading === '' || heading.length > MAX_HEADING_CHARS) continue;
-        const m = matchLegalLink(lex, kind, { text: heading, path: '' });
-        if (m && m.byText && m.tier <= 1) return { url: d.finalUrl || d.url, heading };
+        if (content && !content.has(heading)) continue;
+        if (matchLegalLink(lex, 'impressum', { text: heading, path: '' })?.tier === 0) {
+          return { url: d.finalUrl || d.url, heading };
+        }
       }
     }
   }
@@ -456,7 +459,7 @@ function judgeNoDocument(
     return;
   }
 
-  const section = sectionInOtherDocument(env.lex, kind, env.documents);
+  const section = kind === 'impressum' ? impressumSectionInPrivacy(env.lex, env.documents) : null;
   emit(
     'document-not-found',
     'high',

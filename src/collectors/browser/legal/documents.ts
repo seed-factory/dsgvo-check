@@ -240,12 +240,15 @@ export async function extractDocument(
   const fullText = parts.map((p) => p.text).join('\n');
   const textLength = fullText.length;
   const ok = c.status !== null && c.status >= 200 && c.status < 300;
+  // A text that is a heading in the content as well stays (a footer column "Impressum" next to a real one).
+  const contentHeadings = headingsOf(parts).filter(
+    (h) => !read.chromeHeads.has(h) || read.contentHeads.has(h),
+  );
   const judged = judgeDocumentDetail(c.kind, {
     title: main.title,
     // Only an h1 of the content (the reader leaves out navigation, footer and hidden elements).
     h1: main.h1,
-    // A text that is a heading in the content as well stays (a footer column "Impressum" next to a real one).
-    sections: headingsOf(parts).filter((h) => !read.chromeHeads.has(h) || read.contentHeads.has(h)),
+    sections: contentHeadings,
     textLength,
   });
   const errors = documentErrors({
@@ -269,6 +272,7 @@ export async function extractDocument(
     // The markers' language decides; `lang` is the fallback.
     lang: documentLang(main.lang || null, ok ? judged.languages : []),
     parts,
+    contentHeadings,
     manifest: {
       expandablesFound: read.expandablesFound,
       // Collapsed content is read from the DOM without clicking (counted as opened when present).
