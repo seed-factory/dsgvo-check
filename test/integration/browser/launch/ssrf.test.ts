@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Lookup } from '../../../../src/core/url/net.ts';
 import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
-import { collect } from '../helpers.ts';
+import { type CollectRun, collect } from '../helpers.ts';
 
 const lookup: Lookup = async (host) => {
   if (host === 'unresolvable.example.test')
@@ -29,36 +29,48 @@ afterAll(async () => {
 const metadataHits = () => server.requestsTo('169.254.169.254').map((r) => r.path);
 
 describe('SSRF guard (documents and frames)', () => {
-  it('blocks frames to 169.254.169.254, 127.0.0.1, a private address and an unresolvable name', async () => {
-    const run = await collect(server, { network: { allowPrivateAddresses: false, lookup } });
-    expect(run.result.status).toBe('ok');
-    const blocked = run.requests.filter((r) => r.blockedByGuard);
-    expect(blocked.map((r) => r.url).sort()).toEqual([
-      'http://127.0.0.1/admin',
-      'http://169.254.169.254/latest/meta-data/',
-      // nested inside a cross-site (out-of-process) frame: covered by the browser-level session
-      'http://169.254.169.254/latest/meta-data/nested',
-      'https://intranet.example.test/',
-      'https://unresolvable.example.test/',
-    ]);
-    for (const r of blocked)
-      expect(r).toMatchObject({ state: 'blocked-by-browser', delivery: 'blocked-by-browser' });
-    expect(server.requestsTo('intranet.example.test')).toEqual([]);
-    expect(server.requestsTo('unresolvable.example.test')).toEqual([]);
-    expect(metadataHits()).toEqual([]);
-    expect(run.result.sections.browser?.guard).toMatchObject({ enabled: true, blocked: 5 });
-    // One diagnostic; its params name the address classes, `unresolved` separately.
-    const diag = run.result.diagnostics?.find((d) => d.code === 'SCAN-PRIVATE-REQUEST-BLOCKED');
-    expect(diag).toMatchObject({ affects: [], params: { count: 5 } });
-    expect(String(diag?.params?.addressClass).split(', ')).toEqual([
-      'loopback',
-      'metadata',
-      'private',
-      'unresolved',
-    ]);
-    expect(run.result.sections.browser?.knownGaps).toContain('ssrf-guard-subresources-unchecked');
-    // The public target itself is loaded normally.
-    expect(run.result.sections.browser?.phases[0]?.pages[0]).toMatchObject({ evaluable: true });
+  describe('frames to 169.254.169.254, 127.0.0.1, a private address and an unresolvable name', () => {
+    let run: CollectRun;
+
+    beforeAll(async () => {
+      run = await collect(server, { network: { allowPrivateAddresses: false, lookup } });
+    });
+
+    it('blocks every one of them, nested frames included, and loads the public target normally', () => {
+      expect(run.result.status).toBe('ok');
+      const blocked = run.requests.filter((r) => r.blockedByGuard);
+      expect(blocked.map((r) => r.url).sort()).toEqual([
+        'http://127.0.0.1/admin',
+        'http://169.254.169.254/latest/meta-data/',
+        // nested inside a cross-site (out-of-process) frame: covered by the browser-level session
+        'http://169.254.169.254/latest/meta-data/nested',
+        'https://intranet.example.test/',
+        'https://unresolvable.example.test/',
+      ]);
+      for (const r of blocked) {
+        expect(r).toMatchObject({ state: 'blocked-by-browser', delivery: 'blocked-by-browser' });
+      }
+      expect(run.result.sections.browser?.phases[0]?.pages[0]).toMatchObject({ evaluable: true });
+    });
+
+    it('never reaches the internal hosts', () => {
+      expect(server.requestsTo('intranet.example.test')).toEqual([]);
+      expect(server.requestsTo('unresolvable.example.test')).toEqual([]);
+      expect(metadataHits()).toEqual([]);
+    });
+
+    it('records the guard and one diagnostic naming the address classes, `unresolved` separately', () => {
+      expect(run.result.sections.browser?.guard).toMatchObject({ enabled: true, blocked: 5 });
+      const diag = run.result.diagnostics?.find((d) => d.code === 'SCAN-PRIVATE-REQUEST-BLOCKED');
+      expect(diag).toMatchObject({ affects: [], params: { count: 5 } });
+      expect(String(diag?.params?.addressClass).split(', ')).toEqual([
+        'loopback',
+        'metadata',
+        'private',
+        'unresolved',
+      ]);
+      expect(run.result.sections.browser?.knownGaps).toContain('ssrf-guard-subresources-unchecked');
+    });
   });
 
   it('a start page redirecting to the metadata address ends the scan as invalid input', async () => {
@@ -66,6 +78,7 @@ describe('SSRF guard (documents and frames)', () => {
       url: 'https://redir.example.test/',
       network: { allowPrivateAddresses: false, lookup },
     });
+
     expect(run.result.status).toBe('error');
     expect(run.result.fatal).toMatchObject({
       reason: 'invalid-input',
@@ -92,6 +105,7 @@ describe('SSRF guard (documents and frames)', () => {
 
   it('is off when private addresses are allowed (tests only)', async () => {
     const run = await collect(server, { maxPages: 1 });
+
     expect(run.result.sections.browser?.guard).toEqual({ enabled: false, blocked: 0 });
     expect(server.requestsTo('intranet.example.test').length).toBeGreaterThan(0);
   });
@@ -105,6 +119,7 @@ describe('SSRF guard covers new windows', () => {
       maxPages: 1,
       network: { allowPrivateAddresses: false, lookup },
     });
+
     expect(run.result.status).not.toBe('error');
     expect(metadataHits()).toEqual([]);
     expect(server.requestsTo('intranet.example.test')).toEqual([]);
@@ -120,6 +135,7 @@ describe('SSRF guard covers new windows', () => {
       deps: { cmp: stubCmpApi(), phases: ['A', 'B'] },
       network: { allowPrivateAddresses: false, lookup },
     });
+
     const b = run.result.sections.browser?.phases.find((p) => p.phase === 'B');
     expect(b?.click).toMatchObject({ action: 'reject', success: true });
     expect(metadataHits()).toEqual([]);

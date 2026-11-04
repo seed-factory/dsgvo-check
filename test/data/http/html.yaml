@@ -1,0 +1,20 @@
+# Wording the HTTP collector looks for in the HTML of a response. The collector reads a prefix of the body without a DOM,
+# so these are the few phrases it can act on: what is a site search (no form that takes user input), and which links of
+# the start page are the Impressum and the privacy policy. Entries are regular-expression fragments, matched
+# case-insensitively. The richer, language-aware lexicon of the browser collector is test/data/legal/links.yaml.
+html:
+  form:
+    # `name` of a text field that is a site search; a form with only such fields is no data form (TLS-01).
+    searchFieldNames: [s, q, search, query, suche, keyword, keywords, searchword]
+    # A form whose id or class contains one of these is a site search.
+    searchFormMarkers: [search, suche]
+
+  legalLinks:
+    # Link text of the Impressum; matched as whole words.
+    impressumText: [impressum, imprint, anbieterkennzeichnung, legal notice]
+    # Path of the Impressum.
+    impressumPath: [impressum, imprint]
+    privacyText: [datenschutz, privacy, dsgvo, data protection]
+    privacyPath: [datenschutz, privacy, dsgvo]
+    # A link text with one of these is a settings link, not the policy ("Datenschutz-Einstellungen").
+    settingsText: [einstellung, setting, cookie, widerruf, "opt-?out"]

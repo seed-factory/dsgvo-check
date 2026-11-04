@@ -4,19 +4,60 @@
 // unclosed `<a `, `<form ` or `<!--` must not cause quadratic rescanning.
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import { parseUrl } from '../../core/url/url.ts';
+import { type HtmlRules, loadHtmlRules } from './rules.ts';
 
 export const HEURISTIC_BYTES = 64 * 1024;
 
 const ATTR_RE = /([^\s=/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
+// Tag start: `<` or `</` and a name ending at whitespace, `/` or `>` (`<template-card>` is a custom element, not
+// `<template>`).
+const TAG_START = '<(/?)([a-z][^ \\t\\n\\f\\r/>]*)';
+
+// Raw-text and escapable raw-text elements (plus `<noscript>`): their content is text, not markup. The first closing
+// tag ends them; they do not nest; an unclosed one runs to the end.
+const RAW_TEXT_NAMES: ReadonlySet<string> = new Set([
+  'script',
+  'style',
+  'noscript',
+  'textarea',
+  'title',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+]);
+
+/** Closing-tag patterns by element name; `lastIndex` is set before each use. */
+const RAW_TEXT_CLOSE = new Map<string, RegExp>();
+
+// HTML input types that carry nothing the visitor types in.
+const NON_DATA_INPUTS = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'search']);
+
+// Client-side redirects: the `url=` of a meta refresh and the script patterns that set `location`.
+const META_REFRESH_URL = /url\s*=\s*['"]?([^'";]+)/i;
+const JS_LOCATION_ASSIGN = /\blocation(?:\.href)?\s*=\s*(['"`])([^'"`]+)\1\s*(?:[;\n}]|$)/;
+const JS_LOCATION_CALL = /\blocation\.(?:replace|assign)\s*\(\s*(['"`])([^'"`]+)\1\s*\)/;
+const JS_PROTOCOL_HTTPS = /\blocation\.protocol\s*=\s*['"`]https:?['"`]/;
+const JS_HTTPS_CONCAT = [
+  /\blocation(?:\.href)?\s*=\s*['"`]https:\/\/['"`]\s*\+/,
+  /\blocation\.(?:replace|assign)\s*\(\s*['"`]https:\/\/['"`]\s*\+/,
+];
+
+// Char codes of `=` and `>`, compared in the tag scanner's inner loop.
+const CHAR_EQUALS = 61;
+const CHAR_GT = 62;
+
 export function parseAttributes(tag: string): Map<string, string> {
   const out = new Map<string, string>();
   const inner = tag.replace(/^<\s*[a-z0-9-]+/i, '').replace(/\/?>$/, '');
+
   for (const m of inner.matchAll(ATTR_RE)) {
     const name = (m[1] ?? '').toLowerCase();
     if (!name || out.has(name)) continue;
     out.set(name, decodeEntities(m[2] ?? m[3] ?? m[4] ?? ''));
   }
+
   return out;
 }
 
@@ -35,6 +76,7 @@ function decodeEntities(s: string): string {
 function withoutComments(html: string): string {
   let open = html.indexOf('<!--');
   if (open < 0) return html;
+
   const parts: string[] = [];
   let pos = 0;
   while (open >= 0) {
@@ -44,27 +86,10 @@ function withoutComments(html: string): string {
     pos = close + 3;
     open = html.indexOf('<!--', pos);
   }
+
   parts.push(html.slice(pos));
   return parts.join('');
 }
-
-// Raw-text and escapable raw-text elements (plus `<noscript>`): their content is text, not markup. The first closing
-// tag ends them; they do not nest; an unclosed one runs to the end.
-const RAW_TEXT_NAMES: ReadonlySet<string> = new Set([
-  'script',
-  'style',
-  'noscript',
-  'textarea',
-  'title',
-  'xmp',
-  'iframe',
-  'noembed',
-  'noframes',
-]);
-
-// Tag start: `<` or `</` and a name ending at whitespace, `/` or `>` (`<template-card>` is a custom element, not
-// `<template>`).
-const TAG_START = '<(/?)([a-z][^ \\t\\n\\f\\r/>]*)';
 
 const isHtmlSpace = (c: number): boolean => c === 32 || c === 9 || c === 10 || c === 12 || c === 13;
 
@@ -75,10 +100,14 @@ const isHtmlSpace = (c: number): boolean => c === 32 || c === 9 || c === 10 || c
 function tagEnder(html: string): (i: number) => number {
   const lastGt = html.lastIndexOf('>');
   let dead: Uint8Array | null = null;
+
+  // Next position to look at: past a quoted attribute value after `=`, else the next character.
   const after = (i: number): number => {
-    if (html.charCodeAt(i) !== 61) return i + 1;
+    if (html.charCodeAt(i) !== CHAR_EQUALS) return i + 1;
+
     let j = i + 1;
     while (j < html.length && isHtmlSpace(html.charCodeAt(j))) j++;
+
     const q = html[j];
     if (q === '"' || q === "'") {
       const close = html.indexOf(q, j + 1);
@@ -86,19 +115,20 @@ function tagEnder(html: string): (i: number) => number {
     }
     return j;
   };
+
   return (from) => {
     if (from > lastGt) return -1;
+
     for (let i = from; i >= 0 && i < html.length; i = after(i)) {
-      if (html.charCodeAt(i) === 62) return i + 1;
+      if (html.charCodeAt(i) === CHAR_GT) return i + 1;
       if (dead !== null && dead[i] === 1) break;
     }
+
     dead ??= new Uint8Array(html.length);
     for (let i = from; i >= 0 && i < html.length && dead[i] === 0; i = after(i)) dead[i] = 1;
     return -1;
   };
 }
-
-const RAW_TEXT_CLOSE = new Map<string, RegExp>();
 
 function rawTextEnd(html: string, name: string, from: number): number {
   let close = RAW_TEXT_CLOSE.get(name);
@@ -106,6 +136,7 @@ function rawTextEnd(html: string, name: string, from: number): number {
     close = new RegExp(`</${name}\\s*>`, 'gi');
     RAW_TEXT_CLOSE.set(name, close);
   }
+
   close.lastIndex = from;
   const m = close.exec(html);
   return m ? m.index + m[0].length : html.length;
@@ -118,10 +149,12 @@ function templateEnd(html: string, from: number, tagEnd: (i: number) => number):
   const tag = new RegExp(TAG_START, 'gi');
   tag.lastIndex = from;
   let depth = 1;
+
   for (let m = tag.exec(html); m; m = tag.exec(html)) {
     const end = tagEnd(m.index + m[0].length);
     if (end < 0) continue;
     tag.lastIndex = end;
+
     const name = (m[2] as string).toLowerCase();
     if (name === 'template') {
       depth += m[1] === '/' ? -1 : 1;
@@ -130,6 +163,7 @@ function templateEnd(html: string, from: number, tagEnd: (i: number) => number):
       tag.lastIndex = rawTextEnd(html, name, end);
     }
   }
+
   return html.length;
 }
 
@@ -145,17 +179,21 @@ function markupOf(source: string): string {
   const tag = new RegExp(TAG_START, 'gi');
   let out = '';
   let pos = 0;
+
   for (let m = tag.exec(source); m; m = tag.exec(source)) {
     const end = tagEnd(m.index + m[0].length);
     if (end < 0) continue;
     tag.lastIndex = end;
+
     const name = (m[2] as string).toLowerCase();
     if (m[1] === '/' || !(name === 'template' || RAW_TEXT_NAMES.has(name))) continue;
+
     const stop = name === 'template' ? templateEnd(source, end, tagEnd) : rawTextEnd(source, name, end);
     out += source.slice(pos, m.index) + (name === 'textarea' ? '<textarea></textarea>' : ' ');
     pos = stop;
     tag.lastIndex = stop;
   }
+
   return out + source.slice(pos);
 }
 
@@ -170,10 +208,12 @@ function* elements(
 ): Generator<{ attrs: string; body: string }> {
   const open = new RegExp(`<${name}\\b`, 'gi');
   const close = new RegExp(`</${name}>`, 'gi');
+
   for (let m = open.exec(text); m; m = open.exec(text)) {
     const attrsAt = m.index + m[0].length;
     const gt = text.indexOf('>', attrsAt);
     if (gt < 0) return;
+
     close.lastIndex = gt + 1;
     const c = close.exec(text);
     if (!c) {
@@ -200,6 +240,7 @@ function* startTags(text: string, name: string): Generator<string> {
 function stripTags(text: string): string {
   let lt = text.indexOf('<');
   if (lt < 0) return text;
+
   const parts: string[] = [];
   let pos = 0;
   while (lt >= 0) {
@@ -209,6 +250,7 @@ function stripTags(text: string): string {
     pos = gt + 1;
     lt = text.indexOf('<', pos);
   }
+
   parts.push(text.slice(pos));
   return parts.join('');
 }
@@ -217,12 +259,14 @@ function openTags(markup: string, name: string): string[] {
   const tagEnd = tagEnder(markup);
   const tag = new RegExp(TAG_START, 'gi');
   const out: string[] = [];
+
   for (let m = tag.exec(markup); m; m = tag.exec(markup)) {
     const end = tagEnd(m.index + m[0].length);
     if (end < 0) continue;
     tag.lastIndex = end;
     if (m[1] !== '/' && (m[2] as string).toLowerCase() === name) out.push(markup.slice(m.index, end));
   }
+
   return out;
 }
 
@@ -242,6 +286,7 @@ function withHttps(base: string): string | null {
 export function extractMeta(html: string): { httpEquiv: HeaderRecord[]; referrer: string | null } {
   const httpEquiv: HeaderRecord[] = [];
   let referrer: string | null = null;
+
   for (const tag of openTags(documentMarkup(html), 'meta')) {
     const attrs = parseAttributes(tag);
     const equiv = attrs.get('http-equiv');
@@ -249,6 +294,7 @@ export function extractMeta(html: string): { httpEquiv: HeaderRecord[]; referrer
     if (equiv) httpEquiv.push({ name: equiv.toLowerCase(), value: content });
     if (attrs.get('name')?.toLowerCase() === 'referrer') referrer = content;
   }
+
   return { httpEquiv, referrer };
 }
 
@@ -258,78 +304,99 @@ export function detectClientRedirect(
   base: string,
 ): { kind: 'meta' | 'js'; url: string | null } | null {
   const clean = withoutComments(html);
-  for (const tag of openTags(markupOf(clean), 'meta')) {
-    const attrs = parseAttributes(tag);
-    if (attrs.get('http-equiv')?.toLowerCase() !== 'refresh') continue;
-    const target = /url\s*=\s*['"]?([^'";]+)/i.exec(attrs.get('content') ?? '');
-    return { kind: 'meta', url: target ? resolve(target[1] as string, base) : null };
-  }
+
+  const meta = metaRefreshTarget(clean, base);
+  if (meta) return { kind: 'meta', url: meta.url };
+
   for (const script of elements(clean, 'script', false)) {
-    const js = script.body;
-    const literal =
-      /\blocation(?:\.href)?\s*=\s*(['"`])([^'"`]+)\1\s*(?:[;\n}]|$)/.exec(js) ??
-      /\blocation\.(?:replace|assign)\s*\(\s*(['"`])([^'"`]+)\1\s*\)/.exec(js);
-    if (literal) return { kind: 'js', url: resolve(literal[2] as string, base) };
-    if (/\blocation\.protocol\s*=\s*['"`]https:?['"`]/.test(js)) return { kind: 'js', url: withHttps(base) };
-    if (
-      /\blocation(?:\.href)?\s*=\s*['"`]https:\/\/['"`]\s*\+/.test(js) ||
-      /\blocation\.(?:replace|assign)\s*\(\s*['"`]https:\/\/['"`]\s*\+/.test(js)
-    ) {
-      return { kind: 'js', url: withHttps(base) };
-    }
+    const js = scriptRedirectTarget(script.body, base);
+    if (js) return { kind: 'js', url: js.url };
   }
   return null;
 }
 
-const NON_DATA_INPUTS = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'search']);
-const SEARCH_NAMES = new Set(['s', 'q', 'search', 'query', 'suche', 'keyword', 'keywords', 'searchword']);
+/** The first `<meta http-equiv="refresh">` of the document. */
+function metaRefreshTarget(clean: string, base: string): { url: string | null } | null {
+  for (const tag of openTags(markupOf(clean), 'meta')) {
+    const attrs = parseAttributes(tag);
+    if (attrs.get('http-equiv')?.toLowerCase() !== 'refresh') continue;
+
+    const target = META_REFRESH_URL.exec(attrs.get('content') ?? '');
+    return { url: target ? resolve(target[1] as string, base) : null };
+  }
+  return null;
+}
+
+/** A script that assigns a literal address, or moves the page to `https` (a protocol assignment or `'https://' + …`). */
+function scriptRedirectTarget(js: string, base: string): { url: string | null } | null {
+  const literal = JS_LOCATION_ASSIGN.exec(js) ?? JS_LOCATION_CALL.exec(js);
+  if (literal) return { url: resolve(literal[2] as string, base) };
+
+  if (JS_PROTOCOL_HTTPS.test(js) || JS_HTTPS_CONCAT.some((re) => re.test(js))) {
+    return { url: withHttps(base) };
+  }
+  return null;
+}
 
 // A form that takes user input other than a site search (TLS-01). Markup inside `<script>`, `<template>`, `<noscript>`
 // or `<textarea>` is no form.
-export function detectForm(html: string): boolean {
+export function detectForm(html: string, rules: HtmlRules = loadHtmlRules()): boolean {
   const clean = documentMarkup(html);
+
   for (const f of elements(clean, 'form', true)) {
     const formAttrs = parseAttributes(`<form ${f.attrs}>`);
-    if (formAttrs.get('role')?.toLowerCase() === 'search') continue;
-    if (/search|suche/i.test(`${formAttrs.get('id') ?? ''} ${formAttrs.get('class') ?? ''}`)) continue;
-    const body = f.body;
-    if (/<(textarea|select)\b/i.test(body)) return true;
-    for (const input of startTags(body, 'input')) {
-      const attrs = parseAttributes(input);
-      const type = (attrs.get('type') ?? 'text').toLowerCase();
-      if (NON_DATA_INPUTS.has(type)) continue;
-      if (SEARCH_NAMES.has((attrs.get('name') ?? '').toLowerCase())) continue;
-      return true;
-    }
+    if (isSearchForm(formAttrs, rules)) continue;
+    if (takesUserInput(f.body, rules)) return true;
   }
   return false;
 }
 
-const IMPRESSUM_TEXT = /\b(impressum|imprint|anbieterkennzeichnung|legal notice)\b/i;
-const IMPRESSUM_HREF = /impressum|imprint/i;
-const PRIVACY_TEXT = /datenschutz|privacy|dsgvo|data protection/i;
-const PRIVACY_HREF = /datenschutz|privacy|dsgvo/i;
-const SETTINGS_TEXT = /einstellung|setting|cookie|widerruf|opt-?out/i;
+function isSearchForm(formAttrs: Map<string, string>, rules: HtmlRules): boolean {
+  if (formAttrs.get('role')?.toLowerCase() === 'search') return true;
+  return rules.searchForm.test(`${formAttrs.get('id') ?? ''} ${formAttrs.get('class') ?? ''}`);
+}
 
-export function findLegalLinks(html: string, base: string): { impressum?: string; privacy?: string } {
+function takesUserInput(formBody: string, rules: HtmlRules): boolean {
+  if (/<(textarea|select)\b/i.test(formBody)) return true;
+
+  for (const input of startTags(formBody, 'input')) {
+    const attrs = parseAttributes(input);
+    const type = (attrs.get('type') ?? 'text').toLowerCase();
+    if (NON_DATA_INPUTS.has(type)) continue;
+    if (rules.searchFieldNames.has((attrs.get('name') ?? '').toLowerCase())) continue;
+    return true;
+  }
+  return false;
+}
+
+export function findLegalLinks(
+  html: string,
+  base: string,
+  rules: HtmlRules = loadHtmlRules(),
+): { impressum?: string; privacy?: string } {
   const out: { impressum?: string; privacy?: string } = {};
+
   for (const a of elements(withoutComments(html), 'a', false)) {
     const attrs = parseAttributes(`<a ${a.attrs}>`);
     const href = attrs.get('href')?.trim() ?? '';
     if (!href || href.startsWith('#') || /^(javascript|mailto|tel):/i.test(href)) continue;
+
     const url = resolve(href, base);
     if (!url) continue;
+
     const text = decodeEntities(stripTags(a.body)).replace(/\s+/g, ' ').trim();
     const path = new URL(url).pathname;
-    if (!out.impressum && (IMPRESSUM_TEXT.test(text) || IMPRESSUM_HREF.test(path))) out.impressum = url;
-    else if (
+    if (!out.impressum && (rules.impressumText.test(text) || rules.impressumPath.test(path))) {
+      out.impressum = url;
+    } else if (
       !out.privacy &&
-      !SETTINGS_TEXT.test(text) &&
-      (PRIVACY_TEXT.test(text) || PRIVACY_HREF.test(path))
+      !rules.settingsText.test(text) &&
+      (rules.privacyText.test(text) || rules.privacyPath.test(path))
     ) {
       out.privacy = url;
     }
     if (out.impressum && out.privacy) break;
   }
+
   return out;
 }

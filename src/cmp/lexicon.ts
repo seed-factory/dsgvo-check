@@ -16,6 +16,9 @@ export const LEXICON_KINDS: readonly LexiconKind[] = [
 /** Labels longer than this are text blobs, a phrase inside them is only weak evidence. */
 const MAX_CONFIDENT_TOKENS = 8;
 
+/** An exact phrase always outscores a partial one: its score is this bonus plus the phrase length. */
+const EXACT_PHRASE_SCORE = 1000;
+
 const LexiconSchema = z.object({
   version: z.string().min(1),
   accept: z.array(z.string()),
@@ -60,6 +63,17 @@ interface PhraseMatcher {
   suffix: string | null;
 }
 
+/** A `*suffix` phrase matches any token that ends with it; any other phrase matches its token sequence. */
+function phraseMatcher(kind: LexiconKind, phrase: string): PhraseMatcher | null {
+  if (phrase.startsWith('*')) {
+    const suffix = normalizeLabel(phrase.slice(1));
+    return suffix ? { kind, phrase, tokens: [], suffix } : null;
+  }
+
+  const tokens = labelTokens(phrase);
+  return tokens.length > 0 ? { kind, phrase, tokens, suffix: null } : null;
+}
+
 const matcherCache = new WeakMap<CmpLexicon, PhraseMatcher[]>();
 
 function matchers(lexicon: CmpLexicon): PhraseMatcher[] {
@@ -68,13 +82,8 @@ function matchers(lexicon: CmpLexicon): PhraseMatcher[] {
     list = [];
     for (const kind of LEXICON_KINDS) {
       for (const phrase of lexicon[kind]) {
-        if (phrase.startsWith('*')) {
-          const suffix = normalizeLabel(phrase.slice(1));
-          if (suffix) list.push({ kind, phrase, tokens: [], suffix });
-          continue;
-        }
-        const tokens = labelTokens(phrase);
-        if (tokens.length > 0) list.push({ kind, phrase, tokens, suffix: null });
+        const matcher = phraseMatcher(kind, phrase);
+        if (matcher) list.push(matcher);
       }
     }
     matcherCache.set(lexicon, list);
@@ -109,27 +118,32 @@ function breakTie(kinds: ReadonlySet<LexiconKind>): LexiconKind | null {
     : null;
 }
 
-/**
- * Exact phrase → high; phrase inside a longer label (or a `*suffix` token) → medium (low for long text blobs); the
- * longest phrase wins; ties between kinds stay unclassified unless `breakTie` decides.
- */
-export function classifyLabel(label: string, lexicon: CmpLexicon): LabelMatch {
-  const tokens = labelTokens(label);
-  if (tokens.length === 0) return { kind: null, confidence: 'low', phrase: null };
-  let best: { score: number; exact: boolean; m: PhraseMatcher }[] = [];
+const noMatch = (): LabelMatch => ({ kind: null, confidence: 'low', phrase: null });
+
+/** How well one phrase matches the label tokens: 0 = no match; exact phrase > phrase inside the label > `*suffix`. */
+function scorePhrase(m: PhraseMatcher, tokens: string[]): { score: number; exact: boolean } {
+  if (m.suffix) return { score: tokens.some((t) => t.endsWith(m.suffix as string)) ? 1 : 0, exact: false };
+  if (m.tokens.length === tokens.length && containsSequence(tokens, m.tokens)) {
+    return { score: EXACT_PHRASE_SCORE + m.tokens.length, exact: true };
+  }
+  if (containsSequence(tokens, m.tokens)) return { score: m.tokens.length, exact: false };
+  return { score: 0, exact: false };
+}
+
+interface ScoredPhrase {
+  score: number;
+  exact: boolean;
+  m: PhraseMatcher;
+}
+
+/** The phrases with the highest score (several when they tie). */
+function bestPhrases(tokens: string[], lexicon: CmpLexicon): ScoredPhrase[] {
+  let best: ScoredPhrase[] = [];
   let bestScore = 0;
   for (const m of matchers(lexicon)) {
-    let score = 0;
-    let exact = false;
-    if (m.suffix) {
-      if (tokens.some((t) => t.endsWith(m.suffix as string))) score = 1;
-    } else if (m.tokens.length === tokens.length && containsSequence(tokens, m.tokens)) {
-      score = 1000 + m.tokens.length;
-      exact = true;
-    } else if (containsSequence(tokens, m.tokens)) {
-      score = m.tokens.length;
-    }
+    const { score, exact } = scorePhrase(m, tokens);
     if (score === 0) continue;
+
     if (score > bestScore) {
       bestScore = score;
       best = [{ score, exact, m }];
@@ -137,14 +151,28 @@ export function classifyLabel(label: string, lexicon: CmpLexicon): LabelMatch {
       best.push({ score, exact, m });
     }
   }
+  return best;
+}
+
+/**
+ * Exact phrase → high; phrase inside a longer label (or a `*suffix` token) → medium (low for long text blobs); the
+ * longest phrase wins; ties between kinds stay unclassified unless `breakTie` decides.
+ */
+export function classifyLabel(label: string, lexicon: CmpLexicon): LabelMatch {
+  const tokens = labelTokens(label);
+  if (tokens.length === 0) return noMatch();
+
+  const best = bestPhrases(tokens, lexicon);
   let top = best[0];
-  if (!top) return { kind: null, confidence: 'low', phrase: null };
+  if (!top) return noMatch();
+
   const kinds = new Set(best.map((b) => b.m.kind));
   if (kinds.size > 1) {
     const winner = breakTie(kinds);
     top = winner ? best.find((b) => b.m.kind === winner) : undefined;
-    if (!top) return { kind: null, confidence: 'low', phrase: null };
+    if (!top) return noMatch();
   }
+
   const confidence: Confidence = top.exact ? 'high' : tokens.length > MAX_CONFIDENT_TOKENS ? 'low' : 'medium';
   return { kind: top.m.kind, confidence, phrase: top.m.phrase };
 }

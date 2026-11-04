@@ -260,6 +260,8 @@ describe('derive: requests', () => {
       parseCatalog({
         catalog: base.catalog,
         categories: base.categories,
+        userSuppliedParams: base.userSuppliedParams,
+        consentMode: base.consentMode,
         allowlist: { version: '1', cookies: {} },
         services: [
           {
@@ -470,6 +472,7 @@ describe('derive: requests', () => {
     const d = derive(
       snap([makePhase('A', { requests: [req('https://x.de/a', { id: 'a', url: 'data:image/png' })] })]),
     );
+
     expect(d.requests).toEqual([]);
   });
 });
@@ -490,6 +493,7 @@ describe('derive: cookies and storage', () => {
         }),
       ]),
     );
+
     const byName = Object.fromEntries(d.cookies.map((c) => [c.key.name, c]));
     expect(byName._ga).toMatchObject({
       serviceId: 'google-analytics',
@@ -515,6 +519,7 @@ describe('derive: cookies and storage', () => {
     });
     expect(byName.vid).toMatchObject({ serviceId: 'hotjar', tracking: false, source: 'heuristic' });
     expect(byName.sess).toMatchObject({ persistent: false });
+
     // The version of the catalog allowlist is catalog data (it changes with the allowlist), not a constant here.
     expect(d.allowlistVersion).toBe(loadServiceCatalog().allowlistVersion);
   });
@@ -532,6 +537,7 @@ describe('derive: cookies and storage', () => {
         }),
       ]),
     );
+
     expect(d.storage.map((s) => [s.key, s.serviceId, s.tracking, s.allowlisted, s.persistent])).toEqual([
       ['_gcl_ls', 'google-ads', true, false, true],
       ['uc_settings', null, false, true, true],
@@ -579,6 +585,7 @@ describe('derive: service inventory (TRACK-01 stages)', () => {
         }),
       ]),
     );
+
     const meta = d.services.find((s) => s.serviceId === 'meta-pixel');
     expect(meta).toMatchObject({
       category: 'ads',
@@ -589,6 +596,7 @@ describe('derive: service inventory (TRACK-01 stages)', () => {
       pages: ['https://www.example.de/', 'https://www.example.de/kontakt'],
     });
     expect(meta?.requestIds).toEqual(['a', 'b', 'c', 'd']);
+
     expect(d.catalogVersion).toBe('0.2.0');
     expect(d.datasets).toEqual([
       {
@@ -609,11 +617,13 @@ describe('derive: service inventory (TRACK-01 stages)', () => {
         }),
       ]),
     );
+
     expect(d.services[0]).toMatchObject({ serviceId: 'hotjar', stages: [], delivered: false });
   });
 
   it('empty browser section gives an empty classification', () => {
     const d = derive(makeSnapshot({ browser: makeBrowser() }));
+
     expect(d).toMatchObject({ requests: [], cookies: [], storage: [], services: [], catalog: {} });
   });
 });
@@ -628,6 +638,23 @@ describe('helpers', () => {
     [undefined, undefined, null],
   ])('decodeConsentMode(%s, %s)', (gcs, gcd, want) => {
     expect(decodeConsentMode(gcs, gcd)).toEqual(want);
+  });
+
+  it('the gcd letters come from the catalog, not from code', () => {
+    const base = loadServiceCatalog().data;
+    const own = new ServiceCatalog(
+      parseCatalog({
+        ...base,
+        services: [],
+        consentMode: { gcdDenied: ['z'], gcdGranted: ['y'] },
+      }),
+    );
+    expect(decodeConsentMode(undefined, '11z1y1l1l', own)).toEqual({
+      adStorage: 'denied',
+      analyticsStorage: 'granted',
+      source: 'gcd',
+    });
+    expect(decodeConsentMode(undefined, '11z1y1l1l')).toBeNull();
   });
 
   it('timingOf', () => {

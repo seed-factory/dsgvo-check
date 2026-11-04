@@ -6,7 +6,7 @@ ui:
     legal advice and not a legal assessment. If a check has no finding, this does not mean that a requirement
     is met. Results may depend on location, time, consent banner configuration and detection as an automated
     visitor.
-  # Further paragraphs of the disclaimer (wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # Further paragraphs of the disclaimer. src/reporters/disclaimer.ts renders each conditional
   # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
   disclaimer.data: >-
     Values of cookies, Web Storage entries and consent strings are stored neither in clear text nor as a checksum;
@@ -45,7 +45,7 @@ ui:
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
     third-party websites are not intended for publication. The software is provided under the Apache License 2.0
     without warranty.
-  # Usage notes for `--help` and the project README (wording guide §6, 5.7).
+  # Usage notes for `--help` and the project README (section `## Nutzungshinweise`).
   usageNotes.title: "Usage notes"
   usageNotes: >-
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
@@ -73,6 +73,8 @@ ui:
   failure.invalid-timeout: "Invalid value for --timeout: {value}"
   failure.invalid-proxy: "Invalid proxy URL (only http:// is supported)."
   failure.invalid-cli-option: "Invalid value for {option}: {value}"
+  # `problems`: `NAME=value (source): reason`, separated by semicolons; values of secret settings are left out.
+  failure.invalid-config: "Invalid setting(s): {problems}"
   failure.target-nxdomain: "Target host {host} could not be resolved ({code})."
   failure.target-dns-error: "Target host {host} could not be resolved ({code})."
   failure.target-not-public: "Target host {host} resolves to non-public addresses only; the scan is intended for public websites only."
@@ -87,7 +89,8 @@ ui:
   failure.start-page-5xx: "The start page repeatedly answers with HTTP {status}."
   failure.start-page-blocked: "The start page shows a blocking or verification page ({signals})."
   failure.browser-not-installed: 'Chromium is not installed. Please run "dsgvo-check install".'
-  failure.sandbox-failed: 'The Chromium sandbox could not be started (for example an AppArmor restriction on user namespaces, or Docker without a seccomp profile). Options: use the Docker image with the bundled seccomp profile, adjust the system setting yourself, or set --sandbox off explicitly.{container, select, yes { In the Docker image: export the profile with "docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json" and start the container like this: "docker run --rm --cap-drop=ALL --security-opt no-new-privileges --security-opt seccomp=dsgvo-check-seccomp.json <image> <url>".} other {}}'
+  failure.sandbox-failed: 'The Chromium sandbox could not be started (for example an AppArmor restriction on user namespaces, or a Docker profile that blocks them). Options: adjust the system setting yourself, or set --sandbox off explicitly.{container, select, yes { The Docker image defaults to "--sandbox container"; omit the option.} other {}}'
+  failure.sandbox-container-outside-image: "--sandbox container (DSGVO_CHECK_BROWSER_SANDBOX=container) is only allowed inside the dsgvo-check Docker image, where the hardened container provides the isolation. Outside the image use require, or off deliberately."
   failure.browser-launch-failed: "Chromium could not be started: {message}"
   failure.interrupted: "Aborted by {signal}"
   failure.watchdog-timeout: "Time limit including the reserve exceeded"
@@ -103,12 +106,18 @@ ui:
   cli.proxy: "HTTP proxy (http://, CONNECT) for browser, HTTP and TLS"
   cli.assumeRegion: "Location as stated by the user: eea|de"
   cli.strict: inconclusive results, sandbox off and an unchecked region lead to exit code 2
-  cli.sandbox: "Chromium sandbox: require|off"
+  cli.sandbox: "Chromium sandbox: require|off|container (container only in the Docker image)"
   cli.noScreenshots: no screenshots of the banner
   cli.saveSnapshot: save the raw data snapshot
   cli.fromSnapshot: re-evaluate a snapshot without visiting the website
   cli.checks: "only these checks, e.g. EMBED-01,HDR-01"
   cli.verbose: verbose logs on stderr
+  cli.configNotes.title: "Settings"
+  cli.configNotes: >-
+    Thresholds, time limits and bounds can be set without flags through environment variables of the form
+    DSGVO_CHECK_<SECTION>_<NAME> or through a .env file in the current directory (template: .env.example in the
+    repository). Precedence: flag, environment variable, .env, built-in default. Without configuration the built-in
+    defaults apply.
   cli.install: Download Chromium (Chrome for Testing) for playwright-core
   cli.installWithDeps: "install system dependencies (Linux, needs root)"
   console.duration: "Duration: {seconds} s"
@@ -126,6 +135,31 @@ ui:
   console.reportWritten: "Report saved: {path}"
   console.reportWriteFailed: "Report could not be written: {path} ({message})"
   console.sandboxOff: "Warning: Chromium sandbox is disabled (--sandbox off)."
+  console.configFile: "Read settings from {path}: {count}"
+  console.configUnknown: "Ignored unknown settings: {names}"
+  # Reason a setting is refused, after `NAME=value (source): `; ids and parameters: src/core/config/problems.ts.
+  config.source.environment: "environment"
+  config.source.config: "config option"
+  config.source.default: "built-in default"
+  config.problem.integer: "expected an integer"
+  config.problem.number: "expected a number"
+  config.problem.min: "must be at least {min}"
+  config.problem.above: "must be above {min}"
+  config.problem.max: "must be at most {max}"
+  config.problem.floor: "must be at least {min}: values may only be made stricter, the scan stays passive"
+  config.problem.items-min: "needs at least {min, plural, one {# item} other {# items}}"
+  config.problem.length-min: "needs at least {min, plural, one {# character} other {# characters}}"
+  config.problem.option: "allowed values: {options}"
+  config.problem.type: "wrong type, expected {expected}"
+  config.problem.unknown-keys: "unknown keys: {keys}"
+  config.problem.proxy-scheme: "only http:// proxies (HTTP CONNECT) are supported"
+  config.problem.dns-server: "expected host, host:port or [ipv6]:port"
+  config.problem.dwell-order: "must not be below {other} ({value})"
+  config.problem.tls-days-order: "must not exceed {other} ({value})"
+  config.problem.tls-share-order: "must not exceed {other} ({value})"
+  config.problem.report-reserve: "must cover {first} plus {second} ({value}), otherwise the watchdog ends the process while reports are written"
+  config.problem.unreadable: "file cannot be read ({code})"
+  config.problem.invalid: "invalid value"
 messages:
   diagnostic.SCAN-BOTMODE:
     title: "Consent banner behaves as towards a bot"

@@ -15,8 +15,16 @@ import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot/ht
 import { browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
 
 const ID = 'TLS-01';
+/** A page of at most this size is a stub (parking page, redirect stub), not content served over http. */
 const STUB_BYTES = 1024;
 const HOST_VARIANTS: readonly HostVariant[] = ['target', 'www', 'apex'];
+
+/** A closed port or an unknown host serves nothing over http: there is nothing to evaluate. */
+const NOT_SERVING_OUTCOMES: readonly RedirectChain['outcome'][] = [
+  'connection-refused',
+  'dns-error',
+  'tls-error',
+];
 
 type HttpsState = 'ok' | 'unavailable' | 'invalid' | 'unknown';
 
@@ -80,48 +88,56 @@ function observation(
   };
 }
 
-function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain | undefined): Verdict {
-  const none: Verdict = { observations: [], undecided: false, timeout: false };
+const noVerdict = (): Verdict => ({ observations: [], undecided: false, timeout: false });
+const undecided = (timeout: boolean): Verdict => ({ observations: [], undecided: true, timeout });
+
+const hasHttpsHop = (hops: readonly HttpHop[]): boolean => hops.some((h) => h.url.startsWith('https:'));
+
+/** The first hop already goes to https on the same host: nothing to say about the redirect. */
+function isDirectHttpsRedirect(location: string, host: string): boolean {
+  try {
+    const u = new URL(location);
+    return u.protocol === 'https:' && u.hostname === host;
+  } catch {
+    return false;
+  }
+}
+
+/** The chain started on http and ended on https: only the path of the first hop is of interest. */
+function judgeUpgradedChain(finalHost: string, http: RedirectChain): Verdict {
+  const location = (http.hops[0] as HttpHop).location ?? '';
+  if (isDirectHttpsRedirect(location, http.host)) return noVerdict();
+
+  const detail = observation('redirect-chain-detail', http, finalHost, http.startUrl, [chainEvidence(http)], {
+    host: http.host,
+    url: http.startUrl,
+    location,
+    reason: location.startsWith('http:') ? 'http-first-hop' : 'other-host',
+  });
+  return { ...noVerdict(), observations: [detail] };
+}
+
+/** https of this host: its own chain; a downgrade chain itself reached https with a certificate browsers accept. */
+function httpsStateOfHost(https: RedirectChain | undefined, hops: readonly HttpHop[]): HttpsState {
+  const state = httpsState(https);
+  const reachedAcceptedHttps = hops.some(
+    (h) => h.url.startsWith('https:') && browserAcceptsTls(h.tlsAuthorized, h.tlsAuthorizationError),
+  );
+  return state === 'unknown' && reachedAcceptedHttps ? 'ok' : state;
+}
+
+/** The chain ends on http: never upgraded, or upgraded and sent back to http (downgrade). */
+function judgeChainEndingOnHttp(
+  finalHost: string,
+  http: RedirectChain,
+  https: RedirectChain | undefined,
+): Verdict {
   const hops = http.hops;
-  if (hops.length === 0) {
-    if (['connection-refused', 'dns-error', 'tls-error'].includes(http.outcome)) return none;
-    return { observations: [], undecided: true, timeout: http.outcome === 'timeout' };
-  }
-
   const last = hops.at(-1) as HttpHop;
-  const reachedHttps = hops.some((h) => h.url.startsWith('https:'));
-  if (reachedHttps && last.url.startsWith('https:')) {
-    // The chain ends on https: only the path of the first hop is of interest here.
-    const first = hops[0] as HttpHop;
-    const location = first.location ?? '';
-    let direct = false;
-    try {
-      const u = new URL(location);
-      direct = u.protocol === 'https:' && u.hostname === http.host;
-    } catch {
-      direct = false;
-    }
-    if (direct) return none;
-    return {
-      ...none,
-      observations: [
-        observation('redirect-chain-detail', http, finalHost, http.startUrl, [chainEvidence(http)], {
-          host: http.host,
-          url: http.startUrl,
-          location,
-          reason: location.startsWith('http:') ? 'http-first-hop' : 'other-host',
-        }),
-      ],
-    };
-  }
+  if (http.outcome !== 'ok' || isRedirect(last.status)) return undecided(http.outcome === 'timeout');
+  if (!isSuccess(last.status)) return noVerdict();
 
-  // The chain ends on http: never upgraded, or upgraded and sent back to http (downgrade).
-  if (http.outcome !== 'ok' || isRedirect(last.status)) {
-    return { observations: [], undecided: true, timeout: http.outcome === 'timeout' };
-  }
-  if (!isSuccess(last.status)) return none;
-
-  const downgrade = reachedHttps ? 'yes' : 'no';
+  const downgrade = hasHttpsHop(hops) ? 'yes' : 'no';
   const page = last.url;
   const observations: Observation[] = [];
   if (last.hasForm) {
@@ -139,6 +155,7 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
       ),
     );
   }
+
   const client = last.clientRedirect;
   if (client?.url?.startsWith('https:')) {
     observations.push(
@@ -152,23 +169,13 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
         'medium',
       ),
     );
-    return { ...none, observations };
+    return { ...noVerdict(), observations };
   }
-  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES) return { ...none, observations };
+  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES) return { ...noVerdict(), observations };
 
-  // https of this host: its own chain; a downgrade chain itself reached https with a certificate browsers accept.
-  let state = httpsState(https);
-  if (
-    state === 'unknown' &&
-    hops.some(
-      (h) => h.url.startsWith('https:') && browserAcceptsTls(h.tlsAuthorized, h.tlsAuthorizationError),
-    )
-  ) {
-    state = 'ok';
-  }
-  if (state === 'unknown') {
-    return { observations, undecided: true, timeout: https?.outcome === 'timeout' };
-  }
+  const state = httpsStateOfHost(https, hops);
+  if (state === 'unknown') return { observations, undecided: true, timeout: https?.outcome === 'timeout' };
+
   if (state === 'ok') {
     observations.push(
       observation('no-redirect', http, finalHost, page, [chainEvidence(http)], {
@@ -189,7 +196,19 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
       ),
     );
   }
-  return { ...none, observations };
+  return { ...noVerdict(), observations };
+}
+
+function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain | undefined): Verdict {
+  const hops = http.hops;
+  if (hops.length === 0) {
+    if (NOT_SERVING_OUTCOMES.includes(http.outcome)) return noVerdict();
+    return undecided(http.outcome === 'timeout');
+  }
+
+  const last = hops.at(-1) as HttpHop;
+  if (hasHttpsHop(hops) && last.url.startsWith('https:')) return judgeUpgradedChain(finalHost, http);
+  return judgeChainEndingOnHttp(finalHost, http, https);
 }
 
 /** Standard-port probe of a host variant (chains of an explicit target port only load the start page). */
@@ -210,35 +229,35 @@ export const tls01 = defineCheck({
   ],
   run(slice) {
     if (!chainFor(slice, 'target', 'http')) throw new Error('http section has no http chain for the target');
+    const finalHost = startFinalHost(slice.http) ?? slice.target.finalHost ?? slice.target.host;
+
     const observations: Observation[] = [];
     const limitations: string[] = [];
     let targetUndecided = false;
     let targetTimeout = false;
-    const finalHost = startFinalHost(slice.http) ?? slice.target.finalHost ?? slice.target.host;
     for (const hv of HOST_VARIANTS) {
       const http = chainFor(slice, hv, 'http');
       if (!http) continue;
+
       const v = evaluate(finalHost, http, chainFor(slice, hv, 'https'));
       observations.push(...v.observations);
-      if (v.undecided) {
-        limitations.push(`undecided:${hv}`);
-        if (hv === 'target') {
-          targetUndecided = true;
-          targetTimeout = v.timeout;
-        }
+      if (!v.undecided) continue;
+      limitations.push(`undecided:${hv}`);
+      if (hv === 'target') {
+        targetUndecided = true;
+        targetTimeout = v.timeout;
       }
     }
-    if (
-      !slice.http.chains.some(
-        (chain) =>
-          chain.scheme === 'http' &&
-          chain.host.toLowerCase() === finalHost.toLowerCase() &&
-          chain.port === undefined,
-      )
-    ) {
-      limitations.push('final-host-not-probed');
-    }
+
+    const finalHostProbed = slice.http.chains.some(
+      (chain) =>
+        chain.scheme === 'http' &&
+        chain.host.toLowerCase() === finalHost.toLowerCase() &&
+        chain.port === undefined,
+    );
+    if (!finalHostProbed) limitations.push('final-host-not-probed');
     if (slice.http.throttled) limitations.push('throttled');
+
     if (targetUndecided) {
       return {
         status: 'inconclusive',

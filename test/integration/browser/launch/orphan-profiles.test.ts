@@ -13,7 +13,7 @@ import {
   PROFILE_PREFIX,
   profilesOfPid,
   removeProfilesOfPid,
-} from '../../../../src/collectors/browser/launch/launch.ts';
+} from '../../../../src/collectors/browser/launch/profile.ts';
 import {
   type DynamicHandler,
   type FixtureServer,
@@ -71,6 +71,10 @@ function startChild(): Promise<ChildProcess> {
   });
 }
 
+/** How long to wait for the orphaned browser of a killed child to end with its parent, and how often to look. */
+const PROFILE_RELEASE_WAIT_MS = 20_000;
+const PROFILE_POLL_MS = 200;
+
 const exited = (c: ChildProcess) =>
   new Promise<void>((resolve) =>
     c.exitCode !== null || c.signalCode !== null ? resolve() : c.on('exit', () => resolve()),
@@ -78,6 +82,17 @@ const exited = (c: ChildProcess) =>
 
 const processesUsing = (dir: string) =>
   execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' }).includes(dir);
+
+/**
+ * The orphaned browser of a killed child ends with its parent (pipe transport); until then it may still write into its
+ * profile, and a profile that is written to while it is removed comes back.
+ */
+async function waitUntilProfileUnused(dir: string) {
+  const t0 = Date.now();
+  while (processesUsing(dir) && Date.now() - t0 < PROFILE_RELEASE_WAIT_MS) {
+    await new Promise((r) => setTimeout(r, PROFILE_POLL_MS));
+  }
+}
 
 describe('a scan killed with SIGKILL leaves its profile; the next scan removes it', () => {
   it('the profile of the killed process stays, names its owner, and is swept by the next collector run; a running process keeps its own', async () => {
@@ -87,22 +102,20 @@ describe('a scan killed with SIGKILL leaves its profile; the next scan removes i
     const runningPid = running.pid as number;
     const [killedProfile] = profilesOfPid(killedPid);
     const [runningProfile] = profilesOfPid(runningPid);
+
     expect(killedProfile).toBeDefined();
     expect(runningProfile).toBeDefined();
-    expect(path.basename(killedProfile as string).startsWith(PROFILE_PREFIX)).toBe(true);
+    const killedName = path.basename(killedProfile as string);
+    expect(killedName.startsWith(PROFILE_PREFIX), `unexpected profile name ${killedName}`).toBe(true);
     const marker = JSON.parse(readFileSync(path.join(killedProfile as string, OWNER_MARKER), 'utf8'));
     expect(marker).toMatchObject({ pid: killedPid, host: hostname() });
 
+    // SIGKILL runs no hook: the profile with the site's cookies is still there.
     killed.kill('SIGKILL');
     await exited(killed);
-    // No hook ran: the profile with the site's cookies is still there (the situation of the canary run).
     expect(existsSync(killedProfile as string)).toBe(true);
+    await waitUntilProfileUnused(killedProfile as string);
 
-    // The orphaned browser ends with its parent (pipe transport); until then it may still write into its profile.
-    const t0 = Date.now();
-    while (processesUsing(killedProfile as string) && Date.now() - t0 < 20_000) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
     // A new scan starts: the stale profile goes, the one of the running process stays.
     const run = await collect(server, { url: 'https://sweep.example.test/', maxPages: 1 });
     expect(run.result.status).toBe('ok');
@@ -113,12 +126,7 @@ describe('a scan killed with SIGKILL leaves its profile; the next scan removes i
     running.kill('SIGKILL');
     await exited(running);
     expect(existsSync(runningProfile as string)).toBe(true);
-    // Same as above: the orphaned browser of the killed child ends with its parent and may write into its profile
-    // until then, and a profile that is written to while it is removed comes back.
-    const t1 = Date.now();
-    while (processesUsing(runningProfile as string) && Date.now() - t1 < 20_000) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
+    await waitUntilProfileUnused(runningProfile as string);
     expect(removeProfilesOfPid(runningPid).map((n) => path.join(tmpdir(), n))).toContain(runningProfile);
     expect(existsSync(runningProfile as string)).toBe(false);
     expect(processesUsing(killedProfile as string)).toBe(false);
@@ -138,7 +146,9 @@ describe('a scan killed with SIGKILL leaves its profile; the next scan removes i
     }
     writeFileSync(path.join(dead, OWNER_MARKER), JSON.stringify({ pid: deadPid, startedAt: 1 }));
     writeFileSync(path.join(mine, OWNER_MARKER), JSON.stringify({ pid: process.pid, startedAt: 1 }));
+
     await collect(server, { url: 'https://sweep.example.test/', maxPages: 1 });
+
     expect(existsSync(dead)).toBe(false);
     expect(existsSync(unmarked)).toBe(true); // fresh and unmarked: might be a profile that is just being created
     expect(existsSync(mine)).toBe(true);

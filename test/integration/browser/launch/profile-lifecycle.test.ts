@@ -5,34 +5,48 @@ import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import type { BrowserContext, BrowserType } from 'playwright-core';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { launchPhase } from '../../../../src/collectors/browser/launch/launch.ts';
 import {
   killBrowserProcesses,
-  launchPhase,
+  pidsUsingProfile,
+} from '../../../../src/collectors/browser/launch/processes.ts';
+import {
   liveProfileDirs,
   OWNER_MARKER,
   PROFILE_PREFIX,
-  pidsUsingProfile,
   profilesOfPid,
   removeLeftoverProfilesSync,
   removeProfilesOfPid,
   removeStaleProfiles,
-} from '../../../../src/collectors/browser/launch/launch.ts';
+} from '../../../../src/collectors/browser/launch/profile.ts';
 import { defaultNetworkConfig } from '../../../../src/core/url/net.ts';
+
+/** Well past the 24 h after which a profile without an owner marker counts as stale. */
+const TWO_DAYS_MS = 48 * 3_600_000;
+/** The host name in markers written by another container that shares the temp dir. */
+const OTHER_HOST = 'other-container';
+
+/** A profile directory with a cookie file, as a browser leaves it; the owner marker is up to the caller. */
+function profileDir(root: string, name: string): string {
+  const dir = path.join(root, `${PROFILE_PREFIX}${name}`);
+  mkdirSync(path.join(dir, 'Default'), { recursive: true });
+  writeFileSync(path.join(dir, 'Default', 'Cookies'), 'x');
+  return dir;
+}
 
 describe('stale temp profiles are swept, profiles of running processes are not', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'dsgvo-sweep-test-'));
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   function profile(name: string, owner: { pid: number } | null, ageMs = 0): string {
-    const dir = path.join(root, `${PROFILE_PREFIX}${name}`);
-    mkdirSync(path.join(dir, 'Default'), { recursive: true });
-    writeFileSync(path.join(dir, 'Default', 'Cookies'), 'x');
-    // The marker as `launch` writes it, with the host of the owner.
-    if (owner)
+    const dir = profileDir(root, name);
+    // The marker as `createProfile` writes it, with the host of the owner.
+    if (owner) {
       writeFileSync(
         path.join(dir, OWNER_MARKER),
         JSON.stringify({ host: hostname(), ...owner, startedAt: 1 }),
       );
+    }
     const t = new Date(Date.now() - ageMs);
     utimesSync(dir, t, t);
     return dir;
@@ -41,11 +55,13 @@ describe('stale temp profiles are swept, profiles of running processes are not',
   it('removes the profile of a dead owner, an old profile without marker; keeps the others', () => {
     const dead = profile('dead', { pid: 999_001 });
     const alive = profile('alive', { pid: 4242 });
-    const oldUnmarked = profile('old', null, 48 * 3_600_000);
+    const oldUnmarked = profile('old', null, TWO_DAYS_MS);
     const freshUnmarked = profile('fresh', null, 1_000);
     const other = path.join(root, 'something-else');
     mkdirSync(other);
+
     const removed = removeStaleProfiles({ tmp: root, isAlive: (pid) => pid === 4242 });
+
     expect(removed.sort()).toEqual([path.basename(dead), path.basename(oldUnmarked)].sort());
     expect(existsSync(dead)).toBe(false);
     expect(existsSync(oldUnmarked)).toBe(false);
@@ -59,12 +75,15 @@ describe('stale temp profiles are swept, profiles of running processes are not',
     mkdirSync(path.join(dir, 'Default'), { recursive: true });
     writeFileSync(
       path.join(dir, OWNER_MARKER),
-      JSON.stringify({ pid: 999_003, startedAt: 1, host: 'other-container' }),
+      JSON.stringify({ pid: 999_003, startedAt: 1, host: OTHER_HOST }),
     );
+
     const removed = removeStaleProfiles({ tmp: root, isAlive: () => false, host: 'this-container' });
+
     expect(removed).not.toContain(path.basename(dir));
     expect(existsSync(dir)).toBe(true);
-    const old = new Date(Date.now() - 48 * 3_600_000);
+    // Once it is old enough, the age rule takes it.
+    const old = new Date(Date.now() - TWO_DAYS_MS);
     utimesSync(dir, old, old);
     expect(removeStaleProfiles({ tmp: root, isAlive: () => false, host: 'this-container' })).toContain(
       path.basename(dir),
@@ -73,6 +92,7 @@ describe('stale temp profiles are swept, profiles of running processes are not',
 
   it('a profile of this very process is never swept', () => {
     const mine = profile('mine', { pid: process.pid });
+
     expect(removeStaleProfiles({ tmp: root })).not.toContain(path.basename(mine));
     expect(existsSync(mine)).toBe(true);
     expect(profilesOfPid(process.pid, root)).toContain(mine);
@@ -82,6 +102,7 @@ describe('stale temp profiles are swept, profiles of running processes are not',
     const a = profile('killed-a', { pid: 777_001 });
     const b = profile('killed-b', { pid: 777_001 });
     const c = profile('other-owner', { pid: 777_002 });
+
     expect(removeProfilesOfPid(777_001, root).sort()).toEqual([path.basename(a), path.basename(b)].sort());
     expect(existsSync(c)).toBe(true);
     expect(readdirSync(root).filter((n) => n.includes('killed'))).toEqual([]);
@@ -96,11 +117,9 @@ describe('the removal by pid belongs to the owner of this host, not to every own
     for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
   });
 
-  /** A profile with the marker as `launch` writes it, or, with `host: null`, as older versions wrote it. */
+  /** A profile with the marker as `createProfile` writes it, or, with `host: null`, as older versions wrote it. */
   function profile(name: string, owner: { pid: number; host: string | null }): string {
-    const dir = path.join(root, `${PROFILE_PREFIX}${name}`);
-    mkdirSync(path.join(dir, 'Default'), { recursive: true });
-    writeFileSync(path.join(dir, 'Default', 'Cookies'), 'x');
+    const dir = profileDir(root, name);
     const { host, ...rest } = owner;
     writeFileSync(
       path.join(dir, OWNER_MARKER),
@@ -112,8 +131,9 @@ describe('the removal by pid belongs to the owner of this host, not to every own
 
   it('a shared temp dir, the same pid on two hosts: only the profile of this host is found and removed', () => {
     const own = profile('own-42', { pid: 42, host: hostname() });
-    const foreign = profile('foreign-42', { pid: 42, host: 'other-container' });
-    const foreignOtherPid = profile('foreign-43', { pid: 43, host: 'other-container' });
+    const foreign = profile('foreign-42', { pid: 42, host: OTHER_HOST });
+    const foreignOtherPid = profile('foreign-43', { pid: 43, host: OTHER_HOST });
+
     expect(profilesOfPid(42, root)).toEqual([own]);
     expect(removeProfilesOfPid(42, root)).toEqual([path.basename(own)]);
     expect(existsSync(own)).toBe(false);
@@ -124,9 +144,10 @@ describe('the removal by pid belongs to the owner of this host, not to every own
 
   it('the host can be named: the same lookup from the point of view of the other container', () => {
     const here = profile('here-44', { pid: 44, host: 'this-container' });
-    const there = profile('there-44', { pid: 44, host: 'other-container' });
-    expect(profilesOfPid(44, root, 'other-container')).toEqual([there]);
-    expect(removeProfilesOfPid(44, root, 'other-container')).toEqual([path.basename(there)]);
+    const there = profile('there-44', { pid: 44, host: OTHER_HOST });
+
+    expect(profilesOfPid(44, root, OTHER_HOST)).toEqual([there]);
+    expect(removeProfilesOfPid(44, root, OTHER_HOST)).toEqual([path.basename(there)]);
     expect(existsSync(there)).toBe(false);
     expect(existsSync(here)).toBe(true);
   });
@@ -134,6 +155,7 @@ describe('the removal by pid belongs to the owner of this host, not to every own
   it('an older marker without host is not claimed by pid (it might be a foreign one); the stale sweep still judges it', () => {
     const legacy = profile('legacy-45', { pid: 45, host: null });
     const own = profile('own-45', { pid: 45, host: hostname() });
+
     expect(profilesOfPid(45, root)).toEqual([own]);
     expect(removeProfilesOfPid(45, root)).toEqual([path.basename(own)]);
     expect(existsSync(legacy)).toBe(true);
@@ -144,10 +166,11 @@ describe('the removal by pid belongs to the owner of this host, not to every own
   });
 
   it('counterexample: a foreign profile of a live owner is not swept either, and the age rule still takes an old one', () => {
-    const foreign = profile('foreign-46', { pid: 46, host: 'other-container' });
+    const foreign = profile('foreign-46', { pid: 46, host: OTHER_HOST });
+
     expect(removeStaleProfiles({ tmp: root, isAlive: () => false, host: hostname() })).toEqual([]);
     expect(existsSync(foreign)).toBe(true);
-    const old = new Date(Date.now() - 48 * 3_600_000);
+    const old = new Date(Date.now() - TWO_DAYS_MS);
     utimesSync(foreign, old, old);
     expect(removeStaleProfiles({ tmp: root, isAlive: () => false, host: hostname() })).toEqual([
       path.basename(foreign),
@@ -161,17 +184,32 @@ describe('the removal by pid belongs to the owner of this host, not to every own
 });
 
 describe('a browser that does not close is killed by its profile, with or without pkill', () => {
+  const PROCESS_WAIT_MS = 3_000;
+  const PROBE_DIR = '/tmp/dsgvo-check-profile-abc123';
   const made: string[] = [];
   const children: ChildProcess[] = [];
+  const hasPkill = spawnSync('/bin/sh', ['-c', 'command -v pkill']).status === 0;
+
   afterEach(() => {
     for (const c of children.splice(0)) c.kill('SIGKILL');
     for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
   });
+
   const tmp = () => {
-    const d = mkdtempSync(path.join(tmpdir(), 'dsgvo-r14-'));
+    const d = mkdtempSync(path.join(tmpdir(), 'dsgvo-kill-test-'));
     made.push(d);
     return d;
   };
+
+  /** What the kernel prints for an argv: arguments separated and terminated by NUL. */
+  const cmdline = (...args: string[]) => `${args.join('\0')}\0`;
+
+  /** One process of a fake /proc: `<proc>/<pid>/cmdline`. */
+  function addProcess(proc: string, pid: string, content: string) {
+    mkdirSync(path.join(proc, pid));
+    writeFileSync(path.join(proc, pid, 'cmdline'), content);
+  }
+
   /** A process whose command line carries `--user-data-dir=<dir>` like a browser's (the compound command keeps argv). */
   function standIn(dir: string): ChildProcess {
     const c = spawn('/bin/sh', ['-c', 'sleep 30; :', 'x', `--user-data-dir=${dir}`], {
@@ -181,12 +219,15 @@ describe('a browser that does not close is killed by its profile, with or withou
     children.push(c);
     return c;
   }
+
+  /** Whether `c` has exited (within the wait). */
   const dead = (c: ChildProcess) =>
     new Promise<boolean>((resolve) => {
       if (c.exitCode !== null || c.signalCode !== null) return resolve(true);
       c.once('exit', () => resolve(true));
-      setTimeout(() => resolve(false), 3_000);
+      setTimeout(() => resolve(false), PROCESS_WAIT_MS);
     });
+
   /** `fn` with a PATH that holds no `pkill` (nor `ps`), as in the runtime image. */
   async function withoutPkill<T>(fn: () => Promise<T>): Promise<T> {
     const saved = process.env.PATH;
@@ -197,8 +238,9 @@ describe('a browser that does not close is killed by its profile, with or withou
       process.env.PATH = saved;
     }
   }
-  const hasPkill = spawnSync('/bin/sh', ['-c', 'command -v pkill']).status === 0;
-  const lines = () => {
+
+  /** A logger that collects only the warnings. */
+  const warningsLog = () => {
     const out: string[] = [];
     return {
       out,
@@ -208,42 +250,40 @@ describe('a browser that does not close is killed by its profile, with or withou
 
   it('finds the processes of a profile by the exact argument, not by a similar one', () => {
     const proc = tmp();
-    const dir = '/tmp/dsgvo-check-profile-abc123';
-    const cmd = (...args: string[]) => `${args.join('\0')}\0`;
-    const entry = (pid: string, content: string) => {
-      mkdirSync(path.join(proc, pid));
-      writeFileSync(path.join(proc, pid, 'cmdline'), content);
-    };
-    entry('101', cmd('/opt/chrome', '--headless', `--user-data-dir=${dir}`, '--disable-quic'));
-    entry('102', cmd('/opt/chrome', `--user-data-dir=${dir}-other`));
-    entry('103', cmd('/opt/chrome', `--user-data-dir=/tmp/x${dir}`));
-    entry('104', cmd('node', 'script.js', dir));
-    entry('105', '');
-    entry(String(process.pid), cmd('node', `--user-data-dir=${dir}`));
-    mkdirSync(path.join(proc, 'self'));
-    writeFileSync(path.join(proc, 'self', 'cmdline'), cmd('chrome', `--user-data-dir=${dir}`));
-    expect(pidsUsingProfile(dir, proc)).toEqual([101]);
+    addProcess(
+      proc,
+      '101',
+      cmdline('/opt/chrome', '--headless', `--user-data-dir=${PROBE_DIR}`, '--disable-quic'),
+    );
+    addProcess(proc, '102', cmdline('/opt/chrome', `--user-data-dir=${PROBE_DIR}-other`));
+    addProcess(proc, '103', cmdline('/opt/chrome', `--user-data-dir=/tmp/x${PROBE_DIR}`));
+    addProcess(proc, '104', cmdline('node', 'script.js', PROBE_DIR));
+    addProcess(proc, '105', '');
+    addProcess(proc, String(process.pid), cmdline('node', `--user-data-dir=${PROBE_DIR}`));
+    addProcess(proc, 'self', cmdline('chrome', `--user-data-dir=${PROBE_DIR}`));
+
+    expect(pidsUsingProfile(PROBE_DIR, proc)).toEqual([101]);
   });
 
   it('no process table (no /proc): the answer is "unknown", not "none"', () => {
-    expect(pidsUsingProfile('/tmp/dsgvo-check-profile-abc123', path.join(tmp(), 'missing'))).toBeNull();
+    expect(pidsUsingProfile(PROBE_DIR, path.join(tmp(), 'missing'))).toBeNull();
   });
 
   it('kills what the process table names, nothing else', async () => {
     const proc = tmp();
-    mkdirSync(path.join(proc, '4001'));
-    writeFileSync(path.join(proc, '4001', 'cmdline'), 'chrome\0--user-data-dir=/tmp/p1\0');
-    mkdirSync(path.join(proc, '4002'));
-    writeFileSync(path.join(proc, '4002', 'cmdline'), 'chrome\0--user-data-dir=/tmp/p2\0');
+    addProcess(proc, '4001', cmdline('chrome', '--user-data-dir=/tmp/p1'));
+    addProcess(proc, '4002', cmdline('chrome', '--user-data-dir=/tmp/p2'));
     const killed: number[] = [];
-    const l = lines();
+    const l = warningsLog();
+
     await killBrowserProcesses('/tmp/p1', { procRoot: proc, kill: (pid) => killed.push(pid), log: l.log });
+
     expect(killed).toEqual([4001]);
     expect(l.out).toEqual([]);
   });
 
   it('a stand-in browser of a hanging close is gone after the budget although pkill is missing', async () => {
-    const lg = lines();
+    const lg = warningsLog();
     let child: ChildProcess | undefined;
     const chromium = {
       launchPersistentContext: async (dir: string) => {
@@ -255,10 +295,12 @@ describe('a browser that does not close is killed by its profile, with or withou
       { chromium, sandbox: 'off', network: defaultNetworkConfig(), closeBudgetMs: 250, log: lg.log },
       'test-agent',
     );
+
     await withoutPkill(() => b.close());
+
     expect(child).toBeDefined();
     if (process.platform === 'linux') {
-      expect(await dead(child as ChildProcess)).toBe(true);
+      expect(await dead(child as ChildProcess), 'the stand-in browser is still running').toBe(true);
       expect(lg.out).toEqual([]);
     } else {
       // No /proc and no pkill: it cannot be killed, and the report of the scan says so (no profile path in the line).
@@ -272,15 +314,19 @@ describe('a browser that does not close is killed by its profile, with or withou
     const dir = tmp();
     const child = standIn(dir);
     await new Promise((r) => setTimeout(r, 150));
-    const l = lines();
+    const l = warningsLog();
+
     await killBrowserProcesses(dir, { procRoot: path.join(tmp(), 'missing'), log: l.log });
-    expect(await dead(child)).toBe(true);
+
+    expect(await dead(child), 'the stand-in browser is still running').toBe(true);
     expect(l.out).toEqual([]);
   });
 
   it('nothing to kill is no failure: no warning when the browser is already gone', async () => {
-    const l = lines();
+    const l = warningsLog();
+
     await killBrowserProcesses('/tmp/dsgvo-check-profile-nobody', { log: l.log });
+
     if (process.platform === 'linux' || hasPkill) expect(l.out).toEqual([]);
   });
 });
@@ -306,8 +352,10 @@ describe('closing a phase browser removes its profile exactly once', () => {
     const dir = dirs[0] as string;
     expect(existsSync(dir)).toBe(true);
     expect(liveProfileDirs()).toContain(dir);
+
     void b.close(); // e.g. the abort handler, not awaited
     await b.close(); // e.g. the finally block of run
+
     expect(existsSync(dir)).toBe(false);
     expect(liveProfileDirs()).not.toContain(dir);
   });
@@ -322,7 +370,9 @@ describe('closing a phase browser removes its profile exactly once', () => {
     expect(existsSync(dir)).toBe(true);
     // Last exit listener: it runs after Playwright's own handler has killed the browser.
     expect(process.listeners('exit').at(-1)).toBe(removeLeftoverProfilesSync);
+
     removeLeftoverProfilesSync();
+
     expect(existsSync(dir)).toBe(false);
     expect(liveProfileDirs()).not.toContain(dir);
   });

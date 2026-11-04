@@ -1,12 +1,13 @@
 # Ruleset de-2026, module browser. Per (checkId, variant): default severity and CRM catalog code.
 # Draft until signed off by the customer (_profile.yaml). The confidence cap applies on top (medium ≤ warning,
-# low ≤ info). `locked: true` documents 5.4/5.5 (not raisable by overrides); enforcement belongs to core.
-# crm: code from specs/dsgvo-check_katalog-proverok.md or explicit null, JSON report only (5.6). null: "Banner nicht
-# erkannt" / "CMP nicht unterstützt" (5.5) and info variants that only record a weaker technical signal the catalog
+# low ≤ info). `locked: true` marks levels that overrides must not raise (banner not recognised, CMP not supported;
+# AGENTS.md rule 5); enforcement belongs to core.
+# crm: code from specs/dsgvo-check_katalog-proverok.md or explicit null, JSON report only. null: "Banner nicht
+# erkannt" / "CMP nicht unterstützt" and info variants that only record a weaker technical signal the catalog
 # finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect only, unresolved link,
 # category-only or ambiguous text, non-identifier storage, consent cookie UID, CONNECT only, Pur-Abo). These stay
-# null until the customer maps them (03-checks Q2).
-# The variant table in docs/03-checks.md §2.1 is generated from these files (`corepack pnpm registry`).
+# null until the customer maps them.
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   CONSENT-01:
     gating: true

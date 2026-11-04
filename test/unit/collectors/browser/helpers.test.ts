@@ -112,16 +112,17 @@ describe('classifyLaunchError (5.2)', () => {
     });
   });
 
-  it('inside the dsgvo-check image the message names the seccomp profile and the exact docker run line', () => {
+  it('inside the dsgvo-check image the message points to the default container mode, outside it does not', () => {
     const err = new Error('Failed to launch: No usable sandbox!');
     const texts = loadTexts('de');
     const text = (env: Record<string, string>) => {
       const fatal = classifyLaunchError(err, 'require', env);
       return uiText(texts, `failure.${fatal.code}`, fatal.params);
     };
-    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).toContain('seccomp-profile > dsgvo-check-seccomp.json');
-    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).toContain('--security-opt seccomp=dsgvo-check-seccomp.json');
-    expect(text({})).not.toContain('docker run');
+    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).toContain('--sandbox container');
+    expect(text({})).not.toContain('--sandbox container');
+    expect(text({ DSGVO_CHECK_CONTAINER: '1' })).not.toMatch(/seccomp/i);
+    expect(text({})).not.toMatch(/seccomp/i);
   });
 });
 

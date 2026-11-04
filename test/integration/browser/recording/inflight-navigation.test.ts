@@ -94,8 +94,8 @@ describe('requests of an earlier page that never end', () => {
   ] as const) {
     it(`do not hold the next pages of the phase until HARD_CAP: ${name}`, async () => {
       const run = await collect(server, { url: `https://${host}/` });
-      const phase = run.result.sections.browser?.phases[0];
-      const pages = phase?.pages ?? [];
+
+      const pages = run.result.sections.browser?.phases[0]?.pages ?? [];
       expect(pages.map((p) => p.url.replace(/^https:\/\/[^/]+/, ''))).toEqual(
         expect.arrayContaining(['/', '/impressum/', '/datenschutz/']),
       );
@@ -110,6 +110,7 @@ describe('requests of an earlier page that never end', () => {
 
   it('stay in the snapshot as they were observed: no response, no end', async () => {
     const run = await collect(server, { url: 'https://hang.example.test/' });
+
     const forever = run.requests.filter((r) => r.url.includes('/forever/'));
     expect(forever).toHaveLength(3);
     for (const r of forever) {
@@ -120,6 +121,7 @@ describe('requests of an earlier page that never end', () => {
 
   it('counterexample: on the page that makes them they still hold the wait up to HARD_CAP', async () => {
     const run = await collect(server, { url: 'https://hang.example.test/' });
+
     const start = run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'start');
     expect(start?.navigation.quietReached).toBe(false);
     expect(start?.navigation.dwellMs).toBeGreaterThanOrEqual(HARD_CAP_MS);
@@ -127,6 +129,7 @@ describe('requests of an earlier page that never end', () => {
 
   it('control: a site without hanging requests is quiet on every page', async () => {
     const run = await collect(server, { url: 'https://quiet.example.test/' });
+
     const pages = run.result.sections.browser?.phases[0]?.pages ?? [];
     expect(pages.length).toBeGreaterThanOrEqual(3);
     for (const p of pages) expect(p.navigation.quietReached).toBe(true);

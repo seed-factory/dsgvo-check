@@ -3,7 +3,8 @@
 
 import { safeDecode } from '../../../core/url/email.ts';
 import { QUERY_VALUE_RULES, sanitizeUrl } from '../../../core/url/url.ts';
-import { IDENTIFIER_PARAMS, REQUEST_QUERY_ALLOWLIST } from '../config.ts';
+import { REQUEST_QUERY_ALLOWLIST } from '../config.ts';
+import { loadIdentifierRules } from '../rules.ts';
 
 export interface RequestFeatures {
   identifierNames: string[];
@@ -13,22 +14,11 @@ export interface RequestFeatures {
   consentSignals?: { gcs?: string; gcd?: string; npa?: string; dma?: string };
 }
 
-const CONSENT_KEYS = ['gcs', 'gcd', 'npa', 'dma'] as const;
-// Identifier names that sync and conversion endpoints carry in the URL path (Floodlight and Google matrix parameters,
-// Audience Manager sync). Read before `sanitizeUrl` redacts the path; the catalog decides which are persistent
-// identifiers.
-const PATH_IDENTIFIER_PARAMS: ReadonlySet<string> = new Set([
-  'dpuuid',
-  '_dc_unique_id',
-  'dc_dbm_token',
-  'dc_pre',
-  'dc_ext_key',
-  'gdid',
-]);
 const MAX_PATH_PARAMS = 200;
-/** GA4 `en`, Meta Pixel `ev`; `t` counts only as a Universal Analytics hit type. */
-const EVENT_KEYS = ['en', 'ev'] as const;
+/** Larger bodies are not parsed for query-like pairs. */
 const MAX_BODY = 16 * 1024;
+/** Cap of a kept event type or consent signal value. */
+const MAX_SIGNAL_CHARS = 64;
 
 export const REQUEST_FEATURES_VERSION = 'request-features/2';
 
@@ -69,6 +59,7 @@ export function pathParameters(pathname: string): Array<[name: string, value: st
 }
 
 export function extractRequestFeatures(url: string, postData: string | null): RequestFeatures {
+  const rules = loadIdentifierRules();
   const names = new Set<string>();
   const values: string[] = [];
   let eventType: string | undefined;
@@ -80,33 +71,36 @@ export function extractRequestFeatures(url: string, postData: string | null): Re
   } catch {
     parsed = null;
   }
+
   for (const params of paramSets(url, postData)) {
     for (const [rawKey, value] of params) {
       const key = rawKey.toLowerCase();
-      if (IDENTIFIER_PARAMS.has(key) && value.trim() !== '') {
+      if (rules.params.has(key) && value.trim() !== '') {
         names.add(rawKey);
         values.push(value);
       }
-      if (eventType === undefined && (EVENT_KEYS as readonly string[]).includes(key) && value) {
-        eventType = value.slice(0, 64);
+      if (eventType === undefined && rules.eventParams.includes(key) && value) {
+        eventType = value.slice(0, MAX_SIGNAL_CHARS);
       }
       if (hitType === undefined && key === 't' && parsed && QUERY_VALUE_RULES.t?.(value, parsed)) {
-        hitType = value.slice(0, 64);
+        hitType = value.slice(0, MAX_SIGNAL_CHARS);
       }
-      if ((CONSENT_KEYS as readonly string[]).includes(key) && value && consent[key] === undefined) {
-        consent[key] = value.slice(0, 64);
+      if (rules.consentModeParams.includes(key) && value && consent[key] === undefined) {
+        consent[key] = value.slice(0, MAX_SIGNAL_CHARS);
       }
     }
   }
+
   if (parsed) {
     for (const [rawKey, value] of pathParameters(parsed.pathname)) {
       const key = rawKey.toLowerCase();
-      if ((IDENTIFIER_PARAMS.has(key) || PATH_IDENTIFIER_PARAMS.has(key)) && value.trim() !== '') {
+      if ((rules.params.has(key) || rules.pathParams.has(key)) && value.trim() !== '') {
         names.add(rawKey);
         values.push(value);
       }
     }
   }
+
   eventType ??= hitType;
   return {
     identifierNames: [...names].sort(),
@@ -139,6 +133,7 @@ export function parseSetCookies(headers: readonly string[]): SetCookieAttrs[] {
       if (eq <= 0) continue;
       const name = pair.slice(0, eq).trim();
       if (!name) continue;
+
       const c: SetCookieAttrs = { name, partitioned: false };
       for (const a of attrs) {
         const i = a.indexOf('=');

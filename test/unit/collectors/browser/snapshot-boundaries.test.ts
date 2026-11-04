@@ -30,14 +30,19 @@ describe('SSRF guard: a name that does not resolve locally fails closed', () => 
 
   it('lookup error → unresolved → blocked (a proxy could resolve the name to a private address)', async () => {
     const classify = hostClassifier({ ...defaultNetworkConfig(), lookup: failing });
+
     const v = await urlVerdict('http://metadata.internal/latest/', classify);
+
     expect(v).toBe('unresolved');
-    expect(blocks(v)).toBe(true);
+    expect(blocks(v), 'an unresolved verdict blocks the navigation').toBe(true);
   });
 
   it('empty answer → blocked', async () => {
     const classify = hostClassifier({ ...defaultNetworkConfig(), lookup: async () => [] });
-    expect(blocks(await urlVerdict('https://nodata.example.de/', classify))).toBe(true);
+
+    const verdict = await urlVerdict('https://nodata.example.de/', classify);
+
+    expect(blocks(verdict), `verdict ${verdict}`).toBe(true);
   });
 
   it('public and non-http(s) documents still pass', async () => {
@@ -45,8 +50,12 @@ describe('SSRF guard: a name that does not resolve locally fails closed', () => 
       ...defaultNetworkConfig(),
       lookup: async () => [{ address: '93.184.215.14', family: 4 }],
     });
-    expect(blocks(await urlVerdict('https://www.example.de/', classify))).toBe(false);
-    expect(blocks(await urlVerdict('about:blank', classify))).toBe(false);
+
+    const publicVerdict = await urlVerdict('https://www.example.de/', classify);
+    const blankVerdict = await urlVerdict('about:blank', classify);
+
+    expect(blocks(publicVerdict), `verdict ${publicVerdict}`).toBe(false);
+    expect(blocks(blankVerdict), `verdict ${blankVerdict}`).toBe(false);
   });
 
   it('a transient resolver error is retried once', async () => {
@@ -57,6 +66,7 @@ describe('SSRF guard: a name that does not resolve locally fails closed', () => 
       return [{ address: '10.0.0.5', family: 4 }];
     };
     const classify = hostClassifier({ ...defaultNetworkConfig(), lookup });
+
     expect(await classify('intranet.example.test')).toBe('private');
     expect(calls).toBe(2);
   });
@@ -69,6 +79,7 @@ describe('SSRF guard: a name that does not resolve locally fails closed', () => 
       return [{ address: '10.0.0.5', family: 4 }];
     };
     const classify = hostClassifier({ ...defaultNetworkConfig(), lookup });
+
     expect(await classify('intranet.example.test')).toBe('unresolved');
     expect(await classify('intranet.example.test')).toBe('private');
   });
@@ -139,8 +150,10 @@ describe('cookie setter URLs are sanitized wherever a record is created', () => 
     };
     const { context, page } = fakeBrowser(state);
     const jar = new JarTracker(target, new Map());
+
     await jar.snapshot(context, page, pre);
     jar.finalize(pre);
+
     const rec = jar.cookies.find((c) => c.name === '_visitor');
     expect(rec).toMatchObject({ state: 'attempted', setter: 'script', setterHost: 'cdn.tracker.example' });
     expect(rec?.setterUrl).toBe(
@@ -155,6 +168,7 @@ describe('cookie setter URLs are sanitized wherever a record is created', () => 
       setterHost: 'cdn.example.de',
       setterUrl: 'https://cdn.example.de/a.js?token=secret',
     });
+
     expect(rec.setterUrl).toBe('https://cdn.example.de/a.js?token=[redacted]');
   });
 });
@@ -181,6 +195,7 @@ describe('response headers of documents are minimized before the snapshot', () =
 
   it('no query value, per-request id or cookie value survives', () => {
     const json = JSON.stringify(headers());
+
     for (const s of ['secret1', 'secret2', 'secret3', 'secret4', 'secret5', 'secret6', 'secret7', 'secret8'])
       expect(json).not.toContain(s);
   });
@@ -200,7 +215,7 @@ describe('response headers of documents are minimized before the snapshot', () =
   it('other headers are kept by name only (5.3: header `present`); Set-Cookie is not kept at all', () => {
     expect(get('x-amz-cf-id')).toBe('[redacted]');
     expect(get('traceparent')).toBe('[redacted]');
-    expect(headers().some((h) => h.name === 'set-cookie')).toBe(false);
+    expect(headers().map((h) => h.name)).not.toContain('set-cookie');
   });
 });
 
@@ -259,7 +274,9 @@ describe('documents with same-origin frames', () => {
         ],
       }),
     ]);
+
     const doc = await extractDocument(page, docCtx);
+
     const ga = doc.parts.find((p) => p.text.includes('Google Analytics'));
     expect(ga).toMatchObject({
       origin: 'hidden-irrelevant',
@@ -272,7 +289,9 @@ describe('documents with same-origin frames', () => {
     const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
       rawDoc({ parts: [{ section: '2', text: 'Teil im Frame.', origin: 'visible' }], truncated: true }),
     ]);
+
     const doc = await extractDocument(page, docCtx);
+
     expect(doc.complete).toBe(false);
     expect(doc.errors).toContain('truncated');
   });
@@ -292,7 +311,9 @@ describe('documents with same-origin frames', () => {
         }),
       ],
     );
+
     const doc = await extractDocument(page, docCtx);
+
     expect(doc.manifest).toMatchObject({ expandablesFound: 3, expandablesOpened: 1, framesIncluded: 1 });
     expect(doc.errors).toContain('expand-failed');
     expect(doc.complete).toBe(false);
@@ -302,7 +323,9 @@ describe('documents with same-origin frames', () => {
     const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
       new Error('frame.evaluate: Execution context was destroyed'),
     ]);
+
     const doc = await extractDocument(page, docCtx);
+
     expect(doc.errors).toContain('frame-unreadable');
     expect(doc.complete).toBe(false);
   });
@@ -311,7 +334,9 @@ describe('documents with same-origin frames', () => {
     const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
       rawDoc({ parts: [{ section: '2', text: 'Teil im Frame.', origin: 'visible' }] }),
     ]);
+
     const doc = await extractDocument(page, docCtx);
+
     expect(doc.errors).toEqual([]);
     expect(doc.complete).toBe(true);
   });
@@ -342,6 +367,7 @@ describe('writes after the click are recorded even when the key existed before',
     const jar = new JarTracker(target, origins);
     await jar.snapshot(context, page, pre);
     jar.markClick(clickAt);
+
     // After the reject: _ga re-set by script with a new value, _fbp re-written by script with the same value, _gid
     // re-sent by the server; pref untouched; _late written by script BEFORE the click (seen only now).
     state.cookies = [
@@ -367,6 +393,7 @@ describe('writes after the click are recorded even when the key existed before',
       afterClick: true,
     });
     await jar.snapshot(context, page, post);
+
     const flags = (n: string) => jar.cookies.filter((c) => c.name === n).map((c) => c.afterClick);
     expect(flags('_ga')).toEqual([false, true]);
     expect(flags('_fbp')).toEqual([false, true]);
@@ -377,6 +404,7 @@ describe('writes after the click are recorded even when the key existed before',
       tRef: 'click',
       state: 'accepted',
     });
+
     // A later snapshot does not add a third record.
     await jar.snapshot(context, page, { ...post, tMs: 900 });
     expect(flags('_ga')).toEqual([false, true]);
@@ -401,8 +429,10 @@ describe('writes after the click are recorded even when the key existed before',
     const jar = new JarTracker(target, new Map());
     await jar.snapshot(context, page, pre);
     jar.markClick(clickAt);
+
     state.storageWrites.push({ type: 'localStorage', key: '_ga4_session', t: clickAt + 20 });
     await jar.snapshot(context, page, post);
+
     const flags = (k: string) => jar.storage.filter((s) => s.key === k).map((s) => s.afterClick);
     expect(flags('_ga4_session')).toEqual([false, true]);
     expect(flags('theme')).toEqual([false]);
@@ -418,8 +448,10 @@ describe('writes after the click are recorded even when the key existed before',
     const { context, page } = fakeBrowser(state);
     const jar = new JarTracker(target, new Map());
     await jar.snapshot(context, page, pre);
+
     state.cookies = [cookie('_ga', 'GA1.1.222', 2_000_000_100)];
     await jar.snapshot(context, page, { ...pre, tMs: 900 });
+
     expect(jar.cookies.filter((c) => c.name === '_ga')).toHaveLength(1);
   });
 });
@@ -435,12 +467,14 @@ describe('verification of the reject before and after the reload', () => {
 
   it('not confirmed right after the click, confirmed after the reload → verified, with a limitation marker', () => {
     const out = combineVerify(v(false, ['api:not-all-denied']), v(true, ['api:all-denied']));
+
     expect(out).toMatchObject({ verified: true, persistedAfterReload: true });
     expect(out?.method).toContain('verified-after-reload-only');
   });
 
   it('confirmed right after the click and after the reload → verified, persisted', () => {
     const out = combineVerify(v(true, ['api:all-denied']), v(true, ['api:all-denied']));
+
     expect(out).toMatchObject({ verified: true, persistedAfterReload: true });
     expect(out?.method).not.toContain('verified-after-reload-only');
   });

@@ -1,6 +1,6 @@
 # Finding texts (de), module dns. ICU-like templates: {param}, {n, plural, …}, {x, select, …}.
-# Keys follow the registry docs/03-checks.md §2.1. Wording: "beobachtet", "nicht gefunden in …" — no legal
-# verdicts (stop-word test). Textentwurf.
+# Keys are the variants of test/data/ruleset (`<checkId>.<variant>`). Wording: "beobachtet", "nicht gefunden in …" —
+# no legal verdicts (stop-word test). Textentwurf.
 draft: true
 messages:
   MAIL-01.record-not-found:

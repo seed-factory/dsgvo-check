@@ -12,7 +12,7 @@ import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
 const cli = path.join(REPO_ROOT, 'src/cli.ts');
 
 /**
- * Loopback-only (test/README.md): a preload makes the resolver answer ENOTFOUND for every host and log each lookup.
+ * Loopback-only, no internet: a preload makes the resolver answer ENOTFOUND for every host and log each lookup.
  */
 function run(...args: string[]) {
   const lookupLog = path.join(mkdtempSync(path.join(tmpdir(), 'cli-dns-')), 'lookups.log');
@@ -33,7 +33,7 @@ describe('dsgvo-check CLI', () => {
     expect(r.stdout).toContain('install');
   });
 
-  it('help carries the Nutzungshinweise (wording guide §6: own sites, UA token, phase C, DNS with --proxy)', () => {
+  it('help carries the Nutzungshinweise (own sites, UA token, phase C, DNS with --proxy)', () => {
     const r = run('--help');
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('Nutzungshinweise');
@@ -67,7 +67,9 @@ describe('dsgvo-check CLI', () => {
     [['https://does-not-exist.invalid'], 'unreachable'],
   ])('%j → 2 with a valid failed report', (args, reason) => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
+
     const r = run(...args, '--out', out);
+
     expect(r.status).toBe(2);
     const file = path.join(out, 'report.json');
     expect(existsSync(file)).toBe(true);
@@ -80,6 +82,7 @@ describe('dsgvo-check CLI', () => {
   it('the unreachable target is resolved only by the offline test resolver', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
     const r = run('https://does-not-exist.invalid', '--out', out);
+
     expect(r.status).toBe(2);
     expect(r.lookups).toEqual(['does-not-exist.invalid']);
     const report = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
@@ -92,6 +95,7 @@ describe('dsgvo-check CLI', () => {
   ])('a target with credentials and query (%s) is redacted in report.json and stderr', (_n, extra) => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
     const r = run('https://demo-user:demo-password@example.de/?sid=demo-session', ...extra, '--out', out);
+
     expect(r.status).toBe(2);
     const json = readFileSync(path.join(out, 'report.json'), 'utf8');
     expectValidReport(JSON.parse(json));

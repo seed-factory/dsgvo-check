@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import { renderPdf } from '../../../../src/reporters/pdf.ts';
@@ -28,10 +29,12 @@ describe('optional PDF output', () => {
     const report = sampleFullReport();
     const outDir = outputDir();
     vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
+
     const result = await writeReports(
       { report, snapshot: null, exitCode: 1 },
       { outDir, formats: ['json', 'html', 'pdf'], lang: 'en' },
     );
+
     expect(result.exitCode).toBe(1);
     expect(result.warnings).toEqual([]);
     const html = readFileSync(path.join(outDir, 'report.html'), 'utf8');
@@ -46,13 +49,15 @@ describe('optional PDF output', () => {
   it('renders HTML only in memory for PDF-only output', async () => {
     const outDir = outputDir();
     vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
+
     await writeReports(
       { report: sampleFullReport(), snapshot: null, exitCode: 0 },
       { outDir, formats: ['pdf'], lang: 'en' },
     );
+
     expect(renderPdf).toHaveBeenCalledOnce();
-    expect(existsSync(path.join(outDir, 'report.html'))).toBe(false);
-    expect(existsSync(path.join(outDir, 'report.pdf'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'report.html')), 'no HTML file for PDF-only output').toBe(false);
+    expect(existsSync(path.join(outDir, 'report.pdf')), 'the PDF is written').toBe(true);
   });
 
   it('printing failure removes a stale PDF and preserves the scan code, reasons and JSON', async () => {
@@ -61,10 +66,12 @@ describe('optional PDF output', () => {
     const outDir = outputDir();
     writeFileSync(path.join(outDir, 'report.pdf'), 'stale report');
     vi.mocked(renderPdf).mockRejectedValue(new Error('Chromium unavailable: private site data'));
+
     const result = await writeReports(
       { report, snapshot: null, exitCode: 1 },
       { outDir, formats: ['json', 'pdf'], lang: 'en' },
     );
+
     expect(result.exitCode).toBe(1);
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([uiText(loadTexts('en'), 'report.pdf.skipped')]);
@@ -73,23 +80,52 @@ describe('optional PDF output', () => {
     expect(JSON.parse(readFileSync(path.join(outDir, 'report.json'), 'utf8')).summary).toEqual(
       report.summary,
     );
-    expect(existsSync(path.join(outDir, 'report.pdf'))).toBe(false);
+    expect(existsSync(path.join(outDir, 'report.pdf')), 'the stale PDF is removed').toBe(false);
   });
 
   it('times out a stalled PDF without changing the report or exit code', async () => {
     const outDir = outputDir();
     const report = sampleFullReport();
     vi.mocked(renderPdf).mockImplementation(() => new Promise(() => {}));
+
     const result = await writeReports(
       { report, snapshot: null, exitCode: 1 },
       { outDir, formats: ['json', 'pdf'], lang: 'en', pdf: { timeoutMs: 20 } },
     );
+
     expect(result.exitCode).toBe(1);
     expect(result.errors).toEqual([]);
     expect(JSON.parse(readFileSync(path.join(outDir, 'report.json'), 'utf8')).summary).toEqual(
       report.summary,
     );
-    expect(existsSync(path.join(outDir, 'report.pdf'))).toBe(false);
+    expect(existsSync(path.join(outDir, 'report.pdf')), 'no PDF after the timeout').toBe(false);
+  });
+
+  it('hands the limits of the settings to the printer and keeps the watchdog from cutting it short', async () => {
+    const config = parseConfigInput({ pdf: { timeoutMs: 30_000 }, scan: { reportWriteReserveMs: 45_000 } });
+    vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
+    const outDir = outputDir();
+
+    // 40 s are left before the watchdog, more than the 30 s PDF limit of the settings: the PDF is printed
+    const printed = await writeReports(
+      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
+      { outDir, formats: ['pdf'], lang: 'en', config, watchdogDeadline: Date.now() + 40_000 },
+    );
+    expect(printed.warnings).toEqual([]);
+    expect(renderPdf).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ limits: expect.objectContaining({ pdfTimeoutMs: 30_000 }) }),
+      undefined,
+    );
+
+    // 20 s are less than the PDF limit: the PDF is skipped instead of being cut short by the watchdog
+    vi.mocked(renderPdf).mockClear();
+    const skipped = await writeReports(
+      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
+      { outDir: outputDir(), formats: ['pdf'], lang: 'en', config, watchdogDeadline: Date.now() + 20_000 },
+    );
+    expect(renderPdf).not.toHaveBeenCalled();
+    expect(skipped.warnings).toEqual([uiText(loadTexts('en'), 'report.pdf.skipped')]);
   });
 
   it('does not launch Chromium unless PDF was requested', async () => {
@@ -98,7 +134,8 @@ describe('optional PDF output', () => {
       { report: sampleFullReport(), snapshot: null, exitCode: 0 },
       { outDir, formats: ['json', 'html'], lang: 'en' },
     );
+
     expect(renderPdf).not.toHaveBeenCalled();
-    expect(existsSync(path.join(outDir, 'report.pdf'))).toBe(false);
+    expect(existsSync(path.join(outDir, 'report.pdf')), 'no PDF file without the pdf format').toBe(false);
   });
 });

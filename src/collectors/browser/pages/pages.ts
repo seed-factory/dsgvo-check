@@ -24,14 +24,13 @@ import {
 } from '../legal/lexicon.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
+import { loadPageRules, type PageRules } from '../rules.ts';
 import { type Robots, robotsAllows } from './robots.ts';
 
 export type { LegalKind } from '../legal/lexicon.ts';
 export { pageKey };
 
 export const LEGAL_KINDS: readonly LegalKind[] = ['impressum', 'privacy'];
-/** Conventional paths probed once per kind when no link led to the document. */
-export const FALLBACK_PATHS: Record<LegalKind, string> = { impressum: '/impressum', privacy: '/datenschutz' };
 
 export interface CandidateLink {
   /** In memory only; may contain query values. */
@@ -90,36 +89,15 @@ export interface PageSelection {
   extrasWanted: number;
 }
 
-const EXTRA_KEYWORDS = [
-  'video',
-  'über uns',
-  'ueber-uns',
-  'about',
-  'team',
-  'karriere',
-  'jobs',
-  'referenzen',
-  'bewertungen',
-  'termin',
-  'blog',
-  'news',
-  'aktuelles',
-  'newsletter',
-  'shop',
-  'galerie',
-  'leistungen',
-  'produkte',
-  'angebot',
-  'service',
-];
 const MAX_EXTRAS = 2;
 const MAX_HOP_GETS = 3;
 const MAX_ALTERNATIVES = 2;
 
-const FILE_RE =
-  /\.(pdf|zip|rar|7z|docx?|xlsx?|pptx?|odt|jpe?g|png|gif|svg|webp|mp[34]|mov|avi|ics|vcf|exe|dmg)$/i;
-const EXCLUDED_PATH_RE =
-  /(wp-admin|wp-login|\/login|\/logout|abmelden|warenkorb|\/cart|checkout|\/kasse|\/account|mein-konto|\/feed\/?$)/i;
+/** Control page scoring: a replicated embed is the strongest reason, a contact page a weak one. */
+const SIGNAL_SCORE = 3;
+const MAX_NETWORK_SCORE = 3;
+const CONTACT_ROLE_SCORE = 2;
+
 const REGION_RANK: Record<DomRegion, number> = {
   footer: 0,
   nav: 1,
@@ -161,10 +139,10 @@ function navigable(l: CandidateLink): boolean {
   return isHttpHref(l.hrefKind);
 }
 
-function excluded(raw: string): boolean {
+function excluded(raw: string, rules: PageRules): boolean {
   const u = parse(raw);
   if (!u) return true;
-  return EXCLUDED_PATH_RE.test(u.pathname) || (u.pathname.includes('search') && u.search !== '');
+  return rules.excludedPath.test(u.pathname) || (u.pathname.includes('search') && u.search !== '');
 }
 
 function isStart(raw: string, scope: Scope): boolean {
@@ -188,6 +166,7 @@ function matchKeyword(
       path = lower(u.pathname);
     }
   }
+
   for (const k of keywords) {
     if (text.includes(k)) return { keyword: k, byText: true };
   }
@@ -274,16 +253,8 @@ export function findLegalLink(
   });
   if (matches.length === 0) return { kind, status: 'none' };
   matches.sort(rankLegal);
-  // Prefer navigable same-site links; fall back to the best non-navigable one for the record.
-  const usable: LegalMatch[] = [];
-  const seen = new Set<string>();
-  for (const x of matches) {
-    if (!navigable(x.link) || !sameSite(x.link.raw, scope)) continue;
-    const key = pageKey(x.link.raw);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    usable.push(x);
-  }
+
+  const usable = usableLegalMatches(matches, scope);
   const first = usable[0];
   if (first) {
     const alternatives = usable.slice(1, 1 + MAX_ALTERNATIVES).map((x) => `alt:${reasonOfLegal(x)}`);
@@ -299,9 +270,25 @@ export function findLegalLink(
       candidates,
     };
   }
+
+  // Fall back to the best non-navigable or off-site link for the record.
   const best = matches[0] as LegalMatch;
   if (navigable(best.link)) return { kind, status: 'offsite', link: best.link };
   return { kind, status: 'unresolved', link: best.link };
+}
+
+/** Navigable same-site matches in rank order, one per page. */
+function usableLegalMatches(matches: readonly LegalMatch[], scope: Scope): LegalMatch[] {
+  const usable: LegalMatch[] = [];
+  const seen = new Set<string>();
+  for (const x of matches) {
+    if (!navigable(x.link) || !sameSite(x.link.raw, scope)) continue;
+    const key = pageKey(x.link.raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    usable.push(x);
+  }
+  return usable;
 }
 
 interface NavPick {
@@ -328,45 +315,77 @@ function reasonOfNav(x: NavPick): string {
   return x.m.byText ? `${x.link.region}-link:${x.m.keyword}` : `href:${x.m.keyword}`;
 }
 
-export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLexicon()): PageSelection {
-  const used = new Set<string>([pageKey(i.startRaw)]);
-  const usedTemplates = new Set<string>([template(i.startRaw)]);
-  const take = (raw: string) => {
-    used.add(pageKey(raw));
-    usedTemplates.add(template(raw));
-  };
+/** Pages and URL templates (first path segment) already chosen: no page twice, one page per template. */
+interface Chosen {
+  used: Set<string>;
+  templates: Set<string>;
+}
+
+function take(chosen: Chosen, raw: string): void {
+  chosen.used.add(pageKey(raw));
+  chosen.templates.add(template(raw));
+}
+
+export function selectPages(
+  i: SelectInput,
+  lexicon: LegalLexicon = loadLegalLexicon(),
+  rules: PageRules = loadPageRules(),
+): PageSelection {
+  const chosen: Chosen = { used: new Set([pageKey(i.startRaw)]), templates: new Set([template(i.startRaw)]) };
   const candidate = (l: CandidateLink) =>
     navigable(l) &&
     inScope(l.raw, i) &&
     !isStart(l.raw, i) &&
-    !used.has(pageKey(l.raw)) &&
-    !FILE_RE.test(parse(l.raw)?.pathname ?? '') &&
-    !excluded(l.raw);
+    !chosen.used.has(pageKey(l.raw)) &&
+    !rules.file.test(parse(l.raw)?.pathname ?? '') &&
+    !excluded(l.raw, rules);
 
   const impressum = findLegalLink(i.links, 'impressum', i, lexicon);
   const privacy = findLegalLink(i.links, 'privacy', i, lexicon);
-  for (const r of [impressum, privacy]) if (r.status === 'page' && r.choice) take(r.choice.raw);
+  for (const r of [impressum, privacy]) if (r.status === 'page' && r.choice) take(chosen, r.choice.raw);
 
   const c = bestNav(i.links, lexicon.contact, candidate);
   const contact = c ? choice(c.link.raw, 'contact', [reasonOfNav(c)], 'link') : null;
-  if (contact) take(contact.raw);
+  if (contact) take(chosen, contact.raw);
 
-  const hops: PageChoice[] = [];
   const legalMissing = [impressum, privacy].some((r) => r.status === 'none' || r.status === 'unresolved');
-  if (legalMissing) {
-    const budget = MAX_HOP_GETS - (contact ? 1 : 0);
-    for (const k of lexicon.hop) {
-      if (hops.length >= budget) break;
-      const m = bestNav(i.links, [k], candidate);
-      if (!m) continue;
-      hops.push(choice(m.link.raw, 'legal-hop', [`hop:${m.m.keyword}`], 'hop'));
-      take(m.link.raw);
-    }
-  }
+  const hops = legalMissing ? pickHops(i, lexicon, MAX_HOP_GETS - (contact ? 1 : 0), chosen, candidate) : [];
 
   const fixed =
     1 + [impressum, privacy].filter((r) => r.status === 'page').length + (contact ? 1 : 0) + hops.length;
   const need = Math.max(0, Math.min(MAX_EXTRAS, i.maxPages - fixed));
+  const extras = pickExtras(i, rules, need, chosen, candidate);
+
+  return { impressum, privacy, contact, hops, extras, extrasWanted: need };
+}
+
+/** Intermediate pages that may lead to the missing legal links, one per hop keyword up to `budget`. */
+function pickHops(
+  i: SelectInput,
+  lexicon: LegalLexicon,
+  budget: number,
+  chosen: Chosen,
+  candidate: (l: CandidateLink) => boolean,
+): PageChoice[] {
+  const hops: PageChoice[] = [];
+  for (const k of lexicon.hop) {
+    if (hops.length >= budget) break;
+    const m = bestNav(i.links, [k], candidate);
+    if (!m) continue;
+    hops.push(choice(m.link.raw, 'legal-hop', [`hop:${m.m.keyword}`], 'hop'));
+    take(chosen, m.link.raw);
+  }
+  return hops;
+}
+
+/** Up to `need` extra pages: keyword links first, then navigation links, then sitemap entries. */
+function pickExtras(
+  i: SelectInput,
+  rules: PageRules,
+  need: number,
+  chosen: Chosen,
+  candidate: (l: CandidateLink) => boolean,
+): PageChoice[] {
   const extras: PageChoice[] = [];
   const allowed = (raw: string): boolean | undefined => {
     if (!i.robots) return undefined;
@@ -375,14 +394,14 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
   };
   const tryExtra = (raw: string, reasons: string[], source: PlannedPage['source']) => {
     if (extras.length >= need) return;
-    if (usedTemplates.has(template(raw)) || used.has(pageKey(raw))) return;
+    if (chosen.templates.has(template(raw)) || chosen.used.has(pageKey(raw))) return;
     const robotsAllowed = allowed(raw);
     if (robotsAllowed === false) return;
     extras.push(choice(raw, source === 'sitemap' ? 'other' : 'nav', reasons, source, robotsAllowed));
-    take(raw);
+    take(chosen, raw);
   };
 
-  for (const k of EXTRA_KEYWORDS) {
+  for (const k of rules.extraKeywords) {
     if (extras.length >= need) break;
     const ms: Match[] = [];
     for (const l of i.links) {
@@ -392,17 +411,23 @@ export function selectPages(i: SelectInput, lexicon: LegalLexicon = loadLegalLex
     }
     for (const m of ms.sort(rank)) tryExtra(m.link.raw, [`keyword:${k}`], 'link');
   }
+
   const navLinks = i.links
     .filter((l) => (l.region === 'nav' || l.region === 'header') && candidate(l))
     .sort((a, b) => a.order - b.order);
   for (const l of navLinks) tryExtra(l.raw, ['nav-link'], 'link');
+
   for (const loc of i.sitemapLocs) {
-    if (inScope(loc, i) && !isStart(loc, i) && !FILE_RE.test(parse(loc)?.pathname ?? '') && !excluded(loc)) {
+    if (
+      inScope(loc, i) &&
+      !isStart(loc, i) &&
+      !rules.file.test(parse(loc)?.pathname ?? '') &&
+      !excluded(loc, rules)
+    ) {
       tryExtra(loc, ['sitemap'], 'sitemap');
     }
   }
-
-  return { impressum, privacy, contact, hops, extras, extrasWanted: need };
+  return extras;
 }
 
 export interface ControlCandidate {
@@ -417,35 +442,39 @@ export interface ControlChoice extends ControlCandidate {
   reasons: string[];
 }
 
+/** Score and reasons of a phase-A page as a control page for the B/C replication. */
+function scoreControlCandidate(c: ControlCandidate): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+  if (c.signals.thirdPartyIframes > 0) {
+    score += SIGNAL_SCORE;
+    reasons.push('iframe-signal');
+  }
+  if (c.signals.placeholders > 0) {
+    score += SIGNAL_SCORE;
+    reasons.push('placeholder-signal');
+  }
+  if (c.signals.newThirdPartyHosts > 0) {
+    score += Math.min(MAX_NETWORK_SCORE, c.signals.newThirdPartyHosts);
+    reasons.push('network-signal');
+  }
+  if (c.role === 'contact') {
+    score += CONTACT_ROLE_SCORE;
+    reasons.push('role:contact');
+  }
+  return { score, reasons };
+}
+
 /** Up to `max` pages of phase A (not the start page) chosen by network and DOM signals; ties by A order. */
 export function chooseControlPages(candidates: readonly ControlCandidate[], max = 2): ControlChoice[] {
-  const scored = candidates.map((c) => {
-    const reasons: string[] = [];
-    let score = 0;
-    if (c.signals.thirdPartyIframes > 0) {
-      score += 3;
-      reasons.push('iframe-signal');
-    }
-    if (c.signals.placeholders > 0) {
-      score += 3;
-      reasons.push('placeholder-signal');
-    }
-    if (c.signals.newThirdPartyHosts > 0) {
-      score += Math.min(3, c.signals.newThirdPartyHosts);
-      reasons.push('network-signal');
-    }
-    if (c.role === 'contact') {
-      score += 2;
-      reasons.push('role:contact');
-    }
-    return { ...c, score, reasons };
-  });
+  const scored = candidates.map((c) => ({ ...c, ...scoreControlCandidate(c) }));
   const legal = (r: PageRole) => r === 'impressum' || r === 'privacy';
   scored.sort((a, b) => {
     if (a.score !== b.score) return b.score - a.score;
     if (legal(a.role) !== legal(b.role)) return legal(a.role) ? 1 : -1;
     return a.order - b.order;
   });
+
   return scored.slice(0, max).map(({ score: _score, ...rest }) => ({
     ...rest,
     reasons: rest.reasons.length > 0 ? rest.reasons : ['replication'],

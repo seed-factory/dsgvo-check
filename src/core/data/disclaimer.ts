@@ -96,6 +96,7 @@ export function disclaimerParagraphs(report: Report, texts: Texts): string[] {
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean);
+
   for (const [key, params] of applicable(report)) {
     if (!texts.ui[key]) continue;
     const text = uiText(texts, key, params);

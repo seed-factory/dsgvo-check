@@ -1,20 +1,26 @@
 /**
- * Shared adapter machinery: a declarative spec plus read-only readers that run in the page (serialized, so
- * self-contained). Clicking executes core's target on exactly one element.
+ * Shared adapter machinery: what an adapter recognises and where its banner is comes from test/data/cmp/adapters.yaml,
+ * the adapter file adds read-only readers that run in the page (serialized, so self-contained). Clicking executes core's
+ * target on exactly one element.
  */
 import type { Page } from 'playwright-core';
 import { sanitizeUrl } from '../../core/url/url.ts';
+import { type AdapterData, supportedVersionsOf } from '../adapters-data.ts';
+import { adapterData } from '../adapters-file.ts';
 import { classifyFirstLayer } from '../classify.ts';
 import {
+  cleanVersion,
   confidenceFromSignals,
+  majorSupported,
   NOT_DETECTED,
   originAfterClick,
   stateVerdict,
   unchangedDeniedAfterAccept,
+  versionFromUrl,
 } from '../detection.ts';
 import { loadLexicon } from '../lexicon-file.ts';
-import { cmpDetectProbe, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
-import { type BannerSpec, measureBanner } from '../page/measure.ts';
+import { cmpDetectProbe, type DetectArgs, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
+import { measureBanner } from '../page/measure.ts';
 import type {
   ActOptions,
   BotSignal,
@@ -33,17 +39,16 @@ import type {
   VerifyResult,
 } from '../types.ts';
 
-export interface DetectSpec {
-  globals?: string[];
-  /** Globals holding the CMP's own version string; preferred over a script URL. */
-  versionGlobals?: string[];
-  scripts?: Array<{ label: string; pattern: string }>;
-  dom?: string[];
-  /** Consent cookie name regex sources (names only). */
-  cookies?: string[];
-  /** localStorage key regex sources (names only). */
-  storage?: string[];
-}
+const CLICK_TIMEOUT_MS = 5000;
+
+/** Default wait for the reload and the adapter's readiness in `verify`. */
+const VERIFY_TIMEOUT_MS = 8000;
+
+const WAIT_STEP_MS = 200;
+
+/** Error texts in the facts keep the first line of the message, cut to this length. */
+const CLICK_ERROR_MAX_LENGTH = 160;
+const RELOAD_ERROR_MAX_LENGTH = 120;
 
 export type ConfigValue = string | number | boolean | null;
 
@@ -54,13 +59,8 @@ export interface AdapterConfig {
 }
 
 export interface AdapterSpec {
+  /** Key of the adapter's entry in test/data/cmp/adapters.yaml. */
   id: KnownCmpId;
-  name: string;
-  supportedVersions: string | null;
-  detect: DetectSpec;
-  version?(raw: DetectRaw): string | null;
-  versionSupported?(version: string | null): boolean | null;
-  banner: BannerSpec;
   /** Read-only; `origin` is `stored` with a recorded answer, `default` without, `special-branch` for geo/bot. */
   readState(page: Page): Promise<ConsentStateFact[]>;
   readGeo?(page: Page): Promise<GeoSignal[]>;
@@ -69,6 +69,37 @@ export interface AdapterSpec {
   isReady(page: Page): Promise<boolean>;
   /** The API cannot list the installation's categories (CookieHub), so a category left `denied` by our accept click may not exist. */
   categoriesUnlisted?: boolean;
+}
+
+function detectArgsOf(d: AdapterData['detect']): DetectArgs {
+  return {
+    globals: d.globals,
+    versionGlobals: d.versionGlobals,
+    scripts: d.scripts,
+    dom: d.dom,
+    cookies: d.cookies,
+    storage: d.storage,
+  };
+}
+
+/** The version the vendor reports about itself, else `?ver=` of its script, else the first matching rule. */
+function versionOf(raw: DetectRaw, d: AdapterData): string | null {
+  for (const path of d.detect.versionGlobals) {
+    const own = cleanVersion(raw.versions[path]);
+    if (own) return own;
+  }
+  if (d.version.fromScriptUrl) {
+    const fromUrl = versionFromUrl(raw.scriptUrls[0]);
+    if (fromUrl) return fromUrl;
+  }
+  for (const r of d.version.rules) {
+    const found =
+      (r.global !== undefined && raw.globals.includes(r.global)) ||
+      (r.dom !== undefined && raw.dom.includes(r.dom)) ||
+      (r.script !== undefined && raw.scripts.includes(r.script));
+    if (found) return r.version;
+  }
+  return null;
 }
 
 /** `true/false/null` per category → `granted/denied/unknown`. */
@@ -110,9 +141,10 @@ export async function tcfGeoSignals(page: Page): Promise<GeoSignal[]> {
 export async function clickButton(
   page: Page,
   button: Pick<CmpButton, 'selector'>,
-  timeoutMs = 5000,
+  timeoutMs = CLICK_TIMEOUT_MS,
 ): Promise<{ clicked: boolean; error?: string }> {
   if (!button.selector) return { clicked: false, error: 'no-selector' };
+
   const locator = page.locator(button.selector);
   let n: number;
   try {
@@ -121,19 +153,20 @@ export async function clickButton(
     return { clicked: false, error: 'invalid-selector' };
   }
   if (n !== 1) return { clicked: false, error: n === 0 ? 'target-not-found' : 'target-ambiguous' };
+
   try {
     await locator.click({ timeout: timeoutMs });
     return { clicked: true };
   } catch (err) {
     const msg = (err as Error).message.split('\n')[0] ?? 'error';
-    return { clicked: false, error: `click-failed: ${msg.slice(0, 160)}` };
+    return { clicked: false, error: `click-failed: ${msg.slice(0, CLICK_ERROR_MAX_LENGTH)}` };
   }
 }
 
 export async function waitUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,
-  stepMs = 200,
+  stepMs = WAIT_STEP_MS,
 ): Promise<boolean> {
   const end = Date.now() + timeoutMs;
   for (;;) {
@@ -169,22 +202,21 @@ async function clickInThisDocument(page: Page): Promise<ClickRecord | null> {
 }
 
 export function defineAdapter(spec: AdapterSpec): CmpAdapter {
-  const detectArgs = {
-    globals: spec.detect.globals ?? [],
-    versionGlobals: spec.detect.versionGlobals ?? [],
-    scripts: spec.detect.scripts ?? [],
-    dom: spec.detect.dom ?? [],
-    cookies: spec.detect.cookies ?? [],
-    storage: spec.detect.storage ?? [],
-  };
+  // The data is read on first use, so a broken data file is reported by the scan and not when this module is imported.
+  const data = (): AdapterData => adapterData(spec.id);
 
   const adapter: CmpAdapter = {
     id: spec.id,
-    name: spec.name,
-    supportedVersions: spec.supportedVersions,
+    get name() {
+      return data().name;
+    },
+    get supportedVersions() {
+      return supportedVersionsOf(data().supportedMajors);
+    },
 
     async detect(page): Promise<CmpDetection | null> {
-      const raw = await safe(page.evaluate(cmpDetectProbe, detectArgs), null);
+      const vendor = data();
+      const raw = await safe(page.evaluate(cmpDetectProbe, detectArgsOf(vendor.detect)), null);
       if (!raw) return null;
       const signals = [
         ...raw.globals.map((g) => `global:${g}`),
@@ -195,12 +227,12 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
       ];
       const confidence = confidenceFromSignals(signals);
       if (!confidence) return null;
-      const version = spec.version ? spec.version(raw) : null;
+      const version = versionOf(raw, vendor);
       return {
         cmpId: spec.id,
         method: 'adapter',
         version,
-        versionSupported: spec.versionSupported ? spec.versionSupported(version) : null,
+        versionSupported: vendor.supportedMajors ? majorSupported(version, vendor.supportedMajors) : null,
         recognitionConfidence: confidence,
         signals,
       };
@@ -217,7 +249,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         adapter.geoSignals(page),
         adapter.botSignals(page),
       ]);
-      const measured = await measureBanner(page, spec.banner, lexicon, cfg.closeMeansAccept);
+      const measured = await measureBanner(page, data().banner, lexicon, cfg.closeMeansAccept);
       return {
         phase: opts.phase ?? 'B',
         pageUrl: sanitizeUrl(page.url()),
@@ -245,7 +277,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
 
     async firstLayer(page) {
       const cfg = await safe(spec.readConfig?.(page), { config: {}, closeMeansAccept: null });
-      return (await measureBanner(page, spec.banner, loadLexicon(), cfg.closeMeansAccept)).firstLayer;
+      return (await measureBanner(page, data().banner, loadLexicon(), cfg.closeMeansAccept)).firstLayer;
     },
 
     act: (page, action, target, opts = {}) => execute(page, action, target, opts.timeoutMs),
@@ -253,10 +285,11 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     accept: (page, opts) => decideOrExecute(page, 'accept', opts),
 
     async verify(page, action, opts: VerifyOptions = {}): Promise<VerifyResult> {
-      const timeoutMs = opts.timeoutMs ?? 8000;
-      const now = await adapter.state(page);
+      const timeoutMs = opts.timeoutMs ?? VERIFY_TIMEOUT_MS;
+
       // `action` only in the document of our click and only for an answer the click produced; after any
       // reload (ours or the collector's) the adapter's own origin (`stored`) stays.
+      const now = await adapter.state(page);
       const click = await clickInThisDocument(page);
       const stateNow = originAfterClick(now, click?.before ?? null, click !== null);
       const ignoreCategories =
@@ -264,28 +297,25 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
           ? unchangedDeniedAfterAccept(click.before, now)
           : [];
       const verdict = stateVerdict(stateNow, action, { requireAction: click !== null, ignoreCategories });
+
       const methods = [...verdict.methods];
       const bannerOpen = await safe(
-        measureBanner(page, spec.banner, loadLexicon()).then((m) => m.firstLayer.bannerVisible),
+        measureBanner(page, data().banner, loadLexicon()).then((m) => m.firstLayer.bannerVisible),
         false,
       );
       if (!bannerOpen) methods.push('ui-closed');
+
+      let reason = verdict.ok ? undefined : verdict.reason;
       let persisted: boolean | null = null;
       let afterReload: ConsentStateFact[] = [];
-      let reason = verdict.ok ? undefined : verdict.reason;
       if (opts.reload !== false) {
-        try {
-          await page.reload({ waitUntil: 'load', timeout: timeoutMs });
-          await waitUntil(() => spec.isReady(page), timeoutMs);
-          afterReload = await adapter.state(page);
-          const again = stateVerdict(afterReload, action, { ignoreCategories });
-          persisted = again.ok;
-          if (again.ok) methods.push('persisted-after-reload');
-          else reason ??= `after-reload:${again.reason ?? 'not-confirmed'}`;
-        } catch (err) {
-          reason ??= `reload-failed: ${((err as Error).message.split('\n')[0] ?? '').slice(0, 120)}`;
-        }
+        const reloaded = await recheckAfterReload(page, action, ignoreCategories, timeoutMs);
+        persisted = reloaded.persisted;
+        afterReload = reloaded.state;
+        if (reloaded.persisted) methods.push('persisted-after-reload');
+        reason ??= reloaded.reason;
       }
+
       return {
         action,
         verified: verdict.ok && persisted !== false,
@@ -298,6 +328,34 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
 
     ready: (page) => safe(spec.isReady(page), false),
   };
+
+  /** Reloads the page and reads the state again: a stored answer survives the reload, a session-only one does not. */
+  async function recheckAfterReload(
+    page: Page,
+    action: 'reject' | 'accept',
+    ignoreCategories: readonly string[],
+    timeoutMs: number,
+  ): Promise<{ persisted: boolean | null; state: ConsentStateFact[]; reason?: string }> {
+    try {
+      await page.reload({ waitUntil: 'load', timeout: timeoutMs });
+      await waitUntil(() => spec.isReady(page), timeoutMs);
+
+      const state = await adapter.state(page);
+      const again = stateVerdict(state, action, { ignoreCategories });
+      return {
+        persisted: again.ok,
+        state,
+        ...(again.ok ? {} : { reason: `after-reload:${again.reason ?? 'not-confirmed'}` }),
+      };
+    } catch (err) {
+      const msg = (err as Error).message.split('\n')[0] ?? '';
+      return {
+        persisted: null,
+        state: [],
+        reason: `reload-failed: ${msg.slice(0, RELOAD_ERROR_MAX_LENGTH)}`,
+      };
+    }
+  }
 
   /** Clicks exactly the target core chose; no classification here. */
   async function execute(
@@ -335,7 +393,9 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
   ): Promise<ClickOutcome> {
     if (opts.target !== undefined) return execute(page, action, opts.target, opts.timeoutMs);
     if (!opts.facts) return { action, clicked: false, button: null, error: 'no-target' };
-    const cls = classifyFirstLayer(opts.facts, opts.lexicon ?? loadLexicon());
+    const cls = classifyFirstLayer(opts.facts, opts.lexicon ?? loadLexicon(), {
+      blockingCoveredRatio: opts.blockingCoveredRatio,
+    });
     const target = (action === 'reject' ? cls.targets?.reject : cls.targets?.accept) ?? null;
     if (!target)
       return { action, clicked: false, button: null, error: `no-unambiguous-${action}:${cls.variant}` };

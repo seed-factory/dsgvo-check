@@ -1,6 +1,7 @@
 /**
- * No legal verdicts in user-facing texts (wording guide §2): de and en texts of every module and the rendered reports.
- * Rule 1 (`block`) plus the `label` rules 2, 3, 6, 10, 13, which exempt quoted button names („…“, "…") of the site.
+ * No legal verdicts in user-facing texts: de and en texts of every module and the rendered reports. Stop words are
+ * blocked everywhere; the label rules (consent claims, "tracker" labels, necessity verdicts, absence claims such as
+ * "missing imprint" or "DMARC fehlt", obligations) exempt quoted button names („…“, "…") of the site.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,7 @@ import { renderSummary } from '../../../../src/reporters/summary.ts';
 import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
 import { REPO_ROOT } from '../../../utils/snapshot-builder.ts';
 
-/** Rule 1 (`block`). */
+/** Verdict wording that is blocked everywhere. */
 const STOP_WORDS = [
   // de
   /verstößt|verstoßen|verstoss|verstoß/i,
@@ -28,44 +29,47 @@ const STOP_WORDS = [
   /\bin breach\b|\bbreaches\b/i,
 ];
 
-/** Rules 2, 3, 6, 10, 13 of the wording guide §2, with the rule number for the failure message. */
-const GUIDE_RULES: Array<[string, RegExp]> = [
+/** Phrases that state a consent, necessity, absence or obligation verdict, with a label for the failure message. */
+const LABEL_RULES: Array<[string, RegExp]> = [
   [
-    '2',
+    'consent claim',
     /ohne\s+(eine\s+|die\s+)?einwilligung|ohne\s+rechtsgrundlage|einwilligung\s+liegt|einwilligungslos/iu,
   ],
-  ['2', /without\s+(a\s+|any\s+)?(consent|legal\s+basis)|no\s+consent\s+(was\s+)?given/i],
-  ['3', /\btracker\b|tracking-cookie|spionage|überwachung|schnüffel/iu],
-  ['3', /\btrackers?\b|tracking\s+cookies?|spyware|surveillance/i],
-  ['6', /unbedingt\s+erforderlich|nicht\s+erforderlich|technisch\s+notwendig|\bnotwendig|essen[sz]i?ell/iu],
-  ['6', /strictly\s+necessary|\bnecessary\b|\bessential\b/i],
+  ['consent claim', /without\s+(a\s+|any\s+)?(consent|legal\s+basis)|no\s+consent\s+(was\s+)?given/i],
+  ['tracker label', /\btracker\b|tracking-cookie|spionage|überwachung|schnüffel/iu],
+  ['tracker label', /\btrackers?\b|tracking\s+cookies?|spyware|surveillance/i],
   [
-    '10',
+    'necessity verdict',
+    /unbedingt\s+erforderlich|nicht\s+erforderlich|technisch\s+notwendig|\bnotwendig|essen[sz]i?ell/iu,
+  ],
+  ['necessity verdict', /strictly\s+necessary|\bnecessary\b|\bessential\b/i],
+  [
+    'absence claim',
     /impressumspflicht\s+verletzt|fehlende[ns]?\s+impressum|kein\s+impressum|datenschutzerklärung\s+fehlt|dkim\s+fehlt|dmarc\s+fehlt/iu,
   ],
-  ['10', /missing\s+imprint|no\s+privacy\s+policy|dkim\s+(is\s+)?missing/i],
-  ['13', /sie\s+müssen|sie\s+sind\s+verpflichtet/iu],
-  ['13', /you\s+must|you\s+are\s+required\s+to|is\s+mandatory/i],
+  ['absence claim', /missing\s+imprint|no\s+privacy\s+policy|dkim\s+(is\s+)?missing/i],
+  ['obligation', /sie\s+müssen|sie\s+sind\s+verpflichtet/iu],
+  ['obligation', /you\s+must|you\s+are\s+required\s+to|is\s+mandatory/i],
 ];
 
-/** Button names of the site in typographic or plain quotes are exempt from the label rules (guide §2, allowlist). */
+/** Button names of the site in typographic or plain quotes are exempt from the label rules: they are quoted, not claimed. */
 const unquoted = (s: string) =>
   s
     .replace(/„[^“]*“/g, '')
     .replace(/“[^”]*”/g, '')
     .replace(/"[^"]*"/g, '');
 
-/** Every rule hit in `text`, as `rule <n>: <match>`. */
+/** Every rule hit in `text`, as `<label>: <match>`. */
 function hits(text: string): string[] {
   const out: string[] = [];
   for (const re of STOP_WORDS) {
     const m = re.exec(text);
-    if (m) out.push(`rule 1: ${m[0]}`);
+    if (m) out.push(`stop word: ${m[0]}`);
   }
   const free = unquoted(text);
-  for (const [n, re] of GUIDE_RULES) {
+  for (const [label, re] of LABEL_RULES) {
     const m = re.exec(free);
-    if (m) out.push(`rule ${n}: ${m[0]}`);
+    if (m) out.push(`${label}: ${m[0]}`);
   }
   return out;
 }
@@ -109,20 +113,20 @@ describe('stop words in test/data/texts', () => {
     expect(STOP_WORDS.some((re) => re.test('nicht gefunden in der Datenschutzerklärung'))).toBe(false);
   });
 
-  it('the guide rules 2, 3, 6, 10, 13 catch their phrases; quoted button names are exempt', () => {
-    for (const [rule, s] of [
-      ['2', 'Anfrage ohne Einwilligung'],
-      ['2', 'request without consent'],
-      ['3', 'Tracker geladen'],
-      ['3', 'a tracking cookie was set'],
-      ['6', 'Cookie ist technisch notwendig'],
-      ['6', 'storage is strictly necessary'],
-      ['10', 'kein Impressum'],
-      ['10', 'missing imprint'],
-      ['13', 'Sie müssen das Banner ändern'],
-      ['13', 'you must change the banner'],
+  it('the label rules catch their phrases; quoted button names are exempt', () => {
+    for (const [label, s] of [
+      ['consent claim', 'Anfrage ohne Einwilligung'],
+      ['consent claim', 'request without consent'],
+      ['tracker label', 'Tracker geladen'],
+      ['tracker label', 'a tracking cookie was set'],
+      ['necessity verdict', 'Cookie ist technisch notwendig'],
+      ['necessity verdict', 'storage is strictly necessary'],
+      ['absence claim', 'kein Impressum'],
+      ['absence claim', 'missing imprint'],
+      ['obligation', 'Sie müssen das Banner ändern'],
+      ['obligation', 'you must change the banner'],
     ] as const) {
-      expect(hits(s), s).toContain(hits(s).find((h) => h.startsWith(`rule ${rule}:`)));
+      expect(hits(s), s).toContain(hits(s).find((h) => h.startsWith(`${label}:`)));
       expect(hits(s).length, s).toBeGreaterThan(0);
     }
     expect(hits('Schaltfläche „Nur technisch notwendige“ wurde betätigt')).toEqual([]);

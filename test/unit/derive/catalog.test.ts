@@ -93,9 +93,12 @@ describe('service catalog data', () => {
     const base = {
       catalog: { name: 'x', version: '1', date: '2026-10-30', license: 'Apache-2.0' },
       categories: catalog.data.categories,
+      userSuppliedParams: catalog.data.userSuppliedParams,
+      consentMode: catalog.data.consentMode,
       allowlist: { version: '1', cookies: {} },
     };
     const svc = { id: 'a', name: 'A', category: 'analytics', policyRelevance: 'required' };
+
     expect(() => parseCatalog({ ...base, services: [{ ...svc, typo: 1 }] })).toThrow(/typo/);
     expect(() =>
       parseCatalog({
@@ -104,6 +107,12 @@ describe('service catalog data', () => {
       }),
     ).toThrow(/invalid regular expression/);
     expect(() => new ServiceCatalog(parseCatalog({ ...base, services: [svc, svc] }))).toThrow(/duplicate/);
+    expect(() => parseCatalog({ ...base, services: [], userSuppliedParams: ['GCLID'] })).toThrow(
+      /userSuppliedParams.*lower case/,
+    );
+    expect(() =>
+      parseCatalog({ ...base, services: [], consentMode: { gcdDenied: ['p'], gcdGranted: ['p'] } }),
+    ).toThrow(/both denied and granted/);
   });
 });
 

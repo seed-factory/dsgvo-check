@@ -13,6 +13,20 @@ export class MessageSyntaxError extends Error {}
 
 function parse(src: string): Node[] {
   let i = 0;
+
+  const expectChar = (ch: string, message: string) => {
+    if (src[i] !== ch) throw new MessageSyntaxError(message);
+    i++;
+  };
+
+  function readToken(): string {
+    const m = /^\s*([^,{}\s]+)\s*/.exec(src.slice(i));
+    if (!m) throw new MessageSyntaxError(`expected token at ${i}`);
+    i += m[0].length;
+    return m[1] as string;
+  }
+
+  /** Text up to the matching `}` (or the end of the template), with arguments and `#` as nodes. */
   function parseNodes(inPlural: boolean, untilBrace: boolean): Node[] {
     const nodes: Node[] = [];
     let text = '';
@@ -20,6 +34,7 @@ function parse(src: string): Node[] {
       if (text) nodes.push({ kind: 'text', value: text });
       text = '';
     };
+
     while (i < src.length) {
       const ch = src[i] as string;
       if (ch === "'" && src[i + 1] === "'") {
@@ -47,33 +62,34 @@ function parse(src: string): Node[] {
         i++;
       }
     }
+
     if (untilBrace) throw new MessageSyntaxError('unterminated {');
     flush();
     return nodes;
   }
-  function readToken(): string {
-    const m = /^\s*([^,{}\s]+)\s*/.exec(src.slice(i));
-    if (!m) throw new MessageSyntaxError(`expected token at ${i}`);
-    i += m[0].length;
-    return m[1] as string;
-  }
+
+  /** The inside of `{…}`: a name, optionally with `number`, `plural` or `select`. */
   function parseArg(inPlural: boolean): Node {
     const name = readToken();
     if (src[i] === '}') {
       i++;
       return { kind: 'arg', name };
     }
-    if (src[i] !== ',') throw new MessageSyntaxError(`expected , or } at ${i}`);
-    i++;
+    expectChar(',', `expected , or } at ${i}`);
+
     const type = readToken();
     if (type === 'number') {
-      if (src[i] !== '}') throw new MessageSyntaxError(`expected } at ${i}`);
-      i++;
+      expectChar('}', `expected } at ${i}`);
       return { kind: 'arg', name, format: 'number' };
     }
     if (type !== 'plural' && type !== 'select') throw new MessageSyntaxError(`unsupported type ${type}`);
-    if (src[i] !== ',') throw new MessageSyntaxError(`expected , at ${i}`);
-    i++;
+    expectChar(',', `expected , at ${i}`);
+
+    return { kind: type, name, options: parseOptions(type, inPlural) };
+  }
+
+  /** The `key {message}` pairs of a plural or select; `other` is required. */
+  function parseOptions(type: 'plural' | 'select', inPlural: boolean): Record<string, Node[]> {
     const options: Record<string, Node[]> = {};
     for (;;) {
       while (/\s/.test(src[i] ?? '')) i++;
@@ -82,14 +98,14 @@ function parse(src: string): Node[] {
         break;
       }
       const key = readToken();
-      if (src[i] !== '{') throw new MessageSyntaxError(`expected { after ${key}`);
-      i++;
+      expectChar('{', `expected { after ${key}`);
       options[key] = parseNodes(type === 'plural' || inPlural, true);
       i++; // closing }
     }
     if (!options.other) throw new MessageSyntaxError(`${type} without "other"`);
-    return { kind: type, name, options };
+    return options;
   }
+
   return parseNodes(false, false);
 }
 
@@ -130,14 +146,18 @@ const NUMBER_LOCALE: Readonly<Record<Lang, string>> = { de: 'de-DE', en: 'en-GB'
 export function formatMessage(template: string, params: MessageParams, lang: Lang): string {
   const numberFmt = new Intl.NumberFormat(NUMBER_LOCALE[lang]);
   const pluralRules = new Intl.PluralRules(NUMBER_LOCALE[lang]);
+
+  /** `hashValue` is the number of the enclosing plural, which `#` prints. */
   const render = (nodes: Node[], hashValue: number | null): string =>
     nodes
       .map((n) => {
         switch (n.kind) {
           case 'text':
             return n.value;
+
           case 'hash':
             return hashValue === null ? '#' : numberFmt.format(hashValue);
+
           case 'arg': {
             const v = params[n.name];
             if (v === undefined) return `{${n.name}}`;
@@ -145,21 +165,25 @@ export function formatMessage(template: string, params: MessageParams, lang: Lan
             if (typeof v === 'number' && n.format === 'number') return numberFmt.format(v);
             return String(v);
           }
+
           case 'plural': {
             const v = Number(params[n.name] ?? 0);
             const exact = n.options[`=${v}`];
             const opt = exact ?? n.options[pluralRules.select(v)] ?? (n.options.other as Node[]);
             return render(opt, v);
           }
+
           case 'select': {
             const v = String(params[n.name] ?? 'other');
             return render(n.options[v] ?? (n.options.other as Node[]), hashValue);
           }
+
           default:
             return '';
         }
       })
       .join('');
+
   return render(compiled(template), null);
 }
 

@@ -69,16 +69,25 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     for (const l of launches.slice(1)) expect(String(l.opts.userAgent)).toContain('dsgvo-check/');
   });
 
-  it('B: reject through the adapter, verified, reloaded, control pages; nothing tracked after the reject', () => {
+  it('B: the reject goes through the adapter, is verified, and the start page is reloaded', () => {
     const b = phase('B');
+    const cmpB = run.result.sections.cmp?.phases.find((p) => p.phase === 'B');
+
     expect(b?.click).toMatchObject({ action: 'reject', cmpId: 'stub', name: 'Ablehnen', success: true });
     expect(b?.reloaded).toBe(true);
-    expect(b?.pages.map((p) => [p.url, p.reload ?? false])).toEqual([
+    expect(cmpB?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
+  });
+
+  it('B: visits the start page, its reload, then the control pages', () => {
+    expect(phase('B')?.pages.map((p) => [p.url, p.reload ?? false])).toEqual([
       ['https://www.example.test/', false],
       ['https://www.example.test/', true],
       ['https://www.example.test/kontakt/', false],
       ['https://www.example.test/impressum/', false],
     ]);
+  });
+
+  it('B: the plan records the reject target', () => {
     expect(run.result.sections.plan?.click.B).toEqual({
       phase: 'B',
       action: 'reject',
@@ -90,7 +99,11 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
         kindConfidence: 'high',
       },
     });
+  });
+
+  it('B: banner facts are taken at the first screen, after the click, after the reload and on control pages', () => {
     const cmpB = run.result.sections.cmp?.phases.find((p) => p.phase === 'B');
+
     expect(cmpB?.facts.map((f) => f.moment)).toEqual([
       'first-screen',
       'after-click',
@@ -98,18 +111,23 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
       'control-page',
       'control-page',
     ]);
-    expect(cmpB?.facts.every((f) => f.phase === 'B')).toBe(true);
-    expect(cmpB?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
-    expect(b?.requests.some((r) => r.host.includes('google'))).toBe(false);
+    expect(cmpB?.facts.map((f) => f.phase)).toEqual(['B', 'B', 'B', 'B', 'B']);
+  });
+
+  it('B: nothing is tracked after the reject; requests before the click are timed from the navigation', () => {
+    const b = phase('B');
+
+    expect(b?.requests.filter((r) => r.host.includes('google')).map((r) => r.host)).toEqual([]);
     const after = b?.requests.filter((r) => r.afterClick) ?? [];
     expect(after.length).toBeGreaterThan(0);
-    expect(b?.requests.filter((r) => !r.afterClick).every((r) => r.tRef === 'navigation')).toBe(true);
+    expect(b?.requests.filter((r) => !r.afterClick && r.tRef !== 'navigation').map((r) => r.id)).toEqual([]);
   });
 
   it('B: banner screenshot of the first screen only (≤ 200 KB, ≤ 50 % viewport)', () => {
     const shots = run.result.sections.browser?.screenshots ?? [];
     expect(shots).toHaveLength(1);
     const shot = shots[0]!;
+
     expect(shot).toMatchObject({
       phase: 'B',
       kind: 'banner',
@@ -119,6 +137,7 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     expect(shot.width).toBe(1366);
     expect(shot.height).toBeGreaterThan(100);
     expect(shot.width * shot.height).toBeLessThanOrEqual(0.5 * 1366 * 768);
+
     const file = path.join(run.artifactsDir, 'banner-B.jpg');
     expect(statSync(file).size).toBeLessThanOrEqual(200 * 1024);
     expect(sha256Hex(readFileSync(file))).toBe(shot.sha256);
@@ -128,6 +147,7 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
 
   it('C: accept on the start page; tracking starts after the click (tRef click) and on control pages', () => {
     const c = phase('C');
+
     expect(c?.click).toMatchObject({ action: 'accept', name: 'Alle akzeptieren', success: true });
     const hits = c?.requests.filter((r) => r.host === 'www.google-analytics.com') ?? [];
     expect(hits.length).toBeGreaterThanOrEqual(1);
@@ -139,35 +159,52 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     });
   });
 
-  it('5.3 request fields: one monotonic tMs scale over A/B/C, navigation/action/frame ids', () => {
+  describe('recorded request fields', () => {
     const phases = ['A', 'B', 'C'] as const;
-    const all = phases.flatMap((p) => phase(p)?.requests ?? []);
-    expect(all.length).toBeGreaterThan(0);
-    for (const r of all) {
-      expect(r.atMs, r.id).toBeTypeOf('number');
-      expect(r.navigationId, r.id).toMatch(new RegExp(`^${r.phase}-n\\d+$`));
-      expect(r).toMatchObject({ parserVersion: 'request-features/2', observationSource: 'playwright' });
-      expect(r.delivery).toBeDefined();
-      expect(r.result).toBeDefined();
-    }
-    // One scale: every request of B starts after every request of A, C after B (phases run one after another).
-    const span = (p: (typeof phases)[number]) => (phase(p)?.requests ?? []).map((r) => r.atMs ?? Number.NaN);
-    expect(Math.min(...span('B'))).toBeGreaterThan(Math.max(...span('A')));
-    expect(Math.min(...span('C'))).toBeGreaterThan(Math.max(...span('B')));
-    // The click is an action: requests after it, and only those, carry its id; the click record names it.
-    const b = phase('B');
-    expect(b?.click?.actionId).toBe('B-a1');
-    for (const r of b?.requests ?? []) expect(r.actionId === 'B-a1', r.id).toBe(r.afterClick);
-    // Page visits name their navigation; documents of the main frame share one frame id within a phase.
-    for (const p of b?.pages ?? []) expect(p.navigationId).toMatch(/^B-n\d+$/);
-    const mainDocs = (b?.requests ?? []).filter((r) => r.isMainFrame && r.resourceType === 'document');
-    expect(new Set(mainDocs.map((r) => r.frameId)).size).toBe(1);
+    const requestsOf = (p: (typeof phases)[number]) => phase(p)?.requests ?? [];
+
+    it('every request has a time, a navigation id of its phase, a parser version, a delivery and a result', () => {
+      const all = phases.flatMap(requestsOf);
+      expect(all.length).toBeGreaterThan(0);
+
+      for (const r of all) {
+        expect(r.atMs, r.id).toBeTypeOf('number');
+        expect(r.navigationId, r.id).toMatch(new RegExp(`^${r.phase}-n\\d+$`));
+        expect(r).toMatchObject({ parserVersion: 'request-features/2', observationSource: 'playwright' });
+        expect(r.delivery).toBeDefined();
+        expect(r.result).toBeDefined();
+      }
+    });
+
+    it('one monotonic tMs scale over A/B/C: every request of B starts after every request of A, C after B', () => {
+      // The phases run one after another.
+      const span = (p: (typeof phases)[number]) => requestsOf(p).map((r) => r.atMs ?? Number.NaN);
+
+      expect(Math.min(...span('B'))).toBeGreaterThan(Math.max(...span('A')));
+      expect(Math.min(...span('C'))).toBeGreaterThan(Math.max(...span('B')));
+    });
+
+    it('the click is an action: requests after it, and only those, carry its id; the click record names it', () => {
+      const b = phase('B');
+
+      expect(b?.click?.actionId).toBe('B-a1');
+      for (const r of b?.requests ?? []) expect(r.actionId === 'B-a1', r.id).toBe(r.afterClick);
+    });
+
+    it('page visits name their navigation; documents of the main frame share one frame id within a phase', () => {
+      const b = phase('B');
+
+      for (const p of b?.pages ?? []) expect(p.navigationId).toMatch(/^B-n\d+$/);
+      const mainDocs = (b?.requests ?? []).filter((r) => r.isMainFrame && r.resourceType === 'document');
+      expect(new Set(mainDocs.map((r) => r.frameId)).size).toBe(1);
+    });
   });
 
   it('A: no tracking without consent, banner facts on every page', () => {
     const a = phase('A');
-    expect(a?.requests.some((r) => r.host.includes('google'))).toBe(false);
     const cmpA = run.result.sections.cmp?.phases.find((p) => p.phase === 'A');
+
+    expect(a?.requests.filter((r) => r.host.includes('google')).map((r) => r.host)).toEqual([]);
     // The fixture shows the banner on the start page and on Kontakt only.
     expect(cmpA?.facts.map((f) => [f.pageUrl, f.firstLayer.bannerPresent])).toEqual([
       ['https://www.example.test/', true],
@@ -212,9 +249,13 @@ describe('with the real CMP subsystem (src/cmp/index.ts)', () => {
 
   it('no banner: B is partial (cmp-not-recognized), C is skipped, all sections are delivered', async () => {
     const run = await collect(server, { deps: { phases: ['A', 'B', 'C'] }, maxPages: 1 });
+
     expect(run.result.status).toBe('ok');
     const s = run.result.sections;
-    expect(s.browser && s.documents && s.cmp && s.plan).toBeTruthy();
+    expect(s.browser).toBeDefined();
+    expect(s.documents).toBeDefined();
+    expect(s.cmp).toBeDefined();
+    expect(s.plan).toBeDefined();
     expect(s.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
       ['A', 'completed', undefined],
       ['B', 'partial', 'cmp-not-recognized'],

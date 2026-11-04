@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import type { BrowserContext, BrowserType, Route } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
+import { reporterLimits } from '../../../../src/core/config/limits.ts';
+import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
@@ -50,12 +52,14 @@ describe('PDF conversion of the finished HTML report', () => {
     const pdf = await renderPdf(html, context, { chromium: fake.chromium, timeoutMs: 1_234 });
 
     expect(pdf).toEqual(fake.bytes);
+
     expect(fake.page.setContent).toHaveBeenCalledWith(html, {
       waitUntil: 'load',
       timeout: expect.any(Number),
     });
     expect(fake.page.setContent.mock.calls[0]?.[1].timeout).toBeGreaterThan(0);
     expect(fake.page.setContent.mock.calls[0]?.[1].timeout).toBeLessThanOrEqual(1_234);
+
     expect(fake.page.pdf).toHaveBeenCalledWith(
       expect.objectContaining({
         format: 'A4',
@@ -67,15 +71,34 @@ describe('PDF conversion of the finished HTML report', () => {
     const options = fake.page.pdf.mock.calls[0]?.[0] as unknown as { footerTemplate: string };
     expect(options.footerTemplate).toContain('pageNumber');
     expect(options.footerTemplate).toContain('totalPages');
+
     expect(fake.context.close).toHaveBeenCalledOnce();
+  });
+
+  describe('the time limit comes from the settings unless the caller names one', () => {
+    const limits = reporterLimits(parseConfigInput({ pdf: { timeoutMs: 18_000 } }));
+
+    it.each([
+      { name: 'the settings', context: { ...ctx(), limits }, options: {}, timeout: 18_000 },
+      { name: 'the caller', context: { ...ctx(), limits }, options: { timeoutMs: 1_234 }, timeout: 1_234 },
+      { name: 'the built-in default without settings', context: ctx(), options: {}, timeout: 15_000 },
+    ])('$name give $timeout ms', async ({ context, options, timeout }) => {
+      const fake = browserDouble();
+
+      await renderPdf('<p>report</p>', context, { chromium: fake.chromium, ...options });
+
+      expect(fake.launch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ timeout }));
+    });
   });
 
   it('starts with JavaScript disabled, offline and the scanner sandbox settings', async () => {
     const fake = browserDouble();
+
     await renderPdf('<!doctype html><p>report</p>', ctx(), {
       chromium: fake.chromium,
       sandbox: 'off',
     });
+
     expect(fake.launch).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -88,24 +111,29 @@ describe('PDF conversion of the finished HTML report', () => {
       }),
     );
     expect(fake.context.route).toHaveBeenCalledWith('**/*', expect.any(Function));
-    for (const [url, allowed] of [
-      ['data:image/png;base64,AA==', true],
-      ['about:blank', true],
-      ['https://example.invalid/resource', false],
-      ['http://example.invalid/resource', false],
-      ['file:///tmp/private.txt', false],
-    ] as const) {
-      const abort = vi.fn(async () => undefined);
-      const proceed = vi.fn(async () => undefined);
-      const route = {
-        request: () => ({ url: () => url }),
-        abort,
-        continue: proceed,
-      } as unknown as Route;
-      await fake.route()?.(route);
-      expect(proceed).toHaveBeenCalledTimes(allowed ? 1 : 0);
-      expect(abort).toHaveBeenCalledTimes(allowed ? 0 : 1);
-    }
+  });
+
+  it.each([
+    ['data:image/png;base64,AA==', true],
+    ['about:blank', true],
+    ['https://example.invalid/resource', false],
+    ['http://example.invalid/resource', false],
+    ['file:///tmp/private.txt', false],
+  ] as const)('the route handler lets %s through: %s', async (url, allowed) => {
+    const fake = browserDouble();
+    await renderPdf('<!doctype html><p>report</p>', ctx(), { chromium: fake.chromium, sandbox: 'off' });
+    const abort = vi.fn(async () => undefined);
+    const proceed = vi.fn(async () => undefined);
+    const route = {
+      request: () => ({ url: () => url }),
+      abort,
+      continue: proceed,
+    } as unknown as Route;
+
+    await fake.route()?.(route);
+
+    expect(proceed).toHaveBeenCalledTimes(allowed ? 1 : 0);
+    expect(abort).toHaveBeenCalledTimes(allowed ? 0 : 1);
   });
 
   it('escapes and sanitizes the footer supplied by text data', async () => {
@@ -115,7 +143,9 @@ describe('PDF conversion of the finished HTML report', () => {
       text: '<img onerror="bad"> T1_internal\u001b[31m\u202e',
       draft: true,
     };
+
     await renderPdf('<!doctype html><p>report</p>', context, { chromium: fake.chromium });
+
     const options = fake.page.pdf.mock.calls[0]?.[0] as unknown as { footerTemplate: string };
     expect(options.footerTemplate).toContain('&lt;img');
     expect(options.footerTemplate).not.toContain('<img');
@@ -126,6 +156,7 @@ describe('PDF conversion of the finished HTML report', () => {
 
   it('closes Chromium even when printing fails', async () => {
     const fake = browserDouble(new Error('printer unavailable'));
+
     await expect(renderPdf('<p>report</p>', ctx(), { chromium: fake.chromium })).rejects.toThrow(
       'printer unavailable',
     );
@@ -140,6 +171,7 @@ describe('PDF conversion of the finished HTML report', () => {
       const printStarted = new Promise<void>((resolve) => {
         printing = resolve;
       });
+      // Startup takes 400 ms of the 1 s deadline; printing then never finishes.
       fake.launch.mockImplementationOnce(async () => {
         vi.advanceTimersByTime(400);
         return fake.context as unknown as BrowserContext;
@@ -148,9 +180,12 @@ describe('PDF conversion of the finished HTML report', () => {
         printing();
         return new Promise<typeof fake.bytes>(() => undefined);
       });
+
       const result = renderPdf('<p>report</p>', ctx(), { chromium: fake.chromium, timeoutMs: 1_000 });
       const rejected = expect(result).rejects.toThrow('PDF print timed out');
       await printStarted;
+
+      // Only the 600 ms left after the startup are given to the page, and the print is cut exactly there.
       expect(fake.page.setContent.mock.calls[0]?.[1].timeout).toBe(600);
       let settled = false;
       void result.catch(() => {
@@ -160,6 +195,7 @@ describe('PDF conversion of the finished HTML report', () => {
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       await rejected;
+
       expect(fake.context.close).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
@@ -169,9 +205,11 @@ describe('PDF conversion of the finished HTML report', () => {
   it('closes Chromium and removes its temporary profile when printing never completes', async () => {
     const fake = browserDouble();
     fake.page.pdf.mockImplementationOnce(() => new Promise<typeof fake.bytes>(() => undefined));
+
     await expect(
       renderPdf('<p>report</p>', ctx(), { chromium: fake.chromium, timeoutMs: 50 }),
     ).rejects.toThrow('PDF print timed out');
+
     expect(fake.context.close).toHaveBeenCalledOnce();
     const profileDir = fake.launch.mock.calls[0]?.[0];
     expect(profileDir).toBeTypeOf('string');

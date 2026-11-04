@@ -2,6 +2,7 @@
  * A check is a pure function over its snapshot slice (no I/O, enforced by Biome `noRestrictedImports` in src/checks/**).
  * Severity is not decided by the check: it comes from the ruleset by (checkId, variant), capped by confidence.
  */
+import type { Config } from '../config/schema.ts';
 import type {
   AssumeRegion,
   CheckStatus,
@@ -82,6 +83,21 @@ export interface CheckOutcome {
 
 export type CheckRunResult = readonly Observation[] | CheckOutcome;
 
+/** Operator settings that decide what a check reports (see `src/core/config`). */
+export interface CheckThresholds {
+  /** CONSENT-04: share of the viewport a banner covers to count as blocking. */
+  cmp: Pick<Config['cmp'], 'blockingCoveredRatio'>;
+  /** TLS-02: certificate lifetime windows. */
+  tls: Pick<
+    Config['tls'],
+    | 'shortLivedDays'
+    | 'expiringDays'
+    | 'expiringLifetimeShare'
+    | 'approachingDays'
+    | 'approachingLifetimeShare'
+  >;
+}
+
 export interface CheckContext {
   /** Injected clock (certificate expiry, suppressions). */
   readonly now: Date;
@@ -95,6 +111,7 @@ export interface CheckContext {
     readonly assumeRegion: AssumeRegion | null;
     readonly fromSnapshot: boolean;
   };
+  readonly thresholds: CheckThresholds;
 }
 
 export interface Check<K extends SnapshotSectionKey = SnapshotSectionKey> {

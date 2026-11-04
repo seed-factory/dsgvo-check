@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1
 WORKDIR /app
+# Node 26 no longer bundles corepack, which runs the pnpm version pinned in package.json.
+RUN npm install --global corepack@0.36.0
 COPY package.json pnpm-lock.yaml .npmrc ./
 RUN corepack pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
@@ -9,9 +11,10 @@ COPY src ./src
 COPY scripts/emit-schema.ts ./scripts/
 RUN corepack pnpm build && corepack pnpm prune --prod --ignore-scripts
 
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 ENV NODE_ENV=production \
     DSGVO_CHECK_CONTAINER=1 \
+    DSGVO_CHECK_BROWSER_SANDBOX=container \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     LANG=C.UTF-8 \
     HOME=/home/scanner
@@ -32,8 +35,7 @@ COPY --from=build /app/dist ./dist
 COPY package.json LICENSE NOTICE ./
 COPY test/data ./test/data
 COPY --from=build /app/schema ./schema
-COPY docker/seccomp-chromium.json /etc/dsgvo-check/seccomp.json
-COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/dsgvo-check
+RUN chmod 0755 /app/dist/cli.js && ln -s /app/dist/cli.js /usr/local/bin/dsgvo-check
 
 ARG VERSION=0.1.0
 ARG REVISION=unknown

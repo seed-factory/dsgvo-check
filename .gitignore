@@ -23,6 +23,7 @@ dsgvo-check-profile-*/
 # env, os, logs
 .env
 .env.*
+!.env.example
 .DS_Store
 *.log
 npm-debug.log*

@@ -13,7 +13,6 @@
       "!**/dsgvo-check-report*",
       "!**/canary/results",
       "!**/schema/report.schema.json",
-      "!**/docker/seccomp-chromium.json",
       "!**/pnpm-lock.yaml",
       "!**/test/data/report",
       "!**/docs",

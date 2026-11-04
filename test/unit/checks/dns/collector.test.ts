@@ -8,6 +8,7 @@ import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { collectMailDns } from '../../../../src/collectors/dns/collect.ts';
 import { collectDns } from '../../../../src/collectors/dns/index.ts';
 import { type DnsClient, errorToRcode, type RawDnsResult } from '../../../../src/collectors/dns/resolver.ts';
+import { defaultConfig } from '../../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
 import type { DnsRecordType } from '../../../../src/core/snapshot/dns.ts';
@@ -107,7 +108,9 @@ describe('collectMailDns: query plan', () => {
 
   it('MX, then the DMARC Tree Walk, then the SPF tree', async () => {
     const { client, run } = collect(site);
+
     const r = await run;
+
     expect(r.status).toBe('ok');
     expect(client.calls).toEqual([
       'MX example.de',
@@ -116,9 +119,11 @@ describe('collectMailDns: query plan', () => {
       'TXT example.de',
       'TXT _spf.provider.example',
     ]);
+
     const q = r.section.queries;
     expect(q.map((x) => x.purpose)).toEqual(['mx', 'dmarc', 'dmarc-tree-walk', 'spf', 'spf-include']);
     expect(q.map((x) => x.treeWalkStep)).toEqual([undefined, 0, 1, undefined, undefined]);
+
     expect(r.section).toMatchObject({
       domain: 'example.de',
       host: 'www.example.de',
@@ -133,13 +138,16 @@ describe('collectMailDns: query plan', () => {
   it('the section feeds MAIL-01 and MAIL-02 (end to end)', async () => {
     const { run } = collect(site);
     const snap = makeSnapshot({ dns: (await run).section });
+
     expect(variantsOf(runCheck(mail01, snap))).toEqual([]);
     expect(variantsOf(runCheck(mail02, snap))).toEqual(['softfail-with-enforcement']);
   });
 
   it('walks up to the TLD when no record exists', async () => {
     const { client, run } = collect({ ...site, 'TXT _dmarc.example.de': 'NXDOMAIN' });
+
     await run;
+
     expect(client.calls.filter((c) => c.includes('_dmarc'))).toEqual([
       'TXT _dmarc.www.example.de',
       'TXT _dmarc.example.de',
@@ -150,6 +158,7 @@ describe('collectMailDns: query plan', () => {
   it('also walks from the mail domain when the host has its own record', async () => {
     const { client, run } = collect({ ...site, 'TXT _dmarc.www.example.de': ['v=DMARC1; p=none'] });
     const r = await run;
+
     expect(client.calls.filter((c) => c.includes('_dmarc'))).toEqual([
       'TXT _dmarc.www.example.de',
       'TXT _dmarc.example.de',
@@ -161,6 +170,7 @@ describe('collectMailDns: query plan', () => {
   it('stops the walk at a failed step (a parent cannot replace it) and records the failure', async () => {
     const { run } = collect({ ...site, 'TXT _dmarc.example.de': 'SERVFAIL' });
     const r = await run;
+
     const failed = r.section.queries.find((x) => x.qname === '_dmarc.example.de');
     expect(failed).toMatchObject({ rcode: 'SERVFAIL', attempts: 2 });
     expect(r.section.queries.map((x) => x.qname)).not.toContain('_dmarc.de');
@@ -177,18 +187,22 @@ describe('collectMailDns: query plan', () => {
       'TXT a.example.net': ['v=spf1 -all'],
     });
     await run;
+
     expect(client.calls.filter((c) => c === 'MX example.de')).toHaveLength(1);
     expect(client.calls.filter((c) => c === 'TXT a.example.net')).toHaveLength(1);
   });
 
   it('stops following includes once the lookup limit is exceeded', async () => {
+    // 15 includes, each of which includes one more name: far above the limit of 10 lookups
     const spec: ZoneSpec = { ...site };
     const includes = Array.from({ length: 15 }, (_, i) => `include:i${i}.example.net`).join(' ');
     spec['TXT example.de'] = [`v=spf1 ${includes} -all`];
     for (let i = 0; i < 15; i++) spec[`TXT i${i}.example.net`] = [`v=spf1 include:n${i}.example.net -all`];
     for (let i = 0; i < 15; i++) spec[`TXT n${i}.example.net`] = ['v=spf1 ip4:192.0.2.1 -all'];
     const { run } = collect(spec);
+
     const r = await run;
+
     expect(r.section.budget.used).toBeLessThanOrEqual(60);
     expect(variantsOf(runCheck(mail02, makeSnapshot({ dns: r.section })))).toEqual(['record-invalid']);
   });
@@ -198,6 +212,7 @@ describe('collectMailDns: redaction and minimisation', () => {
   it('masks mailto: in values and chunks', async () => {
     const r = await collect(site).run;
     const json = JSON.stringify(r.section);
+
     expect(json).not.toContain('dmarc-reports@');
     const dmarc = r.section.queries.find((x) => x.qname === '_dmarc.example.de');
     expect(dmarc?.answers[0]?.value).toBe('v=DMARC1; p=reject; rua=mailto:[redacted]@example.de');
@@ -225,6 +240,7 @@ describe('collectMailDns: redaction and minimisation', () => {
       client,
       now: () => FIXED_NOW,
     });
+
     const json = JSON.stringify(r.section);
     expect(json).not.toContain('alice');
     expect(json).not.toContain('bob');
@@ -238,6 +254,7 @@ describe('collectMailDns: redaction and minimisation', () => {
 
   it('drops unrelated TXT records at the SPF names (count only)', async () => {
     const r = await collect(site).run;
+
     const apex = r.section.queries.find((x) => x.qname === 'example.de' && x.type === 'TXT');
     expect(apex?.answers.map((a) => a.value)).toEqual(['v=spf1 mx include:_spf.provider.example ~all']);
     expect(apex?.filteredAnswers).toBe(1);
@@ -248,10 +265,12 @@ describe('collectMailDns: redaction and minimisation', () => {
 describe('collectMailDns: limits', () => {
   it('budget exhausted → partial with an error entry', async () => {
     const r = await collect(site, { budget: 3 }).run;
+
     expect(r.status).toBe('partial');
     expect(r.reason).toBe('dns-budget-exhausted');
     expect(r.section.budget).toEqual({ limit: 3, used: 3 });
     expect(r.section.errors.map((e) => e.code)).toContain('dns-budget-exhausted');
+
     // the missing SPF lookup makes MAIL-02 an error, not "record-not-found"
     expect(runCheck(mail02, makeSnapshot({ dns: r.section })).status).toBe('error');
   });
@@ -286,6 +305,7 @@ describe('collectDns (collector entry point)', () => {
       target: makeTarget(url),
       options: { maxPages: 6, screenshots: false, sandbox: 'require', lang: 'de', assumeRegion: null },
       network: defaultNetworkConfig(),
+      config: defaultConfig(),
       userAgent: { http: 'test', token: 'test' },
       signal: new AbortController().signal,
       deadline: Date.now() + 60_000,

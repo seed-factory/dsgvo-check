@@ -8,7 +8,7 @@ import {
   type FixtureServer,
   startFixtureServer,
 } from '../../../fixture-server/server.ts';
-import { collect } from '../helpers.ts';
+import { type CollectRun, collect } from '../helpers.ts';
 
 const LOREM =
   'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
@@ -98,15 +98,15 @@ afterAll(async () => {
   await server?.close();
 });
 
-const blocked = (run: Awaited<ReturnType<typeof collect>>) =>
-  run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
+const blocked = (run: CollectRun) => run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
 const privacyHits = (host: string) => server.requestsTo(host).filter((r) => r.path === '/datenschutz/');
-const privacyVisit = (run: Awaited<ReturnType<typeof collect>>) =>
+const privacyVisit = (run: CollectRun) =>
   run.result.sections.browser?.phases[0]?.pages.filter((p) => p.role === 'privacy') ?? [];
 
 describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED', () => {
   it('503 + challenge, then 200: the page is evaluated, no SCAN-BLOCKED', async () => {
     const run = await collect(server, { url: 'https://recovers.example.test/' });
+
     expect(privacyHits('recovers.example.test')).toHaveLength(2); // the repeat of the overload policy happened
     const visits = privacyVisit(run);
     expect(visits).toHaveLength(1); // the repeat replaces the first visit
@@ -118,6 +118,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
 
   it('the first block stays visible as an entry of the phase, with the code of its status and no new field', async () => {
     const run = await collect(server, { url: 'https://recovers.example.test/' });
+
     const phase = run.result.sections.browser?.phases[0];
     const entries =
       phase?.errors.filter((e) => e.url?.endsWith('/datenschutz/') && e.code === 'http-503') ?? [];
@@ -130,6 +131,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
 
   it('counterexample: the same challenge on the repeat — SCAN-BLOCKED stays, once, for the page', async () => {
     const run = await collect(server, { url: 'https://stays-blocked.example.test/' });
+
     expect(privacyHits('stays-blocked.example.test')).toHaveLength(2);
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -144,6 +146,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
 
   it('counterexample: the repeat gives no page at all — SCAN-BLOCKED stays with what the first attempt showed', async () => {
     const run = await collect(server, { url: 'https://repeat-fails.example.test/' });
+
     expect(privacyHits('repeat-fails.example.test').length).toBeGreaterThanOrEqual(2);
     const visits = privacyVisit(run);
     expect(visits).toHaveLength(1);
@@ -159,6 +162,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
 
   it('counterexample: a plain 503 that recovers was never a block — no SCAN-BLOCKED, no entry about a block', async () => {
     const run = await collect(server, { url: 'https://plain-503.example.test/' });
+
     expect(privacyHits('plain-503.example.test')).toHaveLength(2);
     expect(blocked(run)).toEqual([]);
     const codes = run.result.sections.browser?.phases[0]?.errors.map((e) => e.code) ?? [];
@@ -167,6 +171,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
 
   it('counterexample: a 403 challenge is not repeated and stays SCAN-BLOCKED, without a retry entry', async () => {
     const run = await collect(server, { url: 'https://no-repeat.example.test/' });
+
     expect(privacyHits('no-repeat.example.test')).toHaveLength(1);
     const d = blocked(run);
     expect(d).toHaveLength(1);

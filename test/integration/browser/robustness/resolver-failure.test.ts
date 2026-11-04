@@ -11,7 +11,7 @@ import {
   startFixtureServer,
 } from '../../../fixture-server/server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
-import { collect } from '../helpers.ts';
+import { type CollectRun, collect } from '../helpers.ts';
 
 const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
 const html = (body: string) =>
@@ -66,52 +66,54 @@ function resolverFailingInPhaseB(code: string, failures: number) {
   return { spy, lookup, calls };
 }
 
-const bStart = (run: Awaited<ReturnType<typeof collect>>) =>
-  run.result.sections.browser?.phases.find((p) => p.phase === 'B')?.pages[0];
+const phaseB = (run: CollectRun) => run.result.sections.browser?.phases.find((p) => p.phase === 'B');
+const bStart = (run: CollectRun) => phaseB(run)?.pages[0];
+
+/** Phases A and B of `host` with the failing resolver `r`; the guard's pauses between lookups are short. */
+function collectWithFailingResolver(host: string, r: ReturnType<typeof resolverFailingInPhaseB>) {
+  return collect(server, {
+    url: `https://${host}/`,
+    maxPages: 1,
+    deps: { cmp: stubCmpApi(), phases: ['A', 'B'], chromium: r.spy, lookupBackoffMs: [30, 30] },
+    network: { allowPrivateAddresses: false, lookup: r.lookup },
+  });
+}
+
+const diagnosticCodes = (run: CollectRun) => run.result.diagnostics?.map((d) => d.code) ?? [];
 
 describe('a start page refused in phase B because the resolver hiccuped', () => {
   it('EAI_AGAIN twice, then success: the guard re-asks and the start page of B loads', async () => {
     const r = resolverFailingInPhaseB('EAI_AGAIN', 2);
-    const run = await collect(server, {
-      url: 'https://flaky.example.test/',
-      maxPages: 1,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B'], chromium: r.spy, lookupBackoffMs: [30, 30] },
-      network: { allowPrivateAddresses: false, lookup: r.lookup },
-    });
+
+    const run = await collectWithFailingResolver('flaky.example.test', r);
+
     expect(bStart(run)).toMatchObject({ evaluable: true, navigation: { ok: true } });
     expect(run.result.sections.browser?.guard).toMatchObject({ blocked: 0 });
-    expect(run.result.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-PRIVATE-REQUEST-BLOCKED');
-    expect(run.result.sections.browser?.phases.find((p) => p.phase === 'B')?.status).not.toBe('failed');
+    expect(diagnosticCodes(run)).not.toContain('SCAN-PRIVATE-REQUEST-BLOCKED');
+    expect(phaseB(run)?.status).not.toBe('failed');
   });
 
   it('EAI_AGAIN for all three attempts: the start page gets one more navigation after a pause; the retry that loads it leaves no diagnostic about a document not fetched', async () => {
     const r = resolverFailingInPhaseB('EAI_AGAIN', 3);
-    const run = await collect(server, {
-      url: 'https://flaky.example.test/',
-      maxPages: 1,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B'], chromium: r.spy, lookupBackoffMs: [30, 30] },
-      network: { allowPrivateAddresses: false, lookup: r.lookup },
-    });
-    const b = run.result.sections.browser?.phases.find((p) => p.phase === 'B');
+
+    const run = await collectWithFailingResolver('flaky.example.test', r);
+
+    const b = phaseB(run);
     // The refused navigation is replaced by the retry (one page record).
     expect(b?.pages.map((p) => [p.role, p.navigation.ok])).toEqual([['start', true]]);
     // The refusal itself stays a fact in the data: one blocked navigation, flagged on its request record.
     expect(run.result.sections.browser?.guard).toMatchObject({ blocked: 1 });
     expect(b?.requests.filter((q) => q.blockedByGuard)).toHaveLength(1);
-    // the document was fetched by the retry, so the report must not say that documents were not fetched.
-    expect(run.result.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-PRIVATE-REQUEST-BLOCKED');
+    // The document was fetched by the retry, so the report must not say that documents were not fetched.
+    expect(diagnosticCodes(run)).not.toContain('SCAN-PRIVATE-REQUEST-BLOCKED');
   });
 
   it('counterexample: a name that does not exist (ENOTFOUND) stays refused — fail-closed, two navigations tried', async () => {
     const r = resolverFailingInPhaseB('ENOTFOUND', Number.POSITIVE_INFINITY);
-    const run = await collect(server, {
-      url: 'https://gone.example.test/',
-      maxPages: 1,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B'], chromium: r.spy, lookupBackoffMs: [30, 30] },
-      network: { allowPrivateAddresses: false, lookup: r.lookup },
-    });
-    const b = run.result.sections.browser?.phases.find((p) => p.phase === 'B');
-    expect(b).toMatchObject({ status: 'failed' });
+
+    const run = await collectWithFailingResolver('gone.example.test', r);
+
+    expect(phaseB(run)).toMatchObject({ status: 'failed' });
     expect(bStart(run)).toMatchObject({
       evaluable: false,
       notEvaluableReason: 'navigation-failed:ERR_BLOCKED_BY_CLIENT',

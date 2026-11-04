@@ -68,6 +68,41 @@ export interface StateVerdict {
 
 const SOURCE_ORDER: ReadonlyArray<ConsentStateFact['source']> = ['api', 'cookie', 'tcf'];
 
+const unconfirmed = (reason: string): StateVerdict => ({ ok: false, methods: [], reason });
+
+/** The verdict of one source: an answer was recorded by the visitor or our click, and every counted category is `want`. */
+function verdictOfSource(
+  s: ConsentStateFact,
+  want: 'denied' | 'granted',
+  opts: { requireAction?: boolean },
+  ignored: ReadonlySet<string>,
+): StateVerdict {
+  const source = s.source;
+
+  const responded = s.decision?.responded;
+  if (responded === false) return unconfirmed(`${source}:no-response-recorded`);
+  if (responded !== true) return unconfirmed(`${source}:response-unknown`);
+
+  if (s.origin === 'default' || s.origin === 'special-branch')
+    return unconfirmed(`${source}:origin-${s.origin}`);
+  if (opts.requireAction && s.origin !== 'action') return unconfirmed(`${source}:unchanged-after-click`);
+
+  const entries = Object.entries(s.categories).filter(([k]) => !ignored.has(k));
+  if (entries.length === 0) return unconfirmed('no-categories');
+  if (!entries.every(([, v]) => v === want)) return unconfirmed(`${source}:not-all-${want}`);
+
+  const skipped = Object.keys(s.categories).filter((k) => ignored.has(k));
+  return {
+    ok: true,
+    methods: [
+      `${source}:all-${want}`,
+      'decision:responded',
+      `origin:${s.origin}`,
+      ...(skipped.length > 0 ? [`categories-ignored:${skipped.join(',')}`] : []),
+    ],
+  };
+}
+
 /**
  * Confirms reject/accept by recorded state (`decision.responded === true`, origin `action` or `stored`, every optional
  * category denied/granted); the API wins over the cookie. `requireAction` accepts only `origin: action`.
@@ -79,35 +114,16 @@ export function stateVerdict(
 ): StateVerdict {
   const want = action === 'reject' ? 'denied' : 'granted';
   const ignored = new Set(opts.ignoreCategories ?? []);
+
   const ready = states.filter((s) => s.ready === 'ready');
-  if (ready.length === 0) return { ok: false, methods: [], reason: 'state-unavailable' };
+  if (ready.length === 0) return unconfirmed('state-unavailable');
+
+  // The first source that lists categories decides.
   for (const source of SOURCE_ORDER) {
     const s = ready.find((x) => x.source === source && Object.keys(x.categories).length > 0);
-    if (!s) continue;
-    const responded = s.decision?.responded;
-    if (responded === false) return { ok: false, methods: [], reason: `${source}:no-response-recorded` };
-    if (responded !== true) return { ok: false, methods: [], reason: `${source}:response-unknown` };
-    if (s.origin === 'default' || s.origin === 'special-branch')
-      return { ok: false, methods: [], reason: `${source}:origin-${s.origin}` };
-    if (opts.requireAction && s.origin !== 'action')
-      return { ok: false, methods: [], reason: `${source}:unchanged-after-click` };
-    const entries = Object.entries(s.categories).filter(([k]) => !ignored.has(k));
-    if (entries.length === 0) return { ok: false, methods: [], reason: 'no-categories' };
-    if (entries.every(([, v]) => v === want)) {
-      const skipped = Object.keys(s.categories).filter((k) => ignored.has(k));
-      return {
-        ok: true,
-        methods: [
-          `${source}:all-${want}`,
-          'decision:responded',
-          `origin:${s.origin}`,
-          ...(skipped.length > 0 ? [`categories-ignored:${skipped.join(',')}`] : []),
-        ],
-      };
-    }
-    return { ok: false, methods: [], reason: `${source}:not-all-${want}` };
+    if (s) return verdictOfSource(s, want, opts, ignored);
   }
-  return { ok: false, methods: [], reason: 'no-categories' };
+  return unconfirmed('no-categories');
 }
 
 /**
@@ -119,10 +135,12 @@ export function unchangedDeniedAfterAccept(
   now: readonly ConsentStateFact[],
 ): string[] {
   if (!before) return [];
+
   for (const source of SOURCE_ORDER) {
     const after = now.find((s) => s.source === source && Object.keys(s.categories).length > 0);
     const prev = before.find((s) => s.source === source && (s.scope ?? null) === (after?.scope ?? null));
     if (!after || !prev) continue;
+
     const entries = Object.entries(after.categories);
     const granted = entries.some(([k, v]) => v === 'granted' && prev.categories[k] !== 'granted');
     if (!granted) return [];

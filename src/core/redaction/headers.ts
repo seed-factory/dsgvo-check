@@ -73,9 +73,11 @@ function parseRefresh(value: string): { delay: string; address: string } | null 
   const afterSpace = value.trimStart();
   const delay = REFRESH_DELAY.exec(afterSpace)?.[0];
   if (!delay) return null;
+
   let rest = afterSpace.slice(delay.length).trimStart();
   if (rest === '') return { delay, address: '' };
   if (rest[0] !== ';' && rest[0] !== ',') return null;
+
   rest = rest.slice(1).trimStart();
   if (rest.slice(0, 3).toLowerCase() === 'url') {
     const afterName = rest.slice(3).trimStart();
@@ -83,6 +85,7 @@ function parseRefresh(value: string): { delay: string; address: string } | null 
   }
   rest = rest.trimEnd();
   if (LINE_TERMINATOR.test(rest)) return null;
+
   const quote = rest[0];
   const quoted = (quote === '"' || quote === "'") && rest.length >= 2 && rest.endsWith(quote);
   return { delay, address: quoted ? rest.slice(1, -1) : rest };
@@ -132,11 +135,13 @@ function safeCspSource(source: string): string {
   const s = source.trim();
   if (s === '*' || /^[a-z][a-z0-9+.-]*:$/i.test(s)) return s.slice(0, MAX_SOURCE_LENGTH);
   if (s.startsWith("'")) return CSP_KEYWORDS.has(s.toLowerCase()) ? s : REDACTED;
+
   const m = /^(?:([a-z][a-z0-9+.-]*):\/\/)?([^/]*)/i.exec(s);
   // user info ends at the last `@` of the authority (an address may hold `#`, `?` and `:`)
   const authority = (m?.[2] ?? '').replace(/^.*@/s, '').replace(/[?#].*$/s, '');
   const hp = /^(\[[0-9a-f:.]+\]|[^:]*)(?::(\d{1,5}|\*))?$/i.exec(authority);
   if (!hp || !SOURCE_HOST_RE.test(hp[1] ?? '')) return REDACTED;
+
   const scheme = m?.[1] ? `${m[1]}://` : '';
   return `${scheme}${hp[1]}${hp[2] ? `:${hp[2]}` : ''}`.slice(0, MAX_SOURCE_LENGTH);
 }
@@ -166,10 +171,12 @@ export function cspFrameAncestors(value: string): FrameAncestorsFact {
   let present = false;
   let restricts = false;
   let sources: string[] = [];
+
   for (const policy of value.split(',')) {
     for (const part of policy.split(';')) {
       const [directive, ...rest] = part.trim().split(/\s+/);
       if (directive?.toLowerCase() !== 'frame-ancestors') continue;
+
       const list = rest.filter(Boolean);
       const open = list.some((src) => UNRESTRICTED_SOURCES.has(src.toLowerCase()));
       if (!present || (!open && !restricts)) {
@@ -181,6 +188,13 @@ export function cspFrameAncestors(value: string): FrameAncestorsFact {
     }
   }
   return { present, restricts, sources };
+}
+
+/** URL headers have their URLs sanitized, value headers their embedded URLs, every other header loses its value. */
+function sanitizedHeaderValue(name: string, value: string, base: string, sanitize: UrlSanitizer): string {
+  if (URL_HEADERS.has(name)) return sanitizeUrlHeader(name, value, base, sanitize);
+  if (VALUE_HEADERS.has(name)) return sanitizeUrlsIn(value, base, sanitize);
+  return REDACTED;
 }
 
 /**
@@ -195,15 +209,13 @@ export function storedHeaderRecord(
 ): HeaderRecord {
   const n = name.toLowerCase();
   const csp = CSP_HEADERS.has(n);
-  const sanitized = URL_HEADERS.has(n)
-    ? sanitizeUrlHeader(n, value, base, sanitize)
-    : VALUE_HEADERS.has(n)
-      ? sanitizeUrlsIn(value, base, sanitize)
-      : REDACTED;
+  const sanitized = sanitizedHeaderValue(n, value, base, sanitize);
   const full = csp ? sanitizeSchemelessSources(sanitized) : sanitized;
+
   const truncated = full.length > MAX_HEADER_VALUE;
   const record: HeaderRecord = { name: n, value: truncated ? full.slice(0, MAX_HEADER_VALUE) : full };
   if (truncated) record.truncated = true;
+
   if (csp) {
     const fact = cspFrameAncestors(value);
     // a complete value of exactly the limit carries the fact too, or it could not be told from a cut value of an older snapshot

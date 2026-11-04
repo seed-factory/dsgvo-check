@@ -3,12 +3,14 @@
  * link instead of a button, reject only on the second layer).
  */
 import { describe, expect, it } from 'vitest';
-import { classifyFirstLayer, isBlocking } from '../../../src/cmp/classify.ts';
+import { isBlocking } from '../../../src/cmp/classify.ts';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import type { BlockingFacts, CmpButton, CmpDetection, CmpFacts } from '../../../src/cmp/types.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../utils/classify.ts';
 import { makeCmpFacts } from '../../utils/snapshot-builder.ts';
 
 const lexicon = loadLexicon();
+const DEFAULT_RATIO = DEFAULT_CLASSIFY.blockingCoveredRatio;
 
 function btn(name: string, p: Partial<CmpButton> = {}): CmpButton {
   return {
@@ -66,12 +68,43 @@ function facts(
 
 describe('isBlocking', () => {
   it('overlay, scroll lock, inert or coveredRatio ≥ 0.85', () => {
-    expect(isBlocking(nonBlocking)).toBe(false);
-    expect(isBlocking(blocking)).toBe(true);
-    expect(isBlocking({ ...nonBlocking, inert: true })).toBe(true);
-    expect(isBlocking({ ...nonBlocking, scrollLock: true })).toBe(true);
-    expect(isBlocking({ ...nonBlocking, coveredRatio: 0.9 })).toBe(true);
-    expect(isBlocking({ ...nonBlocking, ariaModal: true })).toBe(false);
+    expect(DEFAULT_RATIO).toBe(0.85);
+    expect(isBlocking(nonBlocking, DEFAULT_RATIO)).toBe(false);
+    expect(isBlocking(blocking, DEFAULT_RATIO)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, inert: true }, DEFAULT_RATIO)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, scrollLock: true }, DEFAULT_RATIO)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, coveredRatio: 0.9 }, DEFAULT_RATIO)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, ariaModal: true }, DEFAULT_RATIO)).toBe(false);
+  });
+
+  it.each([
+    // [coveredRatio, threshold, blocking]
+    [0.84, 0.85, false],
+    [0.85, 0.85, true],
+    [0.6, 0.5, true],
+    [0.5, 0.5, true],
+    [0.49, 0.5, false],
+    [0.9, 0.95, false],
+    [1, 1, true],
+    [null, 0.5, false],
+  ] as const)('covered share %s with threshold %s → %s', (coveredRatio, threshold, expected) => {
+    expect(isBlocking({ ...nonBlocking, coveredRatio }, threshold)).toBe(expected);
+  });
+
+  it('overlay, scroll lock and inert stay blocking whatever the threshold', () => {
+    expect(isBlocking({ ...nonBlocking, overlay: true }, 1)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, scrollLock: true }, 1)).toBe(true);
+    expect(isBlocking({ ...nonBlocking, inert: true }, 1)).toBe(true);
+  });
+
+  it('classifyFirstLayer applies the threshold of the settings to the first layer', () => {
+    const covering = facts([btn('Alle akzeptieren'), btn('Einstellungen')], {
+      blocking: { ...nonBlocking, coveredRatio: 0.6 },
+    });
+    expect(classifyFirstLayer(covering, lexicon).variant).toBe('nonblocking-no-reject');
+    const strict = classifyFirstLayer(covering, lexicon, { blockingCoveredRatio: 0.5 });
+    expect(strict.variant).toBe('blocking-no-reject');
+    expect(strict.blocking).toBe(true);
   });
 });
 

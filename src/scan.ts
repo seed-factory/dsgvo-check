@@ -7,9 +7,11 @@ import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
+import { checkThresholds } from './core/config/thresholds.ts';
 import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import {
+  type AssessOutput,
   assess,
   type ExecutedCheck,
   isGating,
@@ -62,42 +64,45 @@ const DEFAULT_COLLECTORS: Collectors = {
   dns: collectDns,
 };
 
+/** Refuses a target that does not resolve or that points into non-public address space, before any collector runs. */
 async function preflight(target: TargetInfo, network: NetworkConfig): Promise<void> {
   // IPv6 literals keep their brackets in URL form; DNS and the address check need the bare address.
   const host = bareHost(target.host);
-  let addresses: { address: string }[];
-  if (isIP(host)) {
-    addresses = [{ address: host }];
-  } else {
-    try {
-      addresses = await network.lookup(host);
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code ?? 'ERROR';
-      throw new ScanFatalError(
-        'unreachable',
-        code === 'ENOTFOUND' ? 'target-nxdomain' : 'target-dns-error',
-        { host, code },
-        { cause: err },
-      );
-    }
-  }
+  const addresses = isIP(host) ? [{ address: host }] : await resolveHost(host, network);
   if (addresses.length === 0) {
     throw new ScanFatalError('unreachable', 'target-nxdomain', { host, code: 'no addresses' });
   }
-  if (!network.allowPrivateAddresses) {
-    const blocked = addresses.filter((a) => classifyAddress(a.address) !== 'public');
-    if (blocked.length === addresses.length) {
-      throw new InvalidInputError('target-not-public', { host });
-    }
-    // the browser cannot pin a checked address and its guard refuses a host with any non-public address: refuse it
-    // here, before any collector runs, with a precise message
-    if (blocked.length > 0) {
-      const list = blocked
-        .slice(0, 3)
-        .map((a) => a.address)
-        .join(', ');
-      throw new InvalidInputError('target-mixed-addresses', { host, addresses: list });
-    }
+  if (!network.allowPrivateAddresses) assertPublicAddresses(host, addresses);
+}
+
+async function resolveHost(host: string, network: NetworkConfig): Promise<{ address: string }[]> {
+  try {
+    return await network.lookup(host);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? 'ERROR';
+    throw new ScanFatalError(
+      'unreachable',
+      code === 'ENOTFOUND' ? 'target-nxdomain' : 'target-dns-error',
+      { host, code },
+      { cause: err },
+    );
+  }
+}
+
+function assertPublicAddresses(host: string, addresses: readonly { address: string }[]): void {
+  const blocked = addresses.filter((a) => classifyAddress(a.address) !== 'public');
+  if (blocked.length === addresses.length) {
+    throw new InvalidInputError('target-not-public', { host });
+  }
+
+  // The browser cannot pin a checked address and its guard refuses a host with any non-public address: refuse it
+  // here, before any collector runs, with a precise message.
+  if (blocked.length > 0) {
+    const list = blocked
+      .slice(0, 3)
+      .map((a) => a.address)
+      .join(', ');
+    throw new InvalidInputError('target-mixed-addresses', { host, addresses: list });
   }
 }
 
@@ -141,11 +146,14 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   } catch (err) {
     throw new InvalidInputError('snapshot-unreadable', { file, message: errorMessage(err) });
   }
+
   const s = parsed as Partial<Snapshot>;
   if (s?.snapshotVersion !== SNAPSHOT_VERSION || !s.target || !s.environment || !s.plan || !s.collection) {
     throw new InvalidInputError('snapshot-invalid', { file });
   }
+
   const snapshot = s as Snapshot;
+  // `derived` is recomputed on every run, never trusted from the file.
   delete snapshot.derived;
   snapshot.diagnostics ??= [];
   // Older snapshots may hold the target unredacted.
@@ -177,19 +185,24 @@ function runChecks(
 ): Map<string, ExecutedCheck> {
   const executed = new Map<string, ExecutedCheck>();
   const dataCache = new Map<string, Record<string, unknown>>();
+  const thresholds = checkThresholds(o.config);
+
   for (const check of checks) {
     const data: Record<string, unknown> = {};
     for (const name of check.data ?? []) {
       if (!dataCache.has(name)) dataCache.set(name, loadDataDir(name, o.dataDir));
       data[name] = dataCache.get(name);
     }
+
     const ctx: CheckContext = {
       now: o.now(),
       lang: o.lang,
       routing: core.routing,
       data,
       options: { strict: o.strict, assumeRegion: o.assumeRegion, fromSnapshot: o.fromSnapshot !== null },
+      thresholds,
     };
+
     const result = executeCheck(check, snapshot, ctx, { timedOut });
     if (result.error) log.error(`check ${check.id}: ${result.error.message}`);
     executed.set(check.id, result);
@@ -218,27 +231,36 @@ function scanDiagnostics(
 ): Diagnostic[] {
   const inputs: DiagnosticInput[] = [...snapshot.diagnostics];
   for (const e of executed.values()) inputs.push(...(e.outcome?.diagnostics ?? []));
+
   if (state.timedOut) {
     const affected = [...executed.entries()].filter(([, e]) => e.reason === 'timeout').map(([id]) => id);
     inputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
   }
   if (o.sandbox === 'off') inputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
   if (state.fatal?.reason === 'unreachable') inputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
-  if (state.fatal?.reason === 'blocked') {
-    const challenge = snapshot.browser?.phases.find((p) => p.phase === 'A')?.pages[0]?.challenge;
-    inputs.push({
-      code: 'SCAN-BLOCKED',
-      affects: [],
-      params: {
-        scope: 'start',
-        count: 1,
-        page: snapshot.target.url,
-        pages: snapshot.target.url,
-        ...(challenge?.signals.length ? { signals: challenge.signals.slice(0, 10).join(', ') } : {}),
-      },
-    });
-  }
+  if (state.fatal?.reason === 'blocked') inputs.push(blockedStartPageDiagnostic(snapshot));
+
   return mergeDiagnostics(inputs);
+}
+
+/** Bot-protection signals are listed up to a cap so that the diagnostic stays short. */
+const MAX_BLOCK_SIGNALS = 10;
+
+function blockedStartPageDiagnostic(snapshot: Snapshot): DiagnosticInput {
+  const challenge = snapshot.browser?.phases.find((p) => p.phase === 'A')?.pages[0]?.challenge;
+  return {
+    code: 'SCAN-BLOCKED',
+    affects: [],
+    params: {
+      scope: 'start',
+      count: 1,
+      page: snapshot.target.url,
+      pages: snapshot.target.url,
+      ...(challenge?.signals.length
+        ? { signals: challenge.signals.slice(0, MAX_BLOCK_SIGNALS).join(', ') }
+        : {}),
+    },
+  };
 }
 
 function toGateChecks(checks: readonly CheckResult[], disabledIds: ReadonlySet<string>): GateCheck[] {
@@ -271,6 +293,109 @@ function isPartial(snapshot: Snapshot, checks: readonly CheckResult[], state: Co
   );
 }
 
+/** `failure.<code>` in test/data/texts, in the language of the scan; the code alone when no texts can be loaded. */
+function failureMessage(
+  code: string,
+  params: MessageParams,
+  core: CoreData | null,
+  options: ScanOptions,
+): string {
+  let texts = core?.texts;
+  try {
+    texts ??= loadTexts(options.lang === 'en' ? 'en' : 'de', options.dataDir ?? DEFAULT_DATA_DIR);
+  } catch {
+    return code;
+  }
+  return uiText(texts, `failure.${code}`, params);
+}
+
+/** Everything that follows the collection: derive, run and assess the checks, and the facts the gate needs. */
+interface Evaluation {
+  assessed: AssessOutput;
+  diagnostics: Diagnostic[];
+  gateChecks: GateCheck[];
+  gateFindings: GateFinding[];
+}
+
+function evaluateSnapshot(
+  snapshot: Snapshot,
+  state: CollectState,
+  selection: { enabled: AnyCheck[]; disabled: AnyCheck[] },
+  o: ResolvedScanOptions,
+  core: CoreData,
+  log: Logger,
+): Evaluation {
+  const { enabled, disabled } = selection;
+  if (snapshot.browser) snapshot.derived = derive(snapshot, { dataDir: o.dataDir });
+
+  const executed = runChecks(enabled, snapshot, o, core, state.timedOut, log);
+  for (const c of disabled) {
+    executed.set(c.id, { status: 'skipped', reason: 'not-selected', outcome: null, durationMs: 0 });
+  }
+  const assessed = assess({
+    checks: [...enabled, ...disabled].sort((a, b) => a.id.localeCompare(b.id)),
+    executed,
+    ruleset: core.ruleset,
+    routing: core.routing,
+    overrides: o.overrides,
+    texts: core.texts,
+    maxEvidencePerFinding: o.config.report.maxEvidencePerFinding,
+  });
+
+  return {
+    assessed,
+    diagnostics: scanDiagnostics(snapshot, executed, state, o),
+    gateChecks: toGateChecks(assessed.checks, new Set(disabled.map((c) => c.id))),
+    gateFindings: toGateFindings(assessed.findings, core.ruleset),
+  };
+}
+
+interface CompletedRun {
+  snapshot: Snapshot;
+  state: CollectState;
+  o: ResolvedScanOptions;
+  core: CoreData;
+  evaluation: Evaluation;
+  snapshotWriteFailed: boolean;
+  startedAt: string;
+  t0: number;
+}
+
+/** The gate decides the exit code, then the full report is built; `partial` marks a result with gaps. */
+function completeResult(run: CompletedRun): ScanResult {
+  const { snapshot, state, o, core, evaluation } = run;
+  const { assessed, diagnostics, gateChecks, gateFindings } = evaluation;
+
+  const result = gate({
+    failOn: o.failOn,
+    strict: o.strict,
+    fatal: run.snapshotWriteFailed ? ['report-write-failed'] : [],
+    findings: gateFindings,
+    checks: gateChecks,
+    sandboxOff: o.sandbox === 'off',
+    egressRegion: snapshot.environment.egress.region,
+    timedOut: state.timedOut,
+  });
+
+  const partial = isPartial(snapshot, assessed.checks, state);
+  const report = buildFullReport({
+    snapshot,
+    status: partial ? 'partial' : 'complete',
+    startedAt: run.startedAt,
+    durationMs: Math.round(performance.now() - run.t0),
+    options: reportOptions(o),
+    ruleset: core.ruleset,
+    texts: core.texts,
+    checks: assessed.checks,
+    findings: assessed.findings,
+    diagnostics,
+    evidence: assessed.evidence,
+    exitCode: result.exitCode,
+    exitReasons: result.exitReasons,
+  });
+  return { report, snapshot, exitCode: result.exitCode };
+}
+
 /** Runs one scan; fatal conditions produce a `failed` report (exit 2) instead of throwing. Report files are written by `writeReports`. */
 export async function scan(options: ScanOptions): Promise<ScanResult> {
   const startedAtDate = options.now?.() ?? new Date();
@@ -279,27 +404,19 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
   const log = options.log ?? createLogger('warn');
   // the target in any report (also the minimal failed one) is redacted
   const targetForReport = options.url ? redactTarget(options.url) : (options.fromSnapshot ?? '');
+
+  // Filled in as the run progresses: a failure reports whatever exists by then.
   let o: ResolvedScanOptions | null = null;
   let core: CoreData | null = null;
   let snapshot: Snapshot | null = null;
 
-  // `failure.<code>` in test/data/texts, in the language of the scan; the code alone when no texts can be loaded.
-  const failureMessage = (code: string, params: MessageParams): string => {
-    let texts = core?.texts;
-    try {
-      texts ??= loadTexts(options.lang === 'en' ? 'en' : 'de', options.dataDir ?? DEFAULT_DATA_DIR);
-    } catch {
-      return code;
-    }
-    return uiText(texts, `failure.${code}`, params);
-  };
   const fail = (
     reason: FatalReason,
     code: string,
     params: MessageParams = {},
     extra: Partial<FailedReportExtras> = {},
   ) => {
-    const message = failureMessage(code, params);
+    const message = failureMessage(code, params, core, options);
     const exitReasons = gate({
       failOn: o?.failOn ?? 'critical',
       strict: o?.strict ?? false,
@@ -310,6 +427,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       egressRegion: o?.assumeRegion ? 'asserted' : 'unknown',
       timedOut: false,
     }).exitReasons;
+
     const report = buildFailedReport({
       target: snapshot?.target.url ?? targetForReport,
       startedAt,
@@ -334,9 +452,10 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       throw new InvalidInputError('locked-override', { variants: locked.join(', ') });
     }
     const registry = options.registry ?? new CheckRegistry(allChecks);
-    const { enabled, disabled } = selectChecks(registry, o.checks);
+    const selection = selectChecks(registry, o.checks);
     const collectors: Collectors = { ...DEFAULT_COLLECTORS, ...options.collectors };
 
+    // The snapshot comes from a saved file or from the collectors, which stop at the scan deadline.
     const controller = new AbortController();
     const deadline = Date.now() + o.timeoutMs;
     const timer = setTimeout(() => controller.abort(new Error('scan timeout')), o.timeoutMs);
@@ -351,7 +470,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
         state = await collect(
           snapshot,
           target,
-          requiredCollectors(enabled),
+          requiredCollectors(selection.enabled),
           collectors,
           o,
           controller.signal,
@@ -370,61 +489,19 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       snapshotWriteFailed = !(await saveSnapshotFile(snapshot, o.saveSnapshot, log));
     }
 
-    if (snapshot.browser) snapshot.derived = derive(snapshot, { dataDir: o.dataDir });
-    const executed = runChecks(enabled, snapshot, o, core, state.timedOut, log);
-    for (const c of disabled)
-      executed.set(c.id, { status: 'skipped', reason: 'not-selected', outcome: null, durationMs: 0 });
-    const assessed = assess({
-      checks: [...enabled, ...disabled].sort((a, b) => a.id.localeCompare(b.id)),
-      executed,
-      ruleset: core.ruleset,
-      routing: core.routing,
-      overrides: o.overrides,
-      texts: core.texts,
-    });
-
-    const diagnostics = scanDiagnostics(snapshot, executed, state, o);
-    const gateChecks = toGateChecks(assessed.checks, new Set(disabled.map((c) => c.id)));
-    const gateFindings = toGateFindings(assessed.findings, core.ruleset);
-
+    const evaluation = evaluateSnapshot(snapshot, state, selection, o, core, log);
     if (state.fatal) {
       return fail(state.fatal.reason, state.fatal.code, state.fatal.params, {
-        checks: assessed.checks,
-        findings: assessed.findings,
-        evidence: assessed.evidence,
-        diagnostics,
-        gateChecks,
-        gateFindings,
+        checks: evaluation.assessed.checks,
+        findings: evaluation.assessed.findings,
+        evidence: evaluation.assessed.evidence,
+        diagnostics: evaluation.diagnostics,
+        gateChecks: evaluation.gateChecks,
+        gateFindings: evaluation.gateFindings,
       });
     }
 
-    const result = gate({
-      failOn: o.failOn,
-      strict: o.strict,
-      fatal: snapshotWriteFailed ? ['report-write-failed'] : [],
-      findings: gateFindings,
-      checks: gateChecks,
-      sandboxOff: o.sandbox === 'off',
-      egressRegion: snapshot.environment.egress.region,
-      timedOut: state.timedOut,
-    });
-    const partial = isPartial(snapshot, assessed.checks, state);
-    const report = buildFullReport({
-      snapshot,
-      status: partial ? 'partial' : 'complete',
-      startedAt,
-      durationMs: Math.round(performance.now() - t0),
-      options: reportOptions(o),
-      ruleset: core.ruleset,
-      texts: core.texts,
-      checks: assessed.checks,
-      findings: assessed.findings,
-      diagnostics,
-      evidence: assessed.evidence,
-      exitCode: result.exitCode,
-      exitReasons: result.exitReasons,
-    });
-    return { report, snapshot, exitCode: result.exitCode };
+    return completeResult({ snapshot, state, o, core, evaluation, snapshotWriteFailed, startedAt, t0 });
   } catch (err) {
     if (err instanceof ScanFatalError) return fail(err.reason, err.code, err.params);
     log.error(`internal error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);

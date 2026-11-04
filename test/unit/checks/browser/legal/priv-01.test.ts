@@ -252,6 +252,7 @@ describe('PRIV-01 policy availability and completeness', () => {
     },
   ])('$name', ({ parts, document, attempts, status, reason, variants, limitations }) => {
     const result = runCheck(priv01, withPolicy(parts, document, attempts));
+
     expect(result.status).toBe(status);
     if (reason) expect(result.reason).toBe(reason);
     if (variants) expect(variantsOf(result)).toEqual(variants);
@@ -269,6 +270,7 @@ describe('PRIV-01 policy availability and completeness', () => {
         },
       }),
     );
+
     expect(result).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
     expect(variantsOf(result)).toEqual([]);
   });
@@ -289,11 +291,13 @@ describe('PRIV-01 negative search evidence', () => {
     part('Rahmen.', 'frame'),
   ];
   const expectedManifest = { partCount: 4, ...manifest, truncated: false };
+
   it.each(['document evidence', 'schema roundtrip', 'message parameters'] as const)(
     'preserves completeness in %s',
     (projection) => {
       const result = runCheck(priv01, withPolicy(parts, { manifest }));
       const observation = observationsOf(result)[0];
+
       if (projection === 'document evidence') {
         expect(observation?.variant).toBe('not-named');
         expect(observation?.evidence[0]).toMatchObject({ type: 'document', manifest: expectedManifest });

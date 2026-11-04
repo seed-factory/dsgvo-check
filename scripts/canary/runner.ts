@@ -50,21 +50,14 @@ function jobFor(site: SiteRef, runDir: string, mode: SiteJob['mode'], timeoutMs:
 
 type Raced = { kind: 'ok'; value: SiteScanResult } | { kind: 'error'; error: unknown } | { kind: 'timeout' };
 
-/** Run one site: scanner vs watchdog, then inspect the files and write meta.json last. */
-export async function runSite(
-  job: SiteJob,
-  scanner: SiteScanner,
-  ctx: { runId: string; engine: Engine; watchdogReserveMs: number; now: () => Date },
-  extra: Partial<SiteMeta> = {},
-): Promise<SiteMeta> {
-  await mkdir(job.dir, { recursive: true });
-  const startedAt = ctx.now();
-  const t0 = performance.now();
+/** Scanner vs watchdog; the scanner is told to abort only when the watchdog wins. */
+async function raceWithWatchdog(job: SiteJob, scanner: SiteScanner, watchdogMs: number): Promise<Raced> {
   const ac = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   const watchdog = new Promise<Raced>((resolve) => {
-    timer = setTimeout(() => resolve({ kind: 'timeout' }), job.timeoutMs + ctx.watchdogReserveMs);
+    timer = setTimeout(() => resolve({ kind: 'timeout' }), watchdogMs);
   });
+
   let raced: Raced;
   try {
     raced = await Promise.race([
@@ -79,22 +72,29 @@ export async function runSite(
   } finally {
     clearTimeout(timer);
   }
+
   if (raced.kind === 'timeout') ac.abort(new Error('canary watchdog'));
-  const durationMs = Math.round(performance.now() - t0);
+  return raced;
+}
 
-  let error: RunnerError | null = null;
+function runnerErrorOf(raced: Raced, watchdogMs: number): RunnerError | null {
   if (raced.kind === 'timeout') {
-    error = {
-      code: 'watchdog-timeout',
-      message: `no result after ${job.timeoutMs + ctx.watchdogReserveMs} ms`,
-    };
-  } else if (raced.kind === 'error') {
-    error = { code: 'runner-exception', message: errorMessage(raced.error) };
+    return { code: 'watchdog-timeout', message: `no result after ${watchdogMs} ms` };
   }
+  if (raced.kind === 'error') return { code: 'runner-exception', message: errorMessage(raced.error) };
+  return null;
+}
 
+/**
+ * What the scanner left on disk. The report's own status wins over the scanner's return value; a missing or unreadable
+ * report is a runner error unless a more specific one is already known.
+ */
+function inspectOutput(job: SiteJob, raced: Raced, knownError: RunnerError | null) {
   const hasReport = existsSync(job.reportPath);
   const hasSnapshot = existsSync(job.snapshotPath);
+  let error = knownError;
   let scanStatus: ScanStatus | null = raced.kind === 'ok' ? (raced.value.scanStatus ?? null) : null;
+
   if (hasReport) {
     const report = readJson<{ scan?: { status?: ScanStatus } }>(job.reportPath);
     if (report?.scan?.status) scanStatus = report.scan.status;
@@ -102,6 +102,25 @@ export async function runSite(
   } else if (!error) {
     error = { code: 'report-missing', message: `${FILES.report} was not written` };
   }
+
+  return { hasReport, hasSnapshot, scanStatus, error };
+}
+
+/** Run one site: scanner vs watchdog, then inspect the files and write meta.json last. */
+export async function runSite(
+  job: SiteJob,
+  scanner: SiteScanner,
+  ctx: { runId: string; engine: Engine; watchdogReserveMs: number; now: () => Date },
+  extra: Partial<SiteMeta> = {},
+): Promise<SiteMeta> {
+  const watchdogMs = job.timeoutMs + ctx.watchdogReserveMs;
+  await mkdir(job.dir, { recursive: true });
+  const startedAt = ctx.now();
+  const t0 = performance.now();
+
+  const raced = await raceWithWatchdog(job, scanner, watchdogMs);
+  const durationMs = Math.round(performance.now() - t0);
+  const output = inspectOutput(job, raced, runnerErrorOf(raced, watchdogMs));
 
   const meta: SiteMeta = {
     metaVersion: 1,
@@ -115,9 +134,9 @@ export async function runSite(
     durationMs,
     scanDurationMs: durationMs,
     exitCode: raced.kind === 'ok' ? raced.value.exitCode : null,
-    scanStatus,
-    files: { report: hasReport, snapshot: hasSnapshot },
-    error,
+    scanStatus: output.scanStatus,
+    files: { report: output.hasReport, snapshot: output.hasSnapshot },
+    error: output.error,
     ...extra,
   };
   await writeJsonAtomic(path.join(job.dir, FILES.meta), meta);
@@ -137,17 +156,23 @@ export async function runPool<T>(
 ): Promise<void> {
   let next = 0;
   const stop = opts.shouldStop ?? (() => false);
+
+  // Workers start staggered by pauseMs, so the first requests of a run do not hit the network all at once.
   const worker = async (w: number) => {
     if (w > 0 && opts.pauseMs > 0) await opts.sleep(opts.pauseMs * w);
+
     let first = true;
     while (next < items.length && !stop()) {
       if (!first && opts.pauseMs > 0) await opts.sleep(opts.pauseMs);
       first = false;
+      // The pause may have been long enough for another worker to take the last item or for a stop request.
       if (next >= items.length || stop()) break;
+
       const index = next++;
       await work(items[index] as T, index);
     }
   };
+
   const n = Math.max(1, Math.min(opts.concurrency, items.length));
   await Promise.all(Array.from({ length: n }, (_, w) => worker(w)));
 }
@@ -168,8 +193,11 @@ async function writeRunInfo(
 ): Promise<void> {
   const file = path.join(runDir, FILES.run);
   const prev = readJson<RunInfo>(file);
+
+  // A resumed run keeps its earlier sites and creation time; new sites are appended.
   const known = new Set((prev?.sites ?? []).map((s) => s.id));
   const sites = [...(prev?.sites ?? []), ...info.sites.filter((s) => !known.has(s.id))];
+
   const out: RunInfo = {
     runVersion: 1,
     ...info,
@@ -219,10 +247,19 @@ function progressLine(i: number, total: number, meta: SiteMeta): string {
   return `[${i}/${total}] ${meta.site.id} ${status} exit=${meta.exitCode ?? '-'} ${(meta.durationMs / 1000).toFixed(1)}s`;
 }
 
+function newOutcome(runId: string, runDir: string, planned: number, skipped: number): RunOutcome {
+  return { runId, runDir, planned, scanned: 0, skipped, errors: 0, kept: 0 };
+}
+
+function siteContext(runId: string, engine: Engine, watchdogReserveMs: number | undefined, now: () => Date) {
+  return { runId, engine, watchdogReserveMs: watchdogReserveMs ?? WATCHDOG_RESERVE_MS, now };
+}
+
 export async function runCanary(o: RunCanaryOptions, deps: RunnerDeps): Promise<RunOutcome> {
   const now = deps.now ?? (() => new Date());
   const runDir = path.join(o.resultsDir, o.runId);
   await mkdir(runDir, { recursive: true });
+
   const refs = o.sites.map(siteRef);
   await writeRunInfo(
     runDir,
@@ -245,22 +282,10 @@ export async function runCanary(o: RunCanaryOptions, deps: RunnerDeps): Promise<
   );
 
   const todo = refs.filter((s) => !isFinished(path.join(runDir, s.id), o.retryErrors));
-  const outcome: RunOutcome = {
-    runId: o.runId,
-    runDir,
-    planned: refs.length,
-    scanned: 0,
-    skipped: refs.length - todo.length,
-    errors: 0,
-    kept: 0,
-  };
+  const outcome = newOutcome(o.runId, runDir, refs.length, refs.length - todo.length);
   if (outcome.skipped > 0) deps.log(`resume: ${outcome.skipped} site(s) already finished`);
-  const ctx = {
-    runId: o.runId,
-    engine: o.engine,
-    watchdogReserveMs: o.watchdogReserveMs ?? WATCHDOG_RESERVE_MS,
-    now,
-  };
+
+  const ctx = siteContext(o.runId, o.engine, o.watchdogReserveMs, now);
   await runPool(
     todo,
     { concurrency: o.concurrency, pauseMs: o.pauseMs, sleep: deps.sleep, shouldStop: deps.shouldStop },
@@ -297,6 +322,7 @@ export async function finishedSites(runDir: string): Promise<SiteMeta[]> {
   } catch {
     throw new Error(`run directory not found: ${runDir}`);
   }
+
   const order = [...(info?.sites ?? []).map((s) => s.id), ...dirs];
   const seen = new Set<string>();
   const out: SiteMeta[] = [];
@@ -309,17 +335,51 @@ export async function finishedSites(runDir: string): Promise<SiteMeta[]> {
   return out;
 }
 
+/** Why a site cannot be re-evaluated from its saved snapshot, or null when it can. */
+function keptReason(src: SiteMeta, srcSnapshot: string): SiteMeta['kept'] | null {
+  if (src.scanStatus === 'failed') return 'original-failed';
+  if (!existsSync(srcSnapshot)) return 'no-snapshot';
+  return null;
+}
+
+/** Carries the source report over unchanged; meta.json says it was kept and why. */
+async function keepSourceResult(
+  job: SiteJob,
+  src: SiteMeta,
+  from: string,
+  kept: NonNullable<SiteMeta['kept']>,
+  o: ReanalyzeOptions,
+): Promise<void> {
+  if (existsSync(path.join(from, FILES.report))) {
+    await copyFile(path.join(from, FILES.report), job.reportPath);
+  }
+
+  const meta: SiteMeta = {
+    ...src,
+    metaVersion: 1,
+    runId: o.runId,
+    mode: 'reanalyze',
+    reanalyzedFrom: o.fromRunId,
+    kept,
+    scanDurationMs: src.scanDurationMs ?? src.durationMs,
+    files: { report: existsSync(job.reportPath), snapshot: false },
+  };
+  await writeJsonAtomic(path.join(job.dir, FILES.meta), meta);
+}
+
 export async function reanalyzeRun(o: ReanalyzeOptions, deps: RunnerDeps): Promise<RunOutcome> {
   const now = deps.now ?? (() => new Date());
   const srcDir = path.join(o.resultsDir, o.fromRunId);
   const runDir = path.join(o.resultsDir, o.runId);
   if (path.resolve(srcDir) === path.resolve(runDir)) throw new Error('reanalysis needs a new run id');
+
   const source = await finishedSites(srcDir);
   const selected = filterSites(
     source.map((m) => m.site),
     o.filter,
   );
   const byId = new Map(source.map((m) => [m.site.id, m]));
+
   await mkdir(runDir, { recursive: true });
   await writeRunInfo(
     runDir,
@@ -336,21 +396,9 @@ export async function reanalyzeRun(o: ReanalyzeOptions, deps: RunnerDeps): Promi
   );
 
   const todo = selected.filter((s) => !isFinished(path.join(runDir, s.id), false));
-  const outcome: RunOutcome = {
-    runId: o.runId,
-    runDir,
-    planned: selected.length,
-    scanned: 0,
-    skipped: selected.length - todo.length,
-    errors: 0,
-    kept: 0,
-  };
-  const ctx = {
-    runId: o.runId,
-    engine: o.engine ?? ('api' as const),
-    watchdogReserveMs: o.watchdogReserveMs ?? WATCHDOG_RESERVE_MS,
-    now,
-  };
+  const outcome = newOutcome(o.runId, runDir, selected.length, selected.length - todo.length);
+  const ctx = siteContext(o.runId, o.engine ?? 'api', o.watchdogReserveMs, now);
+
   await runPool(
     todo,
     { concurrency: o.concurrency, pauseMs: 0, sleep: deps.sleep, shouldStop: deps.shouldStop },
@@ -359,28 +407,16 @@ export async function reanalyzeRun(o: ReanalyzeOptions, deps: RunnerDeps): Promi
       const from = path.join(srcDir, site.id);
       const job = jobFor(site, runDir, 'reanalyze', o.timeoutMs);
       await mkdir(job.dir, { recursive: true });
+
       const srcSnapshot = path.join(from, FILES.snapshot);
-      const kept: SiteMeta['kept'] | null =
-        src.scanStatus === 'failed' ? 'original-failed' : !existsSync(srcSnapshot) ? 'no-snapshot' : null;
+      const kept = keptReason(src, srcSnapshot);
       if (kept) {
-        if (existsSync(path.join(from, FILES.report))) {
-          await copyFile(path.join(from, FILES.report), job.reportPath);
-        }
-        const meta: SiteMeta = {
-          ...src,
-          metaVersion: 1,
-          runId: o.runId,
-          mode: 'reanalyze',
-          reanalyzedFrom: o.fromRunId,
-          kept,
-          scanDurationMs: src.scanDurationMs ?? src.durationMs,
-          files: { report: existsSync(job.reportPath), snapshot: false },
-        };
-        await writeJsonAtomic(path.join(job.dir, FILES.meta), meta);
+        await keepSourceResult(job, src, from, kept, o);
         outcome.kept++;
         deps.log(`${site.id} kept (${kept})`);
         return;
       }
+
       await copyFile(srcSnapshot, job.snapshotPath);
       const meta = await runSite(job, deps.scanner, ctx, {
         reanalyzedFrom: o.fromRunId,

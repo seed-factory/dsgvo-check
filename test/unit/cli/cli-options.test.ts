@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildProgram, toScanOptions } from '../../../src/cli.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildProgram, sandboxIsOff, toScanOptions } from '../../../src/cli.ts';
 
 describe('CLI option precedence used by the CI action', () => {
   it('the last repeated option wins over values in extra arguments', async () => {
@@ -41,6 +41,31 @@ it('parses report options on the subcommand', async () => {
   expect(report?.opts()).toMatchObject({ format: 'html,pdf', out: 'd', lang: 'en' });
 });
 
+describe('--sandbox container', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const optionsOf = () => {
+    const program = buildProgram().action(() => undefined);
+    program.parse(['https://example.test', '--sandbox', 'container'], { from: 'user' });
+    return toScanOptions('https://example.test', program.opts());
+  };
+
+  it('is marked as inside the image only by DSGVO_CHECK_CONTAINER=1', () => {
+    vi.stubEnv('DSGVO_CHECK_CONTAINER', '1');
+    expect(optionsOf()).toMatchObject({ sandbox: 'container', insideContainer: true });
+    vi.stubEnv('DSGVO_CHECK_CONTAINER', '');
+    expect(optionsOf()).toMatchObject({ sandbox: 'container', insideContainer: false });
+  });
+
+  it('only an explicit off counts as a weakened sandbox', () => {
+    expect([sandboxIsOff('off'), sandboxIsOff('require'), sandboxIsOff('container')]).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+});
+
 it('collapses repeated report formats from Action inputs', () => {
   const program = buildProgram().action(() => undefined);
   program.parse(['https://example.test', '--format', 'console,summary,summary'], { from: 'user' });
@@ -57,6 +82,7 @@ describe('a value outside its allowed set is passed on as `invalid`', () => {
   it.each([
     [[], undefined],
     [['--lang', 'en', '--sandbox', 'off', '--assume-region', 'eea'], undefined],
+    [['--sandbox', 'container'], undefined],
     [['--assume-region', 'de'], undefined],
     [['--format', 'xml'], { option: '--format', value: 'xml' }],
     [['--lang', 'fr'], { option: '--lang', value: 'fr' }],

@@ -18,10 +18,42 @@ const hit = (page: Page, en: string) =>
     `https://www.google-analytics.com/g/collect?v=2&tid=G-TEST123&en=${en}`,
   );
 
+/** How long the stub adapter "prepares" the reject click after a tracker fired, before it presses the button. */
+const PREPARE_MS = 300;
+
+/** A stub CMP whose reject, accept and verify each fire a tracker or answer late, to test the attribution. */
+function racingStubCmp() {
+  let verifyCalls = 0;
+  return stubCmpApi({
+    // The adapter is still preparing (classification, actionability checks) when a tracker fires.
+    reject: async (page) => {
+      await hit(page, 'before_click');
+      await page.waitForTimeout(PREPARE_MS);
+      await page.locator('#stub-reject').click({ timeout: 5_000 });
+      await hit(page, 'after_click');
+      return {
+        action: 'reject',
+        clicked: true,
+        button: { name: 'Ablehnen', role: 'button', kind: 'reject', kindConfidence: 'high' },
+      };
+    },
+    // The accept button cannot be pressed (e.g. ambiguous target) after a tracker fired.
+    accept: async (page) => {
+      await hit(page, 'failed_click');
+      return { action: 'accept', clicked: false, button: null, error: 'target-ambiguous' };
+    },
+    // The CMP confirms the reject asynchronously: not yet right after the click, but after the reload.
+    verify: async (page, action, opts): Promise<VerifyResult> => {
+      verifyCalls++;
+      const real = await stubAdapter.verify(page, action, opts);
+      return verifyCalls === 1 ? { ...real, verified: false, method: ['api:stub-pending'] } : real;
+    },
+  });
+}
+
 describe('redirected start page, click timing, verification after reload', () => {
   let server: FixtureServer;
   let run: CollectRun;
-  let verifyCalls = 0;
 
   beforeAll(async () => {
     server = await startFixtureServer({ sites: ['browser/cmp-stub'] });
@@ -31,31 +63,8 @@ describe('redirected start page, click timing, verification after reload', () =>
       status: 301,
       headers: { location: 'https://www.example.test/' },
     });
-    const cmp = stubCmpApi({
-      // The adapter is still preparing (classification, actionability checks) when a tracker fires.
-      reject: async (page) => {
-        await hit(page, 'before_click');
-        await page.waitForTimeout(300);
-        await page.locator('#stub-reject').click({ timeout: 5_000 });
-        await hit(page, 'after_click');
-        return {
-          action: 'reject',
-          clicked: true,
-          button: { name: 'Ablehnen', role: 'button', kind: 'reject', kindConfidence: 'high' },
-        };
-      },
-      // The accept button cannot be pressed (e.g. ambiguous target) after a tracker fired.
-      accept: async (page) => {
-        await hit(page, 'failed_click');
-        return { action: 'accept', clicked: false, button: null, error: 'target-ambiguous' };
-      },
-      // The CMP confirms the reject asynchronously: not yet right after the click, but after the reload.
-      verify: async (page, action, opts): Promise<VerifyResult> => {
-        verifyCalls++;
-        const real = await stubAdapter.verify(page, action, opts);
-        return verifyCalls === 1 ? { ...real, verified: false, method: ['api:stub-pending'] } : real;
-      },
-    });
+    const cmp = racingStubCmp();
+
     run = await collect(server, {
       url: 'https://example.test/',
       maxPages: 1,
@@ -74,6 +83,7 @@ describe('redirected start page, click timing, verification after reload', () =>
     const start = phase('A')?.pages[0];
     expect(start).toMatchObject({ url: 'https://example.test/', finalUrl: 'https://www.example.test/' });
     expect(run.result.sections.plan?.pages[0]?.url).toBe('https://www.example.test/');
+
     const cmpJs = (p: 'A' | 'B') =>
       phase(p)
         ?.requests.filter((r) => r.url === 'https://www.example.test/cmp.js')
@@ -93,8 +103,16 @@ describe('redirected start page, click timing, verification after reload', () =>
   it('a failed click leaves the recorder in navigation mode', () => {
     expect(phase('C')).toMatchObject({ status: 'partial', reason: 'no-accept-button' });
     expect(byEvent('C', 'failed_click')).toMatchObject({ afterClick: false, tRef: 'navigation' });
-    expect(phase('C')?.requests.every((r) => !r.afterClick)).toBe(true);
-    expect(phase('C')?.cookies.every((c) => !c.afterClick)).toBe(true);
+    expect(
+      phase('C')
+        ?.requests.filter((r) => r.afterClick)
+        .map((r) => r.id),
+    ).toEqual([]);
+    expect(
+      phase('C')
+        ?.cookies.filter((c) => c.afterClick)
+        .map((c) => c.name),
+    ).toEqual([]);
   });
 
   it('confirmed only after the reload → verified, persisted, marked', () => {

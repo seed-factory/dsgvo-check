@@ -12,7 +12,9 @@ describe('save-snapshot write failure', () => {
     const parent = mkdtempSync(path.join(tmpdir(), 'snapfail-'));
     const blocker = path.join(parent, 'file');
     writeFileSync(blocker, 'x');
+
     const result = await scan(opts({ saveSnapshot: path.join(blocker, 'sub', 'x.snapshot.json') }));
+
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('complete');
     expect(result.report.summary.exitReasons).toEqual(['report-write-failed', 'threshold']);
@@ -25,6 +27,7 @@ describe('writeReports', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'out-'));
     const result = await scan(opts());
     const w = await writeReports(result, { outDir: out, formats: ['console', 'json'], lang: 'de', dataDir });
+
     expect(w.exitCode).toBe(1);
     expect(w.errors).toEqual([]);
     const json = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
@@ -37,10 +40,12 @@ describe('writeReports', () => {
     const blocker = path.join(parent, 'not-a-dir');
     writeFileSync(blocker, 'x');
     const result = await scan(opts());
+
     const w = await writeReports(result, { outDir: blocker, formats: ['json'], lang: 'de', dataDir });
+
     expect(w.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toContain('report-write-failed');
-    expect(existsSync(path.join(blocker, 'report.json'))).toBe(false);
+    expect(existsSync(path.join(blocker, 'report.json')), 'no report.json below a file').toBe(false);
     expectValidReport(result.report);
   });
 
@@ -55,7 +60,9 @@ describe('writeReports', () => {
       mkdirSync(path.join(out, file));
       const result = await scan(opts({ failOn: 'none' }));
       expect(result.exitCode).toBe(0);
+
       const w = await writeReports(result, { outDir: out, formats: ['json', format], lang: 'de', dataDir });
+
       expect(w.exitCode).toBe(2);
       expect(w.errors.map((e) => path.basename(e.path))).toEqual([file]);
       expect(w.written.map((p) => path.basename(p))).toEqual(['report.json']);

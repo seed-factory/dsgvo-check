@@ -7,6 +7,7 @@ import {
   findLegalLinks,
   parseAttributes,
 } from '../../../../src/collectors/http/html.ts';
+import { htmlSection } from '../../../../src/collectors/http/rules.ts';
 
 const BASE = 'http://www.example.test/start';
 
@@ -137,5 +138,41 @@ describe('findLegalLinks', () => {
 
   it('ignores mailto and javascript links', () => {
     expect(findLegalLinks(`<a href="mailto:datenschutz@example.test">Datenschutz</a>`, BASE)).toEqual({});
+  });
+});
+
+describe('HTML wording is data (test/data/http/html.yaml)', () => {
+  const own = htmlSection.parse({
+    html: {
+      form: { searchFieldNames: ['find'], searchFormMarkers: ['lookup'] },
+      legalLinks: {
+        impressumText: ['mentions légales'],
+        impressumPath: ['mentions'],
+        privacyText: ['confidentialité'],
+        privacyPath: ['confidentialite'],
+        settingsText: ['préférences'],
+      },
+    },
+  });
+
+  it('a field named like a site search, and a form marked as one, take no user input', () => {
+    const field = '<form><input name="find"></form>';
+    expect(detectForm(field)).toBe(true);
+    expect(detectForm(field, own)).toBe(false);
+    const marked = '<form class="lookup-box"><input name="x"></form>';
+    expect(detectForm(marked)).toBe(true);
+    expect(detectForm(marked, own)).toBe(false);
+  });
+
+  it('link wording and paths of the Impressum and the privacy policy', () => {
+    const html =
+      '<a href="/mentions-legales">Mentions légales</a>' +
+      '<a href="/prefs">Préférences de confidentialité</a>' +
+      '<a href="/politique">Politique de confidentialité</a>';
+    expect(findLegalLinks(html, BASE)).toEqual({});
+    expect(findLegalLinks(html, BASE, own)).toEqual({
+      impressum: 'http://www.example.test/mentions-legales',
+      privacy: 'http://www.example.test/politique',
+    });
   });
 });

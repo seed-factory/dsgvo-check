@@ -33,6 +33,7 @@ export interface SpfRecord {
   errors: string[];
 }
 
+/** RFC 7208 §4.6.4: at most 10 DNS-querying terms per evaluation and 2 lookups that return nothing. */
 export const SPF_LOOKUP_LIMIT = 10;
 export const SPF_VOID_LIMIT = 2;
 
@@ -56,12 +57,14 @@ function validIp4(s: string): boolean {
 /** RFC 4291 §2.2 text form (`node:net` is not available to checks); an optional dotted IPv4 tail counts as two groups. */
 export function validIp6(s: string): boolean {
   if (!s.includes(':') || !/^[0-9a-f:.]+$/i.test(s)) return false;
+
   const halves = s.split('::');
   if (halves.length > 2) return false;
   const groupsOf = (part: string): string[] | null => (part === '' ? [] : part.split(':'));
   const head = groupsOf(halves[0] as string);
   const tail = halves.length === 2 ? groupsOf(halves[1] as string) : [];
   if (!head || !tail) return false;
+
   const groups = [...head, ...tail];
   let count = 0;
   for (const [i, g] of groups.entries()) {
@@ -75,6 +78,7 @@ export function validIp6(s: string): boolean {
       return false;
     }
   }
+
   return halves.length === 2 ? count <= 7 : count === 8;
 }
 
@@ -82,33 +86,52 @@ function validCidr(s: string, max: number): boolean {
   return /^\d{1,3}$/.test(s) && Number(s) <= max;
 }
 
-function parseTerm(term: string, rec: SpfRecord): void {
-  const mod = /^([a-z][a-z0-9_.-]*)=(.*)$/i.exec(term);
-  if (mod) {
-    const name = (mod[1] as string).toLowerCase();
-    const value = mod[2] as string;
-    if (name !== 'redirect' && name !== 'exp') return; // unknown modifiers are ignored (§6)
-    if (rec[name] !== null) {
-      rec.errors.push(`duplicate-modifier:${term}`);
-      return;
-    }
-    if (!value) {
-      rec.errors.push(`missing-domain:${term}`);
-      return;
-    }
-    rec[name] = value;
+/** `a`/`mx` terms: an optional `:domain`, then an optional `/ip4-cidr` and `//ip6-cidr`. Returns the domain (null if none), undefined when malformed. */
+function parseHostSpec(rest: string): string | null | undefined {
+  const dm = /^(?::([^/]+))?(?:\/(\d+))?(?:\/\/(\d+))?$/.exec(rest);
+  if (!dm || (dm[2] && !validCidr(dm[2], 32)) || (dm[3] && !validCidr(dm[3], 128))) return undefined;
+  return dm[1] ?? null;
+}
+
+/** `ip4`/`ip6` terms: `:address` with an optional single `/cidr`. */
+function validIpTerm(name: 'ip4' | 'ip6', rest: string): boolean {
+  const [addr = '', cidr, extra] = rest.startsWith(':') ? rest.slice(1).split('/') : [''];
+  const isIp4 = name === 'ip4';
+  return (
+    extra === undefined &&
+    (isIp4 ? validIp4(addr) : validIp6(addr)) &&
+    (cidr === undefined || validCidr(cidr, isIp4 ? 32 : 128))
+  );
+}
+
+/** `redirect=` and `exp=`; each may appear once and needs a domain. */
+function parseModifier(term: string, name: string, value: string, rec: SpfRecord): void {
+  if (name !== 'redirect' && name !== 'exp') return; // unknown modifiers are ignored (§6)
+
+  if (rec[name] !== null) {
+    rec.errors.push(`duplicate-modifier:${term}`);
     return;
   }
+  if (!value) {
+    rec.errors.push(`missing-domain:${term}`);
+    return;
+  }
+  rec[name] = value;
+}
+
+function parseMechanism(term: string, rec: SpfRecord): void {
   const m = /^([+\-~?]?)([a-z][a-z0-9_.-]*)(.*)$/i.exec(term);
   const name = m?.[2]?.toLowerCase();
   if (!m || !name) {
     rec.errors.push(`unknown-mechanism:${term}`);
     return;
   }
+
   const qualifier = ((m[1] as string) || '+') as SpfQualifier;
   const rest = m[3] as string;
   const push = (value: string | null) =>
     rec.mechanisms.push({ qualifier, name: name as SpfMechanismName, value, raw: term });
+
   switch (name) {
     case 'all':
       if (rest) rec.errors.push(`invalid-all:${term}`);
@@ -125,28 +148,25 @@ function parseTerm(term: string, rec: SpfRecord): void {
       return;
     case 'a':
     case 'mx': {
-      const dm = /^(?::([^/]+))?(?:\/(\d+))?(?:\/\/(\d+))?$/.exec(rest);
-      if (!dm || (dm[2] && !validCidr(dm[2], 32)) || (dm[3] && !validCidr(dm[3], 128))) {
-        rec.errors.push(`invalid-cidr:${term}`);
-        return;
-      }
-      push(dm[1] ?? null);
+      const domain = parseHostSpec(rest);
+      if (domain === undefined) rec.errors.push(`invalid-cidr:${term}`);
+      else push(domain);
       return;
     }
     case 'ip4':
-    case 'ip6': {
-      const [addr = '', cidr, extra] = rest.startsWith(':') ? rest.slice(1).split('/') : [''];
-      const valid =
-        extra === undefined &&
-        (name === 'ip4' ? validIp4(addr) : validIp6(addr)) &&
-        (cidr === undefined || validCidr(cidr, name === 'ip4' ? 32 : 128));
-      if (!valid) rec.errors.push(`invalid-${name}:${term}`);
+    case 'ip6':
+      if (!validIpTerm(name, rest)) rec.errors.push(`invalid-${name}:${term}`);
       else push(rest.slice(1));
       return;
-    }
     default:
       rec.errors.push(`unknown-mechanism:${term}`);
   }
+}
+
+function parseTerm(term: string, rec: SpfRecord): void {
+  const mod = /^([a-z][a-z0-9_.-]*)=(.*)$/i.exec(term);
+  if (mod) parseModifier(term, (mod[1] as string).toLowerCase(), mod[2] as string, rec);
+  else parseMechanism(term, rec);
 }
 
 export function parseSpfRecord(raw: string): SpfRecord {
@@ -194,6 +214,12 @@ export interface SpfAnalysis {
   complete: boolean;
 }
 
+/** Effective `all` of one visited record: undefined when it could not be resolved yet, null when unknown. */
+interface SpfVisit {
+  all: SpfQualifier | null | undefined;
+  source: 'record' | 'redirect' | 'default';
+}
+
 const hasMacro = (domain: string) => domain.includes('%');
 
 class SpfWalker {
@@ -218,6 +244,7 @@ class SpfWalker {
       if (!this.pending.has(key)) this.pending.set(key, { qname: normalizeName(qname), type, purpose });
       return undefined;
     }
+
     this.queries.set(q.id, q);
     if (isFailure(q.rcode)) {
       if (!this.failures.includes(q)) this.failures.push(q);
@@ -267,10 +294,12 @@ class SpfWalker {
       this.permerror('loop', t);
       return null;
     }
+
     const q = this.fetch(t, 'TXT', `spf-${kind}`);
     if (!q) return undefined;
     this.void(q, t);
     if (this.stopped) return null;
+
     const records = txtValues(q).filter(isSpfRecord);
     if (records.length === 0) {
       this.permerror(`${kind}-no-record`, t);
@@ -283,40 +312,42 @@ class SpfWalker {
     return this.visit(t, parseSpfRecord(records[0] as string), [...path, t], owner).all;
   }
 
-  visit(
-    domain: string,
-    rec: SpfRecord,
-    path: readonly string[],
-    owner: boolean,
-  ): { all: SpfQualifier | null | undefined; source: 'record' | 'redirect' | 'default' } {
+  /** Follows or checks the DNS side effect of one mechanism; `all` and the lookup budget are handled by `visit`. */
+  private walkMechanism(m: SpfMechanism, domain: string, path: readonly string[], owner: boolean): void {
+    switch (m.name) {
+      case 'include':
+        this.follow(m.value as string, 'include', path, false);
+        break;
+      case 'a':
+        this.voidCheck(m.value ?? domain, 'A', domain);
+        break;
+      case 'mx':
+        this.voidCheck(m.value ?? domain, 'MX', domain);
+        break;
+      case 'exists':
+        this.voidCheck(m.value as string, 'A', domain);
+        break;
+      case 'ptr':
+        if (owner) this.ptr = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  visit(domain: string, rec: SpfRecord, path: readonly string[], owner: boolean): SpfVisit {
     if (rec.errors.length > 0) {
       this.permerror('syntax', domain, rec.errors[0]);
       return { all: null, source: 'record' };
     }
+
     for (const m of rec.mechanisms) {
       if (this.stopped) return { all: null, source: 'record' };
       if (m.name === 'all') return { all: m.qualifier, source: 'record' };
       if (LOOKUP_MECHANISMS.has(m.name) && !this.count(domain)) return { all: null, source: 'record' };
-      switch (m.name) {
-        case 'include':
-          this.follow(m.value as string, 'include', path, false);
-          break;
-        case 'a':
-          this.voidCheck(m.value ?? domain, 'A', domain);
-          break;
-        case 'mx':
-          this.voidCheck(m.value ?? domain, 'MX', domain);
-          break;
-        case 'exists':
-          this.voidCheck(m.value as string, 'A', domain);
-          break;
-        case 'ptr':
-          if (owner) this.ptr = true;
-          break;
-        default:
-          break;
-      }
+      this.walkMechanism(m, domain, path, owner);
     }
+
     if (this.stopped) return { all: null, source: 'record' };
     if (rec.redirect === null) return { all: '?', source: 'default' };
     if (!this.count(domain)) return { all: null, source: 'redirect' };
@@ -324,11 +355,10 @@ class SpfWalker {
   }
 }
 
-export function analyzeSpf(domain: string, lookup: DnsLookup): SpfAnalysis {
-  const d = normalizeName(domain);
-  const out: SpfAnalysis = {
+function emptyAnalysis(domain: string): SpfAnalysis {
+  return {
     state: 'pending',
-    domain: d,
+    domain,
     query: null,
     records: [],
     record: null,
@@ -343,6 +373,32 @@ export function analyzeSpf(domain: string, lookup: DnsLookup): SpfAnalysis {
     queries: [],
     complete: false,
   };
+}
+
+/** Walks the include/redirect tree of the domain's single SPF record and copies the outcome into `out`. */
+function walkRecord(out: SpfAnalysis, q: DnsQueryRecord, lookup: DnsLookup): void {
+  out.state = 'found';
+  out.record = parseSpfRecord(out.records[0] as string);
+
+  const walker = new SpfWalker(lookup);
+  const result = walker.visit(out.domain, out.record, [out.domain], true);
+
+  out.all = result.all ?? null;
+  out.allSource = out.all === null ? null : result.source;
+  out.lookups = walker.lookups;
+  out.voidLookups = walker.voidLookups;
+  out.permerrors = walker.permerrors;
+  out.ptr = walker.ptr;
+  out.failures = walker.failures;
+  out.queries = [q, ...[...walker.queries.values()].filter((x) => x !== q)];
+  out.pending = walker.stopped ? [] : [...walker.pending.values()];
+  out.complete = walker.stopped || (out.pending.length === 0 && out.failures.length === 0);
+}
+
+export function analyzeSpf(domain: string, lookup: DnsLookup): SpfAnalysis {
+  const d = normalizeName(domain);
+  const out = emptyAnalysis(d);
+
   const q = lookup(d, 'TXT');
   if (!q) {
     out.pending = [{ qname: d, type: 'TXT', purpose: 'spf' }];
@@ -354,30 +410,16 @@ export function analyzeSpf(domain: string, lookup: DnsLookup): SpfAnalysis {
     out.state = 'failed';
     return out;
   }
+
   out.records = txtValues(q).filter(isSpfRecord);
   if (out.records.length === 0) {
     out.state = 'none';
     out.complete = true;
-    return out;
-  }
-  if (out.records.length > 1) {
+  } else if (out.records.length > 1) {
     out.state = 'multiple';
     out.complete = true;
-    return out;
+  } else {
+    walkRecord(out, q, lookup);
   }
-  out.state = 'found';
-  out.record = parseSpfRecord(out.records[0] as string);
-  const walker = new SpfWalker(lookup);
-  const result = walker.visit(d, out.record, [d], true);
-  out.all = result.all ?? null;
-  out.allSource = out.all === null ? null : result.source;
-  out.lookups = walker.lookups;
-  out.voidLookups = walker.voidLookups;
-  out.permerrors = walker.permerrors;
-  out.ptr = walker.ptr;
-  out.failures = walker.failures;
-  out.queries = [q, ...[...walker.queries.values()].filter((x) => x !== q)];
-  out.pending = walker.stopped ? [] : [...walker.pending.values()];
-  out.complete = walker.stopped || (out.pending.length === 0 && out.failures.length === 0);
   return out;
 }

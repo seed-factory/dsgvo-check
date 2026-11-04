@@ -28,6 +28,20 @@ afterEach(() => {
 });
 
 describe('browser profile cleanup', () => {
+  /** `process.kill` answers for the fake Chromium process: it exists until `fake.alive` is false, then ESRCH. */
+  function stubProcessKill() {
+    vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid !== 987654) throw new Error('unexpected pid');
+      if (signal === 0 && !fake.alive) {
+        const err = new Error('gone') as NodeJS.ErrnoException;
+        err.code = 'ESRCH';
+        throw err;
+      }
+      return true;
+    });
+  }
+
+  /** Launches a phase on a Chromium whose `close()` never returns, so the cleanup has to kill and wait. */
   async function start() {
     const lines: string[] = [];
     const log = { debug: () => {}, info: () => {}, warn: (s: string) => lines.push(s), error: () => {} };
@@ -38,19 +52,13 @@ describe('browser profile cleanup', () => {
         return { close: () => new Promise<void>(() => {}) };
       },
     } as unknown as BrowserType;
+
     const browser = await launchPhase(
       { chromium, sandbox: 'off', network: defaultNetworkConfig(), closeBudgetMs: 10, log },
       'UA',
     );
-    vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
-      if (pid !== 987654) throw new Error('unexpected pid');
-      if (signal === 0 && !fake.alive) {
-        const err = new Error('gone') as NodeJS.ErrnoException;
-        err.code = 'ESRCH';
-        throw err;
-      }
-      return true;
-    });
+    stubProcessKill();
+
     return { browser, lines };
   }
 
@@ -58,10 +66,13 @@ describe('browser profile cleanup', () => {
     const { browser, lines } = await start();
     const closing = browser.close();
     await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // the process still runs: the profile stays, and a write that it makes now is not lost half-removed
     expect(existsSync(fake.dir)).toBe(true);
     writeFileSync(path.join(fake.dir, 'late-write'), 'data');
     fake.alive = false;
     await closing;
+
     expect(existsSync(fake.dir)).toBe(false);
     expect(lines).toEqual([]);
   });
@@ -69,9 +80,11 @@ describe('browser profile cleanup', () => {
   it('stops waiting at the budget, warns once, and removes the profile', async () => {
     const { browser, lines } = await start();
     vi.useFakeTimers();
+
     const closing = browser.close();
     await vi.advanceTimersByTimeAsync(4_000);
     await closing;
+
     expect(existsSync(fake.dir)).toBe(false);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/process.*(exit|running)/i);

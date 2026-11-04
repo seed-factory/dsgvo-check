@@ -3,18 +3,33 @@ import { classifyButton, isLinkRole, normalizeLabel } from './lexicon.ts';
 import type {
   BlockingFacts,
   CmpButton,
+  CmpDetection,
   CmpFacts,
+  CmpFirstLayer,
   CmpLexicon,
   Confidence,
   FirstLayerClassification,
   FirstLayerVariant,
 } from './types.ts';
 
-export const BLOCKING_COVERED_RATIO = 0.85;
+/** Variants that claim "no (usable) reject button" and therefore depend on knowing every first-layer button. */
+const AMBIGUOUS_WITH_UNKNOWN_BUTTON: ReadonlySet<FirstLayerVariant> = new Set([
+  'blocking-no-reject',
+  'no-choice-at-first-layer',
+  'nonblocking-no-reject',
+  'reject-not-actionable',
+  'reject-as-link',
+]);
 
-/** Blocking as measured: overlay, scroll lock on html/body, inert content or the banner covering ≥ 85 %. */
-export function isBlocking(b: BlockingFacts): boolean {
-  return b.overlay || b.inert || b.scrollLock || (b.coveredRatio ?? 0) >= BLOCKING_COVERED_RATIO;
+/** What the caller decides: the table itself holds no setting, so a check reads it from `ctx.thresholds`. */
+export interface ClassifyOptions {
+  /** Share of the viewport that makes a banner blocking (`cmp.blockingCoveredRatio`). */
+  blockingCoveredRatio: number;
+}
+
+/** Blocking as measured: overlay, scroll lock on html/body, inert content or the banner covering at least `coveredRatio` of the viewport. */
+export function isBlocking(b: BlockingFacts, coveredRatio: number): boolean {
+  return b.overlay || b.inert || b.scrollLock || (b.coveredRatio ?? 0) >= coveredRatio;
 }
 
 function pickTarget(candidates: CmpButton[]): { target: CmpButton | null; ambiguous: boolean } {
@@ -25,19 +40,126 @@ function pickTarget(candidates: CmpButton[]): { target: CmpButton | null; ambigu
   return { target: null, ambiguous: usable.length > 1 };
 }
 
-export function classifyFirstLayer(facts: CmpFacts, lexicon: CmpLexicon): FirstLayerClassification {
-  const det = facts.detection;
+/** Why the facts cannot be classified at all (no recognition at `high`, no visible banner); null when they can. */
+function unclassifiable(
+  det: CmpDetection,
+  fl: CmpFirstLayer,
+): { variant: FirstLayerVariant; reasons: string[] } | null {
+  if (det.method === 'none') return { variant: 'banner-not-recognized', reasons: ['no-banner-detected'] };
+  if (det.method !== 'adapter' || !det.cmpId) {
+    return { variant: 'banner-not-recognized', reasons: ['heuristic-only'] };
+  }
+  if (det.versionSupported === false) {
+    return { variant: 'cmp-not-supported', reasons: [`version-out-of-range:${det.version ?? 'unknown'}`] };
+  }
+  if (det.recognitionConfidence !== 'high') {
+    return { variant: 'banner-not-recognized', reasons: [`recognition-${det.recognitionConfidence}`] };
+  }
+  if (!fl.bannerPresent || !fl.bannerVisible) {
+    return { variant: 'banner-not-recognized', reasons: ['banner-not-visible'] };
+  }
+  return null;
+}
+
+/** The first-layer buttons by what they could do: reject or accept (actionable, as button or link), close. */
+function groupFirstLayer(first: CmpButton[]) {
+  const rejects = first.filter((b) => b.kind === 'reject');
+  const rejectActionable = rejects.filter((b) => b.actionableAtFirstScreen);
+  const acceptActionable = first.filter((b) => b.kind === 'accept' && b.actionableAtFirstScreen);
+  return {
+    rejects,
+    rejectActionable,
+    rejectButtons: rejectActionable.filter((b) => !isLinkRole(b.role)),
+    acceptActionable,
+    acceptButtons: acceptActionable.filter((b) => !isLinkRole(b.role)),
+    closes: first.filter((b) => b.kind === 'close' && b.visibleAtFirstScreen),
+  };
+}
+
+/**
+ * The variant for a recognized, visible banner, with the confidence and the reasons it adds. `uncertain`: a first-layer
+ * button is unclassified or a vendor reject was relabelled, which lowers the confidence of a missing reject.
+ */
+function chooseVariant(
+  g: ReturnType<typeof groupFirstLayer>,
+  state: { blocking: boolean; closeMeansAccept: boolean; uncertain: boolean },
+): { variant: FirstLayerVariant; confidence: Confidence; reasons: string[] } {
+  const anyHigh = (list: CmpButton[]) => list.some((b) => b.kindConfidence === 'high');
+  const reasons: string[] = [];
+  let variant: FirstLayerVariant;
+  let confidence: Confidence = 'high';
+
+  if (g.rejects.length === 0) {
+    if (state.blocking && g.acceptActionable.length > 0) {
+      variant = 'blocking-no-reject';
+      if (!anyHigh(g.acceptActionable)) confidence = 'medium';
+    } else if (state.closeMeansAccept) {
+      variant = 'close-means-accept';
+      if (!anyHigh(g.closes)) confidence = 'medium';
+    } else if (state.blocking) {
+      variant = 'no-choice-at-first-layer';
+    } else {
+      variant = 'nonblocking-no-reject';
+    }
+    if (state.uncertain) confidence = 'medium';
+  } else if (state.closeMeansAccept) {
+    variant = 'close-means-accept';
+    if (!anyHigh(g.closes)) confidence = 'medium';
+  } else if (g.rejectActionable.length === 0) {
+    variant = 'reject-not-actionable';
+    if (!anyHigh(g.rejects)) confidence = 'medium';
+    reasons.push(...g.rejects.map((b) => `reject-not-actionable:${notActionableReason(b)}`));
+  } else if (g.rejectButtons.length === 0 && g.acceptButtons.length > 0) {
+    variant = 'reject-as-link';
+  } else {
+    variant = 'ok';
+  }
+
+  return { variant, confidence, reasons };
+}
+
+/**
+ * A verdict about a missing or broken reject needs every first-layer button classified (an unknown one might be the
+ * reject) and a complete, settled measurement; these are the reasons it lacks one.
+ */
+function missingVerdictReasons(
+  variant: FirstLayerVariant,
+  fl: CmpFirstLayer,
+  rejects: CmpButton[],
+  unclassified: CmpButton[],
+): string[] {
+  const reasons: string[] = [];
+  if (AMBIGUOUS_WITH_UNKNOWN_BUTTON.has(variant)) {
+    if (unclassified.length > 0) reasons.push(`ambiguous-first-layer:${variant}`);
+    if (fl.buttonsTruncated === true) reasons.push('buttons-truncated');
+  }
+  if (
+    fl.geometryUnsettled === true &&
+    variant === 'reject-not-actionable' &&
+    rejects.every((b) => notActionableReason(b) !== 'disabled')
+  ) {
+    reasons.push('geometry-unsettled');
+  }
+  return reasons;
+}
+
+export function classifyFirstLayer(
+  facts: CmpFacts,
+  lexicon: CmpLexicon,
+  options: ClassifyOptions,
+): FirstLayerClassification {
   const fl = facts.firstLayer;
   const buttons: CmpButton[] = fl.buttons.map((b) => ({ ...b, ...classifyButton(b, lexicon) }));
-  const blocking = isBlocking(facts.blocking);
+  const blocking = isBlocking(facts.blocking, options.blockingCoveredRatio);
   const first = buttons.filter((b) => b.layer === 1);
-  const acceptActionable = first.filter((b) => b.kind === 'accept' && b.actionableAtFirstScreen);
+  const groups = groupFirstLayer(first);
+
   const common = {
     flags: fl.purAbo ? (['pur-abo'] as Array<'pur-abo'>) : [],
     blocking,
     buttons,
     lexiconVersion: lexicon.version,
-    acceptAvailableAtFirstLayer: acceptActionable.length > 0,
+    acceptAvailableAtFirstLayer: groups.acceptActionable.length > 0,
   };
   const unrecognized = (variant: FirstLayerVariant, reasons: string[]): FirstLayerClassification => ({
     variant,
@@ -47,83 +169,33 @@ export function classifyFirstLayer(facts: CmpFacts, lexicon: CmpLexicon): FirstL
     ...common,
   });
 
-  if (det.method === 'none') return unrecognized('banner-not-recognized', ['no-banner-detected']);
-  if (det.method !== 'adapter' || !det.cmpId)
-    return unrecognized('banner-not-recognized', ['heuristic-only']);
-  if (det.versionSupported === false) {
-    return unrecognized('cmp-not-supported', [`version-out-of-range:${det.version ?? 'unknown'}`]);
-  }
-  if (det.recognitionConfidence !== 'high') {
-    return unrecognized('banner-not-recognized', [`recognition-${det.recognitionConfidence}`]);
-  }
-  if (!fl.bannerPresent || !fl.bannerVisible)
-    return unrecognized('banner-not-recognized', ['banner-not-visible']);
+  const early = unclassifiable(facts.detection, fl);
+  if (early) return unrecognized(early.variant, early.reasons);
 
-  const rejects = first.filter((b) => b.kind === 'reject');
-  const rejectActionable = rejects.filter((b) => b.actionableAtFirstScreen);
-  const rejectButtons = rejectActionable.filter((b) => !isLinkRole(b.role));
-  const acceptButtons = acceptActionable.filter((b) => !isLinkRole(b.role));
-  const closes = first.filter((b) => b.kind === 'close' && b.visibleAtFirstScreen);
   // In a pay-or-OK banner the subscription button is a known control (the paid alternative), not an unknown one.
   const subscription = fl.purAbo ? purAboMatcher(lexicon) : null;
   const unclassified = first.filter((b) => b.kind === 'other' && !subscription?.(b.name));
   const relabelled = first.filter((b) => b.vendorRole === 'reject' && b.kind !== 'reject');
-  const closeMeansAccept = fl.closeMeansAccept === true && closes.length > 0;
 
   const reasons: string[] = [];
   if (unclassified.length > 0) reasons.push(`unclassified-buttons:${unclassified.length}`);
   if (relabelled.length > 0) reasons.push(`vendor-reject-relabelled:${relabelled.length}`);
-  const uncertain = unclassified.length > 0 || relabelled.length > 0;
-  const anyHigh = (list: CmpButton[]) => list.some((b) => b.kindConfidence === 'high');
 
-  let variant: FirstLayerVariant;
-  let confidence: Confidence = 'high';
-  if (rejects.length === 0) {
-    if (blocking && acceptActionable.length > 0) {
-      variant = 'blocking-no-reject';
-      if (!anyHigh(acceptActionable)) confidence = 'medium';
-    } else if (closeMeansAccept) {
-      variant = 'close-means-accept';
-      if (!anyHigh(closes)) confidence = 'medium';
-    } else if (blocking) {
-      variant = 'no-choice-at-first-layer';
-    } else {
-      variant = 'nonblocking-no-reject';
-    }
-    if (uncertain) confidence = 'medium';
-  } else if (closeMeansAccept) {
-    variant = 'close-means-accept';
-    if (!anyHigh(closes)) confidence = 'medium';
-  } else if (rejectActionable.length === 0) {
-    variant = 'reject-not-actionable';
-    if (!anyHigh(rejects)) confidence = 'medium';
-    reasons.push(...rejects.map((b) => `reject-not-actionable:${notActionableReason(b)}`));
-  } else if (rejectButtons.length === 0 && acceptButtons.length > 0) {
-    variant = 'reject-as-link';
-  } else {
-    variant = 'ok';
-  }
-  if (fl.purAbo && variant === 'ok') variant = 'pur-abo';
+  const chosen = chooseVariant(groups, {
+    blocking,
+    closeMeansAccept: fl.closeMeansAccept === true && groups.closes.length > 0,
+    uncertain: unclassified.length > 0 || relabelled.length > 0,
+  });
+  reasons.push(...chosen.reasons);
+  const variant = fl.purAbo && chosen.variant === 'ok' ? 'pur-abo' : chosen.variant;
 
-  const reject = pickTarget(rejectButtons.length > 0 ? rejectButtons : rejectActionable);
-  const accept = pickTarget(acceptButtons.length > 0 ? acceptButtons : acceptActionable);
+  const reject = pickTarget(groups.rejectButtons.length > 0 ? groups.rejectButtons : groups.rejectActionable);
+  const accept = pickTarget(groups.acceptButtons.length > 0 ? groups.acceptButtons : groups.acceptActionable);
   if (reject.ambiguous) reasons.push('reject-target-ambiguous');
   if (accept.ambiguous) reasons.push('accept-target-ambiguous');
 
-  // A verdict about a missing or broken reject needs every first-layer button classified (an unknown one might be the
-  // reject) and a complete, settled measurement. The accept stays a target; no reject is clicked.
-  const noVerdict: string[] = [];
-  if (AMBIGUOUS_WITH_UNKNOWN_BUTTON.has(variant)) {
-    if (unclassified.length > 0) noVerdict.push(`ambiguous-first-layer:${variant}`);
-    if (fl.buttonsTruncated === true) noVerdict.push('buttons-truncated');
-  }
-  if (
-    fl.geometryUnsettled === true &&
-    variant === 'reject-not-actionable' &&
-    rejects.every((b) => notActionableReason(b) !== 'disabled')
-  ) {
-    noVerdict.push('geometry-unsettled');
-  }
+  // No verdict: the accept stays a target, no reject is clicked.
+  const noVerdict = missingVerdictReasons(variant, fl, groups.rejects, unclassified);
   if (noVerdict.length > 0) {
     return {
       variant: 'banner-not-recognized',
@@ -136,21 +208,12 @@ export function classifyFirstLayer(facts: CmpFacts, lexicon: CmpLexicon): FirstL
 
   return {
     variant,
-    confidence,
+    confidence: chosen.confidence,
     reasons,
     targets: { reject: reject.target, accept: accept.target },
     ...common,
   };
 }
-
-/** Variants that claim "no (usable) reject button" and therefore depend on knowing every first-layer button. */
-const AMBIGUOUS_WITH_UNKNOWN_BUTTON: ReadonlySet<FirstLayerVariant> = new Set([
-  'blocking-no-reject',
-  'no-choice-at-first-layer',
-  'nonblocking-no-reject',
-  'reject-not-actionable',
-  'reject-as-link',
-]);
 
 function purAboMatcher(lexicon: CmpLexicon): (label: string) => boolean {
   const patterns: RegExp[] = [];

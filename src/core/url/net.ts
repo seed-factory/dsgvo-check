@@ -22,29 +22,30 @@ function inV4(ip: number, cidr: string): boolean {
   return (ip & mask) === (v4ToInt(base) & mask);
 }
 
+/** Cloud metadata endpoints: the SSRF target that matters most. */
+const V4_METADATA = new Set(['169.254.169.254', '100.100.100.200']);
+
+/** IPv4 ranges by class, checked in this order; an address in none of them is public. */
+const V4_RANGES: ReadonlyArray<readonly [AddressClass, readonly string[]]> = [
+  ['unspecified', ['0.0.0.0/8']],
+  ['loopback', ['127.0.0.0/8']],
+  ['link-local', ['169.254.0.0/16']],
+  // 100.64.0.0/10 is carrier-grade NAT
+  ['private', ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10']],
+  ['multicast', ['224.0.0.0/4']],
+  [
+    'reserved',
+    ['240.0.0.0/4', '192.0.0.0/24', '192.0.2.0/24', '198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24'],
+  ],
+];
+
 function classifyV4(ip: string): AddressClass {
+  if (V4_METADATA.has(ip)) return 'metadata';
+
   const n = v4ToInt(ip);
-  if (ip === '169.254.169.254' || ip === '100.100.100.200') return 'metadata';
-  if (inV4(n, '0.0.0.0/8')) return 'unspecified';
-  if (inV4(n, '127.0.0.0/8')) return 'loopback';
-  if (inV4(n, '169.254.0.0/16')) return 'link-local';
-  if (
-    inV4(n, '10.0.0.0/8') ||
-    inV4(n, '172.16.0.0/12') ||
-    inV4(n, '192.168.0.0/16') ||
-    inV4(n, '100.64.0.0/10')
-  )
-    return 'private';
-  if (inV4(n, '224.0.0.0/4')) return 'multicast';
-  if (
-    inV4(n, '240.0.0.0/4') ||
-    inV4(n, '192.0.0.0/24') ||
-    inV4(n, '192.0.2.0/24') ||
-    inV4(n, '198.18.0.0/15') ||
-    inV4(n, '198.51.100.0/24') ||
-    inV4(n, '203.0.113.0/24')
-  )
-    return 'reserved';
+  for (const [cls, cidrs] of V4_RANGES) {
+    if (cidrs.some((cidr) => inV4(n, cidr))) return cls;
+  }
   return 'public';
 }
 
@@ -53,14 +54,16 @@ function expandV6(ip: string): number[] {
   const parse = (s: string) => (s ? s.split(':') : []);
   let h = parse(head);
   let t = parse(tail);
-  const last = (ip.includes('::') ? t : h).at(-1);
+
   // embedded IPv4 (e.g. ::ffff:1.2.3.4)
+  const last = (ip.includes('::') ? t : h).at(-1);
   if (last?.includes('.')) {
     const n = v4ToInt(last);
     const words = [((n >>> 16) & 0xffff).toString(16), (n & 0xffff).toString(16)];
     if (ip.includes('::')) t = [...t.slice(0, -1), ...words];
     else h = [...h.slice(0, -1), ...words];
   }
+
   const fill = ip.includes('::') ? 8 - h.length - t.length : 0;
   return [...h, ...Array(fill).fill('0'), ...t].map((w) => Number.parseInt(w, 16) || 0);
 }
@@ -72,12 +75,15 @@ function v4Of(hi: number, lo: number): string {
 function classifyV6(ip: string): AddressClass {
   const w = expandV6(ip.toLowerCase().split('%')[0] as string);
   const word = (i: number) => w[i] ?? 0;
+
   if (w.every((x) => x === 0)) return 'unspecified';
   if (w.slice(0, 7).every((x) => x === 0) && w[7] === 1) return 'loopback';
+
   // IPv4-mapped ::ffff:a.b.c.d and IPv4-compatible
   if (w.slice(0, 5).every((x) => x === 0) && (w[5] === 0xffff || w[5] === 0)) {
     return classifyV4(v4Of(word(6), word(7)));
   }
+
   // transition prefixes that carry an IPv4 destination are classified by it: NAT64 64:ff9b::/96, 6to4 2002::/16,
   // Teredo 2001::/32 (client address inverted)
   if (word(0) === 0x64 && word(1) === 0xff9b && w.slice(2, 6).every((x) => x === 0)) {
@@ -86,6 +92,7 @@ function classifyV6(ip: string): AddressClass {
   if (word(0) === 0x64 && word(1) === 0xff9b && word(2) === 1) return 'reserved'; // local-use NAT64 (RFC 8215)
   if (word(0) === 0x2002) return classifyV4(v4Of(word(1), word(2)));
   if (word(0) === 0x2001 && word(1) === 0) return classifyV4(v4Of(~word(6) & 0xffff, ~word(7) & 0xffff));
+
   const first = word(0);
   if (ip.toLowerCase() === 'fd00:ec2::254') return 'metadata';
   if ((first & 0xffc0) === 0xfe80) return 'link-local';

@@ -38,9 +38,11 @@ export function sweepDeadRunDirs(base: string): string[] {
   } catch {
     return removed;
   }
+
   for (const name of names) {
     const m = RUN_DIR.exec(name);
     if (!m || alive(Number(m[1]))) continue;
+
     try {
       rmSync(path.join(base, name), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       removed.push(name);
@@ -54,9 +56,11 @@ export function sweepDeadRunDirs(base: string): string[] {
 export default function setup(project: TestProject): () => void {
   const base = tmpdir();
   sweepDeadRunDirs(base);
+
   const root = path.join(base, `${RUN_TMP_PREFIX}${process.pid}`);
   mkdirSync(root, { recursive: true });
   project.provide('dsgvoTestTmpRoot', root);
+
   return () => {
     rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   };

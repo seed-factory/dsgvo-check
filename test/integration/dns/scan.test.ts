@@ -35,7 +35,9 @@ const run = (failOn: 'critical' | 'warning') =>
 describe('scan with only the MAIL-* checks', () => {
   it('reports DMARC p=none and SPF ~all without DMARC enforcement (exit 1 with --fail-on warning)', async () => {
     dns.setZone(MAIL_SITE);
+
     const result = await run('warning');
+
     expectValidReport(result.report);
     expect(result.exitCode).toBe(1);
     expect(result.report.scan.status).not.toBe('failed');
@@ -44,7 +46,7 @@ describe('scan with only the MAIL-* checks', () => {
       'MAIL-01.policy-none:warning',
       'MAIL-02.softfail-without-enforcement:warning',
     ]);
-    expect(report.findings.every((f) => f.crmCode === 'T3_MAIL_UNPROTECTED')).toBe(true);
+    expect(report.findings.map((f) => f.crmCode)).toEqual(['T3_MAIL_UNPROTECTED', 'T3_MAIL_UNPROTECTED']);
     expect(report.evidence.filter((e) => e.type === 'dns').length).toBeGreaterThan(0);
     expect(JSON.stringify(report)).not.toContain('dmarc-reports@');
     expect(report.scan.environment.requestsIssued.dns).toBe(5);
@@ -64,6 +66,7 @@ describe('scan with only the MAIL-* checks', () => {
       'TXT example.test': 'SERVFAIL',
     });
     const result = await run('warning');
+
     expectValidReport(result.report);
     expect(result.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toEqual(

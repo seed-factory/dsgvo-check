@@ -2,7 +2,7 @@
 # public hostnames. No content from EasyList/EasyPrivacy, NC- or GPL-licensed lists.
 # Services live in the other files of this directory (`services:` arrays are concatenated by the loader).
 #
-# Entry fields (src/derive/catalog.ts validates them strictly):
+# Entry fields (src/derive/catalog.ts validates them strictly; the same goes for the top-level keys below):
 # id, name, category, policyRelevance (required|optional|none)
 # provider {name, country} – contracting party for EEA customers according to the catalog; omitted when not
 # verified from vendor documentation ("laut Dienstekatalog", never a finding)
@@ -23,6 +23,26 @@ catalog:
   date: "2026-10-30"
   license: Apache-2.0
   attribution: "dsgvo-check service catalog, © dsgvo-check contributors, Apache-2.0"
+
+# Parameter names (lower case) of identifiers that arrive with the visit and are not generated per page load: ad-click
+# ids and a user id. A request that carries one is classified `user-supplied`, not `per-load`.
+userSuppliedParams:
+  - user_id
+  - userid
+  - gclid
+  - dclid
+  - gbraid
+  - wbraid
+  - msclkid
+  - fbclid
+  - ttclid
+  - li_fat_id
+
+# Google Consent Mode: the community-documented letters of the `gcd` request value (position 3 = ad storage, position 5 =
+# analytics storage). `gcs` (G1 plus 1 granted / 0 denied) needs no table.
+consentMode:
+  gcdDenied: [p, q, m, u]
+  gcdGranted: [t, r, n, v]
 
 # Category description terms for PRIV-01 (`category` match level), de and en.
 categories:

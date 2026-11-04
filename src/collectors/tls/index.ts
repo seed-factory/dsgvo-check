@@ -6,10 +6,11 @@ import type { TlsCollector } from '../../core/snapshot/collector.ts';
 import type { ProbeRecord } from '../../core/snapshot/http.ts';
 import type { TlsSection } from '../../core/snapshot/tls.ts';
 import { hostVariants } from '../http/hosts.ts';
-import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from './probe.ts';
+import { DEFAULT_TLS_PORT, probeTlsEndpoint } from './probe.ts';
 
 export { certificateInfo, chainOf, probeTlsEndpoint } from './probe.ts';
 
+/** Overrides of `ctx.config.tls.timeoutMs` (tests). */
 export interface TlsCollectorOptions {
   timeoutMs?: number;
   port?: number;
@@ -21,9 +22,10 @@ export function targetTlsPort(url: string): number | null {
 }
 
 export function createTlsCollector(opts: TlsCollectorOptions = {}): TlsCollector {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TLS_TIMEOUT_MS;
-  const defaultPort = opts.port ?? 443;
+  const defaultPort = opts.port ?? DEFAULT_TLS_PORT;
   return async (ctx) => {
+    const timeoutMs = opts.timeoutMs ?? ctx.config.tls.timeoutMs;
+
     try {
       const targetPort = targetTlsPort(ctx.target.url);
       const targets = hostVariants(ctx.target.host, ctx.target.etld1).map((t) => ({
@@ -36,6 +38,7 @@ export function createTlsCollector(opts: TlsCollectorOptions = {}): TlsCollector
         target: `${t.host}:${t.port}`,
         purpose: 'certificate',
       }));
+
       const endpoints = await Promise.all(targets.map((t) => probeTlsEndpoint(ctx, t, t.port, timeoutMs)));
       const section: TlsSection = {
         endpoints,

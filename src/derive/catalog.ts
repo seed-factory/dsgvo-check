@@ -129,6 +129,27 @@ const CatalogFileSchema = z
       z.enum(CATEGORIES),
       z.object({ de: z.array(z.string().min(2)), en: z.array(z.string().min(2)) }).strict(),
     ),
+    /**
+     * Parameter names (lower case) of identifiers handed to the site with the visit, not generated per page load: ad-click
+     * ids and a user id. Compared with the collector's `identifierNames`.
+     */
+    userSuppliedParams: z.array(
+      z
+        .string()
+        .min(1)
+        .refine((n) => n === n.toLowerCase(), 'must be lower case'),
+    ),
+    /** Letters of the community-documented Google Consent Mode `gcd` value: position 3 is ad storage, 5 analytics. */
+    consentMode: z
+      .object({
+        gcdDenied: z.array(z.string().length(1)),
+        gcdGranted: z.array(z.string().length(1)),
+      })
+      .strict()
+      .refine(
+        (m) => !m.gcdDenied.some((c) => m.gcdGranted.includes(c)),
+        'a gcd letter cannot be both denied and granted',
+      ),
     services: z.array(ServiceSchema),
     allowlist: z
       .object({
@@ -150,6 +171,12 @@ interface NamePattern {
   /** Length of the literal part (more specific wins). */
   literal: number;
   domain: string | null;
+}
+
+interface NameEntry {
+  p: NamePattern;
+  service: ServiceEntry;
+  tracking: boolean;
 }
 
 interface CompiledSignature {
@@ -199,43 +226,53 @@ function nameMatches(p: NamePattern, name: string, domain: string | null): boole
 export class ServiceCatalog {
   readonly data: CatalogData;
   readonly byId: ReadonlyMap<string, ServiceEntry>;
+  readonly userSuppliedParams: ReadonlySet<string>;
   readonly #domainIndex = new Map<string, ServiceEntry[]>();
   readonly #hostSignatures = new Map<string, CompiledSignature[]>();
   readonly #anyHostSignatures: CompiledSignature[] = [];
-  readonly #cookiePatterns: Array<{ p: NamePattern; service: ServiceEntry; tracking: boolean }> = [];
-  readonly #storagePatterns: Array<{ p: NamePattern; service: ServiceEntry; tracking: boolean }> = [];
+  readonly #cookiePatterns: NameEntry[] = [];
+  readonly #storagePatterns: NameEntry[] = [];
   readonly #allowCookies: Array<{ p: NamePattern; cls: string }> = [];
   readonly #allowStorage: Array<{ p: NamePattern; cls: string }> = [];
 
   constructor(data: CatalogData) {
     this.data = data;
+    this.userSuppliedParams = new Set(data.userSuppliedParams);
+
     const byId = new Map<string, ServiceEntry>();
     for (const s of data.services) {
       if (byId.has(s.id)) throw new DataError(`services: duplicate service id "${s.id}"`);
       byId.set(s.id, s);
-      for (const d of s.domains) this.#domainIndex.set(d, [...(this.#domainIndex.get(d) ?? []), s]);
-      for (const sig of s.signatures) {
-        const compiled: CompiledSignature = {
-          service: s,
-          sig,
-          path: new RegExp(sig.path),
-          query: Object.entries(sig.query ?? {}).map(([k, v]) => [k, new RegExp(v)]),
-        };
-        for (const h of sig.hosts)
-          this.#hostSignatures.set(h, [...(this.#hostSignatures.get(h) ?? []), compiled]);
-        if (sig.anyHost) this.#anyHostSignatures.push(compiled);
-      }
-      for (const c of s.cookies) this.#cookiePatterns.push({ p: compileName(c), service: s, tracking: true });
-      for (const c of s.otherCookies)
-        this.#cookiePatterns.push({ p: compileName(c), service: s, tracking: false });
-      for (const k of s.storageKeys)
-        this.#storagePatterns.push({ p: compileName(k), service: s, tracking: true });
+      this.#indexService(s);
     }
     this.byId = byId;
+
     for (const [cls, list] of Object.entries(data.allowlist.cookies))
       for (const n of list) this.#allowCookies.push({ p: compileName(n, 'i'), cls });
     for (const [cls, list] of Object.entries(data.allowlist.storage))
       for (const n of list) this.#allowStorage.push({ p: compileName(n, 'i'), cls });
+  }
+
+  #indexService(s: ServiceEntry): void {
+    for (const d of s.domains) this.#domainIndex.set(d, [...(this.#domainIndex.get(d) ?? []), s]);
+
+    for (const sig of s.signatures) {
+      const compiled: CompiledSignature = {
+        service: s,
+        sig,
+        path: new RegExp(sig.path),
+        query: Object.entries(sig.query ?? {}).map(([k, v]) => [k, new RegExp(v)]),
+      };
+      for (const h of sig.hosts)
+        this.#hostSignatures.set(h, [...(this.#hostSignatures.get(h) ?? []), compiled]);
+      if (sig.anyHost) this.#anyHostSignatures.push(compiled);
+    }
+
+    for (const c of s.cookies) this.#cookiePatterns.push({ p: compileName(c), service: s, tracking: true });
+    for (const c of s.otherCookies)
+      this.#cookiePatterns.push({ p: compileName(c), service: s, tracking: false });
+    for (const k of s.storageKeys)
+      this.#storagePatterns.push({ p: compileName(k), service: s, tracking: true });
   }
 
   get version(): string {
@@ -254,6 +291,7 @@ export class ServiceCatalog {
     const host = url.hostname.toLowerCase();
     const labels = host.split('.');
     const suffixes = labels.map((_, i) => labels.slice(i).join('.'));
+
     for (const suffix of suffixes) {
       for (const c of this.#hostSignatures.get(suffix) ?? []) {
         if (signatureMatches(c, url)) return { service: c.service, signature: c.sig, via: 'host' };
@@ -294,8 +332,10 @@ export class ServiceCatalog {
   info(id: string): ServiceInfo | null {
     const s = this.byId.get(id);
     if (!s) return null;
+
     const company = new Set<string>(s.companyAliases);
     for (const party of [s.provider, s.parent]) if (party) company.add(party.name);
+
     const info: ServiceInfo = {
       serviceId: s.id,
       name: s.name,
@@ -308,6 +348,7 @@ export class ServiceCatalog {
       categoryTerms: this.categoryTerms(s.category),
       selfHostable: s.selfHostable,
     };
+    // Optional parties are left out of the object, not set to undefined.
     if (s.provider) info.provider = s.provider;
     if (s.parent) info.parent = s.parent;
     if (s.dpfEntity) info.dpfEntity = s.dpfEntity;
@@ -324,17 +365,18 @@ function signatureMatches(c: CompiledSignature, url: URL): boolean {
   return true;
 }
 
-function bestName(
-  patterns: ReadonlyArray<{ p: NamePattern; service: ServiceEntry; tracking: boolean }>,
-  name: string,
-  domain: string | null,
-): NameMatch | null {
-  let best: { p: NamePattern; service: ServiceEntry; tracking: boolean } | null = null;
+/** A pattern bound to a domain beats any unbound one; among equals the longer literal part wins. */
+const DOMAIN_BOUND_BONUS = 1000;
+
+function nameSpecificity(entry: NameEntry): number {
+  return entry.p.literal + (entry.p.domain ? DOMAIN_BOUND_BONUS : 0);
+}
+
+function bestName(patterns: readonly NameEntry[], name: string, domain: string | null): NameMatch | null {
+  let best: NameEntry | null = null;
   for (const entry of patterns) {
     if (!nameMatches(entry.p, name, domain)) continue;
-    const score = entry.p.literal + (entry.p.domain ? 1000 : 0);
-    const bestScore = best ? best.p.literal + (best.p.domain ? 1000 : 0) : -1;
-    if (score > bestScore) best = entry;
+    if (!best || nameSpecificity(entry) > nameSpecificity(best)) best = entry;
   }
   return best ? { service: best.service, tracking: best.tracking } : null;
 }

@@ -227,9 +227,11 @@ describe('redactText: long runs of closing brackets after a token', () => {
       (n: number) => `mailto:${REDACTED}@example.test${'}'.repeat(n)}`,
     ],
   ] as const)('redacts and scales with %s', (_name, input, expected) => {
+    /** The fastest of 5 runs on an input of size n, after a warm-up run. */
     const best = (n: number) => {
       const value = input(n);
       redactText(value);
+
       return Math.min(
         ...Array.from({ length: 5 }, () => {
           const started = performance.now();
@@ -238,6 +240,8 @@ describe('redactText: long runs of closing brackets after a token', () => {
         }),
       );
     };
+
+    // 4x the input may cost far less than 12x the time (a quadratic scan would need ~16x)
     expect(best(80_000) / Math.max(best(20_000), 0.05)).toBeLessThan(12);
     expect(redactText(input(20_000))).toBe(expected(20_000));
   });

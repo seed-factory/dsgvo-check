@@ -2,7 +2,8 @@
  * CONSENT-04 (P0): first layer of the consent dialog and whether the reject works. The verdict comes only from the
  * pure `classifyFirstLayer` for a CMP recognised with `high`; otherwise `banner-not-recognized` or `cmp-not-supported`.
  */
-import { classifyFirstLayer } from '../../cmp/classify.ts';
+import { adaptersSection, essentialCategorySection } from '../../cmp/adapters-data.ts';
+import { type ClassifyOptions, classifyFirstLayer } from '../../cmp/classify.ts';
 import { lexiconFromData } from '../../cmp/lexicon.ts';
 import type {
   CmpFacts,
@@ -11,18 +12,20 @@ import type {
   CmpSection,
   ConsentStateFact,
   FirstLayerClassification,
-  KnownCmpId,
 } from '../../cmp/types.ts';
 import {
+  type CheckContext,
   type CheckOutcome,
   defineCheck,
   type EvidenceInput,
   type Observation,
   type Phase,
+  type ScanPlan,
   subjects,
 } from '../../core/api.ts';
 import type { BrowserPlan, BrowserSection } from '../../core/snapshot/browser.ts';
-import { allCmpFacts, consentSignals, signalOutcome, startPageUrl } from './shared.ts';
+import { allCmpFacts, consentSignals, signalOutcome } from './signals.ts';
+import { startPageUrl } from './snapshot.ts';
 
 const ID = 'CONSENT-04';
 
@@ -40,20 +43,6 @@ export const CONSENT04_VARIANTS = [
   'cmp-not-supported',
 ] as const;
 type Variant = (typeof CONSENT04_VARIANTS)[number];
-
-const KNOWN_CMPS: ReadonlySet<string> = new Set<KnownCmpId>([
-  'borlabs',
-  'cookiebot',
-  'complianz',
-  'usercentrics',
-  'ccm19',
-  'real-cookie-banner',
-  'cookiehub',
-]);
-
-/** Consent categories treated as essential when deciding "granted without action". */
-const ESSENTIAL_CATEGORY =
-  /^(necessary|essential|required|technical|strictly[-_ ]?necessary|technically[-_ ]?necessary|functional|functionality(_storage)?|security(_storage)?|notwendig|essenziell|essentiell|erforderlich|technisch[-_ ]?notwendig)$/i;
 
 const EMPTY_LEXICON: CmpLexicon = {
   version: 'none',
@@ -75,7 +64,11 @@ export function lexiconFrom(data: unknown): CmpLexicon | null {
   }
 }
 
-export type FirstLayerClassifier = (facts: CmpFacts, lexicon: CmpLexicon) => FirstLayerClassification;
+export type FirstLayerClassifier = (
+  facts: CmpFacts,
+  lexicon: CmpLexicon,
+  options: ClassifyOptions,
+) => FirstLayerClassification;
 
 /**
  * Only an own adapter with `high` recognition ranks above the heuristic: below `high` it is as much a hint as the
@@ -107,14 +100,18 @@ function primaryFacts(cmp: CmpSection, start: string | null): CmpFacts | null {
   return candidates[0]?.f ?? null;
 }
 
-function grantedWithoutAction(cmp: CmpSection): Array<{ facts: CmpFacts; state: ConsentStateFact }> {
+/** Consent categories treated as essential when deciding "granted without action" (test/data/cmp/categories.yaml). */
+function grantedWithoutAction(
+  cmp: CmpSection,
+  essential: RegExp,
+): Array<{ facts: CmpFacts; state: ConsentStateFact }> {
   const out: Array<{ facts: CmpFacts; state: ConsentStateFact }> = [];
   for (const p of cmp.phases) {
     for (const f of p.facts) {
       if (p.phase !== 'A' && f.moment !== 'first-screen') continue;
       for (const s of f.state) {
         if (s.ready !== 'ready' || (s.origin !== 'default' && s.origin !== 'stored')) continue;
-        if (Object.entries(s.categories).some(([k, v]) => v === 'granted' && !ESSENTIAL_CATEGORY.test(k)))
+        if (Object.entries(s.categories).some(([k, v]) => v === 'granted' && !essential.test(k)))
           out.push({ facts: f, state: s });
       }
     }
@@ -177,11 +174,145 @@ function screenshotEvidence(browser: BrowserSection, f: CmpFacts): EvidenceInput
 /** Classifier reasons that say the measurement was incomplete: reported as limitations of the check. */
 const MEASUREMENT_LIMITATIONS: readonly string[] = ['buttons-truncated', 'geometry-unsettled'];
 
+/** A consent-without-action observation shows at most this many state facts. */
+const MAX_STATE_EVIDENCE = 5;
+
 const NO_REJECT_VARIANTS: ReadonlySet<string> = new Set([
   'blocking-no-reject',
   'nonblocking-no-reject',
   'no-choice-at-first-layer',
 ]);
+
+/** Observation builder for the primary facts: the UI subject, the CMP in the params and how it was recognised. */
+function makeBase(primary: CmpFacts) {
+  const det = primary.detection;
+  return (variant: Variant, confidence: Observation['confidence'], evidence: EvidenceInput[], params = {}) =>
+    ({
+      checkId: ID,
+      variant,
+      confidence,
+      subject: subjects.consentUi(),
+      phases: [primary.phase] as Phase[],
+      pages: [primary.pageUrl],
+      evidence,
+      params: { cmp: det.cmpId, ...params },
+      classification: {
+        source: det.method === 'adapter' ? `adapter:${det.cmpId}` : det.method,
+        datasetVersion: null,
+      },
+    }) satisfies Observation;
+}
+
+type Base = ReturnType<typeof makeBase>;
+
+/** What the check has concluded so far. */
+interface Verdict {
+  observations: Observation[];
+  limitations: string[];
+  inconclusiveReason: string | null;
+}
+
+/** Only own adapters with `high` recognition and a supported version give a verdict; otherwise why not. */
+function withoutVerdict(det: CmpFacts['detection'], ctx: CheckContext): Variant | null {
+  if (det.method === 'adapter' && det.recognitionConfidence === 'high' && det.versionSupported !== false) {
+    return null;
+  }
+
+  const notSupported =
+    (det.method === 'adapter' && det.versionSupported === false) ||
+    (det.method === 'heuristic' &&
+      det.cmpId !== null &&
+      !Object.hasOwn(adaptersSection.parse(ctx.data.cmp), det.cmpId));
+  return notSupported ? 'cmp-not-supported' : 'banner-not-recognized';
+}
+
+/** The classifier's verdict on the first layer; a flag `pur-abo` adds its own observation. */
+function judgeFirstLayer(
+  primary: CmpFacts,
+  plan: ScanPlan,
+  ctx: CheckContext,
+  classify: FirstLayerClassifier,
+  base: Base,
+  factsEvidence: EvidenceInput[],
+  verdict: Verdict,
+): void {
+  const { observations, limitations } = verdict;
+  const lexicon = lexiconFrom(ctx.data.cmp);
+  if (!lexicon) limitations.push('lexicon-unavailable');
+  if (!primary.firstLayer.bannerVisible) {
+    limitations.push('first-layer-not-visible');
+    return;
+  }
+
+  const cls = classify(primary, lexicon ?? EMPTY_LEXICON, {
+    blockingCoveredRatio: ctx.thresholds.cmp.blockingCoveredRatio,
+  });
+  const v = cls.variant as string;
+  if (v === 'banner-not-recognized' || v === 'cmp-not-supported') {
+    verdict.inconclusiveReason = v;
+    observations.push(base(v, 'high', factsEvidence, { reasons: cls.reasons.join(',') || null }));
+    for (const r of cls.reasons) if (MEASUREMENT_LIMITATIONS.includes(r)) limitations.push(r);
+  } else if (v !== 'ok') {
+    if ((CONSENT04_VARIANTS as readonly string[]).includes(v)) {
+      observations.push(base(v as Variant, cls.confidence, factsEvidence));
+    } else {
+      limitations.push(`unknown-classification:${v}`);
+      verdict.inconclusiveReason = 'unknown-classification';
+    }
+  }
+  if (cls.flags.includes('pur-abo') && v !== 'pur-abo') {
+    observations.push(base('pur-abo', cls.confidence, factsEvidence));
+  }
+
+  // A saved snapshot judged with a newer lexicon may disagree with what the click found at scan time.
+  if (ctx.options.fromSnapshot && plan.browser?.click.B) {
+    const hadReject = plan.browser.click.B.target !== null;
+    if ((hadReject && NO_REJECT_VARIANTS.has(v)) || (!hadReject && v === 'ok')) {
+      limitations.push('lexicon-changed-since-scan');
+    }
+  }
+}
+
+/** Our reject click ran: when the CMP state still shows a decision (or none was verified), the reject did nothing. */
+function judgeRejectClick(
+  cmp: CmpSection,
+  primary: CmpFacts,
+  base: Base,
+  factsEvidence: EvidenceInput[],
+  verdict: Verdict,
+): void {
+  const b = cmp.phases.find((p) => p.phase === 'B');
+  if (b?.click?.action !== 'reject' || !b.click.clicked || !b.verify) return;
+  if (b.verify.verified) return;
+
+  if (b.verify.stateAfter.some((s) => s.ready === 'ready')) {
+    const states = b.verify.stateAfter.map((s) => stateEvidence(s, { phase: 'B', pageUrl: primary.pageUrl }));
+    verdict.observations.push(base('reject-ineffective', 'high', [...factsEvidence, ...states]));
+  } else {
+    verdict.limitations.push('reject-unverified');
+  }
+}
+
+/** Consent granted without any action by the visitor: a default or stored state that grants non-essential categories. */
+function grantedObservation(
+  cmp: CmpSection,
+  primary: CmpFacts,
+  plan: ScanPlan,
+  ctx: CheckContext,
+  base: Base,
+): Observation | null {
+  const granted = grantedWithoutAction(cmp, essentialCategorySection.parse(ctx.data.cmp));
+  if (granted.length === 0) return null;
+
+  return {
+    ...base('consent-without-action', 'high', [
+      cmpEvidence(primary, plan.browser),
+      ...granted.slice(0, MAX_STATE_EVIDENCE).map((g) => stateEvidence(g.state, g.facts)),
+    ]),
+    phases: [...new Set(granted.map((g) => g.facts.phase))].sort() as Phase[],
+    pages: [...new Set(granted.map((g) => g.facts.pageUrl))].sort(),
+  };
+}
 
 export function createConsent04(classify: FirstLayerClassifier = classifyFirstLayer) {
   return defineCheck({
@@ -198,105 +329,30 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       if (!facts.some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent)) {
         return { status: 'not_applicable', reason: 'no-banner', observations: [] };
       }
+
       const primary = primaryFacts(cmp, startPageUrl(browser)) as CmpFacts;
-      const det = primary.detection;
-      const base = (
-        variant: Variant,
-        confidence: Observation['confidence'],
-        evidence: EvidenceInput[],
-        params = {},
-      ) =>
-        ({
-          checkId: ID,
-          variant,
-          confidence,
-          subject: subjects.consentUi(),
-          phases: [primary.phase] as Phase[],
-          pages: [primary.pageUrl],
-          evidence,
-          params: { cmp: det.cmpId, ...params },
-          classification: {
-            source: det.method === 'adapter' ? `adapter:${det.cmpId}` : det.method,
-            datasetVersion: null,
-          },
-        }) satisfies Observation;
+      const base = makeBase(primary);
       const factsEvidence = [cmpEvidence(primary, plan.browser), ...screenshotEvidence(browser, primary)];
 
-      // Only own adapters with `high` recognition and a supported version give a verdict.
-      const notSupported =
-        (det.method === 'adapter' && det.versionSupported === false) ||
-        (det.method === 'heuristic' && det.cmpId !== null && !KNOWN_CMPS.has(det.cmpId));
-      if (
-        det.method !== 'adapter' ||
-        det.recognitionConfidence !== 'high' ||
-        det.versionSupported === false
-      ) {
-        const variant: Variant = notSupported ? 'cmp-not-supported' : 'banner-not-recognized';
+      const unverdictable = withoutVerdict(primary.detection, ctx);
+      if (unverdictable) {
         return {
           status: 'inconclusive',
-          reason: variant,
-          observations: [base(variant, 'high', factsEvidence)],
+          reason: unverdictable,
+          observations: [base(unverdictable, 'high', factsEvidence)],
         };
       }
 
-      const observations: Observation[] = [];
-      const limitations: string[] = [];
-      let inconclusiveReason: string | null = null;
+      const verdict: Verdict = { observations: [], limitations: [], inconclusiveReason: null };
+      judgeFirstLayer(primary, plan, ctx, classify, base, factsEvidence, verdict);
+      judgeRejectClick(cmp, primary, base, factsEvidence, verdict);
+      const granted = grantedObservation(cmp, primary, plan, ctx, base);
+      if (granted) verdict.observations.push(granted);
 
-      const lexicon = lexiconFrom(ctx.data.cmp);
-      if (!lexicon) limitations.push('lexicon-unavailable');
-      if (primary.firstLayer.bannerVisible) {
-        const cls = classify(primary, lexicon ?? EMPTY_LEXICON);
-        const v = cls.variant as string;
-        if (v === 'banner-not-recognized' || v === 'cmp-not-supported') {
-          inconclusiveReason = v;
-          observations.push(base(v, 'high', factsEvidence, { reasons: cls.reasons.join(',') || null }));
-          for (const r of cls.reasons) if (MEASUREMENT_LIMITATIONS.includes(r)) limitations.push(r);
-        } else if (v !== 'ok') {
-          if ((CONSENT04_VARIANTS as readonly string[]).includes(v)) {
-            observations.push(base(v as Variant, cls.confidence, factsEvidence));
-          } else {
-            limitations.push(`unknown-classification:${v}`);
-            inconclusiveReason = 'unknown-classification';
-          }
-        }
-        if (cls.flags.includes('pur-abo') && v !== 'pur-abo')
-          observations.push(base('pur-abo', cls.confidence, factsEvidence));
-        if (ctx.options.fromSnapshot && plan.browser?.click.B) {
-          const hadReject = plan.browser.click.B.target !== null;
-          if ((hadReject && NO_REJECT_VARIANTS.has(v)) || (!hadReject && v === 'ok'))
-            limitations.push('lexicon-changed-since-scan');
-        }
-      } else {
-        limitations.push('first-layer-not-visible');
-      }
-
-      const b = cmp.phases.find((p) => p.phase === 'B');
-      if (b?.click?.action === 'reject' && b.click.clicked && b.verify) {
-        if (!b.verify.verified && b.verify.stateAfter.some((s) => s.ready === 'ready')) {
-          observations.push(
-            base('reject-ineffective', 'high', [
-              ...factsEvidence,
-              ...b.verify.stateAfter.map((s) => stateEvidence(s, { phase: 'B', pageUrl: primary.pageUrl })),
-            ]),
-          );
-        } else if (!b.verify.verified) limitations.push('reject-unverified');
-      }
-
-      const granted = grantedWithoutAction(cmp);
-      if (granted.length > 0) {
-        observations.push({
-          ...base('consent-without-action', 'high', [
-            cmpEvidence(primary, plan.browser),
-            ...granted.slice(0, 5).map((g) => stateEvidence(g.state, g.facts)),
-          ]),
-          phases: [...new Set(granted.map((g) => g.facts.phase))].sort() as Phase[],
-          pages: [...new Set(granted.map((g) => g.facts.pageUrl))].sort(),
-        });
-      }
-
-      if (inconclusiveReason)
+      const { observations, limitations, inconclusiveReason } = verdict;
+      if (inconclusiveReason) {
         return { status: 'inconclusive', reason: inconclusiveReason, observations, limitations };
+      }
       if (!primary.firstLayer.bannerVisible && observations.length === 0) {
         return { status: 'inconclusive', reason: 'first-layer-not-visible', observations, limitations };
       }

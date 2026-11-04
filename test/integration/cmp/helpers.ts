@@ -5,16 +5,11 @@
 import type { Page } from 'playwright-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { signalKinds } from '../../../src/cmp/detection.ts';
-import {
-  classifyFirstLayer,
-  extract,
-  loadLexicon,
-  waitForBanner,
-  waitForCmp,
-} from '../../../src/cmp/index.ts';
+import { extract, loadLexicon, waitForBanner, waitForCmp } from '../../../src/cmp/index.ts';
 import type { ClickOutcome, CmpAdapter, CmpFacts, KnownCmpId } from '../../../src/cmp/types.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../utils/classify.ts';
 
 /** A normal desktop Chrome UA: no `HeadlessChrome`, no bot tokens. */
 export const CHROME_UA =
@@ -64,8 +59,13 @@ export function useCmpServer(sites: string[]) {
   };
 }
 
+/** How long the tests wait for a CMP to be recognized or its banner to show up. */
+export const CMP_WAIT_MS = 8_000;
+/** A short look to confirm that the banner is still open after a refused click. */
+const STILL_OPEN_PROBE_MS = 100;
+
 export async function recognized(page: Page, id: KnownCmpId): Promise<CmpAdapter> {
-  const { adapter, detection } = await waitForCmp(page, { timeoutMs: 8000 });
+  const { adapter, detection } = await waitForCmp(page, { timeoutMs: CMP_WAIT_MS });
   expect(adapter?.id).toBe(id);
   expect(detection.method).toBe('adapter');
   expect(detection.recognitionConfidence).toBe('high');
@@ -106,11 +106,25 @@ export function describeCmpScenarios(
     const env = useCmpServer([s.site]);
     const lexicon = loadLexicon();
 
+    /** Opens `url`, waits until the CMP is recognized; the banner itself is not awaited yet. */
+    async function openRecognized(url: string) {
+      const { page } = await env.open(url);
+      return { page, adapter: await recognized(page, s.id) };
+    }
+
+    /** Opens `url` and waits for the banner; whether it appeared is checked by the scenarios that care. */
+    async function openWithBanner(url: string) {
+      const opened = await openRecognized(url);
+      await waitForBanner(opened.page, opened.adapter, { timeoutMs: CMP_WAIT_MS });
+      return opened;
+    }
+
     it('recognizes the CMP with high confidence and measures a first layer with a reject → ok', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      expect(await waitForBanner(page, adapter, { timeoutMs: 8000 })).toBe(true);
+      const { page, adapter } = await openRecognized(s.okUrl);
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+
       if (s.version !== undefined) expect(facts.detection.version).toBe(s.version);
       expect(facts.detection.versionSupported).not.toBe(false);
       expect(facts.firstLayer.bannerVisible).toBe(true);
@@ -121,20 +135,23 @@ export function describeCmpScenarios(
       expect(reject?.contrast).toBeGreaterThan(1);
       expect(accept?.name).toMatch(s.acceptName);
       expect(accept?.actionableAtFirstScreen).toBe(true);
+
       const cls = classifyFirstLayer(facts, lexicon);
       expect(cls.variant).toBe('ok');
       expect(cls.targets?.reject?.name).toMatch(s.rejectName);
+
+      // Measuring alone responds to nothing: no decision recorded, no geo or bot signal.
       expect(facts.state.length).toBeGreaterThan(0);
-      expect(facts.state.every((st) => st.decision?.responded !== true)).toBe(true);
+      expect(facts.state.filter((st) => st.decision?.responded === true)).toEqual([]);
       expect(facts.geoSignals).toEqual([]);
       expect(facts.botSignals).toEqual([]);
     });
 
     it('reject: clicks only the unambiguous reject, verifies it by state and after reload', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      await waitForBanner(page, adapter, { timeoutMs: 8000 });
+      const { page, adapter } = await openWithBanner(s.okUrl);
+
       const { click } = await decideAndAct(page, adapter, 'reject');
+
       expect(click.error).toBeUndefined();
       expect(click.clicked).toBe(true);
       expect(click.button?.kind).toBe('reject');
@@ -144,34 +161,38 @@ export function describeCmpScenarios(
       expect(verify.persistedAfterReload).toBe(true);
       expect(verify.method).toContain('persisted-after-reload');
       expect(verify.method).toContain('ui-closed');
-      expect(verify.stateAfter.some((st) => st.origin === 'action')).toBe(true);
-      expect(verify.stateAfter.some((st) => st.origin === 'stored')).toBe(true);
+      expect(verify.stateAfter.map((st) => st.origin)).toContain('action');
+      expect(verify.stateAfter.map((st) => st.origin)).toContain('stored');
       const after = await adapter.extract(page, 'after-reload');
       expect(after.firstLayer.bannerVisible).toBe(false);
     });
 
     it('blocking variant without reject on the first layer → blocking-no-reject, nothing is clicked', async () => {
-      const { page } = await env.open(s.blockingUrl);
-      const adapter = await recognized(page, s.id);
-      expect(await waitForBanner(page, adapter, { timeoutMs: 8000 })).toBe(true);
+      const { page, adapter } = await openRecognized(s.blockingUrl);
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
       const facts = await extract(page, adapter, 'first-screen');
-      expect(facts.blocking.overlay || facts.blocking.scrollLock || facts.blocking.inert).toBe(true);
-      expect(facts.firstLayer.buttons.some((b) => b.kind === 'reject' && b.layer === 1)).toBe(false);
+
+      const { overlay, scrollLock, inert } = facts.blocking;
+      expect([overlay, scrollLock, inert]).toContain(true);
+      expect(facts.firstLayer.buttons.filter((b) => b.kind === 'reject' && b.layer === 1)).toEqual([]);
       const cls = classifyFirstLayer(facts, lexicon);
       expect(cls.variant).toBe('blocking-no-reject');
       expect(cls.confidence).toBe('high');
       expect(cls.acceptAvailableAtFirstLayer).toBe(true);
-      const click = await adapter.reject(page, { facts });
+
+      const click = await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY });
+
       expect(click.clicked).toBe(false);
       expect(click.error).toMatch(/^no-unambiguous-reject:blocking-no-reject/);
-      expect(await waitForBanner(page, adapter, { timeoutMs: 100 })).toBe(true);
+      expect(await waitForBanner(page, adapter, { timeoutMs: STILL_OPEN_PROBE_MS })).toBe(true);
     });
 
     it('accept: clicks accept and verifies the granted state after reload', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      await waitForBanner(page, adapter, { timeoutMs: 8000 });
+      const { page, adapter } = await openWithBanner(s.okUrl);
+
       const { click } = await decideAndAct(page, adapter, 'accept');
+
       expect(click.clicked).toBe(true);
       expect(click.button?.name).toMatch(s.acceptName);
       const verify = await adapter.verify(page, 'accept');
@@ -180,16 +201,16 @@ export function describeCmpScenarios(
       expect(verify.persistedAfterReload).toBe(true);
     });
 
-    // the adapter executes the target core chose and decides nothing itself.
+    // The adapter executes the target core chose and decides nothing itself.
     it('act(page, action, target) clicks exactly the target chosen by classifyFirstLayer', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      await waitForBanner(page, adapter, { timeoutMs: 8000 });
+      const { page, adapter } = await openWithBanner(s.okUrl);
       const facts = await extract(page, adapter, 'first-screen');
       const target = classifyFirstLayer(facts, lexicon).targets?.reject ?? null;
       expect(target).not.toBeNull();
       expect(typeof adapter.act).toBe('function');
+
       const click = await adapter.act?.(page, 'reject', target);
+
       expect(click?.clicked).toBe(true);
       expect(click?.button).toEqual({
         name: target?.name,
@@ -200,26 +221,26 @@ export function describeCmpScenarios(
     });
 
     it('a null target from core is not overridden by a decision of the adapter', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      await waitForBanner(page, adapter, { timeoutMs: 8000 });
+      const { page, adapter } = await openWithBanner(s.okUrl);
       const facts = await extract(page, adapter, 'first-screen');
       // The default lexicon would pick a reject here; core's decision (here: none) must win.
       expect(classifyFirstLayer(facts, lexicon).targets?.reject).not.toBeNull();
-      const click = await adapter.reject(page, { facts, target: null });
-      expect(click).toMatchObject({ clicked: false, button: null, error: 'no-unambiguous-reject' });
+
+      const click = await adapter.reject(page, { facts, target: null, ...DEFAULT_CLASSIFY });
       const noTarget = await adapter.act?.(page, 'reject', null);
+
+      expect(click).toMatchObject({ clicked: false, button: null, error: 'no-unambiguous-reject' });
       expect(noTarget).toMatchObject({ clicked: false, error: 'no-unambiguous-reject' });
-      expect(await waitForBanner(page, adapter, { timeoutMs: 100 })).toBe(true);
+      expect(await waitForBanner(page, adapter, { timeoutMs: STILL_OPEN_PROBE_MS })).toBe(true);
     });
 
     it('without facts and without a target the adapter does not measure and click on its own', async () => {
-      const { page } = await env.open(s.okUrl);
-      const adapter = await recognized(page, s.id);
-      await waitForBanner(page, adapter, { timeoutMs: 8000 });
+      const { page, adapter } = await openWithBanner(s.okUrl);
+
       const click = await adapter.reject(page);
+
       expect(click).toMatchObject({ clicked: false, button: null, error: 'no-target' });
-      expect(await waitForBanner(page, adapter, { timeoutMs: 100 })).toBe(true);
+      expect(await waitForBanner(page, adapter, { timeoutMs: STILL_OPEN_PROBE_MS })).toBe(true);
     });
 
     extra?.(env);

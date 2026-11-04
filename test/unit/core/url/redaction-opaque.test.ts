@@ -153,59 +153,65 @@ describe('an address in the opaque part of a URL with another scheme is masked',
     expect(redactText('Hotline: tel:+4930123456')).toBe('Hotline: tel:+4930123456');
   });
 
+  const PIECES = [
+    'a',
+    'b',
+    'x.test',
+    '.',
+    '-',
+    '/',
+    '\\',
+    '?',
+    '#',
+    '=',
+    '&',
+    ';',
+    ':',
+    ' ',
+    '(',
+    ')',
+    "'",
+    '"',
+    '%',
+    '%ZZ',
+    '%E9',
+    '%C3%BC',
+    '%25',
+    '%2F',
+    '%3F',
+    '%23',
+    '%20',
+    '%40',
+    '%2540',
+    '[redacted]',
+    '😀',
+    '@',
+    `${MARK}@x.test`,
+    `${MARK}%40x.test`,
+    `${MARK}%2540x.test`,
+    `${MARK}%252540x.test`,
+    `"${MARK}"@x.test`,
+  ];
+  // not `foo://` + pieces: a host made of pieces is often no host, and an unparsable URL that ends in a blank is
+  // not stable because the next parse removes the trailing blank
+  const SCHEMES = ['foo:', 'javascript:', 'sms:', 'x-y+z.w:', 'foo://h.test/', 'ws://h.test/'];
+  /** The local part of a mask is at most 64 characters (RFC 5321); see the assertion below for what follows. */
+  const SHORT_BODY = 60;
+
   it('randomized: any mix of pieces after a scheme is stable and keeps no address', () => {
     const rnd = random(20261103);
-    const pieces = [
-      'a',
-      'b',
-      'x.test',
-      '.',
-      '-',
-      '/',
-      '\\',
-      '?',
-      '#',
-      '=',
-      '&',
-      ';',
-      ':',
-      ' ',
-      '(',
-      ')',
-      "'",
-      '"',
-      '%',
-      '%ZZ',
-      '%E9',
-      '%C3%BC',
-      '%25',
-      '%2F',
-      '%3F',
-      '%23',
-      '%20',
-      '%40',
-      '%2540',
-      '[redacted]',
-      '😀',
-      '@',
-      `${MARK}@x.test`,
-      `${MARK}%40x.test`,
-      `${MARK}%2540x.test`,
-      `${MARK}%252540x.test`,
-      `"${MARK}"@x.test`,
-    ];
-    const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
-    // not `foo://` + pieces: a host made of pieces is often no host, and an unparsable URL that ends in a blank is
-    // not stable because the next parse removes the trailing blank
-    const schemes = ['foo:', 'javascript:', 'sms:', 'x-y+z.w:', 'foo://h.test/', 'ws://h.test/'];
+    const pick = () => PIECES[Math.floor(rnd() * PIECES.length)] as string;
+
     for (let i = 0; i < 40_000; i++) {
-      const scheme = schemes[Math.floor(rnd() * schemes.length)] as string;
+      const scheme = SCHEMES[Math.floor(rnd() * SCHEMES.length)] as string;
       const body = Array.from({ length: 1 + Math.floor(rnd() * 8) }, pick).join('');
       const url = scheme + body;
+
       const out = expectStable(url);
-      // The local part of a mask is at most 64 characters (RFC 5321): a longer run of local-part characters in front of
-      // an "@" is masked in its last 64 only, in a path as in free text. A body of up to 60 characters has no such run.
-      if (body.length <= 60) expect(out, JSON.stringify(url)).not.toContain(MARK);
+
+      // A longer run of local-part characters in front of an "@" is masked in its last 64 only, in a path as in
+      // free text. A body of up to 60 characters has no such run.
+      if (body.length <= SHORT_BODY) expect(out, JSON.stringify(url)).not.toContain(MARK);
     }
   });
 });

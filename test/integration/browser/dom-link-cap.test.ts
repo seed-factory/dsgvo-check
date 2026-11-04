@@ -6,6 +6,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { domFactsInPage } from '../../../src/collectors/browser/in-page/dom.ts';
 import { collectDom } from '../../../src/collectors/browser/pages/dom-facts.ts';
+import { loadDomPatterns } from '../../../src/collectors/browser/rules.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
 import { page as html, type SiteDir, writeSite } from './site-dir.ts';
@@ -90,7 +91,11 @@ describe('collectDom with more links than the cap', () => {
 describe('domFactsInPage with a small cap', () => {
   it('reads priority links first and fills the rest in document order', async () => {
     await tab.goto('https://www.example.test/long/');
-    const raw = await tab.evaluate(domFactsInPage, { maxLinks: 10, maxScripts: 5 });
+    const raw = await tab.evaluate(domFactsInPage, {
+      maxLinks: 10,
+      maxScripts: 5,
+      patterns: loadDomPatterns().page,
+    });
     expect(raw.linksTotal).toBe(1603);
     expect(raw.linksTruncated).toBe(true);
     const hrefs = raw.links.map((l) => new URL(l.href).pathname);

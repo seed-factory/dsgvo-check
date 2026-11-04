@@ -37,6 +37,7 @@ function runCli(url: string, outDir: string): Promise<Run> {
     env: { ...process.env, NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf8').on('data', (d: string) => {
@@ -45,6 +46,7 @@ function runCli(url: string, outDir: string): Promise<Run> {
   child.stderr.setEncoding('utf8').on('data', (d: string) => {
     stderr += d;
   });
+
   return new Promise((resolve, reject) => {
     child.on('error', reject);
     child.on('close', (code) => resolve({ code, stdout, stderr, outDir }));
@@ -60,11 +62,40 @@ function valueLeaks(report: Report): string[] {
   return leaks;
 }
 
+/** Prints what the person reviewing the run wants to see: statuses, all findings, the critical ones apart. */
+function printSummary(url: string, run: Run, report: Report): void {
+  const full = report as FullReport;
+  const critical = (full.findings ?? []).filter((f) => f.severity === 'critical');
+  const collectors = report.scan.status === 'failed' ? null : full.scan.coverage?.collectors;
+
+  console.log(
+    JSON.stringify(
+      {
+        url,
+        exit: run.code,
+        status: report.scan.status,
+        collectors,
+        checks: (full.checks ?? []).map((c) => `${c.id}:${c.status}${c.reason ? `/${c.reason}` : ''}`),
+        findings: (full.findings ?? []).map(
+          (f) => `${f.severity} ${f.checkId}.${f.variant} ${f.serviceId ?? ''}`,
+        ),
+        critical: critical.map((f) => `${f.checkId}.${f.variant}`),
+        diagnostics: (full.diagnostics ?? []).map((d) => d.code),
+        outDir: run.outDir,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 describe.skipIf(!existsSync(CLI))('live smoke (built CLI, real sites)', () => {
-  it.each(SITES.map((url, i) => [url, i]))('%s', async (url, i) => {
-    if ((i as number) > 0) await new Promise((r) => setTimeout(r, PAUSE_MS));
-    const outDir = path.join(OUT, new URL(url as string).hostname);
-    const run = await runCli(url as string, outDir);
+  it.each(SITES.map((url, i) => [url, i] as const))('%s', async (url, i) => {
+    if (i > 0) await new Promise((r) => setTimeout(r, PAUSE_MS));
+    const outDir = path.join(OUT, new URL(url).hostname);
+
+    const run = await runCli(url, outDir);
+
     const json = path.join(outDir, 'report.json');
     expect(existsSync(json), run.stderr).toBe(true);
     const report = JSON.parse(readFileSync(json, 'utf8')) as Report;
@@ -79,27 +110,6 @@ describe.skipIf(!existsSync(CLI))('live smoke (built CLI, real sites)', () => {
     expect(htmlSafetyProblems(html)).toEqual([]);
     expect(valueLeaks(report)).toEqual([]);
 
-    const full = report as FullReport;
-    const critical = (full.findings ?? []).filter((f) => f.severity === 'critical');
-    const collectors = report.scan.status === 'failed' ? null : full.scan.coverage?.collectors;
-    console.log(
-      JSON.stringify(
-        {
-          url,
-          exit: run.code,
-          status: report.scan.status,
-          collectors,
-          checks: (full.checks ?? []).map((c) => `${c.id}:${c.status}${c.reason ? `/${c.reason}` : ''}`),
-          findings: (full.findings ?? []).map(
-            (f) => `${f.severity} ${f.checkId}.${f.variant} ${f.serviceId ?? ''}`,
-          ),
-          critical: critical.map((f) => `${f.checkId}.${f.variant}`),
-          diagnostics: (full.diagnostics ?? []).map((d) => d.code),
-          outDir,
-        },
-        null,
-        2,
-      ),
-    );
+    printSummary(url, run, report);
   });
 });

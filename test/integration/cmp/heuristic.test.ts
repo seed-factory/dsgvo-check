@@ -1,6 +1,7 @@
 /** Unknown banners (no adapter) in the main document, open shadow DOM and a cross-origin iframe: facts only. */
 import { describe, expect, it } from 'vitest';
-import { classifyFirstLayer, detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
+import { detectCmp, extract, loadLexicon } from '../../../src/cmp/index.ts';
+import { classifyFirstLayer } from '../../utils/classify.ts';
 import { useCmpServer } from './helpers.ts';
 
 describe('generic heuristic (unknown banner)', () => {
@@ -9,11 +10,13 @@ describe('generic heuristic (unknown banner)', () => {
 
   it('main document: fixed bar with consent wording → heuristic facts, banner-not-recognized', async () => {
     const { page } = await env.open('https://www.generic.test/');
+
     const { adapter, detection } = await detectCmp(page);
     expect(adapter).toBeNull();
     expect(detection.method).toBe('heuristic');
     expect(detection.recognitionConfidence).not.toBe('high');
     expect(detection.signals).toContain('heuristic:fixed');
+
     const facts = await extract(page, null, 'first-screen');
     expect(facts.firstLayer.bannerVisible).toBe(true);
     expect(facts.firstLayer.buttons.map((b) => b.kind).sort()).toEqual(['accept', 'settings']);
@@ -25,16 +28,20 @@ describe('generic heuristic (unknown banner)', () => {
 
   it('open shadow DOM: modal dialog found through the shadow root', async () => {
     const { page } = await env.open('https://www.generic.test/shadow.html');
+
     const facts = await extract(page, null, 'first-screen');
+
     expect(facts.detection.method).toBe('heuristic');
     expect(facts.detection.signals).toContain('heuristic:dialog');
-    expect(facts.firstLayer.buttons.every((b) => b.inShadowDom)).toBe(true);
+    expect(facts.firstLayer.buttons.filter((b) => !b.inShadowDom).map((b) => b.name)).toEqual([]);
     expect(facts.firstLayer.buttons.map((b) => b.kind).sort()).toEqual(['accept', 'reject']);
   });
 
   it('cross-origin iframe: banner body inside the frame, geometry offset to the main viewport', async () => {
     const { page } = await env.open('https://www.generic.test/iframe.html');
+
     const facts = await extract(page, null, 'first-screen');
+
     expect(facts.detection.method).toBe('heuristic');
     expect(facts.detection.frameUrl).toBe('https://consent.unknown-cmp.test/banner.html');
     const accept = facts.firstLayer.buttons.find((b) => b.kind === 'accept');
@@ -44,8 +51,10 @@ describe('generic heuristic (unknown banner)', () => {
 
   it('no banner → method none', async () => {
     const { page } = await env.open('https://www.generic.test/none.html');
+
     const { detection } = await detectCmp(page);
     expect(detection.method).toBe('none');
+
     const facts = await extract(page, null, 'first-screen');
     expect(facts.firstLayer.bannerPresent).toBe(false);
     expect(classifyFirstLayer(facts, lexicon).reasons).toEqual(['no-banner-detected']);

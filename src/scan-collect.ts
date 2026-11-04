@@ -93,45 +93,12 @@ async function runCollector<S extends object>(
     snapshot.collection[name] = { status: 'error', reason: 'timeout', durationMs: 0 };
     return null;
   }
+
   try {
     const pending = fn(ctx);
     const res = await untilDeadline(pending, ctx.signal);
-    if (res.timedOut) {
-      state.timedOut = true;
-      // findings collected before the timeout are kept: give the collector a bounded chance to stop and return what it has
-      const late = await withinGrace(pending, graceMs);
-      const durationMs = Math.round(performance.now() - t0);
-      if (!late) {
-        log.warn(
-          `collector ${name} handed over no result within ${graceMs} ms after the global timeout; its facts are lost`,
-        );
-        state.noHandover.add(name);
-        snapshot.collection[name] = { status: 'error', reason: 'timeout', durationMs };
-        return null;
-      }
-      // Failures after the abort are caused by it: the timeout is the reason, a late `fatal` is ignored.
-      snapshot.collection[name] = {
-        status: late.status === 'ok' ? 'partial' : late.status,
-        reason: late.status === 'skipped' ? (late.reason ?? 'skipped') : 'timeout',
-        durationMs,
-        ...(late.error ? { error: late.error } : {}),
-      };
-      if (late.diagnostics) snapshot.diagnostics.push(...late.diagnostics);
-      if (late.probes) snapshot.plan.probes.push(...late.probes);
-      return { ...late, fatal: undefined };
-    }
-    const durationMs = Math.round(performance.now() - t0);
-    const r = res.value;
-    snapshot.collection[name] = {
-      status: r.status,
-      durationMs,
-      ...(r.reason ? { reason: r.reason } : {}),
-      ...(r.error ? { error: r.error } : {}),
-    };
-    if (r.diagnostics) snapshot.diagnostics.push(...r.diagnostics);
-    if (r.probes) snapshot.plan.probes.push(...r.probes);
-    if (r.fatal && !state.fatal) state.fatal = r.fatal;
-    return r;
+    if (res.timedOut) return await settleAfterTimeout(name, pending, snapshot, state, log, graceMs, t0);
+    return recordResult(name, res.value, snapshot, state, Math.round(performance.now() - t0));
   } catch (err) {
     if (err instanceof ScanFatalError && !state.fatal && !ctx.signal.aborted) {
       state.fatal = { reason: err.reason, code: err.code, params: err.params };
@@ -145,6 +112,66 @@ async function runCollector<S extends object>(
     };
     return null;
   }
+}
+
+/** Notes the outcome of a collector that returned before the deadline. */
+function recordResult<S extends object>(
+  name: CollectorName,
+  r: CollectorResult<S>,
+  snapshot: Snapshot,
+  state: CollectState,
+  durationMs: number,
+): CollectorResult<S> {
+  snapshot.collection[name] = {
+    status: r.status,
+    durationMs,
+    ...(r.reason ? { reason: r.reason } : {}),
+    ...(r.error ? { error: r.error } : {}),
+  };
+  addSideOutputs(snapshot, r);
+  if (r.fatal && !state.fatal) state.fatal = r.fatal;
+  return r;
+}
+
+/** After the global timeout a collector gets a short grace period to hand over what it has. */
+async function settleAfterTimeout<S extends object>(
+  name: CollectorName,
+  pending: Promise<CollectorResult<S>>,
+  snapshot: Snapshot,
+  state: CollectState,
+  log: Logger,
+  graceMs: number,
+  t0: number,
+): Promise<CollectorResult<S> | null> {
+  state.timedOut = true;
+  // findings collected before the timeout are kept: give the collector a bounded chance to stop and return what it has
+  const late = await withinGrace(pending, graceMs);
+  const durationMs = Math.round(performance.now() - t0);
+
+  if (!late) {
+    log.warn(
+      `collector ${name} handed over no result within ${graceMs} ms after the global timeout; its facts are lost`,
+    );
+    state.noHandover.add(name);
+    snapshot.collection[name] = { status: 'error', reason: 'timeout', durationMs };
+    return null;
+  }
+
+  // Failures after the abort are caused by it: the timeout is the reason, a late `fatal` is ignored.
+  snapshot.collection[name] = {
+    status: late.status === 'ok' ? 'partial' : late.status,
+    reason: late.status === 'skipped' ? (late.reason ?? 'skipped') : 'timeout',
+    durationMs,
+    ...(late.error ? { error: late.error } : {}),
+  };
+  addSideOutputs(snapshot, late);
+  return { ...late, fatal: undefined };
+}
+
+/** Diagnostics and probes of a collector go into the snapshot whatever its status. */
+function addSideOutputs(snapshot: Snapshot, r: CollectorResult<object>): void {
+  if (r.diagnostics) snapshot.diagnostics.push(...r.diagnostics);
+  if (r.probes) snapshot.plan.probes.push(...r.probes);
 }
 
 /** The browser visited the start page in phase A (a timeout before that is fatal). */
@@ -185,34 +212,15 @@ export async function collect(
   clock: () => number,
 ): Promise<CollectState> {
   const state: CollectState = { timedOut: false, fatal: null, noHandover: new Set() };
-  const artifactsRelDir = 'artifacts';
-  const ctx = (): CollectorContext => ({
-    // Collectors navigate to the URL as given; everything stored uses the redacted `snapshot.target`.
-    target: { ...snapshot.target, input: rawTarget.input, url: rawTarget.url },
-    options: {
-      maxPages: o.maxPages,
-      screenshots: o.screenshots,
-      sandbox: o.sandbox,
-      lang: o.lang,
-      assumeRegion: o.assumeRegion,
-    },
-    network: o.network,
-    userAgent: { http: uaToken(), token: uaToken() },
-    signal,
-    deadline,
-    artifactsDir: path.join(o.outDir, artifactsRelDir),
-    artifactsRelDir,
-    now: o.now,
-    clock,
-    log,
-    snapshot,
-  });
+  const ctx = (): CollectorContext => collectorContext(snapshot, rawTarget, o, signal, deadline, log, clock);
+  const grace = o.abortGraceMs;
+
   for (const name of ['browser', 'http', 'tls', 'dns'] as const) {
     if (!needed.has(name))
       snapshot.collection[name] = { status: 'not-run', reason: 'not-required', durationMs: 0 };
   }
 
-  const grace = o.abortGraceMs;
+  // http, tls and dns are independent; the browser runs after them because it depends on the TLS verdict.
   const [http, tls, dns] = await Promise.all([
     needed.has('http') ? runCollector('http', collectors.http, ctx(), snapshot, state, log, grace) : null,
     needed.has('tls') ? runCollector('tls', collectors.tls, ctx(), snapshot, state, log, grace) : null,
@@ -223,29 +231,15 @@ export async function collect(
   if (dns?.sections.dns) snapshot.dns = dns.sections.dns;
 
   if (needed.has('browser') && !state.fatal) {
-    if (tlsBlocked(snapshot)) {
-      snapshot.collection.browser = { status: 'skipped', reason: 'tls-blocked', durationMs: 0 };
-    } else {
-      const b = await runCollector('browser', collectors.browser, ctx(), snapshot, state, log, grace);
-      if (b) {
-        const s = b.sections;
-        if (s.browser) {
-          snapshot.browser = s.browser;
-          snapshot.environment.userAgent.browser = s.browser.engine.userAgent;
-          snapshot.environment.sandbox.active = s.browser.engine.sandbox;
-        }
-        if (s.documents) snapshot.documents = s.documents;
-        if (s.cmp) snapshot.cmp = s.cmp;
-        if (s.plan) snapshot.plan.browser = s.plan;
-        if (s.finalUrl) setFinalUrl(snapshot, s.finalUrl);
-      }
-    }
+    await runBrowserCollector(snapshot, collectors.browser, ctx(), state, log, grace);
   }
+
   // Prefer the browser's final URL; use the HTTP start document when the browser did not provide it.
   if (!snapshot.target.finalUrl) {
     const start = snapshot.http?.documents.find((d) => d.role === 'start' && d.status !== null);
     if (start?.finalUrl) setFinalUrl(snapshot, start.finalUrl);
   }
+
   // the global timeout before phase A finished on the start page is fatal (`timeout`). Without a planned
   // browser run (not needed, or skipped as tls-blocked) a timeout only leaves the unfinished checks in error.
   const browserPlanned = needed.has('browser') && snapshot.collection.browser?.status !== 'skipped';
@@ -256,6 +250,71 @@ export async function collect(
     state.fatal = { reason: 'timeout', code, params: { seconds } };
   }
   return state;
+}
+
+/** Directory of the artifacts (screenshots) inside the out dir. */
+const ARTIFACTS_REL_DIR = 'artifacts';
+
+function collectorContext(
+  snapshot: Snapshot,
+  rawTarget: TargetInfo,
+  o: ResolvedScanOptions,
+  signal: AbortSignal,
+  deadline: number,
+  log: Logger,
+  clock: () => number,
+): CollectorContext {
+  return {
+    // Collectors navigate to the URL as given; everything stored uses the redacted `snapshot.target`.
+    target: { ...snapshot.target, input: rawTarget.input, url: rawTarget.url },
+    options: {
+      maxPages: o.maxPages,
+      screenshots: o.screenshots,
+      sandbox: o.sandbox,
+      lang: o.lang,
+      assumeRegion: o.assumeRegion,
+    },
+    network: o.network,
+    config: o.config,
+    userAgent: { http: uaToken(), token: uaToken() },
+    signal,
+    deadline,
+    artifactsDir: path.join(o.outDir, ARTIFACTS_REL_DIR),
+    artifactsRelDir: ARTIFACTS_REL_DIR,
+    now: o.now,
+    clock,
+    log,
+    snapshot,
+  };
+}
+
+/** Runs the browser collector unless the TLS verdict makes a visit pointless, and merges its sections. */
+async function runBrowserCollector(
+  snapshot: Snapshot,
+  collector: Collectors['browser'],
+  ctx: CollectorContext,
+  state: CollectState,
+  log: Logger,
+  graceMs: number,
+): Promise<void> {
+  if (tlsBlocked(snapshot)) {
+    snapshot.collection.browser = { status: 'skipped', reason: 'tls-blocked', durationMs: 0 };
+    return;
+  }
+
+  const result = await runCollector('browser', collector, ctx, snapshot, state, log, graceMs);
+  if (!result) return;
+
+  const s = result.sections;
+  if (s.browser) {
+    snapshot.browser = s.browser;
+    snapshot.environment.userAgent.browser = s.browser.engine.userAgent;
+    snapshot.environment.sandbox.active = s.browser.engine.sandbox;
+  }
+  if (s.documents) snapshot.documents = s.documents;
+  if (s.cmp) snapshot.cmp = s.cmp;
+  if (s.plan) snapshot.plan.browser = s.plan;
+  if (s.finalUrl) setFinalUrl(snapshot, s.finalUrl);
 }
 
 function setFinalUrl(snapshot: Snapshot, raw: string): void {

@@ -51,8 +51,9 @@ it('all scan phases and HTTP probes use GET or HEAD and do not submit forms', ()
 
 it('keeps the TC-String out of snapshots and reports', async () => {
   const cookies = result.snapshot?.browser?.phases.flatMap((phase) => phase.cookies) ?? [];
-  expect(cookies.some((cookie) => cookie.name === 'euconsent-v2')).toBe(true);
+  expect(cookies.map((cookie) => cookie.name)).toContain('euconsent-v2');
   expect(JSON.stringify(result.snapshot)).not.toContain(TC_STRING);
+
   const written = await writeReports(result, {
     outDir,
     formats: ['console', 'json', 'html', 'summary'],

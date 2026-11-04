@@ -1,0 +1,205 @@
+# What the own CMP adapters (src/cmp/adapters/*.ts) know about each vendor's page: how to recognise it, where its banner
+# and buttons are, which version it is. Vendors change class names and script paths, so this lives here and not in code;
+# the adapter file keeps only how to READ the vendor's API (the page functions) and how to turn that into facts.
+# Every adapter id of `KnownCmpId` has exactly one entry (src/cmp/adapters-data.ts checks both directions); the order of
+# `adapters` in src/cmp/index.ts stays in code because it breaks recognition ties.
+#
+# detect (presence signals; `high` needs two independent kinds, see src/cmp/detection.ts)
+# globals window properties, dotted paths allowed (`complianz.version`)
+# versionGlobals window properties that hold the vendor's own version string; preferred over a script URL
+# scripts {label, pattern} regex source tested against script and resource URLs; `label` is what the signal names
+# dom CSS selectors (document-wide); a hit counts as one signal
+# cookies / storage regex sources for consent cookie names and localStorage keys (names only, never values)
+# version
+# fromScriptUrl read `?ver=` / `?v=` from the first matched script URL when no version global answered
+# rules first match wins: a `global`, `dom` selector or `script` label that was found gives that version
+# supportedMajors major versions the adapter was tested with; a known version outside → `cmp-not-supported`
+# banner
+# containers selectors in priority order; the first one that matches is the banner (open shadow roots included)
+# overlays selectors of backdrops that cover the page behind the banner
+# vendorRoles selector → button kind by the vendor's own markup (corroborates or backs up the visible label)
+# Reader inputs used by one adapter only: optionalGroups, botUserAgent, essentialEmbeddings.
+adapters:
+  borlabs:
+    name: Borlabs Cookie
+    supportedMajors: [2, 3]
+    detect:
+      globals: [BorlabsCookie, borlabsCookieConfig]
+      scripts:
+        - { label: wp-content/plugins/borlabs-cookie, pattern: "/wp-content/plugins/borlabs-cookie/" }
+      dom: ["#BorlabsCookieBox", ".brlbs-cmpnt-dialog", "._brlbs-box-wrap", "._brlbs-bar-wrap"]
+      cookies: ["^borlabs-cookie$"]
+    version:
+      fromScriptUrl: true
+      rules:
+        - { dom: ".brlbs-cmpnt-dialog", version: "3" }
+        - { dom: "._brlbs-box-wrap", version: "2" }
+        - { dom: "._brlbs-bar-wrap", version: "2" }
+    banner:
+      containers:
+        - "#BorlabsCookieBox .brlbs-cmpnt-dialog"
+        - "#BorlabsCookieBox ._brlbs-box-wrap"
+        - "#BorlabsCookieBox ._brlbs-bar-wrap"
+        - '#BorlabsCookieBox [role="dialog"]'
+      overlays: ["#BorlabsCookieBox .brlbs-cmpnt-dialog-backdrop", "#BorlabsCookieBox ._brlbs-bg-dark"]
+      vendorRoles:
+        - { selector: ".brlbs-btn-accept-all", role: accept }
+        - { selector: ".brlbs-btn-accept-only-essential", role: reject }
+        - { selector: ".brlbs-btn-save", role: save }
+        - { selector: "[data-cookie-accept-all]", role: accept }
+        - { selector: "[data-cookie-refuse]", role: reject }
+        - { selector: "[data-cookie-individual]", role: settings }
+        - { selector: "[data-cookie-accept]", role: save }
+    # Service groups that are optional; "essential" never is.
+    optionalGroups: [statistics, marketing, external-media]
+    # Mirrors the Borlabs 3.5 `isBot` test: with `cookiesForBots` on, a matching User-Agent counts as a bot.
+    botUserAgent: "bot|googlebot|crawler|spider|robot|crawling|lighthouse"
+
+  cookiebot:
+    name: Cookiebot
+    detect:
+      globals: [Cookiebot]
+      scripts:
+        - { label: consent.cookiebot.com/uc.js, pattern: '^https://consent\.cookiebot\.(com|eu)/uc\.js' }
+      dom: ["#CybotCookiebotDialog"]
+      cookies: ["^CookieConsent$"]
+    banner:
+      containers: ["#CybotCookiebotDialog"]
+      overlays: ["#CybotCookiebotDialogBodyUnderlay"]
+      vendorRoles:
+        - { selector: "#CybotCookiebotDialogBodyButtonDecline", role: reject }
+        - { selector: "#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll", role: reject }
+        - { selector: "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll", role: accept }
+        - { selector: "#CybotCookiebotDialogBodyButtonAccept", role: accept }
+        - { selector: "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowallSelection", role: save }
+        - { selector: "#CybotCookiebotDialogBodyLevelButtonCustomize", role: settings }
+        - { selector: "#CybotCookiebotDialogBodyButtonDetails", role: settings }
+        - { selector: "#CybotCookiebotBannerCloseButtonE2E", role: close }
+
+  complianz:
+    name: Complianz
+    detect:
+      globals: [complianz, cmplz_has_consent]
+      # The version the plugin reports about itself wins; `?ver=` of a script URL can be a cache-busting timestamp.
+      versionGlobals: [complianz.version]
+      scripts:
+        - { label: wp-content/plugins/complianz, pattern: "/wp-content/plugins/complianz-gdpr(-premium)?/" }
+        - { label: complianz.js, pattern: '/complianz(\.min)?\.js' }
+      dom: ["#cmplz-cookiebanner-container", ".cmplz-cookiebanner"]
+      cookies: ["^cmplz_"]
+    version:
+      fromScriptUrl: true
+    banner:
+      containers:
+        - "#cmplz-cookiebanner-container .cmplz-cookiebanner"
+        - ".cmplz-cookiebanner"
+        - "#cmplz-cookiebanner-container"
+      overlays: [".cmplz-soft-cookiewall"]
+      vendorRoles:
+        - { selector: ".cmplz-accept", role: accept }
+        - { selector: ".cmplz-deny", role: reject }
+        - { selector: ".cmplz-view-preferences", role: settings }
+        - { selector: ".cmplz-manage-options", role: settings }
+        - { selector: ".cmplz-save-preferences", role: save }
+        - { selector: ".cmplz-close", role: close }
+
+  usercentrics:
+    name: Usercentrics
+    supportedMajors: [2, 3]
+    detect:
+      globals: [__ucCmp, UC_UI]
+      scripts:
+        - {
+            label: web.cmp.usercentrics.eu/ui/loader.js,
+            pattern: '^https://web\.cmp\.usercentrics\.eu/ui/loader\.js',
+          }
+        - { label: app.usercentrics.eu/browser-ui, pattern: '^https://app\.usercentrics\.eu/browser-ui/' }
+      dom: ["#usercentrics-cmp-ui", "#usercentrics-root"]
+      storage: ["^ucData$", "^uc_settings$", "^uc_user_interaction$"]
+    version:
+      rules:
+        - { global: __ucCmp, version: "3" }
+        - { dom: "#usercentrics-cmp-ui", version: "3" }
+        - { global: UC_UI, version: "2" }
+        - { dom: "#usercentrics-root", version: "2" }
+        - { script: web.cmp.usercentrics.eu/ui/loader.js, version: "3" }
+        - { script: app.usercentrics.eu/browser-ui, version: "2" }
+    banner:
+      containers:
+        - "#uc-main-dialog"
+        - '[data-testid="uc-default-banner"]'
+        - '[data-testid="uc-center-container"]'
+        - "#uc-center-container"
+      overlays: ["#uc-overlay", '[data-testid="uc-overlay"]']
+      vendorRoles:
+        - { selector: '[data-action-type="accept"]', role: accept }
+        - { selector: '[data-action-type="deny"]', role: reject }
+        - { selector: '[data-action-type="more"]', role: settings }
+        - { selector: '[data-action-type="save"]', role: save }
+        - { selector: '[data-action-type="close"]', role: close }
+        - { selector: '[data-testid="uc-accept-all-button"]', role: accept }
+        - { selector: '[data-testid="uc-deny-all-button"]', role: reject }
+        - { selector: '[data-testid="uc-more-button"]', role: settings }
+        - { selector: '[data-testid="uc-save-button"]', role: save }
+
+  ccm19:
+    name: CCM19
+    detect:
+      globals: [CCM]
+      scripts:
+        - { label: ccm19 app.js?apiKey, pattern: 'ccm19[^?]*/app\.js\?(.*&)?apiKey=' }
+      dom: ["#ccm-widget"]
+      cookies: ["^ccm_consent"]
+      storage: ["^ccm_consent"]
+    banner:
+      containers: ["#ccm-widget.ccm-show .ccm-modal-inner", "#ccm-widget .ccm-modal", "#ccm-widget"]
+      overlays: ["#ccm-widget .ccm-modal--overlay"]
+      vendorRoles:
+        - { selector: ".ccm--decline-cookies", role: reject }
+        - { selector: '[data-full-consent="true"]', role: accept }
+        - { selector: ".ccm--ctrl-init", role: settings }
+        - { selector: '.ccm--save-settings:not([data-full-consent="true"])', role: save }
+        - { selector: ".ccm-modal--close", role: close }
+    # Embedding names that are not optional (regex fragments, case-insensitive); the rest counts for "granted".
+    essentialEmbeddings: [ccm19, "essen[tz]i", notwendig, technisch, necessary]
+
+  real-cookie-banner:
+    name: Real Cookie Banner
+    detect:
+      globals: [consentApi, realCookieBanner]
+      scripts:
+        - {
+            label: wp-content/plugins/real-cookie-banner,
+            pattern: "/wp-content/plugins/real-cookie-banner(-pro)?/",
+          }
+      dom: ['div[consent-skip-blocker="1"][data-bg]']
+      cookies: ["^real_cookie_banner"]
+    version:
+      fromScriptUrl: true
+    banner:
+      containers:
+        - 'div[consent-skip-blocker="1"][data-bg] dialog'
+        - 'div[consent-skip-blocker="1"][data-bg] [role="dialog"]'
+        - 'div[consent-skip-blocker="1"][data-bg]'
+      overlays: ['div[consent-skip-blocker="1"][data-bg]']
+      vendorRoles: []
+    # A User-Agent matching this counts as a bot when `isAcceptAllForBots` is on.
+    botUserAgent: 'bot|crawl|spider|slurp|headless|lighthouse|http|\.com\b|scan|check|monitor|fetch|curl|wget|python'
+
+  cookiehub:
+    name: CookieHub
+    detect:
+      globals: [cookiehub]
+      scripts:
+        - { label: cdn.cookiehub.eu, pattern: '^https://cdn\.cookiehub\.(eu|net|com)/' }
+      dom: [".ch2-container", ".ch2-dialog"]
+      cookies: ["^cookiehub$"]
+    banner:
+      containers: [".ch2-container .ch2-dialog", ".ch2-dialog"]
+      overlays: [".ch2-container .ch2-overlay"]
+      vendorRoles:
+        - { selector: ".ch2-allow-all-btn", role: accept }
+        - { selector: ".ch2-deny-all-btn", role: reject }
+        - { selector: ".ch2-open-settings-btn", role: settings }
+        - { selector: ".ch2-save-settings-btn", role: save }
+        - { selector: ".ch2-close-btn", role: close }

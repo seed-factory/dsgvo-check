@@ -94,6 +94,7 @@ ui:
   report.env.quic: QUIC
   report.env.knownGaps: Known observation gaps
   report.env.requests: Requests issued
+  report.env.settings: Settings that differ from the defaults
   report.env.requestsValue: navigations {navigations} · HTTP probes {probes} · DNS {dns} · TLS {tls}
   report.env.phaseC: Phase C (acceptance in the banner)
   report.env.phaseCValue: >-

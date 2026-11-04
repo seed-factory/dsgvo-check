@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "packageManager": "pnpm@12.16.1",
   "bin": {
@@ -33,7 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "test": "vitest run --project unit --project integration",
+    "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e --passWithNoTests",
@@ -41,7 +41,9 @@
     "canary": "node scripts/canary/main.ts",
     "canary:summary": "node scripts/canary/main.ts summary",
     "registry": "node scripts/emit-registry.ts",
-    "registry:check": "node scripts/emit-registry.ts --check"
+    "registry:check": "node scripts/emit-registry.ts --check",
+    "env:example": "node scripts/emit-env-example.ts",
+    "env:example:check": "node scripts/emit-env-example.ts --check"
   },
   "dependencies": {
     "canonicalize": "5.1.0",
@@ -55,7 +57,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
     "@peculiar/x509": "3.1.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "dns2": "3.1.1",

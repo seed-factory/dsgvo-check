@@ -5,7 +5,9 @@ import http from 'node:http';
 import https from 'node:https';
 import net, { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
+import type { Duplex } from 'node:stream';
 import * as x509 from '@peculiar/x509';
+import { defaultConfig } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
@@ -13,7 +15,7 @@ import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { parseTarget } from '../../../src/core/url/url.ts';
 
-x509.cryptoProvider.set(webcrypto as unknown as Parameters<typeof x509.cryptoProvider.set>[0]);
+x509.cryptoProvider.set(globalThis.crypto);
 
 export function collectorContext(
   url: string,
@@ -24,6 +26,7 @@ export function collectorContext(
     target: parseTarget(url),
     options: { maxPages: 6, screenshots: false, sandbox: 'off', lang: 'de', assumeRegion: null },
     network,
+    config: defaultConfig(),
     userAgent: { http: uaToken(), token: uaToken() },
     signal: new AbortController().signal,
     deadline: Date.now() + 120_000,
@@ -190,43 +193,54 @@ export interface TestProxy {
   close(): Promise<void>;
 }
 
+/** Forwards an absolute-form http request to `httpPort` on localhost, keeping the Host header and the path. */
+function forwardHttp(req: http.IncomingMessage, res: http.ServerResponse, httpPort: number) {
+  const u = new URL(req.url ?? '/', 'http://invalid');
+  const up = http.request(
+    {
+      host: '127.0.0.1',
+      port: httpPort,
+      method: req.method,
+      path: `${u.pathname}${u.search}`,
+      headers: req.headers,
+    },
+    (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    },
+  );
+  up.on('error', () => res.writeHead(502).end());
+  req.pipe(up);
+}
+
+/** Answers a CONNECT with a tunnel to `httpsPort` on localhost; both sockets are tracked for `close`. */
+function tunnelConnect(client: Duplex, head: Buffer, httpsPort: number, sockets: Set<{ destroy(): void }>) {
+  sockets.add(client);
+  const up = net.connect(httpsPort, '127.0.0.1', () => {
+    client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    up.write(head);
+    up.pipe(client);
+    client.pipe(up);
+  });
+  sockets.add(up);
+  up.on('error', () => client.destroy());
+  client.on('error', () => up.destroy());
+}
+
 /** HTTP proxy: CONNECT → fixture https port, absolute-form GET → fixture http port (Host kept). */
 export async function httpProxy(httpPort: number, httpsPort: number): Promise<TestProxy> {
   const targets: string[] = [];
   const sockets = new Set<{ destroy(): void }>();
   const s = http.createServer((req, res) => {
     targets.push(req.url ?? '');
-    const u = new URL(req.url ?? '/', 'http://invalid');
-    const up = http.request(
-      {
-        host: '127.0.0.1',
-        port: httpPort,
-        method: req.method,
-        path: `${u.pathname}${u.search}`,
-        headers: req.headers,
-      },
-      (r) => {
-        res.writeHead(r.statusCode ?? 502, r.headers);
-        r.pipe(res);
-      },
-    );
-    up.on('error', () => res.writeHead(502).end());
-    req.pipe(up);
+    forwardHttp(req, res, httpPort);
   });
   s.on('connect', (req, client, head) => {
     targets.push(req.url ?? '');
-    sockets.add(client);
-    const up = net.connect(httpsPort, '127.0.0.1', () => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      up.write(head);
-      up.pipe(client);
-      client.pipe(up);
-    });
-    sockets.add(up);
-    up.on('error', () => client.destroy());
-    client.on('error', () => up.destroy());
+    tunnelConnect(client, head, httpsPort, sockets);
   });
   await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()));
+
   return {
     url: `http://127.0.0.1:${(s.address() as AddressInfo).port}`,
     targets,

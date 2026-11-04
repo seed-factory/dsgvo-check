@@ -3,12 +3,108 @@
  * enforced). Static analysis only. A Null-MX domain is evaluated like any other (M3AAWG recommends `v=spf1 -all`).
  */
 import { defineCheck, type EvidenceInput, type Observation, subjects } from '../../core/api.ts';
+import type { DnsSection } from '../../core/snapshot/dns.ts';
 import { analyzeDmarc, dmarcEnforcement } from './lib/dmarc.ts';
 import { dnsEvidence } from './lib/evidence.ts';
-import { lookupFromQueries, mxState, normalizeName } from './lib/records.ts';
-import { analyzeSpf } from './lib/spf.ts';
+import { type DnsLookup, lookupFromQueries, mxState, normalizeName } from './lib/records.ts';
+import { analyzeSpf, type SpfAnalysis } from './lib/spf.ts';
 
 const ID = 'MAIL-02';
+
+type Emit = (
+  variant: string,
+  params: Observation['params'],
+  extra?: EvidenceInput[],
+  more?: Partial<Observation>,
+) => void;
+
+/** Collects the observations of this check; each carries the SPF and Null-MX evidence and the mail domain. */
+function observationEmitter(
+  spf: SpfAnalysis,
+  evidence: EvidenceInput[],
+  nullMx: 'yes' | 'no',
+): { observations: Observation[]; emit: Emit } {
+  const observations: Observation[] = [];
+  const emit: Emit = (variant, params, extra = [], more = {}) => {
+    observations.push({
+      checkId: ID,
+      variant,
+      confidence: 'high',
+      subject: subjects.record('spf'),
+      phases: ['dns'],
+      pages: [],
+      params: { domain: spf.domain, nullMx, ...params },
+      evidence: [...evidence, ...extra],
+      ...more,
+    });
+  };
+  return { observations, emit };
+}
+
+/** Failed, missing or unfinished lookups are check errors, not findings: the result would be a guess. */
+function requireConclusiveSpf(spf: SpfAnalysis): void {
+  if (spf.state === 'pending') throw new Error(`SPF lookup for ${spf.domain} was not performed`);
+  if (spf.state === 'failed') {
+    throw new Error(`SPF lookup for ${spf.domain} failed after retry (${spf.query?.rcode}); no conclusion`);
+  }
+
+  // A nested lookup that failed or was not made leaves the result open (SERVFAIL → error):
+  // unless a fact of the resolved part already decides it (`+all` / `?all`, an established permerror).
+  if (spf.state !== 'found' || spf.complete) return;
+  const decided = spf.permerrors.length > 0 || spf.all === '+' || spf.all === '?';
+  if (decided) return;
+
+  const open = [
+    ...spf.failures.map((q) => `${q.qname} ${q.rcode}`),
+    ...spf.pending.map((p) => `${p.qname} not queried`),
+  ].join(', ');
+  throw new Error(`SPF tree of ${spf.domain} incomplete (${open}); no conclusion about the policy`);
+}
+
+/** Queries made for `domain` inside the SPF tree (not the top-level TXT query): the evidence of a permerror there. */
+function offendingEvidence(spf: SpfAnalysis, dns: DnsSection, domain: string): EvidenceInput[] {
+  return spf.queries
+    .filter((q) => q !== spf.query && normalizeName(q.qname) === domain)
+    .map((q) => dnsEvidence(q, dns));
+}
+
+/** `~all` is acceptable when DMARC is enforced; DMARC is evaluated on the mail domain, like the SPF record. */
+function emitSoftfail(dns: DnsSection, lookup: DnsLookup, emit: Emit): void {
+  const dmarc = analyzeDmarc(dns.domain, dns.domain, lookup);
+  const policy = dmarcEnforcement(dmarc);
+  if (policy === 'unknown') {
+    throw new Error('SPF ~all: DMARC policy unknown (lookup failed), the matrix cannot be evaluated');
+  }
+
+  const decisive = dmarc.steps.at(-1);
+  const related = [{ checkId: 'MAIL-01', subject: subjects.record('dmarc'), relation: 'dmarc-policy' }];
+  const enforced = policy === 'quarantine' || policy === 'reject';
+  emit(
+    enforced ? 'softfail-with-enforcement' : 'softfail-without-enforcement',
+    { dmarcPolicy: policy },
+    decisive ? [dnsEvidence(decisive.query, dns)] : [],
+    { related },
+  );
+}
+
+/** The finding for the effective `all` qualifier; `-all` is the wanted state and reports nothing. */
+function emitAllQualifierFinding(spf: SpfAnalysis, dns: DnsSection, lookup: DnsLookup, emit: Emit): void {
+  switch (spf.all) {
+    case null:
+      throw new Error(`effective SPF all qualifier of ${spf.domain} unknown (redirect target not resolved)`);
+    case '+':
+      emit('permissive-qualifier', { qualifier: '+all' });
+      break;
+    case '?':
+      emit('permissive-qualifier', { qualifier: spf.allSource === 'default' ? 'none' : '?all' });
+      break;
+    case '~':
+      emitSoftfail(dns, lookup, emit);
+      break;
+    default:
+      break;
+  }
+}
 
 export const mail02 = defineCheck({
   id: ID,
@@ -25,25 +121,10 @@ export const mail02 = defineCheck({
   run(slice) {
     const dns = slice.dns;
     if (dns.notApplicable) return { status: 'not_applicable', reason: dns.notApplicable, observations: [] };
+
     const lookup = lookupFromQueries(dns.queries);
     const spf = analyzeSpf(dns.domain, lookup);
-    if (spf.state === 'pending') throw new Error(`SPF lookup for ${spf.domain} was not performed`);
-    if (spf.state === 'failed') {
-      throw new Error(`SPF lookup for ${spf.domain} failed after retry (${spf.query?.rcode}); no conclusion`);
-    }
-
-    // A nested lookup that failed or was not made leaves the result open (SERVFAIL → error):
-    // unless a fact of the resolved part already decides it (`+all` / `?all`, an established permerror).
-    if (spf.state === 'found' && !spf.complete) {
-      const decided = spf.permerrors.length > 0 || spf.all === '+' || spf.all === '?';
-      if (!decided) {
-        const open = [
-          ...spf.failures.map((q) => `${q.qname} ${q.rcode}`),
-          ...spf.pending.map((p) => `${p.qname} not queried`),
-        ].join(', ');
-        throw new Error(`SPF tree of ${spf.domain} incomplete (${open}); no conclusion about the policy`);
-      }
-    }
+    requireConclusiveSpf(spf);
 
     const mxQuery = lookup(dns.domain, 'MX');
     const mx = mxState(mxQuery);
@@ -53,32 +134,11 @@ export const mail02 = defineCheck({
 
     const spfEvidence: EvidenceInput[] = spf.query ? [dnsEvidence(spf.query, dns)] : [];
     const mxEvidence: EvidenceInput[] = mx === 'null' && mxQuery ? [dnsEvidence(mxQuery, dns)] : [];
-    const nullMx = mx === 'null' ? 'yes' : 'no';
-    const observations: Observation[] = [];
-    const emit = (
-      variant: string,
-      params: Observation['params'],
-      extra: EvidenceInput[] = [],
-      more: Partial<Observation> = {},
-    ) =>
-      observations.push({
-        checkId: ID,
-        variant,
-        confidence: 'high',
-        subject: subjects.record('spf'),
-        phases: ['dns'],
-        pages: [],
-        params: { domain: spf.domain, nullMx, ...params },
-        evidence: [...spfEvidence, ...mxEvidence, ...extra],
-        ...more,
-      });
-    const offending = (domain: string): EvidenceInput[] =>
-      spf.queries
-        .filter((q) => q !== spf.query && normalizeName(q.qname) === domain)
-        .map((q) => dnsEvidence(q, dns));
-    const unknownAll = () => {
-      throw new Error(`effective SPF all qualifier of ${spf.domain} unknown (redirect target not resolved)`);
-    };
+    const { observations, emit } = observationEmitter(
+      spf,
+      [...spfEvidence, ...mxEvidence],
+      mx === 'null' ? 'yes' : 'no',
+    );
 
     if (spf.state === 'none') {
       emit('record-not-found', {});
@@ -89,43 +149,10 @@ export const mail02 = defineCheck({
       emit(
         'record-invalid',
         { reason: first.reason, count: 1, lookups: spf.lookups },
-        offending(first.domain),
+        offendingEvidence(spf, dns, first.domain),
       );
     } else {
-      switch (spf.all) {
-        case null:
-          unknownAll();
-          break;
-        case '+':
-          emit('permissive-qualifier', { qualifier: '+all' });
-          break;
-        case '?':
-          emit('permissive-qualifier', { qualifier: spf.allSource === 'default' ? 'none' : '?all' });
-          break;
-        case '~': {
-          // SPF is evaluated on the mail domain, so is the DMARC policy it is paired with.
-          const dmarc = analyzeDmarc(dns.domain, dns.domain, lookup);
-          const policy = dmarcEnforcement(dmarc);
-          if (policy === 'unknown') {
-            throw new Error('SPF ~all: DMARC policy unknown (lookup failed), the matrix cannot be evaluated');
-          }
-          const decisive = dmarc.steps.at(-1);
-          const related = [
-            { checkId: 'MAIL-01', subject: subjects.record('dmarc'), relation: 'dmarc-policy' },
-          ];
-          emit(
-            policy === 'quarantine' || policy === 'reject'
-              ? 'softfail-with-enforcement'
-              : 'softfail-without-enforcement',
-            { dmarcPolicy: policy },
-            decisive ? [dnsEvidence(decisive.query, dns)] : [],
-            { related },
-          );
-          break;
-        }
-        default:
-          break;
-      }
+      emitAllQualifierFinding(spf, dns, lookup, emit);
     }
     if (spf.state === 'found' && spf.ptr) emit('ptr-mechanism', {});
 

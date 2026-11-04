@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { reporterLimits } from '../core/config/limits.ts';
 import { formatMessage, renderMessage, uiText } from '../core/data/messages.ts';
 import { sanitizeExternal } from '../core/redaction/sanitize.ts';
 import type { ReporterContext } from '../core/report/reporter.ts';
@@ -14,6 +15,26 @@ import {
   SeveritySchema,
 } from '../core/report/schema.ts';
 import { disclaimerParagraphs, phaseCPerformed } from './disclaimer.ts';
+
+/** Highest first: findings are listed critical before warning before info. */
+export const SEVERITY_RANK: Readonly<Record<Severity, number>> = { critical: 3, warning: 2, info: 1 };
+
+/** Evidence fields that carry values of cookies, storage or consent strings; the report shows names, never values. */
+const SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  cookie: ['value', 'valueSha256', 'valueHash', 'hash'],
+  storage: ['value', 'valueSha256', 'valueHash', 'hash'],
+  'consent-state': ['tcString', 'value'],
+  cmp: ['tcString'],
+};
+
+/** Hidden for every evidence type: internal ids, the discriminator and anything that could hold a TC-String or crmCode. */
+const ALWAYS_HIDDEN = new Set(['id', 'type', 'tcString', 'tcstring', 'crmCode']);
+
+/** A list field (pages, evidence values) shows at most this many entries. */
+const MAX_LIST_ITEMS = 50;
+
+const URL_VALUE = /^(https?|wss?):\/\//i;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export type ReportLabelKey = string;
 
@@ -34,8 +55,6 @@ export function isDraftReport(report: Report, ctx: ReporterContext): boolean {
 export function draftStamp(ctx: ReporterContext): string {
   return uiText(ctx.texts, 'console.draftStamp');
 }
-
-export const SEVERITY_RANK: Readonly<Record<Severity, number>> = { critical: 3, warning: 2, info: 1 };
 
 export function sortFindings(findings: readonly Finding[]): Finding[] {
   return [...findings].sort(
@@ -65,73 +84,77 @@ interface Group {
 }
 
 export function groupByService(findings: readonly Finding[]): Group[] {
-  const map = new Map<string, Group>();
+  const groups = new Map<string, Group>();
   for (const f of sortFindings(findings)) {
     const key = f.serviceId ? `s:${f.serviceId}` : 'other';
-    const group: Group = map.get(key) ?? {
-      key,
-      serviceId: f.serviceId ?? null,
-      findings: [],
-    };
+    const group: Group = groups.get(key) ?? { key, serviceId: f.serviceId ?? null, findings: [] };
     group.findings.push(f);
-    map.set(key, group);
+    groups.set(key, group);
   }
-  const top = (g: Group) => Math.max(...g.findings.map((f) => SEVERITY_RANK[f.severity]));
-  return [...map.values()].sort((a, b) => {
+
+  // Service groups come first, the most severe on top; findings without a service go last.
+  const topSeverity = (g: Group) => Math.max(...g.findings.map((f) => SEVERITY_RANK[f.severity]));
+  return [...groups.values()].sort((a, b) => {
     if ((a.serviceId === null) !== (b.serviceId === null)) return a.serviceId === null ? 1 : -1;
-    return top(b) - top(a) || (a.serviceId ?? '').localeCompare(b.serviceId ?? '');
+    return topSeverity(b) - topSeverity(a) || (a.serviceId ?? '').localeCompare(b.serviceId ?? '');
   });
 }
 
-const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
 type ScreenshotResult = { ok: true; dataUri: string } | { ok: false; reason: string };
 
 function imageMime(buf: Buffer): string | null {
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
-  if (
-    buf.length >= 8 &&
-    buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  )
-    return 'image/png';
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
   if (buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP')
     return 'image/webp';
   return null;
 }
 
-/** Canonical paths, file size, magic bytes and checksum protect the only embedded resource. */
-export function loadScreenshot(outDir: string, relPath: string, sha256: string): ScreenshotResult {
-  if (!relPath || path.isAbsolute(relPath) || relPath.includes('\0')) return { ok: false, reason: 'path' };
-  const base = path.resolve(outDir, 'artifacts');
-  const file = path.resolve(outDir, relPath);
-  if (!file.startsWith(base + path.sep)) return { ok: false, reason: 'path' };
-  let data: Buffer;
+type FileRead = { ok: true; data: Buffer } | { ok: false; reason: string };
+
+/** Resolves symlinks first, so a link inside the artifacts directory cannot lead out of it. */
+function readInsideDir(base: string, file: string, maxBytes: number): FileRead {
   try {
     const realBase = realpathSync(base);
     const realFile = realpathSync(file);
     if (!realFile.startsWith(realBase + path.sep)) return { ok: false, reason: 'path' };
+
     const stat = statSync(realFile);
     if (!stat.isFile()) return { ok: false, reason: 'missing' };
-    if (stat.size > MAX_SCREENSHOT_BYTES) return { ok: false, reason: 'too-large' };
-    data = readFileSync(realFile);
+    if (stat.size > maxBytes) return { ok: false, reason: 'too-large' };
+
+    return { ok: true, data: readFileSync(realFile) };
   } catch {
     return { ok: false, reason: 'missing' };
   }
-  if (createHash('sha256').update(data).digest('hex') !== sha256.toLowerCase().replace(/^sha256:/, '')) {
+}
+
+/** Canonical paths, file size, magic bytes and checksum protect the only embedded resource. */
+export function loadScreenshot(
+  outDir: string,
+  relPath: string,
+  sha256: string,
+  maxBytes: number = reporterLimits().screenshotEmbedMaxBytes,
+): ScreenshotResult {
+  if (!relPath || path.isAbsolute(relPath) || relPath.includes('\0')) return { ok: false, reason: 'path' };
+  const base = path.resolve(outDir, 'artifacts');
+  const file = path.resolve(outDir, relPath);
+  if (!file.startsWith(base + path.sep)) return { ok: false, reason: 'path' };
+
+  const read = readInsideDir(base, file, maxBytes);
+  if (!read.ok) return read;
+
+  const expectedSha256 = sha256.toLowerCase().replace(/^sha256:/, '');
+  if (createHash('sha256').update(read.data).digest('hex') !== expectedSha256) {
     return { ok: false, reason: 'checksum' };
   }
-  const mime = imageMime(data);
+
+  const mime = imageMime(read.data);
   return mime
-    ? { ok: true, dataUri: `data:${mime};base64,${data.toString('base64')}` }
+    ? { ok: true, dataUri: `data:${mime};base64,${read.data.toString('base64')}` }
     : { ok: false, reason: 'format' };
 }
 
-const SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  cookie: ['value', 'valueSha256', 'valueHash', 'hash'],
-  storage: ['value', 'valueSha256', 'valueHash', 'hash'],
-  'consent-state': ['tcString', 'value'],
-  cmp: ['tcString'],
-};
-const ALWAYS_HIDDEN = new Set(['id', 'type', 'tcString', 'tcstring', 'crmCode']);
 const text = (value: unknown, max = 2000): string =>
   value === null || value === undefined ? '–' : sanitizeExternal(String(value), max);
 
@@ -167,42 +190,43 @@ interface EvidenceView {
   screenshot: { dataUri: string | null; missing: string | null; path: string } | null;
 }
 
-function evidenceView(ev: Evidence, ctx: ReporterContext): EvidenceView {
+/** One evidence value as a list item: URLs get link styling, scalars are plain text, objects are shown as JSON code. */
+function evidenceItem(value: unknown): Item {
+  if (typeof value === 'string') return URL_VALUE.test(value) ? urlItem(value) : item(value, 1000);
+  if (value === null || ['number', 'boolean', 'undefined'].includes(typeof value)) return item(value, 1000);
+  return item(JSON.stringify(value), 1000, true);
+}
+
+function evidenceFields(ev: Evidence): Row[] {
   const hidden = new Set([...ALWAYS_HIDDEN, ...(SECRET_FIELDS[ev.type] ?? [])]);
-  const fields = Object.entries(ev as Record<string, unknown>)
+  return Object.entries(ev as Record<string, unknown>)
     .filter(([k, v]) => !hidden.has(k) && v !== undefined)
     .map(([k, v]): Row => {
-      const values = Array.isArray(v) ? v.slice(0, 50) : [v];
-      return {
-        label: text(k, 80),
-        items: values.length
-          ? values.map((value): Item => {
-              if (typeof value === 'string')
-                return /^(https?|wss?):\/\//i.test(value) ? urlItem(value) : item(value, 1000);
-              if (value === null || ['number', 'boolean', 'undefined'].includes(typeof value))
-                return item(value, 1000);
-              return item(JSON.stringify(value), 1000, true);
-            })
-          : [item('–')],
-      };
+      const values = Array.isArray(v) ? v.slice(0, MAX_LIST_ITEMS) : [v];
+      return { label: text(k, 80), items: values.length ? values.map(evidenceItem) : [item('–')] };
     });
-  let screenshot: EvidenceView['screenshot'] = null;
-  if (ev.type === 'screenshot') {
-    const shotEv = ev as Extract<Evidence, { type: 'screenshot' }>;
-    const shot = loadScreenshot(ctx.outDir, shotEv.path, shotEv.sha256);
-    screenshot = {
-      dataUri: shot.ok ? shot.dataUri : null,
-      missing: shot.ok
-        ? null
-        : reportLabel(ctx, 'screenshot.missing', { reason: shot.reason, path: text(shotEv.path, 500) }),
-      path: text(shotEv.path),
-    };
-  }
+}
+
+function screenshotView(ev: Evidence, ctx: ReporterContext): EvidenceView['screenshot'] {
+  if (ev.type !== 'screenshot') return null;
+
+  const shotEv = ev as Extract<Evidence, { type: 'screenshot' }>;
+  const shot = loadScreenshot(ctx.outDir, shotEv.path, shotEv.sha256, ctx.limits?.screenshotEmbedMaxBytes);
+  return {
+    dataUri: shot.ok ? shot.dataUri : null,
+    missing: shot.ok
+      ? null
+      : reportLabel(ctx, 'screenshot.missing', { reason: shot.reason, path: text(shotEv.path, 500) }),
+    path: text(shotEv.path),
+  };
+}
+
+function evidenceView(ev: Evidence, ctx: ReporterContext): EvidenceView {
   return {
     type: text(ev.type, 60),
     missing: null,
-    fields,
-    screenshot,
+    fields: evidenceFields(ev),
+    screenshot: screenshotView(ev, ctx),
   };
 }
 
@@ -232,33 +256,24 @@ const roundedSeconds = (ms: number): number => Math.round(ms / 100) / 10;
 
 function summaryRows(report: Report, { label, row, rows }: ViewText): Row[] {
   const scan = report.scan;
+  const exitReasons = report.summary.exitReasons.map((r) => item(r, 120, true));
   const summary: Row[] = [
-    rows(
-      'summary.exitReasons',
-      report.summary.exitReasons.length
-        ? report.summary.exitReasons.map((r) => item(r, 120, true))
-        : [item(label('summary.none'))],
-    ),
+    rows('summary.exitReasons', exitReasons.length ? exitReasons : [item(label('summary.none'))]),
     rows('meta.target', [urlItem(scan.target)]),
   ];
+
   if (scan.finalUrl) summary.push(rows('meta.finalUrl', [urlItem(scan.finalUrl)]));
   summary.push(row('meta.startedAt', scan.startedAt));
   if (typeof scan.durationMs === 'number') {
     summary.push(row('meta.duration', label('meta.seconds', { seconds: roundedSeconds(scan.durationMs) })));
   }
+
   if (scan.options) summary.push(row('meta.failOn', scan.options.failOn));
   if (report.ruleset) {
-    summary.push(
-      row(
-        'meta.ruleset',
-        label('meta.rulesetValue', {
-          profile: report.ruleset.profile,
-          version: report.ruleset.version,
-          rechtsstand: report.ruleset.rechtsstand,
-        }),
-      ),
-    );
+    const { profile, version, rechtsstand } = report.ruleset;
+    summary.push(row('meta.ruleset', label('meta.rulesetValue', { profile, version, rechtsstand })));
   }
+
   summary.push(row('meta.version', `dsgvo-check ${text(report.tool.version, 40)}`));
   return summary;
 }
@@ -280,6 +295,20 @@ function countViews(report: Report, { label }: ViewText) {
   ];
 }
 
+const partyText = (party: { name: unknown; country: unknown }): string =>
+  `${text(party.name, 200)} (${text(party.country, 8)})`;
+
+/** Related findings link to their anchor in the report when the other finding is part of it. */
+function relatedItems(related: Finding['related'], byFingerprint: ReadonlyMap<string, Finding>): Item[] {
+  return related.map((r) => {
+    const target = byFingerprint.get(r.fingerprint);
+    return {
+      ...item(`${text(r.checkId, 20)}${r.relation ? ` (${text(r.relation, 60)})` : ''}`),
+      href: target ? anchorOf(target) : null,
+    };
+  });
+}
+
 /** The detail rows under a finding; optional facts of the finding add a row each. */
 function findingRows(
   f: Finding,
@@ -287,49 +316,31 @@ function findingRows(
   byFingerprint: ReadonlyMap<string, Finding>,
 ) {
   const out: Row[] = [row('finding.confidence', label(`confidence.${f.confidence}`))];
-  if (f.pages.length) out.push(rows('finding.pages', f.pages.slice(0, 50).map(urlItem)));
+
+  if (f.pages.length) out.push(rows('finding.pages', f.pages.slice(0, MAX_LIST_ITEMS).map(urlItem)));
   if (f.phases.length) out.push(row('finding.phases', f.phases.join(', '), 120));
   if (f.trigger) out.push(row('finding.trigger', f.trigger, 200));
   if (typeof f.replicated === 'boolean') {
     out.push(row('finding.replicated', label(f.replicated ? 'yes' : 'no')));
   }
-  if (f.provider) {
-    out.push(row('finding.provider', `${text(f.provider.name, 200)} (${text(f.provider.country, 8)})`));
-  }
-  if (f.parent) {
-    out.push(row('finding.parent', `${text(f.parent.name, 200)} (${text(f.parent.country, 8)})`));
-  }
+
+  if (f.provider) out.push(row('finding.provider', partyText(f.provider)));
+  if (f.parent) out.push(row('finding.parent', partyText(f.parent)));
   if (f.dpfEntity) {
-    out.push(
-      row(
-        'finding.dpf',
-        label('finding.dpfValue', {
-          name: text(f.dpfEntity.name, 500),
-          listed: f.dpfEntity.listed === null ? 'unknown' : String(f.dpfEntity.listed),
-          checkedAt: f.dpfEntity.checkedAt ?? '–',
-        }),
-      ),
-    );
+    const { name, listed, checkedAt } = f.dpfEntity;
+    const dpfValue = label('finding.dpfValue', {
+      name: text(name, 500),
+      listed: listed === null ? 'unknown' : String(listed),
+      checkedAt: checkedAt ?? '–',
+    });
+    out.push(row('finding.dpf', dpfValue));
   }
-  out.push(
-    row(
-      'finding.classification',
-      `${text(f.classification.source, 80)}${
-        f.classification.datasetVersion ? ` ${text(f.classification.datasetVersion, 40)}` : ''
-      }`,
-    ),
-  );
-  if (f.related.length) {
-    out.push(
-      rows(
-        'finding.related',
-        f.related.map((r) => ({
-          ...item(`${text(r.checkId, 20)}${r.relation ? ` (${text(r.relation, 60)})` : ''}`),
-          href: byFingerprint.has(r.fingerprint) ? anchorOf(byFingerprint.get(r.fingerprint)!) : null,
-        })),
-      ),
-    );
-  }
+
+  const { source, datasetVersion } = f.classification;
+  const classification = `${text(source, 80)}${datasetVersion ? ` ${text(datasetVersion, 40)}` : ''}`;
+  out.push(row('finding.classification', classification));
+
+  if (f.related.length) out.push(rows('finding.related', relatedItems(f.related, byFingerprint)));
   out.push(rows('finding.fingerprint', [item(f.fingerprint, 80, true)]));
   return out;
 }
@@ -418,49 +429,56 @@ function diagnosticViews(report: Report, ctx: ReporterContext) {
 function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] {
   const env = report.scan.environment;
   if (!env) return [];
+
   const list = (key: string, values: readonly string[]) =>
     rows(key, values.length ? values.map((v) => item(v, 200, true)) : [item('–')]);
+  const browser = env.browser
+    ? label('env.browserValue', {
+        engine: env.browser.engine,
+        version: env.browser.version ?? '–',
+        channel: env.browser.channel ?? '–',
+        headless: env.browser.headless ?? '–',
+      })
+    : label('env.unavailable');
+  const sandbox = label('env.sandboxValue', {
+    mode: env.sandbox.mode,
+    active: label(env.sandbox.active === null ? 'unknown' : env.sandbox.active ? 'yes' : 'no'),
+  });
+  const egress = label('env.egressValue', {
+    mode: env.egress.mode,
+    region: env.egress.assertedRegion
+      ? `${env.egress.region}: ${env.egress.assertedRegion}`
+      : env.egress.region,
+    source: text(env.egress.source, 500),
+  });
+
   const out: Row[] = [
     row('env.userAgentHttp', env.userAgent.http, 500),
     row('env.userAgentBrowser', env.userAgent.browser, 500),
-    row(
-      'env.browser',
-      env.browser
-        ? label('env.browserValue', {
-            engine: env.browser.engine,
-            version: env.browser.version ?? '–',
-            channel: env.browser.channel ?? '–',
-            headless: env.browser.headless ?? '–',
-          })
-        : label('env.unavailable'),
-    ),
-    row(
-      'env.sandbox',
-      label('env.sandboxValue', {
-        mode: env.sandbox.mode,
-        active: label(env.sandbox.active === null ? 'unknown' : env.sandbox.active ? 'yes' : 'no'),
-      }),
-    ),
+    row('env.browser', browser),
+    row('env.sandbox', sandbox),
+
     row('env.profile', env.profile, 100),
     row('env.viewport', env.viewport ? `${env.viewport.width} × ${env.viewport.height}` : '–'),
     row('env.locale', env.locale, 40),
     row('env.timezone', env.timezone, 60),
-    row(
-      'env.egress',
-      label('env.egressValue', {
-        mode: env.egress.mode,
-        region: env.egress.assertedRegion
-          ? `${env.egress.region}: ${env.egress.assertedRegion}`
-          : env.egress.region,
-        source: text(env.egress.source, 500),
-      }),
-    ),
+
+    row('env.egress', egress),
     list('env.disabledFeatures', env.disabledChromiumFeatures),
     row('env.quic', env.quic, 20),
     list('env.knownGaps', env.knownGaps),
     row('env.requests', label('env.requestsValue', { ...env.requestsIssued })),
   ];
+
+  const settings = Object.entries(report.scan.options?.settings ?? {});
+  if (settings.length > 0) {
+    const settingItems = settings.map(([name, value]) =>
+      item(`${text(name, 80)}=${text(String(value), 200)}`, 300, true),
+    );
+    out.push(rows('env.settings', settingItems));
+  }
   if (phaseCPerformed(report)) out.push(row('env.phaseC', label('env.phaseCValue')));
+
   out.push(row('env.node', env.node, 40), row('env.platform', env.platform, 60));
   return out;
 }
@@ -476,69 +494,82 @@ function datasetViews(report: Report, { label }: ViewText) {
   }));
 }
 
-function coverageView(report: Report, { label }: ViewText) {
+type Coverage = NonNullable<Report['scan']['coverage']>;
+type CheckEntry = NonNullable<Report['checks']>[number];
+
+function coveragePageViews(pages: Coverage['pages'], { label }: ViewText) {
+  return pages.map((p) => ({
+    url: text(p.url),
+    role: text(p.role, 40),
+    planned: label(p.planned ? 'yes' : 'no'),
+    observed: label(p.observed ? 'yes' : 'no'),
+    evaluated: label(p.evaluated ? 'yes' : 'no'),
+    phases: text(p.phases.join(', ') || '–', 60),
+    reason: text(p.reason, 200),
+  }));
+}
+
+function coverageCollectorViews(collectors: Coverage['collectors'], { label }: ViewText) {
+  return Object.entries(collectors)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, c]) => ({
+      name: text(name, 40),
+      status: text(c.status, 40),
+      reason: text(c.reason, 200),
+      duration:
+        typeof c.durationMs === 'number'
+          ? label('meta.seconds', { seconds: roundedSeconds(c.durationMs) })
+          : '–',
+    }));
+}
+
+function coverageView(report: Report, v: ViewText) {
   const cov = report.scan.coverage;
   if (!cov) return null;
+
   return {
-    totals: label('coverage.totals', {
+    totals: v.label('coverage.totals', {
       planned: cov.pages.filter((p) => p.planned).length,
       observed: cov.pages.filter((p) => p.observed).length,
       evaluated: cov.pages.filter((p) => p.evaluated).length,
     }),
-    pages: cov.pages.map((p) => ({
-      url: text(p.url),
-      role: text(p.role, 40),
-      planned: label(p.planned ? 'yes' : 'no'),
-      observed: label(p.observed ? 'yes' : 'no'),
-      evaluated: label(p.evaluated ? 'yes' : 'no'),
-      phases: text(p.phases.join(', ') || '–', 60),
-      reason: text(p.reason, 200),
-    })),
-    requests: cov.browserRequests ? label('coverage.browserRequests', { ...cov.browserRequests }) : null,
-    collectors: Object.entries(cov.collectors)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, c]) => ({
-        name: text(name, 40),
-        status: text(c.status, 40),
-        reason: text(c.reason, 200),
-        duration:
-          typeof c.durationMs === 'number'
-            ? label('meta.seconds', { seconds: roundedSeconds(c.durationMs) })
-            : '–',
-      })),
+    pages: coveragePageViews(cov.pages, v),
+    requests: cov.browserRequests ? v.label('coverage.browserRequests', { ...cov.browserRequests }) : null,
+    collectors: coverageCollectorViews(cov.collectors, v),
   };
 }
 
-function checkViews(report: Report, { label }: ViewText) {
+/** Planned/observed/evaluated counts plus the free-text note of one check, joined into one cell. */
+function checkCoverageText(c: CheckEntry, { label }: ViewText): string {
+  const parts: string[] = [];
+  const counts = c.coverage;
+  if (
+    counts &&
+    (counts.planned !== undefined || counts.observed !== undefined || counts.evaluated !== undefined)
+  ) {
+    parts.push(
+      label('checkCoverage.value', {
+        planned: counts.planned ?? '–',
+        observed: counts.observed ?? '–',
+        evaluated: counts.evaluated ?? '–',
+      }),
+    );
+  }
+  if (counts?.note) parts.push(text(counts.note, 300));
+  return parts.join(' · ') || '–';
+}
+
+function checkViews(report: Report, v: ViewText) {
   return [...(report.checks ?? [])]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((c) => {
-      const coverageParts = [];
-      if (
-        c.coverage &&
-        (c.coverage.planned !== undefined ||
-          c.coverage.observed !== undefined ||
-          c.coverage.evaluated !== undefined)
-      ) {
-        coverageParts.push(
-          label('checkCoverage.value', {
-            planned: c.coverage.planned ?? '–',
-            observed: c.coverage.observed ?? '–',
-            evaluated: c.coverage.evaluated ?? '–',
-          }),
-        );
-      }
-      if (c.coverage?.note) coverageParts.push(text(c.coverage.note, 300));
+      const failure = c.error ? `${c.error.code}: ${c.error.message}` : null;
       return {
         id: text(c.id, 20),
         status: text(c.status, 40),
-        statusLabel: label(`checkStatus.${c.status}`),
-        reason: text(
-          [c.reason, c.error ? `${c.error.code}: ${c.error.message}` : null].filter(Boolean).join(' – ') ||
-            '–',
-          400,
-        ),
-        coverage: coverageParts.join(' · ') || '–',
+        statusLabel: v.label(`checkStatus.${c.status}`),
+        reason: text([c.reason, failure].filter(Boolean).join(' – ') || '–', 400),
+        coverage: checkCoverageText(c, v),
         limitations: c.limitations.map((l) => text(l, 120)),
       };
     });
@@ -550,6 +581,7 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
   const { label, row } = v;
   const scan = report.scan;
   const errors = failedChecks(report);
+
   return {
     screenshotAlt: label('screenshot.alt'),
     lang: ctx.lang === 'en' ? 'en' : 'de',
@@ -558,6 +590,7 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
     version: text(report.tool.version, 40),
     draft: isDraftReport(report, ctx),
     draftStamp: text(draftStamp(ctx), 60),
+
     exitCode: report.summary.exitCode,
     status: scan.status,
     statusLabel: label(`status.${scan.status}`),
@@ -574,10 +607,12 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
       report.summary.exitCode === 1 && errors.length
         ? label('summary.checkErrorsWithThreshold', { checks: errors.join(', ') })
         : null,
+
     groups: findingGroups(report, v, ctx),
     emptyFindings: label(scan.status === 'failed' ? 'findings.unavailable' : 'findings.none'),
     otherShots: unreferencedScreenshots(report, ctx),
     diagnostics: diagnosticViews(report, ctx),
+
     environmentAvailable: !!scan.environment,
     environment: environmentRows(report, v),
     extra: [
@@ -587,6 +622,7 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
     datasets: datasetViews(report, v),
     coverage: coverageView(report, v),
     checks: checkViews(report, v),
+
     disclaimer: disclaimerParagraphs(report, ctx.texts).map((p) => text(p, 6000)),
     rechtsstand: report.legalContext?.rechtsstand ?? report.ruleset?.rechtsstand ?? null,
   };

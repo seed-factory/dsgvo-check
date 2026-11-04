@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Ruleset } from '../../../../src/core/data/load.ts';
 import {
+  type AssessInput,
   assess,
   capByConfidence,
   type ExecutedCheck,
@@ -65,13 +66,19 @@ const exec = (observations: Observation[]): ExecutedCheck => ({
   durationMs: 1,
 });
 
-function run(checks: AnyCheck[], executed: Record<string, ExecutedCheck>, overrides = []) {
+function run(
+  checks: AnyCheck[],
+  executed: Record<string, ExecutedCheck>,
+  overrides = [],
+  extra: Partial<AssessInput> = {},
+) {
   return assess({
     checks,
     executed: new Map(Object.entries(executed)),
     ruleset,
     routing: { analytics: 'CONSENT-01', fonts: 'EMBED-01' },
     overrides,
+    ...extra,
   });
 }
 
@@ -219,12 +226,14 @@ describe('assess', () => {
         },
       },
     ];
+
     const out = run([c], {
       'TEST-01': exec([
         obs({ evidence, serviceId: 'google-analytics-4' }),
         obs({ variant: 'inventory', subject: 'inv' }),
       ]),
     });
+
     const hit = out.findings.find((f) => f.variant === 'hit')!;
     expect(hit.fingerprint).toBe(fingerprint({ checkId: 'TEST-01', variantGroup: 'hit', subject: 'svc-a' }));
     expect(hit.crmCode).toBe('T1_TRACKER_BEFORE_CONSENT');
@@ -232,6 +241,7 @@ describe('assess', () => {
     expect(hit.evidenceIds).toHaveLength(1);
     expect(out.evidence[0]?.id).toBe(hit.evidenceIds[0]);
     expect(out.findings.find((f) => f.variant === 'inventory')?.crmCode).toBeNull();
+
     expect(out.checks[0]).toMatchObject({
       id: 'TEST-01',
       status: 'completed',
@@ -269,6 +279,18 @@ describe('assess', () => {
     expect(out.findings[0]?.evidenceIds).toHaveLength(20);
     expect(out.findings[0]?.evidenceTruncated).toBe(true);
     expect(out.evidence).toHaveLength(26);
+  });
+
+  it('keeps as many evidence ids as the settings allow', () => {
+    const c = check('TEST-01', ['hit']);
+    const ev = (i: number) => ({ type: 'header' as const, url: 'https://x/', name: `h${i}`, present: false });
+    const executed = { 'TEST-01': exec([obs({ evidence: Array.from({ length: 8 }, (_, i) => ev(i)) })]) };
+    const few = run([c], executed, [], { maxEvidencePerFinding: 3 });
+    expect(few.findings[0]?.evidenceIds).toHaveLength(3);
+    expect(few.findings[0]?.evidenceTruncated).toBe(true);
+    const many = run([c], executed, [], { maxEvidencePerFinding: 8 });
+    expect(many.findings[0]?.evidenceIds).toHaveLength(8);
+    expect(many.findings[0]).not.toHaveProperty('evidenceTruncated');
   });
 
   it('routing: an owner check drops observations of a category owned by another check', () => {

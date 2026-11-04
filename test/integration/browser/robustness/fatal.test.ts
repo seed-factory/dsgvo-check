@@ -6,9 +6,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { liveProfileDirs } from '../../../../src/collectors/browser/launch/launch.ts';
+import { liveProfileDirs } from '../../../../src/collectors/browser/launch/profile.ts';
 import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
-import { collect } from '../helpers.ts';
+import { collect, waitUntil } from '../helpers.ts';
 
 let server: FixtureServer;
 
@@ -23,6 +23,7 @@ afterAll(async () => {
 describe('fatal start-page conditions', () => {
   it('Cloudflare-like challenge with 403 → blocked (SCAN-BLOCKED), the visit is kept as evidence', async () => {
     const run = await collect(server, { url: 'https://blocked.example.test/' });
+
     expect(run.result.status).toBe('error');
     expect(run.result.fatal).toMatchObject({ reason: 'blocked', code: 'start-page-blocked' });
     const start = run.result.sections.browser?.phases[0]?.pages[0];
@@ -32,6 +33,7 @@ describe('fatal start-page conditions', () => {
 
   it('503 on the start page twice → unreachable', async () => {
     const run = await collect(server, { url: 'https://down.example.test/' });
+
     expect(run.result.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-5xx' });
     expect(server.requestsTo('down.example.test').filter((r) => r.path === '/')).toHaveLength(2);
   });
@@ -53,6 +55,7 @@ describe('fatal start-page conditions', () => {
       url: 'https://throttled.example.test/',
       deps: { phases: ['A', 'B', 'C'] },
     });
+
     expect(run.result.fatal).toBeUndefined();
     expect(run.result.status).toBe('partial');
     expect(run.result.diagnostics?.map((d) => d.code)).toContain('SCAN-THROTTLED');
@@ -77,23 +80,18 @@ describe('fatal start-page conditions', () => {
       },
     } as unknown as BrowserType;
     // Abort only once the collection has really started: the fixture server holds the start page open.
-    const started = new Promise<void>((resolve) => {
-      const poll = setInterval(() => {
-        if (server.requestsTo('slow.example.test').length > 0) {
-          clearInterval(poll);
-          resolve();
-        }
-      }, 20);
-    });
+    const started = waitUntil(() => server.requestsTo('slow.example.test').length > 0, 20);
     const pending = collect(server, {
       url: 'https://slow.example.test/',
       signal: ac.signal,
       deps: { chromium: spy },
     });
     await started;
+
     const t0 = Date.now();
     ac.abort();
     const run = await pending;
+
     expect(Date.now() - t0).toBeLessThan(10_000);
     expect(run.result).toMatchObject({ status: 'error', reason: 'timeout' });
     expect(run.result.fatal).toBeUndefined();

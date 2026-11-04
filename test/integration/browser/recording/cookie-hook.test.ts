@@ -23,6 +23,7 @@ let browser: TestBrowser;
 let tab: Page;
 
 beforeAll(async () => {
+  // The first-party page loads the vendor tag itself and in a third-party frame that loads it too.
   const first = writeSite({
     'index.html': html(
       `<script src="https://tags.vendor.test/tag.js"></script><iframe src="https://widget.example.net/frame.html"></iframe>`,
@@ -40,6 +41,7 @@ beforeAll(async () => {
       'widget.example.net': widget.root,
     },
   });
+
   browser = await launchTestBrowser(server);
   await browser.context.addInitScript(cookieHookInit);
   tab = await browser.context.newPage();

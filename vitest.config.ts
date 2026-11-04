@@ -1,6 +1,8 @@
 import { availableParallelism } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
-import { resolveTestWorkers } from './test/utils/run/test-workers.ts';
+import { resolveTestWorkers, testWorkersSetting } from './test/utils/run/test-workers.ts';
 
 const shared = {
   environment: 'node' as const,
@@ -10,10 +12,11 @@ const shared = {
 
 /**
  * Test files run in parallel, one forked worker per file, as many workers as the machine has logical cores.
- * `DSGVO_TEST_WORKERS` overrides it: a number ("4") or a share of the cores ("50%"), see test/utils/run/test-workers.ts.
- * `maxWorkers` is global in Vitest 5: it is one pool for all projects of a run.
+ * `DSGVO_TEST_WORKERS` from the environment or `.env` overrides it: a number ("4") or a share of the cores ("50%");
+ * CI sets 4. `maxWorkers` is global in Vitest 5: it is one pool for all projects of a run.
  */
-const maxWorkers = resolveTestWorkers(process.env.DSGVO_TEST_WORKERS, availableParallelism());
+const root = path.dirname(fileURLToPath(import.meta.url));
+const maxWorkers = resolveTestWorkers(testWorkersSetting(process.env, root), availableParallelism());
 
 /**
  * Integration and e2e start real Chromium (a fresh one without a persistent profile per scan) and local servers,

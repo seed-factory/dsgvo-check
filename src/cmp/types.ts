@@ -12,14 +12,16 @@ import type {
 export type Confidence = 'high' | 'medium' | 'low';
 
 /** The 7 supported CMPs in catalog order, plus open strings for heuristically named ones. */
-export type KnownCmpId =
-  | 'borlabs'
-  | 'cookiebot'
-  | 'complianz'
-  | 'usercentrics'
-  | 'ccm19'
-  | 'real-cookie-banner'
-  | 'cookiehub';
+export const KNOWN_CMP_IDS = [
+  'borlabs',
+  'cookiebot',
+  'complianz',
+  'usercentrics',
+  'ccm19',
+  'real-cookie-banner',
+  'cookiehub',
+] as const;
+export type KnownCmpId = (typeof KNOWN_CMP_IDS)[number];
 
 export interface CmpDetection {
   /** Adapter id when recognized by an adapter; a heuristic name or null otherwise. */
@@ -241,15 +243,25 @@ export type ClickTarget = Pick<CmpButton, 'name' | 'role' | 'selector' | 'kindCo
   kind?: ButtonKind;
 };
 
-export interface ActOptions {
-  /** Core's click decision; `null` means nothing to click. When present, `facts` and `lexicon` are ignored. */
-  target?: ClickTarget | null;
-  /** Transitional: without `target`, the adapter classifies these facts itself. Without both, nothing is clicked. */
-  facts?: CmpFacts;
-  /** Lexicon of that decision (default: test/data/cmp). */
+export type ActOptions = {
+  /** Lexicon of the decision over `facts` (default: test/data/cmp). */
   lexicon?: CmpLexicon;
   timeoutMs?: number;
-}
+} & (
+  | {
+      /** Core's click decision; `null` means nothing to click. When present, `facts` and `lexicon` are ignored. */
+      target?: ClickTarget | null;
+      facts?: undefined;
+      blockingCoveredRatio?: undefined;
+    }
+  | {
+      target?: ClickTarget | null;
+      /** Transitional: without `target`, the adapter classifies these facts itself. Without both, nothing is clicked. */
+      facts: CmpFacts;
+      /** Blocking threshold of that decision (`cmp.blockingCoveredRatio`); the adapter has no default of its own. */
+      blockingCoveredRatio: number;
+    }
+);
 
 export interface VerifyOptions {
   /** Reload the page and read the state again (default true). */

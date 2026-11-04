@@ -7,7 +7,6 @@ variables:
   DSGVO_CHECK_FAIL_ON: critical
   DSGVO_CHECK_FORMAT: console,json,html,summary
   DSGVO_CHECK_OUT: dsgvo-check-report
-  DSGVO_CHECK_SANDBOX: require
   DSGVO_CHECK_EXTRA_ARGS: ""
 
 .dsgvo-check:
@@ -28,8 +27,7 @@ variables:
       out="$CI_PROJECT_DIR/$DSGVO_CHECK_OUT"
       mkdir -p "$out"
       dsgvo-check "$DSGVO_CHECK_URL" $DSGVO_CHECK_EXTRA_ARGS \
-        --fail-on "$DSGVO_CHECK_FAIL_ON" --format "$DSGVO_CHECK_FORMAT" \
-        --sandbox "$DSGVO_CHECK_SANDBOX" --out "$out"
+        --fail-on "$DSGVO_CHECK_FAIL_ON" --format "$DSGVO_CHECK_FORMAT" --out "$out"
   artifacts:
     when: always
     name: dsgvo-check-report

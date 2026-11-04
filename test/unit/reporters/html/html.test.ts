@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { reporterLimits } from '../../../../src/core/config/limits.ts';
 import { DEFAULT_DATA_DIR, loadTexts } from '../../../../src/core/data/load.ts';
 import { templateParams } from '../../../../src/core/data/messages.ts';
 import { sanitizeExternal } from '../../../../src/core/redaction/sanitize.ts';
@@ -49,6 +50,7 @@ const PAYLOAD = XSS.join(' ');
 /** Put hostile strings into every place where external data can appear. */
 function hostileReport(): FullReport {
   const r = sampleFullReport();
+
   r.scan.target = `https://www.example.de/?q=${PAYLOAD}`;
   r.scan.finalUrl = `https://www.example.de/${PAYLOAD}`;
   r.scan.environment.userAgent.browser = `Chrome ${PAYLOAD}`;
@@ -57,15 +59,18 @@ function hostileReport(): FullReport {
   r.scan.coverage.pages[1]!.url = `https://www.example.de/${PAYLOAD}`;
   r.scan.coverage.pages[1]!.reason = PAYLOAD;
   r.scan.coverage.collectors.http = { status: 'error', reason: PAYLOAD };
+
   const f = r.findings[0]!;
   f.pages = [`https://www.example.de/${PAYLOAD}`, 'javascript:alert(5)'];
   f.params = { service: PAYLOAD, host: PAYLOAD, count: 2 };
   f.serviceId = `unknown:${PAYLOAD}`;
   f.provider = { name: PAYLOAD, country: 'US' };
   f.trigger = PAYLOAD;
+
   r.checks[2]!.error = { code: 'check-exception', message: PAYLOAD };
   r.checks[1]!.limitations = [PAYLOAD];
   r.diagnostics[0]!.params = { signal: PAYLOAD };
+
   for (const ev of r.evidence) {
     const e = ev as Record<string, unknown>;
     for (const key of ['url', 'name', 'key', 'quote', 'href', 'text', 'host', 'subject', 'origin', 'value']) {
@@ -88,7 +93,7 @@ describe('HTML report: document and CSP', () => {
     expect(htmlSafetyProblems(html)).toEqual([]);
     expect(html).toMatch(/^<!doctype html>\n<html lang="de">/);
     expect(html).toContain('<meta charset="utf-8">');
-    expect(html.trimEnd().endsWith('</html>')).toBe(true);
+    expect(html.trimEnd()).toMatch(/<\/html>$/);
   });
 
   it('declares the offline CSP: no scripts, no network, hashed style block', () => {
@@ -113,9 +118,19 @@ describe('HTML report: document and CSP', () => {
 });
 
 describe('HTML report: sections and content', () => {
+  const SECTION_HEADINGS_DE = [
+    'Zusammenfassung',
+    'Befunde',
+    'Diagnose',
+    'Messumgebung',
+    'Abdeckung',
+    'Hinweis',
+  ];
+
   it('has all sections (de) with the draft stamp', () => {
     const html = renderHtml(sampleFullReport(), ctx());
-    for (const h of ['Zusammenfassung', 'Befunde', 'Diagnose', 'Messumgebung', 'Abdeckung', 'Hinweis']) {
+
+    for (const h of SECTION_HEADINGS_DE) {
       expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
     }
     expect(html).toContain('Textentwurf');
@@ -124,6 +139,7 @@ describe('HTML report: sections and content', () => {
 
   it('uses English labels for --lang en', () => {
     const html = renderHtml(sampleFullReport(), ctx('en'));
+
     expect(html).toMatch(/^<!doctype html>\n<html lang="en">/);
     for (const h of ['Summary', 'Findings', 'Diagnostics', 'Measurement environment', 'Coverage', 'Notice']) {
       expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
@@ -133,6 +149,7 @@ describe('HTML report: sections and content', () => {
 
   it('summarizes status, exit code, reasons and counts', () => {
     const html = renderHtml(sampleFullReport(), ctx());
+
     expect(html).toContain('Exit-Code');
     expect(html).toContain('threshold');
     expect(html).toContain('check-error:MAIL-01');
@@ -141,10 +158,12 @@ describe('HTML report: sections and content', () => {
 
   it('shows URLs as text, never as links', () => {
     const html = renderHtml(sampleFullReport(), ctx());
+
     expect(html).toContain(
       'https://www.google-analytics.com/g/collect?v=2&amp;tid=G-TEST&amp;cid=[redacted]',
     );
     expect(html).toContain('https://www.example.de/');
+
     const hrefs = tagsOf(html).flatMap((t) => t.attrs.filter((a) => a.name === 'href').map((a) => a.value));
     expect(hrefs.length).toBeGreaterThan(0);
     for (const h of hrefs) expect(h).toMatch(/^#/);
@@ -152,14 +171,17 @@ describe('HTML report: sections and content', () => {
 
   it('renders the diagnostics, the measurement environment and the coverage', () => {
     const html = renderHtml(sampleFullReport(), ctx());
+
     expect(html).toContain('SCAN-BOTMODE');
     expect(html).toContain('Einwilligungsbanner verhält sich wie gegenüber einem Bot');
     expect(html).toContain('rcb:accept-all-for-bots');
+
     expect(html).toContain('156.0.8078.4');
     expect(html).toContain('ThirdPartyStoragePartitioning');
     expect(html).toContain('pagehide-beacons');
     expect(html).toContain('nicht festgestellt');
     expect(html).toContain('linux-x64');
+
     expect(html).toMatch(/geplant 2 · beobachtet 2 · auswertbar 1/);
     expect(html).toContain('challenge');
     expect(html).toContain('banner-not-recognized');
@@ -172,6 +194,7 @@ describe('HTML report: sections and content', () => {
     const r = sampleFullReport();
     r.findings[0]!.evidenceIds = r.evidence.map((e) => e.id);
     const all = renderHtml(r, ctx());
+
     expect(html).toContain('_ga');
     for (const t of ['request', 'cookie', 'storage', 'header', 'dns', 'tls', 'cmp', 'consent-state']) {
       expect(all).toContain(`>${t}<`);
@@ -188,6 +211,7 @@ describe('HTML report: sections and content', () => {
     (r.evidence[1] as { name: string }).name = 'T1_TRACKING_COOKIE';
     r.findings[0]!.params = { service: 'T2_SOMETHING' };
     const html = renderHtml(r, ctx());
+
     expect(html).not.toMatch(/T[0-9]_/);
     // displayed as "T1_TRACKING_COOKIE", but the literal crm pattern never appears in the file
     expect(html).toContain('T1&#95;TRACKING_COOKIE');
@@ -199,18 +223,21 @@ describe('HTML report: sections and content', () => {
     (r.evidence[1] as Record<string, unknown>).value = 'SECRET-COOKIE-VALUE';
     (r.evidence[2] as Record<string, unknown>).value = 'SECRET-STORAGE-VALUE';
     (r.evidence[2] as Record<string, unknown>).valueSha256 = 'SECRET-HASH';
+
     const html = renderHtml(r, ctx());
+
     expect(html).not.toContain('SECRET-');
   });
 
   it('renders the failed report', () => {
     const html = renderHtml(sampleFailedReport(), ctx());
+
     expect(htmlSafetyProblems(html)).toEqual([]);
     expect(html).toContain('target-nxdomain');
     expect(html).toContain('Zielhost konnte nicht aufgelöst werden.');
     expect(html).toContain('unreachable');
     expect(html).toContain('nicht verfügbar');
-    for (const h of ['Zusammenfassung', 'Befunde', 'Diagnose', 'Messumgebung', 'Abdeckung', 'Hinweis']) {
+    for (const h of SECTION_HEADINGS_DE) {
       expect(html).toContain(`>${h}</h2>`);
     }
   });
@@ -218,7 +245,9 @@ describe('HTML report: sections and content', () => {
   it('says that no findings were observed without claiming compliance', () => {
     const r = sampleFullReport();
     r.findings = [];
+
     const html = renderHtml(r, ctx());
+
     expect(html).toContain('Keine Befunde beobachtet');
   });
 
@@ -265,12 +294,14 @@ describe('HTML report: grouping by service', () => {
       }),
     ];
     const html = renderHtml(r, ctx());
+
     const ga = html.indexOf('Dienst: google-analytics-4');
     const fonts = html.indexOf('Dienst: google-fonts');
     const other = html.indexOf('Ohne Dienstzuordnung');
     expect(ga).toBeGreaterThan(0);
     expect(fonts).toBeGreaterThan(ga);
     expect(other).toBeGreaterThan(fonts);
+
     // inside the GA group, the critical finding comes first
     const c01 = html.indexOf('CONSENT-01', ga);
     const t01 = html.indexOf('TRACK-01', ga);
@@ -283,15 +314,19 @@ describe('HTML report: grouping by service', () => {
 describe('HTML report: contextual escaping (XSS)', () => {
   it('escapes hostile strings everywhere and keeps the document structure intact', () => {
     const html = renderHtml(hostileReport(), ctx());
+
     expect(htmlSafetyProblems(html)).toEqual([]);
+
     expect(html).not.toMatch(/<script/i);
     expect(html).not.toMatch(/<svg/i);
     expect(html).not.toMatch(/<img[^>]*onerror/i);
     expect(html).not.toMatch(/<a href="https/);
     expect(html).not.toMatch(/<!-- comment/);
+
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('&#39;&gt;&lt;svg/onload=alert(2)&gt;');
+
     expect(tagsOf(html).filter((t) => t.name === 'style' && !t.closing)).toHaveLength(1);
     expect(tagsOf(html).filter((t) => t.name === 'meta')).toHaveLength(4);
   });
@@ -300,7 +335,9 @@ describe('HTML report: contextual escaping (XSS)', () => {
     const r = sampleFailedReport();
     r.scan.target = PAYLOAD;
     r.scan.failure.message = PAYLOAD;
+
     const html = renderHtml(r, ctx('en'));
+
     expect(htmlSafetyProblems(html)).toEqual([]);
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
@@ -309,7 +346,9 @@ describe('HTML report: contextual escaping (XSS)', () => {
     const r = sampleFullReport();
     r.scan.target = HOSTILE_TEXT;
     r.findings[0]!.pages = [HOSTILE_TEXT];
+
     const html = renderHtml(r, ctx());
+
     expect(html).not.toContain('\u001b');
     expect(html).not.toContain('‮');
     // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence
@@ -342,7 +381,9 @@ describe('HTML report: banner screenshots', () => {
 
   it('embeds the banner screenshot as a data: URI', () => {
     const outDir = setup({ 'artifacts/banner-B.jpg': JPEG });
+
     const html = renderHtml(withScreenshot('artifacts/banner-B.jpg', sha(JPEG)), ctx('de', outDir));
+
     expect(html).toContain(`src="data:image/jpeg;base64,${JPEG.toString('base64')}"`);
     expect(htmlSafetyProblems(html)).toEqual([]);
   });
@@ -353,42 +394,104 @@ describe('HTML report: banner screenshots', () => {
       withScreenshot('artifacts/banner-B.png', `sha256:${sha(PNG)}`),
       ctx('de', outDir),
     );
+
     expect(html).toContain('src="data:image/png;base64,');
   });
 
   it('does not embed files outside the artifacts directory', () => {
     const outDir = setup({ 'secret.jpg': JPEG });
-    const html = renderHtml(withScreenshot('../secret.jpg', sha(JPEG)), ctx('de', path.join(outDir, 'sub')));
-    expect(html).not.toContain('data:image');
-    const html2 = renderHtml(withScreenshot('secret.jpg', sha(JPEG)), ctx('de', outDir));
-    expect(html2).not.toContain('data:image');
-    const html3 = renderHtml(withScreenshot('/etc/passwd', sha(JPEG)), ctx('de', outDir));
-    expect(html3).not.toContain('data:image');
-    expect(html3).toContain('Screenshot nicht eingebettet');
+
+    const parentTraversal = renderHtml(
+      withScreenshot('../secret.jpg', sha(JPEG)),
+      ctx('de', path.join(outDir, 'sub')),
+    );
+    const outsideArtifacts = renderHtml(withScreenshot('secret.jpg', sha(JPEG)), ctx('de', outDir));
+    const absolutePath = renderHtml(withScreenshot('/etc/passwd', sha(JPEG)), ctx('de', outDir));
+
+    expect(parentTraversal).not.toContain('data:image');
+    expect(outsideArtifacts).not.toContain('data:image');
+    expect(absolutePath).not.toContain('data:image');
+    expect(absolutePath).toContain('Screenshot nicht eingebettet');
   });
 
   it('does not follow symlinks out of the artifacts directory', () => {
     const outDir = setup({ 'outside.jpg': JPEG });
     symlinkSync(path.join(outDir, 'outside.jpg'), path.join(outDir, 'artifacts/link.jpg'));
+
     const html = renderHtml(withScreenshot('artifacts/link.jpg', sha(JPEG)), ctx('de', outDir));
+
     expect(html).not.toContain('data:image');
   });
 
   it('does not embed files with a wrong checksum or a non-image content', () => {
-    const outDir = setup({ 'artifacts/banner-B.jpg': JPEG, 'artifacts/fake.jpg': Buffer.from('<svg/>') });
-    expect(
-      renderHtml(withScreenshot('artifacts/banner-B.jpg', 'f'.repeat(64)), ctx('de', outDir)),
-    ).not.toContain('data:image');
     const fake = Buffer.from('<svg/>');
-    expect(renderHtml(withScreenshot('artifacts/fake.jpg', sha(fake)), ctx('de', outDir))).not.toContain(
-      'data:image',
+    const outDir = setup({ 'artifacts/banner-B.jpg': JPEG, 'artifacts/fake.jpg': fake });
+
+    const wrongChecksum = renderHtml(
+      withScreenshot('artifacts/banner-B.jpg', 'f'.repeat(64)),
+      ctx('de', outDir),
     );
+    const notAnImage = renderHtml(withScreenshot('artifacts/fake.jpg', sha(fake)), ctx('de', outDir));
+
+    expect(wrongChecksum).not.toContain('data:image');
+    expect(notAnImage).not.toContain('data:image');
   });
 
   it('degrades gracefully when the file is missing', () => {
     const html = renderHtml(sampleFullReport(), ctx());
+
     expect(html).toContain('Screenshot nicht eingebettet');
     expect(html).toContain('artifacts/banner-B.jpg');
+  });
+
+  it('embeds images up to the size limit of the settings and no larger ones', () => {
+    const outDir = setup({ 'artifacts/banner-B.jpg': JPEG });
+    const report = withScreenshot('artifacts/banner-B.jpg', sha(JPEG));
+    const limits = (screenshotEmbedMaxBytes: number) => ({
+      ...reporterLimits(),
+      screenshotEmbedMaxBytes,
+    });
+
+    const atLimit = renderHtml(report, { ...ctx('de', outDir), limits: limits(JPEG.length) });
+    const html = renderHtml(report, { ...ctx('de', outDir), limits: limits(JPEG.length - 1) });
+
+    expect(atLimit).toContain('data:image');
+    expect(html).not.toContain('data:image');
+    expect(html).toContain('Screenshot nicht eingebettet');
+  });
+});
+
+describe('HTML report: settings that differ from the defaults', () => {
+  const withSettings = (settings: Record<string, string | number | boolean>): FullReport => {
+    const r = sampleFullReport();
+    r.scan.options = { ...r.scan.options!, settings };
+    return r;
+  };
+
+  it('lists them in the measurement environment, as variable=value', () => {
+    const html = renderHtml(
+      withSettings({ DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS: 3000, DSGVO_CHECK_DNS_SERVERS: '1.1.1.1,9.9.9.9' }),
+      ctx(),
+    );
+
+    expect(html).toContain('Abweichende Einstellungen');
+    expect(html).toContain('<code>DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS=3000</code>');
+    expect(html).toContain('<code>DSGVO_CHECK_DNS_SERVERS=1.1.1.1,9.9.9.9</code>');
+    expect(renderHtml(withSettings({ DSGVO_CHECK_TLS_EXPIRING_DAYS: 21 }), ctx('en'))).toContain(
+      'Settings that differ from the defaults',
+    );
+  });
+
+  it('shows no row when nothing differs', () => {
+    expect(renderHtml(sampleFullReport(), ctx())).not.toContain('Abweichende Einstellungen');
+    expect(renderHtml(withSettings({}), ctx())).not.toContain('Abweichende Einstellungen');
+  });
+
+  it('escapes hostile names and values like any external string', () => {
+    const html = renderHtml(withSettings({ [`X${PAYLOAD}`]: PAYLOAD }), ctx());
+
+    expect(htmlSafetyProblems(html)).toEqual([]);
+    expect(html).not.toContain('<script>alert(1)</script>');
   });
 });
 
@@ -413,15 +516,18 @@ describe('report labels', () => {
     const en = loadTexts('en').ui;
     const keys = reportLabelKeys(de);
     const usedKeys = usedReportLabelKeys();
+
     expect(keys, 'de report keys must match the template, view, Summary and CLI/PDF consumers').toEqual(
       usedKeys,
     );
     expect(reportLabelKeys(en), 'en report keys must match the same consumers').toEqual(usedKeys);
+
     for (const key of keys) {
       const d = de[key]?.text;
       const e = en[key]?.text;
       expect(d, `de ${key}`).toBeTypeOf('string');
       expect(e, `en ${key}`).toBeTypeOf('string');
+
       expect(params(e as string), key).toEqual(params(d as string));
       for (const re of STOP) {
         expect(d, key).not.toMatch(re);
@@ -436,31 +542,40 @@ describe('report labels', () => {
       ...c.texts,
       ui: { ...c.texts.ui, 'report.section.findings': { text: 'Beobachtungen', draft: true } },
     };
+
     expect(renderHtml(sampleFullReport(), c)).toContain('>Beobachtungen</h2>');
   });
 });
 
 describe('HTML report: template and presentation data', () => {
+  const readTemplate = () => readFileSync(path.join(DEFAULT_DATA_DIR, 'report', 'report.html'), 'utf8');
+
   it('hashes the style as browsers parse it after a Windows checkout', () => {
     const dataDir = mkdtempSync(path.join(tmpdir(), 'report-template-'));
     mkdirSync(path.join(dataDir, 'report'));
-    const source = readFileSync(path.join(DEFAULT_DATA_DIR, 'report', 'report.html'), 'utf8');
-    const windowsSource = source.replace('<style>', '<style>\n').replace(/\r?\n/g, '\r\n');
+    const windowsSource = readTemplate().replace('<style>', '<style>\n').replace(/\r?\n/g, '\r\n');
     writeFileSync(path.join(dataDir, 'report', 'report.html'), windowsSource);
-    expect(htmlSafetyProblems(renderHtml(sampleFullReport(), { ...ctx(), dataDir }))).toEqual([]);
+
+    const html = renderHtml(sampleFullReport(), { ...ctx(), dataDir });
+
+    expect(htmlSafetyProblems(html)).toEqual([]);
   });
 
   it('has no executable markup, raw placeholders or external resources in the template', () => {
-    const template = readFileSync(path.join(DEFAULT_DATA_DIR, 'report', 'report.html'), 'utf8');
+    const template = readTemplate();
+
     expect(template).not.toMatch(/{{[{&=]|<script|\son[a-z]+\s*=|\sstyle\s*=|https?:\/\/|url\s*\(|@import/i);
+
     const styles = [...template.matchAll(/<style>([\s\S]*?)<\/style>/g)];
     expect(styles).toHaveLength(1);
     expect(styles[0]![1]).not.toContain('{{');
     expect(styles[0]![1]).toContain('size:A4');
     expect(styles[0]![1]).toContain('details::details-content');
+
     for (const match of template.matchAll(/{{t "([^"]+)"/g)) {
       for (const lang of ['de', 'en'] as const) expect(loadTexts(lang).ui[match[1]!], match[1]).toBeDefined();
     }
+
     const withoutDirectives = template
       .replace(/{{[\s\S]*?}}/g, '')
       .replace(/<style>[\s\S]*?<\/style>/g, '')
@@ -481,7 +596,9 @@ describe('HTML report: template and presentation data', () => {
       }
     };
     visit(view);
+
     expect(keys).not.toContain('crmCode');
+
     const html = renderHtml(report, context);
     for (const finding of report.findings) {
       expect(html).toContain(escapeHtml(finding.checkId));

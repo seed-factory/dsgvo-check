@@ -21,10 +21,12 @@ export function parseRobots(text: string): Robots {
   const sitemaps: string[] = [];
   let current: Group | null = null;
   let lastWasAgent = false;
+
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/#.*$/, '').trim();
     const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line);
     if (!m) continue;
+
     const key = (m[1] as string).toLowerCase();
     const value = (m[2] as string).trim();
     if (key === 'user-agent') {
@@ -36,6 +38,7 @@ export function parseRobots(text: string): Robots {
       lastWasAgent = true;
       continue;
     }
+
     lastWasAgent = false;
     if (key === 'sitemap') {
       if (value) sitemaps.push(value);
@@ -60,6 +63,7 @@ export function robotsAllows(robots: Robots, pathWithQuery: string, token: strin
   const t = token.toLowerCase();
   const own = robots.groups.filter((g) => g.agents.some((a) => a !== '*' && t.startsWith(a)));
   const groups = own.length > 0 ? own : robots.groups.filter((g) => g.agents.includes('*'));
+
   let best: Rule | null = null;
   for (const rule of groups.flatMap((g) => g.rules)) {
     if (!patternToRegex(rule.pattern).test(pathWithQuery)) continue;

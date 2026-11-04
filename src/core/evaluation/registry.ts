@@ -24,16 +24,19 @@ export class CheckRegistry {
     if (!ID_RE.test(check.id)) throw new RegistryError(`invalid check id "${check.id}"`);
     if (this.#checks.has(check.id)) throw new RegistryError(`duplicate check id "${check.id}"`);
     if (check.variants.length === 0) throw new RegistryError(`${check.id}: no variants`);
+
     const seen = new Set<string>();
     for (const v of check.variants) {
       if (!VARIANT_RE.test(v.variant)) throw new RegistryError(`${check.id}: invalid variant "${v.variant}"`);
       if (seen.has(v.variant)) throw new RegistryError(`${check.id}: duplicate variant "${v.variant}"`);
       seen.add(v.variant);
     }
+
     for (const key of check.requires) {
       if (!SNAPSHOT_SECTION_KEYS.includes(key))
         throw new RegistryError(`${check.id}: unknown section "${key}"`);
     }
+
     this.#checks.set(check.id, check);
   }
 

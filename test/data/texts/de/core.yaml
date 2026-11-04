@@ -6,7 +6,7 @@ ui:
     Zeitpunkt. Er ist keine Rechtsberatung und keine rechtliche Bewertung. Wenn zu einer Prüfung kein Befund
     vorliegt, bedeutet das nicht, dass eine Anforderung erfüllt ist. Ergebnisse können von Standort, Zeitpunkt,
     Konfiguration des Einwilligungsbanners und der Erkennung als automatisierter Besucher abhängen.
-  # Further paragraphs of the disclaimer (wording guide §6). src/reporters/disclaimer.ts renders each conditional
+  # Further paragraphs of the disclaimer. src/reporters/disclaimer.ts renders each conditional
   # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
   disclaimer.data: >-
     Werte von Cookies, Web-Storage-Einträgen und Consent-Strings werden weder im Klartext noch als Prüfsumme
@@ -47,7 +47,7 @@ ui:
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
     Dritter sind nicht zur Veröffentlichung vorgesehen. Die Software wird unter der Apache License 2.0 ohne
     Gewährleistung bereitgestellt.
-  # Nutzungshinweise for `--help` and the project README (wording guide §6, 5.7).
+  # Nutzungshinweise for `--help` and the project README (section `## Nutzungshinweise`).
   usageNotes.title: "Nutzungshinweise"
   usageNotes: >-
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
@@ -75,6 +75,8 @@ ui:
   failure.invalid-timeout: "Ungültiger Wert für --timeout: {value}"
   failure.invalid-proxy: "Ungültige Proxy-URL (nur http:// wird unterstützt)."
   failure.invalid-cli-option: "Ungültiger Wert für {option}: {value}"
+  # `problems`: `NAME=Wert (Quelle): Grund`, getrennt durch Semikolon; Werte geheimer Einstellungen fehlen.
+  failure.invalid-config: "Ungültige Einstellung(en): {problems}"
   failure.target-nxdomain: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
   failure.target-dns-error: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
   failure.target-not-public: "Zielhost {host} löst nur auf nicht-öffentliche Adressen auf; der Scan ist nur für öffentliche Websites vorgesehen."
@@ -89,7 +91,8 @@ ui:
   failure.start-page-5xx: "Die Startseite antwortet wiederholt mit HTTP {status}."
   failure.start-page-blocked: "Die Startseite zeigt eine Sperr- oder Prüfseite ({signals})."
   failure.browser-not-installed: "Chromium ist nicht installiert. Bitte „dsgvo-check install“ ausführen."
-  failure.sandbox-failed: "Die Chromium-Sandbox konnte nicht gestartet werden (z. B. AppArmor-Einschränkung für User Namespaces oder Docker ohne Seccomp-Profil). Möglichkeiten: das Docker-Image mit dem mitgelieferten Seccomp-Profil verwenden, die Systemeinstellung selbst anpassen oder ausdrücklich --sandbox off setzen.{container, select, yes { Im Docker-Image: Profil exportieren mit „docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json“ und den Container so starten: „docker run --rm --cap-drop=ALL --security-opt no-new-privileges --security-opt seccomp=dsgvo-check-seccomp.json <image> <url>“.} other {}}"
+  failure.sandbox-failed: "Die Chromium-Sandbox konnte nicht gestartet werden (z. B. AppArmor-Einschränkung für User Namespaces oder ein Docker-Profil, das sie sperrt). Möglichkeiten: die Systemeinstellung selbst anpassen oder ausdrücklich --sandbox off setzen.{container, select, yes { Im Docker-Image gilt standardmäßig „--sandbox container“; lassen Sie die Option weg.} other {}}"
+  failure.sandbox-container-outside-image: "--sandbox container (DSGVO_CHECK_BROWSER_SANDBOX=container) ist nur im dsgvo-check-Docker-Image erlaubt, wo der gehärtete Container die Isolation übernimmt. Außerhalb des Images require oder bewusst off verwenden."
   failure.browser-launch-failed: "Chromium konnte nicht gestartet werden: {message}"
   failure.interrupted: "Abbruch durch {signal}"
   failure.watchdog-timeout: "Zeitlimit inklusive Reserve überschritten"
@@ -105,12 +108,17 @@ ui:
   cli.proxy: "HTTP-Proxy (http://, CONNECT) für Browser, HTTP und TLS"
   cli.assumeRegion: "Standort laut Nutzerangabe: eea|de"
   cli.strict: nicht eindeutige Ergebnisse, Sandbox off und ungeprüfte Region führen zu Exit-Code 2
-  cli.sandbox: "Chromium-Sandbox: require|off"
+  cli.sandbox: "Chromium-Sandbox: require|off|container (container nur im Docker-Image)"
   cli.noScreenshots: keine Screenshots des Banners
   cli.saveSnapshot: Rohdaten-Snapshot speichern
   cli.fromSnapshot: Snapshot neu auswerten, ohne die Website aufzurufen
   cli.checks: "nur diese Prüfungen, z. B. EMBED-01,HDR-01"
   cli.verbose: ausführliche Logs auf stderr
+  cli.configNotes.title: "Einstellungen"
+  cli.configNotes: >-
+    Schwellen, Zeitlimits und Grenzen lassen sich ohne Flags über Umgebungsvariablen der Form
+    DSGVO_CHECK_<ABSCHNITT>_<NAME> oder über eine Datei .env im aktuellen Verzeichnis setzen (Vorlage: .env.example im
+    Repository). Vorrang: Flag, Umgebungsvariable, .env, Standardwert. Ohne Konfiguration gelten die Standardwerte.
   cli.install: Chromium (Chrome for Testing) für playwright-core herunterladen
   cli.installWithDeps: "Systemabhängigkeiten installieren (Linux, benötigt Root)"
   console.duration: "Dauer: {seconds} s"
@@ -128,6 +136,31 @@ ui:
   console.reportWritten: "Bericht gespeichert: {path}"
   console.reportWriteFailed: "Bericht konnte nicht geschrieben werden: {path} ({message})"
   console.sandboxOff: "Achtung: Chromium-Sandbox ist ausgeschaltet (--sandbox off)."
+  console.configFile: "Einstellungen aus {path} gelesen: {count}"
+  console.configUnknown: "Unbekannte Einstellungen ignoriert: {names}"
+  # Grund einer abgelehnten Einstellung, hinter `NAME=Wert (Quelle): `; Ids und Parameter: src/core/config/problems.ts.
+  config.source.environment: "Umgebung"
+  config.source.config: "config-Option"
+  config.source.default: "Standardwert"
+  config.problem.integer: "erwartet eine ganze Zahl"
+  config.problem.number: "erwartet eine Zahl"
+  config.problem.min: "muss mindestens {min} sein"
+  config.problem.above: "muss größer als {min} sein"
+  config.problem.max: "darf höchstens {max} sein"
+  config.problem.floor: "muss mindestens {min} sein: nur strengere Werte sind erlaubt, der Scan bleibt passiv"
+  config.problem.items-min: "braucht mindestens {min, plural, one {# Eintrag} other {# Einträge}}"
+  config.problem.length-min: "braucht mindestens {min} Zeichen"
+  config.problem.option: "erlaubt sind: {options}"
+  config.problem.type: "falscher Typ, erwartet: {expected}"
+  config.problem.unknown-keys: "unbekannte Schlüssel: {keys}"
+  config.problem.proxy-scheme: "nur http://-Proxys (HTTP CONNECT) werden unterstützt"
+  config.problem.dns-server: "erwartet Host, Host:Port oder [IPv6]:Port"
+  config.problem.dwell-order: "darf nicht unter {other} ({value}) liegen"
+  config.problem.tls-days-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.tls-share-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.report-reserve: "muss {first} plus {second} ({value}) abdecken, sonst beendet der Watchdog den Prozess, während Berichte geschrieben werden"
+  config.problem.unreadable: "Datei nicht lesbar ({code})"
+  config.problem.invalid: "ungültiger Wert"
 messages:
   diagnostic.SCAN-BOTMODE:
     title: "Einwilligungsbanner verhält sich wie gegenüber einem Bot"

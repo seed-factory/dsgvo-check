@@ -44,10 +44,12 @@ async function state(page: Page): Promise<ConsentStateFact[]> {
   ];
 }
 
-async function facts(page: Page, moment: CmpFacts['moment']): Promise<CmpFacts> {
-  const raw = await page.evaluate(() => {
+/** The banner as the page shows it: its visibility and the boxes of its buttons; null when there is no banner. */
+async function measureBanner(page: Page) {
+  return page.evaluate(() => {
     const root = document.querySelector('#stub-cmp');
     if (!root) return null;
+
     const visible = root.checkVisibility();
     const buttons = Array.from(root.querySelectorAll('button')).map((b: any) => {
       const r = b.getBoundingClientRect();
@@ -59,21 +61,27 @@ async function facts(page: Page, moment: CmpFacts['moment']): Promise<CmpFacts> 
     });
     return { visible, buttons };
   });
-  const buttons: CmpButton[] = (raw?.buttons ?? []).map(
-    (b: { id: string; name: string; box: CmpButton['box'] }) => ({
-      role: 'button',
-      name: b.name,
-      tag: 'button',
-      kind: b.id === 'stub-reject' ? 'reject' : 'accept',
-      kindConfidence: 'high',
-      layer: 1,
-      box: b.box,
-      visibleAtFirstScreen: Boolean(raw?.visible),
-      actionableAtFirstScreen: Boolean(raw?.visible),
-      contrast: null,
-      selector: `#${b.id}`,
-    }),
-  );
+}
+
+function buttonFacts(raw: Awaited<ReturnType<typeof measureBanner>>): CmpButton[] {
+  return (raw?.buttons ?? []).map((b: { id: string; name: string; box: CmpButton['box'] }) => ({
+    role: 'button',
+    name: b.name,
+    tag: 'button',
+    kind: b.id === 'stub-reject' ? 'reject' : 'accept',
+    kindConfidence: 'high',
+    layer: 1,
+    box: b.box,
+    visibleAtFirstScreen: Boolean(raw?.visible),
+    actionableAtFirstScreen: Boolean(raw?.visible),
+    contrast: null,
+    selector: `#${b.id}`,
+  }));
+}
+
+async function facts(page: Page, moment: CmpFacts['moment']): Promise<CmpFacts> {
+  const raw = await measureBanner(page);
+
   return {
     phase: 'B',
     pageUrl: page.url(),
@@ -86,7 +94,7 @@ async function facts(page: Page, moment: CmpFacts['moment']): Promise<CmpFacts> 
     firstLayer: {
       bannerPresent: Boolean(raw),
       bannerVisible: Boolean(raw?.visible),
-      buttons,
+      buttons: buttonFacts(raw),
       purAbo: false,
       closeMeansAccept: null,
     },

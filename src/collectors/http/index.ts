@@ -6,7 +6,7 @@
 import { startFinalHost } from '../../checks/http/shared.ts';
 import { storedHeaderRecord } from '../../core/redaction/headers.ts';
 import { errorMessage } from '../../core/runtime/errors.ts';
-import type { CollectorContext, HttpCollector } from '../../core/snapshot/collector.ts';
+import type { CollectorContext, FatalSignal, HttpCollector } from '../../core/snapshot/collector.ts';
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import type {
   DocumentResponse,
@@ -19,22 +19,38 @@ import type {
 import type { CollectorError, DiagnosticInput } from '../../core/snapshot/index.ts';
 import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { isHttpUrl, isSameSite, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
-import { DEFAULT_TLS_TIMEOUT_MS, probeTlsEndpoint } from '../tls/probe.ts';
-import {
-  type ChainOutcome,
-  type FetchResult,
-  HttpClient,
-  type HttpClientOptions,
-  outcomeOf,
-  ProbeError,
-} from './client.ts';
+import { DEFAULT_TLS_PORT, probeTlsEndpoint } from '../tls/probe.ts';
+import { type FetchResult, HttpClient, type HttpClientOptions } from './client.ts';
+import { type ChainOutcome, outcomeOf, ProbeError } from './errors.ts';
 import { type HostTarget, hostVariants } from './hosts.ts';
 import { detectClientRedirect, detectForm, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
 
-export const MAX_REDIRECTS = 5;
 /** Link discovery on the start page reads this much; the heuristics use the first 64 KiB. */
 const DOCUMENT_READ_BYTES = 512 * 1024;
+/** Statuses that continue a chain when they come with a `Location`. */
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+/** Outcomes that, with no hop at all, mean the origin could not be reached. */
+const UNREACHABLE_OUTCOMES: ReadonlySet<string> = new Set(['connection-refused', 'dns-error', 'timeout']);
+/** Shape of a header name: `<meta http-equiv>` names are untrusted page text. */
+const META_NAME = /^[a-z][a-z0-9._-]{0,39}$/;
+/** Limit for ordinary records; CSP stays available to the security-header check regardless of document order. */
+const MAX_META_HTTP_EQUIV = 32;
+// Referrer-Policy keywords HDR-01 recognises (`effectiveReferrerPolicy`; a unit test pins the two lists together). Old
+// `<meta name="referrer">` values (`never`, `default`, `always`) are not read by the check, so they are not stored.
+const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
+  'no-referrer',
+  'no-referrer-when-downgrade',
+  'origin',
+  'origin-when-cross-origin',
+  'same-origin',
+  'strict-origin',
+  'strict-origin-when-cross-origin',
+  'unsafe-url',
+]);
+/** The last recognised keyword is in force, so a longer list keeps its last ones. */
+const MAX_REFERRER_KEYWORDS = 8;
 
+/** Overrides of `ctx.config.http` and `ctx.config.tls.timeoutMs` (tests). */
 export interface HttpCollectorOptions {
   minIntervalMs?: number;
   timeouts?: HttpClientOptions['timeouts'];
@@ -48,8 +64,6 @@ function isHtml(contentType: string | null, body: Buffer): boolean {
   if (contentType) return /html|xml/i.test(contentType);
   return /^\s*</.test(body.subarray(0, 256).toString('latin1'));
 }
-
-const isRedirectStatus = (s: number) => [301, 302, 303, 307, 308].includes(s);
 
 interface ChainRun {
   chain: RedirectChain;
@@ -71,17 +85,21 @@ function toHop(r: FetchResult): HttpHop {
     requestedAt: r.requestedAt,
   };
   if (r.location) hop.location = sanitizeUrl(r.location);
+
   if (r.url.startsWith('https:')) {
     hop.tlsProtocol = r.conn?.protocol ?? null;
     hop.tlsAuthorized = r.conn?.authorized ?? null;
     hop.tlsAuthorizationError = r.conn?.authorizationError ?? null;
   }
+
+  // Only a plain-http success page is inspected: TLS-01 asks what it could redirect to or collect.
   if (r.url.startsWith('http:') && r.status >= 200 && r.status < 300 && html) {
     const prefix = r.body.subarray(0, HEURISTIC_BYTES).toString('utf8');
     const client = detectClientRedirect(prefix, r.url);
     if (client) hop.clientRedirect = { kind: client.kind, url: client.url ? sanitizeUrl(client.url) : null };
     hop.hasForm = detectForm(prefix);
   }
+
   return hop;
 }
 
@@ -96,14 +114,9 @@ function errorOf(err: unknown, url: string): CollectorError {
   };
 }
 
-async function followChain(
-  client: HttpClient,
-  startUrl: string,
-  hostVariant: HostVariant,
-  id: string,
-): Promise<ChainRun> {
+function emptyChain(startUrl: string, hostVariant: HostVariant, id: string): RedirectChain {
   const u = new URL(startUrl);
-  const chain: RedirectChain = {
+  return {
     id,
     hostVariant,
     host: u.hostname,
@@ -113,8 +126,19 @@ async function followChain(
     final: null,
     outcome: 'ok',
   };
+}
+
+// `last` is the final response of a chain that ended normally; a failed or cut-off chain has none.
+async function followChain(
+  client: HttpClient,
+  startUrl: string,
+  hostVariant: HostVariant,
+  id: string,
+  maxRedirects: number,
+): Promise<ChainRun> {
+  const chain = emptyChain(startUrl, hostVariant, id);
   let url = startUrl;
-  let last: FetchResult | null = null;
+
   for (let i = 0; ; i++) {
     let r: FetchResult;
     try {
@@ -124,25 +148,26 @@ async function followChain(
       chain.error = errorOf(err, url);
       return { chain, last: null };
     }
+
     const hop = toHop(r);
     chain.hops.push(hop);
-    last = r;
-    if (isRedirectStatus(r.status) && r.location) {
-      const next = new URL(r.location);
-      if (!isHttpUrl(next)) {
-        chain.outcome = 'error';
-        chain.error = { code: 'unsupported-redirect', message: next.protocol, phase: 'http', url: hop.url };
-        return { chain, last: null };
-      }
-      if (i >= MAX_REDIRECTS) {
-        chain.outcome = 'redirect-limit';
-        return { chain, last: null };
-      }
-      url = next.href;
-      continue;
+
+    if (!REDIRECT_STATUSES.has(r.status) || !r.location) {
+      chain.final = hop;
+      return { chain, last: r };
     }
-    chain.final = hop;
-    return { chain, last };
+
+    const next = new URL(r.location);
+    if (!isHttpUrl(next)) {
+      chain.outcome = 'error';
+      chain.error = { code: 'unsupported-redirect', message: next.protocol, phase: 'http', url: hop.url };
+      return { chain, last: null };
+    }
+    if (i >= maxRedirects) {
+      chain.outcome = 'redirect-limit';
+      return { chain, last: null };
+    }
+    url = next.href;
   }
 }
 
@@ -153,10 +178,6 @@ function storedMeta(meta: HeaderRecord, base: string): HeaderRecord {
   const { frameAncestors: _fact, ...record } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
   return record;
 }
-
-const META_NAME = /^[a-z][a-z0-9._-]{0,39}$/;
-/** Limit for ordinary records; CSP stays available to the security-header check regardless of document order. */
-const MAX_META_HTTP_EQUIV = 32;
 
 // The name is untrusted page text and `storedMeta` edits only the value, so a name that is not shaped like a header
 // name (30 000 characters, an address in it) is not stored. The first 32 valid records are kept in document order.
@@ -170,36 +191,24 @@ export function storedMetaHttpEquiv(records: readonly HeaderRecord[], base: stri
   return out;
 }
 
-// Referrer-Policy keywords HDR-01 recognises (`effectiveReferrerPolicy`; a unit test pins the two lists together). Old
-// `<meta name="referrer">` values (`never`, `default`, `always`) are not read by the check, so they are not stored.
-const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
-  'no-referrer',
-  'no-referrer-when-downgrade',
-  'origin',
-  'origin-when-cross-origin',
-  'same-origin',
-  'strict-origin',
-  'strict-origin-when-cross-origin',
-  'unsafe-url',
-]);
-/** The last recognised keyword is in force, so a longer list keeps its last ones. */
-const MAX_REFERRER_KEYWORDS = 8;
-
 // Keywords as written, comma separated, the last eight at most: restricting vocabulary and count keeps an untrusted tag
 // from expanding the snapshot.
 export function storedMetaReferrer(content: string | null): string | null {
   const text = content ?? '';
   const kept: string[] = [];
+
   for (let from = 0; from <= text.length; ) {
     const comma = text.indexOf(',', from);
     const end = comma < 0 ? text.length : comma;
     const token = text.slice(from, end).trim();
+
     if (REFERRER_KEYWORDS.has(token.toLowerCase())) {
       kept.push(token);
       if (kept.length > MAX_REFERRER_KEYWORDS) kept.shift();
     }
     from = end + 1;
   }
+
   return kept.length > 0 ? kept.join(', ') : null;
 }
 
@@ -210,6 +219,7 @@ function documentFrom(
 ): DocumentResponse {
   const lastHop = run.chain.hops.at(-1) ?? null;
   const final = run.chain.final;
+
   const doc: DocumentResponse = {
     role,
     url: run.chain.startUrl,
@@ -222,15 +232,18 @@ function documentFrom(
     chainId: run.chain.id,
     foundVia,
   };
+
   if (final) {
     doc.tlsAuthorized = final.tlsAuthorized ?? null;
     doc.tlsAuthorizationError = final.tlsAuthorizationError ?? null;
   }
+
   if (run.last && isHtml(run.last.contentType, run.last.body)) {
     const meta = extractMeta(run.last.body.subarray(0, HEURISTIC_BYTES).toString('utf8'));
     doc.metaHttpEquiv = storedMetaHttpEquiv(meta.httpEquiv, run.last?.url ?? run.chain.startUrl);
     doc.metaReferrer = storedMetaReferrer(meta.referrer);
   }
+
   if (!final) {
     doc.error = run.chain.error ?? {
       code: run.chain.outcome,
@@ -259,7 +272,18 @@ function explicitPort(url: string): number | null {
 }
 
 const unreachable = (c: RedirectChain | undefined) =>
-  !c || (c.hops.length === 0 && ['connection-refused', 'dns-error', 'timeout'].includes(c.outcome));
+  !c || (c.hops.length === 0 && UNREACHABLE_OUTCOMES.has(c.outcome));
+
+/** Port of the final host's handshake: the one its start-page URL names, else the standard one. */
+function finalHostPort(finalUrl: string, finalHost: string): number {
+  try {
+    const u = new URL(finalUrl);
+    if (u.protocol === 'https:' && u.hostname.toLowerCase() === finalHost && u.port) return Number(u.port);
+  } catch {
+    // not a URL: the standard port
+  }
+  return DEFAULT_TLS_PORT;
+}
 
 // The start page ended on a host outside target/www/apex. The parallel TLS collector cannot know it, so its certificate
 // (and the www/apex ones) is probed here: a handshake only, no HTTP request; TLS-02 reads `finalTls`.
@@ -271,19 +295,15 @@ async function probeFinalHost(
 ): Promise<{ endpoints: TlsEndpoint[]; probes: ProbeRecord[] } | null> {
   const finalHost = startFinalHost(section);
   if (!finalHost || known.some((t) => t.host.toLowerCase() === finalHost)) return null;
+
   const start = section.documents.find((d) => d.role === 'start');
-  let finalPort = 443;
-  try {
-    const u = new URL(start?.finalUrl ?? '');
-    if (u.protocol === 'https:' && u.hostname.toLowerCase() === finalHost && u.port)
-      finalPort = Number(u.port);
-  } catch {
-    finalPort = 443;
-  }
+  const finalPort = finalHostPort(start?.finalUrl ?? '', finalHost);
+
   // Hosts the TLS collector already covers (e.g. the www/apex of a sibling subdomain) are not probed twice.
   const targets = hostVariants(finalHost, registrableDomain(finalHost))
     .filter((t) => !known.some((k) => k.host.toLowerCase() === t.host.toLowerCase()))
-    .map((t) => ({ ...t, port: t.hostVariant === 'target' ? finalPort : 443 }));
+    .map((t) => ({ ...t, port: t.hostVariant === 'target' ? finalPort : DEFAULT_TLS_PORT }));
+
   const endpoints = await Promise.all(
     targets.map((t) => probeTlsEndpoint(ctx, t, t.port, timeoutMs, 'final')),
   );
@@ -291,75 +311,152 @@ async function probeFinalHost(
     kind: 'tls',
     class: 'T',
     target: `${t.host}:${t.port}`,
-    // Same purpose as the TLS collector's handshakes (canary/README.md rule 1 lists probe purposes).
+    // Same purpose as the TLS collector's handshakes (README.md, section "Was der Scanner sendet", lists the purposes).
     purpose: 'certificate',
   }));
   return { endpoints, probes };
 }
 
+type ProbeLog = (target: string, purpose: string) => void;
+
+function createClient(ctx: CollectorContext, opts: HttpCollectorOptions): HttpClient {
+  const cfg = ctx.config.http;
+  return new HttpClient({
+    network: ctx.network,
+    userAgent: ctx.userAgent.http,
+    signal: ctx.signal,
+    now: ctx.now,
+    minIntervalMs: opts.minIntervalMs ?? cfg.minIntervalMs,
+    timeouts: {
+      connectMs: cfg.connectTimeoutMs,
+      headersMs: cfg.headersTimeoutMs,
+      bodyMs: cfg.bodyTimeoutMs,
+      requestMs: cfg.requestTimeoutMs,
+      ...opts.timeouts,
+    },
+    ...(opts.maxRetryAfterMs !== undefined ? { maxRetryAfterMs: opts.maxRetryAfterMs } : {}),
+  });
+}
+
+/** The http:// and https:// chain of one host variant, one after the other. */
+async function followVariant(
+  ctx: CollectorContext,
+  client: HttpClient,
+  probe: ProbeLog,
+  t: HostTarget,
+  maxRedirects: number,
+): Promise<ChainRun[]> {
+  const out: ChainRun[] = [];
+  for (const scheme of ['http', 'https'] as const) {
+    const start = startUrlFor(ctx, t, scheme);
+    probe(start, 'redirect-chain');
+    out.push(
+      await followChain(client, start, t.hostVariant, `chain-${t.hostVariant}-${scheme}`, maxRedirects),
+    );
+  }
+  return out;
+}
+
+/** A target with an explicit port is loaded from exactly that origin (start document, reachability). */
+async function followExplicitPort(
+  ctx: CollectorContext,
+  client: HttpClient,
+  probe: ProbeLog,
+  port: number,
+  maxRedirects: number,
+): Promise<ChainRun[]> {
+  probe(ctx.target.url, 'redirect-chain');
+  const run = await followChain(client, ctx.target.url, 'target', 'chain-target-origin', maxRedirects);
+  run.chain.port = port;
+  return [run];
+}
+
+function pickStartRun(ctx: CollectorContext, runs: readonly ChainRun[], port: number | null): ChainRun {
+  return runs.find((r) =>
+    port === null
+      ? r.chain.hostVariant === 'target' && r.chain.scheme === ctx.target.scheme && r.chain.port === undefined
+      : r.chain.port === port,
+  ) as ChainRun;
+}
+
+/** Impressum and privacy pages that the start page links on the same site (the browser plan does not exist yet). */
+async function followLegalPages(
+  ctx: CollectorContext,
+  client: HttpClient,
+  probe: ProbeLog,
+  startRun: ChainRun,
+  maxRedirects: number,
+): Promise<DocumentResponse[]> {
+  const start = startRun.last;
+  if (!start || start.status < 200 || start.status >= 300 || !isHtml(start.contentType, start.body))
+    return [];
+
+  const links = findLegalLinks(start.body.toString('utf8'), start.url);
+  const documents: DocumentResponse[] = [];
+  for (const role of ['impressum', 'privacy'] as const) {
+    const href = links[role];
+    if (!href || !isSameSite(new URL(href).hostname, ctx.target.host)) continue;
+
+    probe(href, `security-headers:${role}`);
+    const run = await followChain(client, href, 'target', `doc-${role}`, maxRedirects);
+    documents.push(documentFrom(role, run, 'link'));
+  }
+  return documents;
+}
+
+/** Set when neither the standard origins nor, with an explicit port, that origin answered at all. */
+function startPageFatal(
+  ctx: CollectorContext,
+  chains: readonly RedirectChain[],
+  startRun: ChainRun,
+  port: number | null,
+): FatalSignal | undefined {
+  if (ctx.signal.aborted) return undefined;
+
+  const standard = (scheme: 'http' | 'https') =>
+    chains.find((c) => c.hostVariant === 'target' && c.scheme === scheme && c.port === undefined);
+  const http = standard('http');
+  const https = standard('https');
+
+  // With an explicit port only that origin decides reachability; the standard ports are extra probes.
+  const down = port === null ? unreachable(http) && unreachable(https) : unreachable(startRun.chain);
+  if (!down) return undefined;
+
+  return {
+    reason: 'unreachable',
+    code: 'start-page-unreachable',
+    params: {
+      reason:
+        port === null
+          ? `${ctx.target.host}: http ${http?.outcome}, https ${https?.outcome}`
+          : `${sanitizeUrl(ctx.target.url)}: ${startRun.chain.outcome}`,
+    },
+  };
+}
+
 export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollector {
   return async (ctx) => {
-    const client = new HttpClient({
-      network: ctx.network,
-      userAgent: ctx.userAgent.http,
-      signal: ctx.signal,
-      now: ctx.now,
-      ...(opts.minIntervalMs !== undefined ? { minIntervalMs: opts.minIntervalMs } : {}),
-      ...(opts.timeouts ? { timeouts: opts.timeouts } : {}),
-      ...(opts.maxRetryAfterMs !== undefined ? { maxRetryAfterMs: opts.maxRetryAfterMs } : {}),
-    });
+    const client = createClient(ctx, opts);
     const probes: ProbeRecord[] = [];
-    const probe = (target: string, purpose: string) =>
+    const probe: ProbeLog = (target, purpose) =>
       probes.push({ kind: 'http', class: 'T', target: sanitizeUrl(target), purpose });
+
     try {
+      const maxRedirects = ctx.config.http.maxRedirects;
       const targets = hostVariants(ctx.target.host, ctx.target.etld1);
       const port = explicitPort(ctx.target.url);
+
       const runs = (
         await Promise.all([
-          ...targets.map(async (t) => {
-            const out: ChainRun[] = [];
-            for (const scheme of ['http', 'https'] as const) {
-              const start = startUrlFor(ctx, t, scheme);
-              probe(start, 'redirect-chain');
-              out.push(await followChain(client, start, t.hostVariant, `chain-${t.hostVariant}-${scheme}`));
-            }
-            return out;
-          }),
-          // A target with an explicit port is loaded from exactly that origin (start document, reachability).
-          ...(port === null
-            ? []
-            : [
-                (async () => {
-                  probe(ctx.target.url, 'redirect-chain');
-                  const run = await followChain(client, ctx.target.url, 'target', `chain-target-origin`);
-                  run.chain.port = port;
-                  return [run];
-                })(),
-              ]),
+          ...targets.map((t) => followVariant(ctx, client, probe, t, maxRedirects)),
+          ...(port === null ? [] : [followExplicitPort(ctx, client, probe, port, maxRedirects)]),
         ])
       ).flat();
-
-      const startRun = runs.find((r) =>
-        port === null
-          ? r.chain.hostVariant === 'target' &&
-            r.chain.scheme === ctx.target.scheme &&
-            r.chain.port === undefined
-          : r.chain.port === port,
-      ) as ChainRun;
-      const documents: DocumentResponse[] = [documentFrom('start', startRun, 'target')];
-
-      const start = startRun.last;
-      if (start && start.status >= 200 && start.status < 300 && isHtml(start.contentType, start.body)) {
-        const links = findLegalLinks(start.body.toString('utf8'), start.url);
-        for (const role of ['impressum', 'privacy'] as const) {
-          const href = links[role];
-          if (!href || !isSameSite(new URL(href).hostname, ctx.target.host)) continue;
-          probe(href, `security-headers:${role}`);
-          documents.push(
-            documentFrom(role, await followChain(client, href, 'target', `doc-${role}`), 'link'),
-          );
-        }
-      }
+      const startRun = pickStartRun(ctx, runs, port);
+      const documents = [
+        documentFrom('start', startRun, 'target'),
+        ...(await followLegalPages(ctx, client, probe, startRun, maxRedirects)),
+      ];
 
       const chains = runs.map((r) => r.chain);
       const errors = chains.flatMap((c) => (c.error ? [c.error] : []));
@@ -369,9 +466,10 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
             ctx,
             { chains, documents },
             targets,
-            opts.tlsTimeoutMs ?? DEFAULT_TLS_TIMEOUT_MS,
+            opts.tlsTimeoutMs ?? ctx.config.tls.timeoutMs,
           );
       if (final) probes.push(...final.probes);
+
       const section: HttpSection = {
         userAgent: ctx.userAgent.http,
         chains,
@@ -385,26 +483,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
       const diagnostics: DiagnosticInput[] = client.throttled
         ? [{ code: 'SCAN-THROTTLED', affects: ['HDR-01', 'TLS-01'] }]
         : [];
-
-      const standard = (scheme: 'http' | 'https') =>
-        chains.find((c) => c.hostVariant === 'target' && c.scheme === scheme && c.port === undefined);
-      const http = standard('http');
-      const https = standard('https');
-      // With an explicit port only that origin decides reachability; the standard ports are extra probes.
-      const down = port === null ? unreachable(http) && unreachable(https) : unreachable(startRun.chain);
-      const fatal =
-        !ctx.signal.aborted && down
-          ? {
-              reason: 'unreachable' as const,
-              code: 'start-page-unreachable',
-              params: {
-                reason:
-                  port === null
-                    ? `${ctx.target.host}: http ${http?.outcome}, https ${https?.outcome}`
-                    : `${sanitizeUrl(ctx.target.url)}: ${startRun.chain.outcome}`,
-              },
-            }
-          : undefined;
+      const fatal = startPageFatal(ctx, chains, startRun, port);
 
       return {
         status: client.throttled || ctx.signal.aborted ? 'partial' : 'ok',

@@ -14,18 +14,16 @@ concurrency:
 env:
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
   COREPACK_VERSION: 0.36.0
+  # Parallel test files: the reference runner has 4 vCPU and 16 GB; a repository variable overrides it.
+  DSGVO_TEST_WORKERS: ${{ vars.DSGVO_TEST_WORKERS || '4' }}
 
 jobs:
   test:
-    name: test (Node ${{ matrix.node }})
+    name: test
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["24", "26"]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,12 +31,12 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version-file: .node-version
 
+      # Node 26 no longer bundles corepack, which runs the pnpm version pinned in package.json.
       - name: corepack
         run: |
-          if ! command -v corepack > /dev/null; then npm install --global "corepack@${COREPACK_VERSION}"; fi
-          corepack --version
+          npm install --global "corepack@${COREPACK_VERSION}"
           corepack pnpm --version
 
       - name: pnpm store path
@@ -48,8 +46,8 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-store.outputs.dir }}
-          key: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('.node-version', 'pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
 
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
@@ -71,7 +69,7 @@ jobs:
         run: node dist/cli.js report test/fixtures/reports/sample-full.report.json --format html,pdf --out report-preview
       - uses: actions/upload-artifact@v7
         with:
-          name: offline-html-pdf-report-${{ matrix.node }}
+          name: offline-html-pdf-report
           path: report-preview/
           retention-days: 14
 
@@ -94,12 +92,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Allow unprivileged user namespaces for the Chromium sandbox
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version-file: .node-version
+      - name: corepack
+        run: npm install --global "corepack@${COREPACK_VERSION}"
       - name: Package version
         id: version
         run: node .github/scripts/version.ts
@@ -112,7 +109,7 @@ jobs:
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
 
-      - name: End-to-end in Docker (exit codes, hardened flags, Chromium sandbox with the seccomp profile)
+      - name: End-to-end in Docker (exit codes, hardened flags, container sandbox mode)
         run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
         env:
           DSGVO_E2E_IMAGE: dsgvo-check:ci

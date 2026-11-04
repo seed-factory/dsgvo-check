@@ -31,12 +31,15 @@ const tmp = () => mkdtempSync(path.join(tmpdir(), 'canary-run-'));
 const readMeta = (runDir: string, id: string): SiteMeta =>
   JSON.parse(readFileSync(path.join(runDir, id, 'meta.json'), 'utf8')) as SiteMeta;
 const noSleep = async () => {};
+/** Runner dependencies without pauses and log output. */
+const quiet = (scanner: SiteScanner) => ({ scanner, sleep: noSleep, log: () => {} });
 
 /** Fake scanner: writes report.json (+ snapshot.json) like the real API would. */
 function fakeScanner(opts: { delayMs?: number; failIds?: string[]; throwIds?: string[] } = {}) {
   const started: string[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
+
   const scanner: SiteScanner = async (job: SiteJob) => {
     started.push(job.site.id);
     inFlight++;
@@ -44,6 +47,7 @@ function fakeScanner(opts: { delayMs?: number; failIds?: string[]; throwIds?: st
     try {
       await new Promise((r) => setTimeout(r, opts.delayMs ?? 5));
       if (opts.throwIds?.includes(job.site.id)) throw new Error(`boom at ${job.site.url}`);
+
       const failed = opts.failIds?.includes(job.site.id);
       const report = failed ? sampleFailedReport() : sampleFullReport();
       writeFileSync(job.reportPath, JSON.stringify(report));
@@ -53,6 +57,7 @@ function fakeScanner(opts: { delayMs?: number; failIds?: string[]; throwIds?: st
       inFlight--;
     }
   };
+
   return { scanner, started, max: () => maxInFlight };
 }
 
@@ -61,6 +66,7 @@ describe('runPool', () => {
     const dispatched: number[] = [];
     let inFlight = 0;
     let max = 0;
+
     await runPool([0, 1, 2, 3, 4], { concurrency: 2, pauseMs: 0, sleep: async () => {} }, async (item) => {
       dispatched.push(item);
       inFlight++;
@@ -68,6 +74,7 @@ describe('runPool', () => {
       await new Promise((r) => setTimeout(r, item === 0 ? 20 : 1));
       inFlight--;
     });
+
     expect(dispatched).toEqual([0, 1, 2, 3, 4]);
     expect(max).toBe(2);
   });
@@ -76,6 +83,7 @@ describe('runPool', () => {
 describe('parseRunnerArgs', () => {
   it('has polite defaults', () => {
     const a = parseRunnerArgs([], FIXED_NOW);
+
     expect(a).toMatchObject({
       concurrency: 3,
       pauseMs: 5000,
@@ -121,6 +129,7 @@ describe('parseRunnerArgs', () => {
       ],
       FIXED_NOW,
     );
+
     expect(a).toMatchObject({
       regions: ['de', 'non-eu'],
       ids: ['de-a', 'de-b'],
@@ -154,6 +163,7 @@ describe('parseRunnerArgs', () => {
 
   it('names a reanalysis run after its source run', () => {
     const a = parseRunnerArgs(['--reanalyze', '20261029-080000'], FIXED_NOW);
+
     expect(a.reanalyze).toBe('20261029-080000');
     expect(a.runId).toBe('20261029-080000.re-20261030-120000');
   });
@@ -198,6 +208,7 @@ describe('runCanary', () => {
     const list = sites(5);
     const fake = fakeScanner({ failIds: ['de-s3'] });
     const sleeps: number[] = [];
+
     const res = await runCanary(base(dir, list), {
       scanner: fake.scanner,
       sleep: async (ms) => {
@@ -205,6 +216,7 @@ describe('runCanary', () => {
       },
       log: () => {},
     });
+
     // Dispatch order is pinned by the runPool test; with 2 workers the scanner calls may interleave (async mkdir).
     expect([...fake.started].sort()).toEqual(['de-s0', 'de-s1', 'de-s2', 'de-s3', 'de-s4']);
     expect(fake.max()).toBeLessThanOrEqual(2);
@@ -224,6 +236,7 @@ describe('runCanary', () => {
     });
     expect(ok.durationMs).toBeGreaterThanOrEqual(0);
     expect(readMeta(runDir, 'de-s3')).toMatchObject({ exitCode: 2, scanStatus: 'failed', error: null });
+
     const run = JSON.parse(readFileSync(path.join(runDir, 'run.json'), 'utf8'));
     expect(run.sites.map((s: { id: string }) => s.id)).toEqual(list.map((s) => s.id));
     expect(run.options).toMatchObject({ concurrency: 2, timeoutMs: 1000, engine: 'api' });
@@ -232,22 +245,23 @@ describe('runCanary', () => {
   it('resumes: finished sites are skipped, runner errors only with retryErrors', async () => {
     const dir = tmp();
     const list = sites(3);
+
+    // first run: one site throws
     const first = fakeScanner({ throwIds: ['de-s1'] });
-    await runCanary(base(dir, list), { scanner: first.scanner, sleep: noSleep, log: () => {} });
+    await runCanary(base(dir, list), quiet(first.scanner));
     const err = readMeta(path.join(dir, 'run-a'), 'de-s1');
     expect(err.error).toMatchObject({ code: 'runner-exception' });
     expect(err.exitCode).toBeNull();
 
+    // second run: everything is finished or recorded, so nothing is scanned
     const second = fakeScanner();
-    const res = await runCanary(base(dir, list), { scanner: second.scanner, sleep: noSleep, log: () => {} });
+    const res = await runCanary(base(dir, list), quiet(second.scanner));
     expect(second.started).toEqual([]);
     expect(res).toMatchObject({ planned: 3, scanned: 0, skipped: 3 });
 
+    // third run: retryErrors picks up only the failed site
     const third = fakeScanner();
-    await runCanary(
-      { ...base(dir, list), retryErrors: true },
-      { scanner: third.scanner, sleep: noSleep, log: () => {} },
-    );
+    await runCanary({ ...base(dir, list), retryErrors: true }, quiet(third.scanner));
     expect(third.started).toEqual(['de-s1']);
     expect(readMeta(path.join(dir, 'run-a'), 'de-s1').error).toBeNull();
   });
@@ -263,10 +277,9 @@ describe('runCanary', () => {
       });
       return new Promise(() => {});
     };
-    await runCanary(
-      { ...base(dir, list), timeoutMs: 5, watchdogReserveMs: 5 },
-      { scanner, sleep: noSleep, log: () => {} },
-    );
+
+    await runCanary({ ...base(dir, list), timeoutMs: 5, watchdogReserveMs: 5 }, quiet(scanner));
+
     const runDir = path.join(dir, 'run-a');
     expect(readMeta(runDir, 'de-s0').error).toMatchObject({ code: 'report-missing' });
     expect(readMeta(runDir, 'de-s1').error).toMatchObject({ code: 'watchdog-timeout' });
@@ -281,16 +294,17 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
     registry: new CheckRegistry([]),
     now: () => FIXED_NOW,
   };
+  const apiOptions = (scanOverrides: typeof overrides) => ({
+    sandbox: 'require' as const,
+    screenshots: false,
+    assumeRegion: null,
+    scanOverrides,
+  });
 
   it('writes report.json and snapshot.json, and reanalyzes from the saved snapshot without network', async () => {
     const dir = tmp();
     const list = sites(1);
-    const scanner = apiScanner({
-      sandbox: 'require',
-      screenshots: false,
-      assumeRegion: null,
-      scanOverrides: overrides,
-    });
+
     await runCanary(
       {
         sites: list,
@@ -304,26 +318,24 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
         engine: 'api',
         sitesFile: 'x',
       },
-      { scanner, sleep: noSleep, log: () => {} },
+      quiet(apiScanner(apiOptions(overrides))),
     );
+
     const meta = readMeta(path.join(dir, 'live'), 'de-s0');
     expect(meta).toMatchObject({ exitCode: 0, error: null, files: { report: true, snapshot: true } });
     expect(['complete', 'partial']).toContain(meta.scanStatus);
 
     // Reanalysis must not touch the network: a lookup that throws proves it.
-    const offline = apiScanner({
-      sandbox: 'require',
-      screenshots: false,
-      assumeRegion: null,
-      scanOverrides: {
+    const offline = apiScanner(
+      apiOptions({
         ...overrides,
         network: {
           lookup: async () => {
             throw new Error('network used during reanalysis');
           },
         },
-      },
-    });
+      }),
+    );
     const res = await reanalyzeRun(
       {
         resultsDir: dir,
@@ -334,8 +346,9 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
         watchdogReserveMs: 5_000,
         filter: {},
       },
-      { scanner: offline, sleep: noSleep, log: () => {} },
+      quiet(offline),
     );
+
     expect(res).toMatchObject({ planned: 1, scanned: 1, kept: 0 });
     const re = readMeta(path.join(dir, 'live.re'), 'de-s0');
     expect(re).toMatchObject({ mode: 'reanalyze', reanalyzedFrom: 'live', error: null, exitCode: 0 });
@@ -370,6 +383,7 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
     };
     writeFileSync(path.join(src, 'meta.json'), JSON.stringify(meta));
     let called = false;
+
     const res = await reanalyzeRun(
       {
         resultsDir: dir,
@@ -380,15 +394,12 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
         watchdogReserveMs: 1000,
         filter: {},
       },
-      {
-        scanner: async () => {
-          called = true;
-          return { exitCode: 0 };
-        },
-        sleep: noSleep,
-        log: () => {},
-      },
+      quiet(async () => {
+        called = true;
+        return { exitCode: 0 };
+      }),
     );
+
     expect(called).toBe(false);
     expect(res).toMatchObject({ planned: 1, scanned: 0, kept: 1 });
     const re = readMeta(path.join(dir, 'src.re'), 'de-s0');

@@ -1,3 +1,7 @@
+/**
+ * `openTunnel` through a local HTTPS proxy with the test PKI: the proxy certificate is validated first, an authenticated
+ * CONNECT carries data both ways, and a refusal is reported with its status.
+ */
 import { once } from 'node:events';
 import https from 'node:https';
 import net, { type AddressInfo } from 'node:net';
@@ -59,6 +63,31 @@ async function echoServer(): Promise<number> {
   return port;
 }
 
+/** Answers a CONNECT: 200 tunnels to the local echo server, any other status refuses with that status. */
+function answerConnect(
+  client: Duplex,
+  head: Buffer,
+  targetPort: number,
+  status: number,
+  sockets: Set<Duplex>,
+): void {
+  if (status !== 200) {
+    client.end(`HTTP/1.1 ${status} Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n`);
+    return;
+  }
+
+  // The requested authority is recorded by the caller, but every connection stays on the local echo server.
+  const upstream = net.connect(targetPort, '127.0.0.1', () => {
+    client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    upstream.write(head);
+    upstream.pipe(client);
+    client.pipe(upstream);
+  });
+  track(sockets, upstream);
+  upstream.on('error', () => client.destroy());
+  client.on('error', () => upstream.destroy());
+}
+
 async function httpsProxy(targetPort: number, status = 200) {
   const sockets = new Set<Duplex>();
   const requests: Array<{ authority: string; authorization: string | undefined }> = [];
@@ -68,20 +97,7 @@ async function httpsProxy(targetPort: number, status = 200) {
   server.on('connect', (request, client, head) => {
     requests.push({ authority: request.url ?? '', authorization: request.headers['proxy-authorization'] });
     track(sockets, client);
-    if (status !== 200) {
-      client.end(`HTTP/1.1 ${status} Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n`);
-      return;
-    }
-    // The requested authority is recorded, but every connection stays on the local echo server.
-    const upstream = net.connect(targetPort, '127.0.0.1', () => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      upstream.write(head);
-      upstream.pipe(client);
-      client.pipe(upstream);
-    });
-    track(sockets, upstream);
-    upstream.on('error', () => client.destroy());
-    client.on('error', () => upstream.destroy());
+    answerConnect(client, head, targetPort, status, sockets);
   });
   const port = await listen(server, 'localhost');
   cleanup.push(dispose(server, sockets));
@@ -109,9 +125,11 @@ describe('CONNECT through an HTTPS proxy', () => {
     try {
       expect(socket).toBeInstanceOf(TLSSocket);
       expect((socket as TLSSocket).authorized).toBe(true);
+
       const received = once(socket, 'data');
       socket.write('tunnel-payload');
       expect((await received)[0].toString()).toBe('tunnel-payload');
+
       expect(proxy.requests).toEqual([
         {
           authority: 'localhost:443',

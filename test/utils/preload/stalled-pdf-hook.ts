@@ -11,13 +11,16 @@ if (process.env.DSGVO_TEST_STALLED_PDF === '1') {
   const record = (type: string, profile?: string) => {
     appendFileSync(eventsFile, `${JSON.stringify({ type, at: Date.now(), profile })}\n`);
   };
+
   const launch = chromium.launchPersistentContext.bind(chromium);
   chromium.launchPersistentContext = async (...args) => {
     // Reports are written before PDF conversion, so this captures the same scan's pre-print JSON.
     copyFileSync(reportFile, beforeFile);
     record('launch', args[0]);
+
     const context = await launch(...args);
     record('ready');
+
     const page = context.pages()[0] ?? (await context.newPage());
     page.pdf = async () => {
       record('print');

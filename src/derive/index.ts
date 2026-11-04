@@ -87,11 +87,11 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   const catalog = opts.catalog ?? loadServiceCatalog(opts.dataDir);
   const host = snapshot.target.finalHost ?? snapshot.target.host;
   const scope = new FirstPartyScope([host, snapshot.target.host]);
+
   const requests: ClassifiedRequest[] = [];
   const cookies: ClassifiedCookie[] = [];
   const storage: ClassifiedStorage[] = [];
   const hints: ClassifiedHint[] = [];
-
   for (const phase of snapshot.browser?.phases ?? []) {
     for (const page of phase.pages) hints.push(...classifyHints(catalog, scope, phase, page));
     for (const r of phase.requests) {
@@ -103,15 +103,9 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   }
 
   const services = aggregateServices(snapshot, requests, cookies, storage);
-  const ids = new Set<string>();
-  for (const x of [...requests, ...cookies, ...storage, ...hints]) if (x.serviceId) ids.add(x.serviceId);
-  const info: Record<string, ServiceInfo> = {};
-  for (const id of [...ids].sort()) {
-    const i = catalog.info(id);
-    if (i) info[id] = i;
-  }
-
+  const info = serviceInfoFor(catalog, [...requests, ...cookies, ...storage, ...hints]);
   const meta = catalog.data.catalog;
+
   return {
     catalogVersion: meta.version,
     datasets: [
@@ -133,6 +127,22 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
     firstPartyEtld1s: [...scope.etld1s].sort(),
     allowlistVersion: catalog.allowlistVersion,
   };
+}
+
+/** Catalog entries of every service that appears in the classified facts, ordered by id. */
+function serviceInfoFor(
+  catalog: ServiceCatalog,
+  facts: readonly { serviceId: string | null }[],
+): Record<string, ServiceInfo> {
+  const ids = new Set<string>();
+  for (const x of facts) if (x.serviceId) ids.add(x.serviceId);
+
+  const info: Record<string, ServiceInfo> = {};
+  for (const id of [...ids].sort()) {
+    const entry = catalog.info(id);
+    if (entry) info[id] = entry;
+  }
+  return info;
 }
 
 export function timingOf(
@@ -201,13 +211,10 @@ export function integrationFromKind(category: ServiceCategory, kind: RequestKind
   return INTEGRATION_BY_KIND.get(kind) ?? 'other';
 }
 
-const GCD_DENIED = new Set(['p', 'q', 'm', 'u']);
-const GCD_GRANTED = new Set(['t', 'r', 'n', 'v']);
-
-function gcdLetter(ch: string | undefined): 'granted' | 'denied' | null {
+function gcdLetter(ch: string | undefined, catalog: ServiceCatalog): 'granted' | 'denied' | null {
   if (!ch) return null;
-  if (GCD_DENIED.has(ch)) return 'denied';
-  if (GCD_GRANTED.has(ch)) return 'granted';
+  if (catalog.data.consentMode.gcdDenied.includes(ch)) return 'denied';
+  if (catalog.data.consentMode.gcdGranted.includes(ch)) return 'granted';
   return null;
 }
 
@@ -215,6 +222,7 @@ function gcdLetter(ch: string | undefined): 'granted' | 'denied' | null {
 export function decodeConsentMode(
   gcs: string | undefined,
   gcd: string | undefined,
+  catalog: ServiceCatalog = loadServiceCatalog(),
 ): ConsentModeSignal | null {
   const m = /^G1([01-])([01-])/.exec(gcs ?? '');
   if (m) {
@@ -223,31 +231,14 @@ export function decodeConsentMode(
   }
   if (gcd && /^1[0-9a-zA-Z_-]{4,}/.test(gcd)) {
     const signal: ConsentModeSignal = {
-      adStorage: gcdLetter(gcd[2]),
-      analyticsStorage: gcdLetter(gcd[4]),
+      adStorage: gcdLetter(gcd[2], catalog),
+      analyticsStorage: gcdLetter(gcd[4], catalog),
       source: 'gcd',
     };
     return signal.adStorage || signal.analyticsStorage ? signal : null;
   }
   return null;
 }
-
-/**
- * User or ad-click identifiers supplied with the visit, not generated per page load; compared lower-case with the
- * collector's `identifierNames` (extracted before redaction).
- */
-const USER_SUPPLIED_PARAMS: ReadonlySet<string> = new Set([
-  'user_id',
-  'userid',
-  'gclid',
-  'dclid',
-  'gbraid',
-  'wbraid',
-  'msclkid',
-  'fbclid',
-  'ttclid',
-  'li_fat_id',
-]);
 
 const PERSISTENT_KINDS: ReadonlySet<IdentifierKind> = new Set([
   'stored-match',
@@ -265,17 +256,22 @@ export function identifierOf(
   identifierParams: readonly string[] | undefined,
 ): { kind: IdentifierKind; param?: string } {
   const names = r.identifierNames ?? [];
-  const sentCookie = (r.sentCookieNames ?? []).find((n) => catalog.matchCookie(n, r.host)?.tracking === true);
+  const sentCookieNames = r.sentCookieNames ?? [];
+  const sentCookie = sentCookieNames.find((n) => catalog.matchCookie(n, r.host)?.tracking === true);
+
   if (r.matchesStoredIdentifier === true) {
-    const param = names.find((n) => !(r.sentCookieNames ?? []).includes(n)) ?? names[0];
+    const param = names.find((n) => !sentCookieNames.includes(n)) ?? names[0];
     return param ? { kind: 'stored-match', param } : { kind: 'stored-match' };
   }
   if (sentCookie) return { kind: 'stored-match', param: sentCookie };
+
   const catalogParams = new Set((identifierParams ?? []).map((n) => n.toLowerCase()));
   const persistent = names.find((n) => catalogParams.has(n.toLowerCase()));
   if (persistent) return { kind: 'persistent-param', param: persistent };
-  const supplied = names.find((n) => USER_SUPPLIED_PARAMS.has(n.toLowerCase()));
+
+  const supplied = names.find((n) => catalog.userSuppliedParams.has(n.toLowerCase()));
   if (supplied) return { kind: 'user-supplied', param: supplied };
+
   if (names.length > 0 || r.identifierPresent) {
     const param = names[0];
     return param ? { kind: 'per-load', param } : { kind: 'per-load' };
@@ -305,6 +301,7 @@ function classifyRequest(
 ): ClassifiedRequest | null {
   const url = parseHttpUrl(r.url);
   if (!url) return null;
+
   const host = (r.host || url.hostname).toLowerCase();
   const etld1 = registrableDomain(host);
   const thirdParty = !scope.has(host);
@@ -313,7 +310,9 @@ function classifyRequest(
   const consentMode = decodeConsentMode(
     consentSignals.gcs ?? url.searchParams.get('gcs') ?? undefined,
     consentSignals.gcd ?? url.searchParams.get('gcd') ?? undefined,
+    catalog,
   );
+
   const base: ClassifiedRequest = {
     requestId: r.id,
     phase: r.phase,
@@ -332,6 +331,18 @@ function classifyRequest(
   withIdentifier(base, identifierOf(catalog, r, undefined));
   if (!match) return base;
 
+  return withCatalogMatch(base, match, r, catalog, thirdParty, consentMode);
+}
+
+/** The request as a service of the catalog: its kind, stage, identifier, integration and consent-mode behaviour. */
+function withCatalogMatch(
+  base: ClassifiedRequest,
+  match: RequestMatch,
+  r: RequestRecord,
+  catalog: ServiceCatalog,
+  thirdParty: boolean,
+  consentMode: ConsentModeSignal | null,
+): ClassifiedRequest {
   const service = match.service;
   const kind = match.signature?.kind ?? kindFromResourceType(r.resourceType, service.category);
   const out: ClassifiedRequest = {
@@ -346,10 +357,13 @@ function classifyRequest(
   if (match.signature) out.signatureId = `${service.id}:${match.signature.id}`;
   const integration = match.signature?.integration ?? integrationFromKind(service.category, kind);
   if (integration) out.integration = integration;
+
+  // A catalog service answering on the site's own domain is either self-hosted or a first-party proxy.
   if (!thirdParty && match.via === 'any-host') {
     if (service.selfHostable) out.selfHosted = true;
     else out.firstPartyProxy = true;
   }
+
   const storageType = relevantStorage(service);
   if (storageType && consentMode) {
     const state = storageType === 'ad' ? consentMode.adStorage : consentMode.analyticsStorage;
@@ -404,12 +418,14 @@ function classifyCookie(catalog: ServiceCatalog, phase: PhaseRecord, c: CookieRe
   const named = catalog.matchCookie(c.name, domain);
   const allowCls = catalog.allowlistedCookie(c.name);
   const tracking = named?.tracking === true;
+
   let service: ServiceEntry | null = named?.service ?? null;
   let source: ClassificationSource = named ? 'catalog' : 'none';
   if (!service) {
     service = (!c.firstParty ? serviceByHost(catalog, domain) : null) ?? serviceByHost(catalog, c.setterHost);
     if (service) source = 'heuristic';
   }
+
   const out: ClassifiedCookie = {
     key: { name: c.name, domain, firstParty: c.firstParty, path: c.path, partitionKey: c.partitionKey },
     phase: c.phase,
@@ -438,12 +454,14 @@ function classifyStorage(catalog: ServiceCatalog, phase: PhaseRecord, s: Storage
   const named = catalog.matchStorage(s.key, host);
   const allowCls = catalog.allowlistedStorage(s.key);
   const tracking = named?.tracking === true;
+
   let service: ServiceEntry | null = named?.service ?? null;
   let source: ClassificationSource = named ? 'catalog' : 'none';
   if (!service && !s.firstParty) {
     service = serviceByHost(catalog, host);
     if (service) source = 'heuristic';
   }
+
   const out: ClassifiedStorage = {
     storageType: s.storageType,
     origin: s.origin,
@@ -464,6 +482,10 @@ function classifyStorage(catalog: ServiceCatalog, phase: PhaseRecord, s: Storage
   return out;
 }
 
+function addUnique<T>(list: T[], value: T): void {
+  if (!list.includes(value)) list.push(value);
+}
+
 function aggregateServices(
   snapshot: Snapshot,
   requests: readonly ClassifiedRequest[],
@@ -472,57 +494,63 @@ function aggregateServices(
 ): ServiceObservation[] {
   const records = new Map<string, RequestRecord>();
   for (const p of snapshot.browser?.phases ?? []) for (const r of p.requests) records.set(r.id, r);
+
   const byId = new Map<string, ServiceObservation>();
   const get = (serviceId: string, category: ServiceCategory): ServiceObservation => {
     let s = byId.get(serviceId);
     if (!s) {
-      s = {
-        serviceId,
-        category,
-        phases: [],
-        pages: [],
-        requestIds: [],
-        cookieNames: [],
-        stages: [],
-        identifierSeen: false,
-        timings: [],
-        delivered: false,
-        firstPartyProxy: false,
-      };
+      s = emptyObservation(serviceId, category);
       byId.set(serviceId, s);
     }
     return s;
-  };
-  const add = <T>(list: T[], v: T) => {
-    if (!list.includes(v)) list.push(v);
   };
 
   for (const r of requests) {
     if (!r.serviceId) continue;
     const rec = records.get(r.requestId);
     const s = get(r.serviceId, r.category);
-    add(s.phases, r.phase);
-    if (rec) add(s.pages, rec.pageUrl);
+
+    addUnique(s.phases, r.phase);
+    if (rec) addUnique(s.pages, rec.pageUrl);
     s.requestIds.push(r.requestId);
-    if (r.timing) add(s.timings as InteractionTiming[], r.timing);
+    if (r.timing) addUnique(s.timings as InteractionTiming[], r.timing);
     if (r.identifier) s.identifierSeen = true;
     if (r.delivered) s.delivered = true;
     if (r.firstPartyProxy) s.firstPartyProxy = true;
-    if (r.stage && rec && loaded(rec)) add(s.stages, r.stage);
+    if (r.stage && rec && loaded(rec)) addUnique(s.stages, r.stage);
   }
+
   for (const c of [...cookies, ...storage]) {
     if (!c.serviceId) continue;
     const s = get(c.serviceId, c.category);
-    add(s.phases, c.phase);
-    if ('key' in c && typeof c.key === 'object') add(s.cookieNames, c.key.name);
-    if (c.timing) add(s.timings as InteractionTiming[], c.timing);
+
+    addUnique(s.phases, c.phase);
+    if ('key' in c && typeof c.key === 'object') addUnique(s.cookieNames, c.key.name);
+    if (c.timing) addUnique(s.timings as InteractionTiming[], c.timing);
     const accepted = 'state' in c ? isCookieHeld(c.state) : true;
-    if (c.tracking && accepted) add(s.stages, 'initialised');
+    if (c.tracking && accepted) addUnique(s.stages, 'initialised');
   }
+
   for (const s of byId.values()) {
     s.stages.sort((a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b));
     s.phases.sort();
     s.pages.sort();
   }
   return [...byId.values()].sort((a, b) => a.serviceId.localeCompare(b.serviceId));
+}
+
+function emptyObservation(serviceId: string, category: ServiceCategory): ServiceObservation {
+  return {
+    serviceId,
+    category,
+    phases: [],
+    pages: [],
+    requestIds: [],
+    cookieNames: [],
+    stages: [],
+    identifierSeen: false,
+    timings: [],
+    delivered: false,
+    firstPartyProxy: false,
+  };
 }

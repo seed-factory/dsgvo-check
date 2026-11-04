@@ -30,6 +30,7 @@ const KindSchema = z.object({
 
 const LexiconSchema = z.object({
   version: z.string().min(1),
+  fallbackPaths: z.object({ impressum: z.string().startsWith('/'), privacy: z.string().startsWith('/') }),
   kinds: z.object({ impressum: KindSchema, privacy: KindSchema }),
   navigation: z.object({
     contact: z.array(z.string()),
@@ -64,6 +65,8 @@ interface KindLexicon {
 
 export interface LegalLexicon {
   version: string;
+  /** Conventional paths probed once per kind when no link led to the document. */
+  fallbackPaths: Record<LegalKind, string>;
   kinds: Record<LegalKind, KindLexicon>;
   contact: NavPhrase[];
   hop: NavPhrase[];
@@ -129,57 +132,65 @@ export function pathOfUrl(href: string): string {
   }
 }
 
+function compileKind(spec: z.infer<typeof KindSchema>): KindLexicon {
+  const labels = new Set<string>();
+  const labelsJoined = new Set<string>();
+  const byRole: Record<LinkRole, LinkPhrase[]> = { generic: [], key: [], weak: [] };
+  const markers: Phrase[] = [];
+  const seenMarker = new Set<string>();
+  const addMarker = (p: Phrase) => {
+    const id = `${p.lang}|${p.norm}`;
+    if (p.tokens.length === 0 || seenMarker.has(id)) return;
+    seenMarker.add(id);
+    markers.push(p);
+  };
+
+  for (const [lang, entry] of Object.entries(spec.languages)) {
+    for (const l of entry.labels) {
+      const p = phrase(l, lang);
+      if (p.norm !== '') {
+        labels.add(p.norm);
+        labelsJoined.add(p.tokens.join(''));
+      }
+      addMarker(p);
+    }
+
+    for (const role of ['generic', 'key', 'weak'] as const) {
+      const list = role === 'key' ? entry.keys : entry[role];
+      for (const k of list) {
+        const p = phrase(k, lang);
+        if (p.tokens.length === 0) continue;
+        byRole[role].push({ ...p, role });
+        if (role !== 'weak') addMarker(p);
+      }
+    }
+
+    for (const m of entry.markers) addMarker(phrase(m, lang));
+  }
+
+  return {
+    labels,
+    labelsJoined,
+    link: [...byRole.generic, ...byRole.key, ...byRole.weak],
+    markers,
+    falseFriends: spec.falseFriends.map((f) => phrase(f, '*')).filter((p) => p.tokens.length > 0),
+  };
+}
+
 function compile(raw: z.infer<typeof LexiconSchema>): LegalLexicon {
   const kinds = {} as Record<LegalKind, KindLexicon>;
-  for (const kind of LEGAL_KINDS) {
-    const spec = raw.kinds[kind];
-    const labels = new Set<string>();
-    const labelsJoined = new Set<string>();
-    const byRole: Record<LinkRole, LinkPhrase[]> = { generic: [], key: [], weak: [] };
-    const markers: Phrase[] = [];
-    const seenMarker = new Set<string>();
-    const addMarker = (p: Phrase) => {
-      const id = `${p.lang}|${p.norm}`;
-      if (p.tokens.length === 0 || seenMarker.has(id)) return;
-      seenMarker.add(id);
-      markers.push(p);
-    };
-    for (const [lang, entry] of Object.entries(spec.languages)) {
-      for (const l of entry.labels) {
-        const p = phrase(l, lang);
-        if (p.norm !== '') {
-          labels.add(p.norm);
-          labelsJoined.add(p.tokens.join(''));
-        }
-        addMarker(p);
-      }
-      for (const role of ['generic', 'key', 'weak'] as const) {
-        const list = role === 'key' ? entry.keys : entry[role];
-        for (const k of list) {
-          const p = phrase(k, lang);
-          if (p.tokens.length === 0) continue;
-          byRole[role].push({ ...p, role });
-          if (role !== 'weak') addMarker(p);
-        }
-      }
-      for (const m of entry.markers) addMarker(phrase(m, lang));
-    }
-    kinds[kind] = {
-      labels,
-      labelsJoined,
-      link: [...byRole.generic, ...byRole.key, ...byRole.weak],
-      markers,
-      falseFriends: spec.falseFriends.map((f) => phrase(f, '*')).filter((p) => p.tokens.length > 0),
-    };
-  }
+  for (const kind of LEGAL_KINDS) kinds[kind] = compileKind(raw.kinds[kind]);
+
   const strict = new Set(raw.navigation.hopStrict.map(normalizeLegalText));
   const nav = (list: string[]): NavPhrase[] =>
     list
       .map((k) => phrase(k, '*'))
       .filter((p) => p.tokens.length > 0)
       .map((p) => ({ ...p, strict: strict.has(p.norm) }));
+
   return {
     version: raw.version,
+    fallbackPaths: raw.fallbackPaths,
     kinds,
     contact: nav(raw.navigation.contact),
     hop: nav(raw.navigation.hop),
@@ -195,6 +206,7 @@ export function legalLexiconFromData(data: unknown): LegalLexicon {
     const hit = cache.get(data);
     if (hit) return hit;
   }
+
   const raw =
     data !== null && typeof data === 'object' && 'legal' in data ? (data as { legal: unknown }).legal : data;
   const res = LexiconSchema.safeParse(raw);
@@ -202,6 +214,7 @@ export function legalLexiconFromData(data: unknown): LegalLexicon {
     const issues = res.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
     throw new Error(`legal lexicon: ${issues}`);
   }
+
   const lex = compile(res.data);
   if (data !== null && typeof data === 'object') cache.set(data, lex);
   return lex;
@@ -263,6 +276,7 @@ function matchLabel(k: KindLexicon, label: string): LabelMatch | null {
   const toks = tokensOf(label);
   if (toks.length === 0) return null;
   const norm = toks.join(' ');
+
   let best: LabelMatch | null = null;
   let primary = false;
   for (const p of k.link) {
@@ -274,6 +288,7 @@ function matchLabel(k: KindLexicon, label: string): LabelMatch | null {
     const tier = p.role === 'weak' ? 4 : i === 0 ? 1 : 2;
     if (!best || tier < best.tier) best = { tier, keyword: p.key, primary: false };
   }
+
   if (k.labels.has(norm) || k.labelsJoined.has(toks.join(''))) {
     return { tier: 0, keyword: best?.keyword ?? label.trim().toLowerCase(), primary: true };
   }
@@ -287,8 +302,8 @@ function hasFalseFriend(k: KindLexicon, toks: readonly string[]): boolean {
   return k.falseFriends.some((f) => matchAt(toks, f.tokens, 'prefix') >= 0);
 }
 
-function matchOwn(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMatch | null {
-  const k = lex.kinds[kind];
+/** Best label of the link for `kind`; a settings label ("Datenschutz-Einstellungen") is skipped unless it is primary. */
+function bestLabelMatch(k: KindLexicon, kind: LegalKind, input: LinkInput): LabelMatch | null {
   let label: LabelMatch | null = null;
   for (const l of labelsOf(input)) {
     const m = matchLabel(k, l);
@@ -296,20 +311,37 @@ function matchOwn(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMat
     if (kind === 'privacy' && !m.primary && hasFalseFriend(k, tokensOf(l))) continue;
     if (!label || m.tier < label.tier) label = m;
   }
-  const ptoks = tokensOf(input.path);
-  let path: { tier: 3 | 4; keyword: string } | null = null;
+  return label;
+}
+
+function bestPathMatch(
+  k: KindLexicon,
+  kind: LegalKind,
+  path: string,
+): { tier: 3 | 4; keyword: string } | null {
+  const ptoks = tokensOf(path);
+  if (ptoks.length === 0) return null;
+
+  let best: { tier: 3 | 4; keyword: string } | null = null;
   let primaryInPath = false;
-  if (ptoks.length > 0) {
-    for (const p of k.link) {
-      if (matchAt(ptoks, p.tokens, 'prefix') < 0) continue;
-      if (p.role === 'key') primaryInPath = true;
-      const tier = p.role === 'weak' ? 4 : 3;
-      if (!path || tier < path.tier) path = { tier, keyword: p.key };
-    }
-    // A settings word in the path ("cookie-settings") switches the path match off unless the path carries a primary key
-    // ("privacy-policy-and-cookies"), as for a label.
-    if (kind === 'privacy' && !primaryInPath && hasFalseFriend(k, ptoks)) path = null;
+  for (const p of k.link) {
+    if (matchAt(ptoks, p.tokens, 'prefix') < 0) continue;
+    if (p.role === 'key') primaryInPath = true;
+    const tier = p.role === 'weak' ? 4 : 3;
+    if (!best || tier < best.tier) best = { tier, keyword: p.key };
   }
+
+  // A settings word in the path ("cookie-settings") switches the path match off unless the path carries a primary key
+  // ("privacy-policy-and-cookies"), as for a label.
+  if (kind === 'privacy' && !primaryInPath && hasFalseFriend(k, ptoks)) return null;
+  return best;
+}
+
+function matchOwn(lex: LegalLexicon, kind: LegalKind, input: LinkInput): LinkMatch | null {
+  const k = lex.kinds[kind];
+  const label = bestLabelMatch(k, kind, input);
+  const path = bestPathMatch(k, kind, input.path);
+
   const slug = path !== null && path.tier === 3;
   if (label && (!path || label.tier <= path.tier)) {
     return { tier: label.tier, keyword: label.keyword, byText: true, slug };
@@ -333,9 +365,11 @@ export function matchLegalLinks(
 ): (LinkMatch | null)[] {
   const own = links.map((l) => matchOwn(lex, kind, l.input));
   if (!own.some((m) => m?.tier === 4)) return own;
+
   const other: LegalKind = kind === 'privacy' ? 'impressum' : 'privacy';
   const exact = links.map((l) => matchOwn(lex, other, l.input)?.tier === 0);
   const exactPages = new Set(links.flatMap((l, i) => (exact[i] && l.page !== '' ? [l.page] : [])));
+
   return own.map((m, i) => {
     if (m?.tier !== 4) return m;
     const l = links[i] as LegalLinkRef;
@@ -360,6 +394,10 @@ export interface NavMatch {
 // Strict keys ("legal", "about") count only as the exact label or the first path segment; the others at word boundaries
 // in the label and in the path words.
 export function matchNavPhrase(p: NavPhrase, input: LinkInput): NavMatch | null {
+  return matchNavLabels(p, input) ?? matchNavPath(p, input);
+}
+
+function matchNavLabels(p: NavPhrase, input: LinkInput): NavMatch | null {
   let best: NavMatch | null = null;
   for (const l of labelsOf(input)) {
     const toks = tokensOf(l);
@@ -368,13 +406,17 @@ export function matchNavPhrase(p: NavPhrase, input: LinkInput): NavMatch | null 
       if (toks.join(' ') === p.norm) return { tier: 0, keyword: p.key, byText: true };
       continue;
     }
+
     const i = matchAt(toks, p.tokens, 'word');
     if (i < 0) continue;
     const exact = i === 0 && toks.length === p.tokens.length;
     const tier = exact ? 0 : i === 0 ? 1 : 2;
     if (!best || tier < best.tier) best = { tier, keyword: p.key, byText: true };
   }
-  if (best) return best;
+  return best;
+}
+
+function matchNavPath(p: NavPhrase, input: LinkInput): NavMatch | null {
   if (p.strict) {
     const first = input.path.split('/').filter(Boolean)[0];
     return first !== undefined && normalizeLegalText(first) === p.norm
@@ -408,11 +450,13 @@ export function markerLanguages(lex: LegalLexicon, kind: LegalKind, texts: reado
   for (const text of texts) {
     const toks = tokensOf(text);
     if (toks.length === 0) continue;
+
     const hits: Hit[] = [];
     for (const m of lex.kinds[kind].markers) {
       const i = matchAt(toks, m.tokens, 'prefix');
       if (i >= 0) hits.push({ lang: m.lang, start: i, end: i + m.tokens.length, size: m.norm.length });
     }
+
     for (const h of hits) {
       const covered = hits.some(
         (o) =>

@@ -250,20 +250,25 @@ describe('sources of the frameAncestors fact', () => {
     const many = Array.from({ length: 50 }, (_, i) => `a${i}.example.test`).join(' ');
     const fact = cspFrameAncestors(`frame-ancestors ${many}`);
     expect(fact.sources).toHaveLength(20);
+
     const long = cspFrameAncestors(`frame-ancestors https://${'a'.repeat(300)}.example.test`);
     expect(long.sources[0]?.length).toBeLessThanOrEqual(200);
   });
 
   it('a bare scheme token is cut at 200 characters as every other source is', () => {
     const fact = cspFrameAncestors(`frame-ancestors ${'a'.repeat(5000)}: https://b.example.test`);
+
     expect(fact.sources[0]?.length).toBeLessThanOrEqual(200);
     expect(fact.sources[1]).toBe('https://b.example.test');
+
     // twenty such tokens are no 100 KB fact
     const many = cspFrameAncestors(`frame-ancestors ${`${'a'.repeat(5000)}:  `.repeat(30)}`);
     expect(many.sources).toHaveLength(20);
     expect(JSON.stringify(many).length).toBeLessThan(20 * 220);
+
     // applied to its own output it changes nothing
     expect(cspFrameAncestors(`frame-ancestors ${fact.sources.join(' ')}`).sources).toEqual(fact.sources);
+
     // counterexample: a real scheme source and `*` stay as they are
     expect(cspFrameAncestors('frame-ancestors https: * data:').sources).toEqual(['https:', '*', 'data:']);
   });

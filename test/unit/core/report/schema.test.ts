@@ -12,12 +12,12 @@ describe('report schema (Ajv, JSON Schema 2020-12)', () => {
     const r = validateReport(sampleFullReport());
     expect(r.errors).toBe('');
     expect(r.valid).toBe(true);
-    expect(ReportSchema.safeParse(sampleFullReport()).success).toBe(true);
+    expect(() => ReportSchema.parse(sampleFullReport())).not.toThrow();
   });
 
   it('accepts the minimal failed report', () => {
     expect(validateReport(sampleFailedReport()).valid).toBe(true);
-    expect(ReportSchema.safeParse(sampleFailedReport()).success).toBe(true);
+    expect(() => ReportSchema.parse(sampleFailedReport())).not.toThrow();
   });
 
   it('is open: unknown fields and unknown evidence types are allowed', () => {
@@ -111,8 +111,8 @@ describe('document evidence: manifest', () => {
   });
 
   it('a partial manifest is valid; a document without manifest stays valid', () => {
-    expect(EvidenceSchema.safeParse({ ...doc, manifest: { textLength: 10 } }).success).toBe(true);
-    expect(EvidenceSchema.safeParse(doc).success).toBe(true);
+    expect(() => EvidenceSchema.parse({ ...doc, manifest: { textLength: 10 } })).not.toThrow();
+    expect(() => EvidenceSchema.parse(doc)).not.toThrow();
   });
 
   it('the manifest holds numbers and one flag only (no text, no values)', () => {

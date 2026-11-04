@@ -19,6 +19,11 @@
 legal:
   version: "2026.10.1"
 
+  # Conventional paths probed once per kind when no link led to the document.
+  fallbackPaths:
+    impressum: /impressum
+    privacy: /datenschutz
+
   kinds:
     impressum:
       languages:

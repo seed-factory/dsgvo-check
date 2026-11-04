@@ -36,6 +36,7 @@ export function missingSectionResult(
   for (const key of missing) {
     const collector = COLLECTOR_OF_PRODUCER[SECTION_PRODUCER[key]];
     const st = collector ? snapshot.collection[collector] : undefined;
+
     if (st?.reason === 'timeout' || (timedOut && st === undefined)) {
       return {
         status: 'error',
@@ -45,6 +46,7 @@ export function missingSectionResult(
         limitations: [`missing:${key}`],
       };
     }
+
     if (st?.status === 'error' || st?.status === 'ok' || st?.status === 'partial') {
       return {
         status: 'error',
@@ -55,6 +57,7 @@ export function missingSectionResult(
         error: { code: 'collector-error', message: `section "${key}" missing (${collector}: ${st.status})` },
       };
     }
+
     if (st?.status === 'skipped') {
       return { status: 'skipped', reason: st.reason ?? 'collector-skipped', outcome: null, durationMs: 0 };
     }
@@ -101,9 +104,11 @@ function cutByDeadline(result: ExecutedCheck, snapshot: Snapshot): ExecutedCheck
   if (result.status !== 'inconclusive' || !result.reason) return result;
   if (snapshot.collection.browser?.reason !== 'timeout') return result;
   if ((result.outcome?.observations.length ?? 0) > 0) return result;
+
   const phases = REASON_PHASES.get(result.reason);
   if (phases === undefined) return result;
   if (phases !== null && !phases.some((p) => phaseCutByDeadline(snapshot, p))) return result;
+
   return {
     status: 'error',
     reason: 'timeout',
@@ -123,6 +128,7 @@ export function executeCheck(
   const t0 = performance.now();
   const sliced = sliceSnapshot(snapshot, check.requires as SnapshotSectionKey[]);
   if (!sliced.ok) return missingSectionResult(sliced.missing, snapshot, opts.timedOut ?? false);
+
   try {
     const outcome = normalizeOutcome(check.run(sliced.slice, ctx));
     return cutByDeadline(

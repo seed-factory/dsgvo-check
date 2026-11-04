@@ -6,6 +6,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CmpFacts, CmpSection } from '../../src/cmp/types.ts';
+import { defaultConfig } from '../../src/core/config/schema.ts';
+import { checkThresholds } from '../../src/core/config/thresholds.ts';
 import { loadDataDir, loadRouting } from '../../src/core/data/load.ts';
 import type { ExecutedCheck } from '../../src/core/evaluation/assess.ts';
 import type { AnyCheck, CheckContext, CheckOutcome, Observation } from '../../src/core/evaluation/check.ts';
@@ -43,12 +45,14 @@ export function makeTarget(url = 'https://www.example.de/', finalUrl: string | n
 /** Full snapshot with defaults; pass sections you need. `collection` defaults to `ok` for every given section. */
 export function makeSnapshot(partial: Partial<Snapshot> = {}): Snapshot {
   const target = partial.target ?? makeTarget();
+
   const collection: Snapshot['collection'] = {};
   if (partial.browser || partial.documents || partial.cmp)
     collection.browser = { status: 'ok', durationMs: 0 };
   if (partial.http) collection.http = { status: 'ok', durationMs: 0 };
   if (partial.tls) collection.tls = { status: 'ok', durationMs: 0 };
   if (partial.dns) collection.dns = { status: 'ok', durationMs: 0 };
+
   return {
     snapshotVersion: SNAPSHOT_VERSION,
     tool: { name: 'dsgvo-check', version: '0.0.0-test' },
@@ -414,11 +418,13 @@ export function checkContext(p: Partial<CheckContext> & { dataDirs?: readonly st
   routingCache ??= loadRouting();
   const data: Record<string, unknown> = { ...p.data };
   for (const name of p.dataDirs ?? []) data[name] ??= loadDataDir(name);
+
   return {
     now: FIXED_NOW,
     lang: 'de',
     routing: routingCache,
     options: { strict: false, assumeRegion: null, fromSnapshot: false },
+    thresholds: checkThresholds(defaultConfig()),
     ...p,
     data,
   };
@@ -489,6 +495,7 @@ export function fixtureFrom(name: string, raw: RawFixture, file: string): Snapsh
   const { $expect, $description, ...partial } = raw;
   let snapshot = makeSnapshot(partial);
   if (!partial.derived && snapshot.browser) snapshot = withDerived(snapshot);
+
   const kind = FIXTURE_KINDS.find((k) => name.startsWith(k)) ?? 'other';
   return {
     file,
