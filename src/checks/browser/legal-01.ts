@@ -5,6 +5,7 @@ import {
   isUnconfirmedDocument,
   type LegalLexicon,
   legalLexiconFromData,
+  matchLegalLink,
   matchLegalLinks,
   matchNav,
   pageKey,
@@ -64,6 +65,32 @@ function linksOfKind(lex: LegalLexicon, links: readonly LinkFact[], kind: Docume
     })),
   );
   return own.filter((_, i) => found[i] !== null);
+}
+
+/** A heading longer than this is a sentence, not a section title; it is also cut to this length in the params. */
+const MAX_HEADING_CHARS = 80;
+
+/**
+ * A section of the fetched document of the other kind whose heading names `kind` ("Datenschutzerklärung > Impressum"):
+ * the document exists, but no link names it. Only an exact label or a label starting with a key counts as a heading.
+ */
+function sectionInOtherDocument(
+  lex: LegalLexicon,
+  kind: DocumentKind,
+  documents: DocumentsSection,
+): { url: string; heading: string } | null {
+  const other: DocumentKind = kind === 'impressum' ? 'privacy' : 'impressum';
+  for (const d of documents.documents) {
+    if (d.kind !== other || !usableDocument(d, documents.attempts)) continue;
+    for (const part of d.parts) {
+      for (const heading of (part.section ?? '').split(' > ')) {
+        if (heading === '' || heading.length > MAX_HEADING_CHARS) continue;
+        const m = matchLegalLink(lex, kind, { text: heading, path: '' });
+        if (m && m.byText && m.tier <= 1) return { url: d.finalUrl || d.url, heading };
+      }
+    }
+  }
+  return null;
 }
 
 function isBlockedPage(p: PageVisit): boolean {
@@ -429,11 +456,21 @@ function judgeNoDocument(
     return;
   }
 
+  const section = sectionInOtherDocument(env.lex, kind, env.documents);
   emit(
     'document-not-found',
     'high',
     [...a.attemptEvidence, ...pageEvidenceOf(a.missing)],
-    { missingCount: a.missing.length, foundVia: null, reachableViaHop: false, hopChecked, fallbackChecked },
+    {
+      missingCount: a.missing.length,
+      foundVia: null,
+      reachableViaHop: false,
+      hopChecked,
+      fallbackChecked,
+      inOtherDocument: section !== null,
+      otherDocument: section?.url ?? null,
+      otherHeading: section?.heading ?? null,
+    },
     sortedPageUrls(a.missing),
   );
 }

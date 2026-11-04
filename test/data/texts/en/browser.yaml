@@ -273,7 +273,10 @@ messages:
       {documentKind, select, impressum {A legal notice (Impressum)} other {A privacy policy}} was not found on
       {pageTotal, plural, one {the # checked page} other {the # checked pages}} by link. {hopChecked, select, true {It
       was not found via a checked intermediate page (e.g. contact) either.} other {An intermediate page (e.g. contact)
-      was not checked.}}{fallbackChecked, select, true { It was not found at the common paths either.} other {}}
+      was not checked.}}{fallbackChecked, select, true { It was not found at the common paths either.} other
+      {}}{inOtherDocument, select, true { The {documentKind, select, impressum {privacy policy} other {legal notice}}
+      that was found ({otherDocument}) contains a section headed “{otherHeading}”; no link naming it as the
+      {documentKind, select, impressum {legal notice} other {privacy policy}} was found.} other {}}
   LEGAL-01.links-broken:
     title: "{documentKind, select, impressum {Links to the legal notice lead} privacy {Links to the privacy policy lead} other {Links to the legal notice and privacy policy lead}} to error pages"
     body: >-
@@ -504,7 +507,7 @@ actions:
   EMBED-02.maps-loaded:
     text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
   LEGAL-01.document-not-found:
-    text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} clearly in the footer of every page."
+    text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} clearly in the footer of every page{inOtherDocument, select, true {, as a page of its own or directly to the section “{otherHeading}”} other {}}."
   LEGAL-01.links-broken:
     text: "Fix the links to {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} so that they lead to the right pages."
   LEGAL-01.link-missing-on-some-pages:

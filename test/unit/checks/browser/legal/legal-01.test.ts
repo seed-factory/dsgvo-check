@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../../src/checks/browser/legal-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import {
   makeDocument,
   makeLink,
@@ -375,5 +377,144 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
       site({ phases: [phase('A', { pages: [page(START, 'start', 'A', { evaluable: false })] })] }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-evaluable-pages' });
+  });
+});
+
+describe('LEGAL-01: a document kept as a section of the other one', () => {
+  const texts = (lang: 'de' | 'en', o: { variant: string; params: Record<string, unknown> }) => {
+    const t = loadTexts(lang);
+    const id = `LEGAL-01.${o.variant}`;
+    return {
+      body: renderMessage(t, id, o.params as never).body,
+      action: formatMessage(t.actions[id]!, o.params as never, lang),
+    };
+  };
+
+  /** Only a privacy link on every page; the Impressum is searched for by hop and usual path and not found. */
+  function privacyOnly(privacyParts: Array<{ section?: string; text: string }>) {
+    const links = [footerLinks()[1]!];
+    return runCheck(
+      legal01,
+      site({
+        phases: [
+          phase('A', {
+            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
+          }),
+        ],
+        documents: {
+          documents: [
+            makeDocument({
+              kind: 'privacy',
+              id: 'doc-privacy',
+              url: PRIVACY,
+              phase: 'A',
+              linkedFrom: [{ pageUrl: START, text: 'Datenschutz' }],
+              parts: privacyParts.map((p, i) => ({
+                id: `p${i}`,
+                origin: 'visible',
+                sourceUrl: PRIVACY,
+                ...p,
+              })),
+            }),
+          ],
+          attempts: [
+            { kind: 'impressum', via: 'fallback', url: IMPRESSUM, status: 404, outcome: 'not-found' },
+          ],
+        },
+      }),
+    );
+  }
+
+  it('names the Impressum section of the privacy policy; the finding stays document-not-found', () => {
+    const r = privacyOnly([
+      { section: 'Datenschutzerklärung', text: 'Wir verarbeiten Daten.' },
+      { section: 'Datenschutzerklärung > Impressum', text: 'Impressum. Beispiel GmbH, Musterstraße 1.' },
+    ]);
+    const [o] = observationsOf(r);
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'document-not-found']]);
+    expect(o?.params).toMatchObject({
+      inOtherDocument: true,
+      otherDocument: PRIVACY,
+      otherHeading: 'Impressum',
+    });
+    expect(texts('de', o!).body).toContain(
+      `Die gefundene Datenschutzerklärung (${PRIVACY}) enthält einen Abschnitt mit der Überschrift „Impressum“; ein Link, der ihn als Impressum benennt, wurde nicht gefunden.`,
+    );
+    expect(texts('de', o!).action).toBe(
+      'Verlinken Sie das Impressum gut sichtbar im Seitenfuß jeder Seite, als eigene Seite oder direkt auf den Abschnitt „Impressum“.',
+    );
+    expect(texts('en', o!).body).toContain(
+      `The privacy policy that was found (${PRIVACY}) contains a section headed “Impressum”; no link naming it as the legal notice was found.`,
+    );
+  });
+
+  it('counterexample: a privacy policy without such a section adds nothing to the finding', () => {
+    const [o] = observationsOf(
+      privacyOnly([{ section: 'Datenschutzerklärung > Cookies', text: 'Cookies.' }]),
+    );
+
+    expect(o?.params).toMatchObject({ inOtherDocument: false, otherDocument: null, otherHeading: null });
+    expect(texts('de', o!).body).not.toContain('Abschnitt');
+    expect(texts('de', o!).action).toBe('Verlinken Sie das Impressum gut sichtbar im Seitenfuß jeder Seite.');
+  });
+
+  it('counterexample: the word Impressum in the text of a section is not a section heading', () => {
+    const [o] = observationsOf(
+      privacyOnly([
+        { section: 'Datenschutzerklärung > Verantwortliche Stelle', text: 'Siehe unser Impressum.' },
+      ]),
+    );
+
+    expect(o?.params).toMatchObject({ inOtherDocument: false });
+  });
+
+  it('names a privacy section of the Impressum page the same way', () => {
+    const links = [footerLinks()[0]!];
+    const r = runCheck(
+      legal01,
+      site({
+        phases: [
+          phase('A', {
+            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
+          }),
+        ],
+        documents: {
+          documents: [
+            makeDocument({
+              kind: 'impressum',
+              id: 'doc-impressum',
+              url: IMPRESSUM,
+              phase: 'A',
+              linkedFrom: [{ pageUrl: START, text: 'Impressum' }],
+              parts: [
+                {
+                  id: 'i1',
+                  section: 'Impressum',
+                  text: 'Beispiel GmbH.',
+                  origin: 'visible',
+                  sourceUrl: IMPRESSUM,
+                },
+                {
+                  id: 'i2',
+                  section: 'Impressum > Datenschutzerklärung',
+                  text: 'Wir verarbeiten Daten.',
+                  origin: 'visible',
+                  sourceUrl: IMPRESSUM,
+                },
+              ],
+            }),
+          ],
+          attempts: [{ kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' }],
+        },
+      }),
+    );
+    const [o] = observationsOf(r);
+
+    expect(variantsByKind(r)).toEqual([['privacy', 'document-not-found']]);
+    expect(o?.params).toMatchObject({ inOtherDocument: true, otherDocument: IMPRESSUM });
+    expect(texts('de', o!).body).toContain(
+      `Die gefundene Seite des Impressums (${IMPRESSUM}) enthält einen Abschnitt mit der Überschrift „Datenschutzerklärung“; ein Link, der ihn als Datenschutzerklärung benennt, wurde nicht gefunden.`,
+    );
   });
 });
