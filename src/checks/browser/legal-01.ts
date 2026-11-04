@@ -5,6 +5,7 @@ import {
   isUnconfirmedDocument,
   type LegalLexicon,
   legalLexiconFromData,
+  matchLegalLink,
   matchLegalLinks,
   matchNav,
   pageKey,
@@ -64,6 +65,35 @@ function linksOfKind(lex: LegalLexicon, links: readonly LinkFact[], kind: Docume
     })),
   );
   return own.filter((_, i) => found[i] !== null);
+}
+
+/** A heading longer than this is a sentence, not a section title. */
+const MAX_HEADING_CHARS = 80;
+
+/**
+ * An Impressum kept as a section of the fetched privacy policy ("Datenschutzerklärung > Impressum"): a content heading
+ * that is exactly one of the Impressum labels. Not the other way round: a short "Datenschutz" paragraph or a data
+ * protection officer's contact in an Impressum is no privacy policy. A footer or navigation column does not count.
+ */
+function impressumSectionInPrivacy(
+  lex: LegalLexicon,
+  documents: DocumentsSection,
+): { url: string; heading: string } | null {
+  for (const d of documents.documents) {
+    if (d.kind !== 'privacy' || !usableDocument(d, documents.attempts)) continue;
+    // Snapshots of earlier versions did not record which headings belong to the content.
+    const content = d.contentHeadings ? new Set(d.contentHeadings) : null;
+    for (const part of d.parts) {
+      for (const heading of (part.section ?? '').split(' > ')) {
+        if (heading === '' || heading.length > MAX_HEADING_CHARS) continue;
+        if (content && !content.has(heading)) continue;
+        if (matchLegalLink(lex, 'impressum', { text: heading, path: '' })?.tier === 0) {
+          return { url: d.finalUrl || d.url, heading };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function isBlockedPage(p: PageVisit): boolean {
@@ -429,11 +459,21 @@ function judgeNoDocument(
     return;
   }
 
+  const section = kind === 'impressum' ? impressumSectionInPrivacy(env.lex, env.documents) : null;
   emit(
     'document-not-found',
     'high',
     [...a.attemptEvidence, ...pageEvidenceOf(a.missing)],
-    { missingCount: a.missing.length, foundVia: null, reachableViaHop: false, hopChecked, fallbackChecked },
+    {
+      missingCount: a.missing.length,
+      foundVia: null,
+      reachableViaHop: false,
+      hopChecked,
+      fallbackChecked,
+      inOtherDocument: section !== null,
+      otherDocument: section?.url ?? null,
+      otherHeading: section?.heading ?? null,
+    },
     sortedPageUrls(a.missing),
   );
 }

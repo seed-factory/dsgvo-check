@@ -14,9 +14,11 @@ messages:
   MAIL-01.policy-none:
     title: "DMARC in monitoring mode (p=none)"
     body: >-
-      The DMARC record of {domain} contains p=none. It only requests reports; receivers are not asked to
-      reject or quarantine forged messages. Guidance (BSI TR-03182): after reviewing the reports, move to
-      p=quarantine or p=reject.
+      {noRua, select, yes {The DMARC record of {domain} contains p=none and no rua tag. It requests no aggregate
+      reports, and receivers are not asked to reject or quarantine forged messages. Guidance (BSI TR-03182): add
+      an rua address, review the reports and then move to p=quarantine or p=reject.} other {The DMARC record of
+      {domain} contains p=none. It only requests reports; receivers are not asked to reject or quarantine forged
+      messages. Guidance (BSI TR-03182): after reviewing the reports, move to p=quarantine or p=reject.}}
   MAIL-01.record-invalid:
     title: "DMARC record cannot be evaluated"
     body: >-
@@ -25,7 +27,9 @@ messages:
       tag} p-missing {the p tag is missing} p-invalid {invalid value for p} other {syntax error}}). Receivers
       ignore such records or treat them like p=none.
   MAIL-01.weak-option:
-    title: "DMARC options with limited effect"
+    title: >-
+      {kind, select, null-mx {DMARC without p=reject on a domain that receives no email} other {{count, plural,
+      one {DMARC option} other {DMARC options}} with limited effect}}
     body: >-
       {kind, select, null-mx {{domain} publishes a Null MX record (RFC 7505) and therefore accepts no email.
       {policy, select, missing {No DMARC record of its own was found.} none {The DMARC record contains
@@ -106,3 +110,45 @@ legalNotes:
     status: technical
     reviewedAt: null
     reviewBy: null
+
+# Recommended action per variant: short, concrete, no legal assessment. Templates like the messages, formatted with
+# the finding's params; on the front page the findings of one message share an entry, where a param that differs
+# between them is a list and reaches the `other` branch of a select.
+actions:
+  # One staged path in every DMARC text: reports (rua) first, then their review, then p=quarantine or p=reject.
+  MAIL-01.record-not-found:
+    text: >-
+      Publish a DMARC record with an rua address for reports with your DNS or mail provider (initially with p=none
+      while you review them), review the reports and then move the policy to p=quarantine or p=reject.
+  MAIL-01.policy-none:
+    text: >-
+      {noRua, select, yes {Add an rua address for reports to the DMARC record, review the reports and then move
+      the policy to p=quarantine or p=reject.} other {Review the DMARC reports and then move the policy to
+      p=quarantine or p=reject.}}
+  MAIL-01.record-invalid:
+    text: "Fix the DMARC record so that exactly one valid record is published under _dmarc."
+  MAIL-01.weak-option:
+    text: >-
+      {kind, select, null-mx {{policy, select, missing {Publish a DMARC record with p=reject for the domain, which
+      receives no email.} other {Change the DMARC record of the domain, which receives no email, to p=reject.}}}
+      other {Adjust the DMARC record with your DNS provider.{noRua, select, yes { Add an rua address so that
+      aggregate reports arrive, and review them.} other {}}{spNone, select, yes { Remove sp=none or set sp to
+      quarantine or reject.} other {}}{testing, select, yes { Remove t=y once testing is complete.} other {}}}}
+  MAIL-01.legacy-pct:
+    text: "Remove the outdated pct tag from the DMARC record if it is no longer needed."
+  MAIL-02.record-not-found:
+    text: "Publish an SPF record that lists the servers allowed to send email for your domain."
+  MAIL-02.permissive-qualifier:
+    text: "Change the end of the SPF record to -all or ~all so that servers not listed are not treated as senders."
+  MAIL-02.record-invalid:
+    text: "Fix the SPF record so that exactly one valid record starting with v=spf1 is published."
+  MAIL-02.softfail-without-enforcement:
+    text: >-
+      {dmarcPolicy, select, none {After reviewing the reports, move the DMARC policy to p=quarantine or p=reject,
+      or end SPF with -all.} invalid {Fix the DMARC record and set p=quarantine or p=reject, or end SPF with -all.}
+      other {Set up DMARC step by step (review the reports, then p=quarantine or p=reject), or end SPF with
+      -all.}}
+  MAIL-02.softfail-with-enforcement:
+    text: "No action is needed as long as DMARC stays active with quarantine or reject."
+  MAIL-02.ptr-mechanism:
+    text: "Replace ptr in the SPF record with specific ip4, ip6 or include entries."

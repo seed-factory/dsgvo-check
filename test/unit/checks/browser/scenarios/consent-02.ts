@@ -109,4 +109,31 @@ export const variantScenarios: Scenario[] = [
         ],
       }),
   },
+  {
+    file: 'violation-unknown-persistent-list.json',
+    description:
+      'Several unclassified persistent entries (cookies and Web Storage) of third parties and of the own domain: one finding per variant lists them all',
+    expect: {
+      status: 'completed',
+      variants: ['unknown-third-party-persistent', 'unknown-first-party-persistent'],
+    },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            cookies: [
+              cookie('wpvp1', { domain: 'unknown-tracker.com', firstParty: false }),
+              cookie('other_id', { domain: 'other-tracker.net', firstParty: false }),
+              cookie('pref_a'),
+            ],
+            storage: [
+              storage('wpvp2', { origin: 'https://unknown-tracker.com', firstParty: false }),
+              storage('pref_b'),
+              storage('pref_c'),
+              storage('pref_c', { pageUrl: 'https://www.example.de/kontakt' }),
+            ],
+          }),
+        ],
+      }),
+  },
 ];

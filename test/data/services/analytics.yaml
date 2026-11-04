@@ -35,6 +35,13 @@ services:
         kind: hit
         stage: event-sent
         identifierParams: [cid, uid]
+      # Audience hit of the advertising features, sent to the country domain of Google search the visitor is served.
+      - id: ga-audiences
+        hostPatterns: ['^www\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$']
+        path: "^/ads/ga-audiences$"
+        kind: hit
+        stage: event-sent
+        identifierParams: [cid, uid]
     cookies: [_ga, _ga_*, _gid, _gac_*, __utma, __utmz]
     otherCookies: [_gat, _gat_*, __utmb, __utmc, __utmt]
     aliasesDe: [Google Analytics, Google Analytics 4, GA4, Universal Analytics]
@@ -344,11 +351,13 @@ services:
     aliasesDe: [Microsoft Clarity, Clarity]
     aliasesEn: [Microsoft Clarity]
 
+  # Sentry is a trade name of Functional Software, Inc., which operates the service itself (no group parent).
   - id: sentry
     name: Sentry
     category: monitoring
     policyRelevance: required
-    parent: { name: "Functional Software, Inc.", country: US }
+    provider: { name: "Functional Software, Inc.", country: US }
+    dpfEntity: { name: "Functional Software, Inc." }
     domains: [sentry.io, sentry-cdn.com]
     signatures:
       - id: sdk
@@ -363,6 +372,17 @@ services:
         stage: event-sent
     aliasesDe: [Sentry]
     aliasesEn: [Sentry]
+    companyAliases: [Functional Software]
+
+  # Performance and error logging the Wix platform adds to every Wix site.
+  - id: wix-monitoring
+    name: Wix Monitoring
+    category: monitoring
+    policyRelevance: optional
+    domains: [frog.wix.com, panorama.wixapps.net]
+    aliasesDe: [Wix]
+    aliasesEn: [Wix]
+    companyAliases: [Wix.com Ltd, Wix.com Ltd.]
 
   - id: new-relic
     name: New Relic Browser

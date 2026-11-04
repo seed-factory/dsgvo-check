@@ -67,9 +67,10 @@ const evidenceBase = {
   page: z.string().optional(),
 };
 
-/** `features.identifier.kind`: persistent kinds are stored-match, persistent-param, user-supplied. */
+/** `features.identifier.kind`: persistent kinds are stored-match, sent-cookie, persistent-param, user-supplied. */
 export const IdentifierKindSchema = z.enum([
   'stored-match',
+  'sent-cookie',
   'persistent-param',
   'user-supplied',
   'per-load',
@@ -472,7 +473,10 @@ const EgressSchema = z.object({
   mode: z.enum(['direct', 'proxy']),
   region: z.enum(['unknown', 'asserted']),
   assertedRegion: z.enum(['eea', 'de']).optional(),
-  source: z.string().meta({ description: 'e.g. "laut Nutzerangabe (--assume-region)"' }),
+  source: z.string().meta({
+    description:
+      'Code of how the region is known: "not-determined" or "assume-region" (reports render it in their language). Reports of earlier versions hold a German phrase here.',
+  }),
 });
 
 export const EnvironmentSchema = z.object({
@@ -524,8 +528,22 @@ export const CoverageSchema = z.object({
   browserRequests: z
     .object({ limit: z.number().int(), issued: z.number().int(), truncated: z.boolean() })
     .optional(),
+  consentActions: z
+    .array(
+      z.object({
+        action: z.enum(['reject', 'accept']),
+        clicked: z.boolean(),
+        verified: z.boolean().nullable(),
+      }),
+    )
+    .optional()
+    .meta({
+      description:
+        'Banner clicks of phases B (reject) and C (accept) on the start page: whether the click took place and whether the CMP state confirmed it (null: not verifiable). Absent when no phase ran and in reports of earlier versions.',
+    }),
 });
 export type ScanCoverage = z.infer<typeof CoverageSchema>;
+export type ConsentAction = NonNullable<ScanCoverage['consentActions']>[number];
 
 export const ScanOptionsSchema = z.object({
   failOn: FailOnSchema,
@@ -553,12 +571,21 @@ export type ReportScanOptions = z.infer<typeof ScanOptionsSchema>;
 
 const FailureSchema = z.object({ code: z.string(), message: z.string() });
 
+const EvaluatedAtSchema = IsoDateTime.optional().meta({
+  description:
+    'Only for a re-evaluated snapshot (--from-snapshot): when the evaluation ran. startedAt and durationMs then describe the capture.',
+});
+
 const ScanCompleteSchema = z.object({
   status: z.enum(['complete', 'partial']),
   target: z.string(),
   finalUrl: z.string().nullable(),
-  startedAt: IsoDateTime,
+  startedAt: IsoDateTime.meta({
+    description:
+      'Start of the observation; for a re-evaluated snapshot (--from-snapshot) the time it was captured',
+  }),
   durationMs: z.number().nonnegative(),
+  evaluatedAt: EvaluatedAtSchema,
   failure: FailureSchema.optional(),
   environment: EnvironmentSchema,
   coverage: CoverageSchema,
@@ -572,6 +599,7 @@ const ScanFailedSchema = z.object({
   failure: FailureSchema,
   finalUrl: z.string().nullable().optional(),
   durationMs: z.number().nonnegative().optional(),
+  evaluatedAt: EvaluatedAtSchema,
   environment: EnvironmentSchema.optional(),
   coverage: CoverageSchema.optional(),
   options: ScanOptionsSchema.optional(),

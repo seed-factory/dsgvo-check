@@ -152,7 +152,8 @@ flowchart LR
 Nur die Collectors greifen aufs Netz zu und entfernen sensible Werte, bevor etwas in den Snapshot gelangt. Die
 Prüfungen sind reine Funktionen über diesem Snapshot; Schweregrade, Varianten und Texte liegen als Daten in
 `test/data`, nicht im Code. Das Gate bestimmt aus den Befunden den Exit-Code. Weil der Snapshot alle Rohdaten enthält,
-lässt sich ein Scan mit `--from-snapshot` ohne Netz erneut auswerten.
+lässt sich ein Scan mit `--from-snapshot` ohne Netz erneut auswerten. Der Bericht nennt dann Zeitpunkt und Dauer der
+Aufnahme; wann neu ausgewertet wurde, steht im ausführlichen Bericht und in `report.json` (`scan.evaluatedAt`).
 
 ### Ablauf im Browser
 
@@ -231,6 +232,15 @@ Ein Scan dauert meist 1–3 Minuten und schreibt nach `--out`:
 - `artifacts/banner-B.jpg` bei erkanntem Banner (abschaltbar mit `--no-screenshots`),
 - `report.pdf` nur mit `--format html,pdf`. Ein Druckfehler führt zu einer Warnzeile; Exit-Code und JSON bleiben.
 
+Die erste Seite von `report.html` und `report.pdf` richtet sich an die Betreiberin oder den Betreiber der Website: Die
+Kopfzeile nennt Zeitpunkt des Scans und Region des Netzausgangs, „Auf einen Blick“ fasst zusammen, was beobachtet wurde
+und welche Prüfungen kein abschließendes Ergebnis haben, „Was zu tun ist“ nennt je Befundart eine Empfehlung, und
+„Beobachtete Dienste“ zeigt, wann welcher Dienst geladen wurde. Danach folgen die Einzelheiten für Entwickler. Mit
+`--detail brief` entfällt dieser Teil: Der kurze Bericht besteht aus der ersten Seite und dem Hinweis. Gleiche Anfragen,
+Cookies und Speichereinträge eines Befunds erscheinen im ausführlichen Bericht einmal, mit ihrer Anzahl im Auszug und
+der Seitenliste; Seiten, Header und Anfragen ohne Kennung einer Seite stehen als Liste mit einer Zeile je Eintrag.
+`report.json` behält jeden Beleg mit allen Feldern.
+
 ### Bericht erneut ausgeben
 
 Einen vorhandenen JSON-Bericht gibt der Befehl `report` ohne erneuten Scan aus. Ungültiges oder fremdes JSON endet mit
@@ -242,6 +252,8 @@ node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lan
 
 - Ohne Flags rendert `report` HTML auf Deutsch. `DSGVO_CHECK_REPORT_LANG` und `DSGVO_CHECK_REPORT_FORMATS` (auch aus
   `.env`, siehe [Konfiguration](#konfiguration)) ändern diese Standardwerte, ein Flag geht vor.
+- `--detail full|brief` (Standard `full`, Einstellung `DSGVO_CHECK_REPORT_DETAIL`) wählt den ausführlichen oder den
+  kurzen Bericht. Es gilt für HTML und PDF; JSON, Konsole und `summary.md` bleiben gleich.
 - Ist `DSGVO_CHECK_REPORT_FORMATS` nicht gesetzt, bleibt es bei `html`: `console,json` ist nur der Standard eines Scans.
 - `DSGVO_CHECK_REPORT_OUT_DIR` gilt nur für Scans; `report` schreibt neben die Eingabedatei oder nach `--out`.
 
@@ -275,6 +287,7 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 | `--from-snapshot <file>`            | –                              | Snapshot ohne Netz neu auswerten (die URL entfällt)                                                              |
 | `--checks <ids>`                    | alle                           | Nur diese Prüfungen, z. B. `EMBED-01,HDR-01`                                                                     |
 | `--lang de\|en`                     | `de`                           | Sprache des Berichts                                                                                             |
+| `--detail full\|brief`              | `full`                         | HTML und PDF: `full` mit Belegen für Entwickler, `brief` kurz, mit Handlungsempfehlungen für Betreiber           |
 | `--verbose`                         | aus                            | Ausführliche Logs auf stderr                                                                                     |
 
 ## Konfiguration
@@ -656,8 +669,8 @@ baut das Image und testet Image und Action. Ein Beispielbericht (HTML und PDF) w
 Der Canary ist ein passiver Messlauf des Scanners über eine **lokale, nie eingecheckte** Stichprobe öffentlicher
 Websites. Er misst den **Scanner**, nicht die Websites: wie oft Prüfungen `inconclusive`, `skipped` oder `error` enden,
 wie oft Bot-Modus, Geo-Modus, Blockaden und nicht erreichbare Hosts auftreten (`SCAN-BOTMODE`, `SCAN-GEO`,
-`SCAN-BLOCKED`, `SCAN-UNREACHABLE`), ob die CMP-Erkennung zum erwarteten CMP passt, wie lange Scans dauern und welche
-Fehler beim Sammeln am häufigsten sind.
+`SCAN-BLOCKED`, `SCAN-HTTP-BLOCKED`, `SCAN-UNREACHABLE`), ob die CMP-Erkennung zum erwarteten CMP passt, wie lange
+Scans dauern und welche Fehler beim Sammeln am häufigsten sind.
 
 Im Repository liegt nur `canary/sites.example.yaml` mit fiktiven Hosts und allen Eingabefeldern. Das echte Korpus
 gehört nach `canary/sites.yaml` (in `.gitignore`) oder in eine private Datei, die `--sites` übergibt.

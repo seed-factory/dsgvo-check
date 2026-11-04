@@ -108,8 +108,15 @@ export interface ChainPki {
   leafKeyPem: string;
 }
 
-/** A separate root → intermediate → leaf hierarchy for chain tests (incomplete chain, unknown root). */
-export async function createChainPki(host: string, now = new Date()): Promise<ChainPki> {
+/**
+ * A separate root → intermediate → leaf hierarchy for chain tests (incomplete chain, unknown root). `san: false` names
+ * the host only in the leaf's CN, as old private-CA and hoster default certificates do.
+ */
+export async function createChainPki(
+  host: string,
+  now = new Date(),
+  { san = true }: { san?: boolean } = {},
+): Promise<ChainPki> {
   const rootK = await keys();
   const intK = await keys();
   const leafK = await keys();
@@ -153,7 +160,7 @@ export async function createChainPki(host: string, now = new Date()): Promise<Ch
     publicKey: leafK.publicKey,
     signingAlgorithm: ALG,
     extensions: [
-      new x509.SubjectAlternativeNameExtension([{ type: 'dns', value: host }]),
+      ...(san ? [new x509.SubjectAlternativeNameExtension([{ type: 'dns', value: host }])] : []),
       new x509.BasicConstraintsExtension(false, undefined, true),
       new x509.ExtendedKeyUsageExtension([x509.ExtendedKeyUsage.serverAuth]),
       await x509.AuthorityKeyIdentifierExtension.create(intermediate, false),

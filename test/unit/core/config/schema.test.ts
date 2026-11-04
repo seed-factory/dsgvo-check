@@ -35,6 +35,8 @@ describe('built-in defaults', () => {
     ['browser', 'sourceFetchTimeoutMs', 8_000],
     ['browser', 'responseMetaTimeoutMs', 5_000],
     ['browser', 'storageReadTimeoutMs', 1_000],
+    // A cookie that expires within a day is short-lived, like a session cookie.
+    ['browser', 'persistentCookieMinDays', 1],
     ['http', 'minIntervalMs', 500],
     ['http', 'connectTimeoutMs', 5_000],
     ['http', 'headersTimeoutMs', 10_000],
@@ -56,6 +58,7 @@ describe('built-in defaults', () => {
     ['cmp', 'blockingCoveredRatio', 0.85],
     ['cmp', 'waitMs', 5_000],
     ['report', 'formats', ['console', 'json']],
+    ['report', 'detail', 'full'],
     ['report', 'outDir', './dsgvo-check-report'],
     ['report', 'lang', 'de'],
     ['report', 'summaryMaxFindings', 50],

@@ -58,20 +58,23 @@ function emitNullMxFindings(policy: PolicyState, mxEvidence: EvidenceInput[], em
   if (policy !== 'reject') emit('weak-option', { kind: 'null-mx', policy, count: 1 }, mxEvidence);
 }
 
+const yn = (b: boolean) => (b ? 'yes' : 'no');
+
 /** Findings for a record that is valid: policy `none`, weak options and the legacy `pct` below 100. */
 function emitRecordFindings(rec: DmarcRecord, emit: Emit): void {
-  if (rec.p === 'none') emit('policy-none', {});
+  // Without rua, p=none does not even request the reports that its text and action build on.
+  if (rec.p === 'none') emit('policy-none', { noRua: yn(rec.rua.length === 0) });
 
-  // `sp=none`, `t=y` (with p≠none) and a missing rua are one `weak-option` finding with a list.
+  // `sp=none`, `t=y` and a missing rua are one `weak-option` finding with a list. Under p=none the policy-none finding
+  // already names the missing rua as its first step, so a second item would only repeat that advice.
   const enforcing = rec.p !== null && rec.p !== 'none';
   const options = {
     spNone: enforcing && rec.sp === 'none',
     testing: enforcing && rec.t === 'y',
-    noRua: rec.rua.length === 0,
+    noRua: enforcing && rec.rua.length === 0,
   };
   const count = Object.values(options).filter(Boolean).length;
   if (count > 0) {
-    const yn = (b: boolean) => (b ? 'yes' : 'no');
     emit('weak-option', {
       kind: 'options',
       policy: rec.p ?? 'none',

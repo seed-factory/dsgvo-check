@@ -16,7 +16,7 @@ import type { ClassifiedCookie, ClassifiedStorage, DerivedSection } from '../../
 import { cookieEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceInfo } from './services.ts';
-import { consentSignals, signalOutcome } from './signals.ts';
+import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
 import {
   classifiedCookies,
   classifiedStorage,
@@ -170,28 +170,130 @@ function addStorageEntries(
   return allowlisted;
 }
 
-function entryObservations(entries: Map<string, Entry>, derived: DerivedSection): Observation[] {
+/** Variants that report every entry of a scan in one finding: unclassified entries only differ by name. */
+const LISTED_VARIANTS: ReadonlySet<Variant> = new Set([
+  'unknown-third-party-persistent',
+  'unknown-first-party-persistent',
+]);
+
+/** Evidence items per listed finding; each entry contributes its first item so every name stays backed. */
+const MAX_LISTED_EVIDENCE = 40;
+
+/** A listed title names this many entries and counts the others; the body names all of them. */
+const MAX_TITLE_KEYS = 5;
+
+/**
+ * `name (kind)` for own entries, `name (kind, domain)` for third-party ones; never a value. The message of the
+ * first-party variant already says "own domain", so the label adds no untranslated word to it.
+ */
+const entryLabel = (e: Entry): string =>
+  e.party === 'first-party' ? `${e.name} (${e.kind})` : `${e.name} (${e.kind}, ${e.party})`;
+
+/** What every observation of the check says about its context. */
+interface ListContext {
+  derived: DerivedSection;
+  dataset: string;
+  banner: BannerState;
+}
+
+function observationFor(e: Entry, ctx: ListContext): Observation {
+  return {
+    checkId: ID,
+    variant: e.variant,
+    confidence: 'high',
+    subject: e.subject,
+    category: e.cls.category,
+    phases: [...e.phases].sort() as Phase[],
+    pages: [...e.pages].sort(),
+    evidence: e.evidence,
+    params: {
+      name: e.name,
+      storageKind: e.kind,
+      party: e.party,
+      service: serviceInfo(ctx.derived, e.cls.serviceId)?.name ?? null,
+      dataset: ctx.dataset,
+      bannerFound: ctx.banner,
+    },
+    ...serviceFields(ctx.derived, e.cls.serviceId),
+  };
+}
+
+/** The catalog names the entry as one of its service's entries that carry no identifier (`otherCookies` and the like). */
+const knownWithoutIdentifier = (e: Entry): boolean =>
+  e.cls.source === 'catalog' && !e.cls.tracking && e.cls.serviceId !== null;
+
+/** `Service – label, label; Service – label`, services in name order; the texts put the list after a colon. */
+function labelsByService(entries: readonly Entry[], derived: DerivedSection): string {
+  const byService = new Map<string, string[]>();
+  for (const e of entries) {
+    const name = serviceInfo(derived, e.cls.serviceId)?.name ?? e.party;
+    byService.set(name, [...(byService.get(name) ?? []), entryLabel(e)]);
+  }
+  return [...byService.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, labels]) => `${name} – ${labels.join(', ')}`)
+    .join('; ');
+}
+
+/**
+ * One finding per variant. The subject names its entries: the fingerprint changes when an entry appears or goes, so a
+ * suppression covers only the entries that were reviewed.
+ */
+function listedObservation(variant: Variant, group: Entry[], ctx: ListContext): Observation {
+  const serviceIds = new Set(group.map((e) => e.cls.serviceId ?? null));
+  const sharedService = serviceIds.size === 1 ? group[0]!.cls.serviceId : null;
+  const categories = new Set(group.map((e) => e.cls.category));
+  const known = group.filter(knownWithoutIdentifier);
+  const unknown = group.filter((e) => !knownWithoutIdentifier(e));
+  const knownServices = sortedUniq(
+    known.flatMap((e) => serviceInfo(ctx.derived, e.cls.serviceId)?.name ?? []),
+  );
+  const keys = sortedUniq(group.map((e) => e.name));
+  return {
+    checkId: ID,
+    variant,
+    confidence: 'high',
+    subject: `${variant}-list:${sortedUniq(group.map((e) => e.subject)).join(',')}`,
+    ...(categories.size === 1 ? { category: group[0]!.cls.category } : {}),
+    phases: sortedUniq(group.flatMap((e) => [...e.phases])) as Phase[],
+    pages: sortedUniq(group.flatMap((e) => [...e.pages])),
+    evidence: group.flatMap((e) => e.evidence.slice(0, 1)).slice(0, MAX_LISTED_EVIDENCE),
+    params: {
+      count: group.length,
+      names: group.map(entryLabel).join(', '),
+      unknownCount: unknown.length,
+      unknownNames: unknown.map(entryLabel).join(', ') || null,
+      knownCount: known.length,
+      knownNames: labelsByService(known, ctx.derived) || null,
+      // The title names the services the catalog knows and the first keys, so the owner sees what to look for.
+      services: knownServices.join(', ') || null,
+      allKnown: unknown.length === 0,
+      keys: keys.slice(0, MAX_TITLE_KEYS).join(', '),
+      moreKeys: Math.max(0, keys.length - MAX_TITLE_KEYS),
+      service: serviceInfo(ctx.derived, sharedService)?.name ?? null,
+      dataset: ctx.dataset,
+      bannerFound: ctx.banner,
+    },
+    ...serviceFields(ctx.derived, sharedService),
+  };
+}
+
+function entryObservations(
+  entries: Map<string, Entry>,
+  derived: DerivedSection,
+  banner: BannerState,
+): Observation[] {
   const dataset = `${derived.datasets[0]?.name ?? 'catalog'} ${derived.catalogVersion ?? ''}`.trim();
-  return [...entries.values()]
-    .sort((a, b) => a.subject.localeCompare(b.subject))
-    .map((e) => ({
-      checkId: ID,
-      variant: e.variant,
-      confidence: 'high',
-      subject: e.subject,
-      category: e.cls.category,
-      phases: [...e.phases].sort() as Phase[],
-      pages: [...e.pages].sort(),
-      evidence: e.evidence,
-      params: {
-        name: e.name,
-        storageKind: e.kind,
-        party: e.party,
-        service: serviceInfo(derived, e.cls.serviceId)?.name ?? null,
-        dataset,
-      },
-      ...serviceFields(derived, e.cls.serviceId),
-    }));
+  const ctx: ListContext = { derived, dataset, banner };
+  const sorted = [...entries.values()].sort((a, b) => a.subject.localeCompare(b.subject));
+  const single = sorted.filter((e) => !LISTED_VARIANTS.has(e.variant)).map((e) => observationFor(e, ctx));
+  const listed = RANK.filter((v) => LISTED_VARIANTS.has(v)).flatMap((variant) => {
+    const group = sorted
+      .filter((e) => e.variant === variant)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.subject.localeCompare(b.subject));
+    return group.length > 0 ? [listedObservation(variant, group, ctx)] : [];
+  });
+  return [...single, ...listed];
 }
 
 export const consent02 = defineCheck({
@@ -215,7 +317,7 @@ export const consent02 = defineCheck({
       browser,
       {
         status: 'completed',
-        observations: entryObservations(entries, derived),
+        observations: entryObservations(entries, derived, bannerState(cmp)),
         coverage: { note: `allowlist-v${derived.allowlistVersion ?? '?'}:not-evaluated=${allowlisted}` },
         limitations: sortedUniq(
           browser.knownGaps.filter((g) => g.startsWith('cookie') || g.startsWith('storage')),

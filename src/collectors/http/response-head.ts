@@ -19,9 +19,12 @@ export function snapshotHeaders(
 ): {
   headers: HeaderRecord[];
   setCookieNames: string[];
+  blankHeaderNames: string[];
 } {
   const flat: Array<{ name: string; value: string }> = [];
   const setCookieNames: string[] = [];
+  /** Names with at least one non-empty value; a header sent only empty is blank. */
+  const filled = new Set<string>();
 
   for (const [name, value] of Object.entries(raw)) {
     if (value === undefined) continue;
@@ -34,15 +37,25 @@ export function snapshotHeaders(
         continue;
       }
       flat.push({ name: n, value: v });
+      if (v.trim() !== '') filled.add(n);
     }
   }
 
-  return { headers: snapshotHeaderRecords(flat, base), setCookieNames };
+  return {
+    headers: snapshotHeaderRecords(flat, base),
+    setCookieNames,
+    blankHeaderNames: [...new Set(flat.map((h) => h.name))].filter((name) => !filled.has(name)),
+  };
 }
 
 export interface ResponseHead {
   headers: HeaderRecord[];
   setCookieNames: string[];
+  /**
+   * Headers sent with an empty value: a stored record shows `[redacted]` either way, and the challenge signatures count
+   * an empty header only where they say so.
+   */
+  blankHeaderNames: string[];
   /** Absolute and unsanitized; null when absent or not a URL. */
   location: string | null;
   contentType: string | null;
@@ -50,7 +63,7 @@ export interface ResponseHead {
 }
 
 export function readResponseHead(raw: Dispatcher.ResponseData['headers'], url: string): ResponseHead {
-  const { headers, setCookieNames } = snapshotHeaders(raw, url);
+  const { headers, setCookieNames, blankHeaderNames } = snapshotHeaders(raw, url);
   const first = (name: string) => {
     const v = raw[name];
     return (Array.isArray(v) ? v[0] : v) ?? null;
@@ -59,6 +72,7 @@ export function readResponseHead(raw: Dispatcher.ResponseData['headers'], url: s
   return {
     headers,
     setCookieNames,
+    blankHeaderNames,
     location: absoluteLocation(first('location'), url),
     contentType: first('content-type'),
     contentEncoding: first('content-encoding'),

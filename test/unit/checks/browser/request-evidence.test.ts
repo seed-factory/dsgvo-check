@@ -3,7 +3,12 @@
  * navigation/action/frame/parent ids and the versioned safe `features`. No legacy relative times.
  */
 import { describe, expect, it } from 'vitest';
-import { cookieEvidence, requestEvidence, storageEvidence } from '../../../../src/checks/browser/evidence.ts';
+import {
+  cookieEvidence,
+  distinctRequestEvidence,
+  requestEvidence,
+  storageEvidence,
+} from '../../../../src/checks/browser/evidence.ts';
 import { EvidenceSchema } from '../../../../src/core/report/schema.ts';
 import type { ClassifiedRequest } from '../../../../src/derive/types.ts';
 import { makeCookie, makeRequest, makeStorage } from '../../../utils/snapshot-builder.ts';
@@ -155,5 +160,60 @@ describe('cookie and storage evidence on the same time scale (5.3)', () => {
     expect(s).toMatchObject({ tMs: 9_000, navigationId: 'A-n2' });
     expect(() => EvidenceSchema.parse({ id: 'ev-c', ...c })).not.toThrow();
     expect(() => EvidenceSchema.parse({ id: 'ev-s', ...s })).not.toThrow();
+  });
+});
+
+describe('distinctRequestEvidence', () => {
+  const lib = (id: string, pageUrl: string, p = {}) =>
+    makeRequest({
+      id,
+      url: 'https://www.googletagmanager.com/gtm.js?id=GTM-TEST',
+      pageUrl,
+      navigationId: `${id}-n`,
+      atMs: Number(id.length) * 100,
+      ...p,
+    });
+  const hit = (id: string, pageUrl: string) =>
+    makeRequest({
+      id,
+      url: 'https://www.google.com/ccm/collect?frm=[redacted]',
+      pageUrl,
+      resourceType: 'ping',
+    });
+
+  it('a request repeated on several pages is one item; the order of first occurrence is kept', () => {
+    const items = [
+      { r: lib('a', 'https://www.example.de/'), c: null },
+      { r: hit('b', 'https://www.example.de/'), c: null },
+      { r: lib('cc', 'https://www.example.de/kontakt'), c: null },
+      { r: hit('ddd', 'https://www.example.de/kontakt'), c: null },
+      { r: lib('eeee', 'https://www.example.de/impressum', { phase: 'B' }), c: null },
+    ];
+    const ev = distinctRequestEvidence(items);
+    expect(ev.map((e) => [(e as { url: string }).url, (e as { page: string }).page])).toEqual([
+      ['https://www.googletagmanager.com/gtm.js?id=GTM-TEST', 'https://www.example.de/'],
+      ['https://www.google.com/ccm/collect?frm=[redacted]', 'https://www.example.de/'],
+    ]);
+  });
+
+  it('counterexample: the same URL with another result or inside an embedded frame stays a separate item', () => {
+    const ev = distinctRequestEvidence([
+      { r: lib('a', 'https://www.example.de/'), c: null },
+      {
+        r: lib('b', 'https://www.example.de/', { status: 304, result: { kind: 'response', status: 304 } }),
+        c: null,
+      },
+      { r: lib('c', 'https://www.example.de/', { frameUrl: 'https://maps.example/embed' }), c: null },
+    ]);
+    expect(ev).toHaveLength(3);
+  });
+
+  it('stops at the cap', () => {
+    const items = Array.from({ length: 30 }, (_, i) => ({
+      r: makeRequest({ id: `x${i}`, url: `https://cdn.example/${i}.js` }),
+      c: null,
+    }));
+    expect(distinctRequestEvidence(items)).toHaveLength(10);
+    expect(distinctRequestEvidence(items, 3)).toHaveLength(3);
   });
 });

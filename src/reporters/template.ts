@@ -6,11 +6,16 @@ import type { MessageParams } from '../core/report/schema.ts';
 
 type Node =
   | { kind: 'text'; text: string }
-  | { kind: 'value'; path: string }
+  | { kind: 'value'; path: string; form: OutputForm }
   | { kind: 'if'; path: string; yes: Node[]; no: Node[] }
   | { kind: 'each'; path: string; alias: string; body: Node[] }
   | { kind: 'translation'; key: string; params: Record<string, string> };
 type Token = { text: string } | { expression: string };
+/**
+ * `plain` escapes; `prose` also keeps a check id (`CONSENT-03`) on one line; `url` also allows line breaks after the
+ * separators of a URL, so it wraps at `/`, `?`, `&` and `=` instead of inside a host name or a word.
+ */
+type OutputForm = 'plain' | 'prose' | 'url';
 type Scope = Record<string, unknown>;
 
 const PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z0-9_$]+)*$/;
@@ -18,6 +23,12 @@ const IF_BLOCK = /^#if\s+(.+)$/;
 const EACH_BLOCK = /^#each\s+(\S+)\s+as\s+([A-Za-z_$][\w$]*)$/;
 const TRANSLATION = /^t\s+"([^"\r\n]+)"((?:\s+.*)?)$/;
 const TRANSLATION_PARAM = /^([A-Za-z_$][\w$]*)=(.+)$/;
+const FORM = /^(prose|url)\s+(\S+)$/;
+
+/** A check id in running text; the hyphen would otherwise allow a line break inside it. */
+const CHECK_ID = /\b[A-Z][A-Z0-9]{1,9}-\d{2}\b/g;
+/** Break opportunities of a URL: after a separator, not between the two slashes after the scheme. */
+const URL_BREAK = /(?<=[/?&=])(?!\/)/;
 
 /** Blocks nest only this deep, so a hostile or broken template cannot exhaust the stack. */
 const MAX_NESTING_DEPTH = 100;
@@ -116,7 +127,12 @@ function parse(source: string): Node[] {
       } else if (/^t\s/.test(expression)) {
         nodes.push(parseTranslation(expression));
       } else {
-        nodes.push({ kind: 'value', path: validPath(expression) });
+        const form = FORM.exec(expression);
+        nodes.push(
+          form
+            ? { kind: 'value', path: validPath(form[2]!), form: form[1] as OutputForm }
+            : { kind: 'value', path: validPath(expression), form: 'plain' },
+        );
       }
     }
 
@@ -150,8 +166,12 @@ function primitive(value: unknown): string | number | boolean | null {
   throw new Error('Template substitution must be a scalar');
 }
 
-function output(value: unknown): string {
-  return escapeHtml(sanitizeExternal(String(primitive(value) ?? '–'), MAX_OUTPUT_CHARS));
+function output(value: unknown, form: OutputForm = 'plain'): string {
+  const text = sanitizeExternal(String(primitive(value) ?? '–'), MAX_OUTPUT_CHARS);
+  // Only fixed markup is added, around or between parts that are escaped first.
+  if (form === 'url') return text.split(URL_BREAK).map(escapeHtml).join('<wbr>');
+  const escaped = escapeHtml(text);
+  return form === 'prose' ? escaped.replace(CHECK_ID, (id) => `<span class="id">${id}</span>`) : escaped;
 }
 
 type TranslationNode = Extract<Node, { kind: 'translation' }>;
@@ -178,7 +198,7 @@ function renderNode(node: Node, scopes: readonly Scope[], ctx: ReporterContext):
     case 'text':
       return node.text;
     case 'value':
-      return output(resolve(node.path, scopes));
+      return output(resolve(node.path, scopes), node.form);
     case 'if': {
       const value = resolve(node.path, scopes);
       const truthy = Array.isArray(value) ? value.length > 0 : Boolean(value);

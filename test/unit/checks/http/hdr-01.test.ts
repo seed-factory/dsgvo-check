@@ -448,6 +448,37 @@ describe('HDR-01 security headers', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'start-page-status' });
   });
 
+  describe('a bot or WAF challenge instead of the site (rule 5: inconclusive, never a finding)', () => {
+    const blocked = { code: 'blocked', message: 'waf-block: header:x-vercel-mitigated' };
+
+    it('on the start page → inconclusive (blocked), even with a 2xx status', () => {
+      for (const status of [429, 200]) {
+        const r = runCheck(hdr01, snap([start([], { status, error: blocked })]));
+        expect(r).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
+        expect(r.outcome?.limitations).toEqual([`status:${status}`]);
+        expect(variantsOf(r)).toEqual([]);
+      }
+    });
+
+    it('on a legal page → partial, that page is not judged', () => {
+      const r = runCheck(
+        hdr01,
+        snap([
+          start(GOOD),
+          { role: 'privacy', url: 'https://www.example.de/datenschutz', status: 403, error: blocked },
+        ]),
+      );
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual(['document-blocked:privacy']);
+      expect(variantsOf(r)).toEqual([]);
+    });
+
+    it('counterexample: a 429 without a challenge signature stays start-page-status', () => {
+      const r = runCheck(hdr01, snap([start([], { status: 429 })]));
+      expect(r).toMatchObject({ status: 'inconclusive', reason: 'start-page-status' });
+    });
+  });
+
   it('inconclusive: invalid certificate on the start page (likely a hoster default page)', () => {
     const r = runCheck(
       hdr01,

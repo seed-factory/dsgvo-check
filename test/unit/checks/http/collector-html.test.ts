@@ -136,6 +136,98 @@ describe('findLegalLinks', () => {
     });
   });
 
+  // Site builders keep the slug of a copied page: the privacy policy may live at /impressum-2.
+  it('the link text decides before the path', () => {
+    const html = `
+      <nav><a href="/impressum-2">Datenschutz</a></nav>
+      <footer><a href="/seite-3">Impressum</a> | <a href="/impressum-2">Datenschutz</a></footer>`;
+    expect(findLegalLinks(html, BASE)).toEqual({
+      impressum: 'http://www.example.test/seite-3',
+      privacy: 'http://www.example.test/impressum-2',
+    });
+  });
+
+  it.each([
+    [
+      'a link named Datenschutz is not the Impressum by its path',
+      '<a href="/impressum-und-mehr">Datenschutz</a>',
+      {
+        privacy: 'http://www.example.test/impressum-und-mehr',
+      },
+    ],
+    [
+      'a link named Impressum is not the privacy policy by its path',
+      '<a href="/datenschutz-info">Impressum</a>',
+      {
+        impressum: 'http://www.example.test/datenschutz-info',
+      },
+    ],
+    [
+      'a page linked for both documents is the Impressum only',
+      '<a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/rechtliches',
+      },
+    ],
+    [
+      'a page linked for both documents gives way to a later link named for the privacy policy alone',
+      '<a href="/impressum-datenschutz">Impressum &amp; Datenschutz</a><a href="/datenschutz">Datenschutzerklärung</a>',
+      {
+        impressum: 'http://www.example.test/impressum-datenschutz',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
+      'a page linked for both documents gives way to a later privacy path match',
+      '<a href="/rechtliches">Impressum &amp; Datenschutz</a><a href="/datenschutz"><svg></svg></a>',
+      {
+        impressum: 'http://www.example.test/rechtliches',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
+      'a page linked for both documents after the Impressum link is the privacy policy',
+      '<a href="/impressum">Impressum</a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/rechtliches',
+      },
+    ],
+    [
+      'a page linked for both documents comes before a privacy link found only by its path',
+      '<a href="/impressum">Impressum</a><a href="/datenschutz"><svg></svg></a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/rechtliches',
+      },
+    ],
+    [
+      'an anchor on the Impressum page is the Impressum only',
+      '<a href="/impressum">Impressum</a><a href="/impressum#datenschutz">Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+      },
+    ],
+    [
+      'a link is kept without the anchor it jumps to',
+      '<a href="/impressum#top">Impressum</a><a href="/datenschutz#cookies">Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
+      'a path match still counts when no text names the document',
+      '<a href="/impressum"><svg></svg></a><a href="/datenschutz"><img alt=""></a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+  ])('%s', (_, html, expected) => {
+    expect(findLegalLinks(html, BASE)).toEqual(expected);
+  });
+
   it('ignores mailto and javascript links', () => {
     expect(findLegalLinks(`<a href="mailto:datenschutz@example.test">Datenschutz</a>`, BASE)).toEqual({});
   });

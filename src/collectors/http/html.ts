@@ -369,34 +369,61 @@ function takesUserInput(formBody: string, rules: HtmlRules): boolean {
   return false;
 }
 
+type LegalRole = 'impressum' | 'privacy';
+
+/** The document a link opens: `/impressum#datenschutz` is the page `/impressum`, fetched once. */
+function documentUrl(href: string, base: string): string | null {
+  const u = parseUrl(href.trim(), base, true);
+  if (!u) return null;
+  u.hash = '';
+  return u.href;
+}
+
+/**
+ * The Impressum and privacy links of the start page. The link text decides before the path: a site builder may serve
+ * the privacy policy at `/impressum-2`, and a link whose text names one document is never taken for the other
+ * by its path. A link named for both documents ("Impressum & Datenschutz") is the privacy policy only when no link
+ * names the privacy policy alone; as a named link it still comes before a link found only by its path. A page that
+ * both links resolve to is kept as the Impressum only.
+ */
 export function findLegalLinks(
   html: string,
   base: string,
   rules: HtmlRules = loadHtmlRules(),
 ): { impressum?: string; privacy?: string } {
-  const out: { impressum?: string; privacy?: string } = {};
+  const byText: Partial<Record<LegalRole, string>> = {};
+  const byPath: Partial<Record<LegalRole, string>> = {};
+  let namedForBoth: string | undefined;
 
   for (const a of elements(withoutComments(html), 'a', false)) {
     const attrs = parseAttributes(`<a ${a.attrs}>`);
     const href = attrs.get('href')?.trim() ?? '';
     if (!href || href.startsWith('#') || /^(javascript|mailto|tel):/i.test(href)) continue;
 
-    const url = resolve(href, base);
+    const url = documentUrl(href, base);
     if (!url) continue;
 
     const text = decodeEntities(stripTags(a.body)).replace(/\s+/g, ' ').trim();
     const path = new URL(url).pathname;
-    if (!out.impressum && (rules.impressumText.test(text) || rules.impressumPath.test(path))) {
-      out.impressum = url;
-    } else if (
-      !out.privacy &&
-      !rules.settingsText.test(text) &&
-      (rules.privacyText.test(text) || rules.privacyPath.test(path))
-    ) {
-      out.privacy = url;
-    }
-    if (out.impressum && out.privacy) break;
+    const settings = rules.settingsText.test(text);
+    const named = {
+      impressum: rules.impressumText.test(text),
+      privacy: !settings && rules.privacyText.test(text),
+    };
+    if (named.impressum) byText.impressum ??= url;
+    if (named.privacy && named.impressum) namedForBoth ??= url;
+    if (named.privacy && !named.impressum) byText.privacy ??= url;
+    if (!named.privacy && rules.impressumPath.test(path)) byPath.impressum ??= url;
+    if (!named.impressum && !settings && rules.privacyPath.test(path)) byPath.privacy ??= url;
+    if (byText.impressum && byText.privacy) break;
   }
 
+  const out: { impressum?: string; privacy?: string } = {};
+  const impressum = byText.impressum ?? byPath.impressum;
+  // The page named for both that is already the Impressum adds nothing; a privacy path match is next.
+  const both = namedForBoth !== impressum ? namedForBoth : undefined;
+  const privacy = byText.privacy ?? both ?? byPath.privacy;
+  if (impressum) out.impressum = impressum;
+  if (privacy && privacy !== impressum) out.privacy = privacy;
   return out;
 }

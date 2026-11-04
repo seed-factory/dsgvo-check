@@ -110,6 +110,7 @@ describe('scan — the in-memory report carries the composed disclaimer', () => 
     const paragraphs = disclaimerParagraphs(report, loadTexts('de'));
     const incomplete = paragraphs.filter((p) => p.startsWith('Der Scan wurde nicht'));
     expect(incomplete).toHaveLength(1);
-    expect(incomplete[0]).toContain('report-write-failed');
+    // the reason in words, as the owner reads it
+    expect(incomplete[0]).toContain('Bericht konnte nicht vollständig geschrieben werden');
   });
 });

@@ -3,7 +3,7 @@
 // meta / JS redirect and form heuristics. With an explicit port the start document and reachability come from exactly
 // that origin. A final host outside target/www/apex gets TLS handshakes (`finalTls`).
 
-import { startFinalHost } from '../../checks/http/shared.ts';
+import { BLOCKED_DOCUMENT, startFinalHost } from '../../checks/http/shared.ts';
 import { storedHeaderRecord } from '../../core/redaction/headers.ts';
 import { errorMessage } from '../../core/runtime/errors.ts';
 import type { CollectorContext, FatalSignal, HttpCollector } from '../../core/snapshot/collector.ts';
@@ -20,6 +20,7 @@ import type { CollectorError, DiagnosticInput } from '../../core/snapshot/index.
 import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { isHttpUrl, isSameSite, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
 import { DEFAULT_TLS_PORT, probeTlsEndpoint } from '../tls/probe.ts';
+import { httpChallenge } from './challenge.ts';
 import { type FetchResult, HttpClient, type HttpClientOptions } from './client.ts';
 import { type ChainOutcome, outcomeOf, ProbeError } from './errors.ts';
 import { type HostTarget, hostVariants } from './hosts.ts';
@@ -35,6 +36,8 @@ const UNREACHABLE_OUTCOMES: ReadonlySet<string> = new Set(['connection-refused',
 const META_NAME = /^[a-z][a-z0-9._-]{0,39}$/;
 /** Limit for ordinary records; CSP stays available to the security-header check regardless of document order. */
 const MAX_META_HTTP_EQUIV = 32;
+/** Blocked pages and signals named in the diagnostic, so that it stays short. */
+const MAX_BLOCKED_LISTED = 5;
 // Referrer-Policy keywords HDR-01 recognises (`effectiveReferrerPolicy`; a unit test pins the two lists together). Old
 // `<meta name="referrer">` values (`never`, `default`, `always`) are not read by the check, so they are not stored.
 const REFERRER_KEYWORDS: ReadonlySet<string> = new Set([
@@ -252,7 +255,39 @@ function documentFrom(
       url: run.chain.startUrl,
     };
   }
+
+  const challenge = run.last ? httpChallenge(run.last) : null;
+  if (challenge) {
+    doc.error = {
+      code: BLOCKED_DOCUMENT,
+      message: `${challenge.kind}: ${challenge.signals.join(', ')}`,
+      phase: 'http',
+      url: doc.finalUrl,
+    };
+  }
   return doc;
+}
+
+/**
+ * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 does not judge their headers. Its own code:
+ * the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
+ */
+export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[]): DiagnosticInput | null {
+  const blocked = documents.filter((d) => d.error?.code === BLOCKED_DOCUMENT);
+  if (blocked.length === 0) return null;
+  const pages = [...new Set(blocked.map((d) => d.finalUrl))];
+  return {
+    code: 'SCAN-HTTP-BLOCKED',
+    affects: ['HDR-01'],
+    params: {
+      count: pages.length,
+      page: pages[0] as string,
+      pages: pages.slice(0, MAX_BLOCKED_LISTED).join(', '),
+      signals: [...new Set(blocked.map((d) => d.error?.message ?? ''))]
+        .slice(0, MAX_BLOCKED_LISTED)
+        .join('; '),
+    },
+  };
 }
 
 /** Standard-port probe (80 / 443) of a host variant; the target keeps its path. */
@@ -480,9 +515,11 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
         ...(final ? { finalTls: final.endpoints } : {}),
         errors,
       };
-      const diagnostics: DiagnosticInput[] = client.throttled
-        ? [{ code: 'SCAN-THROTTLED', affects: ['HDR-01', 'TLS-01'] }]
-        : [];
+      const blocked = blockedDocumentsDiagnostic(documents);
+      const diagnostics: DiagnosticInput[] = [
+        ...(client.throttled ? [{ code: 'SCAN-THROTTLED' as const, affects: ['HDR-01', 'TLS-01'] }] : []),
+        ...(blocked ? [blocked] : []),
+      ];
       const fatal = startPageFatal(ctx, chains, startRun, port);
 
       return {

@@ -131,10 +131,13 @@ function handshake(
   });
 }
 
-/** Name check of the leaf: by host name for SNI targets, by address for IP targets. */
+/**
+ * Name check of the leaf: by host name for SNI targets, by address for IP targets. Host names are matched against the
+ * subject alternative names only, as browsers do; Node would fall back to the CN of a certificate without them.
+ */
 function leafMatches(leaf: X509Certificate | undefined, sni: string | null, bare: string): boolean | null {
   if (!leaf) return null;
-  return sni ? leaf.checkHost(sni) !== undefined : leaf.checkIP(bare) !== undefined;
+  return sni ? leaf.checkHost(sni, { subject: 'never' }) !== undefined : leaf.checkIP(bare) !== undefined;
 }
 
 /** The endpoint before any connection: outcome `error` until a handshake or a failure is recorded. */

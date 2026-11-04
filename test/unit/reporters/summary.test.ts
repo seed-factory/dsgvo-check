@@ -40,18 +40,18 @@ describe('Job Summary (Markdown)', () => {
     expect(md).toContain('Exit-Code');
     expect(md).toContain('`threshold`');
     expect(md).toContain('`check-error:MAIL-01`');
-    expect(md).toMatch(/\| kritisch \| Warnung \| Hinweis \|/);
+    expect(md).toMatch(/\| Kritisch \| Warnung \| Hinweis \|/);
     expect(md).toMatch(/\| 1 \| 0 \| 1 \|/);
     expect(md).toContain('CONSENT-01');
     expect(md).toContain('SCAN-BOTMODE');
-    expect(md).toContain('Keine Rechtsberatung');
+    expect(md).toContain('keine Rechtsberatung');
     expect(md).toMatch(/\n$/);
   });
 
   it('uses English labels for --lang en', () => {
     const md = renderSummary(sampleFullReport(), ctx('en'));
 
-    expect(md).toMatch(/\| critical \| warning \| info \|/);
+    expect(md).toMatch(/\| Critical \| Warning \| Info \|/);
     expect(md).toContain('Draft text');
   });
 

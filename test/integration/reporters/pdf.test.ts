@@ -30,7 +30,7 @@ const BANNER_PNG = Buffer.from(
 );
 
 /** The full sample report with a hostile target text and its screenshot evidence pointing at a real file. */
-function reportWithImage(): { html: string; ctx: ReporterContext } {
+function reportWithImage(detail: ReporterContext['detail'] = 'full'): { html: string; ctx: ReporterContext } {
   const outDir = mkdtempSync(path.join(tmpdir(), 'report-print-'));
   outputDirectories.push(outDir);
   mkdirSync(path.join(outDir, 'artifacts'));
@@ -45,7 +45,7 @@ function reportWithImage(): { html: string; ctx: ReporterContext } {
   screenshot.path = 'artifacts/banner.png';
   screenshot.sha256 = createHash('sha256').update(BANNER_PNG).digest('hex');
 
-  const ctx: ReporterContext = { texts: loadTexts('en'), lang: 'en', outDir, color: false };
+  const ctx: ReporterContext = { texts: loadTexts('en'), lang: 'en', outDir, color: false, detail };
   return { html: renderHtml(report, ctx), ctx };
 }
 
@@ -138,6 +138,46 @@ describe('HTML report opened offline with JavaScript disabled in real Chromium',
     }
   });
 
+  it('keeps headings with what follows them and lets a long finding break across pages in print', async () => {
+    await page.emulateMedia({ media: 'print' });
+    const style = (selector: string, property: string) =>
+      page.evaluate(
+        `getComputedStyle(document.querySelector(${JSON.stringify(selector)})).getPropertyValue(${JSON.stringify(property)})`,
+      );
+
+    expect(await style('section.group > h3', 'break-after')).toBe('avoid');
+    expect(await style('article.finding h4', 'break-after')).toBe('avoid');
+    expect(await style('.ev-head', 'break-after')).toBe('avoid');
+    expect(await style('article.finding', 'break-inside')).toBe('auto');
+    expect(await style('article.finding h4', 'break-inside')).toBe('avoid');
+    // A short evidence item stays on one page; a long one may break, but not between its type and its first field.
+    expect(await style('li.ev.compact', 'break-inside')).toBe('avoid');
+    expect(await style('.ev-start', 'break-inside')).toBe('avoid');
+    expect(await style('details.legal', 'break-inside')).toBe('avoid');
+    expect(await style('code.id', 'white-space')).toBe('nowrap');
+  });
+
+  it('lets the notice flow across pages, keeps the closing line with it and lets a long URL break in print', async () => {
+    await page.emulateMedia({ media: 'print' });
+    const style = (selector: string, property: string) =>
+      page.evaluate(
+        `getComputedStyle(document.querySelector(${JSON.stringify(selector)})).getPropertyValue(${JSON.stringify(property)})`,
+      );
+
+    // Kept whole, the notice would leave most of a page empty before it.
+    expect(await style('#hinweis', 'break-inside')).toBe('auto');
+    // Its items are rows of a list: a long one may continue on the next page, as a paragraph would.
+    expect(await style('#hinweis dl.notice > dd', 'break-inside')).toBe('auto');
+    expect(await style('#hinweis dl.notice > dd', 'orphans')).toBe('2');
+    expect(await style('main > footer', 'break-before')).toBe('avoid');
+    expect(await style('dl.kv > dd:has(code.url)', 'break-inside')).toBe('auto');
+    expect(await style('dl.kv > dd:not(:has(code.url)):not(:has(> div + div))', 'break-inside')).toBe(
+      'avoid',
+    );
+    expect(await style('code.url', 'overflow-wrap')).toBe('anywhere');
+    expect(await page.evaluate("document.querySelector('code.url wbr') !== null")).toBe(true);
+  });
+
   it('shows no CRM code', () => {
     expect(html).not.toMatch(/T[0-9]_/);
   });
@@ -161,5 +201,25 @@ describe('PDF of the report in real Chromium', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(100);
     expect(pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('brief PDF of the report in real Chromium', () => {
+  const pageCount = (pdf: Buffer) => pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+
+  it('prints, without evidence, and takes fewer pages than the full report', async () => {
+    const brief = reportWithImage('brief');
+    const full = reportWithImage('full');
+
+    expect(brief.html).not.toContain('class="evidence"');
+    expect(brief.html).not.toContain('<img');
+    expect(full.html).toContain('class="evidence"');
+
+    const briefPdf = await renderPdf(brief.html, brief.ctx, { sandbox: TEST_SANDBOX });
+    const fullPdf = await renderPdf(full.html, full.ctx, { sandbox: TEST_SANDBOX });
+
+    expect(briefPdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pageCount(briefPdf)).toBeGreaterThanOrEqual(1);
+    expect(pageCount(briefPdf)).toBeLessThan(pageCount(fullPdf));
   });
 });

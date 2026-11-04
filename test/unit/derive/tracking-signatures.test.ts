@@ -160,3 +160,62 @@ describe('identifier names in path parameters make a persistent identifier', () 
     expect(noId).toMatchObject({ identifier: false, identifierKind: 'none' });
   });
 });
+
+describe('Google Ads hits on AdSense, DoubleClick and country hosts of Google', () => {
+  const fetch = { resourceType: 'fetch' } as const;
+
+  it('the hits of an AW- tag stay Google Ads; AdSense and the Marketing Platform keep their own requests', () => {
+    const [ccm, conversion, doubleclick, adsense, floodlight] = requestsOf(
+      ['https://pagead2.googlesyndication.com/ccm/collect?tid=AW-000000001&en=page_view', fetch],
+      ['https://pagead2.googlesyndication.com/pagead/conversion/000000001/?random=[redacted]', fetch],
+      ['https://ad.doubleclick.net/ccm/s/collect?auid=[redacted]', fetch],
+      ['https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', { resourceType: 'script' }],
+      ['https://ad.doubleclick.net/activity;src=1;type=x;cat=y;ord=1', { resourceType: 'image' }],
+    );
+    expect([ccm, conversion, doubleclick].map((r) => [r?.serviceId, r?.kind, r?.stage])).toEqual([
+      ['google-ads', 'hit', 'event-sent'],
+      ['google-ads', 'hit', 'event-sent'],
+      ['google-ads', 'hit', 'event-sent'],
+    ]);
+    expect(adsense).toMatchObject({ serviceId: 'google-adsense', kind: 'library' });
+    expect(floodlight).toMatchObject({ serviceId: 'google-marketing-platform', kind: 'hit' });
+  });
+
+  it('`auid` is a persistent identifier of Google Ads hits; a value match with the stored _gcl_au is a stored match', () => {
+    const [param, matched, without] = requestsOf(
+      [
+        'https://www.google.com/ccm/collect?auid=[redacted]&en=page_view',
+        { ...fetch, identifierPresent: true, identifierNames: ['auid'] },
+      ],
+      [
+        'https://ad.doubleclick.net/ccm/s/collect?auid=[redacted]',
+        { ...fetch, identifierPresent: true, identifierNames: ['auid'], matchesStoredIdentifier: true },
+      ],
+      ['https://www.google.com/ccm/collect?en=page_view', fetch],
+    );
+    expect(param).toMatchObject({
+      identifierKind: 'persistent-param',
+      identifierParam: 'auid',
+      identifier: true,
+    });
+    expect(matched).toMatchObject({
+      identifierKind: 'stored-match',
+      identifierParam: 'auid',
+      identifier: true,
+    });
+    expect(without).toMatchObject({ serviceId: 'google-ads', identifierKind: 'none', identifier: false });
+  });
+
+  it('a hit on a country domain of Google search is Google Ads, not an unknown host', () => {
+    const [userList, conversion, audiences, search] = requestsOf(
+      ['https://www.google.fr/pagead/1p-user-list/000000001/?random=[redacted]', { resourceType: 'image' }],
+      ['https://www.google.co.uk/pagead/1p-conversion/000000001/?random=[redacted]', fetch],
+      ['https://www.google.fr/ads/ga-audiences?t=sr&tid=UA-0000000-1', { resourceType: 'image' }],
+      ['https://www.google.fr/search?q=x', { resourceType: 'document' }],
+    );
+    expect(userList).toMatchObject({ serviceId: 'google-ads', signatureId: 'google-ads:google-domain-hit' });
+    expect(conversion).toMatchObject({ serviceId: 'google-ads', kind: 'hit' });
+    expect(audiences).toMatchObject({ serviceId: 'google-analytics', kind: 'hit' });
+    expect(search).toMatchObject({ serviceId: null, category: 'unknown' });
+  });
+});

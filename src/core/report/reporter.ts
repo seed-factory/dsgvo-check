@@ -5,6 +5,10 @@ import type { Lang, Report } from './schema.ts';
 export const REPORT_FORMATS = ['console', 'json', 'html', 'summary', 'pdf'] as const;
 export type ReportFormat = (typeof REPORT_FORMATS)[number];
 
+/** `full`: findings with evidence for developers; `brief`: plain summary and action points for the site owner. */
+export const REPORT_DETAILS = ['full', 'brief'] as const;
+export type ReportDetail = (typeof REPORT_DETAILS)[number];
+
 /** File names inside `--out`. */
 export const REPORT_FILES: Readonly<Record<Exclude<ReportFormat, 'console'>, string>> = {
   json: 'report.json',
@@ -28,6 +32,8 @@ export interface ReporterContext {
   outDir: string;
   /** ANSI colors (console only). */
   color: boolean;
+  /** Level of detail of report.html and report.pdf (`full` when absent). */
+  detail?: ReportDetail;
   /** Optional data root, including the report template. */
   dataDir?: string;
   /** The built-in defaults when absent. */

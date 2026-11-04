@@ -126,6 +126,14 @@ function httpsStateOfHost(https: RedirectChain | undefined, hops: readonly HttpH
   return state === 'unknown' && reachedAcceptedHttps ? 'ok' : state;
 }
 
+/**
+ * The address typed (`url`) and the http page it ends on (`page`). The www and the apex entry often end on the same
+ * page; naming the entry keeps their findings apart.
+ */
+function entryParams(http: RedirectChain, page: string): Observation['params'] {
+  return { host: http.host, url: http.startUrl, page, redirected: http.startUrl === page ? 'no' : 'yes' };
+}
+
 /** The chain ends on http: never upgraded, or upgraded and sent back to http (downgrade). */
 function judgeChainEndingOnHttp(
   finalHost: string,
@@ -139,6 +147,7 @@ function judgeChainEndingOnHttp(
 
   const downgrade = hasHttpsHop(hops) ? 'yes' : 'no';
   const page = last.url;
+  const entry = entryParams(http, page);
   const observations: Observation[] = [];
   if (last.hasForm) {
     observations.push(
@@ -165,7 +174,7 @@ function judgeChainEndingOnHttp(
         finalHost,
         page,
         [chainEvidence(http)],
-        { host: http.host, url: page, kind: client.kind },
+        { ...entry, kind: client.kind },
         'medium',
       ),
     );
@@ -178,11 +187,7 @@ function judgeChainEndingOnHttp(
 
   if (state === 'ok') {
     observations.push(
-      observation('no-redirect', http, finalHost, page, [chainEvidence(http)], {
-        host: http.host,
-        url: page,
-        downgrade,
-      }),
+      observation('no-redirect', http, finalHost, page, [chainEvidence(http)], { ...entry, downgrade }),
     );
   } else {
     observations.push(
@@ -192,7 +197,7 @@ function judgeChainEndingOnHttp(
         finalHost,
         page,
         [chainEvidence(http), ...(https ? [chainEvidence(https)] : [])],
-        { host: http.host, url: page, reason: state, downgrade },
+        { ...entry, reason: state, downgrade },
       ),
     );
   }
@@ -209,6 +214,18 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
   const last = hops.at(-1) as HttpHop;
   if (hasHttpsHop(hops) && last.url.startsWith('https:')) return judgeUpgradedChain(finalHost, http);
   return judgeChainEndingOnHttp(finalHost, http, https);
+}
+
+/** Entries (www and apex) that end on the same http page with a form describe one form: it is reported once. */
+function withoutRepeatedForms(observations: readonly Observation[]): Observation[] {
+  const seen = new Set<string>();
+  return observations.filter((o) => {
+    if (o.variant !== 'form-on-http-page') return true;
+    const page = o.pages[0] ?? '';
+    if (seen.has(page)) return false;
+    seen.add(page);
+    return true;
+  });
 }
 
 /** Standard-port probe of a host variant (chains of an explicit target port only load the start page). */
@@ -231,7 +248,7 @@ export const tls01 = defineCheck({
     if (!chainFor(slice, 'target', 'http')) throw new Error('http section has no http chain for the target');
     const finalHost = startFinalHost(slice.http) ?? slice.target.finalHost ?? slice.target.host;
 
-    const observations: Observation[] = [];
+    const found: Observation[] = [];
     const limitations: string[] = [];
     let targetUndecided = false;
     let targetTimeout = false;
@@ -240,7 +257,7 @@ export const tls01 = defineCheck({
       if (!http) continue;
 
       const v = evaluate(finalHost, http, chainFor(slice, hv, 'https'));
-      observations.push(...v.observations);
+      found.push(...v.observations);
       if (!v.undecided) continue;
       limitations.push(`undecided:${hv}`);
       if (hv === 'target') {
@@ -257,6 +274,7 @@ export const tls01 = defineCheck({
     );
     if (!finalHostProbed) limitations.push('final-host-not-probed');
     if (slice.http.throttled) limitations.push('throttled');
+    const observations = withoutRepeatedForms(found);
 
     if (targetUndecided) {
       return {

@@ -126,6 +126,35 @@ describe('TLS-02 certificate', () => {
       reason: 'name-mismatch',
       nameMismatch: 'yes',
       names: '*.alfahosting-server.de',
+      nameSource: 'san',
+    });
+  });
+
+  // A hoster's self-signed default often has no subject alternative names; the text must not end in "für: .".
+  it.each([
+    ['only a CN', 'C=DE, O=Example Hosting, CN=default.hoster.example', 'default.hoster.example', 'cn'],
+    ['neither SAN nor CN', 'C=DE, O=Example Hosting', '–', 'none'],
+  ])('a certificate with %s names that source', (_, subject, names, nameSource) => {
+    const r = run(
+      ep({
+        authorized: false,
+        authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+        hostnameMatches: false,
+        chain: [
+          makeCert({
+            subject,
+            subjectAltNames: [],
+            selfSigned: true,
+            notBefore: at(-10),
+            notAfter: at(9000),
+          }),
+        ],
+      }),
+    );
+    expect(observationsOf(r)[0]?.params).toMatchObject({
+      reasons: 'name-mismatch,self-signed',
+      names,
+      nameSource,
     });
   });
 

@@ -420,6 +420,11 @@ export interface DocumentRecord {
   format: 'html' | 'pdf' | 'other';
   lang: string | null;
   parts: DocumentPart[];
+  /**
+   * The section headings of the content: a heading only of navigation, footer, aside or page header is left out.
+   * Absent in snapshots of earlier versions.
+   */
+  contentHeadings?: string[];
   manifest: {
     expandablesFound: number;
     expandablesOpened: number;

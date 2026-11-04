@@ -46,6 +46,8 @@ export interface FetchResult {
   status: number;
   headers: HeaderRecord[];
   setCookieNames: string[];
+  /** Names of headers sent with an empty value (their stored value is `[redacted]` like any other). */
+  blankHeaderNames: string[];
   /** Unsanitized: sanitize before storing. */
   location: string | null;
   contentType: string | null;
@@ -242,6 +244,7 @@ export class HttpClient {
       status: res.statusCode,
       headers: head.headers,
       setCookieNames: head.setCookieNames,
+      blankHeaderNames: head.blankHeaderNames,
       location: head.location,
       contentType: head.contentType,
       body: decoded.body,

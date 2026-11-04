@@ -7,7 +7,7 @@
  * of a text (`config.problem.<id>` in test/data/texts), see problems.ts: no wording lives in code.
  */
 import { z } from 'zod';
-import { REPORT_FORMATS } from '../report/reporter.ts';
+import { REPORT_DETAILS, REPORT_FORMATS } from '../report/reporter.ts';
 import { FailOnSchema, LangSchema, type MessageParams, SandboxModeSchema } from '../report/schema.ts';
 import { envName } from './names.ts';
 import { REASON } from './problems.ts';
@@ -112,6 +112,12 @@ const browser = z.strictObject({
     100,
   ),
   storageReadTimeoutMs: int(1_000, 'Time limit per frame for reading cookies and Web Storage names.', 100),
+  persistentCookieMinDays: int(
+    1,
+    'Cookies that expire sooner count as short-lived, like session cookies: CONSENT-02 lists only longer-lived ones as persistent entries. Known tracking identifiers are reported whatever their lifetime; 0 counts every cookie with an expiry date.',
+    0,
+    3_650,
+  ),
 });
 
 const http = z.strictObject({
@@ -195,6 +201,10 @@ const report = z.strictObject({
     .meta({
       description: `Report formats, comma-separated: ${REPORT_FORMATS.join(', ')} (CLI: --format, also of the report command, which writes html while this is not set).`,
     }),
+  detail: z.enum(REPORT_DETAILS).default('full').meta({
+    description:
+      'Level of detail of report.html and report.pdf: full (findings with evidence) or brief (plain summary and action points). JSON, console and summary.md are not affected (CLI: --detail, also of the report command).',
+  }),
   outDir: z.string().min(1).default('./dsgvo-check-report').meta({
     description: 'Directory for reports and artifacts (CLI: --out).',
   }),

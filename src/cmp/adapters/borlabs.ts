@@ -96,6 +96,7 @@ export const borlabs = defineAdapter({
     if (!r.hasGlobal && !r.cookiePresent) return [];
 
     // An optional group is granted when the cookie lists it; any other group in the cookie except `essential` counts too.
+    // A group the cookie does not list is read as denied: after a reject the cookie lists none of them.
     const map: Record<string, boolean | null> = {};
     for (const g of readerInput('borlabs', 'optionalGroups'))
       map[g] = r.cookiePresent ? r.groups.includes(g) : false;
@@ -140,4 +141,8 @@ export const borlabs = defineAdapter({
     };
   },
   isReady: async (page) => (await read(page)).hasGlobal,
+  // The cookie lists only groups the installation has: a site without a marketing group keeps no `marketing` entry
+  // after "accept all". The page exposes no list of the configured groups, so a group our accept left denied while it
+  // granted another may simply not exist and is left out of the accept verdict.
+  categoriesUnlisted: true,
 });

@@ -359,8 +359,8 @@ describe('TRACK-01 stage per timing', () => {
       expect(de).toMatch(/nach Ablehnung:\s*nicht geprüft/);
       expect(de).toMatch(/nach Zustimmung:\s*nicht geprüft/);
       expect(de).not.toMatch(/nicht gefunden/);
-      expect(en).toMatch(/after reject:\s*not checked/);
-      expect(en).toMatch(/after accept:\s*not checked/);
+      expect(en).toMatch(/after rejection:\s*not checked/);
+      expect(en).toMatch(/after acceptance:\s*not checked/);
       expect(en).not.toMatch(/not found/);
     });
 
@@ -388,8 +388,51 @@ describe('TRACK-01 stage per timing', () => {
       expect(params).toMatchObject({ stageAfterReject: 'none', stageAfterAccept: 'not-checked' });
       expect(de).toMatch(/nach Ablehnung:\s*nicht gefunden/);
       expect(de).toMatch(/nach Zustimmung:\s*nicht geprüft/);
-      expect(en).toMatch(/after reject:\s*not found/);
-      expect(en).toMatch(/after accept:\s*not checked/);
+      expect(en).toMatch(/after rejection:\s*not found/);
+      expect(en).toMatch(/after acceptance:\s*not checked/);
+    });
+
+    it('a tracking cookie of the service written after the reject without any request → "initialisiert", not "nicht gefunden"', () => {
+      const { params, de } = bodies([
+        libraryInA(),
+        phase('B', {
+          click: click('reject'),
+          cookies: [cookie('_ga', { phase: 'B', afterClick: true })],
+        }),
+        phase('C', { status: 'skipped', reason: 'time-budget' }),
+      ]);
+      expect(params).toMatchObject({ stageAfterReject: 'initialised', afterReject: true });
+      expect(de).toMatch(/nach Ablehnung:\s*initialisiert/);
+    });
+
+    it('a service seen only through its stored identifier is listed too, backed by the stored entry', () => {
+      const r = runCheck(
+        track01,
+        site({
+          phases: [
+            libraryInA(),
+            phase('B', {
+              click: click('reject'),
+              cookies: [
+                cookie('IDE', {
+                  domain: '.doubleclick.net',
+                  firstParty: false,
+                  phase: 'B',
+                  afterClick: true,
+                }),
+              ],
+            }),
+          ],
+        }),
+      );
+      const gmp = observationsOf(r).find((o) => o.subject === 'google-marketing-platform');
+      expect(gmp).toMatchObject({
+        confidence: 'high',
+        category: 'ads',
+        phases: ['B'],
+        params: { stageBeforeInteraction: 'none', stageAfterReject: 'initialised', afterReject: true },
+      });
+      expect(gmp?.evidence.map((e) => e.type)).toEqual(['cookie']);
     });
 
     it('counterexample: both clicks carried out and the service silent afterwards → "nicht gefunden" twice', () => {
@@ -401,6 +444,37 @@ describe('TRACK-01 stage per timing', () => {
       expect(params).toMatchObject({ stageAfterReject: 'none', stageAfterAccept: 'none' });
       expect(de.match(/nicht gefunden/g)).toHaveLength(2);
       expect(de).not.toMatch(/nicht geprüft/);
+    });
+
+    it('explains "nicht geprüft" and "initialisiert" without a request only where the inventory shows them', () => {
+      const notChecked = /„Nicht geprüft“ steht für/;
+      const initialised = /„Initialisiert“ ohne Anfrage/;
+
+      const silent = bodies([
+        libraryInA(),
+        phase('B', { click: click('reject') }),
+        phase('C', { click: click('accept') }),
+      ]);
+      expect(silent.params).toMatchObject({ notChecked: false, initialisedWithoutRequest: false });
+      expect(silent.de).not.toMatch(notChecked);
+      expect(silent.de).not.toMatch(initialised);
+      expect(silent.en).not.toMatch(/"Not checked" stands for|"Initialised" without a request/);
+
+      const unchecked = bodies([
+        libraryInA(),
+        phase('B', { status: 'partial', reason: 'cmp-not-recognized' }),
+      ]);
+      expect(unchecked.de).toMatch(notChecked);
+      expect(unchecked.de).not.toMatch(initialised);
+
+      const stored = bodies([
+        libraryInA(),
+        phase('B', { click: click('reject'), cookies: [cookie('_ga', { phase: 'B', afterClick: true })] }),
+        phase('C', { click: click('accept') }),
+      ]);
+      expect(stored.params).toMatchObject({ initialisedWithoutRequest: true, notChecked: false });
+      expect(stored.de).toMatch(initialised);
+      expect(stored.de).not.toMatch(notChecked);
     });
 
     it('requests after a click prove the stage even if the phase status says partial', () => {

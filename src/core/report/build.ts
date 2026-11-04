@@ -160,6 +160,8 @@ export interface FullReportInput {
   status: 'complete' | 'partial';
   startedAt: string;
   durationMs: number;
+  /** Only for a re-evaluated snapshot: when the evaluation ran. */
+  evaluatedAt?: string;
   options: ReportScanOptions;
   ruleset: Ruleset;
   texts: Texts;
@@ -183,6 +185,7 @@ export function buildFullReport(i: FullReportInput): FullReport {
       finalUrl: i.snapshot.target.finalUrl,
       startedAt: i.startedAt,
       durationMs: i.durationMs,
+      ...(i.evaluatedAt ? { evaluatedAt: i.evaluatedAt } : {}),
       environment: environmentOf(i.snapshot),
       coverage: coverageOf(i.snapshot),
       options: i.options,
@@ -208,6 +211,7 @@ export interface FailedReportInput {
   target: string;
   startedAt: string;
   durationMs?: number;
+  evaluatedAt?: string;
   failure: { code: string; message: string };
   exitReasons: string[];
   texts: Texts | null;
@@ -238,6 +242,7 @@ export function buildFailedReport(i: FailedReportInput): FailedReport {
       startedAt: i.startedAt,
       failure: i.failure,
       ...(i.durationMs !== undefined ? { durationMs: i.durationMs } : {}),
+      ...(i.evaluatedAt ? { evaluatedAt: i.evaluatedAt } : {}),
       ...(i.options ? { options: i.options } : {}),
     },
     summary: {

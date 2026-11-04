@@ -7,6 +7,7 @@ const ctx: ReporterContext = {
     lang: 'en',
     messages: {},
     legalNotes: {},
+    actions: {},
     ui: {
       'report.title': { text: 'Report for {target}', draft: true },
       'report.literal': { text: '<em> & T2_LABEL', draft: true },
@@ -30,6 +31,24 @@ describe('safe report templates', () => {
       'Report for &lt;img&gt; T1&#95;SITE',
     );
     expect(renderTemplate('{{t "report.literal"}}', {}, ctx)).toBe('&lt;em&gt; &amp; T2&#95;LABEL');
+  });
+
+  it('keeps a check id in running text on one line and escapes the rest as usual', () => {
+    expect(renderTemplate('<p>{{prose text}}</p>', { text: 'Prüfung CONSENT-03 & <b>HDR-01</b>' }, ctx)).toBe(
+      '<p>Prüfung <span class="id">CONSENT-03</span> &amp; &lt;b&gt;<span class="id">HDR-01</span>&lt;/b&gt;</p>',
+    );
+    // Lowercase codes and words with a hyphen are no check ids.
+    expect(renderTemplate('{{prose text}}', { text: 'first-layer x-01 Zwei-Klick' }, ctx)).toBe(
+      'first-layer x-01 Zwei-Klick',
+    );
+  });
+
+  it('lets a URL break only after its separators, never inside the host or a value', () => {
+    const url = 'https://www.example.test/a/b?x=1&y=[redacted]';
+    expect(renderTemplate('{{url u}}', { u: url }, ctx)).toBe(
+      'https://<wbr>www.example.test/<wbr>a/<wbr>b?<wbr>x=<wbr>1&amp;<wbr>y=<wbr>[redacted]',
+    );
+    expect(renderTemplate('{{url u}}', { u: '<script>/x' }, ctx)).toBe('&lt;script&gt;/<wbr>x');
   });
 
   it('nests loops and branches with local aliases and access to the root view', () => {

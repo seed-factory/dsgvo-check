@@ -13,6 +13,7 @@ identifiers:
     - fbc
     - _fbp
     - _fbc
+    - auid # Google tag: value of the first-party _gcl_au cookie
     - gclid
     - dclid
     - wbraid

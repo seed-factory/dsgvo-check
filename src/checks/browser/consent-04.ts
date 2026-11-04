@@ -24,7 +24,7 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { BrowserPlan, BrowserSection } from '../../core/snapshot/browser.ts';
-import { allCmpFacts, consentSignals, signalOutcome } from './signals.ts';
+import { allCmpFacts, bannerFound, consentSignals, signalOutcome } from './signals.ts';
 import { startPageUrl } from './snapshot.ts';
 
 const ID = 'CONSENT-04';
@@ -326,7 +326,7 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       if (facts.length === 0) return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [] };
       const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
       if (signal) return signal;
-      if (!facts.some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent)) {
+      if (!bannerFound(cmp)) {
         return { status: 'not_applicable', reason: 'no-banner', observations: [] };
       }
 

@@ -100,6 +100,49 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
   return ev;
 }
 
+/**
+ * Fields in which repeats of one request differ: when and on which page it was made. The frame URL is not among them,
+ * so a request repeated inside an embedded frame stays a separate item next to the same request of the page itself.
+ */
+const OCCURRENCE_FIELDS: ReadonlySet<string> = new Set([
+  'page',
+  'phase',
+  'tMs',
+  'navigationId',
+  'frameId',
+  'actionId',
+  'parentRequestId',
+]);
+
+function requestIdentity(ev: EvidenceInput): string {
+  const fields = Object.entries(ev)
+    .filter(([k]) => !OCCURRENCE_FIELDS.has(k))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(fields);
+}
+
+/**
+ * Request evidence with every distinct request once (its first occurrence in the given order), at most `max` items.
+ * The evidence is a capped sample: repeats counted in it would read as the number of requests, which the finding's
+ * own params (`requestCount`, `pageCount`) state over all requests.
+ */
+export function distinctRequestEvidence(
+  items: Iterable<{ r: RequestRecord; c: ClassifiedRequest | null | undefined }>,
+  max: number = MAX_EVIDENCE,
+): EvidenceInput[] {
+  const seen = new Set<string>();
+  const out: EvidenceInput[] = [];
+  for (const { r, c } of items) {
+    if (out.length >= max) break;
+    const ev = requestEvidence(r, c);
+    const id = requestIdentity(ev);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(ev);
+  }
+  return out;
+}
+
 /** Time scale and ids of a cookie/storage record (the legacy relative `tMs` is not exported). */
 function observationIds(x: Pick<CookieRecord, 'atMs' | 'navigationId' | 'actionId'>) {
   return {

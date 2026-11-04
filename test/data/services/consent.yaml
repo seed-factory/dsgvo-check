@@ -21,12 +21,39 @@ services:
     aliasesDe: [Usercentrics]
     aliasesEn: [Usercentrics]
 
+  # The self-hosted CCM19 serves its app from `<install directory>/public/` of any host, with the API key and the site
+  # domain in the query.
   - id: ccm19
     name: CCM19
     category: consent-provider
     policyRelevance: optional
     provider: { name: Papoo Software & Media GmbH, country: DE }
     domains: [ccm19.de]
+    selfHostable: true
+    signatures:
+      - id: self-hosted-app
+        anyHost: true
+        path: '/public/app\.js$'
+        query: { apiKey: "", domain: "" }
+        kind: library
+        stage: loaded
+      - id: self-hosted-style
+        anyHost: true
+        path: '/public/app\.css$'
+        query: { apiKey: "", domain: "" }
+        kind: stylesheet
+        stage: loaded
+      - id: self-hosted-api
+        anyHost: true
+        path: "/public/(widget|cron|page_check/report)$"
+        query: { apiKey: "", domain: "" }
+        kind: resource
+      - id: self-hosted-icon
+        anyHost: true
+        path: "/public/settings-icon$"
+        query: { user: "", domain: "" }
+        kind: image
+        stage: loaded
     aliasesDe: [CCM19]
     aliasesEn: [CCM19]
 

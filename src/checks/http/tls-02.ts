@@ -19,6 +19,8 @@ const ID = 'TLS-02';
 
 /** `names` in the finding lists at most this many certificate names. */
 const MAX_SAN_NAMES = 5;
+/** Longest DNS name (RFC 1035): a CN is external text and is cut there. */
+const MAX_NAME_LENGTH = 253;
 
 type InvalidCause = Exclude<TlsProblem, 'incomplete-chain'>;
 /** Order of the causes in `reasons`; the first present one is `reason`. */
@@ -62,9 +64,22 @@ function evidenceOf(ep: TlsEndpoint): EvidenceInput {
   };
 }
 
-function sanNames(ep: TlsEndpoint): string {
-  const names = (ep.chain[0]?.subjectAltNames ?? []).map((n) => n.replace(/^(DNS|IP Address):/i, ''));
-  return names.length > MAX_SAN_NAMES ? `${names.slice(0, MAX_SAN_NAMES).join(', ')}, …` : names.join(', ');
+type NameSource = 'san' | 'cn' | 'none';
+
+/**
+ * The names the certificate is issued for. Browsers match the host only against the subject alternative names; a
+ * certificate without them (typical for a hoster's self-signed default) is named by its CN so the text is not empty.
+ */
+function certificateNames(ep: TlsEndpoint): { names: string; nameSource: NameSource } {
+  const leaf = ep.chain[0];
+  const san = (leaf?.subjectAltNames ?? []).map((n) => n.replace(/^(DNS|IP Address):/i, ''));
+  if (san.length > 0) {
+    const names =
+      san.length > MAX_SAN_NAMES ? `${san.slice(0, MAX_SAN_NAMES).join(', ')}, …` : san.join(', ');
+    return { names, nameSource: 'san' };
+  }
+  const cn = /(?:^|,\s*)CN=([^,]+)/.exec(leaf?.subject ?? '')?.[1]?.trim();
+  return cn ? { names: cn.slice(0, MAX_NAME_LENGTH), nameSource: 'cn' } : { names: '–', nameSource: 'none' };
 }
 
 interface Problems {
@@ -139,7 +154,7 @@ function invalidParams(ep: TlsEndpoint, invalid: readonly InvalidCause[]): Obser
     selfSigned: has('self-signed'),
     untrustedRoot: has('untrusted-root'),
     otherError: has('invalid'),
-    names: sanNames(ep),
+    ...certificateNames(ep),
     error: ep.authorizationError ?? '–',
     trustStore: ep.trustStore,
   };

@@ -12,7 +12,7 @@ import {
 } from '../../core/api.ts';
 import type { BrowserSection, PageVisit, RequestRecord } from '../../core/snapshot/browser.ts';
 import type { DerivedSection, ServiceCategory } from '../../derive/types.ts';
-import { cookieEvidence, pageEvidence, requestEvidence, storageEvidence } from './evidence.ts';
+import { cookieEvidence, distinctRequestEvidence, pageEvidence, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceName, TRACKING_CATEGORIES } from './services.ts';
 import { allCmpFacts, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
@@ -79,16 +79,23 @@ function noBannerObservation(
       (x): x is string => x !== null,
     ),
   );
+  const trackingRecords = tracking.flatMap((c) => {
+    const r = records.get(c.requestId);
+    return r ? [{ r, c }] : [];
+  });
   const evidence: EvidenceInput[] = [
     ...pagesA.slice(0, MAX_NO_BANNER_EVIDENCE).map(pageEvidence),
-    ...tracking.slice(0, MAX_NO_BANNER_EVIDENCE).flatMap((c) => {
-      const r = records.get(c.requestId);
-      return r ? [requestEvidence(r, c)] : [];
-    }),
+    ...distinctRequestEvidence(trackingRecords, MAX_NO_BANNER_EVIDENCE),
     ...stored
       .slice(0, MAX_NO_BANNER_EVIDENCE)
       .map(({ record }) => ('name' in record ? cookieEvidence(record) : storageEvidence(record))),
   ];
+  // What was stored, by name and kind only: the services list alone would suggest every service stored something.
+  const storedLabels = sortedUniq(
+    stored.map(({ record }) =>
+      'name' in record ? `${record.name} (cookie)` : `${record.key} (${record.storageType})`,
+    ),
+  );
 
   return {
     checkId: ID,
@@ -100,6 +107,8 @@ function noBannerObservation(
     evidence,
     params: {
       services: serviceIds.map((id) => serviceName(derived, id)).join(', ') || null,
+      storedCount: storedLabels.length,
+      stored: storedLabels.join(', ') || null,
       pageCount: pagesA.length,
       regionAsserted,
       strongTracking: strong,

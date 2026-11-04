@@ -8,11 +8,20 @@ import { collectDns } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
 import { checkThresholds } from './core/config/thresholds.ts';
-import { type CoreData, DEFAULT_DATA_DIR, loadCoreData, loadDataDir, loadTexts } from './core/data/load.ts';
+import { disclaimerText } from './core/data/disclaimer.ts';
+import {
+  type CoreData,
+  DEFAULT_DATA_DIR,
+  loadCoreData,
+  loadDataDir,
+  loadTexts,
+  type Texts,
+} from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import {
   type AssessOutput,
   assess,
+  EvidenceStore,
   type ExecutedCheck,
   isGating,
   lockedOverrides,
@@ -25,6 +34,7 @@ import { CheckRegistry } from './core/evaluation/registry.ts';
 import { buildFailedReport, buildFullReport } from './core/report/build.ts';
 import type {
   CheckResult,
+  ConsentAction,
   Diagnostic,
   Evidence,
   Finding,
@@ -123,7 +133,8 @@ function initialSnapshot(target: TargetInfo, o: ResolvedScanOptions): Snapshot {
         mode: o.proxy ? 'proxy' : 'direct',
         region: o.assumeRegion ? 'asserted' : 'unknown',
         ...(o.assumeRegion ? { assertedRegion: o.assumeRegion } : {}),
-        source: o.assumeRegion ? 'laut Nutzerangabe (--assume-region)' : 'nicht festgestellt',
+        // A code: reporters word it in the language of the report.
+        source: o.assumeRegion ? 'assume-region' : 'not-determined',
       },
       sandbox: { mode: o.sandbox, active: null },
       userAgent: { http: uaToken(), browser: null },
@@ -237,10 +248,23 @@ function scanDiagnostics(
     inputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
   }
   if (o.sandbox === 'off') inputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
+  if (snapshot.collection.browser?.reason === 'tls-blocked')
+    inputs.push(tlsBlockedDiagnostic(snapshot, executed));
   if (state.fatal?.reason === 'unreachable') inputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
   if (state.fatal?.reason === 'blocked') inputs.push(blockedStartPageDiagnostic(snapshot));
 
   return mergeDiagnostics(inputs);
+}
+
+/** The browser checks did not run because the target's certificate was refused: say so instead of leaving only `skipped`. */
+function tlsBlockedDiagnostic(
+  snapshot: Snapshot,
+  executed: ReadonlyMap<string, ExecutedCheck>,
+): DiagnosticInput {
+  const affected = [...executed.entries()]
+    .filter(([, e]) => e.status === 'skipped' && e.reason === 'tls-blocked')
+    .map(([id]) => id);
+  return { code: 'SCAN-TLS-BLOCKED', affects: affected, params: { host: snapshot.target.host } };
 }
 
 /** Bot-protection signals are listed up to a cap so that the diagnostic stays short. */
@@ -326,7 +350,12 @@ function evaluateSnapshot(
   log: Logger,
 ): Evaluation {
   const { enabled, disabled } = selection;
-  if (snapshot.browser) snapshot.derived = derive(snapshot, { dataDir: o.dataDir });
+  if (snapshot.browser) {
+    snapshot.derived = derive(snapshot, {
+      dataDir: o.dataDir,
+      persistentCookieMinDays: o.config.browser.persistentCookieMinDays,
+    });
+  }
 
   const executed = runChecks(enabled, snapshot, o, core, state.timedOut, log);
   for (const c of disabled) {
@@ -357,8 +386,7 @@ interface CompletedRun {
   core: CoreData;
   evaluation: Evaluation;
   snapshotWriteFailed: boolean;
-  startedAt: string;
-  t0: number;
+  timing: { startedAt: string; durationMs: number; evaluatedAt?: string };
 }
 
 /** The gate decides the exit code, then the full report is built; `partial` marks a result with gaps. */
@@ -381,26 +409,100 @@ function completeResult(run: CompletedRun): ScanResult {
   const report = buildFullReport({
     snapshot,
     status: partial ? 'partial' : 'complete',
-    startedAt: run.startedAt,
-    durationMs: Math.round(performance.now() - run.t0),
+    ...run.timing,
     options: reportOptions(o),
     ruleset: core.ruleset,
     texts: core.texts,
     checks: assessed.checks,
     findings: assessed.findings,
     diagnostics,
-    evidence: assessed.evidence,
+    evidence: withScreenshots(assessed.evidence, snapshot),
     exitCode: result.exitCode,
     exitReasons: result.exitReasons,
   });
+  addConsentActions(report, snapshot, core.texts);
   return { report, snapshot, exitCode: result.exitCode };
+}
+
+/**
+ * Banner screenshots stay in the report even when no finding cites them (a recognised banner without a finding), so
+ * the full report can show them; an id is the one a citing check would get for the same image.
+ */
+function withScreenshots(evidence: readonly Evidence[], snapshot: Snapshot): Evidence[] {
+  type Shot = Extract<Evidence, { type: 'screenshot' }>;
+  const cited = new Set(
+    evidence.flatMap((e) => {
+      if (e.type !== 'screenshot') return [];
+      const shot = e as Shot;
+      return [JSON.stringify([shot.path, shot.sha256])];
+    }),
+  );
+  const store = new EvidenceStore();
+  for (const shot of snapshot.browser?.screenshots ?? []) {
+    if (cited.has(JSON.stringify([shot.path, shot.sha256]))) continue;
+    store.add({
+      type: 'screenshot',
+      path: shot.path,
+      sha256: shot.sha256,
+      kind: shot.kind,
+      phase: shot.phase,
+    });
+  }
+  const added = store.all();
+  return added.length ? [...evidence, ...added].sort((a, b) => a.id.localeCompare(b.id)) : [...evidence];
+}
+
+/** Outcome of the reject (phase B) and accept (phase C) click on the start page; phases that did not run are left out. */
+function consentActions(snapshot: Snapshot): ConsentAction[] {
+  const out: ConsentAction[] = [];
+  for (const [action, phase] of [
+    ['reject', 'B'],
+    ['accept', 'C'],
+  ] as const) {
+    const record = snapshot.browser?.phases.find((p) => p.phase === phase);
+    if (!record || record.status === 'skipped') continue;
+    const clicked = record.click?.action === action && record.click.success === true;
+    const verify = snapshot.cmp?.phases.find((p) => p.phase === phase)?.verify;
+    out.push({ action, clicked, verified: clicked && verify?.action === action ? verify.verified : null });
+  }
+  return out;
+}
+
+/**
+ * The disclaimer and the first page depend on whether the accept click succeeded, not only on a visit in phase C:
+ * the click outcome joins the coverage and the disclaimer text is composed again.
+ */
+function addConsentActions(report: Report, snapshot: Snapshot, texts: Texts | null): void {
+  const coverage = report.scan.coverage;
+  if (!coverage || !snapshot.browser) return;
+  const actions = consentActions(snapshot);
+  if (actions.length === 0) return;
+  coverage.consentActions = actions;
+  if (texts) report.disclaimer.text = disclaimerText(report, texts);
+}
+
+/**
+ * When and how long the site was observed, for a saved snapshot: its capture time, and the run time of its collectors
+ * (http, tls and dns run side by side, the browser after them). The clock of the re-evaluation would date the report
+ * to a moment the site was not visited.
+ */
+export function captureTiming(snapshot: Snapshot): { startedAt: string; durationMs: number } {
+  const c = snapshot.collection;
+  const sideBySide = Math.max(0, ...(['http', 'tls', 'dns'] as const).map((n) => c[n]?.durationMs ?? 0));
+  return { startedAt: snapshot.createdAt, durationMs: sideBySide + (c.browser?.durationMs ?? 0) };
 }
 
 /** Runs one scan; fatal conditions produce a `failed` report (exit 2) instead of throwing. Report files are written by `writeReports`. */
 export async function scan(options: ScanOptions): Promise<ScanResult> {
   const startedAtDate = options.now?.() ?? new Date();
-  const startedAt = startedAtDate.toISOString();
+  const runStartedAt = startedAtDate.toISOString();
   const t0 = performance.now();
+  // A re-evaluated snapshot is dated to its capture; the time of the evaluation is kept beside it.
+  let capture: { startedAt: string; durationMs: number } | null = null;
+  const timing = () =>
+    capture
+      ? { startedAt: capture.startedAt, durationMs: capture.durationMs, evaluatedAt: runStartedAt }
+      : { startedAt: runStartedAt, durationMs: Math.round(performance.now() - t0) };
   const log = options.log ?? createLogger('warn');
   // the target in any report (also the minimal failed one) is redacted
   const targetForReport = options.url ? redactTarget(options.url) : (options.fromSnapshot ?? '');
@@ -430,17 +532,23 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
 
     const report = buildFailedReport({
       target: snapshot?.target.url ?? targetForReport,
-      startedAt,
-      durationMs: Math.round(performance.now() - t0),
+      ...timing(),
       failure: { code, message },
       exitReasons,
       texts: core?.texts ?? null,
       ruleset: core?.ruleset ?? null,
       snapshot,
       ...(o ? { options: reportOptions(o) } : {}),
-      ...(extra.checks ? { checks: extra.checks, findings: extra.findings, evidence: extra.evidence } : {}),
+      ...(extra.checks
+        ? {
+            checks: extra.checks,
+            findings: extra.findings,
+            evidence: snapshot ? withScreenshots(extra.evidence ?? [], snapshot) : extra.evidence,
+          }
+        : {}),
       ...(extra.diagnostics ? { diagnostics: extra.diagnostics } : {}),
     });
+    if (snapshot) addConsentActions(report, snapshot, core?.texts ?? null);
     return { report, snapshot, exitCode: 2 as const };
   };
 
@@ -463,6 +571,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     try {
       if (o.fromSnapshot) {
         snapshot = await loadSnapshot(o.fromSnapshot);
+        capture = captureTiming(snapshot);
       } else {
         const target = parseTarget(o.url as string);
         snapshot = initialSnapshot(redactTargetInfo(target), o);
@@ -501,7 +610,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
       });
     }
 
-    return completeResult({ snapshot, state, o, core, evaluation, snapshotWriteFailed, startedAt, t0 });
+    return completeResult({ snapshot, state, o, core, evaluation, snapshotWriteFailed, timing: timing() });
   } catch (err) {
     if (err instanceof ScanFatalError) return fail(err.reason, err.code, err.params);
     log.error(`internal error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);

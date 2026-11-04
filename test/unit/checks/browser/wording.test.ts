@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { browserChecks } from '../../../../src/checks/browser/index.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage, templateParams } from '../../../../src/core/data/messages.ts';
 
 /** Phrase patterns per language, each with a label for the failure message. */
 const RULES: Record<'de' | 'en', Array<[string, RegExp]>> = {
@@ -65,4 +66,86 @@ describe('browser finding texts only describe observations', () => {
       expect(hits).toEqual([]);
     });
   }
+});
+
+describe('browser legal notes per check or per variant', () => {
+  const allowed = new Set(
+    browserChecks.flatMap((c) => [
+      c.id,
+      ...c.variants.flatMap((v) => [`${c.id}.${v.variant}`, `${c.id}.${v.variantGroup ?? v.variant}`]),
+    ]),
+  );
+  const browserKeys = (lang: 'de' | 'en') =>
+    Object.keys(loadTexts(lang).legalNotes)
+      .filter((k) => browserChecks.some((c) => k === c.id || k.startsWith(`${c.id}.`)))
+      .sort();
+
+  it('every key names a browser check, or one of its variants or variant groups, in both languages', () => {
+    expect(browserKeys('de').filter((k) => !allowed.has(k))).toEqual([]);
+    expect(browserKeys('de')).toEqual(browserKeys('en'));
+  });
+
+  it('a stored or read identifier is not filed under the contested status of requests without one', () => {
+    const de = loadTexts('de').legalNotes;
+    expect(de['CONSENT-01']?.status).toBe('contested');
+    expect(de['CONSENT-01.tracking-completed']?.status).not.toBe('contested');
+  });
+});
+
+describe('browser actions also serve several findings at once', () => {
+  const variants = browserChecks.flatMap((c) => c.variants.map((v) => `${c.id}.${v.variant}`));
+
+  for (const lang of ['de', 'en'] as const) {
+    const texts = loadTexts(lang);
+    it.each(variants)(`${lang}: %s uses only parameters of its finding and points to no title`, (key) => {
+      const action = texts.actions[key] ?? '';
+      const m = texts.messages[key];
+      const own = new Set([...templateParams(m?.title ?? ''), ...templateParams(m?.body ?? '')]);
+      expect(templateParams(action).filter((p) => !own.has(p))).toEqual([]);
+      expect(action).not.toMatch(
+        /\btitel|\btitle\b|dieser dienst|dieses dienstes|diesen dienst|this service/iu,
+      );
+    });
+  }
+
+  it('LEGAL-01: each document kind names its document, a mixed group names both', () => {
+    const de = loadTexts('de');
+    const action = (documentKind: string) =>
+      formatMessage(de.actions['LEGAL-01.document-not-found']!, { documentKind }, 'de');
+    expect(action('impressum')).toBe('Verlinken Sie das Impressum gut sichtbar im Seitenfuß jeder Seite.');
+    expect(action('privacy')).toBe(
+      'Verlinken Sie die Datenschutzerklärung gut sichtbar im Seitenfuß jeder Seite.',
+    );
+    expect(action('impressum, privacy')).toBe(
+      'Verlinken Sie Impressum und Datenschutzerklärung gut sichtbar im Seitenfuß jeder Seite.',
+    );
+    expect(
+      renderMessage(de, 'LEGAL-01.document-not-found', { documentKind: 'impressum, privacy' }).title,
+    ).toBe('Impressum und Datenschutzerklärung nicht gefunden');
+  });
+
+  it('CONSENT-05: requests and stored entries in one group get a title for both', () => {
+    const params = {
+      kind: 'request, storage',
+      service: 'Google Ads, Google Marketing Platform (DoubleClick)',
+    };
+    expect(renderMessage(loadTexts('de'), 'CONSENT-05.tracking-after-reject', params).title).toBe(
+      'Kennungen nach bestätigter Ablehnung gesendet oder gespeichert: Google Ads, Google Marketing Platform (DoubleClick)',
+    );
+    expect(
+      renderMessage(loadTexts('de'), 'CONSENT-05.tracking-after-reject', { kind: 'storage', service: 'X' })
+        .title,
+    ).toBe('Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert: X');
+  });
+
+  it('titles put the service last, so a list of services reads as one', () => {
+    const de = loadTexts('de');
+    const params = { service: 'Google Ads, Google Analytics', requestCount: 12 };
+    expect(renderMessage(de, 'CONSENT-01.tracking-completed', params).title).toBe(
+      'Anfragen mit dauerhafter Kennung vor einer Interaktion: Google Ads, Google Analytics',
+    );
+    expect(renderMessage(de, 'PRIV-01.not-named', { service: 'A, B, C' }).title).toBe(
+      'Nicht gefunden in der Datenschutzerklärung: A, B, C',
+    );
+  });
 });

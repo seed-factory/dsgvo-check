@@ -299,12 +299,15 @@ services:
         __Secure-ROLLOUT_TOKEN@youtube.com,
       ]
     storageKeys: [yt-remote-device-id, yt-remote-connected-devices]
+    # Entries of the player's local cache (`ytidb::…`, the IndexedDB index `YtIdbMeta`) and its cookie test.
+    otherCookies: [LAST_RESULT_ENTRY_KEY@youtube.com, TESTCOOKIESENABLED@youtube.com]
+    otherStorageKeys: [ytidb::LAST_RESULT_ENTRY_KEY@youtube.com, YtIdbMeta@youtube.com]
     aliasesDe: [YouTube]
     aliasesEn: [YouTube]
     companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
 
   - id: youtube-nocookie
-    name: YouTube (erweiterter Datenschutzmodus)
+    name: YouTube (youtube-nocookie.com)
     category: video
     policyRelevance: required
     provider: { name: Google Ireland Limited, country: IE }
@@ -318,6 +321,8 @@ services:
         kind: embed
         stage: loaded
         integration: iframe
+    otherCookies: [LAST_RESULT_ENTRY_KEY@youtube-nocookie.com, TESTCOOKIESENABLED@youtube-nocookie.com]
+    otherStorageKeys: [ytidb::LAST_RESULT_ENTRY_KEY@youtube-nocookie.com, YtIdbMeta@youtube-nocookie.com]
     aliasesDe: [YouTube, youtube-nocookie]
     aliasesEn: [YouTube, youtube-nocookie]
     companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
@@ -366,6 +371,8 @@ services:
         kind: library
         stage: loaded
     otherCookies: [_GRECAPTCHA@google.com]
+    # Bot detection state the widget keeps in Web Storage.
+    otherStorageKeys: ["rc::*@google.com", "rc::*@recaptcha.net"]
     aliasesDe: [reCAPTCHA, Google reCAPTCHA]
     aliasesEn: [reCAPTCHA, Google reCAPTCHA]
     companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { consent05 } from '../../../../../src/checks/browser/consent-05.ts';
+import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpPhaseFacts } from '../../../../../src/cmp/types.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, cookie, phase, req, site } from '../helpers.ts';
@@ -126,8 +127,17 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(def).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
     const noClick = runB([], {}, cmpWith({ phase: 'B', facts: [cmpFacts()] }));
     expect(noClick).toMatchObject({ status: 'inconclusive', reason: 'no-reject-click' });
-    const noB = runCheck(consent05, site({ phases: [phase('A')] }));
+    const noB = runCheck(
+      consent05,
+      site({ phases: [phase('A')], cmp: cmpWith({ phase: 'A', facts: [cmpFacts({ phase: 'A' })] }) }),
+    );
     expect(noB).toMatchObject({ status: 'inconclusive', reason: 'phase-b-missing' });
+  });
+
+  it('no banner on any page: nothing to reject, so not applicable rather than inconclusive', () => {
+    const r = runCheck(consent05, site({ phases: [phase('A'), phase('B', { requests: [gaAfter('b')] })] }));
+    expect(r).toMatchObject({ status: 'not_applicable', reason: 'no-banner' });
+    expect(observationsOf(r)).toEqual([]);
   });
 
   it('not persisted after reload → not confirmed', () => {
@@ -230,13 +240,62 @@ describe('CONSENT-05 after a confirmed reject', () => {
     },
   );
 
-  it('storage and a hit of one service give one finding; the request branch of the text is selected', () => {
+  it('storage and a hit of one service give one finding whose text names both', () => {
     const storageOnly = runB([], { cookies: [cookie('_ga', { phase: 'B', afterClick: true })] });
     expect(observationsOf(storageOnly).map((o) => o.params.kind)).toEqual(['storage']);
+    const requestOnly = runB([gaAfter('b')]);
+    expect(observationsOf(requestOnly).map((o) => o.params.kind)).toEqual(['request']);
     const both = runB([gaAfter('b')], { cookies: [cookie('_ga', { phase: 'B', afterClick: true })] });
     expect(observationsOf(both).map((o) => [o.variant, o.params.kind, o.params.name])).toEqual([
-      ['tracking-after-reject', 'request', '_ga'],
+      ['tracking-after-reject', 'both', '_ga'],
     ]);
+  });
+
+  it('keeps places for the storage writes in the evidence next to many requests', () => {
+    const hits = Array.from({ length: 12 }, (_, i) =>
+      gaAfter(`b${i}`, { url: `https://www.google-analytics.com/g/collect?v=2&cid=[redacted]&_p=${i}` }),
+    );
+    const r = runB(hits, { cookies: [cookie('_ga', { phase: 'B', afterClick: true })] });
+    const [o] = observationsOf(r);
+    expect(o!.evidence.filter((e) => e.type === 'cookie')).toHaveLength(1);
+    expect(o!.params.requestCount).toBe(12);
+  });
+
+  it('a persistent identifier after many cookieless hits of the service: its host is named and it leads the evidence', () => {
+    const adsAfter = (id: string, url: string, p = {}) =>
+      req(id, url, { phase: 'B', afterClick: true, resourceType: 'image', ...p });
+    const cookieless = Array.from({ length: 12 }, (_, i) =>
+      adsAfter(`b${i}`, `https://www.googleadservices.com/pagead/conversion/123/?gcs=G100&_p=${i}`),
+    );
+    const persistent = adsAfter('p', 'https://ad.doubleclick.net/ccm/collect?auid=[redacted]', {
+      identifierPresent: true,
+      identifierNames: ['auid'],
+    });
+    const [o] = observationsOf(runB([...cookieless, persistent]));
+    expect(o).toMatchObject({
+      variant: 'tracking-after-reject',
+      subject: 'google-ads',
+      params: { kind: 'request', host: 'ad.doubleclick.net', requestCount: 13 },
+    });
+    const requests = o!.evidence.filter((e) => e.type === 'request');
+    expect(requests).toHaveLength(MAX_EVIDENCE);
+    expect(requests[0]).toMatchObject({
+      url: 'https://ad.doubleclick.net/ccm/collect?auid=[redacted]',
+      features: { identifier: { kind: 'persistent-param' } },
+    });
+  });
+
+  it('counterexample: only cookieless hits keep the host of the first one', () => {
+    const [o] = observationsOf(
+      runB([
+        gaAfter('b', { url: 'https://region1.google-analytics.com/g/collect?v=2&gcs=G100' }),
+        gaAfter('c', { url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100' }),
+      ]),
+    );
+    expect(o).toMatchObject({
+      variant: 'cookieless-ping-after-reject',
+      params: { host: 'region1.google-analytics.com' },
+    });
   });
 
   it('library loads and consent-provider requests after reject are no findings', () => {

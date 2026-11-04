@@ -115,6 +115,26 @@ describe('derive: requests', () => {
     });
   });
 
+  it('a self-hosted CMP on the site is self-hosted, on another host a third-party CMP; never a first-party proxy', () => {
+    const app = '/consent/public/app.js?apiKey=[redacted]&domain=[redacted]';
+    const d = derive(
+      snap([
+        makePhase('A', {
+          requests: [
+            req(`https://www.example.de${app}`, { id: 'own' }),
+            req(`https://consent.agency.example${app}`, { id: 'agency' }),
+          ],
+        }),
+      ]),
+    );
+    expect(
+      d.requests.map((r) => [r.requestId, r.serviceId, r.thirdParty, r.selfHosted, r.firstPartyProxy]),
+    ).toEqual([
+      ['own', 'ccm19', false, true, false],
+      ['agency', 'ccm19', true, undefined, false],
+    ]);
+  });
+
   it('identifier from the collector: a bare identifierPresent is not persistent; stored match and sent tracking cookie are', () => {
     const d = derive(
       snap([
@@ -131,7 +151,7 @@ describe('derive: requests', () => {
     expect(d.requests.map((r) => [r.identifier, r.identifierKind])).toEqual([
       [false, 'per-load'],
       [true, 'stored-match'],
-      [true, 'stored-match'],
+      [true, 'sent-cookie'],
       [false, 'none'],
     ]);
   });
@@ -200,7 +220,8 @@ describe('derive: requests', () => {
     );
     expect(d.requests.map((r) => [r.requestId, r.identifierKind, r.identifier])).toEqual([
       ['stored', 'stored-match', true],
-      ['cookie', 'stored-match', true],
+      // No request value was compared with the cookie: the collector's `matchesStoredIdentifier` stays unset.
+      ['cookie', 'sent-cookie', true],
       ['param', 'persistent-param', true],
       ['click', 'user-supplied', true],
       ['random', 'per-load', false],
@@ -477,6 +498,154 @@ describe('derive: requests', () => {
   });
 });
 
+describe('derive: requests of embedded frames', () => {
+  const inFrame = (frameId: string, frameUrl: string | undefined) =>
+    ({ isMainFrame: false, frameId, ...(frameUrl ? { frameUrl } : {}) }) as const;
+  const player = inFrame('A-f2', 'https://www.youtube-nocookie.com/embed/abc?autoplay=[redacted]');
+
+  it("a player's fonts and hosts of no catalog service belong to the player; services of their own keep theirs", () => {
+    const d = derive(
+      snap([
+        makePhase('A', {
+          requests: [
+            req('https://www.youtube-nocookie.com/embed/abc', {
+              id: 'doc',
+              resourceType: 'document',
+              ...player,
+            }),
+            req('https://fonts.gstatic.com/s/roboto/v48/a.woff2', {
+              id: 'font',
+              resourceType: 'font',
+              ...player,
+            }),
+            req('https://www.google.com/js/th/a.js', { id: 'helper', resourceType: 'script', ...player }),
+            req('https://helper.video-cdn.example/b', { id: 'xhr', resourceType: 'xhr', ...player }),
+            req('https://googleads.g.doubleclick.net/pagead/id', {
+              id: 'ads',
+              resourceType: 'fetch',
+              ...player,
+            }),
+            req('https://fonts.gstatic.com/s/roboto/v48/a.woff2', { id: 'site-font', resourceType: 'font' }),
+          ],
+        }),
+      ]),
+    );
+    const row = (id: string) => {
+      const r = d.requests.find((x) => x.requestId === id);
+      return [r?.serviceId, r?.category, r?.source, r?.kind, r?.frameServiceId];
+    };
+    expect(row('doc')).toEqual(['youtube-nocookie', 'video', 'catalog', 'embed', 'youtube-nocookie']);
+    expect(row('font')).toEqual(['youtube-nocookie', 'video', 'embed-frame', 'font', 'youtube-nocookie']);
+    expect(row('helper')).toEqual([
+      'youtube-nocookie',
+      'video',
+      'embed-frame',
+      'library',
+      'youtube-nocookie',
+    ]);
+    expect(row('xhr')).toEqual(['youtube-nocookie', 'video', 'embed-frame', 'resource', 'youtube-nocookie']);
+    expect(row('ads')).toEqual(['google-ads', 'ads', 'catalog', 'hit', 'youtube-nocookie']);
+    expect(row('site-font')).toEqual(['google-fonts', 'fonts', 'catalog', 'font', undefined]);
+    // The player's font is no use of Google Fonts by the site: only the site's own font request counts for it.
+    expect(d.services.find((s) => s.serviceId === 'google-fonts')?.requestIds).toEqual(['site-font']);
+  });
+
+  it.each([
+    ['an unknown host', 'https://static.builder.example', [null, 'none']],
+    ['a CDN of the catalog (Wix)', 'https://static.parastorage.com', ['wix', 'catalog']],
+  ])(
+    "a builder's frame on %s takes the embed it loads; the builder's own hosts stay its own",
+    (_case, origin, own) => {
+      const builder = inFrame('A-f3', `${origin}/map.html?lang=[redacted]`);
+      const d = derive(
+        snap([
+          makePhase('A', {
+            requests: [
+              req(`${origin}/map.js`, { id: 'own', resourceType: 'script', ...builder }),
+              req('https://fonts.googleapis.com/css?family=Roboto', {
+                id: 'css',
+                resourceType: 'stylesheet',
+                ...builder,
+              }),
+              req('https://maps.googleapis.com/maps/api/js?key=[redacted]', { id: 'api', ...builder }),
+            ],
+          }),
+        ]),
+      );
+      expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
+        ['own', ...own, 'google-maps'],
+        ['css', 'google-maps', 'embed-frame', 'google-maps'],
+        ['api', 'google-maps', 'catalog', 'google-maps'],
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      'a payment frame (Stripe) that loads hCaptcha',
+      inFrame('A-f7', 'https://js.stripe.com/v3/hcaptcha-inner-abc.html'),
+      'https://js.hcaptcha.com/1/api.js',
+      'hcaptcha',
+    ],
+    [
+      'an ad frame (Google Ads) that loads the YouTube player API',
+      inFrame('A-f8', 'https://googleads.g.doubleclick.net/pagead/ads?client=[redacted]'),
+      'https://www.youtube.com/iframe_api',
+      'youtube',
+    ],
+  ])(
+    '%s takes no embed: the other requests of the frame keep their own classification',
+    (_case, frame, embedUrl, embedId) => {
+      const d = derive(
+        snap([
+          makePhase('A', {
+            requests: [
+              req(embedUrl, { id: 'embed', resourceType: 'script', ...frame }),
+              req('https://cdn.other-site.de/x.js', { id: 'unknown', resourceType: 'script', ...frame }),
+              req('https://fonts.gstatic.com/s/inter/v1/a.woff2', {
+                id: 'font',
+                resourceType: 'font',
+                ...frame,
+              }),
+            ],
+          }),
+        ]),
+      );
+      expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
+        ['embed', embedId, 'catalog', undefined],
+        ['unknown', null, 'none', undefined],
+        ['font', 'google-fonts', 'catalog', undefined],
+      ]);
+      expect(d.services.find((s) => s.serviceId === embedId)?.requestIds).toEqual(['embed']);
+    },
+  );
+
+  it.each([
+    ['a frame of the site', inFrame('A-f4', 'https://www.example.de/widget.html')],
+    ['a frame without a document URL', inFrame('A-f5', undefined)],
+    ['a frame of no embedded service', inFrame('A-f6', 'https://ads.adserver.example/frame.html')],
+  ])('%s is no embed: its requests keep their own classification', (_case, frame) => {
+    const d = derive(
+      snap([
+        makePhase('A', {
+          requests: [
+            req('https://fonts.gstatic.com/s/roboto/v48/a.woff2', {
+              id: 'font',
+              resourceType: 'font',
+              ...frame,
+            }),
+            req('https://cdn.other-site.de/x.js', { id: 'unknown', ...frame }),
+          ],
+        }),
+      ]),
+    );
+    expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
+      ['font', 'google-fonts', 'catalog', undefined],
+      ['unknown', null, 'none', undefined],
+    ]);
+  });
+});
+
 describe('derive: cookies and storage', () => {
   it('known tracking identifiers, allowlist, unknown third party, setter context', () => {
     const d = derive(
@@ -522,6 +691,93 @@ describe('derive: cookies and storage', () => {
 
     // The version of the catalog allowlist is catalog data (it changes with the allowlist), not a constant here.
     expect(d.allowlistVersion).toBe(loadServiceCatalog().allowlistVersion);
+  });
+
+  it('a cookie name shared by services of one company belongs to the service whose host set it in its response', () => {
+    const ide = (setter: 'http-response' | 'script', setterHost: string) =>
+      makeCookie({ name: 'IDE', domain: 'doubleclick.net', firstParty: false, setter, setterHost });
+    const serviceOf = (cookie: ReturnType<typeof makeCookie>) =>
+      derive(snap([makePhase('A', { cookies: [cookie] })])).cookies[0];
+
+    // The Google Ads conversion host answered with it: Google Ads, still a tracking identifier from the catalog.
+    expect(serviceOf(ide('http-response', 'googleads.g.doubleclick.net'))).toMatchObject({
+      serviceId: 'google-ads',
+      tracking: true,
+      source: 'catalog',
+    });
+    // A Floodlight host of the Marketing Platform keeps it there.
+    expect(serviceOf(ide('http-response', 'ad.doubleclick.net'))?.serviceId).toBe(
+      'google-marketing-platform',
+    );
+    // A script names the host it was loaded from, which may be the loader of another service.
+    expect(serviceOf(ide('script', 'googleads.g.doubleclick.net'))?.serviceId).toBe(
+      'google-marketing-platform',
+    );
+    // A host of another company never takes over a catalog cookie.
+    expect(serviceOf(ide('http-response', 'static.hotjar.com'))?.serviceId).toBe('google-marketing-platform');
+  });
+
+  it('a cookie that expires within the threshold is short-lived like a session cookie; the setting moves the line', () => {
+    const cookies = [
+      makeCookie({ name: 'minutes', lifetime: { kind: 'persistent', days: 0 } }),
+      makeCookie({ name: 'hours', lifetime: { kind: 'persistent', days: 0.9 } }),
+      makeCookie({ name: 'day', lifetime: { kind: 'persistent', days: 1 } }),
+      makeCookie({ name: 'month', lifetime: { kind: 'persistent', days: 30 } }),
+      makeCookie({ name: 'undated', lifetime: { kind: 'persistent' } }),
+      makeCookie({ name: 'session', lifetime: { kind: 'session' } }),
+    ];
+    const persistent = (minDays?: number) =>
+      derive(
+        snap([makePhase('A', { cookies })]),
+        minDays === undefined ? {} : { persistentCookieMinDays: minDays },
+      )
+        .cookies.filter((c) => c.persistent)
+        .map((c) => c.key.name);
+
+    expect(persistent()).toEqual(['day', 'month', 'undated']);
+    expect(persistent(0)).toEqual(['minutes', 'hours', 'day', 'month', 'undated']);
+    expect(persistent(31)).toEqual(['undated']);
+  });
+
+  it('a known cookie or storage entry that is no identifier keeps its service from the catalog', () => {
+    const d = derive(
+      snap([
+        makePhase('A', {
+          cookies: [
+            makeCookie({
+              name: 'test_cookie',
+              domain: 'doubleclick.net',
+              firstParty: false,
+              lifetime: { kind: 'persistent', days: 0 },
+            }),
+            makeCookie({ name: '_gat_UA-0000000-1', lifetime: { kind: 'persistent', days: 0 } }),
+          ],
+          storage: [
+            makeStorage({ key: 'rc::a', origin: 'https://www.google.com', firstParty: false }),
+            makeStorage({
+              key: 'ytidb::LAST_RESULT_ENTRY_KEY',
+              origin: 'https://www.youtube-nocookie.com',
+              firstParty: false,
+            }),
+            makeStorage({
+              key: 'YtIdbMeta',
+              storageType: 'indexedDB',
+              origin: 'https://www.youtube-nocookie.com',
+              firstParty: false,
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(d.cookies.map((c) => [c.key.name, c.serviceId, c.source, c.tracking, c.persistent])).toEqual([
+      ['test_cookie', 'google-marketing-platform', 'catalog', false, false],
+      ['_gat_UA-0000000-1', 'google-analytics', 'catalog', false, false],
+    ]);
+    expect(d.storage.map((s) => [s.key, s.serviceId, s.source, s.tracking])).toEqual([
+      ['rc::a', 'google-recaptcha', 'catalog', false],
+      ['ytidb::LAST_RESULT_ENTRY_KEY', 'youtube-nocookie', 'catalog', false],
+      ['YtIdbMeta', 'youtube-nocookie', 'catalog', false],
+    ]);
   });
 
   it('storage keys: tracking, allowlisted, third-party origin', () => {
@@ -604,7 +860,32 @@ describe('derive: service inventory (TRACK-01 stages)', () => {
         version: '0.2.0',
         date: '2026-10-30',
         license: 'Apache-2.0',
-        attribution: 'dsgvo-check service catalog, © dsgvo-check contributors, Apache-2.0',
+        attribution: 'dsgvo-check service catalogue, © dsgvo-check contributors, Apache-2.0',
+      },
+    ]);
+  });
+
+  it('a service known only by its cookie was observed on the pages that wrote it', () => {
+    const d = derive(
+      snap([
+        makePhase('A', {
+          cookies: [
+            makeCookie({
+              name: 'IDE',
+              domain: 'doubleclick.net',
+              firstParty: false,
+              pageUrl: 'https://www.example.de/kontakt',
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(d.services).toMatchObject([
+      {
+        serviceId: 'google-marketing-platform',
+        requestIds: [],
+        pages: ['https://www.example.de/kontakt'],
+        stages: ['initialised'],
       },
     ]);
   });

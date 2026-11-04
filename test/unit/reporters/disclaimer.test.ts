@@ -8,7 +8,7 @@ import { templateParams, uiText } from '../../../src/core/data/messages.ts';
 import type { ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { FullReport, MessageParams, Report } from '../../../src/core/report/schema.ts';
 import { renderConsole } from '../../../src/reporters/console.ts';
-import { DISCLAIMER_KEYS, disclaimerParagraphs } from '../../../src/reporters/disclaimer.ts';
+import { DISCLAIMER_KEYS, disclaimerParagraphs, disclaimerText } from '../../../src/reporters/disclaimer.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { renderSummary } from '../../../src/reporters/summary.ts';
@@ -42,6 +42,10 @@ const CASES: Case[] = [
     off: [
       (r) => {
         r.scan.options!.screenshots = false;
+      },
+      // the option was on, but no image was taken
+      (r) => {
+        r.evidence = r.evidence.filter((e) => e.type !== 'screenshot');
       },
     ],
   },
@@ -143,8 +147,9 @@ const CASES: Case[] = [
     ],
   },
   {
+    // the exit reasons in words; findings above the threshold are no gap of the scan
     key: 'disclaimer.incomplete',
-    params: { status: 'partial', hasReasons: true, reasons: 'threshold, check-error:MAIL-01' },
+    params: { status: 'partial', hasReasons: true, reasons: 'Prüfung MAIL-01 fehlgeschlagen' },
     on: (r) => {
       r.scan.status = 'partial';
     },
@@ -156,10 +161,32 @@ const CASES: Case[] = [
   },
   {
     key: 'disclaimer.phaseC',
-    on: () => {}, // the start page of the sample was visited in phases A, B and C
+    on: () => {}, // the start page of the sample was visited in phases A, B and C (no click outcome recorded)
     off: [
       (r) => {
         for (const p of r.scan.coverage.pages) p.phases = p.phases.filter((ph) => ph !== 'C');
+      },
+      // phase C ran, but the accept click did not take place
+      (r) => {
+        r.scan.coverage.consentActions = [{ action: 'accept', clicked: false, verified: null }];
+      },
+      // no phase C at all
+      (r) => {
+        r.scan.coverage.consentActions = [{ action: 'reject', clicked: true, verified: true }];
+      },
+    ],
+  },
+  {
+    key: 'disclaimer.phaseCFailed',
+    on: (r) => {
+      r.scan.coverage.consentActions = [{ action: 'accept', clicked: false, verified: null }];
+    },
+    off: [
+      (r) => {
+        r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: true }];
+      },
+      (r) => {
+        r.scan.coverage.consentActions = [];
       },
     ],
   },
@@ -195,12 +222,12 @@ describe('disclaimer paragraphs: each condition in both states', () => {
     }
   });
 
-  it('always starts with the report text and ends with the usage note; data minimization is always stated', () => {
+  it('always starts with the base text of the texts and ends with the usage note; data minimization is always stated', () => {
     const r = sampleFullReport();
 
     const paragraphs = disclaimerParagraphs(r, ctx().texts);
 
-    expect(paragraphs[0]).toBe(r.disclaimer.text);
+    expect(paragraphs[0]).toBe(para('disclaimer'));
     expect(paragraphs).toContain(para('disclaimer.data'));
     expect(paragraphs.at(-1)).toBe(para('disclaimer.usage'));
   });
@@ -233,7 +260,11 @@ describe('disclaimer paragraphs: each condition in both states', () => {
     const paragraphs = disclaimerParagraphs(sampleFailedReport(), ctx().texts);
 
     expect(paragraphs).toContain(
-      para('disclaimer.incomplete', { status: 'failed', hasReasons: true, reasons: 'unreachable' }),
+      para('disclaimer.incomplete', {
+        status: 'failed',
+        hasReasons: true,
+        reasons: 'Website nicht erreichbar',
+      }),
     );
     for (const key of ['disclaimer.screenshots', 'disclaimer.egressUnknown', 'disclaimer.phaseC']) {
       expect(paragraphs).not.toContain(para(key));
@@ -265,6 +296,70 @@ describe('disclaimer paragraphs: each condition in both states', () => {
 
     expect(paragraphs).toContain(para('disclaimer.phaseC', {}, 'en'));
     expect(para('disclaimer.phaseC', {}, 'en')).toMatch(/IP address/);
+  });
+
+  it('a report saved in German renders in English without a German paragraph', () => {
+    const r = sampleFullReport();
+    r.disclaimer = {
+      messageId: 'disclaimer',
+      lang: 'de',
+      text: disclaimerText(r, ctx('de').texts),
+      draft: true,
+    };
+
+    const paragraphs = disclaimerParagraphs(r, ctx('en').texts);
+    const json = JSON.parse(renderJson(r, ctx('en'))) as Report;
+
+    expect(paragraphs[0]).toBe(para('disclaimer', {}, 'en'));
+    expect(paragraphs[0]).toMatch(/^This report describes/);
+    expect(paragraphs.join('\n')).toMatch(/not legal advice/);
+    expect(paragraphs.join('\n')).not.toMatch(/Dieser Bericht|Rechtsberatung|Werte von Cookies/);
+    expect(json.disclaimer).toMatchObject({ lang: 'en' });
+    expect(json.disclaimer.text).not.toMatch(/Dieser Bericht/);
+  });
+
+  it('an accept the banner did not confirm is said so in the paragraph of phase C', () => {
+    const confirmed = report((r) => {
+      r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: true }];
+    });
+    const unconfirmed = report((r) => {
+      r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: false }];
+    });
+
+    expect(disclaimerParagraphs(confirmed, ctx().texts)).toContain(
+      para('disclaimer.phaseC', { verified: true }),
+    );
+    expect(disclaimerParagraphs(unconfirmed, ctx().texts)).toContain(
+      para('disclaimer.phaseC', { verified: false }),
+    );
+    expect(para('disclaimer.phaseC', { verified: false })).toMatch(/Annahme nicht vollständig bestätigt/);
+    expect(para('disclaimer.phaseC', { verified: true })).not.toMatch(/nicht bestätigt/);
+  });
+
+  it('the report for the site owner names no command-line options; the full report does', () => {
+    const r = report((x) => {
+      x.scan.options = { ...x.scan.options!, proxy: true, sandbox: 'off', assumeRegion: 'de' };
+      x.scan.environment.sandbox = { mode: 'off', active: false };
+    });
+
+    const brief = disclaimerParagraphs(r, ctx().texts, { detail: 'brief' }).join('\n');
+    const full = disclaimerParagraphs(r, ctx().texts, { detail: 'full' }).join('\n');
+
+    expect(brief).not.toMatch(/--[a-z]/);
+    for (const option of ['--no-screenshots', '--proxy', '--sandbox off', '--assume-region']) {
+      expect(full).toContain(option);
+    }
+  });
+
+  it('leaves the draft paragraph out where the report prints its own draft line', () => {
+    const r = report((x) => {
+      x.disclaimer.draft = true;
+    });
+
+    expect(disclaimerParagraphs(r, ctx().texts)).toContain(para('disclaimer.draft'));
+    expect(disclaimerParagraphs(r, ctx().texts, { withoutDraft: true })).not.toContain(
+      para('disclaimer.draft'),
+    );
   });
 });
 
@@ -314,7 +409,7 @@ describe('disclaimer in every format', () => {
   });
 
   it('JSON: disclaimer.text carries the paragraphs, separated by blank lines', () => {
-    const baseText = sampleFullReport().disclaimer.text;
+    const baseText = para('disclaimer');
 
     const json = JSON.parse(renderJson(r(), ctx())) as Report;
 

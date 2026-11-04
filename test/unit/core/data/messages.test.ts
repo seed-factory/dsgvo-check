@@ -81,3 +81,27 @@ describe('diagnostic texts use the params the collectors send (browser-collector
     },
   );
 });
+
+describe('action texts are message templates', () => {
+  it('every action text parses and uses the same params in de and en', () => {
+    const de = loadTexts('de').actions;
+    const en = loadTexts('en').actions;
+    const params = (t: string) => templateParams(t).sort();
+
+    expect(Object.keys(en).sort()).toEqual(Object.keys(de).sort());
+    for (const [messageId, text] of Object.entries(de)) {
+      expect(() => validateTemplate(text), `de ${messageId}`).not.toThrow();
+      expect(() => validateTemplate(en[messageId]!), `en ${messageId}`).not.toThrow();
+      expect(params(en[messageId]!), messageId).toEqual(params(text));
+    }
+  });
+
+  it('formats with the params of the finding, like the finding texts', () => {
+    expect(formatMessage('Ergänzen Sie {header}.', { header: 'Content-Security-Policy' }, 'de')).toBe(
+      'Ergänzen Sie Content-Security-Policy.',
+    );
+    expect(
+      formatMessage('{count, plural, one {Den Eintrag} other {Die # Einträge}} prüfen.', { count: 3 }, 'de'),
+    ).toBe('Die 3 Einträge prüfen.');
+  });
+});

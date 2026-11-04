@@ -13,7 +13,7 @@ describe('console reporter', () => {
     expect(out).toContain('CONSENT-01');
     expect(out).toContain('SCAN-BOTMODE');
     expect(out).toContain('Exit-Code 1 (threshold, check-error:MAIL-01)');
-    expect(out).toContain('Keine Rechtsberatung');
+    expect(out).toContain('keine Rechtsberatung');
     expect(out).toContain('[Textentwurf]');
   });
 

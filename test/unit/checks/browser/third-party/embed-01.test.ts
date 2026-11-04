@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../../src/checks/browser/embed-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { PhaseRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, defaultPages, page, phase, req, START, site } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -129,5 +132,156 @@ describe('EMBED-01 external fonts', () => {
       }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
+  });
+});
+
+describe('EMBED-01 font files from other third-party servers', () => {
+  const font = (id: string, url: string, p = {}) => req(id, url, { resourceType: 'font', ...p });
+
+  it('font files of a host outside the catalog → fonts-loaded named by its domain', () => {
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              font('a', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf'),
+              font('b', 'https://cdn.booking-widget.example/fonts/Display-Bold.ttf'),
+              req('c', 'https://cdn.booking-widget.example/sdk.js'),
+            ],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(observationsOf(r)).toHaveLength(1);
+    expect(o).toMatchObject({
+      variant: 'fonts-loaded',
+      subject: 'unknown:booking-widget.example',
+      category: 'fonts',
+      params: { service: 'booking-widget.example', fontService: false, pageCount: 1 },
+    });
+    expect(o?.evidence).toHaveLength(2);
+    expect(renderMessage(loadTexts('de'), 'EMBED-01.fonts-loaded', o!.params).body).toMatch(
+      /^Schriftdateien wurden vom Drittanbieter-Server booking-widget\.example geladen, Zeitpunkt: vor jeder Interaktion, kein Einwilligungsbanner gefunden/,
+    );
+  });
+
+  it('font files a widget of the page fetches from its vendor → fonts-loaded with the widget as the service', () => {
+    const [o] = observationsOf(
+      runCheck(
+        embed01,
+        site({
+          phases: [phase('A', { requests: [font('a', 'https://assets.calendly.com/fonts/x.woff2')] })],
+        }),
+      ),
+    );
+    expect(o).toMatchObject({
+      subject: 'calendly',
+      serviceId: 'calendly',
+      params: { service: 'Calendly', fontService: false },
+    });
+  });
+
+  it('counterexample: font files from a CDN stay a resource of CONSENT-01', () => {
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', { requests: [font('a', 'https://cdnjs.cloudflare.com/ajax/libs/fa/6.0.0/fa.woff2')] }),
+        ],
+      }),
+    );
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  it('counterexample: the fonts of an embedded player belong to the embed, not to the site', () => {
+    const frame = {
+      frameId: 'A-f2',
+      isMainFrame: false,
+      frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
+    };
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('a', 'https://www.youtube-nocookie.com/embed/abc', {
+                ...frame,
+                isNavigation: true,
+                resourceType: 'document',
+              }),
+              font('b', 'https://fonts.gstatic.com/s/roboto/v48/x.woff2', frame),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(variantsOf(r)).toEqual([]);
+  });
+});
+
+describe('EMBED-01 without a completed font load names what was observed', () => {
+  const failed = { state: 'failed', status: undefined } as const;
+  const hintedStart = page(START, 'start', 'A', {
+    dom: makeDom({ linkRels: [{ rel: 'preconnect', href: 'https://fonts.gstatic.com/', source: 'dom' }] }),
+  });
+  const otherHostFont = req('a', 'https://static.other-unknown.net/fonts/x.woff2', {
+    resourceType: 'font',
+    ...failed,
+  });
+
+  /** Input, what the finding rests on, and its title in de and en. */
+  const CASES: Array<[string, Partial<PhaseRecord>, string, string, string]> = [
+    [
+      'an unfinished font file request to a host outside the catalog',
+      { requests: [otherHostFont] },
+      'attempt',
+      'Nicht abgeschlossener Schriftabruf: other-unknown.net',
+      'Unfinished font request: other-unknown.net',
+    ],
+    [
+      'an unfinished request to a font service',
+      { requests: [css('a', failed)] },
+      'attempt',
+      'Nicht abgeschlossener Schriftabruf: Google Fonts',
+      'Unfinished font request: Google Fonts',
+    ],
+    [
+      'a preconnect to a font service',
+      { pages: [hintedStart, ...defaultPages('A').slice(1)] },
+      'hint',
+      'Nur Verbindungsvorbereitung zu einem Schriftdienst: Google Fonts',
+      'Only a connection hint to a font service: Google Fonts',
+    ],
+    [
+      'a preconnect and an unfinished request to a font service',
+      { pages: [hintedStart, ...defaultPages('A').slice(1)], requests: [css('a', failed)] },
+      'hint-and-attempt',
+      'Verbindungsvorbereitung oder nicht abgeschlossener Schriftabruf: Google Fonts',
+      'Connection hint or unfinished font request: Google Fonts',
+    ],
+  ];
+
+  it.each(CASES)('%s', (_name, input, observed, deTitle, enTitle) => {
+    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', input)] })));
+    expect(o).toMatchObject({ variant: 'preconnect-only', params: { observed } });
+    const de = loadTexts('de');
+    const en = loadTexts('en');
+    expect(renderMessage(de, 'EMBED-01.preconnect-only', o!.params).title).toBe(deTitle);
+    expect(renderMessage(en, 'EMBED-01.preconnect-only', o!.params).title).toBe(enTitle);
+    const actions = [
+      formatMessage(de.actions['EMBED-01.preconnect-only']!, o!.params, 'de'),
+      formatMessage(en.actions['EMBED-01.preconnect-only']!, o!.params, 'en'),
+    ].join('\n');
+    if (observed === 'attempt') expect(actions).not.toMatch(/Verbindungsvorbereitung|connection hint/);
+    else expect(actions).toMatch(/Verbindungsvorbereitung/);
+  });
+
+  it('a completed load carries no such param', () => {
+    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })] })));
+    expect(o?.variant).toBe('fonts-loaded');
+    expect(o?.params).not.toHaveProperty('observed');
   });
 });

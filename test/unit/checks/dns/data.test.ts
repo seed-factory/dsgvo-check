@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { dnsChecks } from '../../../../src/checks/dns/index.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
-import { renderMessage } from '../../../../src/core/data/messages.ts';
+import { formatMessage, renderMessage } from '../../../../src/core/data/messages.ts';
 import { checkFixtures } from '../../../utils/completeness.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { dnsSnapshot, type ZoneSpec } from './zone.ts';
@@ -54,4 +54,77 @@ describe('texts render for every emitted observation', () => {
       );
     }
   });
+
+  it.each(['de', 'en'] as const)('%s: the action text renders with the params of the finding', (lang) => {
+    const texts = loadTexts(lang);
+    for (const o of observations) {
+      const key = `${o.checkId}.${o.variant}`;
+      const action = formatMessage(texts.actions[key] ?? '', o.params, lang);
+      expect(action, key).not.toMatch(/^$|^ |[{}]|undefined/);
+    }
+  });
+});
+
+describe('DMARC texts agree with each other', () => {
+  const observedFor = (dmarc: string) => {
+    const snapshot = dnsSnapshot({ ...base, 'TXT _dmarc.example.de': [dmarc], 'TXT example.de': 'NXDOMAIN' });
+    return dnsChecks.flatMap((c) => {
+      const r = runCheck(c, snapshot);
+      return r.outcome ? observationsOf(r) : [];
+    });
+  };
+  const observed = [...observedFor('v=DMARC1; p=none'), ...observedFor('v=DMARC1; p=reject')];
+  const render = (lang: 'de' | 'en', variant: string) => {
+    const o = observed.find((x) => x.checkId === 'MAIL-01' && x.variant === variant);
+    if (!o) throw new Error(`no MAIL-01.${variant}`);
+    const texts = loadTexts(lang);
+    return {
+      ...renderMessage(texts, `MAIL-01.${variant}`, o.params),
+      action: formatMessage(texts.actions[`MAIL-01.${variant}`] ?? '', o.params, lang),
+    };
+  };
+
+  it.each([
+    ['de', /nur Berichte angefordert/, /rua-Adresse/],
+    ['en', /only requests reports/, /rua address/],
+  ] as const)(
+    '%s: p=none without rua neither claims requested reports nor skips the rua step, and says so once',
+    (lang, claim, rua) => {
+      const policy = render(lang, 'policy-none');
+      expect(policy.body).not.toMatch(claim);
+      expect(policy.body).toMatch(rua);
+      expect(policy.action).toMatch(rua);
+      const dmarc = observedFor('v=DMARC1; p=none').filter((o) => o.checkId === 'MAIL-01');
+      expect(dmarc.map((o) => o.variant)).toEqual(['policy-none']);
+    },
+  );
+
+  it.each(['de', 'en'] as const)(
+    '%s: a missing rua under an enforcing policy still asks for action',
+    (lang) => {
+      expect(render(lang, 'weak-option').action).not.toMatch(/kein Handlungsbedarf|no action is needed/i);
+    },
+  );
+
+  it.each([
+    [
+      'de',
+      'DMARC-Option mit eingeschränkter Wirkung',
+      /wurde eine Option mit eingeschränkter Wirkung beobachtet/,
+    ],
+    ['en', 'DMARC option with limited effect', /contains one option with limited effect/],
+  ] as const)('%s: one weak option is counted in the singular', (lang, title, body) => {
+    const weak = render(lang, 'weak-option');
+    expect(weak.title).toBe(title);
+    expect(weak.body).toMatch(body);
+  });
+
+  it.each(['de', 'en'] as const)(
+    '%s: a missing record leads to quarantine or reject, not to p=none',
+    (lang) => {
+      const action = loadTexts(lang).actions['MAIL-01.record-not-found'] ?? '';
+      expect(action).toMatch(/p=quarantine (oder|or) p=reject/);
+      expect(action).not.toMatch(/\bgern\b|if you like/);
+    },
+  );
 });

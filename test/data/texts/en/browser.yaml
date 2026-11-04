@@ -1,99 +1,151 @@
 # Finding texts (en), module browser. ICU-like templates: {param}, plural, select.
 # Wording: "observed", "not found in …", no legal verdicts (stop-word test). Same parameters as de.
+# Titles and recommended actions also serve a summary of several findings: a parameter that differs becomes a list
+# there ("A, B and 2 more"), numbers are added up. Hence a name comes last after a colon, and the `other` branch of a
+# select is the mixed case.
 # Draft texts: all texts must be reviewed by the customer.
 draft: true
 messages:
   # CONSENT-01
   CONSENT-01.tracking-completed:
-    title: "Request with a persistent identifier to {service} before any interaction"
+    title: "{requestCount, plural, one {Request} other {Requests}} with a persistent identifier before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, a completed request to {service} ({host}) carrying a
-      persistent identifier was observed ({identifierKind, select, stored-match {matched against a stored cookie or
-      storage entry} persistent-param {parameter per signature in the service catalogue} user-supplied {user or click
-      identifier in a parameter} other {{identifierKind}}}; {requestCount, plural, one {# request} other {# requests}}
-      on {pageCount, plural, one {# page} other {# pages}}). The identifier value was not stored.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a completed request to {service} ({host}) carrying a persistent identifier was observed ({identifierKind,
+      select, stored-match {matched against a stored cookie or storage entry} sent-cookie {cookie sent with the
+      request, an identifier per the service catalogue} persistent-param {parameter per signature in the service
+      catalogue} user-supplied {user or click identifier in a parameter} other {{identifierKind}}}; {requestCount,
+      plural, one {# request} other {# requests}} on {pageCount, plural, one {# page} other {# pages}}). The
+      identifier value was not stored.{embeddedCount, plural, =0 {} one { # of these requests came from the frame of
+      the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded service
+      {embeddedIn}.}}
   CONSENT-01.cookieless-ping:
-    title: "Request without a persistent identifier to {service} before any interaction"
+    title: "{requestCount, plural, one {Request} other {Requests}} without a persistent identifier before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, a request to {service} ({host}) was observed for which no
-      persistent identifier is evidenced ({consentModeDenied, select, true {storage denied per the transmitted
-      Consent Mode signal} other {identifier: {identifierKind, select, per-load {not evidenced as persistent} other
-      {none detected}}}}; {pageCount, plural, one {# page} other {# pages}}). Whether such a request is an access
-      within the meaning of Section 25 TDDDG was not assessed.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to {service} ({host}) was observed for which no persistent identifier is evidenced
+      ({consentModeDenied, select, true {storage denied per the transmitted Consent Mode signal} other {identifier:
+      {identifierKind, select, per-load {not evidenced as persistent} other {none detected}}}}; {requestCount, plural,
+      one {# request} other {# requests}} on {pageCount, plural, one {# page} other {# pages}}). Whether such a
+      request is an access within the meaning of Section 25 TDDDG was not assessed.{embeddedCount, plural, =0 {} one {
+      # of these requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came
+      from the frame of the embedded service {embeddedIn}.}}
   CONSENT-01.first-party-proxy:
-    title: "First-party endpoint with the signature of {service} before any interaction"
+    title: "Own endpoint with the signature of a tracking service before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, a request to the site's own host {host} was observed whose path
-      and parameters match the signature of {service} in the service catalogue (e.g. server-side tagging or a tag
-      gateway). Server-side forwarding cannot be determined passively.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to the site's own host {host} was observed whose path and parameters match the signature of {service}
+      in the service catalogue (e.g. server-side tagging or a tag gateway). Server-side forwarding cannot be
+      determined passively.
   CONSENT-01.library-loaded:
-    title: "{service} loaded before any interaction"
+    title: "Loaded before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, a library or content of {service} ({host}) was loaded
-      ({pageCount, plural, one {# page} other {# pages}}). No related event was found in this evidence.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a library or content of {service} ({host}) was loaded ({pageCount, plural, one {# page} other {# pages}}). No
+      related event was found in this evidence.{embeddedCount, plural, =0 {} one { # of these requests came from the
+      frame of the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded
+      service {embeddedIn}.}}
   CONSENT-01.third-party-resource:
-    title: "Third-party resource of {service} before any interaction"
+    title: "{requestCount, plural, one {Third-party resource} other {Third-party resources}} before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, {requestCount, plural, one {# request} other {# requests}} to
-      {service} ({host}) were observed (category per service catalogue: CDN, payment, consent management or error
-      monitoring). Whether the resource is required was not assessed.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      {requestCount, plural, one {# request} other {# requests}} to {service} ({hosts}) {requestCount, plural, one
+      {was} other {were}} observed (category per service catalogue: {category, select, cdn {content delivery network}
+      payment {payment service} consent-provider {consent management} monitoring {error monitoring} other
+      {{category}}}). Whether the resource is required was not assessed.{embeddedCount, plural, =0 {} one { # of these
+      requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came from the
+      frame of the embedded service {embeddedIn}.}}
   CONSENT-01.unknown-host:
-    title: "Requests to the unclassified host {service} before any interaction"
+    title: "{requestCount, plural, one {Request} other {Requests}} not attributed to a service before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, {requestCount, plural, one {# request} other {# requests}} to
-      {host} were observed; the domain {service} is not listed in the service catalogue. Please attribute purpose
-      and provider manually.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      {requestCount, plural, one {# request} other {# requests}} to {hostCount, plural, one {the host {hosts}} other
+      {# hosts of the domain {service} ({hosts})}} {requestCount, plural, one {was} other {were}} observed;
+      {requestCount, plural, one {it was} other {they were}} not attributed to any service in the service catalogue.
+      Please attribute purpose and provider manually.
   CONSENT-01.request-not-completed:
-    title: "Request to {service} before any interaction, response not evidenced"
+    title: "{requestCount, plural, one {Request} other {Requests}} without an evidenced response before any interaction: {service}"
     body: >-
-      Before any interaction with the consent banner, a request to {service} ({host}) was started, but no response
-      was observed (e.g. blocked by the browser or aborted). No answered exchange is evidenced.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to {service} ({host}) was started, but no response was observed (e.g. blocked by the browser or
+      aborted). No answered exchange is evidenced.{embeddedCount, plural, =0 {} one { # of these requests came from
+      the frame of the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded
+      service {embeddedIn}.}}
 
   # CONSENT-02
   CONSENT-02.tracking-identifier-stored:
-    title: "Known analytics or marketing identifier {name} stored before any interaction"
+    title: "Known analytics or marketing identifier stored before any interaction: {name}"
     body: >-
-      Before any interaction with the consent banner, storage of {name} ({storageKind}, {party}) was observed.
-      Classified as an identifier of the category analytics/marketing per {dataset}. Values were not stored.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      storage of {name} ({storageKind}, {party}) was observed. Classified as an identifier of the category
+      analytics/marketing per {dataset}. Values were not stored.
   CONSENT-02.unknown-third-party-persistent:
-    title: "Unclassified persistent third-party entry {name} before any interaction"
+    title: >-
+      {count, plural, one {{allKnown, select, true {Persistent entry of {services}} other {Persistent third-party
+      entry}} not classified as an identifier before any interaction: {names}} other {# persistent {allKnown, select,
+      true {entries of {services}} other {third-party entries}} not classified as identifiers before any interaction:
+      {keys}{moreKeys, plural, =0 {} other { and # more}}}}
     body: >-
-      Before any interaction with the consent banner, persistent storage of {name} ({storageKind}) by {party} was
-      observed. The entry is not classified as a known analytics or marketing identifier in {dataset}; please review
-      the purpose manually.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      persistent storage of {count, plural, one {# entry} other {# entries}} by third parties was observed, {count,
+      plural, one {which is} other {which are}} not classified as analytics or marketing identifiers in
+      {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service catalogue and listed there
+      as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in the service catalogue:
+      {unknownNames}. Please review the purpose manually.}}
   CONSENT-02.unknown-first-party-persistent:
-    title: "Unclassified persistent entry {name} before any interaction"
+    title: >-
+      {count, plural, one {{allKnown, select, true {Persistent entry of {services}} other {Persistent entry}} not
+      classified as an identifier before any interaction: {names}} other {# persistent {allKnown, select, true
+      {entries of {services}} other {entries}} not classified as identifiers before any interaction: {keys}{moreKeys,
+      plural, =0 {} other { and # more}}}}
     body: >-
-      Before any interaction with the consent banner, persistent storage of {name} ({storageKind}, own domain) was
-      observed. The entry is not classified as a known analytics or marketing identifier in {dataset}; please review
-      the purpose manually.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      persistent storage of {count, plural, one {# entry} other {# entries}} of the own domain was observed, {count,
+      plural, one {which is} other {which are}} not classified as analytics or marketing identifiers in
+      {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service catalogue and listed there
+      as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in the service catalogue:
+      {unknownNames}. Please review the purpose manually.}}
   CONSENT-02.cmp-cookie-with-uid:
-    title: "Consent banner cookie {name} with a unique identifier"
+    title: "Consent banner cookie with a unique identifier: {name}"
     body: >-
       The consent banner cookie {name} ({storageKind}, {party}) contains a unique identifier. The value was not
       stored. Whether the identifier is needed to document the choice was not assessed.
   CONSENT-02.storage-rejected-or-attempted:
-    title: "Storage attempt for {name} before any interaction not accepted"
+    title: "Storage attempt before any interaction not accepted: {name}"
     body: >-
-      Before any interaction with the consent banner, an attempt to store {name} ({storageKind}, {party}) was
-      observed; the browser rejected it or did not confirm it. Classified as an identifier of the category
-      analytics/marketing per {dataset}.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      an attempt to store {name} ({storageKind}, {party}) was observed; the browser rejected it or did not confirm it.
+      Classified as an identifier of the category analytics/marketing per {dataset}.
 
   # CONSENT-03
   CONSENT-03.no-banner-strong-tracking:
-    title: "No consent banner recognised; analytics or marketing identifier observed"
+    title: "No consent banner found; analytics or marketing identifier observed"
     body: >-
-      No consent banner was recognised on {pageCount, plural, one {# evaluable checked page} other {# evaluable
+      No consent banner was found on {pageCount, plural, one {# evaluable checked page} other {# evaluable
       checked pages}}. At the same time, requests with a persistent identifier or stored analytics or marketing
-      identifiers were observed before any interaction: {services}. Egress region: {regionAsserted, select, true
+      identifiers were observed before any interaction. Services involved per service catalogue:
+      {services}.{storedCount, plural, =0 {} other { Stored: {stored}.}} Egress region: {regionAsserted, select, true
       {EEA as stated by the user} other {not stated}}.
   CONSENT-03.no-banner-consent-services:
-    title: "No consent banner recognised; analytics, marketing or embedded services loaded"
+    title: "No consent banner found; analytics, marketing or embedded services loaded"
     body: >-
-      No consent banner was recognised on {pageCount, plural, one {# evaluable checked page} other {# evaluable
-      checked pages}}. At the same time, services in the categories analytics, marketing or embedded content with
-      storage were observed before any interaction: {services}. Egress region: {regionAsserted, select, true {EEA
-      as stated by the user} other {not stated}}.
+      No consent banner was found on {pageCount, plural, one {# evaluable checked page} other {# evaluable
+      checked pages}}. At the same time, services that the service catalogue lists in the categories analytics,
+      marketing or embedded content were observed before any interaction: {services}.{storedCount, plural, =0 { Apart
+      from allowlisted entries, no storage of analytics or marketing identifiers or by embedded services was
+      observed.} other { Stored:
+      {stored}.}} Egress region: {regionAsserted, select, true {EEA as stated by the user} other {not stated}}.
 
   # CONSENT-04
   CONSENT-04.blocking-no-reject:
@@ -110,7 +162,7 @@ messages:
       A reject option of {cmp} was found but was not directly operable on the first screen (e.g. covered or outside
       the visible area).
   CONSENT-04.reject-ineffective:
-    title: "Reject not confirmed"
+    title: "Rejection not confirmed"
     body: "After using the reject option of {cmp}, no confirmed rejected state was found."
   CONSENT-04.consent-without-action:
     title: "CMP reports the state “granted” without a choice in the dialog"
@@ -147,82 +199,96 @@ messages:
   # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
-      {kind, select, storage {Analytics or marketing identifier stored after a confirmed reject} other {Request with
-      a persistent identifier to {service} after a confirmed reject}}
+      {kind, select, storage {Analytics or marketing identifier stored after a confirmed rejection: {service}} request
+      {Requests with a persistent identifier after a confirmed rejection: {service}} both {Identifiers sent and stored
+      after a confirmed rejection: {service}} other {Identifiers sent or stored after a confirmed rejection:
+      {service}}}
     body: >-
-      {kind, select, storage {After a confirmed reject, new storage of {name} ({service}) was observed; the browser
-      accepted the entry after the click. Values were not stored.} other {After a confirmed reject and a reload, a
-      new request to {service} ({host}) started after the click and carrying a persistent identifier was observed
-      ({pageCount, plural, one {# page} other {# pages}}). Requests of the consent banner updating its state are
-      excluded.}}
+      {kind, select, storage {After a confirmed rejection, new storage of {name} ({service}) was observed; the
+      browser accepted the entry after the click. Values were not stored.} other {After a confirmed rejection and a
+      reload, a new request to {service} ({host}) started after the click and carrying a persistent identifier was
+      observed ({pageCount, plural, one {# page} other {# pages}}).{kind, select, both { Storage of {name} after the
+      click was observed as well; values were not stored.} other {}} Requests of the consent banner updating its
+      state are excluded.}}
   CONSENT-05.cookieless-ping-after-reject:
-    title: "Request without a persistent identifier to {service} after reject"
+    title: "Requests without a persistent identifier after rejection: {service}"
     body: >-
-      After a confirmed reject, a request to {service} ({host}) started after the click was observed without an
+      After a confirmed rejection, a request to {service} ({host}) started after the click was observed without an
       evidenced persistent identifier ({consentModeDenied, select, true {storage denied per the transmitted Consent
       Mode signal} other {identifier not evidenced as persistent}}; {pageCount, plural, one {# page} other
       {# pages}}).
   CONSENT-05.connect-only-after-reject:
-    title: "Only a connection to {host} after reject"
+    title: "Only a connection after rejection: {host}"
     body: >-
-      After a confirmed reject, a connection to {host} ({service}) was logged; no specific event was established from
-      it.
+      After a confirmed rejection, a connection to {host} ({service}) was logged; no specific event was established
+      from it.
 
   # TRACK-01
   TRACK-01.service-inventory:
-    title: "{service} observed (inventory)"
+    title: "Inventory of observed services: {service}"
     body: >-
       {service} was observed. State by timing: before any interaction: {stageBeforeInteraction, select, loaded
       {loaded} initialised {initialised} event-sent {event sent} not-checked {not checked} other {not found}}; after
-      reject: {stageAfterReject, select, loaded {loaded} initialised {initialised} event-sent {event sent}
-      not-checked {not checked} other {not found}}; after accept: {stageAfterAccept, select, loaded {loaded}
-      initialised {initialised} event-sent {event sent} not-checked {not checked} other {not found}}. "Not
-      checked" stands for a timing at which no interaction with the consent banner took place. The timing is
-      assessed in the related findings.
+      rejection: {stageAfterReject, select, loaded {loaded} initialised {initialised} event-sent {event sent}
+      not-checked {not checked} other {not found}}; after acceptance: {stageAfterAccept, select, loaded {loaded}
+      initialised {initialised} event-sent {event sent} not-checked {not checked} other {not found}}.{initialisedWithoutRequest,
+      select, true { "Initialised" without a request at a timing rests on an identifier of the service stored then.}
+      other {}}{notChecked, select, true { "Not checked" stands for a timing at which no rejection or acceptance in
+      the consent banner took place.} other {}} The timing is assessed in the related findings.
 
   # EMBED-01
   EMBED-01.fonts-loaded:
-    title: "External fonts loaded from {service}"
+    title: "External fonts loaded: {service}"
     body: >-
-      Font files or stylesheets of {service} were loaded from an external server, timing: {afterReject, select, true
-      {before any interaction with the consent banner or after reject} other {before any interaction with the
-      consent banner}} ({pageCount, plural, one {# page} other {# pages}}).
+      {fontService, select, true {Font files or stylesheets of {service} were loaded from an external server} other
+      {Font files were loaded from the third-party server {service}}}, timing: {afterReject, select, true {before any
+      interaction with the consent banner or after rejection} other {{bannerFound, select, true {before any
+      interaction with the consent banner} false {before any interaction, no consent banner found} other {before
+      any interaction, consent banner not evaluated}}}} ({pageCount, plural, one {# page} other {# pages}}).
   EMBED-01.preconnect-only:
-    title: "Only a connection hint to {service}"
+    title: >-
+      {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
+      {service}} other {Connection hint or unfinished font request: {service}}}
     body: >-
       Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was observed; no
       completed download of font files was found.
 
   # EMBED-02
   EMBED-02.maps-loaded:
-    title: "External map service {service} loaded"
+    title: "External map service loaded: {service}"
     body: >-
       An external map service of {service} was loaded as {integrationType, select, iframe {embedded map (iframe)}
       js-api {JavaScript API} static {static map image} tiles {map tiles} other {map content}}, timing:
-      {afterReject, select, true {before any interaction with the consent banner or after reject} other {before any
-      interaction with the consent banner}} ({pageCount, plural, one {# page} other {# pages}}).
+      {afterReject, select, true {before any interaction with the consent banner or after rejection} other
+      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
+      consent banner found} other {before any interaction, consent banner not evaluated}}}} ({pageCount, plural,
+      one {# page} other {# pages}}).{frameResourceCount, plural,
+      =0 {} one { This includes # request of the map's frame to font services or helper hosts.} other { This
+      includes # requests of the map's frame to font services or helper hosts.}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:
-    title: "{documentKind, select, impressum {Legal notice (Impressum)} other {Privacy policy}} not found"
+    title: "{documentKind, select, impressum {Legal notice (Impressum)} privacy {Privacy policy} other {Legal notice (Impressum) and privacy policy}} not found"
     body: >-
       {documentKind, select, impressum {A legal notice (Impressum)} other {A privacy policy}} was not found on
       {pageTotal, plural, one {the # checked page} other {the # checked pages}} by link. {hopChecked, select, true {It
       was not found via a checked intermediate page (e.g. contact) either.} other {An intermediate page (e.g. contact)
-      was not checked.}}{fallbackChecked, select, true { It was not found at the common paths either.} other {}}
+      was not checked.}}{fallbackChecked, select, true { It was not found at the common paths either.} other
+      {}}{inOtherDocument, select, true { The privacy policy that was found ({otherDocument})
+      contains a section headed “{otherHeading}”; no link naming it as the legal notice was found.} other {}}
   LEGAL-01.links-broken:
-    title: "Links to the {documentKind, select, impressum {legal notice} other {privacy policy}} lead to error pages"
+    title: "{documentKind, select, impressum {Links to the legal notice lead} privacy {Links to the privacy policy lead} other {Links to the legal notice and privacy policy lead}} to error pages"
     body: >-
       Links to the {documentKind, select, impressum {legal notice (Impressum)} other {privacy policy}} lead to error
       pages (4xx, soft 404 or a page without recognisable content). Reachable via a checked intermediate page:
       {reachableViaHop, select, true {yes} other {no}}.
   LEGAL-01.link-missing-on-some-pages:
-    title: "Link to the {documentKind, select, impressum {legal notice} other {privacy policy}} not on all pages"
+    title: "{documentKind, select, impressum {Link to the legal notice} privacy {Link to the privacy policy} other {Links to the legal notice and privacy policy}} not on all pages"
     body: >-
       A link to the {documentKind, select, impressum {legal notice (Impressum)} other {privacy policy}} was not found
       on {missingCount} of {pageTotal} checked pages.
   LEGAL-01.reachable-via-intermediate:
-    title: "{documentKind, select, impressum {Legal notice} other {Privacy policy}} reachable only via an intermediate page or default path"
+    title: "{documentKind, select, impressum {Legal notice} privacy {Privacy policy} other {Legal notice and privacy policy}} reachable only via an intermediate page or default path"
     body: >-
       The {documentKind, select, impressum {legal notice (Impressum)} other {privacy policy}} was not found by a
       direct link on the checked pages, but only {foundVia, select, hop {via an intermediate page (e.g. contact)}
@@ -230,10 +296,10 @@ messages:
   LEGAL-01.footer-covered-by-banner:
     title: "Page footer covered by the consent banner"
     body: >-
-      The consent banner covered the page footer; the banner itself contains no link to the
-      {documentKind, select, impressum {legal notice (Impressum)} other {privacy policy}}.
+      The consent banner covered the page footer; no link to the {documentKind, select, impressum {legal notice
+      (Impressum)} other {privacy policy}} was found in the banner itself.
   LEGAL-01.unresolved:
-    title: "Link target for the {documentKind, select, impressum {legal notice} other {privacy policy}} not resolved"
+    title: "{documentKind, select, impressum {Link target for the legal notice} privacy {Link target for the privacy policy} other {Link targets for the legal notice and privacy policy}} not resolved"
     body: >-
       The link target for the {documentKind, select, impressum {legal notice (Impressum)} other {privacy policy}}
       could not be resolved on {missingCount} of {pageTotal} checked pages (e.g. a link to # or JavaScript without
@@ -241,14 +307,16 @@ messages:
 
   # PRIV-01
   PRIV-01.not-named:
-    title: "{service} not found in the privacy policy"
+    title: "Not found in the privacy policy: {service}"
     body: >-
-      The evaluated text of the privacy policy at {policyUrl} ({partCount, plural, one {# section} other {# sections}};
-      completeness per manifest: {complete, select, true {complete} other {not complete}}) contains no mention of
-      {service}, its provider, its domains or a matching category description. The service was observed on {pageCount, plural, one {# page}
-      other {# pages}}. Negations in the text were not evaluated.
+      In the evaluated text of the privacy policy at {policyUrl} ({partCount, plural, one {# section} other {#
+      sections}}; completeness per manifest: {complete, select, true {complete} other {not complete}}) no mention
+      attributable to {service} was found. The search covered the service name with known spellings, the company
+      names per service catalogue ({companies}), the service's domains and a matching category description. A
+      mention of another service of the same company does not count as a mention of {service}. The service was
+      observed on {pageCount, plural, one {# page} other {# pages}}. Negations in the text were not evaluated.
   PRIV-01.category-only:
-    title: "Only a category description found for {service}"
+    title: "Only a category description found: {service}"
     body: >-
       The privacy policy at {policyUrl} describes the category {category, select, analytics {web analytics} ads
       {advertising} session-recording {session recording} tag-manager {tag management} cdn {content delivery network}
@@ -257,17 +325,27 @@ messages:
       platforms} chat {chat services} monitoring {error monitoring} other {{category}}}; an unambiguous reference to
       {service} was not found. Please review manually.
   PRIV-01.ambiguous-match:
-    title: "{service} mentioned only in text not displayed"
+    title: "Mentioned only in text not displayed: {service}"
     body: >-
       {service} was found in the privacy policy at {policyUrl} only in text not displayed on the page or not
       attributable to a section. Please review manually.
 
+# Legal background per check; a key `<check>.<variant>` (or `.<variant group>`) replaces it for the variant whose
+# classification differs from the rest of the check.
 legalNotes:
   CONSENT-01:
     text: >-
       Section 25(1) TDDDG; Art. 6 GDPR; CJEU C-673/17 (Planet49); VG Hannover 10 A 5385/22. For requests without
       storing or reading information on the device, the classification is contested.
     status: contested
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-01.tracking-completed:
+    text: >-
+      Section 25(1) TDDDG; Art. 6 GDPR; CJEU C-673/17 (Planet49); BGH I ZR 7/16; VG Hannover 10 A 5385/22. The
+      request carried a persistent identifier that was stored on or read from the device. Whether an exception under
+      Section 25(2) TDDDG applies is not determined automatically.
+    status: authority-consensus
     reviewedAt: null
     reviewBy: null
   CONSENT-02:
@@ -290,6 +368,20 @@ legalNotes:
       Art. 4(11), Art. 7 GDPR; Section 25 TDDDG; DSK guidance on digital services; OLG Köln 6 U 80/23;
       VG Hannover 10 A 5385/22. For non-blocking dialogs and pay-or-consent models the classification is contested.
     status: court-appellate
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-04.nonblocking-no-reject:
+    text: >-
+      Art. 4(11), Art. 7 GDPR; Section 25 TDDDG; DSK guidance on digital services. Whether a dialog that does not
+      block the use of the page needs a reject option on the first layer is contested.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-04.pur-abo:
+    text: >-
+      Art. 4(11), Art. 7(4) GDPR; Section 25 TDDDG; DSK assessment of pay-or-consent models on websites. The
+      classification of models of consent or a paid subscription is contested.
+    status: contested
     reviewedAt: null
     reviewBy: null
   CONSENT-05:
@@ -332,3 +424,102 @@ legalNotes:
     status: contested
     reviewedAt: null
     reviewBy: null
+
+# Recommended action per variant: short, concrete, no legal assessment. Templates with the finding's parameters; they
+# also serve several findings at once (names as a list), hence no "this service" and no reference to the title.
+actions:
+  CONSENT-01.tracking-completed:
+    text: "Load {service} only after consent, for example through the blocking feature of {bannerFound, select, true {your consent banner} false {a consent banner} other {an existing or new consent banner}} or your tag manager."
+  CONSENT-01.library-loaded:
+    text: "Check whether scripts and content of {service} are needed before consent, and otherwise have {bannerFound, select, true {the consent banner} false {a consent banner} other {an existing or new consent banner}} block them."
+  CONSENT-01.first-party-proxy:
+    text: "Check whether your own endpoints with the signature of {service} pass on analytics or marketing data, and if so start them only after consent."
+  CONSENT-01.cookieless-ping:
+    text: "Check whether the requests to {service} should be sent only after consent, and agree on the setting with the provider."
+  CONSENT-01.third-party-resource:
+    text: "Check whether the external content of {service} is needed, or serve it from your own server instead. Otherwise no action is needed."
+  CONSENT-01.unknown-host:
+    text: "Find out which service the requests to {service} belong to (for example your website platform or an embedded widget), name it in your privacy policy and, if needed, load it only after consent."
+  CONSENT-01.request-not-completed:
+    text: "Check whether the requests to {service} would transmit data once the connection succeeds, and if so allow them only after consent."
+  CONSENT-02.tracking-identifier-stored:
+    text: "Set {name} only after consent, for example by blocking the related services until then."
+  CONSENT-02.unknown-third-party-persistent:
+    text: >-
+      {knownCount, plural, =0 {} other {Load {services} only after consent or after a click by the visitor (for
+      embedded content such as videos, for example with a two-click solution), so that the entries are not stored
+      before.}}{unknownCount, plural, =0 {} other {{knownCount, plural, =0 {} other { }}Find out which services set the
+      entries not listed in the service catalogue, and allow them to be stored only after consent if the site does not
+      need them to work.}}
+  CONSENT-02.unknown-first-party-persistent:
+    text: >-
+      {knownCount, plural, =0 {} other {Check whether {services} needs to store the entries before consent, and
+      otherwise load the service only after consent.}}{unknownCount, plural, =0 {} other {{knownCount, plural, =0 {}
+      other { }}Check what the entries of your site not listed in the service catalogue are used for. If the site does
+      not need them to work, store them only after consent.}}
+  CONSENT-02.cmp-cookie-with-uid:
+    text: "Ask the provider of your consent banner whether the identifier in {name} is needed to record the choice. Otherwise no action is needed."
+  CONSENT-02.storage-rejected-or-attempted:
+    text: "Check why the page tries to store {name} before consent, and move that to after consent."
+  CONSENT-03.no-banner-strong-tracking:
+    text: "Add a consent banner, or remove the analytics and marketing services ({services}) until consent can be collected."
+  CONSENT-03.no-banner-consent-services:
+    text: "Check whether the loaded services ({services}) need consent, and then add a consent banner or remove the services."
+  CONSENT-04.blocking-no-reject:
+    text: "Add a clearly visible reject option on the first layer of the banner that is as easy to reach as the accept option."
+  CONSENT-04.close-means-accept:
+    text: "Configure the banner so that closing the dialog does not count as consent, and verify the setting in a test."
+  CONSENT-04.reject-not-actionable:
+    text: "Check that the reject option is visible and usable on all screen sizes, and fix its design or position."
+  CONSENT-04.reject-ineffective:
+    text: "Check manually that rejecting in the banner is actually saved, and contact your banner provider if it is not."
+  CONSENT-04.consent-without-action:
+    text: 'Configure the banner so that optional categories are set to "denied" until visitors make a choice.'
+  CONSENT-04.reject-as-link:
+    text: "Check manually whether the reject option is as prominent as the accept option, and otherwise make it an equal button."
+  CONSENT-04.nonblocking-no-reject:
+    text: "Check manually whether the banner offers a reject option, and add one on the first layer if it is missing."
+  CONSENT-04.no-choice-at-first-layer:
+    text: "Check the banner manually and offer both an accept and a reject option on the first layer."
+  CONSENT-04.pur-abo:
+    text: "Check manually whether the choice between consent and subscription is presented clearly and fairly. Otherwise no action is needed."
+  CONSENT-04.banner-not-recognized:
+    text: "Check the consent banner manually: is there an equivalent reject option, and is it respected?"
+  CONSENT-04.cmp-not-supported:
+    text: "Check the consent banner ({cmp}) manually, as the tool does not evaluate it."
+  CONSENT-05.tracking-after-reject:
+    text: "Make sure that after a rejection no requests with identifiers are sent to {service} and no identifiers are stored, and test the flow after every change."
+  CONSENT-05.cookieless-ping-after-reject:
+    text: "Check whether requests to {service} should still be sent after a rejection, and otherwise block them until consent is given."
+  CONSENT-05.connect-only-after-reject:
+    text: "Check whether the connections to {host} are needed after a rejection. Otherwise no action is needed."
+  TRACK-01.service-inventory:
+    text: "No action is needed as long as {service} is intended and named in your privacy policy."
+  EMBED-01.fonts-loaded:
+    text: "{fontService, select, true {Serve the fonts of {service} from your own server instead of the external provider.} false {Check which integration loads the font files from {service}, and serve them from your own server or load the integration only after consent.} other {Serve the fonts of {service} from your own server, or load the integration that fetches them only after consent.}}"
+  EMBED-01.preconnect-only:
+    text: >-
+      {observed, select, hint {Remove the connection hint to {service} if you do not load the fonts from there.}
+      attempt {Check which integration requests fonts from {service}, and remove the request or serve the fonts from
+      your own server.} other {Check the connection hints and font requests to {service}, and remove them if you do
+      not load the fonts from there.}}
+  EMBED-02.maps-loaded:
+    text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
+  LEGAL-01.document-not-found:
+    text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} clearly in the footer of every page{inOtherDocument, select, true {, as a page of its own or directly to the section “{otherHeading}” of the privacy policy ({otherDocument})} other {}}."
+  LEGAL-01.links-broken:
+    text: "Fix the links to {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} so that they lead to the right pages."
+  LEGAL-01.link-missing-on-some-pages:
+    text: "Add the {documentKind, select, impressum {link to the legal notice} privacy {link to the privacy policy} other {links to the legal notice and the privacy policy}} on the pages where {documentKind, select, impressum {it is} privacy {it is} other {they are}} missing, ideally through a shared footer."
+  LEGAL-01.reachable-via-intermediate:
+    text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} directly, without going through an intermediate page."
+  LEGAL-01.footer-covered-by-banner:
+    text: "Make sure the banner does not cover the footer, or also link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} inside the banner."
+  LEGAL-01.unresolved:
+    text: "Check manually that the links to {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} work in a browser."
+  PRIV-01.not-named:
+    text: "Name {service}, with purpose and provider, in your privacy policy, or remove services you do not need from the site."
+  PRIV-01.category-only:
+    text: "Check whether the privacy policy names {service} specifically enough, and otherwise add the names of the service and the provider."
+  PRIV-01.ambiguous-match:
+    text: "Check manually whether the privacy policy names {service} in its visible text."

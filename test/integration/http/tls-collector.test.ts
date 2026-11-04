@@ -28,6 +28,8 @@ const servers: Array<{ close(): Promise<void> }> = [];
 let leafOnly: number;
 let fullChain: number;
 let withRoot: number;
+let cnOnlyPki: ChainPki;
+let cnOnly: number;
 
 beforeAll(async () => {
   server = await startFixtureServer({
@@ -43,7 +45,10 @@ beforeAll(async () => {
   const a = await chainServer(pki.leafPem, pki.leafKeyPem);
   const b = await chainServer(`${pki.leafPem}\n${pki.intermediatePem}`, pki.leafKeyPem);
   const c = await chainServer(`${pki.leafPem}\n${pki.intermediatePem}\n${pki.rootPem}`, pki.leafKeyPem);
-  servers.push(a, b, c);
+  cnOnlyPki = await createChainPki('www.cnonly.test', new Date(), { san: false });
+  const d = await chainServer(`${cnOnlyPki.leafPem}\n${cnOnlyPki.intermediatePem}`, cnOnlyPki.leafKeyPem);
+  servers.push(a, b, c, d);
+  cnOnly = d.port;
   leafOnly = a.port;
   fullChain = b.port;
   withRoot = c.port;
@@ -239,6 +244,26 @@ describe('TLS collector: certificate chains', () => {
     const r = tls02Result('https://www.chain.test/', s);
     expect(variantsOf(r)).toEqual(['certificate-invalid']);
     expect(r.outcome?.observations[0]?.params).toMatchObject({ reason: 'untrusted-root' });
+  });
+
+  // Node still falls back to the CN and accepts the chain; browsers match the host against the SAN only.
+  it('a trusted chain whose leaf names the host only in its CN → name-mismatch (certificate-invalid)', async () => {
+    const s = await endpoints(
+      'https://www.cnonly.test/',
+      withRoutes(server.network(), { 'www.cnonly.test:443': cnOnly, 'cnonly.test': closed }, [
+        cnOnlyPki.rootPem,
+      ]),
+    );
+
+    expect(target(s)).toMatchObject({ authorized: true, hostnameMatches: false });
+    expect(target(s).chain[0]).toMatchObject({ subject: 'CN=www.cnonly.test', subjectAltNames: [] });
+    const r = tls02Result('https://www.cnonly.test/', s);
+    expect(variantsOf(r)).toEqual(['certificate-invalid']);
+    expect(r.outcome?.observations[0]?.params).toMatchObject({
+      reason: 'name-mismatch',
+      names: 'www.cnonly.test',
+      nameSource: 'cn',
+    });
   });
 
   it('an https target with an explicit port is probed on that port', async () => {

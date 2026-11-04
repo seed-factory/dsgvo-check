@@ -100,3 +100,22 @@ describe('a value outside its allowed set is passed on as `invalid`', () => {
     expect(invalidOf(...args)).toEqual(invalid);
   });
 });
+
+describe('--detail', () => {
+  const rawOf = (...args: string[]) => {
+    const program = buildProgram().action(() => undefined);
+    program.parse(['https://example.test', ...args], { from: 'user' });
+    return program.opts() as Parameters<typeof toScanOptions>[1];
+  };
+
+  it('defaults to full and accepts brief', () => {
+    expect(rawOf()).toMatchObject({ detail: 'full' });
+    expect(rawOf('--detail', 'brief')).toMatchObject({ detail: 'brief' });
+  });
+
+  it('is refused as an invalid option when it is neither full nor brief', () => {
+    const options = toScanOptions('https://example.test', rawOf('--detail', 'verbose'));
+    expect(options.invalid).toEqual({ option: '--detail', value: 'verbose' });
+    expect(toScanOptions('https://example.test', rawOf('--detail', 'brief')).invalid).toBeUndefined();
+  });
+});

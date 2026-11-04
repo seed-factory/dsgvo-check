@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../../src/checks/browser/legal-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import {
   makeDocument,
   makeLink,
@@ -375,5 +377,162 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
       site({ phases: [phase('A', { pages: [page(START, 'start', 'A', { evaluable: false })] })] }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-evaluable-pages' });
+  });
+});
+
+describe('LEGAL-01: an Impressum kept as a section of the privacy policy', () => {
+  const texts = (lang: 'de' | 'en', o: { variant: string; params: Record<string, unknown> }) => {
+    const t = loadTexts(lang);
+    const id = `LEGAL-01.${o.variant}`;
+    return {
+      body: renderMessage(t, id, o.params as never).body,
+      action: formatMessage(t.actions[id]!, o.params as never, lang),
+    };
+  };
+
+  type Part = { section?: string; text: string };
+
+  /** Only a privacy link on every page; the Impressum is searched for by hop and usual path and not found. */
+  function privacyOnly(privacyParts: Part[], contentHeadings?: string[]) {
+    const links = [footerLinks()[1]!];
+    return runCheck(
+      legal01,
+      site({
+        phases: [
+          phase('A', {
+            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
+          }),
+        ],
+        documents: {
+          documents: [
+            makeDocument({
+              kind: 'privacy',
+              id: 'doc-privacy',
+              url: PRIVACY,
+              phase: 'A',
+              linkedFrom: [{ pageUrl: START, text: 'Datenschutz' }],
+              parts: privacyParts.map((p, i) => ({
+                id: `p${i}`,
+                origin: 'visible',
+                sourceUrl: PRIVACY,
+                ...p,
+              })),
+              ...(contentHeadings ? { contentHeadings } : {}),
+            }),
+          ],
+          attempts: [
+            { kind: 'impressum', via: 'fallback', url: IMPRESSUM, status: 404, outcome: 'not-found' },
+          ],
+        },
+      }),
+    );
+  }
+
+  const policyWith = (heading: string): Part[] => [
+    { section: 'Datenschutzerklärung', text: 'Wir verarbeiten Daten.' },
+    { section: `Datenschutzerklärung > ${heading}`, text: 'Beispiel GmbH, Musterstraße 1.' },
+  ];
+
+  it('names the section and the page; the finding stays document-not-found', () => {
+    const r = privacyOnly(policyWith('Impressum'), ['Datenschutzerklärung', 'Impressum']);
+    const [o] = observationsOf(r);
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'document-not-found']]);
+    expect(o?.params).toMatchObject({
+      inOtherDocument: true,
+      otherDocument: PRIVACY,
+      otherHeading: 'Impressum',
+    });
+    expect(texts('de', o!).body).toContain(
+      `Die gefundene Datenschutzerklärung (${PRIVACY}) enthält einen Abschnitt mit der Überschrift „Impressum“; ein Link, der ihn als Impressum benennt, wurde nicht gefunden.`,
+    );
+    // The owner report shows the action without the body: it names the page itself.
+    expect(texts('de', o!).action).toBe(
+      `Verlinken Sie das Impressum gut sichtbar im Seitenfuß jeder Seite, als eigene Seite oder direkt auf den Abschnitt „Impressum“ der Datenschutzerklärung (${PRIVACY}).`,
+    );
+    expect(texts('en', o!).body).toContain(
+      `The privacy policy that was found (${PRIVACY}) contains a section headed “Impressum”; no link naming it as the legal notice was found.`,
+    );
+    expect(texts('en', o!).action).toContain(
+      `directly to the section “Impressum” of the privacy policy (${PRIVACY}).`,
+    );
+  });
+
+  it('reads the part headings of a snapshot that recorded no content headings', () => {
+    const [o] = observationsOf(privacyOnly(policyWith('Anbieterkennzeichnung')));
+
+    expect(o?.params).toMatchObject({ inOtherDocument: true, otherHeading: 'Anbieterkennzeichnung' });
+  });
+
+  it.each([
+    ['a heading that only starts with an Impressum key', policyWith('Impressumspflicht'), undefined],
+    [
+      'the word Impressum in the text of a section',
+      policyWith('Verantwortliche Stelle').concat({
+        section: 'Datenschutzerklärung > Kontakt',
+        text: 'Siehe Impressum.',
+      }),
+      undefined,
+    ],
+    ['a heading of a footer column only', policyWith('Impressum'), ['Datenschutzerklärung']],
+    ['no such section', [{ section: 'Datenschutzerklärung > Cookies', text: 'Cookies.' }], undefined],
+  ] as Array<[string, Part[], string[] | undefined]>)(
+    'counterexample: %s adds nothing to the finding',
+    (_name, parts, content) => {
+      const [o] = observationsOf(privacyOnly(parts, content));
+
+      expect(o?.variant).toBe('document-not-found');
+      expect(o?.params).toMatchObject({ inOtherDocument: false, otherDocument: null, otherHeading: null });
+      expect(texts('de', o!).body).not.toContain('Abschnitt');
+      expect(texts('de', o!).action).toBe(
+        'Verlinken Sie das Impressum gut sichtbar im Seitenfuß jeder Seite.',
+      );
+    },
+  );
+
+  it('counterexample: a privacy section of the Impressum page is not taken for the privacy policy', () => {
+    const links = [footerLinks()[0]!];
+    const r = runCheck(
+      legal01,
+      site({
+        phases: [
+          phase('A', {
+            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
+          }),
+        ],
+        documents: {
+          documents: [
+            makeDocument({
+              kind: 'impressum',
+              id: 'doc-impressum',
+              url: IMPRESSUM,
+              phase: 'A',
+              linkedFrom: [{ pageUrl: START, text: 'Impressum' }],
+              parts: [
+                {
+                  id: 'i1',
+                  section: 'Impressum',
+                  text: 'Beispiel GmbH.',
+                  origin: 'visible',
+                  sourceUrl: IMPRESSUM,
+                },
+                {
+                  id: 'i2',
+                  section: 'Impressum > Datenschutz',
+                  text: 'Die Nutzung dieser Website ist ohne Angabe personenbezogener Daten möglich.',
+                  origin: 'visible',
+                  sourceUrl: IMPRESSUM,
+                },
+              ],
+            }),
+          ],
+          attempts: [{ kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' }],
+        },
+      }),
+    );
+    const [o] = observationsOf(r);
+
+    expect(variantsByKind(r)).toEqual([['privacy', 'document-not-found']]);
+    expect(o?.params).toMatchObject({ inOtherDocument: false });
   });
 });

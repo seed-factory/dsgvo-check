@@ -3,6 +3,7 @@
  * persisted. Third party = registrable domain differs from the target's (www/apex are one party).
  */
 
+import { DEFAULT_CONFIG } from '../core/config/schema.ts';
 import {
   type CookieRecord,
   isCookieHeld,
@@ -38,6 +39,8 @@ export interface DeriveOptions {
   /** Pre-loaded catalog (tests); default: test/data/services from `dataDir` or the package data. */
   catalog?: ServiceCatalog;
   dataDir?: string;
+  /** Days a cookie must live to count as persistent; a shorter one is like a session cookie (`browser.persistentCookieMinDays`). */
+  persistentCookieMinDays?: number;
 }
 
 const TRACKING_CATEGORIES: ReadonlySet<ServiceCategory> = new Set(['analytics', 'ads', 'session-recording']);
@@ -85,6 +88,7 @@ class FirstPartyScope {
 
 export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSection {
   const catalog = opts.catalog ?? loadServiceCatalog(opts.dataDir);
+  const minDays = opts.persistentCookieMinDays ?? DEFAULT_CONFIG.browser.persistentCookieMinDays;
   const host = snapshot.target.finalHost ?? snapshot.target.host;
   const scope = new FirstPartyScope([host, snapshot.target.host]);
 
@@ -92,17 +96,27 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   const cookies: ClassifiedCookie[] = [];
   const storage: ClassifiedStorage[] = [];
   const hints: ClassifiedHint[] = [];
+  const stored: StoredEntry[] = [];
   for (const phase of snapshot.browser?.phases ?? []) {
     for (const page of phase.pages) hints.push(...classifyHints(catalog, scope, phase, page));
+    const embeds = embedFrames(catalog, scope, phase.requests);
     for (const r of phase.requests) {
-      const c = classifyRequest(catalog, scope, phase, r);
+      const c = classifyRequest(catalog, scope, phase, r, embeds);
       if (c) requests.push(c);
     }
-    for (const ck of phase.cookies) cookies.push(classifyCookie(catalog, phase, ck));
-    for (const st of phase.storage) storage.push(classifyStorage(catalog, phase, st));
+    for (const ck of phase.cookies) {
+      const c = classifyCookie(catalog, phase, ck, minDays);
+      cookies.push(c);
+      stored.push({ c, pageUrl: ck.pageUrl });
+    }
+    for (const st of phase.storage) {
+      const c = classifyStorage(catalog, phase, st);
+      storage.push(c);
+      stored.push({ c, pageUrl: st.pageUrl });
+    }
   }
 
-  const services = aggregateServices(snapshot, requests, cookies, storage);
+  const services = aggregateServices(snapshot, requests, stored);
   const info = serviceInfoFor(catalog, [...requests, ...cookies, ...storage, ...hints]);
   const meta = catalog.data.catalog;
 
@@ -242,13 +256,15 @@ export function decodeConsentMode(
 
 const PERSISTENT_KINDS: ReadonlySet<IdentifierKind> = new Set([
   'stored-match',
+  'sent-cookie',
   'persistent-param',
   'user-supplied',
 ]);
 
 /**
  * `identifier.kind` from collector facts only: a key of the sanitized URL is no evidence, since it survives redaction
- * even when its value was empty.
+ * even when its value was empty. A tracking cookie in the request's Cookie header is `sent-cookie`, not
+ * `stored-match`: no value of the request was compared with it.
  */
 export function identifierOf(
   catalog: ServiceCatalog,
@@ -263,7 +279,7 @@ export function identifierOf(
     const param = names.find((n) => !sentCookieNames.includes(n)) ?? names[0];
     return param ? { kind: 'stored-match', param } : { kind: 'stored-match' };
   }
-  if (sentCookie) return { kind: 'stored-match', param: sentCookie };
+  if (sentCookie) return { kind: 'sent-cookie', param: sentCookie };
 
   const catalogParams = new Set((identifierParams ?? []).map((n) => n.toLowerCase()));
   const persistent = names.find((n) => catalogParams.has(n.toLowerCase()));
@@ -293,11 +309,114 @@ function relevantStorage(service: ServiceEntry): 'ad' | 'analytics' | null {
   return null;
 }
 
+/** Services embedded as a frame: what their frame loads is part of the embed, not of the site. */
+const EMBED_CATEGORIES: ReadonlySet<ServiceCategory> = new Set([
+  'maps',
+  'video',
+  'captcha',
+  'widget',
+  'social',
+  'reviews',
+  'chat',
+]);
+
+/** The embedded service of a third-party frame; `loaded`: taken from what the frame loads, not from its document. */
+interface EmbedFrame {
+  service: ServiceEntry;
+  loaded: boolean;
+  /** Registrable domain of the frame's document. */
+  etld1: string | null;
+}
+
+/**
+ * Embedded service per third-party frame of a phase (by `frameId`): the service of the frame's document, or, for the
+ * frame of a site builder or of an unknown host, the first embedded service loaded in it (a builder's map frame that
+ * loads Google Maps). A site builder is a host of no catalog service or a CDN of the catalog (Wix serves its pages
+ * from one). The frame of any other known service (payment, ads, consent) takes no embed from what it loads, so its
+ * own helper hosts and fonts are not attributed to that embed. Frames of the site itself and frames without a
+ * document URL get none.
+ */
+function embedFrames(
+  catalog: ServiceCatalog,
+  scope: FirstPartyScope,
+  requests: readonly RequestRecord[],
+): Map<string, EmbedFrame> {
+  const embedded = (service: ServiceEntry | undefined): ServiceEntry | null =>
+    service && EMBED_CATEGORIES.has(service.category) ? service : null;
+
+  const frames = new Map<
+    string,
+    { thirdParty: boolean; etld1: string | null; own: ServiceEntry | null; builder: boolean }
+  >();
+  const loadedIn = new Map<string, ServiceEntry>();
+  for (const r of requests) {
+    if (r.isMainFrame || !r.frameId) continue;
+    let frame = frames.get(r.frameId);
+    if (!frame) {
+      const url = r.frameUrl ? parseHttpUrl(r.frameUrl) : null;
+      const service = url ? catalog.matchUrl(url)?.service : undefined;
+      frame = {
+        thirdParty: url !== null && !scope.has(url.hostname),
+        etld1: url ? registrableDomain(url.hostname) : null,
+        own: embedded(service),
+        builder: !service || service.category === 'cdn',
+      };
+      frames.set(r.frameId, frame);
+    }
+    if (frame.thirdParty && frame.builder && !loadedIn.has(r.frameId)) {
+      const url = parseHttpUrl(r.url);
+      const service = embedded(url ? catalog.matchUrl(url)?.service : undefined);
+      if (service) loadedIn.set(r.frameId, service);
+    }
+  }
+
+  const out = new Map<string, EmbedFrame>();
+  for (const [id, f] of frames) {
+    if (!f.thirdParty) continue;
+    const loaded = loadedIn.get(id);
+    if (f.own) out.set(id, { service: f.own, loaded: false, etld1: f.etld1 });
+    else if (loaded) out.set(id, { service: loaded, loaded: true, etld1: f.etld1 });
+  }
+  return out;
+}
+
+/**
+ * A request of an embed's frame to a host of no catalog service, or a font: a resource of the embed (a player's
+ * fonts and helper scripts), not a service of the site. In a builder's frame the builder's own hosts stay its own.
+ */
+function belongsToEmbed(
+  match: RequestMatch | null,
+  frame: EmbedFrame,
+  thirdParty: boolean,
+  etld1: string | null,
+): boolean {
+  if (!thirdParty || match?.service.id === frame.service.id) return false;
+  if (frame.loaded && etld1 !== null && etld1 === frame.etld1) return false;
+  return !match || match.service.category === 'fonts';
+}
+
+function withEmbed(base: ClassifiedRequest, embed: ServiceEntry, r: RequestRecord): ClassifiedRequest {
+  const kind = kindFromResourceType(r.resourceType, embed.category);
+  const out: ClassifiedRequest = {
+    ...base,
+    serviceId: embed.id,
+    category: embed.category,
+    source: 'embed-frame',
+    kind,
+    stage: stageFromKind(kind),
+    frameServiceId: embed.id,
+  };
+  const integration = integrationFromKind(embed.category, kind);
+  if (integration) out.integration = integration;
+  return out;
+}
+
 function classifyRequest(
   catalog: ServiceCatalog,
   scope: FirstPartyScope,
   phase: PhaseRecord,
   r: RequestRecord,
+  embeds: ReadonlyMap<string, EmbedFrame>,
 ): ClassifiedRequest | null {
   const url = parseHttpUrl(r.url);
   if (!url) return null;
@@ -329,9 +448,13 @@ function classifyRequest(
     timing: timingOf(phase, r.afterClick),
   };
   withIdentifier(base, identifierOf(catalog, r, undefined));
-  if (!match) return base;
 
-  return withCatalogMatch(base, match, r, catalog, thirdParty, consentMode);
+  const frame = !r.isMainFrame && r.frameId ? embeds.get(r.frameId) : undefined;
+  if (frame && belongsToEmbed(match, frame, thirdParty, etld1)) return withEmbed(base, frame.service, r);
+
+  const out = match ? withCatalogMatch(base, match, r, catalog, thirdParty, consentMode) : base;
+  if (frame) out.frameServiceId = frame.service.id;
+  return out;
 }
 
 /** The request as a service of the catalog: its kind, stage, identifier, integration and consent-mode behaviour. */
@@ -413,7 +536,22 @@ function serviceByHost(catalog: ServiceCatalog, host: string | undefined | null)
   return m && m.via !== 'any-host' ? m.service : null;
 }
 
-function classifyCookie(catalog: ServiceCatalog, phase: PhaseRecord, c: CookieRecord): ClassifiedCookie {
+function sameCompany(a: ServiceEntry, b: ServiceEntry): boolean {
+  const company = (s: ServiceEntry) => (s.parent ?? s.provider)?.name ?? null;
+  return company(a) !== null && company(a) === company(b);
+}
+
+/** Persistent with a lifetime of at least `minDays`; a missing lifetime of a persistent cookie counts as long. */
+function persistentLifetime(lifetime: CookieRecord['lifetime'], minDays: number): boolean {
+  return lifetime.kind === 'persistent' && (lifetime.days ?? Number.POSITIVE_INFINITY) >= minDays;
+}
+
+function classifyCookie(
+  catalog: ServiceCatalog,
+  phase: PhaseRecord,
+  c: CookieRecord,
+  minDays: number,
+): ClassifiedCookie {
   const domain = c.domain.replace(/^\./, '').toLowerCase();
   const named = catalog.matchCookie(c.name, domain);
   const allowCls = catalog.allowlistedCookie(c.name);
@@ -424,6 +562,11 @@ function classifyCookie(catalog: ServiceCatalog, phase: PhaseRecord, c: CookieRe
   if (!service) {
     service = (!c.firstParty ? serviceByHost(catalog, domain) : null) ?? serviceByHost(catalog, c.setterHost);
     if (service) source = 'heuristic';
+  } else if (c.setter === 'http-response') {
+    // A cookie name the services of one company share (IDE on doubleclick.net) belongs to the one whose host answered
+    // with it. A script-set cookie names the host of the script, which may be the loader of another service.
+    const setter = serviceByHost(catalog, c.setterHost);
+    if (setter && sameCompany(setter, service)) service = setter;
   }
 
   const out: ClassifiedCookie = {
@@ -435,7 +578,7 @@ function classifyCookie(catalog: ServiceCatalog, phase: PhaseRecord, c: CookieRe
     category: service?.category ?? 'unknown',
     tracking,
     allowlisted: !tracking && allowCls !== null,
-    persistent: c.lifetime.kind === 'persistent',
+    persistent: persistentLifetime(c.lifetime, minDays),
     thirdParty: !c.firstParty,
     source,
     etld1: registrableDomain(domain),
@@ -486,11 +629,16 @@ function addUnique<T>(list: T[], value: T): void {
   if (!list.includes(value)) list.push(value);
 }
 
+/** A classified cookie or storage entry with the page it was written on. */
+interface StoredEntry {
+  c: ClassifiedCookie | ClassifiedStorage;
+  pageUrl: string;
+}
+
 function aggregateServices(
   snapshot: Snapshot,
   requests: readonly ClassifiedRequest[],
-  cookies: readonly ClassifiedCookie[],
-  storage: readonly ClassifiedStorage[],
+  stored: readonly StoredEntry[],
 ): ServiceObservation[] {
   const records = new Map<string, RequestRecord>();
   for (const p of snapshot.browser?.phases ?? []) for (const r of p.requests) records.set(r.id, r);
@@ -520,11 +668,13 @@ function aggregateServices(
     if (r.stage && rec && loaded(rec)) addUnique(s.stages, r.stage);
   }
 
-  for (const c of [...cookies, ...storage]) {
+  // A service known only by its cookie or storage entry was still observed on the page that wrote it.
+  for (const { c, pageUrl } of stored) {
     if (!c.serviceId) continue;
     const s = get(c.serviceId, c.category);
 
     addUnique(s.phases, c.phase);
+    addUnique(s.pages, pageUrl);
     if ('key' in c && typeof c.key === 'object') addUnique(s.cookieNames, c.key.name);
     if (c.timing) addUnique(s.timings as InteractionTiming[], c.timing);
     const accepted = 'state' in c ? isCookieHeld(c.state) : true;

@@ -11,13 +11,23 @@ import {
   type Finding,
   type MessageParams,
   type Report,
-  type Severity,
   SeveritySchema,
 } from '../core/report/schema.ts';
-import { disclaimerParagraphs, phaseCPerformed } from './disclaimer.ts';
+import { exitReasonText, phaseCState } from './disclaimer.ts';
+import {
+  type EvidenceTools,
+  type EvidenceView,
+  evidenceView,
+  evidenceViews,
+  type Item,
+  MAX_LIST_ITEMS,
+  type Row,
+  reasonText,
+} from './evidence-view.ts';
+import { bannerState, buildFrontPage, SEVERITY_RANK } from './front-page.ts';
+import { noticeGroups } from './notice-view.ts';
 
-/** Highest first: findings are listed critical before warning before info. */
-export const SEVERITY_RANK: Readonly<Record<Severity, number>> = { critical: 3, warning: 2, info: 1 };
+export { SEVERITY_RANK };
 
 /** Evidence fields that carry values of cookies, storage or consent strings; the report shows names, never values. */
 const SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
@@ -30,10 +40,9 @@ const SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
 /** Hidden for every evidence type: internal ids, the discriminator and anything that could hold a TC-String or crmCode. */
 const ALWAYS_HIDDEN = new Set(['id', 'type', 'tcString', 'tcstring', 'crmCode']);
 
-/** A list field (pages, evidence values) shows at most this many entries. */
-const MAX_LIST_ITEMS = 50;
+const hiddenFields = (ev: Evidence): ReadonlySet<string> =>
+  new Set([...ALWAYS_HIDDEN, ...(SECRET_FIELDS[ev.type] ?? [])]);
 
-const URL_VALUE = /^(https?|wss?):\/\//i;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export type ReportLabelKey = string;
@@ -158,18 +167,6 @@ export function loadScreenshot(
 const text = (value: unknown, max = 2000): string =>
   value === null || value === undefined ? '–' : sanitizeExternal(String(value), max);
 
-interface Item {
-  text: string;
-  code: boolean;
-  url: boolean;
-  href: string | null;
-}
-
-interface Row {
-  label: string;
-  items: Item[];
-}
-
 const item = (value: unknown, max = 2000, code = false): Item => ({
   text: text(value, max),
   code,
@@ -183,31 +180,63 @@ const anchorOf = (f: Finding) =>
     .replace(/[^0-9a-f]/g, '')
     .slice(0, 16)}`;
 
-interface EvidenceView {
-  type: string;
-  missing: string | null;
-  fields: Row[];
-  screenshot: { dataUri: string | null; missing: string | null; path: string } | null;
+/** Label and row builders of one view: a label and its string parameters are cleaned and length-capped on the way in. */
+interface ViewText {
+  label: (key: string, params?: MessageParams) => string;
+  row: (key: string, value: unknown, max?: number) => Row;
+  rows: (key: string, values: Item[]) => Row;
+  /** A phase with what happened in it (B after a reject, or a visit without one); `short` for table cells. */
+  phase: (phase: string, short?: boolean) => string;
 }
 
-/** One evidence value as a list item: URLs get link styling, scalars are plain text, objects are shown as JSON code. */
-function evidenceItem(value: unknown): Item {
-  if (typeof value === 'string') return URL_VALUE.test(value) ? urlItem(value) : item(value, 1000);
-  if (value === null || ['number', 'boolean', 'undefined'].includes(typeof value)) return item(value, 1000);
-  return item(JSON.stringify(value), 1000, true);
+type PhaseOutcome = 'done' | 'unverified' | 'not-clicked' | '';
+
+/**
+ * What the click of phase B (reject) and C (accept) did on the start page. A phase without a click is a further visit
+ * and must not read as "after reject"; reports of earlier versions carry no click outcome and keep the plain label.
+ */
+function phaseOutcomes(report: Report): Record<string, PhaseOutcome> {
+  const actions = report.scan.coverage?.consentActions;
+  const outcome = (action: 'reject' | 'accept'): PhaseOutcome => {
+    const a = actions?.find((x) => x.action === action);
+    if (!a) return '';
+    if (!a.clicked) return 'not-clicked';
+    return a.verified === false ? 'unverified' : 'done';
+  };
+  return { B: outcome('reject'), C: outcome('accept') };
 }
 
-function evidenceFields(ev: Evidence): Row[] {
-  const hidden = new Set([...ALWAYS_HIDDEN, ...(SECRET_FIELDS[ev.type] ?? [])]);
-  return Object.entries(ev as Record<string, unknown>)
-    .filter(([k, v]) => !hidden.has(k) && v !== undefined)
-    .map(([k, v]): Row => {
-      const values = Array.isArray(v) ? v.slice(0, MAX_LIST_ITEMS) : [v];
-      return { label: text(k, 80), items: values.length ? values.map(evidenceItem) : [item('–')] };
-    });
+function viewText(report: Report, ctx: ReporterContext): ViewText {
+  const label = (key: string, params: MessageParams = {}) => {
+    const clean: MessageParams = {};
+    for (const [name, value] of Object.entries(params)) {
+      clean[name] = typeof value === 'string' ? sanitizeExternal(value, 500) : value;
+    }
+    return sanitizeExternal(reportLabel(ctx, key, clean), 4000);
+  };
+  const outcomes = phaseOutcomes(report);
+  return {
+    label,
+    row: (key, value, max = 2000) => ({ label: label(key), items: [item(value, max)] }),
+    rows: (key, values) => ({ label: label(key), items: values }),
+    phase: (phase, short = false) =>
+      label(short ? 'phaseShort' : 'phase', { phase, outcome: outcomes[phase] ?? '' }),
+  };
 }
 
-function screenshotView(ev: Evidence, ctx: ReporterContext): EvidenceView['screenshot'] {
+/** The evidence view works with the cleaned labels and items of this view. */
+function evidenceTools(v: ViewText, ctx: ReporterContext): EvidenceTools {
+  return {
+    label: v.label,
+    item,
+    urlItem,
+    phase: (p) => v.phase(p),
+    screenshot: (ev) => screenshotView(ev, v, ctx),
+    hidden: hiddenFields,
+  };
+}
+
+function screenshotView(ev: Evidence, { label }: ViewText, ctx: ReporterContext): EvidenceView['screenshot'] {
   if (ev.type !== 'screenshot') return null;
 
   const shotEv = ev as Extract<Evidence, { type: 'screenshot' }>;
@@ -216,47 +245,17 @@ function screenshotView(ev: Evidence, ctx: ReporterContext): EvidenceView['scree
     dataUri: shot.ok ? shot.dataUri : null,
     missing: shot.ok
       ? null
-      : reportLabel(ctx, 'screenshot.missing', { reason: shot.reason, path: text(shotEv.path, 500) }),
+      : label('screenshot.missing', { reason: shot.reason, path: text(shotEv.path, 500) }),
     path: text(shotEv.path),
-  };
-}
-
-function evidenceView(ev: Evidence, ctx: ReporterContext): EvidenceView {
-  return {
-    type: text(ev.type, 60),
-    missing: null,
-    fields: evidenceFields(ev),
-    screenshot: screenshotView(ev, ctx),
-  };
-}
-
-/** Label and row builders of one view: a label and its string parameters are cleaned and length-capped on the way in. */
-interface ViewText {
-  label: (key: string, params?: MessageParams) => string;
-  row: (key: string, value: unknown, max?: number) => Row;
-  rows: (key: string, values: Item[]) => Row;
-}
-
-function viewText(ctx: ReporterContext): ViewText {
-  const label = (key: string, params: MessageParams = {}) => {
-    const clean: MessageParams = {};
-    for (const [name, value] of Object.entries(params)) {
-      clean[name] = typeof value === 'string' ? sanitizeExternal(value, 500) : value;
-    }
-    return sanitizeExternal(reportLabel(ctx, key, clean), 4000);
-  };
-  return {
-    label,
-    row: (key, value, max = 2000) => ({ label: label(key), items: [item(value, max)] }),
-    rows: (key, values) => ({ label: label(key), items: values }),
   };
 }
 
 const roundedSeconds = (ms: number): number => Math.round(ms / 100) / 10;
 
-function summaryRows(report: Report, { label, row, rows }: ViewText): Row[] {
+function summaryRows(report: Report, { label, row, rows }: ViewText, ctx: ReporterContext): Row[] {
   const scan = report.scan;
-  const exitReasons = report.summary.exitReasons.map((r) => item(r, 120, true));
+  // A known code reads as words; an unknown one is shown as it is, so the cell never repeats it.
+  const exitReasons = report.summary.exitReasons.map((r) => item(exitReasonText(ctx.texts, r), 200));
   const summary: Row[] = [
     rows('summary.exitReasons', exitReasons.length ? exitReasons : [item(label('summary.none'))]),
     rows('meta.target', [urlItem(scan.target)]),
@@ -267,6 +266,7 @@ function summaryRows(report: Report, { label, row, rows }: ViewText): Row[] {
   if (typeof scan.durationMs === 'number') {
     summary.push(row('meta.duration', label('meta.seconds', { seconds: roundedSeconds(scan.durationMs) })));
   }
+  if (scan.evaluatedAt) summary.push(row('meta.evaluatedAt', scan.evaluatedAt));
 
   if (scan.options) summary.push(row('meta.failOn', scan.options.failOn));
   if (report.ruleset) {
@@ -298,27 +298,44 @@ function countViews(report: Report, { label }: ViewText) {
 const partyText = (party: { name: unknown; country: unknown }): string =>
   `${text(party.name, 200)} (${text(party.country, 8)})`;
 
-/** Related findings link to their anchor in the report when the other finding is part of it. */
-function relatedItems(related: Finding['related'], byFingerprint: ReadonlyMap<string, Finding>): Item[] {
+/** Related findings name their title and link to their anchor when the other finding is part of the report. */
+function relatedItems(
+  related: Finding['related'],
+  byFingerprint: ReadonlyMap<string, Finding>,
+  { label }: ViewText,
+  ctx: ReporterContext,
+): Item[] {
   return related.map((r) => {
     const target = byFingerprint.get(r.fingerprint);
-    return {
-      ...item(`${text(r.checkId, 20)}${r.relation ? ` (${text(r.relation, 60)})` : ''}`),
-      href: target ? anchorOf(target) : null,
-    };
+    const value = label('finding.relatedValue', {
+      check: r.checkId,
+      hasTitle: Boolean(target),
+      title: target ? text(findingText(target, ctx).title, 200) : '',
+      relation: r.relation ?? 'related',
+    });
+    return { ...item(value, 400), href: target ? anchorOf(target) : null };
   });
 }
+
+/** Phases in their order, each with what happened in it (A before any interaction, B after reject, C after accept). */
+const phaseList = (phases: readonly string[], v: ViewText, short = false): string =>
+  [...new Set(phases)]
+    .sort((a, b) => a.localeCompare(b))
+    .map((phase) => v.phase(phase, short))
+    .join(', ');
 
 /** The detail rows under a finding; optional facts of the finding add a row each. */
 function findingRows(
   f: Finding,
-  { label, row, rows }: ViewText,
+  v: ViewText,
+  ctx: ReporterContext,
   byFingerprint: ReadonlyMap<string, Finding>,
 ) {
+  const { label, row, rows } = v;
   const out: Row[] = [row('finding.confidence', label(`confidence.${f.confidence}`))];
 
   if (f.pages.length) out.push(rows('finding.pages', f.pages.slice(0, MAX_LIST_ITEMS).map(urlItem)));
-  if (f.phases.length) out.push(row('finding.phases', f.phases.join(', '), 120));
+  if (f.phases.length) out.push(row('finding.phases', phaseList(f.phases, v), 400));
   if (f.trigger) out.push(row('finding.trigger', f.trigger, 200));
   if (typeof f.replicated === 'boolean') {
     out.push(row('finding.replicated', label(f.replicated ? 'yes' : 'no')));
@@ -331,16 +348,23 @@ function findingRows(
     const dpfValue = label('finding.dpfValue', {
       name: text(name, 500),
       listed: listed === null ? 'unknown' : String(listed),
-      checkedAt: checkedAt ?? '–',
+      hasDate: Boolean(checkedAt),
+      checkedAt: checkedAt ?? '',
     });
     out.push(row('finding.dpf', dpfValue));
   }
 
   const { source, datasetVersion } = f.classification;
-  const classification = `${text(source, 80)}${datasetVersion ? ` ${text(datasetVersion, 40)}` : ''}`;
+  const adapter = /^adapter:(.+)$/.exec(source);
+  const classification = label('finding.classificationValue', {
+    source: adapter ? 'adapter' : text(source, 80),
+    cmp: adapter ? text(adapter[1], 80) : '',
+    hasVersion: Boolean(datasetVersion),
+    version: datasetVersion ? text(datasetVersion, 40) : '',
+  });
   out.push(row('finding.classification', classification));
 
-  if (f.related.length) out.push(rows('finding.related', relatedItems(f.related, byFingerprint)));
+  if (f.related.length) out.push(rows('finding.related', relatedItems(f.related, byFingerprint, v, ctx)));
   out.push(rows('finding.fingerprint', [item(f.fingerprint, 80, true)]));
   return out;
 }
@@ -358,25 +382,33 @@ function legalNoteView(f: Finding, { label }: ViewText, ctx: ReporterContext) {
   };
 }
 
-function findingView(
+const distinctIds = (ids: readonly string[]): string[] => [...new Set(ids)];
+
+/** The evidence of a finding is capped; where the finding counts its requests, the view says how many were seen. */
+function evidenceSample(
   f: Finding,
-  v: ViewText,
-  ctx: ReporterContext,
   evidence: ReadonlyMap<string, Evidence>,
-  byFingerprint: ReadonlyMap<string, Finding>,
-) {
-  const evs = f.evidenceIds.map(
-    (id): EvidenceView =>
-      evidence.has(id)
-        ? evidenceView(evidence.get(id)!, ctx)
-        : {
-            type: '',
-            missing: v.label('finding.evidenceMissing', { id: text(id, 500) }),
-            fields: [],
-            screenshot: null,
-          },
-  );
+  { label }: ViewText,
+): string | null {
+  const total = f.params.requestCount;
+  if (typeof total !== 'number') return null;
+  const shown = distinctIds(f.evidenceIds).filter((id) => evidence.get(id)?.type === 'request').length;
+  return total > shown ? label('finding.evidenceSample', { shown, total }) : null;
+}
+
+interface FindingSources {
+  evidence: ReadonlyMap<string, Evidence>;
+  byFingerprint: ReadonlyMap<string, Finding>;
+  /** Legal notes already shown: a note is printed once, under the first finding that cites it. */
+  shownNotes: Set<string>;
+}
+
+function findingView(f: Finding, v: ViewText, ctx: ReporterContext, sources: FindingSources) {
+  const missing = (id: string) => v.label('finding.evidenceMissing', { id: text(id, 500) });
+  const evs = evidenceViews(f.evidenceIds, sources.evidence, evidenceTools(v, ctx), missing);
   const message = findingText(f, ctx);
+  const firstOfNote = f.legalNoteId !== null && !sources.shownNotes.has(f.legalNoteId);
+  if (f.legalNoteId !== null) sources.shownNotes.add(f.legalNoteId);
   return {
     anchor: anchorOf(f),
     severity: f.severity,
@@ -384,34 +416,45 @@ function findingView(
     checkId: text(f.checkId, 20),
     title: text(message.title, 300),
     body: text(message.body, 4000),
-    rows: findingRows(f, v, byFingerprint),
+    rows: findingRows(f, v, ctx, sources.byFingerprint),
     evidence: evs,
-    evidenceCount: evs.length,
+    evidenceCount: distinctIds(f.evidenceIds).length,
+    evidenceSample: evidenceSample(f, sources.evidence, v),
     evidenceTruncated: !!f.evidenceTruncated,
-    legalNote: legalNoteView(f, v, ctx),
+    legalNote: firstOfNote ? legalNoteView(f, v, ctx) : null,
   };
+}
+
+/** The name of the service as the findings give it; the catalog id where none does. */
+function serviceName(group: Group): string {
+  const named = group.findings.find((f) => typeof f.params.service === 'string' && f.params.service);
+  return text(named?.params.service ?? group.serviceId, 500);
 }
 
 function findingGroups(report: Report, v: ViewText, ctx: ReporterContext) {
   const findings = report.findings ?? [];
-  const evidence = new Map((report.evidence ?? []).map((ev) => [ev.id, ev]));
-  const byFingerprint = new Map(findings.map((f) => [f.fingerprint, f]));
+  const sources: FindingSources = {
+    evidence: new Map((report.evidence ?? []).map((ev) => [ev.id, ev])),
+    byFingerprint: new Map(findings.map((f) => [f.fingerprint, f])),
+    shownNotes: new Set(),
+  };
   return groupByService(findings).map((group) => ({
     title: group.serviceId
-      ? v.label('findings.groupService', { service: text(group.serviceId, 500) })
+      ? v.label('findings.groupService', { service: serviceName(group) })
       : v.label('findings.groupOther'),
-    findings: group.findings.map((f) => findingView(f, v, ctx, evidence, byFingerprint)),
+    findings: group.findings.map((f) => findingView(f, v, ctx, sources)),
   }));
 }
 
 /** Screenshots no finding refers to; shown only when there are findings at all. */
-function unreferencedScreenshots(report: Report, ctx: ReporterContext): EvidenceView[] {
+function unreferencedScreenshots(report: Report, v: ViewText, ctx: ReporterContext): EvidenceView[] {
   const findings = report.findings ?? [];
   if (!findings.length) return [];
   const referenced = new Set(findings.flatMap((f) => f.evidenceIds));
+  const tools = evidenceTools(v, ctx);
   return (report.evidence ?? [])
     .filter((ev) => ev.type === 'screenshot' && !referenced.has(ev.id))
-    .map((ev) => evidenceView(ev, ctx));
+    .map((ev) => evidenceView(ev, tools));
 }
 
 function diagnosticViews(report: Report, ctx: ReporterContext) {
@@ -426,6 +469,25 @@ function diagnosticViews(report: Report, ctx: ReporterContext) {
   });
 }
 
+type Egress = NonNullable<Report['scan']['environment']>['egress'];
+
+/** Reports of earlier versions hold the source as a German phrase; they read as the code it stood for. */
+const LEGACY_EGRESS_SOURCES: Readonly<Record<string, string>> = {
+  'nicht festgestellt': 'not-determined',
+  'laut Nutzerangabe (--assume-region)': 'assume-region',
+};
+const EGRESS_SOURCES: ReadonlySet<string> = new Set(['not-determined', 'assume-region']);
+
+/** The code of the egress source, or null for a value the report does not know (shown as it is). */
+function egressSourceCode(source: string): string | null {
+  const code = LEGACY_EGRESS_SOURCES[source] ?? source;
+  return EGRESS_SOURCES.has(code) ? code : null;
+}
+
+/** The region of the network egress in words: not determined, or the region the user asserted. */
+const regionText = (egress: Egress, label: ViewText['label']): string =>
+  label('env.region', { region: egress.region, asserted: egress.assertedRegion ?? '' });
+
 function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] {
   const env = report.scan.environment;
   if (!env) return [];
@@ -437,18 +499,18 @@ function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] 
         engine: env.browser.engine,
         version: env.browser.version ?? '–',
         channel: env.browser.channel ?? '–',
-        headless: env.browser.headless ?? '–',
+        headless: String(env.browser.headless ?? '–'),
       })
     : label('env.unavailable');
   const sandbox = label('env.sandboxValue', {
     mode: env.sandbox.mode,
     active: label(env.sandbox.active === null ? 'unknown' : env.sandbox.active ? 'yes' : 'no'),
   });
+  const gaps = env.knownGaps.map((gap) => item(label('env.knownGap', { gap }), 300));
   const egress = label('env.egressValue', {
     mode: env.egress.mode,
-    region: env.egress.assertedRegion
-      ? `${env.egress.region}: ${env.egress.assertedRegion}`
-      : env.egress.region,
+    region: regionText(env.egress, label),
+    hasSource: egressSourceCode(env.egress.source) === null,
     source: text(env.egress.source, 500),
   });
 
@@ -458,15 +520,15 @@ function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] 
     row('env.browser', browser),
     row('env.sandbox', sandbox),
 
-    row('env.profile', env.profile, 100),
+    row('env.profile', env.profile ? label('env.profileValue', { profile: env.profile }) : null, 300),
     row('env.viewport', env.viewport ? `${env.viewport.width} × ${env.viewport.height}` : '–'),
     row('env.locale', env.locale, 40),
     row('env.timezone', env.timezone, 60),
 
     row('env.egress', egress),
     list('env.disabledFeatures', env.disabledChromiumFeatures),
-    row('env.quic', env.quic, 20),
-    list('env.knownGaps', env.knownGaps),
+    row('env.quic', label('env.quicValue', { quic: env.quic }), 60),
+    rows('env.knownGaps', gaps.length ? gaps : [item('–')]),
     row('env.requests', label('env.requestsValue', { ...env.requestsIssued })),
   ];
 
@@ -477,7 +539,8 @@ function environmentRows(report: Report, { label, row, rows }: ViewText): Row[] 
     );
     out.push(rows('env.settings', settingItems));
   }
-  if (phaseCPerformed(report)) out.push(row('env.phaseC', label('env.phaseCValue')));
+  const phaseC = phaseCState(report);
+  if (phaseC) out.push(row('env.phaseC', label('env.phaseCValue', { state: phaseC })));
 
   out.push(row('env.node', env.node, 40), row('env.platform', env.platform, 60));
   return out;
@@ -497,25 +560,31 @@ function datasetViews(report: Report, { label }: ViewText) {
 type Coverage = NonNullable<Report['scan']['coverage']>;
 type CheckEntry = NonNullable<Report['checks']>[number];
 
-function coveragePageViews(pages: Coverage['pages'], { label }: ViewText) {
+/** A reason code in words, or `–` when there is none. */
+const reasonCell = (reason: string | undefined, v: ViewText): string =>
+  reason ? text(reasonText(reason, v), 300) : '–';
+
+function coveragePageViews(pages: Coverage['pages'], v: ViewText) {
+  const { label } = v;
   return pages.map((p) => ({
     url: text(p.url),
-    role: text(p.role, 40),
+    role: text(label('pageRole', { role: p.role }), 60),
     planned: label(p.planned ? 'yes' : 'no'),
     observed: label(p.observed ? 'yes' : 'no'),
     evaluated: label(p.evaluated ? 'yes' : 'no'),
-    phases: text(p.phases.join(', ') || '–', 60),
-    reason: text(p.reason, 200),
+    phases: text(phaseList(p.phases, v, true) || '–', 120),
+    reason: reasonCell(p.reason, v),
   }));
 }
 
-function coverageCollectorViews(collectors: Coverage['collectors'], { label }: ViewText) {
+function coverageCollectorViews(collectors: Coverage['collectors'], v: ViewText) {
+  const { label } = v;
   return Object.entries(collectors)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, c]) => ({
       name: text(name, 40),
-      status: text(c.status, 40),
-      reason: text(c.reason, 200),
+      status: text(label('collectorStatus', { status: c.status }), 60),
+      reason: reasonCell(c.reason, v),
       duration:
         typeof c.durationMs === 'number'
           ? label('meta.seconds', { seconds: roundedSeconds(c.durationMs) })
@@ -523,11 +592,25 @@ function coverageCollectorViews(collectors: Coverage['collectors'], { label }: V
     }));
 }
 
+/** The banner clicks of phases B and C; without a banner there was nothing to click, which the line says instead. */
+function consentActionsText(report: Report, cov: Coverage, v: ViewText): string | null {
+  const actions = cov.consentActions ?? [];
+  if (actions.length === 0) return null;
+  if (bannerState(report) === 'notFound' && actions.every((a) => !a.clicked)) {
+    return v.label('coverage.consentActionsNoBanner');
+  }
+  const list = actions.map((a) =>
+    v.label('coverage.consentAction', { action: a.action, clicked: a.clicked, verified: a.verified }),
+  );
+  return v.label('coverage.consentActions', { actions: list.join('; ') });
+}
+
 function coverageView(report: Report, v: ViewText) {
   const cov = report.scan.coverage;
   if (!cov) return null;
 
   return {
+    consentActions: consentActionsText(report, cov, v),
     totals: v.label('coverage.totals', {
       planned: cov.pages.filter((p) => p.planned).length,
       observed: cov.pages.filter((p) => p.observed).length,
@@ -555,8 +638,30 @@ function checkCoverageText(c: CheckEntry, { label }: ViewText): string {
       }),
     );
   }
-  if (counts?.note) parts.push(text(counts.note, 300));
+  if (counts?.note)
+    parts.push(text(label('checkCoverage.note', noteParams(counts.note)) || counts.note, 300));
   return parts.join(' · ') || '–';
+}
+
+/** Coverage notes are codes with numbers in them; the text words the known ones and is empty for any other note. */
+function noteParams(note: string): MessageParams {
+  const allowlist = /^allowlist-v([^:]+):not-evaluated=(\d+)$/.exec(note);
+  if (allowlist) return { code: 'allowlist', version: allowlist[1]!, count: Number(allowlist[2]) };
+  const probes = /^error-page-probes:(\d+)$/.exec(note);
+  if (probes) return { code: 'error-page-probes', count: Number(probes[1]) };
+  return { code: note };
+}
+
+/**
+ * A limitation is a code, sometimes with a detail after the first colon (`status:429`, `document-blocked:privacy`).
+ * A known code reads as words; only a code the texts do not know is shown as the code itself.
+ */
+function limitationView(limitation: string, { label }: ViewText): { text: string; code: string | null } {
+  const colon = limitation.indexOf(':');
+  const code = colon === -1 ? limitation : limitation.slice(0, colon);
+  const detail = colon === -1 ? '' : limitation.slice(colon + 1);
+  const words = text(label('checkLimitation', { code, detail }), 200);
+  return words ? { text: words, code: null } : { text: '', code: text(limitation, 120) };
 }
 
 function checkViews(report: Report, v: ViewText) {
@@ -564,33 +669,72 @@ function checkViews(report: Report, v: ViewText) {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((c) => {
       const failure = c.error ? `${c.error.code}: ${c.error.message}` : null;
+      const reason = c.reason ? reasonText(c.reason, v) : null;
       return {
         id: text(c.id, 20),
         status: text(c.status, 40),
         statusLabel: v.label(`checkStatus.${c.status}`),
-        reason: text([c.reason, failure].filter(Boolean).join(' – ') || '–', 400),
+        reason: text([reason, failure].filter(Boolean).join(' – ') || '–', 400),
         coverage: checkCoverageText(c, v),
-        limitations: c.limitations.map((l) => text(l, 120)),
+        limitations: c.limitations.map((l) => limitationView(l, v)),
       };
     });
 }
 
+/** What only the full report shows: findings with their evidence and every technical table. */
+function fullSections(report: Report, ctx: ReporterContext, v: ViewText) {
+  const scan = report.scan;
+  return {
+    groups: findingGroups(report, v, ctx),
+    otherShots: unreferencedScreenshots(report, v, ctx),
+    diagnostics: diagnosticViews(report, ctx),
+
+    summary: summaryRows(report, v, ctx),
+    counts: countViews(report, v),
+
+    environmentAvailable: !!scan.environment,
+    environment: environmentRows(report, v),
+    extra: [
+      v.row('meta.version', `dsgvo-check ${text(report.tool.version, 40)}`),
+      v.row('meta.schemaVersion', report.schemaVersion, 20),
+    ],
+    datasets: datasetViews(report, v),
+    coverage: coverageView(report, v),
+    checks: checkViews(report, v),
+  };
+}
+
 /** Only selected presentation fields enter the view; report objects and crmCode are never copied. */
 export function buildReportView(report: Report, ctx: ReporterContext) {
-  const v = viewText(ctx);
-  const { label, row } = v;
+  const v = viewText(report, ctx);
+  const { label } = v;
   const scan = report.scan;
   const errors = failedChecks(report);
+  const full = (ctx.detail ?? 'full') === 'full';
+  const front = buildFrontPage(report, ctx, {
+    label,
+    clean: text,
+    message: (f) => findingText(f, ctx),
+  });
 
+  const env = scan.environment;
   return {
     screenshotAlt: label('screenshot.alt'),
     lang: ctx.lang === 'en' ? 'en' : 'de',
     target: text(scan.target),
     titleTarget: text(scan.target, 200),
+    // The disclaimer speaks of "the stated time": the first lines of both reports state it, with the region.
+    scanMeta: label('doc.scanMeta', {
+      date: text(scan.startedAt, 40).slice(0, 16).replace('T', ' '),
+      hasRegion: Boolean(env),
+      region: env ? regionText(env.egress, label) : '',
+    }),
     version: text(report.tool.version, 40),
     draft: isDraftReport(report, ctx),
     draftStamp: text(draftStamp(ctx), 60),
 
+    full,
+    frontClass: full ? 'front-full' : 'front-brief',
     exitCode: report.summary.exitCode,
     status: scan.status,
     statusLabel: label(`status.${scan.status}`),
@@ -601,29 +745,22 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
         })
       : null,
     sandboxOff: scan.environment?.sandbox.mode === 'off',
-    summary: summaryRows(report, v),
-    counts: countViews(report, v),
     checkErrors:
       report.summary.exitCode === 1 && errors.length
         ? label('summary.checkErrorsWithThreshold', { checks: errors.join(', ') })
         : null,
 
-    groups: findingGroups(report, v, ctx),
+    ...front,
     emptyFindings: label(scan.status === 'failed' ? 'findings.unavailable' : 'findings.none'),
-    otherShots: unreferencedScreenshots(report, ctx),
-    diagnostics: diagnosticViews(report, ctx),
+    ...(full ? fullSections(report, ctx, v) : {}),
 
-    environmentAvailable: !!scan.environment,
-    environment: environmentRows(report, v),
-    extra: [
-      row('meta.version', `dsgvo-check ${text(report.tool.version, 40)}`),
-      row('meta.schemaVersion', report.schemaVersion, 20),
-    ],
-    datasets: datasetViews(report, v),
-    coverage: coverageView(report, v),
-    checks: checkViews(report, v),
-
-    disclaimer: disclaimerParagraphs(report, ctx.texts).map((p) => text(p, 6000)),
-    rechtsstand: report.legalContext?.rechtsstand ?? report.ruleset?.rechtsstand ?? null,
+    notice: noticeGroups(report, ctx, {
+      label,
+      clean: text,
+      draft: isDraftReport(report, ctx)
+        ? { text: label('notice.draft'), stamp: text(draftStamp(ctx), 60) }
+        : null,
+      rechtsstand: report.legalContext?.rechtsstand ?? report.ruleset?.rechtsstand ?? null,
+    }),
   };
 }

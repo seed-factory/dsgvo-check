@@ -139,7 +139,42 @@ export const SIBLING_SITE: RouteSpec[] = [
   html('shop.sib.test', 'https', '/', page('Shop')),
 ];
 
+/** challenge.test — https answers the start page with a WAF challenge (429, x-vercel-mitigated) instead of the site. */
+export const CHALLENGE_SITE: RouteSpec[] = [
+  redirect('www.challenge.test', 'http', '/', 'https://www.challenge.test/'),
+  {
+    host: 'www.challenge.test',
+    scheme: 'https',
+    path: '/',
+    status: 429,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'x-vercel-mitigated': 'challenge' },
+    body: '<!doctype html><title>Security Checkpoint</title>',
+  },
+];
+
+/**
+ * builder.test — a site builder kept the slugs of copied pages: the Impressum is at /seite-3, the privacy
+ * policy at /impressum-2.
+ */
+export const BUILDER_SITE: RouteSpec[] = [
+  redirect('www.builder.test', 'http', '/', 'https://www.builder.test/'),
+  html(
+    'www.builder.test',
+    'https',
+    '/',
+    page(
+      'Start',
+      '<nav><a href="/impressum-2">Datenschutz</a></nav>' +
+        '<footer><a href="/seite-3">Impressum</a> · <a href="/impressum-2">Datenschutz</a></footer>',
+    ),
+  ),
+  html('www.builder.test', 'https', '/seite-3', page('Impressum')),
+  html('www.builder.test', 'https', '/impressum-2', page('Datenschutz')),
+];
+
 export const ALL_ROUTES: RouteSpec[] = [
+  ...CHALLENGE_SITE,
+  ...BUILDER_SITE,
   ...PORT_SITE,
   ...SIBLING_SITE,
   ...MOVED_SITE,

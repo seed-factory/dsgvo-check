@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { consent03 } from '../../../../../src/checks/browser/consent-03.ts';
 import type { CmpFacts } from '../../../../../src/cmp/types.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { makeCmpFacts, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { cmpFacts, cmpWith, cookie, defaultPages, phase, req, START, site, storage } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -304,5 +306,82 @@ describe('CONSENT-03 no consent dialog', () => {
       const r = runCheck(consent03, site({ cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }) }));
       expect(r).toMatchObject({ status: 'completed' });
     });
+  });
+});
+
+describe('CONSENT-03 names what was stored apart from the services', () => {
+  const body = (lang: 'de' | 'en', o: { variant: string; params: Record<string, unknown> }) =>
+    renderMessage(loadTexts(lang), `CONSENT-03.${o.variant}`, o.params as never).body;
+
+  it('services with requests and only some of them storing: the stored entries are listed on their own', () => {
+    const r = runCheck(
+      consent03,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              gaHit('a'),
+              req('b', 'https://www.googleadservices.com/pagead/conversion/123/?label=x'),
+            ],
+            cookies: [cookie('_gcl_au')],
+            storage: [storage('_gcl_ls')],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({
+      variant: 'no-banner-consent-services',
+      params: {
+        services: 'Google Ads, Google Analytics',
+        storedCount: 2,
+        stored: '_gcl_au (cookie), _gcl_ls (localStorage)',
+      },
+    });
+    const de = body('de', o!);
+    expect(de).toContain(
+      'zu den Kategorien Analyse, Marketing oder eingebettete Inhalte gehören: Google Ads, Google Analytics.',
+    );
+    expect(de).toContain('Gespeichert wurden: _gcl_au (cookie), _gcl_ls (localStorage).');
+    expect(de).not.toContain('mit Speicherung');
+    expect(body('en', o!)).toContain('Stored: _gcl_au (cookie), _gcl_ls (localStorage).');
+  });
+
+  it('counterexample: requests without any storage say that no identifier or embed storage was observed', () => {
+    const [o] = observationsOf(runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] })));
+    expect(o?.params).toMatchObject({ storedCount: 0, stored: null });
+    expect(body('de', o!)).toContain(
+      'Außer Einträgen auf der Allowlist wurde keine Speicherung von Analyse- oder Marketing-Kennungen oder durch eingebettete Dienste beobachtet.',
+    );
+    expect(body('en', o!)).toContain(
+      'Apart from allowlisted entries, no storage of analytics or marketing identifiers or by embedded services was observed.',
+    );
+  });
+
+  it('an entry of a listed service that the catalog lists as no identifier: the text does not say the service stored nothing', () => {
+    const r = runCheck(
+      consent03,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('a', 'https://static.hotjar.com/c/hotjar-123.js?sv=6'),
+              req('b', 'https://in.hotjar.com/api/v2/client/sites/123/visit-data?sv=6', {
+                resourceType: 'xhr',
+              }),
+            ],
+            cookies: [cookie('_hjFirstSeen')],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({
+      variant: 'no-banner-consent-services',
+      params: { services: 'Hotjar', storedCount: 0 },
+    });
+    expect(`${body('de', o!)}\n${body('en', o!)}`).not.toMatch(
+      /Speicherung durch diese Dienste|storage by these services/,
+    );
   });
 });

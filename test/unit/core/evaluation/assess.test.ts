@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Ruleset } from '../../../../src/core/data/load.ts';
+import type { LegalNote, Ruleset, Texts } from '../../../../src/core/data/load.ts';
 import {
   type AssessInput,
   assess,
   capByConfidence,
   type ExecutedCheck,
+  legalNoteIdFor,
   lockedOverrides,
   maxSeverityOf,
   mergeDiagnostics,
@@ -386,6 +387,58 @@ describe('mergeDiagnostics', () => {
         messageId: 'diagnostic.SCAN-BOTMODE',
       },
       { code: 'SCAN-GEO', affects: [], evidenceIds: [], messageId: 'diagnostic.SCAN-GEO' },
+    ]);
+  });
+});
+
+describe('legal note of a finding', () => {
+  const note = (status: LegalNote['status']): LegalNote => ({
+    text: 'Norm.',
+    status,
+    reviewedAt: null,
+    reviewBy: null,
+    draft: true,
+  });
+  const texts = (keys: string[]): Texts => ({
+    lang: 'de',
+    messages: {},
+    legalNotes: Object.fromEntries(keys.map((k) => [k, note('contested')])),
+    ui: {},
+    actions: {},
+  });
+
+  it('the note of the variant wins over the one of its group and of the check', () => {
+    const t = texts(['TEST-01', 'TEST-01.group', 'TEST-01.hit']);
+    expect(legalNoteIdFor('TEST-01', 'hit', 'group', t)).toBe('TEST-01.hit');
+    expect(legalNoteIdFor('TEST-01', 'soft', 'group', t)).toBe('TEST-01.group');
+    expect(legalNoteIdFor('TEST-01', 'soft', 'other', t)).toBe('TEST-01');
+  });
+
+  it('without texts or a variant note the check note is used', () => {
+    expect(legalNoteIdFor('TEST-01', 'hit', 'hit', undefined)).toBe('TEST-01');
+    expect(legalNoteIdFor('TEST-01', 'hit', 'hit', texts(['TEST-01']))).toBe('TEST-01');
+  });
+
+  it('findings carry the resolved id', () => {
+    const c = defineCheck({
+      id: 'TEST-01',
+      module: 'browser',
+      requires: ['browser'],
+      variants: [
+        { variant: 'hit', variantGroup: 'g' },
+        { variant: 'soft', variantGroup: 'g' },
+      ],
+      run: () => [],
+    });
+    const out = run(
+      [c],
+      { 'TEST-01': exec([obs({ subject: 'a' }), obs({ variant: 'soft', subject: 'b' })]) },
+      [],
+      { texts: texts(['TEST-01', 'TEST-01.hit']) },
+    );
+    expect(out.findings.map((f) => [f.variant, f.legalNoteId])).toEqual([
+      ['hit', 'TEST-01.hit'],
+      ['soft', 'TEST-01'],
     ]);
   });
 });

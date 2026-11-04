@@ -303,6 +303,22 @@ function mergeIntoDraft(existing: Draft, obs: Observation, severity: Severity): 
   }
 }
 
+/**
+ * The legal note of a finding: the note of its variant, else of its variant group, else of its check. A variant whose
+ * legal standing differs from the rest of the check (a stored identifier among requests without one) gets its own.
+ */
+export function legalNoteIdFor(
+  checkId: string,
+  variant: string,
+  variantGroup: string,
+  texts: Texts | undefined,
+): string {
+  for (const key of [`${checkId}.${variant}`, `${checkId}.${variantGroup}`]) {
+    if (texts?.legalNotes[key]) return key;
+  }
+  return checkId;
+}
+
 function buildFinding(
   check: AnyCheck,
   d: Draft,
@@ -331,7 +347,7 @@ function buildFinding(
     evidenceIds: ids.slice(0, maxEvidence),
     messageId,
     params: d.obs.params,
-    legalNoteId: check.id,
+    legalNoteId: legalNoteIdFor(check.id, d.obs.variant, d.variantGroup, input.texts),
     related: [],
     classification: d.obs.classification ?? { source: 'check', datasetVersion: null },
   };
