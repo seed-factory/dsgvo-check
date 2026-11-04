@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { packageVersion, readReport, runChecks } from './common.ts';
+import { packageVersion, runChecks } from './common.ts';
+import { readReport } from './report.ts';
 
 function cli(...args: string[]) {
   return spawnSync(process.execPath, ['dist/cli.js', ...args], { encoding: 'utf8' });

@@ -326,6 +326,24 @@ describe('Dockerfile and seccomp profile', () => {
     }
   });
 
+  it('reads the version before the dependencies are installed: version.ts needs only Node built-ins', () => {
+    const ci = yaml('.github/workflows/ci.yml') as { jobs: { docker: { steps: Step[] } } };
+    const steps = ci.jobs.docker.steps;
+    const at = (cmd: string) => steps.findIndex((step) => step.run?.includes(cmd));
+    expect(at('node .github/scripts/version.ts')).toBeGreaterThanOrEqual(0);
+    expect(at('node .github/scripts/version.ts')).toBeLessThan(at('corepack pnpm install'));
+
+    for (const script of ['version.ts', 'common.ts']) {
+      const imports = [
+        ...read(`.github/scripts/${script}`).matchAll(/^import\s(?:[^']*\sfrom\s)?'([^']+)';$/gm),
+      ].map((m) => m[1] as string);
+      expect(
+        imports.filter((spec) => !spec.startsWith('node:') && spec !== './common.ts'),
+        script,
+      ).toEqual([]);
+    }
+  });
+
   it('allows only the files and directories copied into the image', () => {
     const lines = read('.dockerignore').trim().split(/\r?\n/);
     const sources = dockerfile

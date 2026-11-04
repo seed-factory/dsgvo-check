@@ -1,6 +1,8 @@
-/** Helpers shared by the CI step scripts: package version, report reading and GitHub step outputs. */
+/**
+ * Helpers shared by the CI step scripts: package version, GitHub step outputs and named checks. Only Node built-ins:
+ * the docker job runs version.ts before the dependencies are installed.
+ */
 import { appendFileSync, readFileSync } from 'node:fs';
-import { type Report, ReportSchema } from '../../src/core/report/schema.ts';
 
 const PACKAGE_JSON = new URL('../../package.json', import.meta.url);
 
@@ -8,11 +10,6 @@ const PACKAGE_JSON = new URL('../../package.json', import.meta.url);
 export function packageVersion(): string {
   const { version } = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8')) as { version: string };
   return version;
-}
-
-/** report.json parsed against the report schema, so a malformed report fails the step too. */
-export function readReport(file: string): Report {
-  return ReportSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
 }
 
 /** A variable GitHub sets for every step; missing means the script runs outside Actions. */

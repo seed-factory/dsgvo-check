@@ -4,7 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readReport, runChecks } from './common.ts';
+import { runChecks } from './common.ts';
+import { readReport } from './report.ts';
 
 /** Set by the workflow step from `steps.action.outcome` and `steps.action.outputs.*`. */
 const step = {
