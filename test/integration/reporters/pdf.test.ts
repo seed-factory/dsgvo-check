@@ -49,12 +49,20 @@ function reportWithImage(): { html: string; ctx: ReporterContext } {
   return { html: renderHtml(report, ctx), ctx };
 }
 
-/** Evaluated in the page: the evidence block stays closed on screen but is laid out (visible) when printing. */
-const EVIDENCE_IS_PRINTABLE = `(() => {
-  const details = document.querySelector('details.evidence');
-  const evidence = details && details.querySelector('.evs');
-  return !!details && !details.open && !!evidence && evidence.getBoundingClientRect().height > 0;
-})()`;
+/**
+ * Evaluated in the page: every collapsible block stays closed on screen, but when printing its content is laid out
+ * and its heading carries no disclosure triangle, because a PDF cannot be expanded.
+ */
+const CLOSED_BLOCKS_IN_PRINT = `(() => [...document.querySelectorAll('details')].map((details) => {
+  const summary = details.querySelector(':scope > summary');
+  const content = [...details.children].filter((child) => child !== summary);
+  return {
+    block: details.className,
+    open: details.open,
+    laidOut: content.length > 0 && content.every((child) => child.getBoundingClientRect().height > 0),
+    marker: summary ? getComputedStyle(summary).display === 'list-item' : null,
+  };
+}))()`;
 
 describe('HTML report opened offline with JavaScript disabled in real Chromium', () => {
   let browser: PhaseBrowser | undefined;
@@ -120,10 +128,14 @@ describe('HTML report opened offline with JavaScript disabled in real Chromium',
     expect(await page.evaluate("document.querySelector('img').naturalWidth")).toBe(1);
   });
 
-  it('lays the closed evidence block out for printing', async () => {
+  it('prints every closed block expanded and without a disclosure triangle', async () => {
     await page.emulateMedia({ media: 'print' });
+    const blocks = (await page.evaluate(CLOSED_BLOCKS_IN_PRINT)) as { block: string }[];
 
-    expect(await page.evaluate(EVIDENCE_IS_PRINTABLE), 'evidence block is not laid out for print').toBe(true);
+    expect(blocks.map((b) => b.block).sort()).toEqual(expect.arrayContaining(['evidence', 'legal']));
+    for (const block of blocks) {
+      expect(block, block.block).toEqual({ block: block.block, open: false, laidOut: true, marker: false });
+    }
   });
 
   it('shows no CRM code', () => {
