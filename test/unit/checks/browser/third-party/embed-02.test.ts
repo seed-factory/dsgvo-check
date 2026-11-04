@@ -99,3 +99,38 @@ describe('EMBED-02 external maps', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 });
+
+describe('EMBED-02 resources of the map frame', () => {
+  it('fonts and helper hosts the map frame loads are counted with the map, the map requests lead the evidence', () => {
+    const frame = {
+      frameId: 'A-f2',
+      isMainFrame: false,
+      frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
+      pageUrl: CONTACT,
+    };
+    const r = runCheck(
+      embed02,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('a', 'https://www.google.com/maps/embed?pb=[redacted]', {
+                ...frame,
+                isNavigation: true,
+                resourceType: 'document',
+              }),
+              req('b', 'https://fonts.gstatic.com/s/roboto/v48/x.woff2', { ...frame, resourceType: 'font' }),
+              req('c', 'https://helper.unknown-host.example/t.js', frame),
+            ],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({
+      subject: 'google-maps',
+      params: { frameResourceCount: 2, integrationType: 'iframe' },
+    });
+    expect(o?.evidence[0]).toMatchObject({ url: 'https://www.google.com/maps/embed?pb=[redacted]' });
+  });
+});

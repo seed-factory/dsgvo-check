@@ -4,6 +4,14 @@ import { loadServiceCatalog, parseCatalog, ServiceCatalog } from '../../../src/d
 
 const catalog = loadServiceCatalog();
 
+const emptyCatalog = () => ({
+  catalog: { name: 'x', version: '1', date: '2026-10-30', license: 'Apache-2.0' },
+  categories: catalog.data.categories,
+  userSuppliedParams: catalog.data.userSuppliedParams,
+  consentMode: catalog.data.consentMode,
+  allowlist: { version: '1', cookies: {} },
+});
+
 describe('service catalog data', () => {
   it('loads with metadata, ~60+ unique services and an allowlist version', () => {
     expect(catalog.data.catalog).toMatchObject({ name: 'dsgvo-check-services', license: 'Apache-2.0' });
@@ -114,6 +122,32 @@ describe('service catalog data', () => {
       parseCatalog({ ...base, services: [], consentMode: { gcdDenied: ['p'], gcdGranted: ['p'] } }),
     ).toThrow(/both denied and granted/);
   });
+
+  it.each([
+    ['an unanchored host pattern', { hostPatterns: ['www\\.vendor\\.[a-z]{2}'] }, /must be anchored/],
+    ['a host pattern that does not compile', { hostPatterns: ['^(www$'] }, /invalid regular expression/],
+    ['no hosts, host patterns or any-host', {}, /needs hosts, hostPatterns or anyHost/],
+  ])('rejects a signature with %s', (_case, hosts, message) => {
+    const services = [
+      {
+        id: 'a',
+        name: 'A',
+        category: 'ads',
+        policyRelevance: 'required',
+        signatures: [{ id: 's', path: '^/', kind: 'hit', ...hosts }],
+      },
+    ];
+    expect(() => parseCatalog({ ...emptyCatalog(), services })).toThrow(message);
+  });
+
+  it('a service operated by its own company names it as provider, not as parent', () => {
+    expect(catalog.info('sentry')).toMatchObject({
+      provider: { name: 'Functional Software, Inc.', country: 'US' },
+      companyAliases: expect.arrayContaining(['Functional Software', 'Functional Software, Inc.']),
+    });
+    expect(catalog.info('sentry')?.parent).toBeUndefined();
+    expect(catalog.byId.get('sentry')?.dpfEntity).toMatchObject({ name: 'Functional Software, Inc.' });
+  });
 });
 
 describe('URL matching', () => {
@@ -150,6 +184,59 @@ describe('URL matching', () => {
     ['https://tile.openstreetmap.org/1/2/3.png', 'openstreetmap', 'tiles'],
     ['https://www.google.com/search?q=x', null, null],
     ['https://cdn.example-unknown.net/app.js', null, null],
+    // Google Ads hits on AdSense and DoubleClick hosts; the other paths of these hosts keep their own service.
+    [
+      'https://pagead2.googlesyndication.com/ccm/collect?tid=AW-000000001&en=page_view',
+      'google-ads',
+      'syndication-ccm',
+    ],
+    ['https://pagead2.googlesyndication.com/ccm/collect?en=page_view', 'google-adsense', null],
+    [
+      'https://pagead2.googlesyndication.com/pagead/conversion/000000001/?random=[redacted]',
+      'google-ads',
+      'syndication-conversion',
+    ],
+    ['https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', 'google-adsense', null],
+    ['https://ad.doubleclick.net/ccm/s/collect?auid=[redacted]', 'google-ads', 'doubleclick-ccm'],
+    [
+      'https://ad.doubleclick.net/activity;src=1;type=x;cat=y;ord=1',
+      'google-marketing-platform',
+      'floodlight',
+    ],
+    ['https://ad.doubleclick.net/ddm/activity/src=1;type=x', 'google-marketing-platform', 'floodlight'],
+    ['https://fls.doubleclick.net/activityi;src=1', 'google-marketing-platform', 'floodlight'],
+    ['https://ad.doubleclick.net/ddm/trackclk/N1.2/B3', 'google-marketing-platform', null],
+    ['https://www.googleadservices.com/ccm/conversion/000000001/', 'google-ads', 'conversion'],
+    // Country domains of Google search: the host the visitor is served depends on the egress, not on the site.
+    ['https://www.google.fr/pagead/1p-user-list/000000001/', 'google-ads', 'google-domain-hit'],
+    ['https://www.google.co.uk/pagead/1p-conversion/000000001/', 'google-ads', 'google-domain-hit'],
+    ['https://www.google.com.br/rmkt/collect/000000001/', 'google-ads', 'google-domain-hit'],
+    ['https://www.google.com/ccm/collect?auid=[redacted]', 'google-ads', 'google-domain-hit'],
+    ['https://www.google.de/gmp/conversion/000000001/', 'google-marketing-platform', 'gmp-conversion'],
+    ['https://www.google.fr/ads/ga-audiences?t=sr&tid=UA-0000000-1', 'google-analytics', 'ga-audiences'],
+    ['https://www.google.fr/search?q=x', null, null],
+    ['https://www.google.example.test/pagead/1p-user-list/1/', null, null],
+    ['https://maps.google.fr/pagead/1p-user-list/1/', null, null],
+    // Self-hosted CCM19 in any install directory of any host; the path alone is not enough.
+    [
+      'https://consent.agency.example/cmp/public/app.js?apiKey=[redacted]&domain=[redacted]',
+      'ccm19',
+      'self-hosted-app',
+    ],
+    [
+      'https://consent.agency.example/cmp/public/widget?apiKey=[redacted]&domain=[redacted]&lang=[redacted]',
+      'ccm19',
+      'self-hosted-api',
+    ],
+    ['https://cdn.example-unknown.net/public/app.js', null, null],
+    // Site builder, booking, chat and translation widgets.
+    ['https://static.parastorage.com/services/wix-thunderbolt/dist/main.js', 'wix', null],
+    ['https://static.wixstatic.com/media/a.png', 'wix', null],
+    ['https://frog.wix.com/bolt-performance?src=[redacted]', 'wix-monitoring', null],
+    ['https://panorama.wixapps.net/api/v1/bulklog', 'wix-monitoring', null],
+    ['https://v5.widgets.dirs21.de/quickbook.js', 'dirs21', null],
+    ['https://code.tidio.co/abc.js', 'tidio', null],
+    ['https://cdn.weglot.com/weglot.min.js', 'weglot', null],
   ];
   it.each(cases)('%s → %s', (url, serviceId, signature) => {
     const m = catalog.matchUrl(new URL(url));
@@ -181,6 +268,29 @@ describe('cookie and storage names', () => {
     expect(catalog.matchCookie('IDE', 'example.de')).toBeNull();
     expect(catalog.matchCookie('_pk_id.1.a1b2', 'example.de')?.service.id).toBe('matomo');
     expect(catalog.matchStorage('_gcl_ls', 'www.example.de')?.service.id).toBe('google-ads');
+  });
+
+  it.each([
+    ['rc::a', 'www.google.com', 'google-recaptcha'],
+    ['rc::c', 'www.recaptcha.net', 'google-recaptcha'],
+    ['ytidb::LAST_RESULT_ENTRY_KEY', 'www.youtube-nocookie.com', 'youtube-nocookie'],
+    ['YtIdbMeta', 'www.youtube-nocookie.com', 'youtube-nocookie'],
+    ['YtIdbMeta', 'www.youtube.com', 'youtube'],
+  ])('known storage entry %s of %s is no identifier of %s', (key, origin, serviceId) => {
+    expect(catalog.matchStorage(key, origin)).toMatchObject({ service: { id: serviceId }, tracking: false });
+  });
+
+  it('known storage entries are bound to the origin of their service', () => {
+    expect(catalog.matchStorage('rc::a', 'www.example.de')).toBeNull();
+    expect(catalog.matchStorage('YtIdbMeta', 'www.example.de')).toBeNull();
+  });
+
+  it.each([
+    ['test_cookie', 'doubleclick.net', 'google-marketing-platform'],
+    ['ssr-caching', 'www.example.de', 'wix'],
+    ['TESTCOOKIESENABLED', 'www.youtube-nocookie.com', 'youtube-nocookie'],
+  ])('known cookie %s on %s is no identifier of %s', (name, domain, serviceId) => {
+    expect(catalog.matchCookie(name, domain)).toMatchObject({ service: { id: serviceId }, tracking: false });
   });
 
   it('allowlist classes are case-insensitive', () => {

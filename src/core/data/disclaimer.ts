@@ -3,12 +3,15 @@
  * in the report. Reporters compose it again from the final report because exit reasons may change while writing.
  */
 
+import type { ReportDetail } from '../report/reporter.ts';
 import type { MessageParams, Report } from '../report/schema.ts';
 import type { Texts } from './load.ts';
 import { uiText } from './messages.ts';
 
-/** Paragraph keys in rendering order: data, conditions, draft, usage. */
+/** Paragraph keys in rendering order after the base: scope, data, conditions, draft, usage. */
 export const DISCLAIMER_KEYS = [
+  'disclaimer.noFinding',
+  'disclaimer.dependence',
   'disclaimer.data',
   'disclaimer.screenshots',
   'disclaimer.bannerNotRecognized',
@@ -19,25 +22,66 @@ export const DISCLAIMER_KEYS = [
   'disclaimer.sandboxOff',
   'disclaimer.incomplete',
   'disclaimer.phaseC',
+  'disclaimer.phaseCFailed',
   'disclaimer.draft',
   'disclaimer.usage',
 ] as const;
 
 export type DisclaimerKey = (typeof DISCLAIMER_KEYS)[number];
 
-/** Phase C ("Alle akzeptieren") visited at least one page: the scanner's IP reached the site's third parties. */
-export function phaseCPerformed(report: Report): boolean {
-  return (report.scan.coverage?.pages ?? []).some((p) => p.phases.includes('C'));
+/** One paragraph with the key it came from; `disclaimer` is the base text. */
+export interface DisclaimerEntry {
+  key: 'disclaimer' | DisclaimerKey;
+  text: string;
+}
+
+export interface DisclaimerOptions {
+  /** `brief` is the report for the site owner: its paragraphs leave the command-line options out. */
+  detail?: ReportDetail;
+  /** The HTML report prints its own draft line next to the stamp; the paragraph would repeat it. */
+  withoutDraft?: boolean;
+}
+
+/**
+ * Phase C as the disclaimer and the first page describe it: `performed` (the accept click succeeded), `unverified`
+ * (clicked, but the CMP state did not confirm it), `failed` (phase C ran without a successful click) or null.
+ */
+export type PhaseCState = 'performed' | 'unverified' | 'failed' | null;
+
+export function phaseCState(report: Report): PhaseCState {
+  const coverage = report.scan.coverage;
+  const actions = coverage?.consentActions;
+  // Reports of earlier versions carry no click outcome: a visit in phase C is all they tell.
+  if (!actions) return (coverage?.pages ?? []).some((p) => p.phases.includes('C')) ? 'performed' : null;
+
+  const accept = actions.find((a) => a.action === 'accept');
+  if (!accept) return null;
+  if (!accept.clicked) return 'failed';
+  return accept.verified === false ? 'unverified' : 'performed';
+}
+
+/** Exit reason codes in words (`exitReason` in the core texts); check ids stay as they are. */
+export function exitReasonText(texts: Texts, reason: string): string {
+  if (!texts.ui.exitReason) return reason;
+  const withCheck = /^(check-error|strict:inconclusive):(.+)$/.exec(reason);
+  const code = (withCheck?.[1] ?? reason).replace(/:/g, '-');
+  return uiText(texts, 'exitReason', { code, check: withCheck?.[2] ?? '', reason });
 }
 
 /** Paragraphs whose condition holds, with their parameters. */
-function applicable(report: Report): Array<[DisclaimerKey, MessageParams]> {
+function applicable(report: Report, texts: Texts): Array<[DisclaimerKey, MessageParams]> {
   const { scan } = report;
   const env = scan.environment;
   const options = scan.options;
-  const out: Array<[DisclaimerKey, MessageParams]> = [['disclaimer.data', {}]];
+  const out: Array<[DisclaimerKey, MessageParams]> = [
+    ['disclaimer.noFinding', {}],
+    ['disclaimer.dependence', {}],
+    ['disclaimer.data', {}],
+  ];
 
-  if (options?.screenshots === true) out.push(['disclaimer.screenshots', {}]);
+  // The paragraph describes images that exist, not only the option.
+  const screenshots = (report.evidence ?? []).some((e) => e.type === 'screenshot');
+  if (options?.screenshots === true && screenshots) out.push(['disclaimer.screenshots', {}]);
 
   if (
     (report.findings ?? []).some(
@@ -73,36 +117,54 @@ function applicable(report: Report): Array<[DisclaimerKey, MessageParams]> {
   if (env?.sandbox.mode === 'off' || options?.sandbox === 'off') out.push(['disclaimer.sandboxOff', {}]);
 
   if (scan.status !== 'complete') {
-    const reasons = report.summary.exitReasons;
+    // Findings above the threshold explain the exit code, not a gap in the scan.
+    const reasons = report.summary.exitReasons
+      .filter((r) => r !== 'threshold')
+      .map((r) => exitReasonText(texts, r));
     out.push([
       'disclaimer.incomplete',
       { status: scan.status, hasReasons: reasons.length > 0, reasons: reasons.join(', ') },
     ]);
   }
 
-  if (phaseCPerformed(report)) out.push(['disclaimer.phaseC', {}]);
+  const phaseC = phaseCState(report);
+  if (phaseC === 'performed' || phaseC === 'unverified') {
+    out.push(['disclaimer.phaseC', { verified: phaseC === 'performed' }]);
+  }
+  if (phaseC === 'failed') out.push(['disclaimer.phaseCFailed', {}]);
   if (report.disclaimer.draft) out.push(['disclaimer.draft', {}]);
   out.push(['disclaimer.usage', {}]);
   return out;
 }
 
-/** Base text paragraphs followed by every applicable paragraph (missing texts are skipped). */
-export function disclaimerParagraphs(report: Report, texts: Texts): string[] {
-  // a text composed earlier starts with this base: compose it anew, so a changed condition (e.g. exit reasons after a
-  // failed write) replaces its paragraph
-  const own = texts.ui.disclaimer ? uiText(texts, 'disclaimer') : null;
-  const base = own && report.disclaimer.text.startsWith(own) ? own : report.disclaimer.text;
-  const out = base
+/** Base text paragraphs followed by every applicable paragraph (missing texts are skipped), each with its key. */
+export function disclaimerEntries(
+  report: Report,
+  texts: Texts,
+  opts: DisclaimerOptions = {},
+): DisclaimerEntry[] {
+  // Always the base of the language being rendered: a report saved in German and rendered with --lang en must not
+  // keep the German text. The saved text is the base only where the texts have none.
+  const base = texts.ui.disclaimer ? uiText(texts, 'disclaimer') : report.disclaimer.text;
+  const out: DisclaimerEntry[] = base
     .split(/\n\s*\n/)
     .map((p) => p.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((text) => ({ key: 'disclaimer', text }));
 
-  for (const [key, params] of applicable(report)) {
-    if (!texts.ui[key]) continue;
-    const text = uiText(texts, key, params);
-    if (!out.includes(text)) out.push(text);
+  const detail = opts.detail ?? 'full';
+  for (const [key, params] of applicable(report, texts)) {
+    if (!texts.ui[key] || (key === 'disclaimer.draft' && opts.withoutDraft)) continue;
+    const text = uiText(texts, key, { detail, ...params });
+    // A saved base from before the split already contains the scope sentences.
+    if (!out.some((e) => e.text === text || (e.key === 'disclaimer' && e.text.includes(text))))
+      out.push({ key, text });
   }
   return out;
+}
+
+export function disclaimerParagraphs(report: Report, texts: Texts, opts: DisclaimerOptions = {}): string[] {
+  return disclaimerEntries(report, texts, opts).map((e) => e.text);
 }
 
 /** The disclaimer as one text, paragraphs separated by a blank line (JSON `disclaimer.text`). */

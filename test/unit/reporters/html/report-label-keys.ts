@@ -71,7 +71,9 @@ export function usedReportLabelKeys(): string[] {
   // The settings row only appears for settings that differ from the defaults.
   full.scan.options = { ...full.scan.options!, settings: { DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS: 3000 } };
   full.findings[0]!.trigger = 'before-interaction';
-  full.checks[0]!.coverage = { planned: 2, observed: 2, evaluated: 1 };
+  // A coverage note and a limitation are codes the view words.
+  full.checks[0]!.coverage = { planned: 2, observed: 2, evaluated: 1, note: 'negation-not-parsed' };
+  full.checks[0]!.limitations = ['status:429'];
   capture(full);
   capture(sampleFailedReport());
 
@@ -127,8 +129,39 @@ export function usedReportLabelKeys(): string[] {
   const request = front.evidence.find((e) => e.id === 'ev-request')!;
   front.evidence = [request, { ...request, id: 'ev-request-again', page: 'https://www.example.de/kontakt' }];
   front.findings[0]!.evidenceIds = front.evidence.map((e) => e.id);
+  // An accept the banner did not confirm, its click outcomes and a start page that leads to another site.
+  front.scan.coverage.consentActions = [
+    { action: 'reject', clicked: true, verified: true },
+    { action: 'accept', clicked: true, verified: false },
+  ];
+  front.scan.finalUrl = 'https://www.example.com/';
   capture(front);
   capture(front, 'brief');
+
+  // A re-evaluated snapshot, a site without a banner, and the pages and headers of one finding listed together.
+  const replay = sampleFullReport();
+  replay.scan.evaluatedAt = '2026-11-01T10:00:00.000Z';
+  replay.checks.find((c) => c.id === 'CONSENT-04')!.status = 'not_applicable';
+  replay.checks.find((c) => c.id === 'CONSENT-04')!.reason = 'no-banner';
+  replay.scan.coverage.consentActions = [{ action: 'reject', clicked: false, verified: null }];
+  replay.findings = replay.findings.filter((f) => f.checkId !== 'CONSENT-04');
+  const listed = replay.evidence.filter((e) => e.type === 'page' || e.type === 'header');
+  replay.evidence.push(...listed.map((e) => ({ ...e, id: `${e.id}-again` })));
+  const document = replay.evidence.find((e) => e.type === 'document')!;
+  Object.assign(document, {
+    manifest: { partCount: 3, textLength: 1200, expandablesFound: 1, linkedPages: 0 },
+  });
+  replay.findings[0]!.evidenceIds = replay.evidence.map((e) => e.id);
+  capture(replay);
+
+  // More differing values in one item than it names.
+  const grouped = sampleFullReport();
+  grouped.findings = ['a', 'b', 'c', 'd', 'e', 'f'].map((name, n) => ({
+    ...grouped.findings[1]!,
+    fingerprint: `sha256:${(n + 1).toString(16).padStart(64, '0')}`,
+    params: { name },
+  }));
+  capture(grouped, 'brief');
 
   // Empty and oversized lists, and an evidence reference without evidence.
   full.summary.exitReasons = [];

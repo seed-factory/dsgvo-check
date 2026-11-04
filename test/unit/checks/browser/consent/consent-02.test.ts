@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { consent02 } from '../../../../../src/checks/browser/consent-02.ts';
+import { fingerprint } from '../../../../../src/core/api.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from '../helpers.ts';
@@ -211,5 +214,129 @@ describe('CONSENT-02 storage before interaction', () => {
     expect(obs).toHaveLength(1);
     expect(obs[0]).toMatchObject({ variant: 'tracking-identifier-stored' });
     expect(obs[0]?.pages).toHaveLength(2);
+  });
+});
+
+describe('CONSENT-02 listed entries', () => {
+  const thirdParty = (name: string, p = {}) =>
+    cookie(name, { domain: 'unknown-tracker.com', firstParty: false, ...p });
+  const listed = (cookies: ReturnType<typeof cookie>[]) =>
+    observationsOf(run([phase('A', { cookies })])).find(
+      (o) => o.variant === 'unknown-third-party-persistent',
+    )!;
+  const fp = (subject: string) => fingerprint({ checkId: 'CONSENT-02', variantGroup: 'storage', subject });
+
+  it('the subject names the entries: other entries give another fingerprint, the same entries the same one', () => {
+    const a = listed([thirdParty('wpvp1'), thirdParty('wpvp2')]);
+    const sameReordered = listed([thirdParty('wpvp2'), thirdParty('wpvp1')]);
+    const other = listed([thirdParty('wpvp1'), thirdParty('wpvp3')]);
+
+    expect(a.subject).toBe(
+      'unknown-third-party-persistent-list:wpvp1|unknown-tracker.com|/|unpartitioned,wpvp2|unknown-tracker.com|/|unpartitioned',
+    );
+    expect(fp(sameReordered.subject)).toBe(fp(a.subject));
+    expect(fp(other.subject)).not.toBe(fp(a.subject));
+  });
+
+  it('a single entry is named in the title', () => {
+    const o = listed([thirdParty('wpvp1')]);
+    expect(renderMessage(loadTexts('de'), 'CONSENT-02.unknown-third-party-persistent', o.params).title).toBe(
+      'Dauerhafter Drittanbieter-Eintrag ohne Einordnung als Kennung vor einer Interaktion: wpvp1 (cookie, unknown-tracker.com)',
+    );
+    expect(renderMessage(loadTexts('en'), 'CONSENT-02.unknown-third-party-persistent', o.params).title).toBe(
+      'Persistent third-party entry not classified as an identifier before any interaction: wpvp1 (cookie, unknown-tracker.com)',
+    );
+  });
+
+  it('an entry the catalog lists for a service as no identifier is named with that service, not as unknown', () => {
+    const o = listed([
+      cookie('AEC', {
+        domain: '.google.com',
+        firstParty: false,
+        lifetime: { kind: 'persistent', days: 180 },
+      }),
+      thirdParty('wpvp1'),
+    ]);
+    expect(o.params).toMatchObject({
+      count: 2,
+      knownCount: 1,
+      knownNames: 'Google – AEC (cookie, google.com)',
+      unknownCount: 1,
+      unknownNames: 'wpvp1 (cookie, unknown-tracker.com)',
+    });
+    const de = renderMessage(loadTexts('de'), 'CONSENT-02.unknown-third-party-persistent', o.params).body;
+    expect(de).toContain(
+      'Laut Dienstekatalog einem Dienst zugeordnet und dort nicht als Kennung geführt: Google – AEC (cookie, google.com).',
+    );
+    expect(de).toContain(
+      'Im Dienstekatalog nicht geführt: wpvp1 (cookie, unknown-tracker.com). Zweck bitte manuell prüfen.',
+    );
+  });
+
+  it('counterexample: only catalog-known entries → no request to look up their purpose', () => {
+    const o = listed([
+      cookie('AEC', {
+        domain: '.google.com',
+        firstParty: false,
+        lifetime: { kind: 'persistent', days: 180 },
+      }),
+    ]);
+    const texts = loadTexts('de');
+    expect(renderMessage(texts, 'CONSENT-02.unknown-third-party-persistent', o.params).body).not.toMatch(
+      /manuell|nicht geführt:/,
+    );
+  });
+
+  it('a cookie that expires within a day is no persistent entry', () => {
+    const r = run([
+      phase('A', { cookies: [thirdParty('short_x', { lifetime: { kind: 'persistent', days: 0 } })] }),
+    ]);
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  const googleCookie = (name: string) =>
+    cookie(name, { domain: '.google.com', firstParty: false, lifetime: { kind: 'persistent', days: 180 } });
+  const titleOf = (o: ReturnType<typeof listed>, lang: 'de' | 'en') =>
+    renderMessage(loadTexts(lang), 'CONSENT-02.unknown-third-party-persistent', o.params).title;
+
+  it('several entries: the title names their service when the catalog knows all of them, and the first keys', () => {
+    const known = listed([googleCookie('AEC'), googleCookie('CONSENT')]);
+    expect(known.params).toMatchObject({
+      services: 'Google',
+      allKnown: true,
+      keys: 'AEC, CONSENT',
+      moreKeys: 0,
+    });
+    expect(titleOf(known, 'de')).toBe(
+      '2 dauerhafte Einträge von Google ohne Einordnung als Kennung vor einer Interaktion: AEC, CONSENT',
+    );
+    expect(titleOf(known, 'en')).toBe(
+      '2 persistent entries of Google not classified as identifiers before any interaction: AEC, CONSENT',
+    );
+    // The group heading of the full report reads the shared service from the params.
+    expect(known.params.service).toBe('Google');
+
+    const many = listed(['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'].map((n) => thirdParty(n)));
+    expect(titleOf(many, 'de')).toBe(
+      '7 dauerhafte Drittanbieter-Einträge ohne Einordnung als Kennung vor einer Interaktion: a1, a2, a3, a4, a5 und 2 weitere',
+    );
+  });
+
+  it('the action names the known service and asks only about the unknown entries', () => {
+    const texts = loadTexts('de');
+    const action = (o: ReturnType<typeof listed>) =>
+      formatMessage(texts.actions['CONSENT-02.unknown-third-party-persistent']!, o.params, 'de');
+
+    const known = action(listed([googleCookie('AEC')]));
+    expect(known).toMatch(
+      /^Laden Sie Google erst nach einer Einwilligung oder nach einem Klick der Besucher/,
+    );
+    expect(known).not.toContain('Klären Sie');
+
+    const mixed = action(listed([googleCookie('AEC'), thirdParty('wpvp1')]));
+    expect(mixed).toMatch(/gespeichert werden\. Klären Sie, welche Dienste/);
+
+    const unknown = action(listed([thirdParty('wpvp1')]));
+    expect(unknown).toMatch(/^Klären Sie, welche Dienste/);
   });
 });

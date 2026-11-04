@@ -9,12 +9,20 @@ import type { ClassifiedRequest } from '../../derive/types.ts';
  */
 export function persistentIdentifier(c: ClassifiedRequest): boolean {
   const kind = c.identifierKind ?? 'none';
-  if (kind === 'stored-match' || kind === 'user-supplied') return true;
+  if (kind === 'stored-match' || kind === 'sent-cookie' || kind === 'user-supplied') return true;
   return kind === 'persistent-param' && c.cookieless !== true;
 }
 
 export function allCmpFacts(cmp: CmpSection): CmpFacts[] {
   return cmp.phases.flatMap((p) => p.facts);
+}
+
+/**
+ * A consent banner was found on some page: a recognised CMP or a banner candidate in the DOM, visible or not. Texts
+ * that speak of "the interaction with the banner" need one; without it they say that no banner was detected.
+ */
+export function bannerFound(cmp: CmpSection): boolean {
+  return allCmpFacts(cmp).some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent);
 }
 
 export interface ConsentSignals {

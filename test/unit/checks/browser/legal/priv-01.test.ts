@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchLevel, normalizeText, priv01 } from '../../../../../src/checks/browser/priv-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type {
   DocumentPart,
@@ -8,7 +10,7 @@ import type {
 } from '../../../../../src/core/snapshot/browser.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
+import { click, cookie, defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['PRIV-01']!.find((s) => s.file === file)!.build();
@@ -309,4 +311,98 @@ describe('PRIV-01 negative search evidence', () => {
       }
     },
   );
+});
+
+describe('PRIV-01 says what it searched for', () => {
+  it('a policy naming the same company for another service: not-named lists the company names searched', () => {
+    const r = runCheck(
+      priv01,
+      site({
+        phases: [phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')] })],
+        documents: {
+          documents: [
+            defaultDocuments().documents[0]!,
+            privacyDoc([
+              part('Wir nutzen Google Analytics. Anbieter ist Google Inc.', 'visible', '3 > Analyse'),
+            ]),
+          ],
+          attempts: [],
+        },
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({
+      variant: 'not-named',
+      subject: 'google-tag-manager',
+      params: { companies: 'Google Ireland Limited, Google LLC' },
+    });
+    const de = renderMessage(loadTexts('de'), 'PRIV-01.not-named', o!.params).body;
+    expect(de).toContain('die Firmennamen laut Dienstekatalog (Google Ireland Limited, Google LLC)');
+    expect(de).toContain(
+      'Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung von Google Tag Manager.',
+    );
+    expect(de).not.toMatch(/keine Nennung von Google Tag Manager, des Anbieters/);
+    expect(renderMessage(loadTexts('en'), 'PRIV-01.not-named', o!.params).body).toContain(
+      'the company names per service catalogue (Google Ireland Limited, Google LLC)',
+    );
+  });
+});
+
+describe('PRIV-01 where the service was seen', () => {
+  const policy = () => ({
+    documents: [defaultDocuments().documents[0]!, privacyDoc([part('Wir verwenden keine Werbedienste.')])],
+    attempts: [],
+  });
+  const ads = (id: string, p = {}) =>
+    req(id, 'https://googleads.g.doubleclick.net/pagead/viewthroughconversion/1/?gcd=1', {
+      resourceType: 'script',
+      ...p,
+    });
+
+  it('pages and phases come from its requests and stored identifiers, as in the inventory; a test cookie is none', () => {
+    const r = runCheck(
+      priv01,
+      site({
+        phases: [
+          phase('A', { requests: [ads('a')] }),
+          phase('B', {
+            click: click('reject'),
+            // The catalog names test_cookie as no identifier: it does not make B a phase in which the service was seen.
+            cookies: [
+              cookie('test_cookie', {
+                domain: '.doubleclick.net',
+                firstParty: false,
+                phase: 'B',
+                afterClick: true,
+                setter: 'http-response',
+                setterHost: 'googleads.g.doubleclick.net',
+              }),
+            ],
+          }),
+          phase('C', {
+            click: click('accept'),
+            cookies: [
+              cookie('IDE', {
+                domain: '.doubleclick.net',
+                firstParty: false,
+                phase: 'C',
+                afterClick: true,
+                setter: 'http-response',
+                setterHost: 'googleads.g.doubleclick.net',
+              }),
+            ],
+          }),
+        ],
+        documents: policy(),
+      }),
+    );
+    const services = observationsOf(r).map((o) => o.subject);
+    // IDE and test_cookie were set by the Google Ads host: no separate Marketing Platform finding.
+    expect(services).toEqual(['google-ads']);
+    const [o] = observationsOf(r);
+    expect(o!.phases).toEqual(['A', 'C']);
+    expect(o!.params).toMatchObject({ requestCount: 1, pageCount: 1 });
+    expect(o!.evidence.map((e) => e.type)).toEqual(['document', 'request', 'cookie']);
+    expect(o!.evidence.at(-1)).toMatchObject({ name: 'IDE', setterHost: 'googleads.g.doubleclick.net' });
+  });
 });

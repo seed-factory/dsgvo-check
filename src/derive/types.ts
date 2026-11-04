@@ -41,10 +41,17 @@ export type RequestKind =
 export type TrackingStage = 'loaded' | 'initialised' | 'event-sent';
 
 /**
- * `stored-match`, `persistent-param` and `user-supplied` are persistent (critical-capable); `per-load` is an
- * identifier name without evidenced persistence.
+ * `stored-match` (a parameter value equals a stored identifier), `sent-cookie` (the request carried a catalog tracking
+ * cookie), `persistent-param` and `user-supplied` are persistent (critical-capable); `per-load` is an identifier name
+ * without evidenced persistence.
  */
-export type IdentifierKind = 'stored-match' | 'persistent-param' | 'user-supplied' | 'per-load' | 'none';
+export type IdentifierKind =
+  | 'stored-match'
+  | 'sent-cookie'
+  | 'persistent-param'
+  | 'user-supplied'
+  | 'per-load'
+  | 'none';
 
 /** Consent Mode state decoded from `gcs` / `gcd` (null = not present or not decodable). */
 export interface ConsentModeSignal {
@@ -78,11 +85,17 @@ export interface ServiceInfo {
   selfHostable?: boolean;
 }
 
+/**
+ * `catalog`: a host, signature or name of the catalog; for a cookie or storage entry with `tracking: false` a known
+ * entry of the service that is no identifier (`otherCookies`, `otherStorageKeys`). `heuristic`: the host that set it.
+ * `embed-frame`: a request the frame of an embedded service made (see `ClassifiedRequest.frameServiceId`).
+ */
 export type ClassificationSource =
   | 'catalog'
   | 'third-party-web'
   | 'open-cookie-database'
   | 'heuristic'
+  | 'embed-frame'
   | 'none';
 
 export interface ClassifiedRequest {
@@ -117,6 +130,11 @@ export interface ClassifiedRequest {
   timing?: InteractionTiming;
   /** Matched on the site's own host for a self-hostable service (no third party involved). */
   selfHosted?: boolean;
+  /**
+   * The request came from the third-party frame of this embedded service (a video player, a map). With source
+   * `embed-frame` the request itself is attributed to the embed: a font or a host of no other service.
+   */
+  frameServiceId?: string;
 }
 
 /** Key `(name, domain|first-party, path, partitionKey)` used to compare cookies across phases. */
@@ -139,6 +157,7 @@ export interface ClassifiedCookie {
   tracking: boolean;
   /** Allowlisted (consent, session, LB, CSRF, language) → "nicht bewertet". */
   allowlisted: boolean;
+  /** Expires after the browser session and not sooner than `browser.persistentCookieMinDays`. */
   persistent: boolean;
   thirdParty: boolean;
   source: ClassificationSource;

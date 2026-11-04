@@ -47,6 +47,7 @@ const ALLOWED_TAGS = new Set([
   'img',
   'a',
   'br',
+  'wbr',
 ]);
 
 export interface HtmlTag {

@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
 import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
-import { CHROME_UA, describeCmpScenarios, recognized } from '../helpers.ts';
+import { CHROME_UA, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
 describeCmpScenarios(
   {
@@ -37,6 +37,33 @@ describeCmpScenarios(
       expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(true);
       const verify = await adapter.verify(page, 'reject');
       expect(verify.verified).toBe(true);
+    });
+
+    it('v2 with only some optional groups: accept all is verified, the groups the site lacks are left out', async () => {
+      const { page } = await env.open('https://www.borlabs.test/v2-groups.html');
+      const adapter = await recognized(page, 'borlabs');
+      await waitForBanner(page, adapter);
+
+      const { click } = await decideAndAct(page, adapter, 'accept');
+      expect(click.clicked).toBe(true);
+      const verify = await adapter.verify(page, 'accept');
+
+      expect(verify.reason).toBeUndefined();
+      expect(verify.verified).toBe(true);
+      expect(verify.method).toContain('categories-ignored:statistics,marketing');
+      expect(verify.stateAfter[0]?.categories).toMatchObject({ 'external-media': 'granted' });
+    });
+
+    it('v2 counterexample: the reject still reads every optional group as denied', async () => {
+      const { page } = await env.open('https://www.borlabs.test/v2-groups.html');
+      const adapter = await recognized(page, 'borlabs');
+      await waitForBanner(page, adapter);
+
+      expect((await decideAndAct(page, adapter, 'reject')).click.clicked).toBe(true);
+      const verify = await adapter.verify(page, 'reject');
+
+      expect(verify.verified).toBe(true);
+      expect(verify.method.some((m) => m.startsWith('categories-ignored'))).toBe(false);
     });
 
     it('config facts: dialogHideDialogOnPages is evaluated for the current page', async () => {

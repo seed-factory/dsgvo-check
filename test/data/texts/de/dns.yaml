@@ -14,9 +14,13 @@ messages:
   MAIL-01.policy-none:
     title: "DMARC im Beobachtungsmodus (p=none)"
     body: >-
-      Der DMARC-Eintrag von {domain} enthält p=none. Damit werden nur Berichte angefordert; Empfänger erhalten
-      keine Vorgabe, gefälschte Nachrichten abzuweisen oder zurückzuhalten. Orientierung (BSI TR-03182): nach
-      Auswertung der Berichte auf p=quarantine oder p=reject umstellen.
+      {noRua, select, yes {Der DMARC-Eintrag von {domain} enthält p=none und kein rua-Tag. Damit werden keine
+      aggregierten Berichte angefordert, und Empfänger erhalten keine Vorgabe, gefälschte Nachrichten abzuweisen
+      oder zurückzuhalten. Orientierung (BSI TR-03182): eine rua-Adresse ergänzen, die Berichte auswerten und dann
+      auf p=quarantine oder p=reject umstellen.} other {Der DMARC-Eintrag von {domain} enthält p=none. Damit werden
+      nur Berichte angefordert; Empfänger erhalten keine Vorgabe, gefälschte Nachrichten abzuweisen oder
+      zurückzuhalten. Orientierung (BSI TR-03182): nach Auswertung der Berichte auf p=quarantine oder p=reject
+      umstellen.}}
   MAIL-01.record-invalid:
     title: "DMARC-Eintrag nicht auswertbar"
     body: >-
@@ -25,14 +29,16 @@ messages:
       {v=DMARC1 steht nicht am Anfang} p-missing {das Tag p fehlt} p-invalid {ungültiger Wert für p} other
       {Syntaxfehler}}). Empfänger ignorieren solche Einträge oder behandeln sie wie p=none.
   MAIL-01.weak-option:
-    title: "DMARC-Optionen mit eingeschränkter Wirkung"
+    title: >-
+      {kind, select, null-mx {DMARC ohne p=reject bei einer Domain ohne E-Mail-Empfang} other {{count, plural, one
+      {DMARC-Option} other {DMARC-Optionen}} mit eingeschränkter Wirkung}}
     body: >-
       {kind, select, null-mx {{domain} veröffentlicht einen Null-MX-Eintrag (RFC 7505) und nimmt damit keine
       E-Mails an. {policy, select, missing {Ein eigener DMARC-Eintrag wurde nicht gefunden.} none {Der
       DMARC-Eintrag enthält p=none.} quarantine {Der DMARC-Eintrag enthält p=quarantine.} other {Der
       DMARC-Eintrag ist nicht auswertbar.}} Für Domains ohne E-Mail-Verkehr wird DMARC mit p=reject empfohlen
       (M3AAWG), damit Nachrichten mit gefälschtem Absender abgewiesen werden.} other {Im DMARC-Eintrag von
-      {domain} wurden {count, plural, one {eine Option} other {# Optionen}} mit eingeschränkter Wirkung
+      {domain} {count, plural, one {wurde eine Option} other {wurden # Optionen}} mit eingeschränkter Wirkung
       beobachtet:{spNone, select, yes { sp=none – für Absender unter Subdomains wird trotz p={policy} keine
       Durchsetzung angefordert.} other {}}{testing, select, yes { t=y – Testmodus nach RFC 9989, Empfänger
       wenden p={policy} nur abgeschwächt an.} other {}}{noRua, select, yes { kein rua-Tag – ohne aggregierte
@@ -113,3 +119,47 @@ legalNotes:
     status: technical
     reviewedAt: null
     reviewBy: null
+
+# Handlungsempfehlungen je Variante: kurz, konkret, ohne rechtliche Wertung. Vorlagen wie die Befundtexte, mit den
+# Parametern des Befunds; auf der ersten Seite teilen sich die Befunde einer Meldung einen Eintrag, ein abweichender
+# Parameter ist dort eine Liste und landet in einem select im Zweig other.
+actions:
+  # One staged path in every DMARC text: reports (rua) first, then their review, then p=quarantine or p=reject.
+  MAIL-01.record-not-found:
+    text: >-
+      Veröffentlichen Sie bei Ihrem DNS- oder Mail-Anbieter einen DMARC-Eintrag mit einer rua-Adresse für Berichte
+      (für die Auswertung zunächst mit p=none), werten Sie die Berichte aus und stellen Sie die Richtlinie dann auf
+      p=quarantine oder p=reject um.
+  MAIL-01.policy-none:
+    text: >-
+      {noRua, select, yes {Ergänzen Sie im DMARC-Eintrag eine rua-Adresse für Berichte, werten Sie die Berichte aus
+      und stellen Sie die Richtlinie dann auf p=quarantine oder p=reject um.} other {Werten Sie die DMARC-Berichte
+      aus und stellen Sie die Richtlinie dann auf p=quarantine oder p=reject um.}}
+  MAIL-01.record-invalid:
+    text: "Korrigieren Sie den DMARC-Eintrag, sodass genau ein gültiger Eintrag unter _dmarc veröffentlicht ist."
+  MAIL-01.weak-option:
+    text: >-
+      {kind, select, null-mx {{policy, select, missing {Veröffentlichen Sie für die Domain, die keine E-Mails
+      empfängt, einen DMARC-Eintrag mit p=reject.} other {Stellen Sie den DMARC-Eintrag der Domain, die keine
+      E-Mails empfängt, auf p=reject um.}}} other {Passen Sie den DMARC-Eintrag bei Ihrem DNS-Anbieter an.{noRua,
+      select, yes { Ergänzen Sie eine rua-Adresse, damit aggregierte Berichte ankommen, und werten Sie diese aus.}
+      other {}}{spNone, select, yes { Entfernen Sie sp=none oder setzen Sie sp auf quarantine oder reject.} other
+      {}}{testing, select, yes { Entfernen Sie t=y, sobald der Testbetrieb abgeschlossen ist.} other {}}}}
+  MAIL-01.legacy-pct:
+    text: "Entfernen Sie das veraltete Tag pct aus dem DMARC-Eintrag, wenn es nicht mehr gebraucht wird."
+  MAIL-02.record-not-found:
+    text: "Veröffentlichen Sie einen SPF-Eintrag, der die Server auflistet, die E-Mails für Ihre Domain versenden dürfen."
+  MAIL-02.permissive-qualifier:
+    text: "Ändern Sie das Ende des SPF-Eintrags auf -all oder ~all, damit nicht gelistete Server nicht als Absender gelten."
+  MAIL-02.record-invalid:
+    text: "Korrigieren Sie den SPF-Eintrag, sodass genau ein gültiger Eintrag mit v=spf1 veröffentlicht ist."
+  MAIL-02.softfail-without-enforcement:
+    text: >-
+      {dmarcPolicy, select, none {Stellen Sie die DMARC-Richtlinie nach Auswertung der Berichte auf p=quarantine
+      oder p=reject um oder schließen Sie SPF mit -all ab.} invalid {Korrigieren Sie den DMARC-Eintrag und setzen
+      Sie p=quarantine oder p=reject, oder schließen Sie SPF mit -all ab.} other {Richten Sie DMARC schrittweise
+      ein (Berichte auswerten, dann p=quarantine oder p=reject) oder schließen Sie SPF mit -all ab.}}
+  MAIL-02.softfail-with-enforcement:
+    text: "Kein Handlungsbedarf, solange DMARC mit quarantine oder reject aktiv bleibt."
+  MAIL-02.ptr-mechanism:
+    text: "Ersetzen Sie ptr im SPF-Eintrag durch konkrete ip4-, ip6- oder include-Angaben."

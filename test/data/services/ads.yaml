@@ -9,6 +9,7 @@ services:
     dpfEntity: { name: Google LLC }
     consentStorage: ad
     domains: [googleadservices.com, googleads.g.doubleclick.net]
+    # `auid` carries the value of the first-party `_gcl_au` cookie (conversion linker), so it is persistent.
     signatures:
       - id: gtag-aw
         hosts: [googletagmanager.com]
@@ -24,14 +25,39 @@ services:
         stage: loaded
       - id: conversion
         hosts: [googleadservices.com, googleads.g.doubleclick.net]
-        path: "^/pagead/"
+        path: "^/(pagead|ccm)/"
         kind: hit
         stage: event-sent
+        identifierParams: [auid]
+      # Google tag hits on the country domains of Google search (`www.google.de`, `www.google.co.uk`, …): which one is
+      # used depends on the visitor's location, so the host is a pattern.
       - id: google-domain-hit
-        hosts: [www.google.com, www.google.de]
+        hostPatterns: ['^www\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$']
         path: "^/(pagead|ccm|rmkt)/"
         kind: hit
         stage: event-sent
+        identifierParams: [auid]
+      # Google Ads hits on AdSense and DoubleClick hosts: the Google tag sends conversion and page-view events of an
+      # `AW-` account there too; other paths of these hosts stay with AdSense and the Marketing Platform.
+      - id: syndication-ccm
+        hosts: [pagead2.googlesyndication.com]
+        path: "^/ccm/collect$"
+        query: { tid: "^AW-" }
+        kind: hit
+        stage: event-sent
+        identifierParams: [auid]
+      - id: syndication-conversion
+        hosts: [pagead2.googlesyndication.com]
+        path: "^/pagead/(conversion|viewthroughconversion|1p-conversion|1p-user-list)/"
+        kind: hit
+        stage: event-sent
+        identifierParams: [auid]
+      - id: doubleclick-ccm
+        hosts: [ad.doubleclick.net]
+        path: "^/ccm/"
+        kind: hit
+        stage: event-sent
+        identifierParams: [auid]
     cookies: [_gcl_au, _gcl_aw, _gcl_dc, _gcl_gb, _gcl_gs, _gcl_ag]
     storageKeys: [_gcl_ls]
     aliasesDe: [Google Ads, Google AdWords, AdWords, Google Ads Conversion Tracking, Google Remarketing]
@@ -59,7 +85,7 @@ services:
       # the path is redacted, the names here make them persistent identifiers.
       - id: floodlight
         hosts: [ad.doubleclick.net, fls.doubleclick.net]
-        path: "^/"
+        path: "^/(activityi?|ddm/(activity|fls))([;/]|$)"
         kind: hit
         stage: event-sent
         identifierParams: [dc_pre, _dc_unique_id, dc_dbm_token, dc_ext_key, gdid]
@@ -70,7 +96,7 @@ services:
         stage: event-sent
         identifierParams: [dc_pre, _dc_unique_id, dc_dbm_token, dc_ext_key, gdid]
       - id: gmp-conversion
-        hosts: [www.google.com, www.google.de]
+        hostPatterns: ['^www\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$']
         path: "^/gmp/conversion/"
         kind: hit
         stage: event-sent

@@ -112,6 +112,12 @@ const browser = z.strictObject({
     100,
   ),
   storageReadTimeoutMs: int(1_000, 'Time limit per frame for reading cookies and Web Storage names.', 100),
+  persistentCookieMinDays: int(
+    1,
+    'Cookies that expire sooner count as short-lived, like session cookies: CONSENT-02 lists only longer-lived ones as persistent entries. Known tracking identifiers are reported whatever their lifetime; 0 counts every cookie with an expiry date.',
+    0,
+    3_650,
+  ),
 });
 
 const http = z.strictObject({

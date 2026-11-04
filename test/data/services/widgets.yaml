@@ -17,6 +17,22 @@ services:
     aliasesDe: [Calendly]
     aliasesEn: [Calendly]
 
+  - id: dirs21
+    name: DIRS21
+    category: widget
+    policyRelevance: required
+    domains: [dirs21.de]
+    aliasesDe: [DIRS21]
+    aliasesEn: [DIRS21]
+
+  - id: weglot
+    name: Weglot
+    category: widget
+    policyRelevance: required
+    domains: [weglot.com, weglot.io]
+    aliasesDe: [Weglot]
+    aliasesEn: [Weglot]
+
   - id: google-translate
     name: Google Translate (Website-Widget)
     category: widget
@@ -92,6 +108,14 @@ services:
     otherCookies: [TawkConnectionTime, twk_idm_key]
     aliasesDe: [tawk.to]
     aliasesEn: [tawk.to]
+
+  - id: tidio
+    name: Tidio
+    category: chat
+    policyRelevance: required
+    domains: [tidio.co, tidiochat.com]
+    aliasesDe: [Tidio]
+    aliasesEn: [Tidio]
 
   - id: userlike
     name: Userlike

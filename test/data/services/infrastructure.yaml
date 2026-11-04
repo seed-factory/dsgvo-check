@@ -158,6 +158,18 @@ services:
     aliasesDe: [bunny.net, BunnyCDN]
     aliasesEn: [bunny.net, BunnyCDN]
 
+  # Scripts, fonts and images of sites built with Wix. `ssr-caching` records how the page was rendered and expires
+  # within minutes.
+  - id: wix
+    name: Wix
+    category: cdn
+    policyRelevance: optional
+    domains: [parastorage.com, wixstatic.com]
+    otherCookies: [ssr-caching]
+    aliasesDe: [Wix, Wix.com]
+    aliasesEn: [Wix, Wix.com]
+    companyAliases: [Wix.com Ltd, Wix.com Ltd.]
+
   - id: wordpress-org-cdn
     name: WordPress.org (Emoji/CDN)
     category: cdn

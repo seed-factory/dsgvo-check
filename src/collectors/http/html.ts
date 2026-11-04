@@ -369,12 +369,20 @@ function takesUserInput(formBody: string, rules: HtmlRules): boolean {
   return false;
 }
 
+type LegalRole = 'impressum' | 'privacy';
+
+/**
+ * The Impressum and privacy links of the start page. The link text decides before the path: a site builder may serve
+ * the privacy policy at `/impressum-2`, and a link whose text names one document is never taken for the other
+ * by its path. A page that both links resolve to is kept as the Impressum only.
+ */
 export function findLegalLinks(
   html: string,
   base: string,
   rules: HtmlRules = loadHtmlRules(),
 ): { impressum?: string; privacy?: string } {
-  const out: { impressum?: string; privacy?: string } = {};
+  const byText: Partial<Record<LegalRole, string>> = {};
+  const byPath: Partial<Record<LegalRole, string>> = {};
 
   for (const a of elements(withoutComments(html), 'a', false)) {
     const attrs = parseAttributes(`<a ${a.attrs}>`);
@@ -386,17 +394,22 @@ export function findLegalLinks(
 
     const text = decodeEntities(stripTags(a.body)).replace(/\s+/g, ' ').trim();
     const path = new URL(url).pathname;
-    if (!out.impressum && (rules.impressumText.test(text) || rules.impressumPath.test(path))) {
-      out.impressum = url;
-    } else if (
-      !out.privacy &&
-      !rules.settingsText.test(text) &&
-      (rules.privacyText.test(text) || rules.privacyPath.test(path))
-    ) {
-      out.privacy = url;
-    }
-    if (out.impressum && out.privacy) break;
+    const settings = rules.settingsText.test(text);
+    const named = {
+      impressum: rules.impressumText.test(text),
+      privacy: !settings && rules.privacyText.test(text),
+    };
+    if (named.impressum) byText.impressum ??= url;
+    if (named.privacy) byText.privacy ??= url;
+    if (!named.privacy && rules.impressumPath.test(path)) byPath.impressum ??= url;
+    if (!named.impressum && !settings && rules.privacyPath.test(path)) byPath.privacy ??= url;
+    if (byText.impressum && byText.privacy) break;
   }
 
+  const out: { impressum?: string; privacy?: string } = {};
+  const impressum = byText.impressum ?? byPath.impressum;
+  const privacy = byText.privacy ?? byPath.privacy;
+  if (impressum) out.impressum = impressum;
+  if (privacy && privacy !== impressum) out.privacy = privacy;
   return out;
 }

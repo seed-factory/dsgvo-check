@@ -14,7 +14,7 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { DocumentResponse } from '../../core/snapshot/http.ts';
-import { browserAcceptsTls, evidenceValue, headerValues, isSuccess } from './shared.ts';
+import { BLOCKED_DOCUMENT, browserAcceptsTls, evidenceValue, headerValues, isSuccess } from './shared.ts';
 
 const ID = 'HDR-01';
 
@@ -213,8 +213,19 @@ function evaluable(doc: DocumentResponse): boolean {
   );
 }
 
+const isBlocked = (doc: DocumentResponse): boolean => doc.error?.code === BLOCKED_DOCUMENT;
+
 /** The start page decides whether the headers can be judged at all; null when they can. */
 function startPageOutcome(start: DocumentResponse): CheckOutcome | null {
+  // A bot or WAF challenge answered instead of the site (the collector raised SCAN-BLOCKED): nothing to judge.
+  if (isBlocked(start)) {
+    return {
+      status: 'inconclusive',
+      reason: 'blocked',
+      ...(start.status !== null ? { limitations: [`status:${start.status}`] } : {}),
+      observations: [],
+    };
+  }
   if (start.error || start.status === null) {
     return {
       status: 'inconclusive',
@@ -287,7 +298,9 @@ export const hdr01 = defineCheck({
     if (unusable) return unusable;
 
     const evaluated = docs.filter(evaluable);
-    const limitations = docs.filter((d) => !evaluable(d)).map((d) => `document-unavailable:${d.role}`);
+    const limitations = docs
+      .filter((d) => !evaluable(d))
+      .map((d) => `${isBlocked(d) ? 'document-blocked' : 'document-unavailable'}:${d.role}`);
     if (slice.http.throttled) limitations.push('throttled');
 
     const byMechanism = new Map<string, Observation>();

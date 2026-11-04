@@ -39,6 +39,12 @@ export function browserAcceptsTls(authorized: boolean | null | undefined, error:
   return tlsProblemOf(error) === 'incomplete-chain';
 }
 
+/**
+ * `error.code` of a document the HTTP collector saw answered by a bot or WAF challenge (signatures in
+ * test/data/browser/challenges.yaml): its headers are the protection's, not the site's.
+ */
+export const BLOCKED_DOCUMENT = 'blocked';
+
 export function headerValues(headers: readonly HeaderRecord[], name: string): string[] {
   const n = name.toLowerCase();
   return headers.filter((h) => h.name.toLowerCase() === n).map((h) => h.value);

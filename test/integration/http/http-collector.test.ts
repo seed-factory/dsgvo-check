@@ -285,6 +285,41 @@ describe('HTTP collector: problem sites', () => {
     expect(variantsOf(hdr)).not.toContain('hsts-missing');
   });
 
+  it('a WAF challenge instead of the start page → SCAN-BLOCKED, HDR-01 inconclusive (blocked)', async () => {
+    const res = await collect('https://www.challenge.test/', { 'challenge.test': closed });
+
+    const http = res.sections.http as HttpSection;
+    const start = http.documents.find((d) => d.role === 'start');
+    expect(start).toMatchObject({ status: 429, error: { code: 'blocked' } });
+    expect(start?.error?.message).toContain('header:x-vercel-mitigated');
+    expect(res.diagnostics).toEqual([
+      {
+        code: 'SCAN-BLOCKED',
+        affects: ['HDR-01'],
+        params: expect.objectContaining({ scope: 'http', count: 1, page: 'https://www.challenge.test/' }),
+      },
+    ]);
+    // One 429 is no throttling: the challenge is answered once, not retried.
+    expect(http.throttled).toBe(false);
+    const { hdr } = evaluate('https://www.challenge.test/', http);
+    expect(hdr).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
+    expect(variantsOf(hdr)).toEqual([]);
+    expect(server.unexpected).toEqual([]);
+  });
+
+  it('legal pages: the link text decides before the path', async () => {
+    const res = await collect('https://www.builder.test/', { 'builder.test': closed });
+
+    const documents = (res.sections.http as HttpSection).documents;
+    expect(documents.map((d) => [d.role, d.url])).toEqual([
+      ['start', 'https://www.builder.test/'],
+      ['impressum', 'https://www.builder.test/seite-3'],
+      ['privacy', 'https://www.builder.test/impressum-2'],
+    ]);
+    expect(res.diagnostics).toBeUndefined();
+    expect(server.unexpected).toEqual([]);
+  });
+
   it('https with an expired certificate: request still made, Node verdict recorded', async () => {
     const res = await collect('https://www.expired.test/', { 'expired.test': closed });
 

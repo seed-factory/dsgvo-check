@@ -3,19 +3,22 @@ draft: true
 ui:
   disclaimer: >-
     This report describes technical observations of an automated, passive scan at the stated time. It is not
-    legal advice and not a legal assessment. If a check has no finding, this does not mean that a requirement
-    is met. Results may depend on location, time, consent banner configuration and detection as an automated
-    visitor.
-  # Further paragraphs of the disclaimer. src/reporters/disclaimer.ts renders each conditional
-  # paragraph only when its condition holds in the report, so the text stays true; `data` and `usage` always.
+    legal advice and not a legal assessment.
+  # Further paragraphs of the disclaimer. src/core/data/disclaimer.ts renders each conditional paragraph only when
+  # its condition holds in the report, so the text stays true; `noFinding`, `dependence`, `data` and `usage` always.
+  # The HTML report shows each paragraph under a label (`report.notice.label`).
+  disclaimer.noFinding: If a check has no finding, this does not mean that a requirement is met.
+  disclaimer.dependence: >-
+    Results may depend on location, time, consent banner configuration and detection as an automated visitor.
+  # Every paragraph gets `detail`: `brief` is the report for the site owner, which names no command-line options.
   disclaimer.data: >-
     Values of cookies, Web Storage entries and consent strings are stored neither in clear text nor as a checksum;
     query parameters in URLs are replaced by “[redacted]” except for an allowlist.
   disclaimer.screenshots: >-
-    Screenshots of the banner area were enabled (can be turned off with --no-screenshots). Only a section of the
-    first screen before any interaction is captured, and only when the banner area is unambiguous and takes up at
-    most half of the viewport. The images are stored as evidence in the report directory and may contain content of
-    the website.
+    The scan took a screenshot of the banner area{detail, select, brief {} other { (can be turned off with
+    --no-screenshots)}}. Only a section of the first screen before any interaction is captured, and only when the
+    banner area is unambiguous and takes up at most half of the viewport. The image is stored as evidence in the
+    report directory and may contain content of the website.
   disclaimer.bannerNotRecognized: >-
     The consent banner could not be attributed to a supported provider. Checks that depend on recognition were not
     fully evaluated. A banner that was not recognised is not the same as a missing banner.
@@ -26,25 +29,40 @@ ui:
     The region from which the scan was run is not known. Websites can adapt their behaviour to the visitor's region;
     observations of consent banners therefore apply only to the actual measurement environment.
   disclaimer.egressAsserted: >-
-    The egress region “{region, select, eea {EEA} de {Germany} other {{region}}}” is based on a user statement
-    (--assume-region) and was not verified by the scanner.
+    The egress region “{region, select, eea {EEA} de {Germany} other {{region}}}” is based on a user
+    statement{detail, select, brief {} other { (--assume-region)}} and was not verified by the scanner.
   disclaimer.proxy: >-
-    The scan ran through a proxy (--proxy). Location and region of the proxy were not verified by the scanner.
+    The scan ran through a proxy{detail, select, brief {} other { (--proxy)}}. Location and region of the proxy were
+    not verified by the scanner.
   disclaimer.sandboxOff: >-
-    The browser ran without the Chromium sandbox (--sandbox off). This affects the isolation of the measurement
-    environment, not the results.
+    The browser ran without the Chromium sandbox{detail, select, brief {} other { (--sandbox off)}}. This affects
+    the isolation of the measurement environment, not the results.
   disclaimer.incomplete: >-
     {status, select, failed {The scan was not performed} other {The scan was not completed}}{hasReasons, select, true
     { (reasons: {reasons})} other {}}. Checks that did not complete are marked with their status in the report;
     observations already collected are kept.
+  # `verified` false: the accept click took place, but the CMP state did not confirm it.
   disclaimer.phaseC: >-
-    Phase C (acceptance in the consent banner) was performed: it discloses the scanning machine's IP address to the
-    third parties whose resources the website loads after acceptance.
+    {detail, select, brief {The scan accepted in the consent banner} other {Phase C (acceptance in the consent
+    banner) was performed}}. This discloses the scanning machine's IP address to the third parties whose resources
+    the website loads after acceptance.{verified, select, false { The banner did not fully confirm the acceptance;
+    observations “after acceptance” are therefore of limited value.} other {}}
+  disclaimer.phaseCFailed: >-
+    The acceptance in the consent banner{detail, select, brief {} other { (phase C)}} could not be triggered; there
+    are therefore no observations “after acceptance”.
   disclaimer.draft: "Draft text – the texts of this report have not yet been legally reviewed."
   disclaimer.usage: >-
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
     third-party websites are not intended for publication. The software is provided under the Apache License 2.0
     without warranty.
+  # Exit reasons in words (`summary.exitReasons`): `code` without the check id, which is `check`; `reason` as stored.
+  exitReason: >-
+    {code, select, threshold {findings at or above the configured threshold} check-error {check {check} failed}
+    unreachable {website not reachable} blocked {access blocked} timeout {time limit reached} sandbox-unavailable
+    {Chromium sandbox not available} invalid-input {invalid input} internal-error {internal error}
+    report-write-failed {report could not be written completely} strict-inconclusive {strict mode: check {check}
+    inconclusive} strict-sandbox-off {strict mode: sandbox disabled} strict-egress-unverified {strict mode: region not
+    verified} other {{reason}}}
   # Usage notes for `--help` and the project README (section `## Nutzungshinweise`).
   usageNotes.title: "Usage notes"
   usageNotes: >-
@@ -176,6 +194,9 @@ messages:
   diagnostic.SCAN-TIMEOUT:
     title: "Time limit reached"
     body: "{count, plural, =0 {The global time limit was reached; observations already collected remain in the report.} one {The global time limit was reached. One check was not completed in full; observations already collected remain in the report.} other {The global time limit was reached. # checks were not completed in full; observations already collected remain in the report.}}"
+  diagnostic.SCAN-TLS-BLOCKED:
+    title: "Browser checks not run: certificate invalid"
+    body: "The TLS check did not accept the certificate of {host} as valid. The browser therefore did not visit the website; consent, tracking, embedded services and legal pages were not checked."
   diagnostic.SCAN-SANDBOX-OFF:
     title: "Chromium sandbox disabled"
     body: "The browser ran without sandbox (--sandbox off)."

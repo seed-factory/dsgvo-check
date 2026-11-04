@@ -4,13 +4,19 @@
  */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type { DocumentPart, DocumentRecord, DocumentsSection } from '../../core/snapshot/browser.ts';
-import type { ServiceInfo } from '../../derive/types.ts';
+import type {
+  DocumentPart,
+  DocumentRecord,
+  DocumentsSection,
+  RequestRecord,
+} from '../../core/snapshot/browser.ts';
+import type { ServiceInfo, ServiceObservation } from '../../derive/types.ts';
 import { usableDocument } from './documents.ts';
-import { MAX_EVIDENCE, requestEvidence } from './evidence.ts';
+import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields } from './services.ts';
 import { requestIndex } from './snapshot.ts';
+import { type StoredIdentifier, storedIdentifiersByService } from './stored.ts';
 
 const ID = 'PRIV-01';
 
@@ -118,6 +124,15 @@ function policyText(html: readonly DocumentRecord[]): PolicyText {
   };
 }
 
+/**
+ * The legal names of provider and parent the text names as searched (their other spellings are searched too); a
+ * mention of the same company for another of its services is no mention of this one.
+ */
+function companyNames(info: ServiceInfo): string | null {
+  const names = sortedUniq([info.provider?.name, info.parent?.name].filter((n): n is string => !!n));
+  return names.join(', ') || info.companyAliases?.[0] || null;
+}
+
 /** What was read of the document(s): the counters of the snapshot manifest, no text. */
 function readManifest(html: readonly DocumentRecord[], partCount: number) {
   const sum = (count: (d: DocumentRecord) => number) => html.reduce((n, d) => n + count(d), 0);
@@ -187,6 +202,18 @@ function mentionVerdict(
   return { variant: onlyHidden ? 'ambiguous-match' : 'not-named', textMatch: null };
 }
 
+/** Phases and pages of a service's requests and stored identifiers; the service's own lists when neither is known. */
+function observedAt(
+  requests: readonly { r: RequestRecord }[],
+  identifiers: readonly StoredIdentifier[],
+  svc: ServiceObservation,
+): { phases: Phase[]; pages: string[] } {
+  const phases = sortedUniq([...requests.map(({ r }) => r.phase), ...identifiers.map((s) => s.phase)]);
+  const pages = sortedUniq([...requests.map(({ r }) => r.pageUrl), ...identifiers.map((s) => s.page)]);
+  if (pages.length === 0) return { phases: [...svc.phases].sort() as Phase[], pages: [...svc.pages].sort() };
+  return { phases: phases as Phase[], pages };
+}
+
 export const priv01 = defineCheck({
   id: ID,
   module: 'browser',
@@ -211,6 +238,7 @@ export const priv01 = defineCheck({
 
     const records = requestIndex(browser);
     const classified = new Map(derived.requests.map((c) => [c.requestId, c] as const));
+    const stored = storedIdentifiersByService(browser, derived);
     const observations: Observation[] = [];
     let evaluated = 0;
 
@@ -224,27 +252,35 @@ export const priv01 = defineCheck({
       if (!verdict) continue;
 
       const evidence: EvidenceInput[] = [documentEvidence, ...(verdict.textMatch ? [verdict.textMatch] : [])];
-      for (const id of svc.requestIds.slice(0, MAX_EVIDENCE - evidence.length)) {
+      const requests = svc.requestIds.flatMap((id) => {
         const r = records.get(id);
-        if (r) evidence.push(requestEvidence(r, classified.get(id)));
-      }
+        return r ? [{ r, c: classified.get(id) }] : [];
+      });
+      const identifiers = stored.get(svc.serviceId) ?? [];
+      evidence.push(...distinctRequestEvidence(requests, MAX_EVIDENCE - evidence.length));
+      evidence.push(...identifiers.slice(0, MAX_EVIDENCE - evidence.length).map((s) => s.ev));
 
+      // Where the service was seen: its requests and the identifiers it stored, as in the inventory of TRACK-01. An
+      // entry the catalog names without an identifier (a test cookie) is no sighting of the service.
+      const seen = observedAt(requests, identifiers, svc);
       observations.push({
         checkId: ID,
         variant: verdict.variant,
         confidence: verdict.variant === 'not-named' ? 'medium' : 'high',
         subject: subjects.service(svc.serviceId),
         category: info.category,
-        phases: [...svc.phases].sort() as Phase[],
-        pages: [...svc.pages].sort(),
+        phases: seen.phases,
+        pages: seen.pages,
         evidence,
         params: {
           service: info.name,
+          companies: companyNames(info),
           policyUrl: main.finalUrl || main.url,
-          pageCount: svc.pages.length,
+          pageCount: seen.pages.length,
           category: info.category,
           partCount: text.parts.length,
           complete: main.complete,
+          requestCount: requests.length,
         },
         ...serviceFields(derived, svc.serviceId),
       });

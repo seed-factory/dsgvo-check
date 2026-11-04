@@ -27,6 +27,15 @@ describe('extractRequestFeatures', () => {
     expect(f.eventType).toBe('PageView');
   });
 
+  it('Google tag hit: auid (the value of _gcl_au) is an identifier, so a stored _gcl_au can be matched', () => {
+    const f = extractRequestFeatures(
+      'https://www.google.com/ccm/collect?en=page_view&auid=1234567890.1700000000&gcd=13l3l3l3l1l1',
+      null,
+    );
+    expect(f.identifierNames).toEqual(['auid']);
+    expect(f.identifierValues).toEqual(['1234567890.1700000000']);
+  });
+
   it('reads identifiers from a GA4 batch body (text/plain lines)', () => {
     const f = extractRequestFeatures(
       'https://www.google-analytics.com/g/collect?v=2&tid=G-TEST',

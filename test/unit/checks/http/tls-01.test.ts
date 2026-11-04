@@ -198,6 +198,53 @@ describe('TLS-01 http → https', () => {
     expect(observationsOf(r)[0]?.pages).toEqual(['http://www.example.de/start']);
   });
 
+  describe('apex and www that end on the same http page', () => {
+    const page = 'http://www.example.de/';
+    const content = { url: page, status: 200, bodyBytes: BIG, bodyKind: 'html' as const };
+    const apexToWww = (last: Partial<HttpHop> = {}) =>
+      chain(
+        'http://example.de/',
+        [
+          { status: 301, location: page },
+          { ...content, ...last },
+        ],
+        {
+          hostVariant: 'apex',
+        },
+      );
+    const www = (last: Partial<HttpHop> = {}) =>
+      chain(page, [{ ...content, ...last }], { hostVariant: 'target' });
+    const httpsApex = chain(
+      'https://example.de/',
+      [
+        { status: 301, location: 'https://www.example.de/' },
+        { url: 'https://www.example.de/', status: 200, tlsAuthorized: true },
+      ],
+      { hostVariant: 'apex' },
+    );
+
+    it('no-redirect of each entry names the address typed and the page it ends on', () => {
+      const r = runCheck(tls01, snap(www(), httpsOk(), apexToWww(), httpsApex));
+      const params = observationsOf(r)
+        .filter((o) => o.variant === 'no-redirect')
+        .map((o) => o.params);
+      expect(params).toEqual([
+        { host: 'www.example.de', url: page, page, redirected: 'no', downgrade: 'no' },
+        { host: 'example.de', url: 'http://example.de/', page, redirected: 'yes', downgrade: 'no' },
+      ]);
+    });
+
+    it('a form on that page is one finding, reported for the first entry', () => {
+      const r = runCheck(
+        tls01,
+        snap(www({ hasForm: true }), httpsOk(), apexToWww({ hasForm: true }), httpsApex),
+      );
+      const forms = observationsOf(r).filter((o) => o.variant === 'form-on-http-page');
+      expect(forms).toHaveLength(1);
+      expect(forms[0]).toMatchObject({ pages: [page], params: { host: 'www.example.de', url: page } });
+    });
+  });
+
   it('counterexample: closed port 80 is not "serving content"', () => {
     const http = chain('http://www.example.de/', [], { outcome: 'connection-refused' });
     expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual([]);

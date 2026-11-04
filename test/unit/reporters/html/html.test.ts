@@ -124,7 +124,7 @@ describe('HTML report: sections and content', () => {
     'Diagnose',
     'Messumgebung',
     'Abdeckung',
-    'Hinweis',
+    'Hinweise zum Bericht',
   ];
 
   it('has all sections (de) with the draft stamp', () => {
@@ -134,14 +134,21 @@ describe('HTML report: sections and content', () => {
       expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
     }
     expect(html).toContain('Textentwurf');
-    expect(html).toContain('Keine Rechtsberatung');
+    expect(html).toContain('keine Rechtsberatung');
   });
 
   it('uses English labels for --lang en', () => {
     const html = renderHtml(sampleFullReport(), ctx('en'));
 
     expect(html).toMatch(/^<!doctype html>\n<html lang="en">/);
-    for (const h of ['Summary', 'Findings', 'Diagnostics', 'Measurement environment', 'Coverage', 'Notice']) {
+    for (const h of [
+      'Summary',
+      'Findings',
+      'Diagnostics',
+      'Measurement environment',
+      'Coverage',
+      'Notes on this report',
+    ]) {
       expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
     }
     expect(html).toContain('Draft text');
@@ -151,18 +158,18 @@ describe('HTML report: sections and content', () => {
     const html = renderHtml(sampleFullReport(), ctx());
 
     expect(html).toContain('Exit-Code');
-    expect(html).toContain('threshold');
-    expect(html).toContain('check-error:MAIL-01');
-    expect(html).toMatch(/kritisch[\s\S]{0,200}>1</);
+    expect(html).toContain('Befunde ab der eingestellten Schwelle');
+    expect(html).toContain('Prüfung MAIL-01 fehlgeschlagen');
+    expect(html).toMatch(/Kritisch[\s\S]{0,200}>1</);
   });
 
-  it('shows URLs as text, never as links', () => {
+  it('shows URLs as text, never as links, with line breaks allowed only after their separators', () => {
     const html = renderHtml(sampleFullReport(), ctx());
 
     expect(html).toContain(
-      'https://www.google-analytics.com/g/collect?v=2&amp;tid=G-TEST&amp;cid=[redacted]',
+      'https://<wbr>www.google-analytics.com/<wbr>g/<wbr>collect?<wbr>v=<wbr>2&amp;<wbr>tid=<wbr>G-TEST&amp;<wbr>cid=<wbr>[redacted]',
     );
-    expect(html).toContain('https://www.example.de/');
+    expect(html.replaceAll('<wbr>', '')).toContain('https://www.example.de/');
 
     const hrefs = tagsOf(html).flatMap((t) => t.attrs.filter((a) => a.name === 'href').map((a) => a.value));
     expect(hrefs.length).toBeGreaterThan(0);
@@ -178,15 +185,41 @@ describe('HTML report: sections and content', () => {
 
     expect(html).toContain('156.0.8078.4');
     expect(html).toContain('ThirdPartyStoragePartitioning');
-    expect(html).toContain('pagehide-beacons');
+    expect(html).toContain('Anfragen beim Verlassen einer Seite werden nicht vollständig erfasst');
+    expect(html).not.toContain('pagehide-beacons');
     expect(html).toContain('nicht festgestellt');
     expect(html).toContain('linux-x64');
 
     expect(html).toMatch(/geplant 2 · beobachtet 2 · auswertbar 1/);
-    expect(html).toContain('challenge');
-    expect(html).toContain('banner-not-recognized');
+    expect(html).toContain('<td>Seite des Bot-Schutzes</td>');
+    expect(html).toContain('<td>Einwilligungsbanner nicht erkannt</td>');
     expect(html).toMatch(/MAIL-01[\s\S]{0,300}Fehler/);
     expect(html).toContain('Datensätze und Attribution');
+  });
+
+  it('words the coverage notes and limitations of the checks; only a code without a text stays a code', () => {
+    const r = sampleFullReport();
+    r.checks[0]!.coverage = { evaluated: 4, note: 'allowlist-v2:not-evaluated=6' };
+    r.checks[1]!.coverage = { evaluated: 2, note: 'negation-not-parsed' };
+    r.checks[0]!.limitations = ['status:429', 'preconnect-not-observable', 'unlisted-code:x'];
+
+    const de = renderHtml(r, ctx());
+    expect(de).toContain('6 Einträge auf der Allowlist (Version 2), daher nicht bewertet');
+    expect(de).toContain('Verneinungen im Text werden nicht erkannt');
+    expect(de).not.toContain('allowlist-v2:not-evaluated');
+    expect(de).toContain('<div>Startseite antwortete mit HTTP 429</div>');
+    expect(de).toContain('<div>Verbindungen ohne Anfrage (preconnect) nicht beobachtbar</div>');
+    expect(de).not.toContain('preconnect-not-observable');
+    // A code without a text stays readable as the code alone.
+    expect(de).toMatch(/<div><code>unlisted-code:x<\/code><\/div>/);
+
+    const en = renderHtml(r, ctx('en'));
+    expect(en).toContain('6 entries on the allowlist (version 2), therefore not assessed');
+    expect(en).toContain('<div>Start page answered with HTTP 429</div>');
+
+    // No entry on the allowlist is said so plainly, not as a double negation.
+    r.checks[0]!.coverage = { note: 'allowlist-v2:not-evaluated=0' };
+    expect(renderHtml(r, ctx())).toContain('kein beobachteter Eintrag auf der Allowlist (Version 2)');
   });
 
   it('renders evidence of every known type and unknown types generically', () => {
@@ -196,12 +229,14 @@ describe('HTML report: sections and content', () => {
     const all = renderHtml(r, ctx());
 
     expect(html).toContain('_ga');
-    for (const t of ['request', 'cookie', 'storage', 'header', 'dns', 'tls', 'cmp', 'consent-state']) {
+    for (const t of ['Anfrage', 'Cookie', 'Speichereintrag', 'Header', 'DNS-Eintrag', 'TLS-Verbindung']) {
       expect(all).toContain(`>${t}<`);
     }
-    for (const t of ['document', 'text-match', 'page', 'redirect-chain', 'link', 'mixed-content']) {
+    for (const t of ['Einwilligungsbanner', 'Einwilligungsstatus', 'Dokument', 'Textstelle', 'Seite']) {
       expect(all).toContain(`>${t}<`);
     }
+    // A type the texts do not know keeps its name.
+    for (const t of ['Umleitungskette', 'Link', 'mixed-content']) expect(all).toContain(`>${t}<`);
     expect(all).toContain('Wir verwenden Google Analytics');
     expect(all).toContain('sourceUrl');
   });
@@ -235,7 +270,7 @@ describe('HTML report: sections and content', () => {
     expect(htmlSafetyProblems(html)).toEqual([]);
     expect(html).toContain('target-nxdomain');
     expect(html).toContain('Zielhost konnte nicht aufgelöst werden.');
-    expect(html).toContain('unreachable');
+    expect(html).toContain('Website nicht erreichbar');
     expect(html).toContain('nicht verfügbar');
     for (const h of SECTION_HEADINGS_DE) {
       expect(html).toContain(`>${h}</h2>`);

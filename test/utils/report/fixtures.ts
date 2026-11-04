@@ -36,7 +36,7 @@ export function sampleFullReport(): FullReport {
         viewport: { width: 1366, height: 768 },
         locale: 'de-DE',
         timezone: 'Europe/Berlin',
-        egress: { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' },
+        egress: { mode: 'direct', region: 'unknown', source: 'not-determined' },
         disabledChromiumFeatures: ['ThirdPartyStoragePartitioning'],
         quic: 'disabled',
         knownGaps: ['pagehide-beacons'],

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../../src/checks/browser/consent-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import type { RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
@@ -451,5 +453,140 @@ describe('CONSENT-01 requests before interaction', () => {
       collection: { browser: { status: 'skipped', reason: 'tls-blocked', durationMs: 0 } },
     });
     expect(r).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
+  });
+});
+
+describe('CONSENT-01 texts name what was counted', () => {
+  const body = (lang: 'de' | 'en', variant: string, params: Record<string, unknown>) =>
+    renderMessage(loadTexts(lang), `CONSENT-01.${variant}`, params as never).body;
+
+  it('unknown-host: the request count covers every host of the domain, and the text names them all', () => {
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://cdn.unknown-widget.net/a.js'),
+          req('b', 'https://cdn.unknown-widget.net/b.js'),
+          req('c', 'https://cdn.unknown-widget.net/c.js'),
+          req('d', 'https://img.unknown-widget.net/d.png', { resourceType: 'image' }),
+        ],
+      }),
+    ]);
+    const [o] = observationsOf(r);
+    expect(o?.params).toMatchObject({
+      service: 'unknown-widget.net',
+      host: 'cdn.unknown-widget.net',
+      hosts: 'cdn.unknown-widget.net, img.unknown-widget.net',
+      hostCount: 2,
+      requestCount: 4,
+    });
+    expect(body('de', 'unknown-host', o!.params)).toContain(
+      'wurden 4 Anfragen an 2 Hosts der Domain unknown-widget.net (cdn.unknown-widget.net, img.unknown-widget.net) beobachtet; sie wurden keinem Dienst des Dienstekatalogs zugeordnet',
+    );
+    expect(body('en', 'unknown-host', o!.params)).toContain(
+      '4 requests to 2 hosts of the domain unknown-widget.net (cdn.unknown-widget.net, img.unknown-widget.net) were observed',
+    );
+  });
+
+  it('unknown-host with one request: singular verb, the host named', () => {
+    const [o] = observationsOf(
+      run([phase('A', { requests: [req('a', 'https://cdn.unknown-widget.net/a.js')] })]),
+    );
+    expect(body('de', 'unknown-host', o!.params)).toContain(
+      'wurde 1 Anfrage an den Host cdn.unknown-widget.net beobachtet; sie wurde keinem Dienst',
+    );
+    expect(body('en', 'unknown-host', o!.params)).toContain(
+      '1 request to the host cdn.unknown-widget.net was observed',
+    );
+  });
+
+  it('third-party-resource names only the category of its service', () => {
+    const [o] = observationsOf(
+      run([phase('A', { requests: [req('a', 'https://browser.sentry-cdn.com/7.0.0/bundle.min.js')] })]),
+    );
+    expect(o).toMatchObject({
+      variant: 'third-party-resource',
+      params: { category: 'monitoring', requestCount: 1 },
+    });
+    const de = body('de', 'third-party-resource', o!.params);
+    expect(de).toContain('wurde 1 Anfrage an Sentry');
+    expect(de).toContain('(Kategorie laut Dienstekatalog: Fehleranalyse)');
+    expect(de).not.toMatch(/Zahlungsdienst|Einwilligungsverwaltung/);
+    expect(body('en', 'third-party-resource', o!.params)).toContain(
+      '1 request to Sentry (browser.sentry-cdn.com) was observed',
+    );
+  });
+
+  it('without any banner the text does not speak of an interaction with it', () => {
+    const requests = [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')];
+    const [none] = observationsOf(run([phase('A', { requests })]));
+    expect(none?.params.bannerFound).toBe(false);
+    expect(body('de', 'library-loaded', none!.params)).toMatch(
+      /^Vor jeder Interaktion \(kein Einwilligungsbanner gefunden\)/,
+    );
+    expect(body('en', 'library-loaded', none!.params)).toMatch(
+      /^Before any interaction \(no consent banner found\)/,
+    );
+
+    const [seen] = observationsOf(
+      run([phase('A', { requests })], { cmp: cmpWith({ phase: 'B', facts: [cmpFacts()] }) }),
+    );
+    expect(seen?.params.bannerFound).toBe(true);
+    expect(body('de', 'library-loaded', seen!.params)).toMatch(
+      /^Vor einer Interaktion mit dem Einwilligungsbanner/,
+    );
+  });
+
+  it('a font file of a host outside the catalog is left to EMBED-01; the other requests of the host stay', () => {
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://cdn.booking-widget.example/v1/sdk.js'),
+          req('b', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf', { resourceType: 'font' }),
+        ],
+      }),
+    ]);
+    expect(observationsOf(r).map((o) => [o.variant, o.params.requestCount])).toEqual([['unknown-host', 1]]);
+  });
+
+  it('a tracker inside the frame of an embedded map: attributed to the tracker, linked to the map finding', () => {
+    const frame = {
+      frameId: 'A-f2',
+      isMainFrame: false,
+      frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
+    };
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://www.google.com/maps/embed?pb=[redacted]', {
+            ...frame,
+            isNavigation: true,
+            resourceType: 'document',
+            pageUrl: CONTACT,
+          }),
+          req(
+            'b',
+            'https://region1.google-analytics.com/g/collect?v=2&tid=G-MAP1&cid=[redacted]&en=page_view',
+            {
+              ...frame,
+              resourceType: 'ping',
+              identifierPresent: true,
+              identifierNames: ['cid'],
+              pageUrl: CONTACT,
+            },
+          ),
+          req('c', 'https://helper.unknown-host.example/t.js', { ...frame, pageUrl: CONTACT }),
+        ],
+      }),
+    ]);
+    const obs = observationsOf(r);
+    // The unknown helper host of the frame is part of the map (EMBED-02), not a host of the site.
+    expect(obs.map((o) => o.subject)).toEqual(['google-analytics']);
+    expect(obs[0]).toMatchObject({
+      params: { embeddedCount: 1, embeddedIn: 'Google Maps' },
+      related: [{ checkId: 'EMBED-02', subject: 'google-maps', relation: 'embedded-in' }],
+    });
+    expect(body('de', obs[0]!.variant, obs[0]!.params)).toContain(
+      '1 dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes Google Maps.',
+    );
   });
 });

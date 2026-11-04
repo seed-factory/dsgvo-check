@@ -1,105 +1,142 @@
 # Befundtexte (de), Modul browser. ICU-ähnliche Vorlagen: {param}, plural, select.
 # Formulierungen: "beobachtet", "nicht gefunden in …", keine rechtlichen Bewertungen (Stoppwort-Test).
+# Titel und Handlungsempfehlungen gelten auch für die Zusammenfassung mehrerer Befunde: ein abweichender Parameter
+# wird dort zur Liste ("A, B und 2 weitere"), Zahlen werden addiert. Darum steht ein Name am Ende nach einem
+# Doppelpunkt, und `other` einer Auswahl ist der gemischte Fall.
 # Textentwurf: alle Texte sind Entwürfe und müssen vom Auftraggeber geprüft werden.
 draft: true
 messages:
   # CONSENT-01
   CONSENT-01.tracking-completed:
-    title: "Anfrage mit dauerhafter Kennung an {service} vor einer Interaktion"
+    title: "{requestCount, plural, one {Anfrage} other {Anfragen}} mit dauerhafter Kennung vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine abgeschlossene Anfrage an {service} ({host}) mit
-      einer dauerhaften Kennung beobachtet ({identifierKind, select, stored-match {Abgleich mit einem gespeicherten
-      Cookie oder Speichereintrag} persistent-param {Parameter laut Signatur im Dienstekatalog} user-supplied
-      {Nutzer- oder Klickkennung im Parameter} other {{identifierKind}}}; {requestCount, plural, one {# Anfrage}
-      other {# Anfragen}} auf {pageCount, plural, one {# Seite} other {# Seiten}}). Der Wert der Kennung wurde nicht
-      gespeichert.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde eine abgeschlossene Anfrage an {service} ({host}) mit einer
+      dauerhaften Kennung beobachtet ({identifierKind, select, stored-match {Abgleich mit einem gespeicherten Cookie
+      oder Speichereintrag} sent-cookie {mit der Anfrage gesendetes Cookie, laut Dienstekatalog eine Kennung}
+      persistent-param {Parameter laut Signatur im Dienstekatalog} user-supplied {Nutzer- oder Klickkennung im
+      Parameter} other {{identifierKind}}}; {requestCount, plural, one {# Anfrage} other {# Anfragen}} auf
+      {pageCount, plural, one {# Seite} other {# Seiten}}). Der Wert der Kennung wurde nicht gespeichert.{embeddedCount,
+      plural, =0 {} one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.} other { #
+      dieser Anfragen stammten aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.}}
   CONSENT-01.cookieless-ping:
-    title: "Anfrage ohne dauerhafte Kennung an {service} vor einer Interaktion"
+    title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne dauerhafte Kennung vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an {service} ({host}) beobachtet, für die
-      keine dauerhafte Kennung belegt ist ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde eine Anfrage an {service} ({host}) beobachtet, für die keine
+      dauerhafte Kennung belegt ist ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
       Speicherung abgelehnt} other {Kennung: {identifierKind, select, per-load {nicht als dauerhaft belegt} other
-      {keine erkannt}}}}; {pageCount, plural, one {# Seite} other {# Seiten}}). Ob eine solche Anfrage ein Zugriff
-      im Sinne von § 25 TDDDG ist, wurde nicht bewertet.
+      {keine erkannt}}}}; {requestCount, plural, one {# Anfrage} other {# Anfragen}} auf {pageCount, plural, one {#
+      Seite} other {# Seiten}}). Ob eine solche Anfrage ein Zugriff im Sinne von § 25 TDDDG ist, wurde nicht
+      bewertet.{embeddedCount, plural, =0 {} one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes
+      {embeddedIn}.} other { # dieser Anfragen stammten aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.}}
   CONSENT-01.first-party-proxy:
-    title: "First-party-Endpunkt mit Tracking-Signatur von {service} vor einer Interaktion"
+    title: "Eigener Endpunkt mit Tracking-Signatur vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an den eigenen Host {host} beobachtet,
-      deren Pfad und Parameter der Signatur von {service} im Dienstekatalog entsprechen (z. B. serverseitiges Tagging
-      oder Tag-Gateway). Eine serverseitige Weiterleitung ist passiv nicht feststellbar.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde eine Anfrage an den eigenen Host {host} beobachtet, deren Pfad und
+      Parameter der Signatur von {service} im Dienstekatalog entsprechen (z. B. serverseitiges Tagging oder
+      Tag-Gateway). Eine serverseitige Weiterleitung ist passiv nicht feststellbar.
   CONSENT-01.library-loaded:
-    title: "{service} vor einer Interaktion geladen"
+    title: "Vor einer Interaktion geladen: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Bibliothek oder ein Inhalt von {service} ({host})
-      geladen ({pageCount, plural, one {# Seite} other {# Seiten}}). Ein zugehöriger Ereignisversand wurde in diesem
-      Beleg nicht festgestellt.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde eine Bibliothek oder ein Inhalt von {service} ({host}) geladen
+      ({pageCount, plural, one {# Seite} other {# Seiten}}). Ein zugehöriger Ereignisversand wurde in diesem Beleg
+      nicht festgestellt.{embeddedCount, plural, =0 {} one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten
+      Dienstes {embeddedIn}.} other { # dieser Anfragen stammten aus dem Rahmen des eingebetteten Dienstes
+      {embeddedIn}.}}
   CONSENT-01.third-party-resource:
-    title: "Drittanbieter-Ressource von {service} vor einer Interaktion"
+    title: "{requestCount, plural, one {Drittanbieter-Ressource} other {Drittanbieter-Ressourcen}} vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurden {requestCount, plural, one {# Anfrage} other
-      {# Anfragen}} an {service} ({host}) beobachtet (Kategorie laut Dienstekatalog: CDN, Zahlungsdienst,
-      Einwilligungsverwaltung oder Fehleranalyse). Die Erforderlichkeit wurde nicht bewertet.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} {requestCount, plural, one {wurde # Anfrage} other {wurden # Anfragen}} an
+      {service} ({hosts}) beobachtet (Kategorie laut Dienstekatalog: {category, select, cdn {Content Delivery Network}
+      payment {Zahlungsdienst} consent-provider {Einwilligungsverwaltung} monitoring {Fehleranalyse} other
+      {{category}}}). Die Erforderlichkeit wurde nicht bewertet.{embeddedCount, plural, =0 {} one { # dieser Anfragen
+      stammte aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.} other { # dieser Anfragen stammten aus dem
+      Rahmen des eingebetteten Dienstes {embeddedIn}.}}
   CONSENT-01.unknown-host:
-    title: "Anfragen an nicht klassifizierten Host {service} vor einer Interaktion"
+    title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne Dienstzuordnung vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurden {requestCount, plural, one {# Anfrage} other
-      {# Anfragen}} an {host} beobachtet; die Domain {service} ist im Dienstekatalog nicht enthalten. Zweck und
-      Anbieter bitte manuell zuordnen.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} {requestCount, plural, one {wurde # Anfrage} other {wurden # Anfragen}} an
+      {hostCount, plural, one {den Host {hosts}} other {# Hosts der Domain {service} ({hosts})}} beobachtet;
+      {requestCount, plural, one {sie wurde} other {sie wurden}} keinem Dienst des Dienstekatalogs zugeordnet. Zweck
+      und Anbieter bitte manuell zuordnen.
   CONSENT-01.request-not-completed:
-    title: "Anfrage an {service} vor einer Interaktion, Antwort nicht belegt"
+    title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne belegte Antwort vor einer Interaktion: {service}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde eine Anfrage an {service} ({host}) gestartet; eine
-      Antwort wurde nicht beobachtet (z. B. vom Browser blockiert oder abgebrochen). Ein beantworteter Austausch ist
-      damit nicht belegt.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde eine Anfrage an {service} ({host}) gestartet; eine Antwort wurde nicht
+      beobachtet (z. B. vom Browser blockiert oder abgebrochen). Ein beantworteter Austausch ist damit nicht
+      belegt.{embeddedCount, plural, =0 {} one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes
+      {embeddedIn}.} other { # dieser Anfragen stammten aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.}}
 
   # CONSENT-02
   CONSENT-02.tracking-identifier-stored:
-    title: "Bekannte Analyse- oder Marketing-Kennung {name} vor einer Interaktion gespeichert"
+    title: "Bekannte Analyse- oder Marketing-Kennung vor einer Interaktion gespeichert: {name}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde die Speicherung von {name} ({storageKind}, {party})
-      beobachtet. Einordnung als Kennung der Kategorie Analyse/Marketing laut {dataset}. Werte wurden nicht
-      gespeichert.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde die Speicherung von {name} ({storageKind}, {party}) beobachtet.
+      Einordnung als Kennung der Kategorie Analyse/Marketing laut {dataset}. Werte wurden nicht gespeichert.
   CONSENT-02.unknown-third-party-persistent:
-    title: "{count, plural, one {Nicht klassifizierter dauerhafter Drittanbieter-Eintrag} other {# nicht klassifizierte dauerhafte Drittanbieter-Einträge}} vor einer Interaktion"
+    title: >-
+      {count, plural, one {{allKnown, select, true {Dauerhafter Eintrag von {services}} other {Dauerhafter
+      Drittanbieter-Eintrag}} ohne Einordnung als Kennung vor einer Interaktion: {names}} other {# dauerhafte
+      {allKnown, select, true {Einträge von {services}} other {Drittanbieter-Einträge}} ohne Einordnung als Kennung
+      vor einer Interaktion: {keys}{moreKeys, plural, =0 {} other { und # weitere}}}}
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {count, plural, one {#
-      Eintrag} other {# Einträgen}} durch Drittanbieter beobachtet, {count, plural, one {der} other {die}} in
-      {dataset} nicht als bekannte Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other
-      {sind}}: {names}. Zweck bitte manuell prüfen.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde die dauerhafte Speicherung von {count, plural, one {# Eintrag} other
+      {# Einträgen}} durch Drittanbieter beobachtet, {count, plural, one {der} other {die}} in {dataset} nicht als
+      Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other {sind}}.{knownCount, plural, =0 {}
+      other { Laut Dienstekatalog einem Dienst zugeordnet und dort nicht als Kennung geführt: {knownNames}.}}{unknownCount,
+      plural, =0 {} other { Im Dienstekatalog nicht geführt: {unknownNames}. Zweck bitte manuell prüfen.}}
   CONSENT-02.unknown-first-party-persistent:
-    title: "{count, plural, one {Nicht klassifizierter dauerhafter Eintrag} other {# nicht klassifizierte dauerhafte Einträge}} vor einer Interaktion"
+    title: >-
+      {count, plural, one {{allKnown, select, true {Dauerhafter Eintrag von {services}} other {Dauerhafter Eintrag}}
+      ohne Einordnung als Kennung vor einer Interaktion: {names}} other {# dauerhafte {allKnown, select, true
+      {Einträge von {services}} other {Einträge}} ohne Einordnung als Kennung vor einer Interaktion: {keys}{moreKeys,
+      plural, =0 {} other { und # weitere}}}}
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {count, plural, one {#
-      Eintrag} other {# Einträgen}} der eigenen Domain beobachtet, {count, plural, one {der} other {die}} in
-      {dataset} nicht als bekannte Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other
-      {sind}}: {names}. Zweck bitte manuell prüfen.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde die dauerhafte Speicherung von {count, plural, one {# Eintrag} other
+      {# Einträgen}} der eigenen Domain beobachtet, {count, plural, one {der} other {die}} in {dataset} nicht als
+      Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other {sind}}.{knownCount, plural, =0 {}
+      other { Laut Dienstekatalog einem Dienst zugeordnet und dort nicht als Kennung geführt: {knownNames}.}}{unknownCount,
+      plural, =0 {} other { Im Dienstekatalog nicht geführt: {unknownNames}. Zweck bitte manuell prüfen.}}
   CONSENT-02.cmp-cookie-with-uid:
-    title: "Cookie des Einwilligungsbanners {name} mit eindeutiger Kennung"
+    title: "Cookie des Einwilligungsbanners mit eindeutiger Kennung: {name}"
     body: >-
       Das Cookie {name} des Einwilligungsbanners ({storageKind}, {party}) enthält eine eindeutige Kennung. Der Wert
       wurde nicht gespeichert. Ob die Kennung für den Nachweis der Auswahl benötigt wird, wurde nicht bewertet.
   CONSENT-02.storage-rejected-or-attempted:
-    title: "Speicherversuch für {name} vor einer Interaktion nicht übernommen"
+    title: "Speicherversuch vor einer Interaktion nicht übernommen: {name}"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde ein Versuch beobachtet, {name} ({storageKind},
-      {party}) zu speichern; der Browser hat die Speicherung abgelehnt oder nicht bestätigt. Einordnung als Kennung
-      der Kategorie Analyse/Marketing laut {dataset}.
+      {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} other {Vor jeder Interaktion
+      (kein Einwilligungsbanner gefunden)}} wurde ein Versuch beobachtet, {name} ({storageKind}, {party}) zu speichern;
+      der Browser hat die Speicherung abgelehnt oder nicht bestätigt. Einordnung als Kennung der Kategorie
+      Analyse/Marketing laut {dataset}.
 
   # CONSENT-03
   CONSENT-03.no-banner-strong-tracking:
-    title: "Kein Einwilligungsbanner erkannt; Analyse- oder Marketing-Kennung beobachtet"
+    title: "Kein Einwilligungsbanner gefunden; Analyse- oder Marketing-Kennung beobachtet"
     body: >-
       Auf {pageCount, plural, one {# auswertbaren geprüften Seite} other {# auswertbaren geprüften Seiten}} wurde
-      kein Einwilligungsbanner erkannt. Gleichzeitig wurden vor einer Interaktion Anfragen mit dauerhafter Kennung
-      oder gespeicherte Analyse- oder Marketing-Kennungen beobachtet: {services}. Egress-Region:
-      {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
+      kein Einwilligungsbanner gefunden. Gleichzeitig wurden vor jeder Interaktion Anfragen mit dauerhafter Kennung
+      oder gespeicherte Analyse- oder Marketing-Kennungen beobachtet. Beteiligte Dienste laut Dienstekatalog:
+      {services}.{storedCount, plural, =0 {} one { Gespeichert wurde: {stored}.} other { Gespeichert wurden:
+      {stored}.}} Egress-Region: {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
   CONSENT-03.no-banner-consent-services:
-    title: "Kein Einwilligungsbanner erkannt; Analyse-, Marketing- oder eingebettete Dienste geladen"
+    title: "Kein Einwilligungsbanner gefunden; Analyse-, Marketing- oder eingebettete Dienste geladen"
     body: >-
       Auf {pageCount, plural, one {# auswertbaren geprüften Seite} other {# auswertbaren geprüften Seiten}} wurde
-      kein Einwilligungsbanner erkannt. Gleichzeitig wurden vor einer Interaktion Dienste der Kategorien Analyse,
-      Marketing oder eingebettete Inhalte mit Speicherung beobachtet: {services}. Egress-Region:
-      {regionAsserted, select, true {EWR laut Nutzerangabe} other {nicht angegeben}}.
+      kein Einwilligungsbanner gefunden. Gleichzeitig wurden vor jeder Interaktion Dienste beobachtet, die laut
+      Dienstekatalog zu den Kategorien Analyse, Marketing oder eingebettete Inhalte gehören: {services}.{storedCount,
+      plural, =0 { Eine Speicherung durch diese Dienste wurde nicht beobachtet.} one { Gespeichert wurde: {stored}.}
+      other { Gespeichert wurden: {stored}.}} Egress-Region: {regionAsserted, select, true {EWR laut Nutzerangabe}
+      other {nicht angegeben}}.
 
   # CONSENT-04
   CONSENT-04.blocking-no-reject:
@@ -153,66 +190,77 @@ messages:
   # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
-      {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert} other {Anfrage
-      mit dauerhafter Kennung an {service} nach bestätigter Ablehnung}}
+      {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert: {service}}
+      request {Anfragen mit dauerhafter Kennung nach bestätigter Ablehnung: {service}} both {Kennungen nach
+      bestätigter Ablehnung gesendet und gespeichert: {service}} other {Kennungen nach bestätigter Ablehnung
+      gesendet oder gespeichert: {service}}}
     body: >-
       {kind, select, storage {Nach bestätigter Ablehnung wurde eine neue Speicherung von {name} ({service})
       beobachtet; der Browser hat den Eintrag nach dem Klick angenommen. Werte wurden nicht gespeichert.} other {Nach
       bestätigter Ablehnung und erneutem Laden wurde eine neue, nach dem Klick gestartete Anfrage an {service}
-      ({host}) mit einer dauerhaften Kennung beobachtet ({pageCount, plural, one {# Seite} other {# Seiten}}).
-      Anfragen des Einwilligungsbanners zur Aktualisierung des Status sind ausgenommen.}}
+      ({host}) mit einer dauerhaften Kennung beobachtet ({pageCount, plural, one {# Seite} other {#
+      Seiten}}).{kind, select, both { Außerdem wurde nach dem Klick die Speicherung von {name} beobachtet; Werte
+      wurden nicht gespeichert.} other {}} Anfragen des Einwilligungsbanners zur Aktualisierung des Status sind
+      ausgenommen.}}
   CONSENT-05.cookieless-ping-after-reject:
-    title: "Anfrage ohne dauerhafte Kennung an {service} nach Ablehnung"
+    title: "Anfragen ohne dauerhafte Kennung nach Ablehnung: {service}"
     body: >-
       Nach bestätigter Ablehnung wurde eine nach dem Klick gestartete Anfrage an {service} ({host}) ohne belegte
       dauerhafte Kennung beobachtet ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
       Speicherung abgelehnt} other {Kennung nicht als dauerhaft belegt}}; {pageCount, plural, one {# Seite} other
       {# Seiten}}).
   CONSENT-05.connect-only-after-reject:
-    title: "Nur Verbindungsaufbau zu {host} nach Ablehnung"
+    title: "Nur Verbindungsaufbau nach Ablehnung: {host}"
     body: >-
       Nach bestätigter Ablehnung wurde ein Verbindungsaufbau zu {host} ({service}) protokolliert; ein konkreter
       Ereignisversand wurde daraus nicht festgestellt.
 
   # TRACK-01
   TRACK-01.service-inventory:
-    title: "{service} beobachtet (Inventar)"
+    title: "Inventar der beobachteten Dienste: {service}"
     body: >-
       {service} wurde beobachtet. Zustand je Zeitpunkt: vor einer Interaktion: {stageBeforeInteraction, select,
       loaded {geladen} initialised {initialisiert} event-sent {Ereignis gesendet} not-checked {nicht geprüft}
       other {nicht gefunden}}; nach Ablehnung: {stageAfterReject, select, loaded {geladen} initialised
       {initialisiert} event-sent {Ereignis gesendet} not-checked {nicht geprüft} other {nicht gefunden}}; nach
       Zustimmung: {stageAfterAccept, select, loaded {geladen} initialised {initialisiert} event-sent
-      {Ereignis gesendet} not-checked {nicht geprüft} other {nicht gefunden}}. „Nicht geprüft“ steht für einen
-      Zeitpunkt, zu dem keine Interaktion mit dem Einwilligungsbanner stattfand. Die Bewertung des Zeitpunkts
-      erfolgt in den verknüpften Befunden.
+      {Ereignis gesendet} not-checked {nicht geprüft} other {nicht gefunden}}.{initialisedWithoutRequest, select, true
+      { „Initialisiert“ ohne Anfrage zu einem Zeitpunkt beruht auf einer dann gespeicherten Kennung des Dienstes.}
+      other {}}{notChecked, select, true { „Nicht geprüft“ steht für einen Zeitpunkt, zu dem keine Ablehnung bzw.
+      Zustimmung im Einwilligungsbanner stattfand.} other {}} Die Bewertung des Zeitpunkts erfolgt in den verknüpften
+      Befunden.
 
   # EMBED-01
   EMBED-01.fonts-loaded:
-    title: "Externe Schriftarten von {service} geladen"
+    title: "Externe Schriftarten geladen: {service}"
     body: >-
-      Schriftdateien oder Stylesheets von {service} wurden von einem externen Server geladen, Zeitpunkt:
-      {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {vor
-      einer Interaktion mit dem Einwilligungsbanner}} ({pageCount, plural, one {# Seite} other {# Seiten}}).
+      {fontService, select, true {Schriftdateien oder Stylesheets von {service} wurden von einem externen Server
+      geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {afterReject,
+      select, true
+      {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor
+      einer Interaktion mit dem Einwilligungsbanner} other {vor jeder Interaktion, kein Einwilligungsbanner
+      gefunden}}}} ({pageCount, plural, one {# Seite} other {# Seiten}}).
   EMBED-01.preconnect-only:
-    title: "Nur Verbindungsvorbereitung zu {service}"
+    title: "Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}"
     body: >-
       Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
       Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
 
   # EMBED-02
   EMBED-02.maps-loaded:
-    title: "Externer Kartendienst {service} geladen"
+    title: "Externer Kartendienst geladen: {service}"
     body: >-
       Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte
       (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
       geladen, Zeitpunkt: {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
-      Ablehnung} other {vor einer Interaktion mit dem Einwilligungsbanner}} ({pageCount, plural, one {# Seite} other
-      {# Seiten}}).
+      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} other {vor
+      jeder Interaktion, kein Einwilligungsbanner gefunden}}}} ({pageCount, plural, one {# Seite} other {#
+      Seiten}}).{frameResourceCount, plural, =0 {} one { Dazu zählt # Anfrage des Kartenrahmens an Schriftdienste oder
+      Hilfshosts.} other { Dazu zählen # Anfragen des Kartenrahmens an Schriftdienste oder Hilfshosts.}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:
-    title: "{documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht gefunden"
+    title: "{documentKind, select, impressum {Impressum} privacy {Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} nicht gefunden"
     body: >-
       {documentKind, select, impressum {Ein Impressum} other {Eine Datenschutzerklärung}} wurde auf
       {pageTotal, plural, one {der # geprüften Seite} other {den # geprüften Seiten}} nicht per Link gefunden.
@@ -221,18 +269,18 @@ messages:
       select, true { Unter den üblichen Pfaden wurde {documentKind, select, impressum {es} other {sie}} ebenfalls nicht
       gefunden.} other {}}
   LEGAL-01.links-broken:
-    title: "Links auf {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} führen auf Fehlerseiten"
+    title: "{documentKind, select, impressum {Links auf das Impressum führen} privacy {Links auf die Datenschutzerklärung führen} other {Links auf Impressum und Datenschutzerklärung führen}} auf Fehlerseiten"
     body: >-
       Links auf {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} führen auf
       Fehlerseiten (4xx, Soft-404 oder Seite ohne erkennbaren Inhalt). Über eine geprüfte Zwischenseite erreichbar:
       {reachableViaHop, select, true {ja} other {nein}}.
   LEGAL-01.link-missing-on-some-pages:
-    title: "Link auf {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht auf allen Seiten"
+    title: "{documentKind, select, impressum {Link auf das Impressum} privacy {Link auf die Datenschutzerklärung} other {Links auf Impressum und Datenschutzerklärung}} nicht auf allen Seiten"
     body: >-
       Ein Link auf {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} wurde auf
       {missingCount} von {pageTotal} geprüften Seiten nicht gefunden.
   LEGAL-01.reachable-via-intermediate:
-    title: "{documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nur über Zwischenseite oder Standardpfad erreichbar"
+    title: "{documentKind, select, impressum {Impressum} privacy {Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} nur über Zwischenseite oder Standardpfad erreichbar"
     body: >-
       {documentKind, select, impressum {Das Impressum} other {Die Datenschutzerklärung}} wurde auf den geprüften
       Seiten nicht per direktem Link gefunden, sondern nur {foundVia, select, hop {über eine Zwischenseite (z. B.
@@ -240,10 +288,10 @@ messages:
   LEGAL-01.footer-covered-by-banner:
     title: "Seitenfuß vom Einwilligungsbanner verdeckt"
     body: >-
-      Der Einwilligungsbanner verdeckte den Seitenfuß; im Banner selbst wurde kein Link auf
+      Das Einwilligungsbanner verdeckte den Seitenfuß; im Banner selbst wurde kein Link auf
       {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} gefunden.
   LEGAL-01.unresolved:
-    title: "Linkziel für {documentKind, select, impressum {Impressum} other {Datenschutzerklärung}} nicht aufgelöst"
+    title: "{documentKind, select, impressum {Linkziel für das Impressum} privacy {Linkziel für die Datenschutzerklärung} other {Linkziele für Impressum und Datenschutzerklärung}} nicht aufgelöst"
     body: >-
       Das Linkziel für {documentKind, select, impressum {das Impressum} other {die Datenschutzerklärung}} konnte auf
       {missingCount} von {pageTotal} geprüften Seiten nicht eindeutig aufgelöst werden (z. B. Link auf # oder
@@ -251,15 +299,17 @@ messages:
 
   # PRIV-01
   PRIV-01.not-named:
-    title: "{service} nicht gefunden in der Datenschutzerklärung"
+    title: "Nicht gefunden in der Datenschutzerklärung: {service}"
     body: >-
       Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl} ({partCount, plural, one {# Abschnitt} other
       {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht vollständig}})
-      wurde keine Nennung von {service}, des Anbieters, der Domains oder einer passenden Kategoriebeschreibung
-      gefunden. Der Dienst wurde auf
-      {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im Text wurden nicht ausgewertet.
+      wurde keine Nennung gefunden, die {service} zuzuordnen ist. Gesucht wurden der Dienstname mit bekannten
+      Schreibweisen, die Firmennamen laut Dienstekatalog ({companies}), die Domains des Dienstes und eine passende
+      Kategoriebeschreibung. Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung von
+      {service}. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im
+      Text wurden nicht ausgewertet.
   PRIV-01.category-only:
-    title: "Nur Kategoriebeschreibung für {service} gefunden"
+    title: "Nur Kategoriebeschreibung gefunden: {service}"
     body: >-
       In der Datenschutzerklärung unter {policyUrl} wurde eine Beschreibung der Kategorie {category, select,
       analytics {Webanalyse} ads {Werbung} session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management}
@@ -268,17 +318,27 @@ messages:
       {soziale Netzwerke} reviews {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other
       {{category}}} gefunden; eine eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
   PRIV-01.ambiguous-match:
-    title: "Nennung von {service} nur in nicht angezeigtem Text"
+    title: "Nennung nur in nicht angezeigtem Text: {service}"
     body: >-
       {service} wurde in der Datenschutzerklärung unter {policyUrl} nur in einem auf der Seite nicht angezeigten
       oder keinem Abschnitt zuordenbaren Textteil gefunden. Bitte manuell prüfen.
 
+# Rechtlicher Hintergrund je Prüfung; ein Schlüssel `<Prüfung>.<Variante>` (oder `.<Variantengruppe>`) ersetzt ihn für
+# die Variante, deren Einordnung von der übrigen Prüfung abweicht.
 legalNotes:
   CONSENT-01:
     text: >-
       § 25 Abs. 1 TDDDG; Art. 6 DSGVO; EuGH C-673/17 (Planet49); VG Hannover 10 A 5385/22. Für Anfragen ohne
       Speicherung oder Auslesen von Informationen auf dem Endgerät ist die Einordnung umstritten.
     status: contested
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-01.tracking-completed:
+    text: >-
+      § 25 Abs. 1 TDDDG; Art. 6 DSGVO; EuGH C-673/17 (Planet49); BGH I ZR 7/16; VG Hannover 10 A 5385/22. Die
+      Anfrage trug eine dauerhafte Kennung, die auf dem Endgerät gespeichert oder von dort ausgelesen wurde. Ob eine
+      Ausnahme nach § 25 Abs. 2 TDDDG greift, wird nicht automatisch festgestellt.
+    status: authority-consensus
     reviewedAt: null
     reviewBy: null
   CONSENT-02:
@@ -301,6 +361,20 @@ legalNotes:
       Art. 4 Nr. 11, Art. 7 DSGVO; § 25 TDDDG; DSK Orientierungshilfe Digitale Dienste; OLG Köln 6 U 80/23;
       VG Hannover 10 A 5385/22. Für nicht blockierende Dialoge und Pur-Abo-Modelle ist die Einordnung umstritten.
     status: court-appellate
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-04.nonblocking-no-reject:
+    text: >-
+      Art. 4 Nr. 11, Art. 7 DSGVO; § 25 TDDDG; DSK Orientierungshilfe Digitale Dienste. Ob ein Dialog, der die
+      Seitennutzung nicht blockiert, eine Ablehnoption auf der ersten Ebene braucht, ist umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  CONSENT-04.pur-abo:
+    text: >-
+      Art. 4 Nr. 11, Art. 7 Abs. 4 DSGVO; § 25 TDDDG; DSK Bewertung von Pur-Abo-Modellen auf Websites. Die
+      Einordnung von Modellen aus Zustimmung oder kostenpflichtigem Abonnement ist umstritten.
+    status: contested
     reviewedAt: null
     reviewBy: null
   CONSENT-05:
@@ -343,3 +417,98 @@ legalNotes:
     status: contested
     reviewedAt: null
     reviewBy: null
+
+# Handlungsempfehlungen je Variante: kurz, konkret, ohne rechtliche Wertung. Vorlagen mit den Parametern des Befunds;
+# sie gelten auch für mehrere Befunde zugleich (Namen als Liste), daher ohne "dieser Dienst" und ohne Bezug auf den Titel.
+actions:
+  CONSENT-01.tracking-completed:
+    text: "Laden Sie {service} erst nach einer Einwilligung, zum Beispiel über die Blockierfunktion {bannerFound, select, true {Ihres Einwilligungsbanners} other {eines Einwilligungsbanners}} oder des Tag-Managers."
+  CONSENT-01.library-loaded:
+    text: "Prüfen Sie, ob Skripte und Inhalte von {service} vor einer Einwilligung nötig sind, und lassen Sie sie sonst über {bannerFound, select, true {das Einwilligungsbanner} other {ein Einwilligungsbanner}} blockieren."
+  CONSENT-01.first-party-proxy:
+    text: "Prüfen Sie, ob Ihre eigenen Endpunkte mit der Signatur von {service} Analyse- oder Marketingdaten weitergeben, und starten Sie sie dann erst nach einer Einwilligung."
+  CONSENT-01.cookieless-ping:
+    text: "Prüfen Sie, ob die Anfragen an {service} erst nach einer Einwilligung gesendet werden sollen, und stimmen Sie die Einstellung mit dem Anbieter ab."
+  CONSENT-01.third-party-resource:
+    text: "Prüfen Sie, ob die externen Inhalte von {service} nötig sind, oder liefern Sie sie vom eigenen Server aus. Sonst kein Handlungsbedarf."
+  CONSENT-01.unknown-host:
+    text: "Klären Sie, zu welchem Dienst die Anfragen an {service} gehören (zum Beispiel Ihre Website-Plattform oder ein eingebundenes Widget), nennen Sie ihn in Ihrer Datenschutzerklärung und laden Sie ihn bei Bedarf erst nach einer Einwilligung."
+  CONSENT-01.request-not-completed:
+    text: "Prüfen Sie, ob die Anfragen an {service} bei erfolgreicher Verbindung Daten übermitteln würden, und lassen Sie sie dann erst nach einer Einwilligung zu."
+  CONSENT-02.tracking-identifier-stored:
+    text: "Setzen Sie {name} erst nach einer Einwilligung, zum Beispiel indem die zugehörigen Dienste bis dahin blockiert werden."
+  CONSENT-02.unknown-third-party-persistent:
+    text: >-
+      {knownCount, plural, =0 {} other {Laden Sie {services} erst nach einer Einwilligung oder nach einem Klick der
+      Besucher (bei eingebetteten Inhalten wie Videos zum Beispiel mit einer Zwei-Klick-Lösung), damit die Einträge
+      nicht vorher gespeichert werden.}}{unknownCount, plural, =0 {} other {{knownCount, plural, =0 {} other { }}Klären
+      Sie, welche Dienste die im Dienstekatalog nicht geführten Einträge setzen, und lassen Sie sie erst nach einer
+      Einwilligung speichern, falls die Seite sie nicht für ihren Betrieb braucht.}}
+  CONSENT-02.unknown-first-party-persistent:
+    text: >-
+      {knownCount, plural, =0 {} other {Prüfen Sie, ob {services} die Einträge vor einer Einwilligung speichern muss,
+      und laden Sie den Dienst sonst erst nach einer Einwilligung.}}{unknownCount, plural, =0 {} other {{knownCount,
+      plural, =0 {} other { }}Prüfen Sie, wofür die im Dienstekatalog nicht geführten Einträge Ihrer Seite dienen.
+      Braucht die Seite sie nicht für ihren Betrieb, speichern Sie sie erst nach einer Einwilligung.}}
+  CONSENT-02.cmp-cookie-with-uid:
+    text: "Fragen Sie beim Anbieter des Einwilligungsbanners nach, ob die Kennung in {name} für den Nachweis der Auswahl nötig ist. Sonst kein Handlungsbedarf."
+  CONSENT-02.storage-rejected-or-attempted:
+    text: "Prüfen Sie, warum die Seite vor einer Einwilligung versucht, {name} zu speichern, und verschieben Sie das auf die Zeit nach der Einwilligung."
+  CONSENT-03.no-banner-strong-tracking:
+    text: "Binden Sie ein Einwilligungsbanner ein oder entfernen Sie die Analyse- und Marketingdienste ({services}), bis eine Einwilligung eingeholt werden kann."
+  CONSENT-03.no-banner-consent-services:
+    text: "Prüfen Sie, ob die geladenen Dienste ({services}) eine Einwilligung brauchen, und binden Sie dann ein Einwilligungsbanner ein oder entfernen Sie die Dienste."
+  CONSENT-04.blocking-no-reject:
+    text: "Ergänzen Sie auf der ersten Ebene des Banners eine gut sichtbare Option zum Ablehnen, die genauso leicht erreichbar ist wie das Zustimmen."
+  CONSENT-04.close-means-accept:
+    text: "Stellen Sie im Banner ein, dass das Schließen des Dialogs nicht als Zustimmung gilt, und prüfen Sie die Einstellung im Test."
+  CONSENT-04.reject-not-actionable:
+    text: "Prüfen Sie, ob die Ablehnoption auf allen Bildschirmgrößen sichtbar und bedienbar ist, und korrigieren Sie Gestaltung oder Position."
+  CONSENT-04.reject-ineffective:
+    text: "Prüfen Sie manuell, ob die Ablehnung im Banner wirklich gespeichert wird, und wenden Sie sich bei Problemen an den Anbieter des Banners."
+  CONSENT-04.consent-without-action:
+    text: "Stellen Sie im Banner ein, dass optionale Kategorien ohne Auswahl der Besucher auf „abgelehnt“ stehen."
+  CONSENT-04.reject-as-link:
+    text: "Prüfen Sie manuell, ob die Ablehnoption genauso auffällig dargestellt ist wie die Zustimmung, und gestalten Sie sie sonst als gleichwertige Schaltfläche."
+  CONSENT-04.nonblocking-no-reject:
+    text: "Prüfen Sie manuell, ob das Banner eine Ablehnoption bietet, und ergänzen Sie sie auf der ersten Ebene, falls sie fehlt."
+  CONSENT-04.no-choice-at-first-layer:
+    text: "Prüfen Sie das Banner manuell und bieten Sie auf der ersten Ebene sowohl Zustimmen als auch Ablehnen an."
+  CONSENT-04.pur-abo:
+    text: "Prüfen Sie manuell, ob Zustimmung oder Abonnement für Besucher klar und fair dargestellt sind. Sonst kein Handlungsbedarf."
+  CONSENT-04.banner-not-recognized:
+    text: "Prüfen Sie das Einwilligungsbanner manuell: Gibt es eine gleichwertige Ablehnoption, und wird sie beachtet?"
+  CONSENT-04.cmp-not-supported:
+    text: "Prüfen Sie das Einwilligungsbanner ({cmp}) manuell, da das Werkzeug es nicht auswertet."
+  CONSENT-05.tracking-after-reject:
+    text: "Stellen Sie sicher, dass nach einer Ablehnung keine Anfragen mit Kennung an {service} gesendet und keine Kennungen gespeichert werden, und testen Sie den Ablauf nach jeder Änderung."
+  CONSENT-05.cookieless-ping-after-reject:
+    text: "Prüfen Sie, ob nach einer Ablehnung noch Anfragen an {service} gesendet werden sollen, und blockieren Sie sie sonst bis zu einer Einwilligung."
+  CONSENT-05.connect-only-after-reject:
+    text: "Prüfen Sie, ob die Verbindungen zu {host} nach einer Ablehnung nötig sind. Sonst kein Handlungsbedarf."
+  TRACK-01.service-inventory:
+    text: "Kein Handlungsbedarf, sofern {service} gewollt und in der Datenschutzerklärung genannt ist."
+  EMBED-01.fonts-loaded:
+    text: "{fontService, select, true {Laden Sie die Schriften von {service} vom eigenen Server statt vom externen Anbieter.} false {Prüfen Sie, welche Einbindung die Schriftdateien von {service} lädt, und liefern Sie sie vom eigenen Server aus oder laden Sie die Einbindung erst nach einer Einwilligung.} other {Liefern Sie die Schriften von {service} vom eigenen Server aus oder laden Sie die Einbindung, die sie lädt, erst nach einer Einwilligung.}}"
+  EMBED-01.preconnect-only:
+    text: "Entfernen Sie die Verbindungsvorbereitung zu {service}, wenn Sie die Schriften nicht von dort laden."
+  EMBED-02.maps-loaded:
+    text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
+  LEGAL-01.document-not-found:
+    text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} gut sichtbar im Seitenfuß jeder Seite."
+  LEGAL-01.links-broken:
+    text: "Korrigieren Sie die Links auf {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}}, sodass sie auf die richtigen Seiten führen."
+  LEGAL-01.link-missing-on-some-pages:
+    text: "{documentKind, select, impressum {Ergänzen Sie den Link auf das Impressum auf den Seiten, auf denen er fehlt,} privacy {Ergänzen Sie den Link auf die Datenschutzerklärung auf den Seiten, auf denen er fehlt,} other {Ergänzen Sie die Links auf Impressum und Datenschutzerklärung auf den Seiten, auf denen sie fehlen,}} am besten über eine gemeinsame Fußzeile."
+  LEGAL-01.reachable-via-intermediate:
+    text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} direkt, ohne Umweg über eine Zwischenseite."
+  LEGAL-01.footer-covered-by-banner:
+    text: "Sorgen Sie dafür, dass das Banner den Seitenfuß nicht verdeckt, oder verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} auch im Banner."
+  LEGAL-01.unresolved:
+    text: "Prüfen Sie manuell, ob die Links auf {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} im Browser funktionieren."
+  PRIV-01.not-named:
+    text: "Nennen Sie {service} mit Zweck und Anbieter in Ihrer Datenschutzerklärung oder entfernen Sie nicht benötigte Dienste von der Seite."
+  PRIV-01.category-only:
+    text: "Prüfen Sie, ob die Datenschutzerklärung {service} ausreichend konkret nennt, und ergänzen Sie sonst den Namen des Dienstes und des Anbieters."
+  PRIV-01.ambiguous-match:
+    text: "Prüfen Sie manuell, ob die Datenschutzerklärung {service} im sichtbaren Text nennt."

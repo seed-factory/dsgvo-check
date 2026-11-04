@@ -43,9 +43,11 @@ messages:
   TLS-01.https-unavailable:
     title: "Inhalte nur über http nutzbar"
     body: >-
-      {url} liefert Inhalte unverschlüsselt über http aus{downgrade, select, yes { (nach einer Umleitung über https
-      zurück auf http)} other {}}. Über https war {host} {reason, select, unavailable {nicht erreichbar} invalid {nur
-      mit einem ungültigen Zertifikat erreichbar} other {nicht nutzbar}}. Seitenaufrufe und Eingaben werden damit
+      {downgrade, select, yes {{url} leitet über https zurück auf http um; {page} liefert Inhalte unverschlüsselt
+      über http aus.} other {{redirected, select, yes {{url} leitet nur auf {page} weiter (ebenfalls http); dort
+      werden Inhalte unverschlüsselt über http ausgeliefert.} other {{url} liefert Inhalte unverschlüsselt über http
+      aus.}}}} Über https war {host} {reason, select, unavailable {nicht erreichbar} invalid {nur mit einem
+      ungültigen Zertifikat erreichbar} other {nicht nutzbar}}. Seitenaufrufe und Eingaben werden damit
       unverschlüsselt übertragen. Empfehlung: ein gültiges Zertifikat einrichten und http dauerhaft (301 oder 308)
       auf https umleiten.
   TLS-01.form-on-http-page:
@@ -58,22 +60,27 @@ messages:
   TLS-01.no-redirect:
     title: "Keine Umleitung von http auf https"
     body: >-
-      {url} liefert Inhalte über http aus {downgrade, select, yes {– die Weiterleitung führt über https zurück auf
-      http –} other {und leitet nicht auf https um,}} obwohl {host} über https erreichbar ist. Wer die Adresse mit
-      http:// aufruft, bleibt auf der unverschlüsselten Seite. Empfehlung: http dauerhaft (301 oder 308) auf https
-      desselben Hosts umleiten.
+      {downgrade, select, yes {{url} leitet über https zurück auf http um; {page} liefert Inhalte über http aus,}
+      other {{redirected, select, yes {{url} leitet nur auf {page} weiter (ebenfalls http); dort werden Inhalte über
+      http ausgeliefert,} other {{url} liefert Inhalte über http aus und leitet nicht auf https um,}}}} obwohl
+      {host} über https erreichbar ist. Wer die Adresse mit http:// aufruft, bleibt auf der unverschlüsselten Seite.
+      Empfehlung: http dauerhaft (301 oder 308) auf https desselben Hosts umleiten.
   TLS-01.client-side-redirect-only:
     title: "Umleitung auf https nur im Seiteninhalt"
     body: >-
-      {url} leitet nicht per HTTP-Statuscode auf https um, sondern erst im Seiteninhalt ({kind, select, meta
+      {redirected, select, yes {{url} leitet nur auf {page} weiter (ebenfalls http). Diese Seite leitet} other
+      {{url} leitet}} nicht per HTTP-Statuscode auf https um, sondern erst im Seiteninhalt ({kind, select, meta
       {Meta-Refresh} js {JavaScript} other {Seiteninhalt}}). Bis dahin wird die Seite unverschlüsselt geladen.
       Empfehlung: serverseitige Umleitung mit 301 oder 308.
   TLS-01.redirect-chain-detail:
-    title: "Umleitung auf https über einen Umweg"
+    title: >-
+      {reason, select, other-host {Umleitung von http direkt auf einen anderen Host} http-first-hop {Umleitung auf
+      https über einen Umweg} other {Umleitung von http nicht direkt auf https desselben Hosts}}
     body: >-
-      {reason, select, other-host {Die erste Umleitung von {url} führt auf {location} (anderer Host).}
-      other {Die erste Umleitung von {url} führt auf {location}; https wird erst danach erreicht.}}
-      Für die HSTS-Preload-Liste wird eine direkte Umleitung auf https desselben Hosts erwartet.
+      {reason, select, other-host {Die erste Umleitung von {url} führt auf {location} (anderer Host); https auf
+      {host} selbst wird dabei übersprungen.} other {Die erste Umleitung von {url} führt auf {location}; https wird
+      erst danach erreicht.}} Für die HSTS-Preload-Liste wird eine direkte Umleitung auf https desselben Hosts
+      erwartet.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Zertifikat von {host} nicht gültig"
@@ -82,11 +89,14 @@ messages:
       Node.js-Version} system {Zertifikatsspeicher des Systems} test {Test-Zertifizierungsstelle} other
       {{trustStore}}}) ergab:{expired, select, yes { Das Zertifikat ist seit {notAfter} abgelaufen.} other
       {}}{notYetValid, select, yes { Das Zertifikat ist zum Zeitpunkt des Scans noch nicht gültig.} other
-      {}}{nameMismatch, select, yes { Das Zertifikat ist nicht für {host} ausgestellt, sondern für: {names}. Das ist
-      typisch für ein Standardzertifikat des Hosters.} other {}}{selfSigned, select, yes { Das Zertifikat ist selbst
-      signiert.} other {}}{untrustedRoot, select, yes { Die Zertifikatskette (Aussteller: {issuer}) endet nicht bei
-      einer bekannten Stammzertifizierungsstelle.} other {}}{otherError, select, yes { Die Prüfung ist
-      fehlgeschlagen ({error}).} other {}} Browser zeigen in der Regel eine Warnseite oder blockieren den Aufruf.
+      {}}{nameMismatch, select, yes { {nameSource, select, san {Das Zertifikat ist nicht für {host} ausgestellt,
+      sondern für: {names}.} cn {Das Zertifikat enthält keine alternativen Namen (Subject Alternative Name) und nennt
+      nur im Feld CN: {names}. Browser prüfen den Hostnamen nur gegen die alternativen Namen.} other {Das Zertifikat
+      nennt keinen Hostnamen.}} Das ist typisch für ein Standardzertifikat des Hosters.} other {}}{selfSigned,
+      select, yes { Das Zertifikat ist selbst signiert.} other {}}{untrustedRoot, select, yes { Die
+      Zertifikatskette (Aussteller: {issuer}) endet nicht bei einer bekannten Stammzertifizierungsstelle.} other
+      {}}{otherError, select, yes { Die Prüfung ist fehlgeschlagen ({error}).} other {}} Browser zeigen in der Regel
+      eine Warnseite oder blockieren den Aufruf.
       Empfehlung: ein gültiges Zertifikat für {host} einrichten und die automatische Verlängerung prüfen.
   TLS-02.chain-incomplete:
     title: "Zertifikatskette von {host} unvollständig"
@@ -129,3 +139,55 @@ legalNotes:
     status: technical
     reviewedAt: null
     reviewBy: null
+
+# Handlungsempfehlungen je Variante: kurz, konkret, ohne rechtliche Wertung. Vorlagen wie die Befundtexte, mit den
+# Parametern des Befunds; auf der ersten Seite teilen sich die Befunde einer Meldung einen Eintrag, ein abweichender
+# Parameter ist dort eine Liste und landet in einem select im Zweig other.
+actions:
+  HDR-01.hsts-missing:
+    text: "Senden Sie den Header Strict-Transport-Security mit einem sinnvollen max-age (zum Beispiel über die Webserver-Konfiguration)."
+  HDR-01.anti-framing-missing:
+    text: "Setzen Sie im Webserver den Header X-Frame-Options oder die CSP-Direktive frame-ancestors, damit fremde Seiten Ihre Seite nicht einbetten."
+  HDR-01.referrer-policy-permissive:
+    text: "Setzen Sie die Referrer-Policy auf einen restriktiveren Wert, zum Beispiel strict-origin-when-cross-origin."
+  # One finding per header; several findings of the front page share the `other` branch with the list of headers.
+  HDR-01.header-missing:
+    text: >-
+      {mechanism, select, content-security-policy {Führen Sie eine Content-Security-Policy schrittweise ein: zuerst
+      als Header Content-Security-Policy-Report-Only, nach Prüfung der Meldungen als Content-Security-Policy.}
+      x-content-type-options {Setzen Sie in der Webserver-Konfiguration den Header X-Content-Type-Options mit dem
+      Wert nosniff.} permissions-policy {Setzen Sie in der Webserver-Konfiguration den Header Permissions-Policy und
+      schalten Sie nicht benötigte Funktionen ab, zum Beispiel camera=(), microphone=(), geolocation=().}
+      referrer-policy {Setzen Sie in der Webserver-Konfiguration den Header Referrer-Policy, zum Beispiel auf
+      strict-origin-when-cross-origin.} other {Ergänzen Sie in der Webserver-Konfiguration die Header {header};
+      passende Werte nennt der ausführliche Bericht.}}
+  TLS-01.https-unavailable:
+    text: "Richten Sie für die Seite ein gültiges Zertifikat ein und liefern Sie sie ausschließlich über https aus."
+  TLS-01.form-on-http-page:
+    text: "Liefern Sie Seiten mit Formularen nur über https aus und leiten Sie http dauerhaft auf https um."
+  TLS-01.no-redirect:
+    text: "Richten Sie im Webserver eine dauerhafte Weiterleitung (301 oder 308) von http auf https desselben Hosts ein."
+  TLS-01.client-side-redirect-only:
+    text: "Leiten Sie auf Serverebene per Statuscode 301 auf https um, statt erst im Seiteninhalt."
+  TLS-01.redirect-chain-detail:
+    text: >-
+      {reason, select, other-host {Wenn die Domain in die HSTS-Preload-Liste aufgenommen werden soll: Leiten Sie
+      http zuerst auf https desselben Hosts um (mit gültigem Zertifikat) und erst von dort auf den anderen Host.}
+      http-first-hop {Leiten Sie http im ersten Schritt direkt auf https desselben Hosts um, ohne Zwischenschritt
+      über http.} other {Leiten Sie http im ersten Schritt auf https desselben Hosts um; weitere Umleitungen erst
+      danach.}}
+  TLS-02.certificate-invalid:
+    text: >-
+      {reason, select, expired {Erneuern Sie das Zertifikat und prüfen Sie, ob die automatische Verlängerung
+      funktioniert.} not-yet-valid {Prüfen Sie den Gültigkeitsbeginn des Zertifikats und die Uhrzeit des Servers.}
+      name-mismatch {Richten Sie für jeden betroffenen Host ein Zertifikat ein, das dessen Namen enthält, zum
+      Beispiel über Ihren Hoster.} self-signed {Ersetzen Sie das selbst signierte Zertifikat durch eines einer
+      anerkannten Zertifizierungsstelle.} untrusted-root {Verwenden Sie ein Zertifikat einer anerkannten
+      Zertifizierungsstelle und liefern Sie die vollständige Kette aus.} other {Erneuern Sie das Zertifikat oder
+      korrigieren Sie die Konfiguration, sodass Browser es ohne Warnung akzeptieren.}}
+  TLS-02.chain-incomplete:
+    text: "Hinterlegen Sie auf dem Server die vollständige Zertifikatskette inklusive Zwischenzertifikat."
+  TLS-02.certificate-expiring:
+    text: "Erneuern Sie das Zertifikat jetzt und prüfen Sie, ob die automatische Verlängerung funktioniert."
+  TLS-02.certificate-expiry-approaching:
+    text: "Prüfen Sie, ob die automatische Verlängerung des Zertifikats eingerichtet ist und rechtzeitig läuft."

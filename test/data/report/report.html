@@ -40,7 +40,7 @@
         color:var(--fg);
         font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif
       }
-      header.top,main,footer{max-width:1120px;margin:0 auto;padding:16px 20px}
+      header.top,main{max-width:1120px;margin:0 auto;padding:16px 20px}
       header.top{border-bottom:1px solid var(--line)}
       h1{font-size:1.6em;margin:.2em 0}
       h2{
@@ -61,7 +61,8 @@
         border-radius:4px;
         padding:0 .3em
       }
-      code.url{word-break:break-all;overflow-wrap:anywhere}
+      code.url{overflow-wrap:anywhere}
+      code.id,span.id{white-space:nowrap}
       .muted{color:var(--muted);font-size:.92em}
       .stamp{
         display:inline-block;
@@ -92,7 +93,14 @@
         margin:.6em 0
       }
       dl.kv dt{color:var(--muted)}
+      li.ev dl.kv{grid-template-columns:12em 1fr;margin:.3em 0 0}
+      li.ev .ev-start dl.kv{margin-top:.3em}
       dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+      #hinweis{font-size:.9em}
+      dl.notice{grid-template-columns:10.5em 1fr;gap:.35em 1.2em;margin:.3em 0}
+      dl.notice dt{color:var(--fg);font-weight:600}
+      .notice-group h3{margin:1.1em 0 .4em;padding-bottom:.2em;border-bottom:1px solid var(--line)}
+      @media (max-width:600px){dl.notice{grid-template-columns:1fr;gap:.1em}dl.notice dd{margin-bottom:.6em}}
       dl.counts{display:flex;flex-wrap:wrap;gap:.6em;margin:.4em 0}
       .count{
         border:1px solid var(--line);
@@ -171,14 +179,18 @@
       tr.st-error td{background:var(--card)}
       ul.diags{padding-left:1.2em}
       ul.diags li{margin:.5em 0}
-      footer{color:var(--muted);font-size:.85em;border-top:1px solid var(--line);margin-top:2em}
+      main>footer{color:var(--muted);font-size:.85em;border-top:1px solid var(--line);margin-top:2em;padding-top:16px}
       @page{size:A4;margin:18mm 14mm 22mm}
       @media print{
         nav{display:none}
         details,details::details-content{display:block;content-visibility:visible}
         details>summary{display:block;cursor:auto;color:var(--fg);font-weight:600}
-        .finding,details.legal,li.action{break-inside:avoid}
-        .front-full{break-after:page}
+        h2,h3,h4,details>summary,.ev-head,.ev-sample{break-after:avoid}
+        h2,h3,h4,details.legal,li.action,li.ev.compact,.ev-start,tr,figure.shot,dl.kv>dd,#dienste table{break-inside:avoid}
+        dl.kv>dd:has(code.url),dl.kv>dd:has(>div+div){break-inside:auto}
+        p{orphans:3;widows:3}
+        main>footer{break-before:avoid;margin-top:.5em;padding-top:.25em}
+        #hinweis dl.kv>dd{break-inside:auto;orphans:2;widows:2}
         :root{
           color-scheme:light;
           --fg:#1f2328;
@@ -200,7 +212,8 @@
         {{t "report.doc.heading"}}
         {{#if draft}} <span class="stamp">{{draftStamp}}</span>{{/if}}
       </h1>{{nl}}
-      <p><code class="url">{{target}}</code></p>{{nl}}
+      <p><code class="url">{{url target}}</code></p>{{nl}}
+      <p class="muted">{{scanMeta}}</p>{{nl}}
       <nav>
         <strong>{{t "report.nav.label"}}</strong>
         <ul>{{nl}}
@@ -224,10 +237,10 @@
           <h2>{{t "report.section.overview"}}</h2>{{nl}}
           {{#if failure}}<p class="failure">{{failure}}</p>{{/if}}{{nl}}
           <p class="lead">
-            {{#each overview as sentence}}{{sentence}} {{/each}}
+            {{#each overview as sentence}}{{prose sentence}} {{/each}}
           </p>{{nl}}
           {{#if sandboxOff}}<p class="warn">{{t "report.summary.sandboxOff"}}</p>{{/if}}{{nl}}
-          {{#if checkErrors}}<p class="warn">{{checkErrors}}</p>{{/if}}{{nl}}
+          {{#if checkErrors}}<p class="warn">{{prose checkErrors}}</p>{{/if}}{{nl}}
         </section>{{nl}}
         <section id="handlung">{{nl}}
           <h2>{{t "report.section.actions"}}</h2>{{nl}}
@@ -236,9 +249,9 @@
               {{#each actions as action}}
                 <li class="action sev-{{action.severity}}">
                   <p class="action-title">
-                    <span class="badge sev-{{action.severity}}">{{action.severityLabel}}</span> <strong>{{action.title}}</strong>
+                    <span class="badge sev-{{action.severity}}">{{action.severityLabel}}</span> <strong>{{prose action.title}}</strong>
                   </p>
-                  {{#if action.action}}<p>{{action.action}}</p>{{/if}}
+                  {{#if action.action}}<p>{{prose action.action}}</p>{{/if}}
                   <p class="muted">{{action.covers}}</p>
                 </li>
               {{/each}}
@@ -273,7 +286,7 @@
                 </tbody>
               </table>
             </div>
-            <p class="muted">{{t "report.services.note"}}</p>
+            {{#each serviceNotes as note}}<p class="muted">{{prose note}}</p>{{/each}}
           </section>{{nl}}
         {{/if}}
       </div>{{nl}}
@@ -292,7 +305,7 @@
                     {{#if value.href}}
                       <a href="#{{value.href}}">{{value.text}}</a>
                     {{else}}{{#if value.url}}
-                      <code class="url">{{value.text}}</code>
+                      <code class="url">{{url value.text}}</code>
                     {{else}}{{#if value.code}}
                       <code>{{value.text}}</code>
                     {{else}}
@@ -326,9 +339,9 @@
                     <h4>
                       <span class="badge sev-{{finding.severity}}">
                         {{finding.severityLabel}}
-                      </span> <code>{{finding.checkId}}</code> {{finding.title}}
+                      </span> <code class="id">{{finding.checkId}}</code> {{prose finding.title}}
                     </h4>{{nl}}
-                    <p>{{finding.body}}</p>{{nl}}
+                    <p>{{prose finding.body}}</p>{{nl}}
                     <dl class="kv">
                       {{#each finding.rows as row}}
                         <dt>{{row.label}}</dt>
@@ -338,7 +351,7 @@
                               {{#if value.href}}
                                 <a href="#{{value.href}}">{{value.text}}</a>
                               {{else}}{{#if value.url}}
-                                <code class="url">{{value.text}}</code>
+                                <code class="url">{{url value.text}}</code>
                               {{else}}{{#if value.code}}
                                 <code>{{value.text}}</code>
                               {{else}}
@@ -352,24 +365,49 @@
                     {{#if finding.evidence}}
                       <details class="evidence">
                         <summary>{{t "report.finding.evidence" count=finding.evidenceCount}}</summary>
+                        {{#if finding.evidenceSample}}<p class="muted ev-sample">{{finding.evidenceSample}}</p>{{/if}}
                         <ul class="evs">
                           {{#each finding.evidence as ev}}
-                            <li class="ev">
+                            <li class="ev{{#if ev.compact}} compact{{/if}}">
                               {{#if ev.missing}}
                                 {{ev.missing}}
                               {{else}}
-                                <span class="ev-type">{{ev.type}}</span>
-                                {{#if ev.occurrences}}<span class="ev-count">{{ev.occurrences}}</span>{{/if}}
-                                {{#if ev.screenshot}}
-                                  {{#if ev.screenshot.dataUri}}
-                                    <figure class="shot">
-                                      <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
-                                      <figcaption>{{ev.screenshot.path}}</figcaption>
-                                    </figure>
-                                  {{else}}
-                                    <p class="muted">{{ev.screenshot.missing}}</p>
+                                <div class="ev-start">
+                                  <div class="ev-head">
+                                    <span class="ev-type">{{ev.type}}</span>
+                                    {{#if ev.occurrences}}<span class="ev-count">{{ev.occurrences}}</span>{{/if}}
+                                  </div>
+                                  {{#if ev.screenshot}}
+                                    {{#if ev.screenshot.dataUri}}
+                                      <figure class="shot">
+                                        <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
+                                        <figcaption>{{ev.screenshot.path}}</figcaption>
+                                      </figure>
+                                    {{else}}
+                                      <p class="muted">{{ev.screenshot.missing}}</p>
+                                    {{/if}}
                                   {{/if}}
-                                {{/if}}
+                                  <dl class="kv">
+                                    {{#each ev.lead as row}}
+                                      <dt>{{row.label}}</dt>
+                                      <dd>
+                                        {{#each row.items as value}}
+                                          <div>
+                                            {{#if value.href}}
+                                              <a href="#{{value.href}}">{{value.text}}</a>
+                                            {{else}}{{#if value.url}}
+                                              <code class="url">{{url value.text}}</code>
+                                            {{else}}{{#if value.code}}
+                                              <code>{{value.text}}</code>
+                                            {{else}}
+                                              {{value.text}}
+                                            {{/if}}{{/if}}{{/if}}
+                                          </div>
+                                        {{/each}}
+                                      </dd>
+                                    {{/each}}
+                                  </dl>
+                                </div>
                                 <dl class="kv">
                                   {{#each ev.fields as row}}
                                     <dt>{{row.label}}</dt>
@@ -379,7 +417,7 @@
                                           {{#if value.href}}
                                             <a href="#{{value.href}}">{{value.text}}</a>
                                           {{else}}{{#if value.url}}
-                                            <code class="url">{{value.text}}</code>
+                                            <code class="url">{{url value.text}}</code>
                                           {{else}}{{#if value.code}}
                                             <code>{{value.text}}</code>
                                           {{else}}
@@ -426,7 +464,7 @@
                     {{#if ev.missing}}
                       {{ev.missing}}
                     {{else}}
-                      <span class="ev-type">{{ev.type}}</span>
+                      <div class="ev-head"><span class="ev-type">{{ev.type}}</span></div>
                       {{#if ev.screenshot}}
                         {{#if ev.screenshot.dataUri}}
                           <figure class="shot">
@@ -438,6 +476,24 @@
                         {{/if}}
                       {{/if}}
                       <dl class="kv">
+                        {{#each ev.lead as row}}
+                          <dt>{{row.label}}</dt>
+                          <dd>
+                            {{#each row.items as value}}
+                              <div>
+                                {{#if value.href}}
+                                  <a href="#{{value.href}}">{{value.text}}</a>
+                                {{else}}{{#if value.url}}
+                                  <code class="url">{{url value.text}}</code>
+                                {{else}}{{#if value.code}}
+                                  <code>{{value.text}}</code>
+                                {{else}}
+                                  {{value.text}}
+                                {{/if}}{{/if}}{{/if}}
+                              </div>
+                            {{/each}}
+                          </dd>
+                        {{/each}}
                         {{#each ev.fields as row}}
                           <dt>{{row.label}}</dt>
                           <dd>
@@ -446,7 +502,7 @@
                                 {{#if value.href}}
                                   <a href="#{{value.href}}">{{value.text}}</a>
                                 {{else}}{{#if value.url}}
-                                  <code class="url">{{value.text}}</code>
+                                  <code class="url">{{url value.text}}</code>
                                 {{else}}{{#if value.code}}
                                   <code>{{value.text}}</code>
                                 {{else}}
@@ -470,12 +526,12 @@
             <ul class="diags">
               {{#each diagnostics as diagnostic}}
                 <li>
-                  <strong><code>{{diagnostic.code}}</code> {{diagnostic.title}}</strong>
+                  <strong><code class="id">{{diagnostic.code}}</code> {{diagnostic.title}}</strong>
                   <p>{{diagnostic.body}}</p>
                   {{#if diagnostic.affects}}
                     <p class="muted">
                       {{t "report.diagnostics.affects"}}: {{#each diagnostic.affects as check}}
-                        <code>{{check}}</code> {{/each}}
+                        <code class="id">{{check}}</code> {{/each}}
                     </p>
                   {{/if}}
                 </li>
@@ -497,7 +553,7 @@
                       {{#if value.href}}
                         <a href="#{{value.href}}">{{value.text}}</a>
                       {{else}}{{#if value.url}}
-                        <code class="url">{{value.text}}</code>
+                        <code class="url">{{url value.text}}</code>
                       {{else}}{{#if value.code}}
                         <code>{{value.text}}</code>
                       {{else}}
@@ -520,7 +576,7 @@
                     {{#if value.href}}
                       <a href="#{{value.href}}">{{value.text}}</a>
                     {{else}}{{#if value.url}}
-                      <code class="url">{{value.text}}</code>
+                      <code class="url">{{url value.text}}</code>
                     {{else}}{{#if value.code}}
                       <code>{{value.text}}</code>
                     {{else}}
@@ -562,7 +618,7 @@
                   <tbody>
                     {{#each coverage.pages as page}}
                       <tr>
-                        <td><code class="url">{{page.url}}</code></td>
+                        <td><code class="url">{{url page.url}}</code></td>
                         <td>{{page.role}}</td>
                         <td>{{page.planned}}</td>
                         <td>{{page.observed}}</td>
@@ -576,6 +632,7 @@
               </div>
             {{/if}}{{nl}}
             {{#if coverage.requests}}<p>{{coverage.requests}}</p>{{/if}}{{nl}}
+            {{#if coverage.consentActions}}<p>{{coverage.consentActions}}</p>{{/if}}{{nl}}
             {{#if coverage.collectors}}
               <h3>{{t "report.coverage.collectors"}}</h3>
               <div class="scroll">
@@ -620,13 +677,13 @@
                 <tbody>
                   {{#each checks as check}}
                     <tr class="st-{{check.status}}">
-                      <td><code>{{check.id}}</code></td>
+                      <td><code class="id">{{check.id}}</code></td>
                       <td>{{check.statusLabel}}</td>
                       <td>{{check.reason}}</td>
                       <td>{{check.coverage}}</td>
                       <td>
                         {{#if check.limitations}}
-                          {{#each check.limitations as limitation}}<code>{{limitation}}</code> {{/each}}
+                          {{#each check.limitations as limitation}}<div>{{#if limitation.code}}<code>{{limitation.code}}</code>{{else}}{{limitation.text}}{{/if}}</div>{{/each}}
                         {{else}}–{{/if}}
                       </td>
                     </tr>
@@ -639,15 +696,21 @@
       {{/if}}{{nl}}
       <section id="hinweis">{{nl}}
         <h2>{{t "report.section.notice"}}</h2>{{nl}}
-        {{#each disclaimer as paragraph}}<p>{{paragraph}}</p>{{/each}}{{nl}}
-        {{#if rechtsstand}}<p class="muted">{{t "report.notice.rechtsstand" date=rechtsstand}}</p>{{/if}}{{nl}}
-        {{#if draft}}
-          <p class="stamp-line"><span class="stamp">{{draftStamp}}</span> {{t "report.notice.draft"}}</p>
-        {{/if}}{{nl}}
+        {{#each notice as group}}
+          <div class="notice-group">
+            <h3>{{group.title}}</h3>
+            <dl class="kv notice">
+              {{#each group.items as item}}
+                <dt>{{item.label}}</dt>
+                <dd>{{#if item.stamp}}<span class="stamp">{{item.stamp}}</span> {{/if}}{{prose item.text}}</dd>
+              {{/each}}
+            </dl>
+          </div>
+        {{/each}}{{nl}}
       </section>{{nl}}
+      <footer>
+        <p>{{t "report.footer.generated" version=version}}</p>
+      </footer>{{nl}}
     </main>{{nl}}
-    <footer>
-      <p>{{t "report.footer.generated" version=version}}</p>
-    </footer>{{nl}}
   </body>{{nl}}
 </html>

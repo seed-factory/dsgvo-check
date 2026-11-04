@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -234,6 +234,35 @@ describe('scan — pipeline', () => {
     expect(replay.snapshot?.derived).toBeDefined();
     if (replay.report.scan.status !== 'failed') expect(replay.report.scan.options?.fromSnapshot).toBe(true);
     expectValidReport(replay.report);
+  });
+
+  it('--from-snapshot dates the report to the capture and keeps the evaluation time beside it', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
+    const file = path.join(dir, 'site.snapshot.json');
+    await scan(opts({ saveSnapshot: file }));
+    const saved = JSON.parse(readFileSync(file, 'utf8'));
+    saved.createdAt = '2026-01-02T03:04:05.678Z';
+    saved.collection = {
+      http: { status: 'ok', durationMs: 1500 },
+      tls: { status: 'ok', durationMs: 300 },
+      dns: { status: 'ok', durationMs: 400 },
+      browser: { status: 'ok', durationMs: 60000 },
+    };
+    writeFileSync(file, JSON.stringify(saved));
+
+    const evaluatedAt = new Date('2026-03-04T05:06:07.000Z');
+    const replay = await scan(opts({ url: undefined, fromSnapshot: file, now: () => evaluatedAt }));
+
+    expect(replay.report.scan.startedAt).toBe('2026-01-02T03:04:05.678Z');
+    // http, tls and dns run side by side, the browser after them.
+    expect(replay.report.scan.durationMs).toBe(61500);
+    expect(replay.report.scan.evaluatedAt).toBe(evaluatedAt.toISOString());
+    expectValidReport(replay.report);
+  });
+
+  it('a scan of the site itself has no evaluation time of its own', async () => {
+    const result = await scan(opts());
+    expect(result.report.scan.evaluatedAt).toBeUndefined();
   });
 });
 

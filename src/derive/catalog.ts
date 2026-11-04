@@ -61,10 +61,17 @@ const RegexSchema = z.string().refine((s) => {
   }
 }, 'invalid regular expression');
 
+/** Whole host name as an anchored regular expression, for vendor hosts that vary by country (`www.google.<cc>`). */
+const HostPatternSchema = RegexSchema.refine(
+  (s) => s.startsWith('^') && s.endsWith('$'),
+  'host pattern must be anchored with ^ and $',
+);
+
 const SignatureSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
     hosts: z.array(HostSchema).default([]),
+    hostPatterns: z.array(HostPatternSchema).default([]),
     /** Also match on any other host (first-party proxy, tag gateway, self-hosted install). */
     anyHost: z.boolean().default(false),
     path: RegexSchema,
@@ -77,7 +84,10 @@ const SignatureSchema = z
     identifierParams: z.array(z.string()).optional(),
   })
   .strict()
-  .refine((s) => s.anyHost || s.hosts.length > 0, 'signature needs hosts or anyHost');
+  .refine(
+    (s) => s.anyHost || s.hosts.length > 0 || s.hostPatterns.length > 0,
+    'signature needs hosts, hostPatterns or anyHost',
+  );
 
 const ServiceSchema = z
   .object({
@@ -103,6 +113,8 @@ const ServiceSchema = z
     otherCookies: z.array(z.string().min(1)).default([]),
     /** Tracking identifier keys in Web Storage or IndexedDB names (same syntax as cookies). */
     storageKeys: z.array(z.string().min(1)).default([]),
+    /** Known Web Storage keys or IndexedDB names of the service that are not identifiers. */
+    otherStorageKeys: z.array(z.string().min(1)).default([]),
     /** Consent Mode storage type relevant for cookieless pings. */
     consentStorage: z.enum(['ad', 'analytics']).optional(),
     selfHostable: z.boolean().default(false),
@@ -229,6 +241,7 @@ export class ServiceCatalog {
   readonly userSuppliedParams: ReadonlySet<string>;
   readonly #domainIndex = new Map<string, ServiceEntry[]>();
   readonly #hostSignatures = new Map<string, CompiledSignature[]>();
+  readonly #hostPatternSignatures: Array<{ host: RegExp; c: CompiledSignature }> = [];
   readonly #anyHostSignatures: CompiledSignature[] = [];
   readonly #cookiePatterns: NameEntry[] = [];
   readonly #storagePatterns: NameEntry[] = [];
@@ -265,6 +278,8 @@ export class ServiceCatalog {
       };
       for (const h of sig.hosts)
         this.#hostSignatures.set(h, [...(this.#hostSignatures.get(h) ?? []), compiled]);
+      for (const h of sig.hostPatterns)
+        this.#hostPatternSignatures.push({ host: new RegExp(h), c: compiled });
       if (sig.anyHost) this.#anyHostSignatures.push(compiled);
     }
 
@@ -273,6 +288,8 @@ export class ServiceCatalog {
       this.#cookiePatterns.push({ p: compileName(c), service: s, tracking: false });
     for (const k of s.storageKeys)
       this.#storagePatterns.push({ p: compileName(k), service: s, tracking: true });
+    for (const k of s.otherStorageKeys)
+      this.#storagePatterns.push({ p: compileName(k), service: s, tracking: false });
   }
 
   get version(): string {
@@ -284,8 +301,8 @@ export class ServiceCatalog {
   }
 
   /**
-   * Vendor-host signature > any-host signature > longest domain suffix. A host with signatures of several services falls
-   * back to the domain index when no signature matches.
+   * Vendor-host signature (listed host before host pattern) > any-host signature > longest domain suffix. A host with
+   * signatures of several services falls back to the domain index when no signature matches.
    */
   matchUrl(url: URL): RequestMatch | null {
     const host = url.hostname.toLowerCase();
@@ -296,6 +313,10 @@ export class ServiceCatalog {
       for (const c of this.#hostSignatures.get(suffix) ?? []) {
         if (signatureMatches(c, url)) return { service: c.service, signature: c.sig, via: 'host' };
       }
+    }
+    for (const { host: re, c } of this.#hostPatternSignatures) {
+      if (re.test(host) && signatureMatches(c, url))
+        return { service: c.service, signature: c.sig, via: 'host' };
     }
     for (const c of this.#anyHostSignatures) {
       if (signatureMatches(c, url)) return { service: c.service, signature: c.sig, via: 'any-host' };

@@ -138,6 +138,46 @@ describe('HTML report opened offline with JavaScript disabled in real Chromium',
     }
   });
 
+  it('keeps headings with what follows them and lets a long finding break across pages in print', async () => {
+    await page.emulateMedia({ media: 'print' });
+    const style = (selector: string, property: string) =>
+      page.evaluate(
+        `getComputedStyle(document.querySelector(${JSON.stringify(selector)})).getPropertyValue(${JSON.stringify(property)})`,
+      );
+
+    expect(await style('section.group > h3', 'break-after')).toBe('avoid');
+    expect(await style('article.finding h4', 'break-after')).toBe('avoid');
+    expect(await style('.ev-head', 'break-after')).toBe('avoid');
+    expect(await style('article.finding', 'break-inside')).toBe('auto');
+    expect(await style('article.finding h4', 'break-inside')).toBe('avoid');
+    // A short evidence item stays on one page; a long one may break, but not between its type and its first field.
+    expect(await style('li.ev.compact', 'break-inside')).toBe('avoid');
+    expect(await style('.ev-start', 'break-inside')).toBe('avoid');
+    expect(await style('details.legal', 'break-inside')).toBe('avoid');
+    expect(await style('code.id', 'white-space')).toBe('nowrap');
+  });
+
+  it('lets the notice flow across pages, keeps the closing line with it and lets a long URL break in print', async () => {
+    await page.emulateMedia({ media: 'print' });
+    const style = (selector: string, property: string) =>
+      page.evaluate(
+        `getComputedStyle(document.querySelector(${JSON.stringify(selector)})).getPropertyValue(${JSON.stringify(property)})`,
+      );
+
+    // Kept whole, the notice would leave most of a page empty before it.
+    expect(await style('#hinweis', 'break-inside')).toBe('auto');
+    // Its items are rows of a list: a long one may continue on the next page, as a paragraph would.
+    expect(await style('#hinweis dl.notice > dd', 'break-inside')).toBe('auto');
+    expect(await style('#hinweis dl.notice > dd', 'orphans')).toBe('2');
+    expect(await style('main > footer', 'break-before')).toBe('avoid');
+    expect(await style('dl.kv > dd:has(code.url)', 'break-inside')).toBe('auto');
+    expect(await style('dl.kv > dd:not(:has(code.url)):not(:has(> div + div))', 'break-inside')).toBe(
+      'avoid',
+    );
+    expect(await style('code.url', 'overflow-wrap')).toBe('anywhere');
+    expect(await page.evaluate("document.querySelector('code.url wbr') !== null")).toBe(true);
+  });
+
   it('shows no CRM code', () => {
     expect(html).not.toMatch(/T[0-9]_/);
   });

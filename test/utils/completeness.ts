@@ -4,7 +4,12 @@
  */
 
 import type { Ruleset, Texts } from '../../src/core/data/load.ts';
-import { MessageSyntaxError, templateParams, validateTemplate } from '../../src/core/data/messages.ts';
+import {
+  formatMessage,
+  MessageSyntaxError,
+  templateParams,
+  validateTemplate,
+} from '../../src/core/data/messages.ts';
 import type { AnyCheck } from '../../src/core/evaluation/check.ts';
 import { scenarioFixture, scenariosOf } from '../unit/checks/browser/scenarios/index.ts';
 import { DNS_FIXTURES, dnsFixture } from '../unit/checks/dns/fixtures.ts';
@@ -114,7 +119,9 @@ function textProblems(check: AnyCheck, d: CompletenessData): string[] {
 
     for (const lang of LANGS) {
       if (!d.texts[lang].actions[key])
-        problems.push(`${key}: no ${lang} action text (test/data/texts/${lang}/actions.yaml)`);
+        problems.push(
+          `${key}: no ${lang} action text (test/data/texts/${lang}/<module>.yaml, section actions)`,
+        );
     }
 
     const pde = params(d.texts.de, key);
@@ -144,8 +151,41 @@ function fixtureCoverageProblems(check: AnyCheck, files: readonly string[]): str
   return problems;
 }
 
+/** A name the texts reference and the finding does not carry would be printed as `{name}`. */
+const UNFORMATTED = /\{[A-Za-z]\w*\}/;
+
+/**
+ * Title, body and action of every observation format with its own params. The action is formatted like the finding
+ * texts, and the front page aggregates the same params, so a name only the text knows would stay visible there.
+ */
+function textParamProblems(
+  check: AnyCheck,
+  fixture: string,
+  result: ReturnType<typeof runCheck>,
+  texts: CompletenessData['texts'],
+): string[] {
+  const problems = new Set<string>();
+  for (const o of result.outcome?.observations ?? []) {
+    const key = `${check.id}.${o.variant}`;
+    for (const lang of LANGS) {
+      const m = texts[lang].messages[key];
+      const parts = { title: m?.title, body: m?.body, action: texts[lang].actions[key] };
+      for (const [part, template] of Object.entries(parts)) {
+        const left = template ? UNFORMATTED.exec(formatMessage(template, o.params, lang)) : null;
+        if (left)
+          problems.add(`${check.id}/${fixture}: ${lang} ${part} of ${key} leaves ${left[0]} unformatted`);
+      }
+    }
+  }
+  return [...problems];
+}
+
 /** Runs each fixture through the check and compares status, variants and reason with its `$expect` block. */
-function fixtureRunProblems(check: AnyCheck, fixtures: readonly SnapshotFixture[]): string[] {
+function fixtureRunProblems(
+  check: AnyCheck,
+  fixtures: readonly SnapshotFixture[],
+  texts: CompletenessData['texts'],
+): string[] {
   const problems: string[] = [];
   const id = check.id;
 
@@ -170,6 +210,7 @@ function fixtureRunProblems(check: AnyCheck, fixtures: readonly SnapshotFixture[
     }
     if (fx.kind === 'violation' && got.length === 0)
       problems.push(`${id}/${fx.name}: violation fixture emits nothing`);
+    problems.push(...textParamProblems(check, fx.name, result, texts));
   }
   return problems;
 }
@@ -185,7 +226,7 @@ export function completenessProblems(checks: readonly AnyCheck[], d: Completenes
     problems.push(...fixtureCoverageProblems(check, files));
 
     if (d.runFixtures === false) continue;
-    problems.push(...fixtureRunProblems(check, fixtures));
+    problems.push(...fixtureRunProblems(check, fixtures, d.texts));
   }
   return problems;
 }

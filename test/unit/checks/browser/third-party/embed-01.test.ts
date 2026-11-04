@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../../src/checks/browser/embed-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, defaultPages, page, phase, req, START, site } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -129,5 +131,92 @@ describe('EMBED-01 external fonts', () => {
       }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
+  });
+});
+
+describe('EMBED-01 font files from other third-party servers', () => {
+  const font = (id: string, url: string, p = {}) => req(id, url, { resourceType: 'font', ...p });
+
+  it('font files of a host outside the catalog → fonts-loaded named by its domain', () => {
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              font('a', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf'),
+              font('b', 'https://cdn.booking-widget.example/fonts/Display-Bold.ttf'),
+              req('c', 'https://cdn.booking-widget.example/sdk.js'),
+            ],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(observationsOf(r)).toHaveLength(1);
+    expect(o).toMatchObject({
+      variant: 'fonts-loaded',
+      subject: 'unknown:booking-widget.example',
+      category: 'fonts',
+      params: { service: 'booking-widget.example', fontService: false, pageCount: 1 },
+    });
+    expect(o?.evidence).toHaveLength(2);
+    expect(renderMessage(loadTexts('de'), 'EMBED-01.fonts-loaded', o!.params).body).toMatch(
+      /^Schriftdateien wurden vom Drittanbieter-Server booking-widget\.example geladen, Zeitpunkt: vor jeder Interaktion, kein Einwilligungsbanner gefunden/,
+    );
+  });
+
+  it('font files a widget of the page fetches from its vendor → fonts-loaded with the widget as the service', () => {
+    const [o] = observationsOf(
+      runCheck(
+        embed01,
+        site({
+          phases: [phase('A', { requests: [font('a', 'https://assets.calendly.com/fonts/x.woff2')] })],
+        }),
+      ),
+    );
+    expect(o).toMatchObject({
+      subject: 'calendly',
+      serviceId: 'calendly',
+      params: { service: 'Calendly', fontService: false },
+    });
+  });
+
+  it('counterexample: font files from a CDN stay a resource of CONSENT-01', () => {
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', { requests: [font('a', 'https://cdnjs.cloudflare.com/ajax/libs/fa/6.0.0/fa.woff2')] }),
+        ],
+      }),
+    );
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  it('counterexample: the fonts of an embedded player belong to the embed, not to the site', () => {
+    const frame = {
+      frameId: 'A-f2',
+      isMainFrame: false,
+      frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
+    };
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('a', 'https://www.youtube-nocookie.com/embed/abc', {
+                ...frame,
+                isNavigation: true,
+                resourceType: 'document',
+              }),
+              font('b', 'https://fonts.gstatic.com/s/roboto/v48/x.woff2', frame),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(variantsOf(r)).toEqual([]);
   });
 });

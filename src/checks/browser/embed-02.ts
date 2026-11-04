@@ -2,10 +2,10 @@
 import { defineCheck, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type { RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest, DerivedSection } from '../../derive/types.ts';
-import { MAX_EVIDENCE, requestEvidence } from './evidence.ts';
+import { distinctRequestEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName } from './services.ts';
-import { consentSignals, signalOutcome } from './signals.ts';
+import { bannerFound, consentSignals, signalOutcome } from './signals.ts';
 import { hasPhaseA, noPhaseAReason, phaseRecord, requestIndex, throttleAware } from './snapshot.ts';
 
 const ID = 'EMBED-02';
@@ -23,19 +23,25 @@ function groupMapRequests(derived: DerivedSection): Map<string, ClassifiedReques
   return byService;
 }
 
+/** Fonts and helper hosts the map's frame loaded: derive attributes them to the map, not to the site. */
+const frameResource = (c: ClassifiedRequest): boolean => c.source === 'embed-frame';
+
 function mapsObservation(
   serviceId: string,
   reqs: ClassifiedRequest[],
   records: Map<string, RequestRecord>,
   derived: DerivedSection,
+  banner: boolean,
 ): Observation {
   const integrations = new Set(reqs.map((c) => c.integration ?? 'other'));
   const integrationType = INTEGRATION_ORDER.find((i) => integrations.has(i)) ?? 'other';
   const pages = sortedUniq(reqs.flatMap((c) => records.get(c.requestId)?.pageUrl ?? []));
+  // The map's own requests lead the evidence; the resources of its frame follow.
   reqs.sort(
     (a, b) =>
+      Number(frameResource(a)) - Number(frameResource(b)) ||
       INTEGRATION_ORDER.indexOf(a.integration ?? 'other') -
-      INTEGRATION_ORDER.indexOf(b.integration ?? 'other'),
+        INTEGRATION_ORDER.indexOf(b.integration ?? 'other'),
   );
 
   return {
@@ -46,16 +52,20 @@ function mapsObservation(
     category: 'maps',
     phases: sortedUniq(reqs.map((c) => c.phase)) as Phase[],
     pages,
-    evidence: reqs.slice(0, MAX_EVIDENCE).flatMap((c) => {
-      const r = records.get(c.requestId);
-      return r ? [requestEvidence(r, c)] : [];
-    }),
+    evidence: distinctRequestEvidence(
+      reqs.flatMap((c) => {
+        const r = records.get(c.requestId);
+        return r ? [{ r, c }] : [];
+      }),
+    ),
     params: {
       service: serviceName(derived, serviceId),
       integrationType,
       integrations: [...integrations].sort().join(', '),
       afterReject: reqs.some((c) => c.timing === 'after-reject'),
       pageCount: pages.length,
+      frameResourceCount: reqs.filter(frameResource).length,
+      bannerFound: banner,
     },
     ...serviceFields(derived, serviceId),
   };
@@ -75,9 +85,10 @@ export const embed02 = defineCheck({
     }
 
     const records = requestIndex(browser);
+    const banner = bannerFound(cmp);
     const observations = [...groupMapRequests(derived).entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([serviceId, reqs]) => mapsObservation(serviceId, reqs, records, derived));
+      .map(([serviceId, reqs]) => mapsObservation(serviceId, reqs, records, derived, banner));
 
     const contact = phaseRecord(browser, 'A')?.pages.filter((p) => p.role === 'contact') ?? [];
     const contactBlocked = contact.length > 0 && contact.every((p) => !p.evaluable);

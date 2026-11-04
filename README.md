@@ -152,7 +152,8 @@ flowchart LR
 Nur die Collectors greifen aufs Netz zu und entfernen sensible Werte, bevor etwas in den Snapshot gelangt. Die
 Prüfungen sind reine Funktionen über diesem Snapshot; Schweregrade, Varianten und Texte liegen als Daten in
 `test/data`, nicht im Code. Das Gate bestimmt aus den Befunden den Exit-Code. Weil der Snapshot alle Rohdaten enthält,
-lässt sich ein Scan mit `--from-snapshot` ohne Netz erneut auswerten.
+lässt sich ein Scan mit `--from-snapshot` ohne Netz erneut auswerten. Der Bericht nennt dann Zeitpunkt und Dauer der
+Aufnahme; wann neu ausgewertet wurde, steht im ausführlichen Bericht und in `report.json` (`scan.evaluatedAt`).
 
 ### Ablauf im Browser
 
@@ -231,12 +232,14 @@ Ein Scan dauert meist 1–3 Minuten und schreibt nach `--out`:
 - `artifacts/banner-B.jpg` bei erkanntem Banner (abschaltbar mit `--no-screenshots`),
 - `report.pdf` nur mit `--format html,pdf`. Ein Druckfehler führt zu einer Warnzeile; Exit-Code und JSON bleiben.
 
-Die erste Seite von `report.html` und `report.pdf` richtet sich an die Betreiberin oder den Betreiber der Website: „Auf
-einen Blick“ fasst in zwei bis drei Sätzen zusammen, was beobachtet wurde, „Was zu tun ist“ nennt je Befundart eine
-Empfehlung, und „Beobachtete Dienste“ zeigt, wann welcher Dienst geladen wurde. Danach folgen die Einzelheiten für
-Entwickler. Mit `--detail brief` entfällt dieser Teil: Der kurze Bericht besteht aus der ersten Seite und dem Hinweis.
-Gleiche Anfragen eines Befunds erscheinen im ausführlichen Bericht einmal mit Anzahl und Seitenliste; `report.json`
-behält jeden Beleg.
+Die erste Seite von `report.html` und `report.pdf` richtet sich an die Betreiberin oder den Betreiber der Website: Die
+Kopfzeile nennt Zeitpunkt des Scans und Region des Netzausgangs, „Auf einen Blick“ fasst zusammen, was beobachtet wurde
+und welche Prüfungen kein abschließendes Ergebnis haben, „Was zu tun ist“ nennt je Befundart eine Empfehlung, und
+„Beobachtete Dienste“ zeigt, wann welcher Dienst geladen wurde. Danach folgen die Einzelheiten für Entwickler. Mit
+`--detail brief` entfällt dieser Teil: Der kurze Bericht besteht aus der ersten Seite und dem Hinweis. Gleiche Anfragen,
+Cookies und Speichereinträge eines Befunds erscheinen im ausführlichen Bericht einmal, mit ihrer Anzahl im Auszug und
+der Seitenliste; Seiten, Header und Anfragen ohne Kennung einer Seite stehen als Liste mit einer Zeile je Eintrag.
+`report.json` behält jeden Beleg mit allen Feldern.
 
 ### Bericht erneut ausgeben
 

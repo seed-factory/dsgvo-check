@@ -18,10 +18,10 @@ import type {
   ClassifiedStorage,
   DerivedSection,
 } from '../../derive/types.ts';
-import { cookieEvidence, MAX_EVIDENCE, requestEvidence, storageEvidence } from './evidence.ts';
+import { cookieEvidence, distinctRequestEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import { allCmpFacts, bannerFound, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-05';
@@ -39,6 +39,9 @@ interface Group {
   etld1: string | null;
   category: string;
   pages: Set<string>;
+  /** Tracking hits; their evidence is the distinct requests among them. */
+  requests: Array<{ r: RequestRecord; c: ClassifiedRequest }>;
+  /** Storage writes, at most `MAX_EVIDENCE`. */
   evidence: EvidenceInput[];
   names: Set<string>;
   host: string | null;
@@ -101,6 +104,7 @@ function groupFor(
       etld1,
       category: cls.category,
       pages: new Set(),
+      requests: [],
       evidence: [],
       names: new Set(),
       host: null,
@@ -131,7 +135,7 @@ function addRequestHits(groups: Groups, derived: DerivedSection, records: Map<st
     g.pages.add(r.pageUrl);
     g.host ??= c.host;
     if (c.cookieless) g.consentModeDenied = true;
-    if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(requestEvidence(r, c));
+    g.requests.push({ r, c });
   }
 }
 
@@ -162,6 +166,20 @@ function addStorageWrites(groups: Groups, browser: BrowserSection, derived: Deri
   }
 }
 
+/** Storage writes keep this many evidence places next to many requests, so the excerpt still shows them. */
+const STORAGE_EVIDENCE_PLACES = 3;
+
+/** The distinct requests first, then the storage writes, at most `MAX_EVIDENCE` of both; the reject proof always. */
+function groupEvidence(g: Group, rejectEvidence: EvidenceInput[]): EvidenceInput[] {
+  const writes = g.evidence.slice(0, STORAGE_EVIDENCE_PLACES);
+  const requests = distinctRequestEvidence(g.requests, MAX_EVIDENCE - writes.length);
+  return [...requests, ...g.evidence.slice(0, MAX_EVIDENCE - requests.length), ...rejectEvidence];
+}
+
+/** A group with requests and storage writes of a persistent identifier names both in its text. */
+const groupKind = (g: Group): 'request' | 'storage' | 'both' =>
+  g.variant === 'tracking-after-reject' && g.kind === 'request' && g.names.size > 0 ? 'both' : g.kind;
+
 function groupObservations(
   groups: Groups,
   derived: DerivedSection,
@@ -177,14 +195,15 @@ function groupObservations(
       category: g.category,
       phases: ['B'],
       pages: [...g.pages].sort(),
-      evidence: [...g.evidence, ...rejectEvidence],
+      evidence: groupEvidence(g, rejectEvidence),
       params: {
-        kind: g.kind,
+        kind: groupKind(g),
         service: serviceName(derived, g.serviceId, g.etld1),
         name: sortedUniq(g.names).join(', ') || null,
         host: g.host,
         pageCount: g.pages.size,
         consentModeDenied: g.consentModeDenied,
+        requestCount: g.requests.length,
       },
       ...serviceFields(derived, g.serviceId),
     }));
@@ -202,6 +221,10 @@ function rejectBasis(
   | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
   const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
   if (signal) return { outcome: signal };
+  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog.
+  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp)) {
+    return { outcome: { status: 'not_applicable', reason: 'no-banner', observations: [] } };
+  }
 
   const phaseB = phaseRecord(browser, 'B');
   if (!phaseB || phaseB.status === 'skipped') {

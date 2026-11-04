@@ -42,6 +42,14 @@ describe('scan — invalid certificate on the target', () => {
       status: 'skipped',
       reason: 'tls-blocked',
     });
+    // the report says why the browser checks did not run instead of leaving only `skipped`
+    expect(result.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'SCAN-TLS-BLOCKED',
+        affects: ['TEST-01'],
+        params: { host: 'www.example.de' },
+      }),
+    );
   });
 
   it('invalid certificate on an explicit target port → tls-blocked as well', async () => {
@@ -77,7 +85,7 @@ describe('scan — invalid certificate on the target', () => {
     'incomplete chain (%s) does not block the browser: Chrome completes chains via AIA',
     async (code) => {
       let browserCalled = false;
-      await scan(
+      const result = await scan(
         opts({
           collectors: {
             ...withBrowser,
@@ -105,6 +113,7 @@ describe('scan — invalid certificate on the target', () => {
         }),
       );
       expect(browserCalled).toBe(true);
+      expect(result.report.diagnostics?.map((d) => d.code)).not.toContain('SCAN-TLS-BLOCKED');
     },
   );
 

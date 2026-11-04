@@ -42,19 +42,17 @@ describe('MAIL-01 DMARC: warning variants', () => {
   });
 
   it('p=none → policy-none', () => {
-    expect(variantsOf(run(site([`v=DMARC1; p=none; ${RUA}`])))).toEqual(['policy-none']);
+    const r = run(site([`v=DMARC1; p=none; ${RUA}`]));
+    expect(variantsOf(r)).toEqual(['policy-none']);
+    expect(observationsOf(r)[0]?.params).toMatchObject({ noRua: 'no' });
   });
 
-  it('p=none without rua → policy-none and weak-option (no rua)', () => {
+  it('p=none without rua → only policy-none, which names the missing rua', () => {
     const r = run(site(['v=DMARC1; p=none']));
-    expect(variantsOf(r)).toEqual(['policy-none', 'weak-option']);
-    expect(observationsOf(r).find((o) => o.variant === 'weak-option')?.params).toMatchObject({
-      kind: 'options',
-      count: 1,
-      spNone: 'no',
-      testing: 'no',
-      noRua: 'yes',
-    });
+    // The policy-none text does not claim that reports are requested when no rua is published, and a second
+    // weak-option item would repeat its first step.
+    expect(variantsOf(r)).toEqual(['policy-none']);
+    expect(observationsOf(r)[0]?.params).toMatchObject({ noRua: 'yes' });
   });
 
   it.each([
@@ -140,7 +138,7 @@ describe('MAIL-01 DMARC: info variants and clean records', () => {
       'MX example.de': ['10 mx.example.de'],
       'TXT _dmarc.www.example.de': ['v=DMARC1; p=none'],
     });
-    expect(variantsOf(r)).toEqual(['policy-none', 'weak-option']);
+    expect(variantsOf(r)).toEqual(['policy-none']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ domain: 'www.example.de' });
   });
 });
