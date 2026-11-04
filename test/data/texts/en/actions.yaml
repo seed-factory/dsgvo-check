@@ -1,0 +1,134 @@
+# Action texts (en), one per variant `<checkId>.<variant>` of test/data/ruleset. Short, concrete, no legal verdicts
+# (stop-word test). Draft until reviewed.
+draft: true
+actions:
+  CONSENT-01.tracking-completed:
+    text: "Load the tracking script only after consent, for example through the blocking feature of your consent banner or tag manager."
+  CONSENT-01.library-loaded:
+    text: "Check whether this service can be loaded only after consent, and otherwise have the consent banner block it."
+  CONSENT-01.first-party-proxy:
+    text: "Check whether this endpoint on your own domain is an analytics or marketing service, and if so start it only after consent."
+  CONSENT-01.cookieless-ping:
+    text: "Check whether this request should be sent only after consent, and agree on the setting with your provider."
+  CONSENT-01.third-party-resource:
+    text: "Check whether this external content is needed, or serve it from your own server instead. Otherwise no action is needed."
+  CONSENT-01.unknown-host:
+    text: "Find out why this unknown host is included, and either remove it or add it to your privacy policy."
+  CONSENT-01.request-not-completed:
+    text: "Check whether the service would send data once the connection succeeds, and if so load it only after consent."
+  CONSENT-02.tracking-identifier-stored:
+    text: "Set this analytics or marketing identifier only after consent, for example by blocking the related service until then."
+  CONSENT-02.unknown-third-party-persistent:
+    text: "Find out which service sets these entries, and allow them only after consent if they are not technically necessary."
+  CONSENT-02.unknown-first-party-persistent:
+    text: "Check what these entries from your own site are used for; if they are not technically necessary, store them only after consent."
+  CONSENT-02.cmp-cookie-with-uid:
+    text: "Ask your banner provider whether the identifier in the cookie is needed to record the choice. Otherwise no action is needed."
+  CONSENT-02.storage-rejected-or-attempted:
+    text: "Check whether the page tries to store something here before consent, and move that to after consent."
+  CONSENT-03.no-banner-strong-tracking:
+    text: "Add a consent banner, or remove the analytics and marketing services until consent can be collected."
+  CONSENT-03.no-banner-consent-services:
+    text: "Check whether the loaded services need consent, and then add a consent banner or remove the services."
+  CONSENT-04.blocking-no-reject:
+    text: "Add a clearly visible reject option on the first layer of the banner that is as easy to reach as the accept option."
+  CONSENT-04.close-means-accept:
+    text: "Configure the banner so that closing the dialog does not count as consent, and verify the setting in a test."
+  CONSENT-04.reject-not-actionable:
+    text: "Check that the reject option is visible and usable on all screen sizes, and fix its design or position."
+  CONSENT-04.reject-ineffective:
+    text: "Check manually that rejecting in the banner is actually saved, and contact your banner provider if it is not."
+  CONSENT-04.consent-without-action:
+    text: 'Configure the banner so that optional categories are set to "denied" until visitors make a choice.'
+  CONSENT-04.reject-as-link:
+    text: "Check manually whether the reject option is as prominent as the accept option, and otherwise make it an equal button."
+  CONSENT-04.nonblocking-no-reject:
+    text: "Check manually whether the banner offers a reject option, and add one on the first layer if it is missing."
+  CONSENT-04.no-choice-at-first-layer:
+    text: "Check the banner manually and offer both accept and reject on the first layer."
+  CONSENT-04.pur-abo:
+    text: "Check manually whether the choice between consent and subscription is presented clearly and fairly. Otherwise no action is needed."
+  CONSENT-04.banner-not-recognized:
+    text: "Check the consent banner manually: is there an equivalent reject option, and is it respected?"
+  CONSENT-04.cmp-not-supported:
+    text: "Check this provider's consent banner manually, as the tool does not evaluate it."
+  CONSENT-05.tracking-after-reject:
+    text: "Make sure analytics and marketing services neither load nor store anything after a rejection, and test the flow after every change."
+  CONSENT-05.cookieless-ping-after-reject:
+    text: "Check whether this service should still send requests after a rejection, and otherwise block it until consent is given."
+  CONSENT-05.connect-only-after-reject:
+    text: "Check whether the connection to this service is needed after a rejection. Otherwise no action is needed."
+  TRACK-01.service-inventory:
+    text: "No action is needed as long as the service is intended and named in your privacy policy."
+  EMBED-01.fonts-loaded:
+    text: "Serve the fonts from your own server instead of external providers such as fonts.googleapis.com."
+  EMBED-01.preconnect-only:
+    text: "Remove the connection hint to the font service if you do not load the fonts from there."
+  EMBED-02.maps-loaded:
+    text: "Load the map only after visitors click on it, or use a solution that works without an external provider."
+  LEGAL-01.document-not-found:
+    text: "Link the legal notice and privacy policy clearly in the footer of every page."
+  LEGAL-01.links-broken:
+    text: "Fix the links to the legal notice and privacy policy so that they lead to the right pages."
+  LEGAL-01.link-missing-on-some-pages:
+    text: "Add the link to the legal notice and privacy policy on the pages where it is missing, ideally through a shared footer."
+  LEGAL-01.reachable-via-intermediate:
+    text: "Link the legal notice and privacy policy directly, without going through an intermediate page."
+  LEGAL-01.footer-covered-by-banner:
+    text: "Make sure the banner does not cover the footer, or also link the legal notice and privacy policy inside the banner."
+  LEGAL-01.unresolved:
+    text: "Check manually that the links to the legal notice and privacy policy work in a browser."
+  PRIV-01.not-named:
+    text: "Name this service, with its purpose and provider, in your privacy policy, or remove it from the site."
+  PRIV-01.category-only:
+    text: "Check whether the privacy policy names this service specifically enough, and otherwise add the provider's name."
+  PRIV-01.ambiguous-match:
+    text: "Check manually whether the service is named in the visible text of the privacy policy."
+  MAIL-01.record-not-found:
+    text: "Set up a DMARC record for the domain with your DNS or mail provider, initially with p=none and reports if you like."
+  MAIL-01.policy-none:
+    text: "Review the DMARC reports and tighten the policy step by step to quarantine or reject."
+  MAIL-01.record-invalid:
+    text: "Fix the DMARC record so that exactly one valid record is published under _dmarc."
+  MAIL-01.weak-option:
+    text: "Review the DMARC options with your mail provider. Otherwise no action is needed."
+  MAIL-01.legacy-pct:
+    text: "Remove the outdated pct tag from the DMARC record if it is no longer needed."
+  MAIL-02.record-not-found:
+    text: "Publish an SPF record that lists the servers allowed to send email for your domain."
+  MAIL-02.permissive-qualifier:
+    text: "Change the end of the SPF record to -all or ~all so that servers not listed are not treated as senders."
+  MAIL-02.record-invalid:
+    text: "Fix the SPF record so that exactly one valid record starting with v=spf1 is published."
+  MAIL-02.softfail-without-enforcement:
+    text: "Set up DMARC with p=quarantine or p=reject, or switch SPF to -all."
+  MAIL-02.softfail-with-enforcement:
+    text: "No action is needed as long as DMARC stays active with quarantine or reject."
+  MAIL-02.ptr-mechanism:
+    text: "Replace ptr in the SPF record with specific ip4, ip6 or include entries."
+  HDR-01.hsts-missing:
+    text: "Send the Strict-Transport-Security header with a sensible max-age, for example through your web server configuration."
+  HDR-01.anti-framing-missing:
+    text: "Set the X-Frame-Options header or the CSP directive frame-ancestors on your web server so that other sites cannot embed your page."
+  HDR-01.referrer-policy-permissive:
+    text: "Set the Referrer-Policy to a more restrictive value, for example strict-origin-when-cross-origin."
+  HDR-01.header-missing:
+    text: "Add the security header named in the title to your web server configuration; the full report suggests a suitable value."
+  TLS-01.https-unavailable:
+    text: "Set up a certificate for the site and serve it exclusively over https."
+  TLS-01.form-on-http-page:
+    text: "Serve pages with forms over https only and redirect http to https permanently."
+  TLS-01.no-redirect:
+    text: "Set up a permanent redirect from http to https on your web server."
+  TLS-01.client-side-redirect-only:
+    text: "Redirect to https on the server with a 301 status code instead of only in the page content."
+  TLS-01.redirect-chain-detail:
+    text: "Redirect directly from http to the final https address without intermediate steps."
+  TLS-02.certificate-invalid:
+    text: "Renew the certificate or fix the configuration so that browsers accept it without a warning."
+  TLS-02.chain-incomplete:
+    text: "Install the full certificate chain, including the intermediate certificate, on the server."
+  TLS-02.certificate-expiring:
+    text: "Renew the certificate now and check that automatic renewal works."
+  TLS-02.certificate-expiry-approaching:
+    text: "Check that automatic renewal of the certificate is set up and will run in time."

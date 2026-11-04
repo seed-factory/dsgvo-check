@@ -5,6 +5,9 @@ ui:
   report.doc.title: dsgvo-check – report for {target}
   report.doc.heading: dsgvo-check – report
   report.nav.label: Contents
+  report.section.overview: At a glance
+  report.section.actions: What to do
+  report.section.services: Observed services
   report.section.summary: Summary
   report.section.findings: Findings
   report.section.diagnostics: Diagnostics
@@ -40,6 +43,27 @@ ui:
   report.summary.column.finding: Finding
   report.summary.column.pages: Pages
   report.summary.files: "Full report: report.json and report.html in the artifact."
+  report.overview.points: "{critical, plural, =0 {No critical points were observed.} one {One critical point was observed.} other {# critical points were observed.}}{warning, plural, =0 {} one { One point should be checked.} other { # points should be checked.}}{info, plural, =0 {} one { There is also one note for information.} other { There are also # notes for information.}}"
+  report.overview.failed: The scan was not performed, so there are no observations.
+  report.overview.scan.complete: The scan was completed.
+  report.overview.scan.partial: The scan was only partly performed; not all pages or checks could be evaluated.
+  report.overview.banner.recognized: The consent banner was recognized.
+  report.overview.banner.notRecognized: The consent banner was not recognized; checks that depend on it are not conclusively evaluated and should be checked manually.
+  report.actions.covers: "{findings, plural, one {# finding} other {# findings}}{pages, plural, =0 {} one {, # page} other {, # pages}}"
+  report.actions.briefNote: Similar findings are combined into one point. The details are in the full report and in report.json.
+  report.services.name: Service
+  report.services.beforeInteraction: Before any interaction
+  report.services.afterReject: After reject
+  report.services.afterAccept: After accept
+  report.services.stage.loaded: loaded
+  report.services.stage.initialised: initialised
+  report.services.stage.event-sent: event sent
+  report.services.stage.not-checked: not checked
+  report.services.stage.none: not found
+  report.services.note: '"Not checked" stands for a timing at which no interaction with the consent banner took place.'
+  report.evidence.occurrences: "{count}×"
+  report.evidence.pages: Pages
+  report.evidence.phases: Phases
   report.severity.critical: critical
   report.severity.warning: warning
   report.severity.info: info
@@ -65,7 +89,7 @@ ui:
   report.finding.evidence: Evidence ({count})
   report.finding.evidenceTruncated: More evidence only in the JSON report.
   report.finding.evidenceMissing: Evidence {id} is not included in the report.
-  report.finding.legalNote: Legal background
+  report.finding.legalNote: "Legal background for {check}"
   report.finding.legalStatus: "Source: {status}"
   report.finding.legalUnreviewed: draft text, not yet legally reviewed
   report.legal.authority-consensus: consistent view of the supervisory authorities
@@ -142,6 +166,7 @@ ui:
   report.pdf.page: Page
   report.cli.description: Reissue a saved JSON report
   report.cli.formats: "Output formats: console,json,html,summary,pdf (PDF on request only)"
+  report.cli.detail: "Level of detail of HTML and PDF: full (with evidence) or brief (short, in plain words)"
   report.cli.language: "Report language: de|en"
   report.cli.output: Output directory
   report.cli.invalid: The JSON report or report options are invalid or unsupported.

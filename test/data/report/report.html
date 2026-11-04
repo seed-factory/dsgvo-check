@@ -118,6 +118,19 @@
       .badge.sev-critical{background:var(--crit)}
       .badge.sev-warning{background:var(--warn)}
       .badge.sev-info{background:var(--info)}
+      .lead{font-size:1.1em}
+      ol.actions{list-style:none;padding:0;margin:.4em 0}
+      li.action{
+        border:1px solid var(--line);
+        border-left:5px solid var(--line);
+        border-radius:6px;
+        padding:.6em 1em;
+        margin:.6em 0
+      }
+      li.action.sev-critical{border-left-color:var(--crit)}
+      li.action.sev-warning{border-left-color:var(--warn)}
+      li.action.sev-info{border-left-color:var(--info)}
+      li.action p{margin:.3em 0}
       .group{margin:1em 0 1.6em}
       .finding{
         border:1px solid var(--line);
@@ -144,6 +157,7 @@
         border-radius:4px;
         padding:0 .4em
       }
+      .ev-count{font-weight:700;margin-left:.3em}
       figure.shot{margin:.5em 0}
       figure.shot img{max-width:100%;height:auto;border:1px solid var(--line)}
       figcaption{font-size:.85em;color:var(--muted)}
@@ -163,7 +177,8 @@
         nav{display:none}
         details,details::details-content{display:block;content-visibility:visible}
         details>summary{display:block;cursor:auto;color:var(--fg);font-weight:600}
-        .finding{break-inside:avoid}
+        .finding,details.legal,li.action{break-inside:avoid}
+        .front-full{break-after:page}
         :root{
           color-scheme:light;
           --fg:#1f2328;
@@ -189,230 +204,87 @@
       <nav>
         <strong>{{t "report.nav.label"}}</strong>
         <ul>{{nl}}
-          <li><a href="#zusammenfassung">{{t "report.section.summary"}}</a></li>{{nl}}
-          <li><a href="#befunde">{{t "report.section.findings"}}</a></li>{{nl}}
-          <li><a href="#diagnose">{{t "report.section.diagnostics"}}</a></li>{{nl}}
-          <li><a href="#messumgebung">{{t "report.section.environment"}}</a></li>{{nl}}
-          <li><a href="#abdeckung">{{t "report.section.coverage"}}</a></li>{{nl}}
+          <li><a href="#auf-einen-blick">{{t "report.section.overview"}}</a></li>{{nl}}
+          <li><a href="#handlung">{{t "report.section.actions"}}</a></li>{{nl}}
+          {{#if services}}<li><a href="#dienste">{{t "report.section.services"}}</a></li>{{nl}}{{/if}}
+          {{#if full}}
+            <li><a href="#zusammenfassung">{{t "report.section.summary"}}</a></li>{{nl}}
+            <li><a href="#befunde">{{t "report.section.findings"}}</a></li>{{nl}}
+            <li><a href="#diagnose">{{t "report.section.diagnostics"}}</a></li>{{nl}}
+            <li><a href="#messumgebung">{{t "report.section.environment"}}</a></li>{{nl}}
+            <li><a href="#abdeckung">{{t "report.section.coverage"}}</a></li>{{nl}}
+          {{/if}}
           <li><a href="#hinweis">{{t "report.section.notice"}}</a></li>{{nl}}
         </ul>
       </nav>{{nl}}
     </header>{{nl}}
     <main>{{nl}}
-      <section id="zusammenfassung">{{nl}}
-        <h2>{{t "report.section.summary"}}</h2>{{nl}}
-        <p class="status status-{{status}}">{{statusLabel}}</p>{{nl}}
-        {{#if failure}}<p class="failure">{{failure}}</p>{{/if}}{{nl}}
-        {{#if sandboxOff}}<p class="warn">{{t "report.summary.sandboxOff"}}</p>{{/if}}{{nl}}
-        <dl class="kv">
-          <dt>{{t "report.summary.exitCode"}}</dt>
-          <dd><strong class="exit exit-{{exitCode}}">{{exitCode}}</strong></dd>
-          {{#each summary as row}}
-            <dt>{{row.label}}</dt>
-            <dd>
-              {{#each row.items as value}}
-                <div>
-                  {{#if value.href}}
-                    <a href="#{{value.href}}">{{value.text}}</a>
-                  {{else}}{{#if value.url}}
-                    <code class="url">{{value.text}}</code>
-                  {{else}}{{#if value.code}}
-                    <code>{{value.text}}</code>
-                  {{else}}
-                    {{value.text}}
-                  {{/if}}{{/if}}{{/if}}
-                </div>
-              {{/each}}
-            </dd>
-          {{/each}}
-        </dl>{{nl}}
-        {{#if counts}}
-          <h3>{{t "report.summary.counts"}}</h3>
-          <dl class="counts">
-            {{#each counts as count}}
-              <div class="count sev-{{count.severity}}">
-                <dt>{{count.label}}</dt>
-                <dd>{{count.value}}</dd>
-              </div>
-            {{/each}}
-          </dl>
-        {{/if}}{{nl}}
-        {{#if checkErrors}}<p class="warn">{{checkErrors}}</p>{{/if}}{{nl}}
-      </section>{{nl}}
-      <section id="befunde">{{nl}}
-        <h2>{{t "report.section.findings"}}</h2>{{nl}}
-        {{#if groups}}
-          {{#each groups as group}}
-            <section class="group">
-              <h3>{{group.title}}</h3>{{nl}}
-              {{#each group.findings as finding}}
-                <article class="finding sev-{{finding.severity}}" id="{{finding.anchor}}">{{nl}}
-                  <h4>
-                    <span class="badge sev-{{finding.severity}}">
-                      {{finding.severityLabel}}
-                    </span> <code>{{finding.checkId}}</code> {{finding.title}}
-                  </h4>{{nl}}
-                  <p>{{finding.body}}</p>{{nl}}
-                  <dl class="kv">
-                    {{#each finding.rows as row}}
-                      <dt>{{row.label}}</dt>
-                      <dd>
-                        {{#each row.items as value}}
-                          <div>
-                            {{#if value.href}}
-                              <a href="#{{value.href}}">{{value.text}}</a>
-                            {{else}}{{#if value.url}}
-                              <code class="url">{{value.text}}</code>
-                            {{else}}{{#if value.code}}
-                              <code>{{value.text}}</code>
-                            {{else}}
-                              {{value.text}}
-                            {{/if}}{{/if}}{{/if}}
-                          </div>
-                        {{/each}}
-                      </dd>
-                    {{/each}}
-                  </dl>{{nl}}
-                  {{#if finding.evidence}}
-                    <details class="evidence">
-                      <summary>{{t "report.finding.evidence" count=finding.evidenceCount}}</summary>
-                      <ul class="evs">
-                        {{#each finding.evidence as ev}}
-                          <li class="ev">
-                            {{#if ev.missing}}
-                              {{ev.missing}}
-                            {{else}}
-                              <span class="ev-type">{{ev.type}}</span>
-                              {{#if ev.screenshot}}
-                                {{#if ev.screenshot.dataUri}}
-                                  <figure class="shot">
-                                    <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
-                                    <figcaption>{{ev.screenshot.path}}</figcaption>
-                                  </figure>
-                                {{else}}
-                                  <p class="muted">{{ev.screenshot.missing}}</p>
-                                {{/if}}
-                              {{/if}}
-                              <dl class="kv">
-                                {{#each ev.fields as row}}
-                                  <dt>{{row.label}}</dt>
-                                  <dd>
-                                    {{#each row.items as value}}
-                                      <div>
-                                        {{#if value.href}}
-                                          <a href="#{{value.href}}">{{value.text}}</a>
-                                        {{else}}{{#if value.url}}
-                                          <code class="url">{{value.text}}</code>
-                                        {{else}}{{#if value.code}}
-                                          <code>{{value.text}}</code>
-                                        {{else}}
-                                          {{value.text}}
-                                        {{/if}}{{/if}}{{/if}}
-                                      </div>
-                                    {{/each}}
-                                  </dd>
-                                {{/each}}
-                              </dl>
-                            {{/if}}
-                          </li>
-                        {{/each}}
-                      </ul>
-                      {{#if finding.evidenceTruncated}}
-                        <p class="muted">{{t "report.finding.evidenceTruncated"}}</p>
-                      {{/if}}
-                    </details>
-                  {{else}}
-                    {{#if finding.evidenceTruncated}}
-                      <p class="muted">{{t "report.finding.evidenceTruncated"}}</p>
-                    {{/if}}
-                  {{/if}}{{nl}}
-                  {{#if finding.legalNote}}
-                    <details class="legal">
-                      <summary>{{t "report.finding.legalNote"}}</summary>
-                      <p>{{finding.legalNote.text}}</p>
-                      <p class="muted">{{finding.legalNote.meta}}</p>
-                    </details>
-                  {{/if}}{{nl}}
-                </article>
-              {{/each}}
-            </section>
-          {{/each}}
-        {{else}}
-          <p>{{emptyFindings}}</p>
-        {{/if}}{{nl}}
-        {{#if otherShots}}
-          <section class="group">
-            <h3>{{t "report.evidence.otherScreenshots"}}</h3>
-            <ul class="evs">
-              {{#each otherShots as ev}}
-                <li class="ev">
-                  {{#if ev.missing}}
-                    {{ev.missing}}
-                  {{else}}
-                    <span class="ev-type">{{ev.type}}</span>
-                    {{#if ev.screenshot}}
-                      {{#if ev.screenshot.dataUri}}
-                        <figure class="shot">
-                          <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
-                          <figcaption>{{ev.screenshot.path}}</figcaption>
-                        </figure>
-                      {{else}}
-                        <p class="muted">{{ev.screenshot.missing}}</p>
-                      {{/if}}
-                    {{/if}}
-                    <dl class="kv">
-                      {{#each ev.fields as row}}
-                        <dt>{{row.label}}</dt>
-                        <dd>
-                          {{#each row.items as value}}
-                            <div>
-                              {{#if value.href}}
-                                <a href="#{{value.href}}">{{value.text}}</a>
-                              {{else}}{{#if value.url}}
-                                <code class="url">{{value.text}}</code>
-                              {{else}}{{#if value.code}}
-                                <code>{{value.text}}</code>
-                              {{else}}
-                                {{value.text}}
-                              {{/if}}{{/if}}{{/if}}
-                            </div>
-                          {{/each}}
-                        </dd>
-                      {{/each}}
-                    </dl>
-                  {{/if}}
+      <div class="front {{frontClass}}">{{nl}}
+        <section id="auf-einen-blick">{{nl}}
+          <h2>{{t "report.section.overview"}}</h2>{{nl}}
+          {{#if failure}}<p class="failure">{{failure}}</p>{{/if}}{{nl}}
+          <p class="lead">
+            {{#each overview as sentence}}{{sentence}} {{/each}}
+          </p>{{nl}}
+          {{#if sandboxOff}}<p class="warn">{{t "report.summary.sandboxOff"}}</p>{{/if}}{{nl}}
+          {{#if checkErrors}}<p class="warn">{{checkErrors}}</p>{{/if}}{{nl}}
+        </section>{{nl}}
+        <section id="handlung">{{nl}}
+          <h2>{{t "report.section.actions"}}</h2>{{nl}}
+          {{#if actions}}
+            <ol class="actions">
+              {{#each actions as action}}
+                <li class="action sev-{{action.severity}}">
+                  <p class="action-title">
+                    <span class="badge sev-{{action.severity}}">{{action.severityLabel}}</span> <strong>{{action.title}}</strong>
+                  </p>
+                  {{#if action.action}}<p>{{action.action}}</p>{{/if}}
+                  <p class="muted">{{action.covers}}</p>
                 </li>
               {{/each}}
-            </ul>
-          </section>
-        {{/if}}{{nl}}
-      </section>{{nl}}
-      <section id="diagnose">{{nl}}
-        <h2>{{t "report.section.diagnostics"}}</h2>{{nl}}
-        {{#if diagnostics}}
-          <ul class="diags">
-            {{#each diagnostics as diagnostic}}
-              <li>
-                <strong><code>{{diagnostic.code}}</code> {{diagnostic.title}}</strong>
-                <p>{{diagnostic.body}}</p>
-                {{#if diagnostic.affects}}
-                  <p class="muted">
-                    {{t "report.diagnostics.affects"}}: {{#each diagnostic.affects as check}}
-                      <code>{{check}}</code> {{/each}}
-                  </p>
-                {{/if}}
-              </li>
-            {{/each}}
-          </ul>
-        {{else}}
-          <p>{{t "report.diagnostics.none"}}</p>
-        {{/if}}{{nl}}
-      </section>{{nl}}
-      <section id="messumgebung">{{nl}}
-        <h2>{{t "report.section.environment"}}</h2>{{nl}}
-        {{#if environmentAvailable}}
+            </ol>
+            {{#if full}}{{else}}<p class="muted">{{t "report.actions.briefNote"}}</p>{{/if}}
+          {{else}}
+            <p>{{emptyFindings}}</p>
+          {{/if}}{{nl}}
+        </section>{{nl}}
+        {{#if services}}
+          <section id="dienste">
+            <h2>{{t "report.section.services"}}</h2>
+            <div class="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{t "report.services.name"}}</th>
+                    <th>{{t "report.services.beforeInteraction"}}</th>
+                    <th>{{t "report.services.afterReject"}}</th>
+                    <th>{{t "report.services.afterAccept"}}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{#each services as service}}
+                    <tr>
+                      <td>{{service.name}}</td>
+                      <td>{{service.beforeInteraction}}</td>
+                      <td>{{service.afterReject}}</td>
+                      <td>{{service.afterAccept}}</td>
+                    </tr>
+                  {{/each}}
+                </tbody>
+              </table>
+            </div>
+            <p class="muted">{{t "report.services.note"}}</p>
+          </section>{{nl}}
+        {{/if}}
+      </div>{{nl}}
+      {{#if full}}
+        <section id="zusammenfassung">{{nl}}
+          <h2>{{t "report.section.summary"}}</h2>{{nl}}
+          <p class="status status-{{status}}">{{statusLabel}}</p>{{nl}}
           <dl class="kv">
-            {{#each environment as row}}
+            <dt>{{t "report.summary.exitCode"}}</dt>
+            <dd><strong class="exit exit-{{exitCode}}">{{exitCode}}</strong></dd>
+            {{#each summary as row}}
               <dt>{{row.label}}</dt>
               <dd>
                 {{#each row.items as value}}
@@ -430,135 +302,341 @@
                 {{/each}}
               </dd>
             {{/each}}
-          </dl>
-        {{else}}
-          <p>{{t "report.env.unavailable"}}</p>
-        {{/if}}{{nl}}
-        <dl class="kv">
-          {{#each extra as row}}
-            <dt>{{row.label}}</dt>
-            <dd>
-              {{#each row.items as value}}
-                <div>
-                  {{#if value.href}}
-                    <a href="#{{value.href}}">{{value.text}}</a>
-                  {{else}}{{#if value.url}}
-                    <code class="url">{{value.text}}</code>
-                  {{else}}{{#if value.code}}
-                    <code>{{value.text}}</code>
-                  {{else}}
-                    {{value.text}}
-                  {{/if}}{{/if}}{{/if}}
+          </dl>{{nl}}
+          {{#if counts}}
+            <h3>{{t "report.summary.counts"}}</h3>
+            <dl class="counts">
+              {{#each counts as count}}
+                <div class="count sev-{{count.severity}}">
+                  <dt>{{count.label}}</dt>
+                  <dd>{{count.value}}</dd>
                 </div>
               {{/each}}
-            </dd>
-          {{/each}}
-        </dl>{{nl}}
-        {{#if datasets}}
-          <h3>{{t "report.env.datasets"}}</h3>
-          <ul>
-            {{#each datasets as dataset}}
-              <li>{{dataset.text}}{{#if dataset.attribution}} – {{dataset.attribution}}{{/if}}</li>
-            {{/each}}
-          </ul>
-        {{/if}}{{nl}}
-      </section>{{nl}}
-      <section id="abdeckung">{{nl}}
-        <h2>{{t "report.section.coverage"}}</h2>{{nl}}
-        {{#if coverage}}
-          <h3>{{t "report.coverage.pages"}}</h3>
-          <p>{{coverage.totals}}</p>{{nl}}
-          {{#if coverage.pages}}
-            <div class="scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{{t "report.coverage.url"}}</th>
-                    <th>{{t "report.coverage.role"}}</th>
-                    <th>{{t "report.coverage.planned"}}</th>
-                    <th>{{t "report.coverage.observed"}}</th>
-                    <th>{{t "report.coverage.evaluated"}}</th>
-                    <th>{{t "report.coverage.phases"}}</th>
-                    <th>{{t "report.coverage.reason"}}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {{#each coverage.pages as page}}
-                    <tr>
-                      <td><code class="url">{{page.url}}</code></td>
-                      <td>{{page.role}}</td>
-                      <td>{{page.planned}}</td>
-                      <td>{{page.observed}}</td>
-                      <td>{{page.evaluated}}</td>
-                      <td>{{page.phases}}</td>
-                      <td>{{page.reason}}</td>
-                    </tr>
-                  {{/each}}
-                </tbody>
-              </table>
-            </div>
+            </dl>
           {{/if}}{{nl}}
-          {{#if coverage.requests}}<p>{{coverage.requests}}</p>{{/if}}{{nl}}
-          {{#if coverage.collectors}}
-            <h3>{{t "report.coverage.collectors"}}</h3>
+        </section>{{nl}}
+        <section id="befunde">{{nl}}
+          <h2>{{t "report.section.findings"}}</h2>{{nl}}
+          {{#if groups}}
+            {{#each groups as group}}
+              <section class="group">
+                <h3>{{group.title}}</h3>{{nl}}
+                {{#each group.findings as finding}}
+                  <article class="finding sev-{{finding.severity}}" id="{{finding.anchor}}">{{nl}}
+                    <h4>
+                      <span class="badge sev-{{finding.severity}}">
+                        {{finding.severityLabel}}
+                      </span> <code>{{finding.checkId}}</code> {{finding.title}}
+                    </h4>{{nl}}
+                    <p>{{finding.body}}</p>{{nl}}
+                    <dl class="kv">
+                      {{#each finding.rows as row}}
+                        <dt>{{row.label}}</dt>
+                        <dd>
+                          {{#each row.items as value}}
+                            <div>
+                              {{#if value.href}}
+                                <a href="#{{value.href}}">{{value.text}}</a>
+                              {{else}}{{#if value.url}}
+                                <code class="url">{{value.text}}</code>
+                              {{else}}{{#if value.code}}
+                                <code>{{value.text}}</code>
+                              {{else}}
+                                {{value.text}}
+                              {{/if}}{{/if}}{{/if}}
+                            </div>
+                          {{/each}}
+                        </dd>
+                      {{/each}}
+                    </dl>{{nl}}
+                    {{#if finding.evidence}}
+                      <details class="evidence">
+                        <summary>{{t "report.finding.evidence" count=finding.evidenceCount}}</summary>
+                        <ul class="evs">
+                          {{#each finding.evidence as ev}}
+                            <li class="ev">
+                              {{#if ev.missing}}
+                                {{ev.missing}}
+                              {{else}}
+                                <span class="ev-type">{{ev.type}}</span>
+                                {{#if ev.occurrences}}<span class="ev-count">{{ev.occurrences}}</span>{{/if}}
+                                {{#if ev.screenshot}}
+                                  {{#if ev.screenshot.dataUri}}
+                                    <figure class="shot">
+                                      <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
+                                      <figcaption>{{ev.screenshot.path}}</figcaption>
+                                    </figure>
+                                  {{else}}
+                                    <p class="muted">{{ev.screenshot.missing}}</p>
+                                  {{/if}}
+                                {{/if}}
+                                <dl class="kv">
+                                  {{#each ev.fields as row}}
+                                    <dt>{{row.label}}</dt>
+                                    <dd>
+                                      {{#each row.items as value}}
+                                        <div>
+                                          {{#if value.href}}
+                                            <a href="#{{value.href}}">{{value.text}}</a>
+                                          {{else}}{{#if value.url}}
+                                            <code class="url">{{value.text}}</code>
+                                          {{else}}{{#if value.code}}
+                                            <code>{{value.text}}</code>
+                                          {{else}}
+                                            {{value.text}}
+                                          {{/if}}{{/if}}{{/if}}
+                                        </div>
+                                      {{/each}}
+                                    </dd>
+                                  {{/each}}
+                                </dl>
+                              {{/if}}
+                            </li>
+                          {{/each}}
+                        </ul>
+                        {{#if finding.evidenceTruncated}}
+                          <p class="muted">{{t "report.finding.evidenceTruncated"}}</p>
+                        {{/if}}
+                      </details>
+                    {{else}}
+                      {{#if finding.evidenceTruncated}}
+                        <p class="muted">{{t "report.finding.evidenceTruncated"}}</p>
+                      {{/if}}
+                    {{/if}}{{nl}}
+                    {{#if finding.legalNote}}
+                      <details class="legal">
+                        <summary>{{t "report.finding.legalNote" check=finding.checkId}}</summary>
+                        <p>{{finding.legalNote.text}}</p>
+                        <p class="muted">{{finding.legalNote.meta}}</p>
+                      </details>
+                    {{/if}}{{nl}}
+                  </article>
+                {{/each}}
+              </section>
+            {{/each}}
+          {{else}}
+            <p>{{emptyFindings}}</p>
+          {{/if}}{{nl}}
+          {{#if otherShots}}
+            <section class="group">
+              <h3>{{t "report.evidence.otherScreenshots"}}</h3>
+              <ul class="evs">
+                {{#each otherShots as ev}}
+                  <li class="ev">
+                    {{#if ev.missing}}
+                      {{ev.missing}}
+                    {{else}}
+                      <span class="ev-type">{{ev.type}}</span>
+                      {{#if ev.screenshot}}
+                        {{#if ev.screenshot.dataUri}}
+                          <figure class="shot">
+                            <img src="{{ev.screenshot.dataUri}}" alt="{{screenshotAlt}}">
+                            <figcaption>{{ev.screenshot.path}}</figcaption>
+                          </figure>
+                        {{else}}
+                          <p class="muted">{{ev.screenshot.missing}}</p>
+                        {{/if}}
+                      {{/if}}
+                      <dl class="kv">
+                        {{#each ev.fields as row}}
+                          <dt>{{row.label}}</dt>
+                          <dd>
+                            {{#each row.items as value}}
+                              <div>
+                                {{#if value.href}}
+                                  <a href="#{{value.href}}">{{value.text}}</a>
+                                {{else}}{{#if value.url}}
+                                  <code class="url">{{value.text}}</code>
+                                {{else}}{{#if value.code}}
+                                  <code>{{value.text}}</code>
+                                {{else}}
+                                  {{value.text}}
+                                {{/if}}{{/if}}{{/if}}
+                              </div>
+                            {{/each}}
+                          </dd>
+                        {{/each}}
+                      </dl>
+                    {{/if}}
+                  </li>
+                {{/each}}
+              </ul>
+            </section>
+          {{/if}}{{nl}}
+        </section>{{nl}}
+        <section id="diagnose">{{nl}}
+          <h2>{{t "report.section.diagnostics"}}</h2>{{nl}}
+          {{#if diagnostics}}
+            <ul class="diags">
+              {{#each diagnostics as diagnostic}}
+                <li>
+                  <strong><code>{{diagnostic.code}}</code> {{diagnostic.title}}</strong>
+                  <p>{{diagnostic.body}}</p>
+                  {{#if diagnostic.affects}}
+                    <p class="muted">
+                      {{t "report.diagnostics.affects"}}: {{#each diagnostic.affects as check}}
+                        <code>{{check}}</code> {{/each}}
+                    </p>
+                  {{/if}}
+                </li>
+              {{/each}}
+            </ul>
+          {{else}}
+            <p>{{t "report.diagnostics.none"}}</p>
+          {{/if}}{{nl}}
+        </section>{{nl}}
+        <section id="messumgebung">{{nl}}
+          <h2>{{t "report.section.environment"}}</h2>{{nl}}
+          {{#if environmentAvailable}}
+            <dl class="kv">
+              {{#each environment as row}}
+                <dt>{{row.label}}</dt>
+                <dd>
+                  {{#each row.items as value}}
+                    <div>
+                      {{#if value.href}}
+                        <a href="#{{value.href}}">{{value.text}}</a>
+                      {{else}}{{#if value.url}}
+                        <code class="url">{{value.text}}</code>
+                      {{else}}{{#if value.code}}
+                        <code>{{value.text}}</code>
+                      {{else}}
+                        {{value.text}}
+                      {{/if}}{{/if}}{{/if}}
+                    </div>
+                  {{/each}}
+                </dd>
+              {{/each}}
+            </dl>
+          {{else}}
+            <p>{{t "report.env.unavailable"}}</p>
+          {{/if}}{{nl}}
+          <dl class="kv">
+            {{#each extra as row}}
+              <dt>{{row.label}}</dt>
+              <dd>
+                {{#each row.items as value}}
+                  <div>
+                    {{#if value.href}}
+                      <a href="#{{value.href}}">{{value.text}}</a>
+                    {{else}}{{#if value.url}}
+                      <code class="url">{{value.text}}</code>
+                    {{else}}{{#if value.code}}
+                      <code>{{value.text}}</code>
+                    {{else}}
+                      {{value.text}}
+                    {{/if}}{{/if}}{{/if}}
+                  </div>
+                {{/each}}
+              </dd>
+            {{/each}}
+          </dl>{{nl}}
+          {{#if datasets}}
+            <h3>{{t "report.env.datasets"}}</h3>
+            <ul>
+              {{#each datasets as dataset}}
+                <li>{{dataset.text}}{{#if dataset.attribution}} – {{dataset.attribution}}{{/if}}</li>
+              {{/each}}
+            </ul>
+          {{/if}}{{nl}}
+        </section>{{nl}}
+        <section id="abdeckung">{{nl}}
+          <h2>{{t "report.section.coverage"}}</h2>{{nl}}
+          {{#if coverage}}
+            <h3>{{t "report.coverage.pages"}}</h3>
+            <p>{{coverage.totals}}</p>{{nl}}
+            {{#if coverage.pages}}
+              <div class="scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{{t "report.coverage.url"}}</th>
+                      <th>{{t "report.coverage.role"}}</th>
+                      <th>{{t "report.coverage.planned"}}</th>
+                      <th>{{t "report.coverage.observed"}}</th>
+                      <th>{{t "report.coverage.evaluated"}}</th>
+                      <th>{{t "report.coverage.phases"}}</th>
+                      <th>{{t "report.coverage.reason"}}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {{#each coverage.pages as page}}
+                      <tr>
+                        <td><code class="url">{{page.url}}</code></td>
+                        <td>{{page.role}}</td>
+                        <td>{{page.planned}}</td>
+                        <td>{{page.observed}}</td>
+                        <td>{{page.evaluated}}</td>
+                        <td>{{page.phases}}</td>
+                        <td>{{page.reason}}</td>
+                      </tr>
+                    {{/each}}
+                  </tbody>
+                </table>
+              </div>
+            {{/if}}{{nl}}
+            {{#if coverage.requests}}<p>{{coverage.requests}}</p>{{/if}}{{nl}}
+            {{#if coverage.collectors}}
+              <h3>{{t "report.coverage.collectors"}}</h3>
+              <div class="scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{{t "report.coverage.collector"}}</th>
+                      <th>{{t "report.coverage.status"}}</th>
+                      <th>{{t "report.coverage.reason"}}</th>
+                      <th>{{t "report.coverage.duration"}}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {{#each coverage.collectors as collector}}
+                      <tr>
+                        <td>{{collector.name}}</td>
+                        <td>{{collector.status}}</td>
+                        <td>{{collector.reason}}</td>
+                        <td>{{collector.duration}}</td>
+                      </tr>
+                    {{/each}}
+                  </tbody>
+                </table>
+              </div>
+            {{/if}}{{nl}}
+          {{else}}
+            <p>{{t "report.coverage.unavailable"}}</p>
+          {{/if}}{{nl}}
+          {{#if checks}}
+            <h3>{{t "report.coverage.checks"}}</h3>
             <div class="scroll">
               <table>
                 <thead>
                   <tr>
-                    <th>{{t "report.coverage.collector"}}</th>
+                    <th>{{t "report.coverage.check"}}</th>
                     <th>{{t "report.coverage.status"}}</th>
                     <th>{{t "report.coverage.reason"}}</th>
-                    <th>{{t "report.coverage.duration"}}</th>
+                    <th>{{t "report.coverage.checkCoverage"}}</th>
+                    <th>{{t "report.coverage.limitations"}}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {{#each coverage.collectors as collector}}
-                    <tr>
-                      <td>{{collector.name}}</td>
-                      <td>{{collector.status}}</td>
-                      <td>{{collector.reason}}</td>
-                      <td>{{collector.duration}}</td>
+                  {{#each checks as check}}
+                    <tr class="st-{{check.status}}">
+                      <td><code>{{check.id}}</code></td>
+                      <td>{{check.statusLabel}}</td>
+                      <td>{{check.reason}}</td>
+                      <td>{{check.coverage}}</td>
+                      <td>
+                        {{#if check.limitations}}
+                          {{#each check.limitations as limitation}}<code>{{limitation}}</code> {{/each}}
+                        {{else}}–{{/if}}
+                      </td>
                     </tr>
                   {{/each}}
                 </tbody>
               </table>
             </div>
           {{/if}}{{nl}}
-        {{else}}
-          <p>{{t "report.coverage.unavailable"}}</p>
-        {{/if}}{{nl}}
-        {{#if checks}}
-          <h3>{{t "report.coverage.checks"}}</h3>
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{t "report.coverage.check"}}</th>
-                  <th>{{t "report.coverage.status"}}</th>
-                  <th>{{t "report.coverage.reason"}}</th>
-                  <th>{{t "report.coverage.checkCoverage"}}</th>
-                  <th>{{t "report.coverage.limitations"}}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{#each checks as check}}
-                  <tr class="st-{{check.status}}">
-                    <td><code>{{check.id}}</code></td>
-                    <td>{{check.statusLabel}}</td>
-                    <td>{{check.reason}}</td>
-                    <td>{{check.coverage}}</td>
-                    <td>
-                      {{#if check.limitations}}
-                        {{#each check.limitations as limitation}}<code>{{limitation}}</code> {{/each}}
-                      {{else}}–{{/if}}
-                    </td>
-                  </tr>
-                {{/each}}
-              </tbody>
-            </table>
-          </div>
-        {{/if}}{{nl}}
-      </section>{{nl}}
+        </section>{{nl}}
+      {{/if}}{{nl}}
       <section id="hinweis">{{nl}}
         <h2>{{t "report.section.notice"}}</h2>{{nl}}
         {{#each disclaimer as paragraph}}<p>{{paragraph}}</p>{{/each}}{{nl}}

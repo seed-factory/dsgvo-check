@@ -79,6 +79,16 @@ describe('data loaders', () => {
     expect(t.messages['B-01.y']?.draft).toBe(false);
   });
 
+  it('texts load actions by messageId and reject duplicates', () => {
+    const root = dir({
+      'texts/de/a.yaml': 'actions: {A-01.x: {text: Tun Sie das.}}',
+      'texts/de/b.yaml': 'actions: {B-01.y: {text: Und das.}}',
+    });
+    expect(loadTexts('de', root).actions).toEqual({ 'A-01.x': 'Tun Sie das.', 'B-01.y': 'Und das.' });
+    writeFileSync(path.join(root, 'texts/de/c.yaml'), 'actions: {A-01.x: {text: Doppelt.}}');
+    expect(() => loadTexts('de', root)).toThrow(/duplicate action "A-01.x"/);
+  });
+
   it('loadDataDir deep-merges objects and concatenates arrays', () => {
     const root = dir({
       'services/a.yaml': 'services: [{id: a}]\nmeta: {version: "1"}',

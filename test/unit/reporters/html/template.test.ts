@@ -7,6 +7,7 @@ const ctx: ReporterContext = {
     lang: 'en',
     messages: {},
     legalNotes: {},
+    actions: {},
     ui: {
       'report.title': { text: 'Report for {target}', draft: true },
       'report.literal': { text: '<em> & T2_LABEL', draft: true },

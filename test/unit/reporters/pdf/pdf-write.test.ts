@@ -46,6 +46,42 @@ describe('optional PDF output', () => {
     ]);
   });
 
+  it.each([
+    ['the option', { detail: 'brief' as const }, undefined],
+    ['the setting', {}, parseConfigInput({ report: { detail: 'brief' } })],
+  ])('prints and writes the brief report from %s; the JSON is the same', async (_name, detail, config) => {
+    const outDir = outputDir();
+    vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
+    const report = sampleFullReport();
+
+    await writeReports(
+      { report, snapshot: null, exitCode: 0 },
+      { outDir, formats: ['json', 'html', 'pdf'], lang: 'en', ...detail, ...(config ? { config } : {}) },
+    );
+
+    const html = readFileSync(path.join(outDir, 'report.html'), 'utf8');
+    expect(html).not.toContain('class="evidence"');
+    expect(html).toContain('What to do');
+    expect(renderPdf).toHaveBeenCalledWith(html, expect.any(Object), undefined);
+    const json = JSON.parse(readFileSync(path.join(outDir, 'report.json'), 'utf8'));
+    expect(json.findings[0].evidenceIds).toEqual(report.findings[0]!.evidenceIds);
+  });
+
+  it('prefers the option over the setting', async () => {
+    const outDir = outputDir();
+    await writeReports(
+      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
+      {
+        outDir,
+        formats: ['html'],
+        lang: 'en',
+        detail: 'full',
+        config: parseConfigInput({ report: { detail: 'brief' } }),
+      },
+    );
+    expect(readFileSync(path.join(outDir, 'report.html'), 'utf8')).toContain('class="evidence"');
+  });
+
   it('renders HTML only in memory for PDF-only output', async () => {
     const outDir = outputDir();
     vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));

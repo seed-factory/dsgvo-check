@@ -139,6 +139,8 @@ const TextsFileSchema = z.object({
   legalNotes: z.record(z.string(), LegalNoteSchema).nullish(),
   /** UI strings (console/HTML labels, disclaimer, diagnostics). Keys are dotted, e.g. `console.heading`. */
   ui: z.record(z.string(), z.string()).nullish(),
+  /** One owner-facing action per variant, keyed `<checkId>.<variant>`. */
+  actions: z.record(z.string(), z.object({ text: z.string().min(1) })).nullish(),
 });
 
 export interface TextEntry {
@@ -158,6 +160,8 @@ export interface Texts {
   messages: Record<string, TextEntry>;
   legalNotes: Record<string, LegalNote>;
   ui: Record<string, { text: string; draft: boolean }>;
+  /** Action text per messageId (`<checkId>.<variant>`). */
+  actions: Record<string, string>;
 }
 
 export function loadTexts(lang: Lang, dataDir = DEFAULT_DATA_DIR): Texts {
@@ -165,12 +169,13 @@ export function loadTexts(lang: Lang, dataDir = DEFAULT_DATA_DIR): Texts {
   const files = yamlFiles(dir);
   if (files.length === 0) throw new DataError(`texts ${lang}: no files in ${dir}`);
 
-  const out: Texts = { lang, messages: {}, legalNotes: {}, ui: {} };
+  const out: Texts = { lang, messages: {}, legalNotes: {}, ui: {}, actions: {} };
   for (const file of files) {
-    const { messages, notes, ui } = textsOfFile(parseFile(file, TextsFileSchema));
+    const { messages, notes, ui, actions } = textsOfFile(parseFile(file, TextsFileSchema));
     mergeUnique(out.messages, messages, file, 'message');
     mergeUnique(out.legalNotes, notes, file, 'legal note');
     mergeUnique(out.ui, ui, file, 'ui string');
+    mergeUnique(out.actions, actions, file, 'action');
   }
   return out;
 }
@@ -180,6 +185,7 @@ function textsOfFile(parsed: z.infer<typeof TextsFileSchema>): {
   messages: Record<string, TextEntry>;
   notes: Record<string, LegalNote>;
   ui: Texts['ui'];
+  actions: Texts['actions'];
 } {
   const messages: Record<string, TextEntry> = {};
   for (const [k, m] of Object.entries(parsed.messages ?? {})) {
@@ -194,7 +200,10 @@ function textsOfFile(parsed: z.infer<typeof TextsFileSchema>): {
   const ui: Texts['ui'] = {};
   for (const [k, t] of Object.entries(parsed.ui ?? {})) ui[k] = { text: t, draft: parsed.draft };
 
-  return { messages, notes, ui };
+  const actions: Texts['actions'] = {};
+  for (const [k, a] of Object.entries(parsed.actions ?? {})) actions[k] = a.text;
+
+  return { messages, notes, ui, actions };
 }
 
 const RoutingFileSchema = z.object({

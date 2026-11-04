@@ -56,6 +56,7 @@ describe('built-in defaults', () => {
     ['cmp', 'blockingCoveredRatio', 0.85],
     ['cmp', 'waitMs', 5_000],
     ['report', 'formats', ['console', 'json']],
+    ['report', 'detail', 'full'],
     ['report', 'outDir', './dsgvo-check-report'],
     ['report', 'lang', 'de'],
     ['report', 'summaryMaxFindings', 50],

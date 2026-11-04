@@ -31,6 +31,7 @@ describe('settings from the environment', () => {
         DSGVO_CHECK_REPORT_FORMATS: 'json,html',
         DSGVO_CHECK_REPORT_OUT_DIR: 'reports',
         DSGVO_CHECK_REPORT_LANG: 'en',
+        DSGVO_CHECK_REPORT_DETAIL: 'brief',
         DSGVO_CHECK_BROWSER_SANDBOX: 'off',
       },
       tmpdir(),
@@ -42,6 +43,7 @@ describe('settings from the environment', () => {
       format: 'json,html',
       out: 'reports',
       lang: 'en',
+      detail: 'brief',
       sandbox: 'off',
     });
     expect(parse(settings, '--max-pages', '5', '--timeout', '90s', '--fail-on', 'none').opts()).toMatchObject(
@@ -61,6 +63,7 @@ describe('settings from the environment', () => {
       maxPages: '6',
       timeout: '8m',
       lang: 'de',
+      detail: 'full',
       sandbox: 'require',
     });
   });
@@ -139,7 +142,14 @@ describe('the report command follows the settings', () => {
   const settingsOf = (env: Record<string, string>) => loadCliSettings(env, tmpdir());
 
   it('without settings it renders html in German, as it always did', async () => {
-    expect(await reportOpts(builtInSettings())).toEqual({ format: 'html', lang: 'de' });
+    expect(await reportOpts(builtInSettings())).toEqual({ format: 'html', lang: 'de', detail: 'full' });
+  });
+
+  it('DSGVO_CHECK_REPORT_DETAIL is the default level of detail; the flag beats it', async () => {
+    const s = settingsOf({ DSGVO_CHECK_REPORT_DETAIL: 'brief' });
+    expect(await reportOpts(s)).toMatchObject({ detail: 'brief' });
+    expect(await reportOpts(s, '--detail', 'full')).toMatchObject({ detail: 'full' });
+    expect(parse(s, '--detail', 'full').opts()).toMatchObject({ detail: 'full' });
   });
 
   it('DSGVO_CHECK_REPORT_LANG is the default language; the flag beats it', async () => {
@@ -162,7 +172,7 @@ describe('the report command follows the settings', () => {
 
   it('other report settings leave html as the default: the scan default is console and json', async () => {
     const s = settingsOf({ DSGVO_CHECK_REPORT_LANG: 'en', DSGVO_CHECK_REPORT_OUT_DIR: 'reports' });
-    expect(await reportOpts(s)).toEqual({ format: 'html', lang: 'en' });
+    expect(await reportOpts(s)).toEqual({ format: 'html', lang: 'en', detail: 'full' });
   });
 
   it('the environment beats .env for the language and the formats', async () => {
@@ -171,12 +181,16 @@ describe('the report command follows the settings', () => {
       path.join(dir, '.env'),
       'DSGVO_CHECK_REPORT_LANG=en\nDSGVO_CHECK_REPORT_FORMATS=html,pdf\n',
     );
-    expect(await reportOpts(loadCliSettings({}, dir))).toEqual({ format: 'html,pdf', lang: 'en' });
+    expect(await reportOpts(loadCliSettings({}, dir))).toEqual({
+      format: 'html,pdf',
+      lang: 'en',
+      detail: 'full',
+    });
     expect(
       await reportOpts(
         loadCliSettings({ DSGVO_CHECK_REPORT_LANG: 'de', DSGVO_CHECK_REPORT_FORMATS: 'json' }, dir),
       ),
-    ).toEqual({ format: 'json', lang: 'de' });
+    ).toEqual({ format: 'json', lang: 'de', detail: 'full' });
   });
 });
 

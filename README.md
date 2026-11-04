@@ -231,6 +231,13 @@ Ein Scan dauert meist 1–3 Minuten und schreibt nach `--out`:
 - `artifacts/banner-B.jpg` bei erkanntem Banner (abschaltbar mit `--no-screenshots`),
 - `report.pdf` nur mit `--format html,pdf`. Ein Druckfehler führt zu einer Warnzeile; Exit-Code und JSON bleiben.
 
+Die erste Seite von `report.html` und `report.pdf` richtet sich an die Betreiberin oder den Betreiber der Website: „Auf
+einen Blick“ fasst in zwei bis drei Sätzen zusammen, was beobachtet wurde, „Was zu tun ist“ nennt je Befundart eine
+Empfehlung, und „Beobachtete Dienste“ zeigt, wann welcher Dienst geladen wurde. Danach folgen die Einzelheiten für
+Entwickler. Mit `--detail brief` entfällt dieser Teil: Der kurze Bericht besteht aus der ersten Seite und dem Hinweis.
+Gleiche Anfragen eines Befunds erscheinen im ausführlichen Bericht einmal mit Anzahl und Seitenliste; `report.json`
+behält jeden Beleg.
+
 ### Bericht erneut ausgeben
 
 Einen vorhandenen JSON-Bericht gibt der Befehl `report` ohne erneuten Scan aus. Ungültiges oder fremdes JSON endet mit
@@ -242,6 +249,8 @@ node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lan
 
 - Ohne Flags rendert `report` HTML auf Deutsch. `DSGVO_CHECK_REPORT_LANG` und `DSGVO_CHECK_REPORT_FORMATS` (auch aus
   `.env`, siehe [Konfiguration](#konfiguration)) ändern diese Standardwerte, ein Flag geht vor.
+- `--detail full|brief` (Standard `full`, Einstellung `DSGVO_CHECK_REPORT_DETAIL`) wählt den ausführlichen oder den
+  kurzen Bericht. Es gilt für HTML und PDF; JSON, Konsole und `summary.md` bleiben gleich.
 - Ist `DSGVO_CHECK_REPORT_FORMATS` nicht gesetzt, bleibt es bei `html`: `console,json` ist nur der Standard eines Scans.
 - `DSGVO_CHECK_REPORT_OUT_DIR` gilt nur für Scans; `report` schreibt neben die Eingabedatei oder nach `--out`.
 
@@ -275,6 +284,7 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 | `--from-snapshot <file>`            | –                              | Snapshot ohne Netz neu auswerten (die URL entfällt)                                                              |
 | `--checks <ids>`                    | alle                           | Nur diese Prüfungen, z. B. `EMBED-01,HDR-01`                                                                     |
 | `--lang de\|en`                     | `de`                           | Sprache des Berichts                                                                                             |
+| `--detail full\|brief`              | `full`                         | HTML und PDF: `full` mit Belegen für Entwickler, `brief` kurz, mit Handlungsempfehlungen für Betreiber           |
 | `--verbose`                         | aus                            | Ausführliche Logs auf stderr                                                                                     |
 
 ## Konfiguration

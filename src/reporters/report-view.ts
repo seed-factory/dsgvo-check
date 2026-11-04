@@ -11,13 +11,12 @@ import {
   type Finding,
   type MessageParams,
   type Report,
-  type Severity,
   SeveritySchema,
 } from '../core/report/schema.ts';
 import { disclaimerParagraphs, phaseCPerformed } from './disclaimer.ts';
+import { buildFrontPage, SEVERITY_RANK } from './front-page.ts';
 
-/** Highest first: findings are listed critical before warning before info. */
-export const SEVERITY_RANK: Readonly<Record<Severity, number>> = { critical: 3, warning: 2, info: 1 };
+export { SEVERITY_RANK };
 
 /** Evidence fields that carry values of cookies, storage or consent strings; the report shows names, never values. */
 const SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
@@ -186,6 +185,8 @@ const anchorOf = (f: Finding) =>
 interface EvidenceView {
   type: string;
   missing: string | null;
+  /** "5×" when identical requests are shown as one item; null for a single occurrence. */
+  occurrences: string | null;
   fields: Row[];
   screenshot: { dataUri: string | null; missing: string | null; path: string } | null;
 }
@@ -225,6 +226,7 @@ function evidenceView(ev: Evidence, ctx: ReporterContext): EvidenceView {
   return {
     type: text(ev.type, 60),
     missing: null,
+    occurrences: null,
     fields: evidenceFields(ev),
     screenshot: screenshotView(ev, ctx),
   };
@@ -358,6 +360,99 @@ function legalNoteView(f: Finding, { label }: ViewText, ctx: ReporterContext) {
   };
 }
 
+type RequestEvidence = Extract<Evidence, { type: 'request' }>;
+
+/** Fields that tell a repeated request apart: when and where it was made. The merged item lists pages and phases instead. */
+const OCCURRENCE_FIELDS = new Set([
+  'page',
+  'phase',
+  'tMs',
+  'navigationId',
+  'frameId',
+  'frameUrl',
+  'actionId',
+  'parentRequestId',
+]);
+
+/** Requests that agree in everything but time and place are one request seen several times. */
+function requestKey(ev: Evidence): string | null {
+  if (ev.type !== 'request') return null;
+  const r = ev as RequestEvidence;
+  // Everything the view shows except time and place; otherwise a differing event type or
+  // identifier match, or cache versus network delivery, would be hidden behind the first request.
+  return JSON.stringify([
+    r.url,
+    r.method,
+    r.resourceType,
+    r.delivery,
+    r.result,
+    r.serviceId ?? null,
+    r.provenance ?? null,
+    r.thirdPartyETLD1 ?? null,
+    r.connectedIp ?? null,
+    r.initiator ?? null,
+    r.features ?? null,
+  ]);
+}
+
+const distinct = <T>(values: readonly T[]): T[] => [...new Set(values)];
+
+/** One item for identical requests: the shared fields once, the pages and phases of all of them, and their count. */
+function mergedRequestView(
+  group: readonly RequestEvidence[],
+  ctx: ReporterContext,
+  v: ViewText,
+): EvidenceView {
+  const [first] = group as [RequestEvidence, ...RequestEvidence[]];
+  const pages = distinct(
+    group.flatMap((r) => ((r as { page?: string }).page ? [(r as { page: string }).page] : [])),
+  );
+  const phases = distinct(
+    group.flatMap((r) => ((r as { phase?: string }).phase ? [(r as { phase: string }).phase] : [])),
+  );
+
+  const view = evidenceView(first, ctx);
+  const shared = view.fields.filter((row) => !OCCURRENCE_FIELDS.has(row.label));
+  if (phases.length) shared.push(v.row('evidence.phases', phases.join(', '), 120));
+  if (pages.length)
+    shared.push({ label: v.label('evidence.pages'), items: pages.slice(0, MAX_LIST_ITEMS).map(urlItem) });
+  return { ...view, occurrences: v.label('evidence.occurrences', { count: group.length }), fields: shared };
+}
+
+/** The evidence of one finding in the order of its ids; identical requests are shown once with their count. */
+function evidenceViews(
+  ids: readonly string[],
+  evidence: ReadonlyMap<string, Evidence>,
+  v: ViewText,
+  ctx: ReporterContext,
+): EvidenceView[] {
+  const views: EvidenceView[] = [];
+  const repeated = new Map<string, { index: number; group: RequestEvidence[] }>();
+
+  for (const id of distinct(ids)) {
+    const ev = evidence.get(id);
+    if (!ev) {
+      const missing = v.label('finding.evidenceMissing', { id: text(id, 500) });
+      views.push({ type: '', missing, occurrences: null, fields: [], screenshot: null });
+      continue;
+    }
+
+    const key = requestKey(ev);
+    const seen = key === null ? undefined : repeated.get(key);
+    if (seen) {
+      seen.group.push(ev as RequestEvidence);
+      continue;
+    }
+    if (key !== null) repeated.set(key, { index: views.length, group: [ev as RequestEvidence] });
+    views.push(evidenceView(ev, ctx));
+  }
+
+  for (const { index, group } of repeated.values()) {
+    if (group.length > 1) views[index] = mergedRequestView(group, ctx, v);
+  }
+  return views;
+}
+
 function findingView(
   f: Finding,
   v: ViewText,
@@ -365,17 +460,7 @@ function findingView(
   evidence: ReadonlyMap<string, Evidence>,
   byFingerprint: ReadonlyMap<string, Finding>,
 ) {
-  const evs = f.evidenceIds.map(
-    (id): EvidenceView =>
-      evidence.has(id)
-        ? evidenceView(evidence.get(id)!, ctx)
-        : {
-            type: '',
-            missing: v.label('finding.evidenceMissing', { id: text(id, 500) }),
-            fields: [],
-            screenshot: null,
-          },
-  );
+  const evs = evidenceViews(f.evidenceIds, evidence, v, ctx);
   const message = findingText(f, ctx);
   return {
     anchor: anchorOf(f),
@@ -575,12 +660,41 @@ function checkViews(report: Report, v: ViewText) {
     });
 }
 
+/** What only the full report shows: findings with their evidence and every technical table. */
+function fullSections(report: Report, ctx: ReporterContext, v: ViewText) {
+  const scan = report.scan;
+  return {
+    groups: findingGroups(report, v, ctx),
+    otherShots: unreferencedScreenshots(report, ctx),
+    diagnostics: diagnosticViews(report, ctx),
+
+    summary: summaryRows(report, v),
+    counts: countViews(report, v),
+
+    environmentAvailable: !!scan.environment,
+    environment: environmentRows(report, v),
+    extra: [
+      v.row('meta.version', `dsgvo-check ${text(report.tool.version, 40)}`),
+      v.row('meta.schemaVersion', report.schemaVersion, 20),
+    ],
+    datasets: datasetViews(report, v),
+    coverage: coverageView(report, v),
+    checks: checkViews(report, v),
+  };
+}
+
 /** Only selected presentation fields enter the view; report objects and crmCode are never copied. */
 export function buildReportView(report: Report, ctx: ReporterContext) {
   const v = viewText(ctx);
-  const { label, row } = v;
+  const { label } = v;
   const scan = report.scan;
   const errors = failedChecks(report);
+  const full = (ctx.detail ?? 'full') === 'full';
+  const front = buildFrontPage(report, ctx, {
+    label,
+    clean: text,
+    message: (f) => findingText(f, ctx),
+  });
 
   return {
     screenshotAlt: label('screenshot.alt'),
@@ -591,6 +705,8 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
     draft: isDraftReport(report, ctx),
     draftStamp: text(draftStamp(ctx), 60),
 
+    full,
+    frontClass: full ? 'front-full' : 'front-brief',
     exitCode: report.summary.exitCode,
     status: scan.status,
     statusLabel: label(`status.${scan.status}`),
@@ -601,27 +717,14 @@ export function buildReportView(report: Report, ctx: ReporterContext) {
         })
       : null,
     sandboxOff: scan.environment?.sandbox.mode === 'off',
-    summary: summaryRows(report, v),
-    counts: countViews(report, v),
     checkErrors:
       report.summary.exitCode === 1 && errors.length
         ? label('summary.checkErrorsWithThreshold', { checks: errors.join(', ') })
         : null,
 
-    groups: findingGroups(report, v, ctx),
+    ...front,
     emptyFindings: label(scan.status === 'failed' ? 'findings.unavailable' : 'findings.none'),
-    otherShots: unreferencedScreenshots(report, ctx),
-    diagnostics: diagnosticViews(report, ctx),
-
-    environmentAvailable: !!scan.environment,
-    environment: environmentRows(report, v),
-    extra: [
-      row('meta.version', `dsgvo-check ${text(report.tool.version, 40)}`),
-      row('meta.schemaVersion', report.schemaVersion, 20),
-    ],
-    datasets: datasetViews(report, v),
-    coverage: coverageView(report, v),
-    checks: checkViews(report, v),
+    ...(full ? fullSections(report, ctx, v) : {}),
 
     disclaimer: disclaimerParagraphs(report, ctx.texts).map((p) => text(p, 6000)),
     rechtsstand: report.legalContext?.rechtsstand ?? report.ruleset?.rechtsstand ?? null,

@@ -1,0 +1,134 @@
+# Handlungsempfehlungen (de), eine pro Variante `<checkId>.<variant>` aus test/data/ruleset. Kurz, konkret, ohne rechtliche Wertung
+# (Stop-Wort-Test). Entwurf, bis geprüft.
+draft: true
+actions:
+  CONSENT-01.tracking-completed:
+    text: "Laden Sie das Tracking-Skript erst nach einer Einwilligung, zum Beispiel über die Blockierfunktion Ihres Einwilligungsbanners oder des Tag-Managers."
+  CONSENT-01.library-loaded:
+    text: "Prüfen Sie, ob das Skript oder der Inhalt dieses Dienstes erst nach einer Einwilligung geladen werden kann, und lassen Sie ihn sonst über den Einwilligungsbanner blockieren."
+  CONSENT-01.first-party-proxy:
+    text: "Prüfen Sie, ob dieser eigene Endpunkt ein Analyse- oder Marketingdienst ist, und starten Sie ihn dann erst nach einer Einwilligung."
+  CONSENT-01.cookieless-ping:
+    text: "Prüfen Sie, ob diese Anfrage erst nach einer Einwilligung gesendet werden soll, und stimmen Sie die Einstellung mit Ihrem Dienstleister ab."
+  CONSENT-01.third-party-resource:
+    text: "Prüfen Sie, ob dieser externe Inhalt nötig ist, oder liefern Sie ihn vom eigenen Server aus. Sonst kein Handlungsbedarf."
+  CONSENT-01.unknown-host:
+    text: "Klären Sie, wozu dieser unbekannte Host eingebunden ist, und entfernen Sie ihn oder ergänzen Sie ihn in Ihrer Datenschutzerklärung."
+  CONSENT-01.request-not-completed:
+    text: "Prüfen Sie, ob der Dienst bei einer erfolgreichen Verbindung Daten senden würde, und laden Sie ihn dann erst nach einer Einwilligung."
+  CONSENT-02.tracking-identifier-stored:
+    text: "Setzen Sie die Analyse- oder Marketing-Kennung erst nach einer Einwilligung, zum Beispiel indem der zugehörige Dienst bis dahin blockiert wird."
+  CONSENT-02.unknown-third-party-persistent:
+    text: "Klären Sie, welcher Dienst diese Einträge setzt, und lassen Sie sie nur nach einer Einwilligung speichern, falls sie nicht technisch notwendig sind."
+  CONSENT-02.unknown-first-party-persistent:
+    text: "Prüfen Sie, wofür diese Einträge Ihrer eigenen Seite dienen; sind sie nicht technisch notwendig, speichern Sie sie erst nach einer Einwilligung."
+  CONSENT-02.cmp-cookie-with-uid:
+    text: "Prüfen Sie bei Ihrem Banner-Anbieter, ob die Kennung im Cookie für den Nachweis der Auswahl nötig ist. Sonst kein Handlungsbedarf."
+  CONSENT-02.storage-rejected-or-attempted:
+    text: "Prüfen Sie, ob die Seite versucht, hier vor einer Einwilligung etwas zu speichern, und verschieben Sie das auf die Zeit nach der Einwilligung."
+  CONSENT-03.no-banner-strong-tracking:
+    text: "Binden Sie einen Einwilligungsbanner ein oder entfernen Sie die Analyse- und Marketingdienste, bis eine Einwilligung eingeholt werden kann."
+  CONSENT-03.no-banner-consent-services:
+    text: "Prüfen Sie, ob die geladenen Dienste eine Einwilligung brauchen, und binden Sie dann einen Einwilligungsbanner ein oder entfernen Sie die Dienste."
+  CONSENT-04.blocking-no-reject:
+    text: "Ergänzen Sie auf der ersten Ebene des Banners eine gut sichtbare Option zum Ablehnen, die genauso leicht erreichbar ist wie das Zustimmen."
+  CONSENT-04.close-means-accept:
+    text: "Stellen Sie im Banner ein, dass das Schließen des Dialogs nicht als Zustimmung gilt, und prüfen Sie die Einstellung im Test."
+  CONSENT-04.reject-not-actionable:
+    text: "Prüfen Sie, ob die Ablehnoption auf allen Bildschirmgrößen sichtbar und bedienbar ist, und korrigieren Sie Gestaltung oder Position."
+  CONSENT-04.reject-ineffective:
+    text: "Prüfen Sie manuell, ob die Ablehnung im Banner wirklich gespeichert wird, und wenden Sie sich bei Problemen an Ihren Banner-Anbieter."
+  CONSENT-04.consent-without-action:
+    text: "Stellen Sie im Banner ein, dass optionale Kategorien ohne Auswahl der Besucher auf „abgelehnt“ stehen."
+  CONSENT-04.reject-as-link:
+    text: "Prüfen Sie manuell, ob die Ablehnoption genauso auffällig dargestellt ist wie die Zustimmung, und gestalten Sie sie sonst als gleichwertige Schaltfläche."
+  CONSENT-04.nonblocking-no-reject:
+    text: "Prüfen Sie manuell, ob der Banner eine Ablehnoption bietet, und ergänzen Sie sie auf der ersten Ebene, falls sie fehlt."
+  CONSENT-04.no-choice-at-first-layer:
+    text: "Prüfen Sie den Banner manuell und bieten Sie auf der ersten Ebene sowohl Zustimmen als auch Ablehnen an."
+  CONSENT-04.pur-abo:
+    text: "Prüfen Sie manuell, ob Zustimmung oder Abonnement für Besucher klar und fair dargestellt sind. Sonst kein Handlungsbedarf."
+  CONSENT-04.banner-not-recognized:
+    text: "Prüfen Sie den Einwilligungsbanner manuell: Gibt es eine gleichwertige Ablehnoption, und wird sie beachtet?"
+  CONSENT-04.cmp-not-supported:
+    text: "Prüfen Sie den Einwilligungsbanner dieses Anbieters manuell, da das Werkzeug ihn nicht auswertet."
+  CONSENT-05.tracking-after-reject:
+    text: "Stellen Sie sicher, dass Analyse- und Marketingdienste nach einer Ablehnung nicht laden oder speichern, und testen Sie den Ablauf nach jeder Änderung."
+  CONSENT-05.cookieless-ping-after-reject:
+    text: "Prüfen Sie, ob dieser Dienst nach einer Ablehnung noch Anfragen senden soll, und blockieren Sie ihn sonst bis zu einer Einwilligung."
+  CONSENT-05.connect-only-after-reject:
+    text: "Prüfen Sie, ob die Verbindung zu diesem Dienst nach einer Ablehnung nötig ist. Sonst kein Handlungsbedarf."
+  TRACK-01.service-inventory:
+    text: "Kein Handlungsbedarf, sofern der Dienst gewollt ist und in der Datenschutzerklärung genannt wird."
+  EMBED-01.fonts-loaded:
+    text: "Laden Sie die Schriften vom eigenen Server statt von externen Anbietern wie fonts.googleapis.com."
+  EMBED-01.preconnect-only:
+    text: "Entfernen Sie die Verbindungsvorbereitung zum Schriftdienst, wenn Sie die Schriften nicht von dort laden."
+  EMBED-02.maps-loaded:
+    text: "Binden Sie die Karte erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
+  LEGAL-01.document-not-found:
+    text: "Verlinken Sie Impressum und Datenschutzerklärung gut sichtbar im Seitenfuß jeder Seite."
+  LEGAL-01.links-broken:
+    text: "Korrigieren Sie die Links auf Impressum und Datenschutzerklärung, sodass sie auf die richtigen Seiten führen."
+  LEGAL-01.link-missing-on-some-pages:
+    text: "Ergänzen Sie den Link auf Impressum und Datenschutzerklärung auf den Seiten, auf denen er fehlt, am besten über eine gemeinsame Fußzeile."
+  LEGAL-01.reachable-via-intermediate:
+    text: "Verlinken Sie Impressum und Datenschutzerklärung direkt, ohne Umweg über eine Zwischenseite."
+  LEGAL-01.footer-covered-by-banner:
+    text: "Sorgen Sie dafür, dass der Banner den Seitenfuß nicht verdeckt, oder verlinken Sie Impressum und Datenschutzerklärung auch im Banner."
+  LEGAL-01.unresolved:
+    text: "Prüfen Sie manuell, ob die Links auf Impressum und Datenschutzerklärung im Browser funktionieren."
+  PRIV-01.not-named:
+    text: "Nennen Sie diesen Dienst mit Zweck und Anbieter in Ihrer Datenschutzerklärung oder entfernen Sie ihn von der Seite."
+  PRIV-01.category-only:
+    text: "Prüfen Sie, ob die Datenschutzerklärung den Dienst ausreichend konkret nennt, und ergänzen Sie sonst den Namen des Anbieters."
+  PRIV-01.ambiguous-match:
+    text: "Prüfen Sie manuell, ob der Dienst im sichtbaren Text der Datenschutzerklärung genannt wird."
+  MAIL-01.record-not-found:
+    text: "Richten Sie bei Ihrem DNS- oder Mail-Anbieter einen DMARC-Eintrag für die Domain ein, zunächst gern mit p=none und Berichten."
+  MAIL-01.policy-none:
+    text: "Werten Sie die DMARC-Berichte aus und verschärfen Sie die Richtlinie schrittweise auf quarantine oder reject."
+  MAIL-01.record-invalid:
+    text: "Korrigieren Sie den DMARC-Eintrag, sodass genau ein gültiger Eintrag unter _dmarc veröffentlicht ist."
+  MAIL-01.weak-option:
+    text: "Prüfen Sie die DMARC-Optionen bei Ihrem Mail-Anbieter. Sonst kein Handlungsbedarf."
+  MAIL-01.legacy-pct:
+    text: "Entfernen Sie das veraltete Tag pct aus dem DMARC-Eintrag, wenn es nicht mehr gebraucht wird."
+  MAIL-02.record-not-found:
+    text: "Veröffentlichen Sie einen SPF-Eintrag, der die Server auflistet, die E-Mails für Ihre Domain versenden dürfen."
+  MAIL-02.permissive-qualifier:
+    text: "Ändern Sie das Ende des SPF-Eintrags auf -all oder ~all, damit nicht gelistete Server nicht als Absender gelten."
+  MAIL-02.record-invalid:
+    text: "Korrigieren Sie den SPF-Eintrag, sodass genau ein gültiger Eintrag mit v=spf1 veröffentlicht ist."
+  MAIL-02.softfail-without-enforcement:
+    text: "Richten Sie DMARC mit p=quarantine oder p=reject ein oder stellen Sie SPF auf -all um."
+  MAIL-02.softfail-with-enforcement:
+    text: "Kein Handlungsbedarf, solange DMARC mit quarantine oder reject aktiv bleibt."
+  MAIL-02.ptr-mechanism:
+    text: "Ersetzen Sie ptr im SPF-Eintrag durch konkrete ip4-, ip6- oder include-Angaben."
+  HDR-01.hsts-missing:
+    text: "Senden Sie den Header Strict-Transport-Security mit einem sinnvollen max-age (zum Beispiel über die Webserver-Konfiguration)."
+  HDR-01.anti-framing-missing:
+    text: "Setzen Sie im Webserver den Header X-Frame-Options oder die CSP-Direktive frame-ancestors, damit fremde Seiten Ihre Seite nicht einbetten."
+  HDR-01.referrer-policy-permissive:
+    text: "Setzen Sie die Referrer-Policy auf einen restriktiveren Wert, zum Beispiel strict-origin-when-cross-origin."
+  HDR-01.header-missing:
+    text: "Ergänzen Sie den im Titel genannten Sicherheits-Header in der Webserver-Konfiguration; der ausführliche Bericht nennt einen passenden Wert."
+  TLS-01.https-unavailable:
+    text: "Richten Sie für die Seite ein Zertifikat ein und liefern Sie sie ausschließlich über https aus."
+  TLS-01.form-on-http-page:
+    text: "Liefern Sie Seiten mit Formularen nur über https aus und leiten Sie http dauerhaft auf https um."
+  TLS-01.no-redirect:
+    text: "Richten Sie im Webserver eine dauerhafte Weiterleitung von http auf https ein."
+  TLS-01.client-side-redirect-only:
+    text: "Leiten Sie auf Serverebene per Statuscode 301 auf https um, statt erst im Seiteninhalt."
+  TLS-01.redirect-chain-detail:
+    text: "Leiten Sie direkt von http auf die endgültige https-Adresse um, ohne Zwischenschritte."
+  TLS-02.certificate-invalid:
+    text: "Erneuern Sie das Zertifikat oder korrigieren Sie die Konfiguration, sodass Browser es ohne Warnung akzeptieren."
+  TLS-02.chain-incomplete:
+    text: "Hinterlegen Sie auf dem Server die vollständige Zertifikatskette inklusive Zwischenzertifikat."
+  TLS-02.certificate-expiring:
+    text: "Erneuern Sie das Zertifikat jetzt und prüfen Sie, ob die automatische Verlängerung funktioniert."
+  TLS-02.certificate-expiry-approaching:
+    text: "Prüfen Sie, ob die automatische Verlängerung des Zertifikats eingerichtet ist und rechtzeitig läuft."

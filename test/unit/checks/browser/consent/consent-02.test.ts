@@ -4,11 +4,14 @@ import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from '../helpers.ts';
 import { click, cookie, phase, site, storage } from '../helpers.ts';
-import { SCENARIOS } from '../scenarios/index.ts';
+import { scenariosOf } from '../scenarios/index.ts';
 
 /** Version of the catalog allowlist is catalog data: it changes with the allowlist. */
 const ALLOWLIST = `allowlist-v${loadServiceCatalog().allowlistVersion}`;
-const scenario = (file: string) => SCENARIOS['CONSENT-02']!.find((s) => s.file === file)!.build();
+const scenario = (file: string) =>
+  scenariosOf('CONSENT-02')
+    .find((s) => s.file === file)!
+    .build();
 const run = (phases: SiteSpec['phases']) => runCheck(consent02, site({ phases }));
 
 describe('CONSENT-02 storage before interaction', () => {
@@ -81,14 +84,12 @@ describe('CONSENT-02 storage before interaction', () => {
         ],
       }),
     ]);
-    expect(
-      observationsOf(r)
-        .map((o) => `${o.variant}:${o.params.name ?? o.params.key}`)
-        .sort(),
-    ).toEqual([
-      'unknown-third-party-persistent:random_key_on_cmp_origin',
-      'unknown-third-party-persistent:visitor_x',
-    ]);
+    const obs = observationsOf(r);
+    expect(obs.map((o) => o.variant)).toEqual(['unknown-third-party-persistent']);
+    expect(obs[0]?.params.count).toBe(2);
+    expect(obs[0]?.params.names).toContain('random_key_on_cmp_origin');
+    expect(obs[0]?.params.names).toContain('visitor_x');
+    expect(obs[0]?.params.names).not.toContain('__cmpcpc');
   });
 
   it('inconclusive: direct bot signal', () => {
@@ -132,9 +133,37 @@ describe('CONSENT-02 storage before interaction', () => {
         ],
       }),
     ]);
-    expect(observationsOf(r).map((o) => [o.variant, o.params.name])).toEqual([
-      ['unknown-first-party-persistent', 'pref_x'],
-      ['unknown-third-party-persistent', 'wpvp1'],
+    expect(observationsOf(r).map((o) => [o.variant, o.params.count, o.params.names])).toEqual([
+      ['unknown-third-party-persistent', 1, 'wpvp1 (cookie, unknown-tracker.com)'],
+      ['unknown-first-party-persistent', 1, 'pref_x (cookie)'],
+    ]);
+  });
+
+  it('several unclassified entries of one variant → one finding listing all, with evidence per entry and no values', () => {
+    const r = runCheck(consent02, scenario('violation-unknown-persistent-list.json'));
+    const obs = observationsOf(r);
+    expect(obs.map((o) => [o.variant, o.params.count])).toEqual([
+      ['unknown-third-party-persistent', 3],
+      ['unknown-first-party-persistent', 3],
+    ]);
+
+    const [third, first] = obs;
+    expect(third?.params.names).toBe(
+      'other_id (cookie, other-tracker.net), wpvp1 (cookie, unknown-tracker.com), wpvp2 (localStorage, unknown-tracker.com)',
+    );
+    expect(first?.params.names).toBe('pref_a (cookie), pref_b (localStorage), pref_c (localStorage)');
+    expect(
+      third?.evidence.map((e) => (e as { name?: string; key?: string }).name ?? (e as { key?: string }).key),
+    ).toEqual(['other_id', 'wpvp1', 'wpvp2']);
+    expect(first?.pages).toEqual(['https://www.example.de/', 'https://www.example.de/kontakt']);
+    expect(JSON.stringify(obs)).not.toMatch(/value/i);
+  });
+
+  it('counterexample: a tracking identifier next to unclassified entries keeps its own finding', () => {
+    const r = run([phase('A', { cookies: [cookie('_ga'), cookie('pref_x'), cookie('pref_y')] })]);
+    expect(observationsOf(r).map((o) => [o.variant, o.params.count ?? o.params.name])).toEqual([
+      ['tracking-identifier-stored', '_ga'],
+      ['unknown-first-party-persistent', 2],
     ]);
   });
 

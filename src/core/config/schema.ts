@@ -7,7 +7,7 @@
  * of a text (`config.problem.<id>` in test/data/texts), see problems.ts: no wording lives in code.
  */
 import { z } from 'zod';
-import { REPORT_FORMATS } from '../report/reporter.ts';
+import { REPORT_DETAILS, REPORT_FORMATS } from '../report/reporter.ts';
 import { FailOnSchema, LangSchema, type MessageParams, SandboxModeSchema } from '../report/schema.ts';
 import { envName } from './names.ts';
 import { REASON } from './problems.ts';
@@ -195,6 +195,10 @@ const report = z.strictObject({
     .meta({
       description: `Report formats, comma-separated: ${REPORT_FORMATS.join(', ')} (CLI: --format, also of the report command, which writes html while this is not set).`,
     }),
+  detail: z.enum(REPORT_DETAILS).default('full').meta({
+    description:
+      'Level of detail of report.html and report.pdf: full (findings with evidence) or brief (plain summary and action points). JSON, console and summary.md are not affected (CLI: --detail, also of the report command).',
+  }),
   outDir: z.string().min(1).default('./dsgvo-check-report').meta({
     description: 'Directory for reports and artifacts (CLI: --out).',
   }),

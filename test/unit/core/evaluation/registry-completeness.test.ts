@@ -66,6 +66,7 @@ describe('completeness rules (self-test)', () => {
     messages: { 'FAKE-01.missing': { title: 'T', body, draft: true } },
     legalNotes: {},
     ui: {},
+    actions: { 'FAKE-01.missing': 'Do it.', 'GHOST-01.x': 'Do it.' },
   });
 
   it('reports every gap', () => {
@@ -89,6 +90,8 @@ describe('completeness rules (self-test)', () => {
     });
     expect(problems).toEqual([
       'ruleset: unregistered check GHOST-01',
+      'texts/de: unregistered check in action GHOST-01.x',
+      'texts/en: unregistered check in action GHOST-01.x',
       'FAKE-01.weak: no ruleset severity',
       'FAKE-01.missing: T3 code T3_OTHER with severity critical',
       'FAKE-01.extra: ruleset variant not declared by the check',
@@ -97,6 +100,8 @@ describe('completeness rules (self-test)', () => {
       'FAKE-01.missing: de/en use different params (a vs b)',
       'FAKE-01.weak: no de text (test/data/texts/de/dns.yaml)',
       'FAKE-01.weak: no en text (test/data/texts/en/dns.yaml)',
+      'FAKE-01.weak: no de action text (test/data/texts/de/actions.yaml)',
+      'FAKE-01.weak: no en action text (test/data/texts/en/actions.yaml)',
       'FAKE-01: no test/unit/checks/dns/fixtures.ts FAKE-01/clean*.json',
       'FAKE-01: no test/unit/checks/dns/fixtures.ts FAKE-01/inconclusive*.json or error*.json',
     ]);

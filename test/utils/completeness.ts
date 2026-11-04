@@ -58,6 +58,10 @@ function unregisteredChecks(known: ReadonlySet<string>, d: CompletenessData): st
       if (!known.has(key.split('.')[0] as string))
         problems.push(`texts/${lang}: unregistered check in ${key}`);
     }
+    for (const key of Object.keys(d.texts[lang].actions)) {
+      if (!known.has(key.split('.')[0] as string))
+        problems.push(`texts/${lang}: unregistered check in action ${key}`);
+    }
   }
   return problems;
 }
@@ -106,6 +110,11 @@ function textProblems(check: AnyCheck, d: CompletenessData): string[] {
             problems.push(`${key}: ${lang} template error: ${err.message}`);
         }
       }
+    }
+
+    for (const lang of LANGS) {
+      if (!d.texts[lang].actions[key])
+        problems.push(`${key}: no ${lang} action text (test/data/texts/${lang}/actions.yaml)`);
     }
 
     const pde = params(d.texts.de, key);

@@ -60,17 +60,19 @@ messages:
       beobachtet. Einordnung als Kennung der Kategorie Analyse/Marketing laut {dataset}. Werte wurden nicht
       gespeichert.
   CONSENT-02.unknown-third-party-persistent:
-    title: "Nicht klassifizierter dauerhafter Drittanbieter-Eintrag {name} vor einer Interaktion"
+    title: "{count, plural, one {Nicht klassifizierter dauerhafter Drittanbieter-Eintrag} other {# nicht klassifizierte dauerhafte Drittanbieter-Einträge}} vor einer Interaktion"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {name} ({storageKind})
-      durch {party} beobachtet. Der Eintrag ist in {dataset} nicht als bekannte Analyse- oder Marketing-Kennung
-      eingeordnet; Zweck bitte manuell prüfen.
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {count, plural, one {#
+      Eintrag} other {# Einträgen}} durch Drittanbieter beobachtet, {count, plural, one {der} other {die}} in
+      {dataset} nicht als bekannte Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other
+      {sind}}: {names}. Zweck bitte manuell prüfen.
   CONSENT-02.unknown-first-party-persistent:
-    title: "Nicht klassifizierter dauerhafter Eintrag {name} vor einer Interaktion"
+    title: "{count, plural, one {Nicht klassifizierter dauerhafter Eintrag} other {# nicht klassifizierte dauerhafte Einträge}} vor einer Interaktion"
     body: >-
-      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {name} ({storageKind},
-      eigene Domain) beobachtet. Der Eintrag ist in {dataset} nicht als bekannte Analyse- oder Marketing-Kennung
-      eingeordnet; Zweck bitte manuell prüfen.
+      Vor einer Interaktion mit dem Einwilligungsbanner wurde die dauerhafte Speicherung von {count, plural, one {#
+      Eintrag} other {# Einträgen}} der eigenen Domain beobachtet, {count, plural, one {der} other {die}} in
+      {dataset} nicht als bekannte Analyse- oder Marketing-Kennung eingeordnet {count, plural, one {ist} other
+      {sind}}: {names}. Zweck bitte manuell prüfen.
   CONSENT-02.cmp-cookie-with-uid:
     title: "Cookie des Einwilligungsbanners {name} mit eindeutiger Kennung"
     body: >-

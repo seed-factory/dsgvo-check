@@ -56,17 +56,17 @@ messages:
       Before any interaction with the consent banner, storage of {name} ({storageKind}, {party}) was observed.
       Classified as an identifier of the category analytics/marketing per {dataset}. Values were not stored.
   CONSENT-02.unknown-third-party-persistent:
-    title: "Unclassified persistent third-party entry {name} before any interaction"
+    title: "{count, plural, one {Unclassified persistent third-party entry} other {# unclassified persistent third-party entries}} before any interaction"
     body: >-
-      Before any interaction with the consent banner, persistent storage of {name} ({storageKind}) by {party} was
-      observed. The entry is not classified as a known analytics or marketing identifier in {dataset}; please review
-      the purpose manually.
+      Before any interaction with the consent banner, persistent storage of {count, plural, one {# entry} other {#
+      entries}} by third parties was observed, {count, plural, one {which is} other {which are}} not classified as
+      known analytics or marketing identifiers in {dataset}: {names}. Please review the purpose manually.
   CONSENT-02.unknown-first-party-persistent:
-    title: "Unclassified persistent entry {name} before any interaction"
+    title: "{count, plural, one {Unclassified persistent entry} other {# unclassified persistent entries}} before any interaction"
     body: >-
-      Before any interaction with the consent banner, persistent storage of {name} ({storageKind}, own domain) was
-      observed. The entry is not classified as a known analytics or marketing identifier in {dataset}; please review
-      the purpose manually.
+      Before any interaction with the consent banner, persistent storage of {count, plural, one {# entry} other {#
+      entries}} of the own domain was observed, {count, plural, one {which is} other {which are}} not classified as
+      known analytics or marketing identifiers in {dataset}: {names}. Please review the purpose manually.
   CONSENT-02.cmp-cookie-with-uid:
     title: "Consent banner cookie {name} with a unique identifier"
     body: >-

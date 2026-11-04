@@ -5,6 +5,9 @@ ui:
   report.doc.title: dsgvo-check – Bericht für {target}
   report.doc.heading: dsgvo-check – Bericht
   report.nav.label: Inhalt
+  report.section.overview: Auf einen Blick
+  report.section.actions: Was zu tun ist
+  report.section.services: Beobachtete Dienste
   report.section.summary: Zusammenfassung
   report.section.findings: Befunde
   report.section.diagnostics: Diagnose
@@ -40,6 +43,27 @@ ui:
   report.summary.column.finding: Befund
   report.summary.column.pages: Seiten
   report.summary.files: "Vollständiger Bericht: report.json und report.html im Artefakt."
+  report.overview.points: "{critical, plural, =0 {Es wurden keine kritischen Punkte beobachtet.} one {Es wurde ein kritischer Punkt beobachtet.} other {Es wurden # kritische Punkte beobachtet.}}{warning, plural, =0 {} one { Ein Punkt sollte geprüft werden.} other { # Punkte sollten geprüft werden.}}{info, plural, =0 {} one { Dazu kommt ein Hinweis zur Information.} other { Dazu kommen # Hinweise zur Information.}}"
+  report.overview.failed: Der Scan wurde nicht durchgeführt, daher liegen keine Beobachtungen vor.
+  report.overview.scan.complete: Der Scan wurde vollständig durchgeführt.
+  report.overview.scan.partial: Der Scan wurde nur teilweise durchgeführt; nicht alle Seiten oder Prüfungen konnten ausgewertet werden.
+  report.overview.banner.recognized: Das Einwilligungsbanner wurde erkannt.
+  report.overview.banner.notRecognized: Das Einwilligungsbanner wurde nicht erkannt; davon abhängige Prüfungen sind nicht abschließend ausgewertet und sollten manuell geprüft werden.
+  report.actions.covers: "{findings, plural, one {# Befund} other {# Befunde}}{pages, plural, =0 {} one {, # Seite} other {, # Seiten}}"
+  report.actions.briefNote: Gleichartige Befunde sind zu einem Punkt zusammengefasst. Die Einzelheiten stehen im ausführlichen Bericht und in report.json.
+  report.services.name: Dienst
+  report.services.beforeInteraction: Vor einer Interaktion
+  report.services.afterReject: Nach Ablehnung
+  report.services.afterAccept: Nach Zustimmung
+  report.services.stage.loaded: geladen
+  report.services.stage.initialised: initialisiert
+  report.services.stage.event-sent: Ereignis gesendet
+  report.services.stage.not-checked: nicht geprüft
+  report.services.stage.none: nicht gefunden
+  report.services.note: „Nicht geprüft“ steht für einen Zeitpunkt, zu dem keine Interaktion mit dem Einwilligungsbanner stattfand.
+  report.evidence.occurrences: "{count}×"
+  report.evidence.pages: Seiten
+  report.evidence.phases: Phasen
   report.severity.critical: kritisch
   report.severity.warning: Warnung
   report.severity.info: Hinweis
@@ -65,7 +89,7 @@ ui:
   report.finding.evidence: Belege ({count})
   report.finding.evidenceTruncated: Weitere Belege nur im JSON-Bericht.
   report.finding.evidenceMissing: Beleg {id} ist nicht im Bericht enthalten.
-  report.finding.legalNote: Rechtlicher Hintergrund
+  report.finding.legalNote: "Rechtlicher Hintergrund zu {check}"
   report.finding.legalStatus: "Quelle: {status}"
   report.finding.legalUnreviewed: Textentwurf, noch nicht juristisch geprüft
   report.legal.authority-consensus: übereinstimmende Auffassung der Aufsichtsbehörden
@@ -142,6 +166,7 @@ ui:
   report.pdf.page: Seite
   report.cli.description: Einen gespeicherten JSON-Bericht erneut ausgeben
   report.cli.formats: "Ausgabeformate: console,json,html,summary,pdf (PDF nur auf Anfrage)"
+  report.cli.detail: "Detailgrad von HTML und PDF: full (mit Belegen) oder brief (kurz, in einfachen Worten)"
   report.cli.language: "Sprache des Berichts: de|en"
   report.cli.output: Ausgabeverzeichnis
   report.cli.invalid: Der JSON-Bericht oder die Berichtsoptionen sind ungültig oder werden nicht unterstützt.

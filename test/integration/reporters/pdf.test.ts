@@ -30,7 +30,7 @@ const BANNER_PNG = Buffer.from(
 );
 
 /** The full sample report with a hostile target text and its screenshot evidence pointing at a real file. */
-function reportWithImage(): { html: string; ctx: ReporterContext } {
+function reportWithImage(detail: ReporterContext['detail'] = 'full'): { html: string; ctx: ReporterContext } {
   const outDir = mkdtempSync(path.join(tmpdir(), 'report-print-'));
   outputDirectories.push(outDir);
   mkdirSync(path.join(outDir, 'artifacts'));
@@ -45,7 +45,7 @@ function reportWithImage(): { html: string; ctx: ReporterContext } {
   screenshot.path = 'artifacts/banner.png';
   screenshot.sha256 = createHash('sha256').update(BANNER_PNG).digest('hex');
 
-  const ctx: ReporterContext = { texts: loadTexts('en'), lang: 'en', outDir, color: false };
+  const ctx: ReporterContext = { texts: loadTexts('en'), lang: 'en', outDir, color: false, detail };
   return { html: renderHtml(report, ctx), ctx };
 }
 
@@ -161,5 +161,25 @@ describe('PDF of the report in real Chromium', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(100);
     expect(pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('brief PDF of the report in real Chromium', () => {
+  const pageCount = (pdf: Buffer) => pdf.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+
+  it('prints, without evidence, and takes fewer pages than the full report', async () => {
+    const brief = reportWithImage('brief');
+    const full = reportWithImage('full');
+
+    expect(brief.html).not.toContain('class="evidence"');
+    expect(brief.html).not.toContain('<img');
+    expect(full.html).toContain('class="evidence"');
+
+    const briefPdf = await renderPdf(brief.html, brief.ctx, { sandbox: TEST_SANDBOX });
+    const fullPdf = await renderPdf(full.html, full.ctx, { sandbox: TEST_SANDBOX });
+
+    expect(briefPdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pageCount(briefPdf)).toBeGreaterThanOrEqual(1);
+    expect(pageCount(briefPdf)).toBeLessThan(pageCount(fullPdf));
   });
 });

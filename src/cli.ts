@@ -12,7 +12,13 @@ import { type Config, defaultConfig } from './core/config/schema.ts';
 import { loadTexts, type Texts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import { buildFailedReport } from './core/report/build.ts';
-import { REPORT_FILES, REPORT_FORMATS, type ReportFormat } from './core/report/reporter.ts';
+import {
+  REPORT_DETAILS,
+  REPORT_FILES,
+  REPORT_FORMATS,
+  type ReportDetail,
+  type ReportFormat,
+} from './core/report/reporter.ts';
 import {
   AssumeRegionSchema,
   type FailOn,
@@ -44,6 +50,7 @@ interface RawOptions {
   proxy?: string;
   assumeRegion?: string;
   lang: string;
+  detail: string;
   strict?: boolean;
   sandbox: string;
   screenshots: boolean;
@@ -139,6 +146,7 @@ function firstInvalidOption(raw: RawOptions, badFormat: string | undefined): Inv
   if (badFormat) return { option: '--format', value: badFormat };
   const choices: ReadonlyArray<{ option: string; value: string | undefined; allowed: readonly string[] }> = [
     { option: '--lang', value: raw.lang, allowed: LangSchema.options },
+    { option: '--detail', value: raw.detail, allowed: REPORT_DETAILS },
     { option: '--sandbox', value: raw.sandbox, allowed: SandboxModeSchema.options },
     // Optional: absent (or empty) is allowed.
     { option: '--assume-region', value: raw.assumeRegion || undefined, allowed: AssumeRegionSchema.options },
@@ -257,6 +265,7 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
     outDir,
     formats: opts.formats ?? settings.config.report.formats,
     lang,
+    detail: raw.detail as ReportDetail,
     color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
     pdf: { sandbox: opts.sandbox },
     config: settings.config,
@@ -348,6 +357,7 @@ async function printScanOutcome(
 interface ReportOptions {
   format: string;
   lang: string;
+  detail: string;
   out?: string;
 }
 
@@ -367,7 +377,13 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
 
   const { formats, bad } = parseFormats(raw.format);
   try {
-    if (!LangSchema.safeParse(raw.lang).success || formats.length === 0 || bad !== undefined) {
+    const validDetail = (REPORT_DETAILS as readonly string[]).includes(raw.detail);
+    if (
+      !LangSchema.safeParse(raw.lang).success ||
+      !validDetail ||
+      formats.length === 0 ||
+      bad !== undefined
+    ) {
       throw new Error('invalid options');
     }
     const report = readReportFile(file);
@@ -379,6 +395,7 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
         outDir: raw.out ?? inputDir,
         formats,
         lang,
+        detail: raw.detail as ReportDetail,
         artifactsDir: inputDir,
         pdf: { sandbox: settings.config.browser.sandbox },
         config: settings.config,
@@ -483,6 +500,7 @@ function addScanCommand(program: Command, texts: Texts, settings: CliSettings): 
     .option('--proxy <url>', uiText(texts, 'cli.proxy'))
     .option('--assume-region <region>', uiText(texts, 'cli.assumeRegion'))
     .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
+    .option('--detail <level>', uiText(texts, 'report.cli.detail'), config.report.detail)
     .option('--strict', uiText(texts, 'cli.strict'))
     .option('--sandbox <mode>', uiText(texts, 'cli.sandbox'), config.browser.sandbox)
     .option('--no-screenshots', uiText(texts, 'cli.noScreenshots'))
@@ -516,6 +534,7 @@ function addReportCommand(program: Command, texts: Texts, settings: CliSettings)
     .description(uiText(texts, 'report.cli.description'))
     .option('--format <list>', uiText(texts, 'report.cli.formats'), reportFormats.join(','))
     .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
+    .option('--detail <level>', uiText(texts, 'report.cli.detail'), config.report.detail)
     .option('--out <dir>', uiText(texts, 'report.cli.output'))
     .action((file: string, raw: ReportOptions) => runReport(file, raw, settings));
 }

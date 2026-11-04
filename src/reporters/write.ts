@@ -6,7 +6,12 @@ import type { Config } from '../core/config/schema.ts';
 import { DEFAULT_DATA_DIR, loadTexts } from '../core/data/load.ts';
 import { uiText } from '../core/data/messages.ts';
 import type { ExitCode } from '../core/evaluation/gate.ts';
-import { REPORT_FILES, type ReporterContext, type ReportFormat } from '../core/report/reporter.ts';
+import {
+  REPORT_FILES,
+  type ReportDetail,
+  type ReporterContext,
+  type ReportFormat,
+} from '../core/report/reporter.ts';
 import type { Lang } from '../core/report/schema.ts';
 import { errorMessage } from '../core/runtime/errors.ts';
 import type { ScanResult } from '../scan.ts';
@@ -36,6 +41,8 @@ export interface WriteOptions {
   outDir: string;
   formats: ReportFormat[];
   lang: Lang;
+  /** Level of detail of the HTML and the PDF; the `report.detail` setting when absent. */
+  detail?: ReportDetail;
   color?: boolean;
   dataDir?: string;
   /** Directory containing source artifacts when reissuing a saved report. */
@@ -53,6 +60,7 @@ function reporterContext(opts: WriteOptions, outDir: string): ReporterContext {
     lang: opts.lang,
     outDir: path.resolve(opts.artifactsDir ?? outDir),
     color: opts.color ?? false,
+    detail: opts.detail ?? opts.config?.report.detail ?? 'full',
     dataDir: opts.dataDir,
     limits: reporterLimits(opts.config),
   };

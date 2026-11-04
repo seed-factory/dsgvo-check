@@ -170,28 +170,84 @@ function addStorageEntries(
   return allowlisted;
 }
 
+/** Variants that report every entry of a scan in one finding: unclassified entries only differ by name. */
+const LISTED_VARIANTS: ReadonlySet<Variant> = new Set([
+  'unknown-third-party-persistent',
+  'unknown-first-party-persistent',
+]);
+
+/** Evidence items per listed finding; each entry contributes its first item so every name stays backed. */
+const MAX_LISTED_EVIDENCE = 40;
+
+/**
+ * `name (kind)` for own entries, `name (kind, domain)` for third-party ones; never a value. The message of the
+ * first-party variant already says "own domain", so the label adds no untranslated word to it.
+ */
+const entryLabel = (e: Entry): string =>
+  e.party === 'first-party' ? `${e.name} (${e.kind})` : `${e.name} (${e.kind}, ${e.party})`;
+
+function observationFor(e: Entry, derived: DerivedSection, dataset: string): Observation {
+  return {
+    checkId: ID,
+    variant: e.variant,
+    confidence: 'high',
+    subject: e.subject,
+    category: e.cls.category,
+    phases: [...e.phases].sort() as Phase[],
+    pages: [...e.pages].sort(),
+    evidence: e.evidence,
+    params: {
+      name: e.name,
+      storageKind: e.kind,
+      party: e.party,
+      service: serviceInfo(derived, e.cls.serviceId)?.name ?? null,
+      dataset,
+    },
+    ...serviceFields(derived, e.cls.serviceId),
+  };
+}
+
+/** One finding per variant: the subject is the variant, so the fingerprint does not change when an entry appears. */
+function listedObservation(
+  variant: Variant,
+  group: Entry[],
+  derived: DerivedSection,
+  dataset: string,
+): Observation {
+  const serviceIds = new Set(group.map((e) => e.cls.serviceId ?? null));
+  const sharedService = serviceIds.size === 1 ? group[0]!.cls.serviceId : null;
+  const categories = new Set(group.map((e) => e.cls.category));
+  return {
+    checkId: ID,
+    variant,
+    confidence: 'high',
+    subject: `${variant}-list`,
+    ...(categories.size === 1 ? { category: group[0]!.cls.category } : {}),
+    phases: sortedUniq(group.flatMap((e) => [...e.phases])) as Phase[],
+    pages: sortedUniq(group.flatMap((e) => [...e.pages])),
+    evidence: group.flatMap((e) => e.evidence.slice(0, 1)).slice(0, MAX_LISTED_EVIDENCE),
+    params: {
+      count: group.length,
+      names: group.map(entryLabel).join(', '),
+      dataset,
+    },
+    ...serviceFields(derived, sharedService),
+  };
+}
+
 function entryObservations(entries: Map<string, Entry>, derived: DerivedSection): Observation[] {
   const dataset = `${derived.datasets[0]?.name ?? 'catalog'} ${derived.catalogVersion ?? ''}`.trim();
-  return [...entries.values()]
-    .sort((a, b) => a.subject.localeCompare(b.subject))
-    .map((e) => ({
-      checkId: ID,
-      variant: e.variant,
-      confidence: 'high',
-      subject: e.subject,
-      category: e.cls.category,
-      phases: [...e.phases].sort() as Phase[],
-      pages: [...e.pages].sort(),
-      evidence: e.evidence,
-      params: {
-        name: e.name,
-        storageKind: e.kind,
-        party: e.party,
-        service: serviceInfo(derived, e.cls.serviceId)?.name ?? null,
-        dataset,
-      },
-      ...serviceFields(derived, e.cls.serviceId),
-    }));
+  const sorted = [...entries.values()].sort((a, b) => a.subject.localeCompare(b.subject));
+  const single = sorted
+    .filter((e) => !LISTED_VARIANTS.has(e.variant))
+    .map((e) => observationFor(e, derived, dataset));
+  const listed = RANK.filter((v) => LISTED_VARIANTS.has(v)).flatMap((variant) => {
+    const group = sorted
+      .filter((e) => e.variant === variant)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.subject.localeCompare(b.subject));
+    return group.length > 0 ? [listedObservation(variant, group, derived, dataset)] : [];
+  });
+  return [...single, ...listed];
 }
 
 export const consent02 = defineCheck({

@@ -62,8 +62,8 @@ function legalNoteStatuses(): Array<LegalNote['status']> {
 export function usedReportLabelKeys(): string[] {
   const keys = literalLabelKeys();
   const context = recordingContext(keys);
-  const capture = (report: Report) => {
-    buildReportView(report, context);
+  const capture = (report: Report, detail: ReporterContext['detail'] = 'full') => {
+    buildReportView(report, { ...context, detail });
     renderSummary(report, context);
   };
 
@@ -109,6 +109,26 @@ export function usedReportLabelKeys(): string[] {
     full.findings[0]!.replicated = active === true;
     capture(full);
   }
+
+  // Front page: a recognized banner, every timing state of an observed service and repeated requests.
+  const front = sampleFullReport();
+  front.checks.find((c) => c.id === 'CONSENT-04')!.status = 'completed';
+  front.findings = ['loaded', 'initialised', 'event-sent', 'not-checked', 'none'].map((stage, n) => ({
+    ...front.findings[0]!,
+    fingerprint: `sha256:${(n + 1).toString(16).padStart(64, '0')}`,
+    messageId: 'TRACK-01.service-inventory',
+    params: {
+      service: `S${n}`,
+      stageBeforeInteraction: stage,
+      stageAfterReject: stage,
+      stageAfterAccept: stage,
+    },
+  }));
+  const request = front.evidence.find((e) => e.id === 'ev-request')!;
+  front.evidence = [request, { ...request, id: 'ev-request-again', page: 'https://www.example.de/kontakt' }];
+  front.findings[0]!.evidenceIds = front.evidence.map((e) => e.id);
+  capture(front);
+  capture(front, 'brief');
 
   // Empty and oversized lists, and an evidence reference without evidence.
   full.summary.exitReasons = [];
