@@ -89,7 +89,8 @@ ui:
   failure.start-page-5xx: "The start page repeatedly answers with HTTP {status}."
   failure.start-page-blocked: "The start page shows a blocking or verification page ({signals})."
   failure.browser-not-installed: 'Chromium is not installed. Please run "dsgvo-check install".'
-  failure.sandbox-failed: 'The Chromium sandbox could not be started (for example an AppArmor restriction on user namespaces, or Docker without a seccomp profile). Options: use the Docker image with the bundled seccomp profile, adjust the system setting yourself, or set --sandbox off explicitly.{container, select, yes { In the Docker image: export the profile with "docker run --rm <image> seccomp-profile > dsgvo-check-seccomp.json" and start the container like this: "docker run --rm --cap-drop=ALL --security-opt no-new-privileges --security-opt seccomp=dsgvo-check-seccomp.json <image> <url>".} other {}}'
+  failure.sandbox-failed: 'The Chromium sandbox could not be started (for example an AppArmor restriction on user namespaces, or a Docker profile that blocks them). Options: adjust the system setting yourself, or set --sandbox off explicitly.{container, select, yes { The Docker image defaults to "--sandbox container"; omit the option.} other {}}'
+  failure.sandbox-container-outside-image: "--sandbox container (DSGVO_CHECK_BROWSER_SANDBOX=container) is only allowed inside the dsgvo-check Docker image, where the hardened container provides the isolation. Outside the image use require, or off deliberately."
   failure.browser-launch-failed: "Chromium could not be started: {message}"
   failure.interrupted: "Aborted by {signal}"
   failure.watchdog-timeout: "Time limit including the reserve exceeded"
@@ -105,7 +106,7 @@ ui:
   cli.proxy: "HTTP proxy (http://, CONNECT) for browser, HTTP and TLS"
   cli.assumeRegion: "Location as stated by the user: eea|de"
   cli.strict: inconclusive results, sandbox off and an unchecked region lead to exit code 2
-  cli.sandbox: "Chromium sandbox: require|off"
+  cli.sandbox: "Chromium sandbox: require|off|container (container only in the Docker image)"
   cli.noScreenshots: no screenshots of the banner
   cli.saveSnapshot: save the raw data snapshot
   cli.fromSnapshot: re-evaluate a snapshot without visiting the website

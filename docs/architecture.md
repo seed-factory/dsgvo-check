@@ -42,9 +42,6 @@ dsgvo-check/
 │   └── workflows/             # ci.yml и release.yml
 ├── canary/
 │   └── sites.example.yaml     # пример корпуса; настоящий sites.yaml локальный
-├── docker/
-│   ├── entrypoint.sh          # точка входа образа: seccomp, CLI под tini
-│   └── seccomp-chromium.json  # профиль seccomp для песочницы Chromium
 ├── docs/
 │   └── architecture.md        # этот файл
 ├── examples/github-failing/   # пример «красной» сборки GitHub
@@ -134,7 +131,7 @@ dsgvo-check/
 | Проверить, что в снимок не попали значения | [redact.ts](../src/core/redaction/redact.ts), [email.ts](../src/core/url/email.ts), [url.ts](../src/core/url/url.ts), [headers.ts](../src/core/redaction/headers.ts); редактирует коллектор до записи |
 | CI проекта и релиз | [ci.yml](../.github/workflows/ci.yml), [release.yml](../.github/workflows/release.yml); логика шагов — в TypeScript, `.github/scripts/` |
 | GitHub Action и GitLab | [action.yml](../action.yml), [шаблон GitLab](../templates/gitlab/dsgvo-check.gitlab-ci.yml), [пример](../examples/github-failing/README.md); контракты поставки проверяет [delivery-config.e2e.test.ts](../test/e2e/delivery-config.e2e.test.ts) |
-| Docker | [Dockerfile](../Dockerfile), [entrypoint.sh](../docker/entrypoint.sh), [seccomp-chromium.json](../docker/seccomp-chromium.json); описание для пользователей — [README.md](../README.md), раздел «Docker»; e2e образа — [docker.e2e.test.ts](../test/e2e/docker.e2e.test.ts), запускается только при `DSGVO_E2E_IMAGE` |
+| Docker | [Dockerfile](../Dockerfile): в образе песочница — сам контейнер (режим `--sandbox container`, только при `DSGVO_CHECK_CONTAINER=1`), своего профиля seccomp нет; описание для пользователей — [README.md](../README.md), раздел «Docker»; e2e образа — [docker.e2e.test.ts](../test/e2e/docker.e2e.test.ts), запускается только при `DSGVO_E2E_IMAGE` |
 | Канарейка | [README.md](../README.md), раздел «Canary» (правила, этика, запуск); [sites.example.yaml](../canary/sites.example.yaml), раннер [main.ts](../scripts/canary/main.ts) и соседние файлы в [scripts/canary/](../scripts/canary/); настоящий `canary/sites.yaml` и `canary/results/` лежат только локально, в `.gitignore` |
 | Запустить тесты, добавить сайт в стенд | [README.md](../README.md), раздел «Entwicklung» → «Tests»: уровни, параллельность (`DSGVO_TEST_WORKERS`), сеть в L2; сайт в стенд — [sites.ts](../test/fixture-server/sites.ts) и `test/fixture-server/sites/<модуль>/` |
 

@@ -45,7 +45,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 - **Keine Werte:** Cookies, Web Storage und TC-String gelangen nie in Bericht, Snapshot oder Logs, auch nicht gehasht.
 - **Berichte** als JSON (mit JSON Schema), Konsole, HTML (eine Datei ohne JavaScript), Markdown-Summary und PDF.
 - **CI-tauglich:** Exit-Code nach Schwelle, GitHub Action, GitLab-Template und Docker-Image.
-- **Chromium-Sandbox standardmäßig**, im Container mit eigenem seccomp-Profil statt `--privileged`.
+- **Chromium-Sandbox standardmäßig**; im Docker-Image übernimmt der gehärtete Container die Isolation (`--sandbox container`).
 - **Snapshots:** Rohdaten speichern und ohne Netz neu auswerten (`--save-snapshot`, `--from-snapshot`).
 - **Einstellbar, aber ohne Pflicht:** Jeder Wert hat einen Standard; Schwellen per Umgebungsvariable oder `.env`.
 - **Höflich:** Navigationen einzeln mit Pause, wenige HTTP-Anfragen, ehrlicher User-Agent mit Link zum Repository.
@@ -196,9 +196,9 @@ Geklickt wird nur über sie.
 | Betriebssystem | Die CI läuft auf Ubuntu 24.04; lokal wird unter macOS entwickelt. Andere Systeme sind nicht getestet. |
 
 - Node 26 liefert `corepack` nicht mehr mit: einmal `npm install --global corepack@0.36.0` (so auch CI und Image).
-- Die Chromium-Sandbox braucht unprivilegierte User-Namespaces. Unter Ubuntu 24.04 schränkt AppArmor sie ein; die CI
-  setzt dafür `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. Im Container löst das
-  [seccomp-Profil](#warum-ein-eigenes-seccomp-profil) das Problem.
+- Die Chromium-Sandbox braucht unprivilegierte User-Namespaces. Unter Ubuntu 24.04 schränkt AppArmor sie ein; der
+  Testjob der CI setzt dafür `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. Das Docker-Image braucht
+  das nicht: Dort läuft Chromium ohne eigene Sandbox im [gehärteten Container](#isolation).
 
 ## Installation und Build
 
@@ -259,23 +259,23 @@ Der Snapshot enthält die Rohdaten des Scans (ohne Cookie-, Storage- und TC-Stri
 
 Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.json>` und `install [--with-deps]`.
 
-| Option                              | Standard               | Bedeutung                                                                                |
-| ----------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
-| `--fail-on critical\|warning\|none` | `critical`             | Schwelle für Exit-Code 1                                                                 |
-| `--format <liste>`                  | `console,json`         | Ausgabeformate: `console`, `json`, `html`, `summary`, `pdf` (PDF nur ausdrücklich)       |
-| `--out <dir>`                       | `./dsgvo-check-report` | Ausgabeverzeichnis                                                                       |
-| `--max-pages <n>`                   | `6`                    | Seiten in Phase A                                                                        |
-| `--timeout <dauer>`                 | `8m`                   | Globales Zeitlimit, z. B. `8m` oder `90s`                                                |
-| `--assume-region eea\|de`           | nicht gesetzt          | Standort des Scanners laut Nutzerangabe                                                  |
-| `--proxy <url>`                     | kein Proxy             | HTTP-Proxy (nur `http://`, CONNECT) für Browser, HTTP und TLS; DNS läuft direkt          |
-| `--strict`                          | aus                    | Nicht eindeutige Ergebnisse, `--sandbox off` und ungeprüfte Region führen zu Exit-Code 2 |
-| `--sandbox require\|off`            | `require`              | Chromium-Sandbox; `off` nur bewusst, im Bericht als `SCAN-SANDBOX-OFF` vermerkt          |
-| `--no-screenshots`                  | aus                    | Keine Banner-Screenshots                                                                 |
-| `--save-snapshot <file>`            | –                      | Rohdaten speichern                                                                       |
-| `--from-snapshot <file>`            | –                      | Snapshot ohne Netz neu auswerten (die URL entfällt)                                      |
-| `--checks <ids>`                    | alle                   | Nur diese Prüfungen, z. B. `EMBED-01,HDR-01`                                             |
-| `--lang de\|en`                     | `de`                   | Sprache des Berichts                                                                     |
-| `--verbose`                         | aus                    | Ausführliche Logs auf stderr                                                             |
+| Option                              | Standard                       | Bedeutung                                                                                                        |
+| ----------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `--fail-on critical\|warning\|none` | `critical`                     | Schwelle für Exit-Code 1                                                                                         |
+| `--format <liste>`                  | `console,json`                 | Ausgabeformate: `console`, `json`, `html`, `summary`, `pdf` (PDF nur ausdrücklich)                               |
+| `--out <dir>`                       | `./dsgvo-check-report`         | Ausgabeverzeichnis                                                                                               |
+| `--max-pages <n>`                   | `6`                            | Seiten in Phase A                                                                                                |
+| `--timeout <dauer>`                 | `8m`                           | Globales Zeitlimit, z. B. `8m` oder `90s`                                                                        |
+| `--assume-region eea\|de`           | nicht gesetzt                  | Standort des Scanners laut Nutzerangabe                                                                          |
+| `--proxy <url>`                     | kein Proxy                     | HTTP-Proxy (nur `http://`, CONNECT) für Browser, HTTP und TLS; DNS läuft direkt                                  |
+| `--strict`                          | aus                            | Nicht eindeutige Ergebnisse, `--sandbox off` und ungeprüfte Region führen zu Exit-Code 2                         |
+| `--sandbox require\|off\|container` | `require` (Image: `container`) | Chromium-Sandbox; `off` nur bewusst, im Bericht als `SCAN-SANDBOX-OFF` vermerkt; `container` nur im Docker-Image |
+| `--no-screenshots`                  | aus                            | Keine Banner-Screenshots                                                                                         |
+| `--save-snapshot <file>`            | –                              | Rohdaten speichern                                                                                               |
+| `--from-snapshot <file>`            | –                              | Snapshot ohne Netz neu auswerten (die URL entfällt)                                                              |
+| `--checks <ids>`                    | alle                           | Nur diese Prüfungen, z. B. `EMBED-01,HDR-01`                                                                     |
+| `--lang de\|en`                     | `de`                           | Sprache des Berichts                                                                                             |
+| `--verbose`                         | aus                            | Ausführliche Logs auf stderr                                                                                     |
 
 ## Konfiguration
 
@@ -343,23 +343,30 @@ Mit `--fail-on none` entfallen `threshold` und `check-error`; `--strict` wirkt d
 
 ## Docker
 
-Das Image enthält den Scanner samt Chromium und ein passendes seccomp-Profil.
+Das Image enthält den Scanner samt Chromium.
 
 ```sh
 docker build -t dsgvo-check:dev .
 docker run --rm dsgvo-check:dev --help
-docker run --rm dsgvo-check:dev seccomp-profile > dsgvo-check-seccomp.json
 ```
 
-### Scan im Container
+### Isolation
 
-Die Chromium-Sandbox ist standardmäßig erforderlich (`--sandbox require`), startet aber nicht mit dem
-Standard-seccomp-Profil von Docker. Mit dem mitgelieferten Profil läuft der Scan:
+Im Image ist der Container die Sandbox: Er läuft als Nicht-Root-Nutzer, ohne Linux-Capabilities, mit
+schreibgeschütztem Dateisystem und Ressourcenlimits unter Dockers Standard-seccomp-Profil, ohne `docker.sock`,
+Workspace und Secrets, und lebt nur für die Dauer eines Scans. Chromium startet deshalb mit `--sandbox container`
+(gesetzt über `DSGVO_CHECK_BROWSER_SANDBOX=container` im Image) ohne eigene Sandbox. Das ist kein Warnfall wie
+`--sandbox off`: Der Bericht trägt den Modus `container`, es gibt weder `SCAN-SANDBOX-OFF` noch `strict:sandbox-off`.
+Außerhalb des Images ist `container` ungültig (Exit-Code 2); dort bleibt die Chromium-Sandbox der Standard.
+
+Die Isolation hängt an Container und Browser: Das Image aktuell halten, denn das festgelegte Chrome bekommt
+Sicherheitskorrekturen nur mit Aktualisierungen von `playwright-core`.
+
+### Scan im Container
 
 ```sh
 mkdir -p dsgvo-check-report
 docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
-  --security-opt seccomp=dsgvo-check-seccomp.json \
   -v "$PWD/dsgvo-check-report:/out" \
   dsgvo-check:dev https://www.example.de/ --out /out --format console,json,html
 ```
@@ -377,71 +384,11 @@ Workspace, keine Secrets.
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   --cap-drop=ALL --security-opt no-new-privileges \
-  --security-opt seccomp=dsgvo-check-seccomp.json \
   --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g --env HOME=/tmp \
   --memory=3g --memory-swap=3g --cpus=2 --pids-limit=1024 --shm-size=512m \
   --volume "$PWD/dsgvo-check-report:/out" \
   dsgvo-check:dev https://www.example.de/ --out /out --format console,json,html,summary
 ```
-
-### Inhalt des Images
-
-| Bestandteil     | Wert                                                                                                     |
-| --------------- | -------------------------------------------------------------------------------------------------------- |
-| Basis           | `node:26-bookworm-slim`                                                                                  |
-| Browser         | Volles Chrome for Testing im neuen Headless-Modus (kein Headless-Shell), Revision laut `playwright-core` |
-| Nutzer          | uid/gid `10001` (`scanner`), Arbeitsverzeichnis `/work`                                                  |
-| Prozess 1       | `tini`                                                                                                   |
-| Einstieg        | `/usr/local/bin/dsgvo-check` (`docker/entrypoint.sh`): startet die CLI oder gibt `seccomp-profile` aus   |
-| Seccomp-Profil  | `/etc/dsgvo-check/seccomp.json` (Quelle: `docker/seccomp-chromium.json`)                                 |
-| Build-Argumente | `VERSION` und `REVISION` setzen die OCI-Labels (Version, Revision, Quelle, Lizenz)                       |
-
-### Warum ein eigenes seccomp-Profil
-
-Die Chromium-Sandbox legt User-, PID- und Netzwerk-Namespaces an und wechselt per `chroot` in ein leeres Verzeichnis.
-Das Standardprofil von Docker erlaubt `clone` mit Namespace-Flags, `unshare`, `setns` und `chroot` nur mit
-`CAP_SYS_ADMIN` bzw. `CAP_SYS_CHROOT`. Mit dem Standardprofil, und immer mit `--cap-drop=ALL`, scheitert der Browser
-daher mit „Chromium sandboxing failed!“. `--privileged` oder `--cap-add=SYS_ADMIN` würden funktionieren, geben dem
-Container aber weit mehr, als der Browser braucht.
-
-`docker/seccomp-chromium.json` ist das Standardprofil von Docker plus eine Regel:
-
-```json
-{ "names": ["chroot", "clone", "setns", "unshare"], "action": "SCMP_ACT_ALLOW" }
-```
-
-Alles andere bleibt unverändert, auch die Regel `clone3` → `ENOSYS`, mit der glibc auf `clone` zurückfällt.
-`test/e2e/docker.e2e.test.ts` prüft beide Seiten: Mit diesem Profil, `--cap-drop=ALL`, `no-new-privileges`,
-schreibgeschütztem Dateisystem und Nicht-Root-Nutzer meldet `chrome://sandbox` „adequately sandboxed“; mit dem
-Standardprofil und denselben Flags scheitert der Start.
-
-**Abwägung:** Die Regel erlaubt Prozessen im Container, User-Namespaces anzulegen, und legt damit mehr Kernel-Code
-offen als das Standardprofil. Das ist der Preis der Sandbox, die den Renderer fremder Websites isoliert, und deutlich
-enger als `--privileged` oder `CAP_SYS_ADMIN`.
-
-**Self-managed GitLab-Runner:** Der Administrator setzt dasselbe Profil in der `config.toml`
-(`security_opt = ["seccomp=<datei>"]`). Ohne Profil endet der Job mit Exit-Code 2 (`sandbox-unavailable`), außer
-`DSGVO_CHECK_SANDBOX: "off"` ist ausdrücklich gesetzt.
-
-**Profil neu erzeugen** nach einer Aktualisierung des Docker-Profils: die zusätzliche Regel (erster Eintrag der
-aktuellen Datei) vor die neuen `syscalls` setzen. Biome ignoriert die Datei, ein Formatierungsschritt entfällt.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/moby/profiles/<commit>/seccomp/default.json \
-  | jq --argjson rule "$(jq '.syscalls[0]' docker/seccomp-chromium.json)" '.syscalls = [$rule] + .syscalls' \
-  > docker/seccomp-chromium.json
-```
-
-**Quellen und Lizenzen** (die Zuordnung steht auch in [NOTICE](NOTICE)):
-
-- Basis, Inhalt unverändert: [moby/profiles `seccomp/default.json`](https://github.com/moby/profiles/blob/4b8214f/seccomp/default.json),
-  Commit `4b8214f`, Apache-2.0.
-- Idee, `chroot`, `clone`, `setns` und `unshare` zu erlauben: [jessfraz/dotfiles `chrome.json`](https://github.com/jessfraz/dotfiles/blob/889e23d/etc/docker/seccomp/chrome.json),
-  Commit `889e23d`, MIT. Die Datei selbst ist veraltet (kein `clone3`, `rseq`, `statx`; keine Regel `clone3` → `ENOSYS`)
-  und wird deshalb nicht übernommen.
-- Gleicher Ansatz: [microsoft/playwright `seccomp_profile.json`](https://github.com/microsoft/playwright/blob/1d5572d/utils/docker/seccomp_profile.json),
-  Commit `1d5572d`, Apache-2.0. Auch ihm fehlt die Regel `clone3` → `ENOSYS`; ohne sie scheitert auf aktuellen
-  Distributionen das Anlegen von Threads.
 
 ## CI-Integration
 
@@ -487,8 +434,8 @@ jobs:
 
 - Der Schritt gibt den Exit-Code des Scans weiter: Der Job schlägt bei `1` (Befunde) und `2` (Scan nicht
   durchgeführt) fehl und schreibt eine Annotation dazu.
-- Der Container läuft gehärtet: Nicht-Root, eigenes seccomp-Profil, `--cap-drop=ALL`, `no-new-privileges`,
-  schreibgeschütztes Dateisystem, Ressourcenlimits, ohne Secrets und ohne `docker.sock`.
+- Der Container läuft gehärtet: Nicht-Root, `--cap-drop=ALL`, `no-new-privileges`, Dockers Standard-seccomp-Profil,
+  schreibgeschütztes Dateisystem, Ressourcenlimits, ohne Secrets und ohne `docker.sock`; er ist die [Isolation](#isolation).
 - Die Eingaben gelangen über Umgebungsvariablen in die Shell, nicht per Textersetzung in den Befehl.
 - Nur berichten, ohne den Job fehlschlagen zu lassen: `fail-on: none` (nur Scan-Fehler geben Exit-Code 2) oder
   `continue-on-error: true` am Schritt und Auswertung von `steps.<id>.outputs.exit-code`. `continue-on-error` lässt auch
@@ -511,22 +458,21 @@ variables:
 Das [Template](templates/gitlab/dsgvo-check.gitlab-ci.yml) definiert den Job `dsgvo-check` (Stage `test`, läuft nur
 bei gesetztem `DSGVO_CHECK_URL`). Der Wert für `integrity` steht in der Zusammenfassung des Release-Workflows.
 
-| Variable                 | Standard                                 | Bedeutung                                           |
-| ------------------------ | ---------------------------------------- | --------------------------------------------------- |
-| `DSGVO_CHECK_URL`        | leer (Job läuft nicht)                   | Ziel-URL                                            |
-| `DSGVO_CHECK_FAIL_ON`    | `critical`                               | Schwelle für Exit-Code 1                            |
-| `DSGVO_CHECK_FORMAT`     | `console,json,html,summary`              | Ausgabeformate; ein PDF nur ausdrücklich            |
-| `DSGVO_CHECK_OUT`        | `dsgvo-check-report`                     | Berichtsverzeichnis                                 |
-| `DSGVO_CHECK_SANDBOX`    | `require`                                | `off` nur auf Runnern ohne passendes seccomp-Profil |
-| `DSGVO_CHECK_EXTRA_ARGS` | leer                                     | Weitere CLI-Optionen                                |
-| `DSGVO_CHECK_IMAGE`      | `ghcr.io/seed-factory/dsgvo-check:0.1.0` | Scanner-Image nach Versions-Tag                     |
+| Variable                 | Standard                                 | Bedeutung                                |
+| ------------------------ | ---------------------------------------- | ---------------------------------------- |
+| `DSGVO_CHECK_URL`        | leer (Job läuft nicht)                   | Ziel-URL                                 |
+| `DSGVO_CHECK_FAIL_ON`    | `critical`                               | Schwelle für Exit-Code 1                 |
+| `DSGVO_CHECK_FORMAT`     | `console,json,html,summary`              | Ausgabeformate; ein PDF nur ausdrücklich |
+| `DSGVO_CHECK_OUT`        | `dsgvo-check-report`                     | Berichtsverzeichnis                      |
+| `DSGVO_CHECK_EXTRA_ARGS` | leer                                     | Weitere CLI-Optionen                     |
+| `DSGVO_CHECK_IMAGE`      | `ghcr.io/seed-factory/dsgvo-check:0.1.0` | Scanner-Image nach Versions-Tag          |
 
 - Das Berichtsverzeichnis wird bei jedem Ausgang als Artefakt gesichert (14 Tage, Zugriff ab Developer). Ein Befund
   oder Scan-Fehler lässt die Pipeline fehlschlagen (`allow_failure: false`); wer Befunde (Exit-Code 1) tolerieren will,
   setzt am Job `allow_failure: exit_codes: [1]`.
 - `entrypoint: [""]` ist nötig, weil der ENTRYPOINT des Images sonst das `script` des Jobs übernähme; die CLI liegt
   unter `/usr/local/bin/dsgvo-check`.
-- Sandbox auf self-managed Runnern: siehe [Docker](#warum-ein-eigenes-seccomp-profil).
+- Die Sandbox-Einstellung kommt aus dem Image (`container`); weitere Optionen lassen sich über `DSGVO_CHECK_EXTRA_ARGS` übergeben.
 
 ## Was der Scanner sendet
 
@@ -639,7 +585,6 @@ dsgvo-check/
 │   └── fixtures/, utils/    # Snapshots, Berichte, Test-Helfer
 ├── scripts/                 # Generatoren (Register, .env.example, Schema) und Canary-Runner
 ├── canary/                  # sites.example.yaml; echtes Korpus und Ergebnisse nur lokal
-├── docker/                  # entrypoint.sh, seccomp-chromium.json
 ├── templates/gitlab/        # GitLab-CI-Template
 ├── examples/                # Beispiel mit absichtlich rotem Build
 ├── .github/                 # CI, Release, Hilfsskripte (TypeScript)

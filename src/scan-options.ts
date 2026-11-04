@@ -33,6 +33,8 @@ export interface ScanOptions {
   lang?: Lang;
   strict?: boolean;
   sandbox?: SandboxMode;
+  /** The process runs inside the dsgvo-check image (the CLI reads `DSGVO_CHECK_CONTAINER`); `--sandbox container` needs it. */
+  insideContainer?: boolean;
   screenshots?: boolean;
   saveSnapshot?: string | null;
   fromSnapshot?: string | null;
@@ -125,6 +127,8 @@ export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
   const formats = o.formats ?? config.report.formats;
   const lang = o.lang ?? config.report.lang;
   const sandbox = o.sandbox ?? config.browser.sandbox;
+  if (sandbox === 'container' && !o.insideContainer)
+    throw new InvalidInputError('sandbox-container-outside-image');
   const screenshots = o.screenshots ?? true;
   const outDir = o.outDir ?? config.report.outDir;
   const abortGraceMs = Math.max(0, o.abortGraceMs ?? config.scan.abortGraceMs);

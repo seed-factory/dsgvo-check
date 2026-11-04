@@ -120,6 +120,12 @@ describe('Job Summary (Markdown)', () => {
     expect(md).not.toMatch(/(^|[^`])https:\/\/evil\.example/);
   });
 
+  it('does not warn when the container was the sandbox', () => {
+    const r = sampleFullReport();
+    r.scan.environment.sandbox = { mode: 'container', active: false };
+    expect(renderSummary(r, ctx())).not.toContain('--sandbox off');
+  });
+
   it('warns when the sandbox was off', () => {
     const r = sampleFullReport();
     r.scan.environment.sandbox = { mode: 'off', active: false };

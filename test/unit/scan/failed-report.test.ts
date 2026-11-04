@@ -34,6 +34,12 @@ describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)'
       'invalid-input',
       'locked-override',
     ],
+    [
+      '--sandbox container outside the dsgvo-check image',
+      { sandbox: 'container' as const },
+      'invalid-input',
+      'sandbox-container-outside-image',
+    ],
     ['invalid --fail-on', { failOn: 'sometimes' as never }, 'invalid-input', 'invalid-fail-on'],
     ['invalid --max-pages', { maxPages: Number.NaN }, 'invalid-input', 'invalid-max-pages'],
     [

@@ -65,6 +65,12 @@ describe('settings from the environment', () => {
     });
   });
 
+  it('DSGVO_CHECK_BROWSER_SANDBOX=container is a valid setting and becomes the --sandbox default', () => {
+    const settings = loadCliSettings({ DSGVO_CHECK_BROWSER_SANDBOX: 'container' }, tmpdir());
+    expect(settings.error).toBeNull();
+    expect(parse(settings).opts()).toMatchObject({ sandbox: 'container' });
+  });
+
   it('reads .env of the working directory and notes it', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'dsgvo-cli-'));
     writeFileSync(

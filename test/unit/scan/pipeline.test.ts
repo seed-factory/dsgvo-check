@@ -177,6 +177,38 @@ describe('scan — pipeline', () => {
     expect(strict.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
 
+  it('sandbox container inside the image → no SCAN-SANDBOX-OFF, no strict:sandbox-off, no sandbox-off paragraph', async () => {
+    const result = await scan(
+      opts({
+        sandbox: 'container',
+        insideContainer: true,
+        checks: ['TEST-02'],
+        strict: true,
+        assumeRegion: 'de',
+      }),
+    );
+
+    expect(result.report.scan.status).toBe('complete');
+    expect(result.report.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-SANDBOX-OFF');
+    expect(result.report.summary.exitReasons).not.toContain('strict:sandbox-off');
+    expect(result.exitCode).toBe(0);
+    expect(result.report.disclaimer.text).not.toMatch(/--sandbox off/);
+    if (result.report.scan.status !== 'failed') {
+      expect(result.report.scan.options?.sandbox).toBe('container');
+      expect(result.report.scan.environment?.sandbox.mode).toBe('container');
+    }
+    expectValidReport(result.report);
+  });
+
+  it('sandbox container from the settings alone is checked the same way', async () => {
+    const result = await scan(opts({ config: { browser: { sandbox: 'container' } } }));
+
+    expect(result.exitCode).toBe(2);
+    if (result.report.scan.status === 'failed') {
+      expect(result.report.scan.failure.code).toBe('sandbox-container-outside-image');
+    }
+  });
+
   it('save-snapshot / --from-snapshot: replay without collectors gives the same findings', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');

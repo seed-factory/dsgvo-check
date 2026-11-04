@@ -37,8 +37,6 @@ jobs:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: node .github/scripts/release.ts
-      - name: Allow unprivileged user namespaces for Chromium
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build image
         env:
           VERSION: ${{ steps.version.outputs.version }}

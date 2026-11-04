@@ -14,6 +14,7 @@ RUN corepack pnpm build && corepack pnpm prune --prod --ignore-scripts
 FROM node:26-bookworm-slim
 ENV NODE_ENV=production \
     DSGVO_CHECK_CONTAINER=1 \
+    DSGVO_CHECK_BROWSER_SANDBOX=container \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     LANG=C.UTF-8 \
     HOME=/home/scanner
@@ -34,8 +35,7 @@ COPY --from=build /app/dist ./dist
 COPY package.json LICENSE NOTICE ./
 COPY test/data ./test/data
 COPY --from=build /app/schema ./schema
-COPY docker/seccomp-chromium.json /etc/dsgvo-check/seccomp.json
-COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/dsgvo-check
+RUN chmod 0755 /app/dist/cli.js && ln -s /app/dist/cli.js /usr/local/bin/dsgvo-check
 
 ARG VERSION=0.1.0
 ARG REVISION=unknown

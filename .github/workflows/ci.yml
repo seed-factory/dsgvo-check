@@ -92,9 +92,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Allow unprivileged user namespaces for the Chromium sandbox
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
@@ -112,7 +109,7 @@ jobs:
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
 
-      - name: End-to-end in Docker (exit codes, hardened flags, Chromium sandbox with the seccomp profile)
+      - name: End-to-end in Docker (exit codes, hardened flags, container sandbox mode)
         run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
         env:
           DSGVO_E2E_IMAGE: dsgvo-check:ci

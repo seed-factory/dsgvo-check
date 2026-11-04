@@ -88,7 +88,6 @@ describe('composite action', () => {
     for (const flag of [
       '--cap-drop=ALL',
       '--security-opt no-new-privileges',
-      '--security-opt "seccomp=$profile"',
       '--read-only',
       '--tmpfs /tmp',
       '--shm-size=',
@@ -102,7 +101,8 @@ describe('composite action', () => {
       expect(run).toContain(flag);
     }
 
-    expect(run).toContain('docker/seccomp-chromium.json');
+    // Docker's default seccomp profile applies; there is no custom profile and no host file is needed.
+    expect(run).not.toMatch(/seccomp|\$profile|GITHUB_ACTION_PATH/);
   });
 
   it('gives the container neither host access nor secrets', () => {
@@ -193,6 +193,16 @@ describe('workflows', () => {
     );
   });
 
+  it('needs no user-namespace sysctl where the image runs: the container is the sandbox', () => {
+    const dockerJob = (yaml('.github/workflows/ci.yml') as { jobs: { docker: { steps: Step[] } } }).jobs
+      .docker.steps;
+    const runs = [...dockerJob, ...workflowSteps('.github/workflows/release.yml')].map(
+      (step) => step.run ?? '',
+    );
+
+    for (const run of runs) expect(run).not.toContain('apparmor_restrict_unprivileged_userns');
+  });
+
   it('checks offline HTML/PDF conversion and retains its report artifact for 14 days', () => {
     const ci = yaml('.github/workflows/ci.yml') as { jobs: { test: { steps: Step[] } } };
     const steps = ci.jobs.test.steps;
@@ -261,16 +271,16 @@ describe('GitLab template', () => {
     };
   };
 
-  it('preserves the sandbox and uploads reports on failure with developer access', () => {
+  it('leaves the sandbox mode to the image and uploads reports on failure with developer access', () => {
     const job = tpl['.dsgvo-check'];
 
     expect(job.image.entrypoint).toEqual(['']);
     expect(job.artifacts).toMatchObject({ when: 'always', expire_in: '14 days', access: 'developer' });
     expect(job.artifacts.paths).toContain('$DSGVO_CHECK_OUT/');
     expect(job.allow_failure).toBe(false);
-    expect(job.script.join('\n')).toContain('--sandbox "$DSGVO_CHECK_SANDBOX"');
+    expect(job.script.join('\n')).not.toMatch(/--sandbox|SANDBOX/);
 
-    expect(tpl.variables.DSGVO_CHECK_SANDBOX).toBe('require');
+    expect(tpl.variables).not.toHaveProperty('DSGVO_CHECK_SANDBOX');
     expect(tpl.variables.DSGVO_CHECK_FORMAT).toBe('console,json,html,summary');
     expect(tpl.variables.DSGVO_CHECK_IMAGE).toBe(IMAGE);
   });
@@ -282,7 +292,7 @@ describe('GitLab template', () => {
   });
 });
 
-describe('Dockerfile and seccomp profile', () => {
+describe('Dockerfile', () => {
   const dockerfile = read('Dockerfile');
 
   it('uses two Debian/Node stages, the full Chromium, a non-root user and tini', () => {
@@ -297,6 +307,13 @@ describe('Dockerfile and seccomp profile', () => {
     expect(dockerfile).toMatch(/^USER 10001:10001$/m);
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/dsgvo-check"]');
     expect(dockerfile).not.toMatch(/HEALTHCHECK|--no-sandbox/);
+
+    // Inside the image the hardened container is the isolation; Chromium runs without its own sandbox.
+    expect(dockerfile).toMatch(/^\s+DSGVO_CHECK_CONTAINER=1 \\$/m);
+    expect(dockerfile).toMatch(/^\s+DSGVO_CHECK_BROWSER_SANDBOX=container \\$/m);
+    expect(dockerfile).toContain('ln -s /app/dist/cli.js /usr/local/bin/dsgvo-check');
+    expect(dockerfile).toContain('chmod 0755 /app/dist/cli.js');
+    expect(dockerfile).not.toMatch(/seccomp|docker\/entrypoint/);
 
     // Cache-friendly layer order: the slow Chromium install first, then dependencies, the per-commit revision last.
     expect(dockerfile.indexOf('COPY --from=build /app/node_modules ./node_modules')).toBeGreaterThan(
@@ -363,49 +380,12 @@ describe('Dockerfile and seccomp profile', () => {
       expect(lines, source).toContain(`!${source}`);
     }
     for (const directory of ['src', 'test/data']) expect(lines).toContain(`!${directory}/**`);
-    expect(lines).toContain('!docker');
-    expect(lines).toContain('docker/**');
+    expect(lines.join('\n')).not.toMatch(/docker\/|seccomp/);
   });
 
-  describe('seccomp profile', () => {
-    const profile = JSON.parse(read('docker/seccomp-chromium.json')) as {
-      defaultAction: string;
-      syscalls: Array<{
-        names: string[];
-        action: string;
-        errnoRet?: number;
-        includes?: unknown;
-        excludes?: unknown;
-      }>;
-    };
-
-    it('is the Docker default plus the Chromium sandbox syscalls', () => {
-      const first = profile.syscalls[0];
-
-      expect(profile.defaultAction).toBe('SCMP_ACT_ERRNO');
-      expect(first?.names.sort()).toEqual(['chroot', 'clone', 'setns', 'unshare']);
-      expect(first?.action).toBe('SCMP_ACT_ALLOW');
-      expect(first?.includes).toBeUndefined();
-    });
-
-    it('answers clone3 with ENOSYS so glibc falls back to clone', () => {
-      const clone3 = profile.syscalls.find(
-        (s) => s.names.includes('clone3') && s.action === 'SCMP_ACT_ERRNO',
-      );
-
-      expect(clone3?.errnoRet).toBe(38);
-    });
-
-    it.each(['mount', 'umount2', 'pivot_root', 'bpf', 'init_module', 'kexec_load', 'ptrace'])(
-      'does not allow %s unconditionally',
-      (forbidden) => {
-        const unconditional = profile.syscalls.filter(
-          (s) => s.action === 'SCMP_ACT_ALLOW' && !s.includes && !s.excludes,
-        );
-        const allowed = new Set(unconditional.flatMap((s) => s.names));
-
-        expect(allowed.has(forbidden), forbidden).toBe(false);
-      },
-    );
+  it('has no custom seccomp profile, entrypoint script or docker directory', () => {
+    expect(existsSync(path.join(REPO_ROOT, 'docker'))).toBe(false);
+    expect(read('NOTICE')).not.toMatch(/seccomp|Container files/i);
+    expect(read('biome.json')).not.toMatch(/seccomp|docker\//);
   });
 });

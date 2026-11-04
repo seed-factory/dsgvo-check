@@ -22,7 +22,7 @@ const VERSION_PAGE_TIMEOUT_MS = 10_000;
 /** Playwright's message when the browser build is not downloaded. */
 const BROWSER_NOT_INSTALLED =
   /Executable doesn't exist|browserType\.launch.*install|please run the following command/i;
-/** Chromium's messages when its sandbox cannot start (user namespaces, seccomp, setuid helper). */
+/** Chromium's messages when its sandbox cannot start (user namespaces, setuid helper). */
 const SANDBOX_UNAVAILABLE =
   /sandbox|namespace|setuid|zygote|apparmor|clone\(|Operation not permitted|No usable sandbox/i;
 
@@ -187,7 +187,7 @@ export function classifyLaunchError(
     return {
       reason: 'sandbox-unavailable',
       code: 'sandbox-failed',
-      // Inside the dsgvo-check image the text names the exact fix (seccomp profile export and docker run line).
+      // Inside the dsgvo-check image the text points to the image's default mode instead of host remedies.
       params: { container: env.DSGVO_CHECK_CONTAINER === '1' ? 'yes' : 'no' },
     };
   }

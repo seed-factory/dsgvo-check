@@ -54,12 +54,11 @@ runs:
         formats="$DC_FORMAT"
         [[ "$DC_JOB_SUMMARY" != true ]] || formats="$formats,summary"
         read -r -a extra <<< "$DC_EXTRA_ARGS"
-        profile="$GITHUB_ACTION_PATH/docker/seccomp-chromium.json"
         token="$(openssl rand -hex 16)"
         echo "::stop-commands::$token"
         code=0
         docker run --rm --user "$(id -u):$(id -g)" \
-          --cap-drop=ALL --security-opt no-new-privileges --security-opt "seccomp=$profile" \
+          --cap-drop=ALL --security-opt no-new-privileges \
           --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g --shm-size=512m \
           --memory="$DC_MEMORY" --memory-swap="$DC_MEMORY" --cpus="$DC_CPUS" --pids-limit="$DC_PIDS_LIMIT" \
           --env HOME=/tmp --env NO_COLOR=1 --volume "$out:/out" --workdir /out \

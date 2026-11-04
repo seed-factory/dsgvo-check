@@ -105,6 +105,7 @@ export function toScanOptions(
     lang: raw.lang as Lang,
     strict: Boolean(raw.strict),
     sandbox: raw.sandbox as SandboxMode,
+    insideContainer: insideContainer(),
     screenshots: raw.screenshots,
     saveSnapshot: raw.saveSnapshot ?? null,
     fromSnapshot: raw.fromSnapshot ?? null,
@@ -195,6 +196,11 @@ export interface CliSettings {
   error: readonly ConfigProblem[] | null;
 }
 
+/** `--sandbox container` is only valid inside the dsgvo-check image, which sets this variable. */
+function insideContainer(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return env.DSGVO_CHECK_CONTAINER === '1';
+}
+
 export function builtInSettings(): CliSettings {
   return { config: defaultConfig(), notes: [], explicit: new Set(), error: null };
 }
@@ -234,6 +240,10 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
   if (settings.error) {
     const problems = describeProblems(settings.error, lang);
     return failBeforeScan(writeFailed, 'invalid-config', { problems });
+  }
+  // scan() rejects this too, but the PDF step below would still launch Chromium without its sandbox.
+  if (opts.sandbox === 'container' && !opts.insideContainer) {
+    return failBeforeScan(writeFailed, 'sandbox-container-outside-image', {});
   }
 
   const texts = loadTexts(lang);
@@ -308,6 +318,11 @@ function startWatchdog(opts: ScanOptions, config: Config, writeFailed: FailedRep
   return deadline;
 }
 
+/** Only an explicit `off` weakens the measurement; `container` relies on the hardened image instead. */
+export function sandboxIsOff(sandbox: ScanOptions['sandbox']): boolean {
+  return sandbox === 'off';
+}
+
 /** stderr after the reports are written: scan failure, sandbox notice, written files, write errors, warnings. */
 async function printScanOutcome(
   result: ScanResult,
@@ -318,7 +333,7 @@ async function printScanOutcome(
   if (result.report.scan.status === 'failed') {
     await write(process.stderr, `dsgvo-check: ${result.report.scan.failure.message}\n`);
   }
-  if (sandbox === 'off') await write(process.stderr, `${uiText(texts, 'console.sandboxOff')}\n`);
+  if (sandboxIsOff(sandbox)) await write(process.stderr, `${uiText(texts, 'console.sandboxOff')}\n`);
   for (const f of written.written)
     await write(process.stderr, `${uiText(texts, 'console.reportWritten', { path: f })}\n`);
   for (const e of written.errors) {
@@ -345,6 +360,11 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
     return exit(2);
   }
 
+  if (settings.config.browser.sandbox === 'container' && !insideContainer()) {
+    await write(process.stderr, `dsgvo-check: ${uiText(texts, 'failure.sandbox-container-outside-image')}\n`);
+    return exit(2);
+  }
+
   const { formats, bad } = parseFormats(raw.format);
   try {
     if (!LangSchema.safeParse(raw.lang).success || formats.length === 0 || bad !== undefined) {
@@ -360,6 +380,7 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
         formats,
         lang,
         artifactsDir: inputDir,
+        pdf: { sandbox: settings.config.browser.sandbox },
         config: settings.config,
         outputConsole: (text) => write(process.stdout, text),
       },

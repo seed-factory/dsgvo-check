@@ -31,8 +31,11 @@ export type FailOn = z.infer<typeof FailOnSchema>;
 export const LangSchema = z.enum(['de', 'en']);
 export type Lang = z.infer<typeof LangSchema>;
 
-/** Whether Chromium must run in its sandbox (`--sandbox`). */
-export const SandboxModeSchema = z.enum(['require', 'off']);
+/**
+ * Whether Chromium must run in its sandbox (`--sandbox`). `container` starts Chromium like `off` and relies on the
+ * hardened dsgvo-check image for isolation; it is only accepted inside that image.
+ */
+export const SandboxModeSchema = z.enum(['require', 'off', 'container']);
 export type SandboxMode = z.infer<typeof SandboxModeSchema>;
 
 /** Region the user asserts the scan runs from (`--assume-region`). */

@@ -136,6 +136,10 @@ const CASES: Case[] = [
         r.scan.options!.sandbox = 'require';
         r.scan.environment.sandbox = { mode: 'require', active: true };
       },
+      (r) => {
+        r.scan.options!.sandbox = 'container';
+        r.scan.environment.sandbox = { mode: 'container', active: false };
+      },
     ],
   },
   {

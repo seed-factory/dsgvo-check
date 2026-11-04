@@ -56,7 +56,8 @@ const scan = z.strictObject({
 
 const browser = z.strictObject({
   sandbox: SandboxModeSchema.default('require').meta({
-    description: 'Chromium sandbox: require, or off for hosts without user namespaces (CLI: --sandbox).',
+    description:
+      'Chromium sandbox: require, off for hosts without user namespaces, or container (only inside the dsgvo-check image, where the container is the isolation; CLI: --sandbox).',
   }),
   launchTimeoutMs: int(60_000, 'Time limit for starting Chromium.', 1_000),
   navigationPauseMs: int(

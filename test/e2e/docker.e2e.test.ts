@@ -17,7 +17,7 @@ import { expectValidReport } from '../utils/report/validator.ts';
 import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const IMAGE = process.env.DSGVO_E2E_IMAGE;
-const PROFILE = path.join(REPO_ROOT, 'docker/seccomp-chromium.json');
+const SAMPLE_REPORT = path.join(REPO_ROOT, 'test/fixtures/reports/sample-full.report.json');
 const ACTION_PATH =
   process.env.DSGVO_E2E_ACTION_PATH ?? (process.platform === 'linux' ? process.env.PATH : undefined);
 const PACKAGE_VERSION = (
@@ -28,19 +28,19 @@ const DOCKER_TIMEOUT_MS = 180_000;
 /** For a Chromium launch or a whole scan inside the container; the CLI help and `docker inspect` need far less. */
 const SLOW_TIMEOUT_MS = 240_000;
 
-/** Opens chrome://sandbox in a sandboxed Chromium and prints what the page says about the sandbox layers. */
-const SANDBOX_PROBE = `
+/** Launches Chromium the way the image does (no Chromium sandbox of its own) and prints what the page says. */
+const LAUNCH_PROBE = `
 const { chromium } = await import('/app/node_modules/playwright-core/index.mjs');
-const browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: true });
+const browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: false });
 const page = await browser.newPage();
-await page.goto('chrome://sandbox');
-const text = await page.innerText('body');
+await page.setContent('<title>probe</title><p>container</p>');
+const title = await page.title();
 await browser.close();
-process.stdout.write(JSON.stringify({ text }));
+process.stdout.write(JSON.stringify({ title }));
 `;
 
-/** `docker run` arguments of a hardened container (non-root, no capabilities, read-only root, no network), plus `extra`. */
-function hardened(extra: string[] = [], opts: { seccomp?: boolean } = {}): string[] {
+/** `docker run` arguments of a hardened container (non-root, no capabilities, read-only root, no network, Docker's default seccomp profile), plus `extra`. */
+function hardened(extra: string[] = []): string[] {
   const { uid, gid } = userInfo();
   return [
     'run',
@@ -51,7 +51,6 @@ function hardened(extra: string[] = [], opts: { seccomp?: boolean } = {}): strin
     '--cap-drop=ALL',
     '--security-opt',
     'no-new-privileges',
-    ...(opts.seccomp === false ? [] : ['--security-opt', `seccomp=${PROFILE}`]),
 
     '--read-only',
     '--tmpfs',
@@ -122,11 +121,15 @@ describe.skipIf(!IMAGE)('docker image', () => {
     expect(version.stdout.trim()).toBe(PACKAGE_VERSION);
   });
 
-  it('ships the seccomp profile of this repository', () => {
-    const r = docker(['run', '--rm', image, 'seccomp-profile']);
+  it('has no custom seccomp profile and defaults to the container sandbox mode', () => {
+    const env = docker(['image', 'inspect', '--format', '{{json .Config.Env}}', image]);
+    const entry = docker(['run', '--rm', '--entrypoint', 'test', image, '-x', '/usr/local/bin/dsgvo-check']);
+    const profile = docker(['run', '--rm', '--entrypoint', 'ls', image, '/etc/dsgvo-check']);
 
-    expect(r.status).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual(JSON.parse(readFileSync(PROFILE, 'utf8')));
+    expect(env.stdout).toContain('DSGVO_CHECK_BROWSER_SANDBOX=container');
+    expect(env.stdout).toContain('DSGVO_CHECK_CONTAINER=1');
+    expect(entry.status, entry.stderr).toBe(0);
+    expect(profile.status).not.toBe(0);
   });
 
   it('unreachable target with the hardened flags → exit 2, valid failed report, safe HTML', () => {
@@ -197,27 +200,71 @@ describe.skipIf(!IMAGE)('docker image', () => {
     expect(findingCheckIds(report)).toContain('CONSENT-01');
   });
 
-  it('starts Chromium with its sandbox under the seccomp profile, without any capability', () => {
+  it('the replayed scan records sandbox mode container in its options without SCAN-SANDBOX-OFF, also under --strict', () => {
+    const input = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-snapshot-'));
+    writeFileSync(path.join(input, 'snapshot.json'), trackerSnapshot());
+    const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-docker-'));
+
+    const r = docker([
+      ...hardened(['--volume', `${out}:/out`, '--volume', `${input}:/in:ro`]),
+      image,
+      'https://www.example.de/',
+      '--from-snapshot',
+      '/in/snapshot.json',
+      '--assume-region',
+      'de',
+      '--strict',
+      '--fail-on',
+      'none',
+      '--out',
+      '/out',
+      '--format',
+      'console,json',
+    ]);
+
+    // Other strict reasons (unverified results of the snapshot) may still give exit code 2; only the sandbox must not.
+    const report = readReport(path.join(out, 'report.json'));
+    expectValidReport(report);
+    expect(report.summary.exitCode).toBe(r.status);
+    if (report.scan.status === 'failed') throw new Error('the scan failed');
+    expect(report.scan.options?.sandbox).toBe('container');
+    expect(report.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-SANDBOX-OFF');
+    expect(report.summary.exitReasons).not.toContain('strict:sandbox-off');
+    expect(r.stderr).not.toMatch(/Sandbox/);
+    expect(r.stdout).not.toMatch(/--sandbox off/);
+  });
+
+  it('starts Chromium without its own sandbox under Docker default seccomp and without any capability', () => {
     const r = docker(
-      [...hardened(['--entrypoint', 'node']), image, '--input-type=module', '-e', SANDBOX_PROBE],
+      [...hardened(['--entrypoint', 'node']), image, '--input-type=module', '-e', LAUNCH_PROBE],
       SLOW_TIMEOUT_MS,
     );
 
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-    const { text } = JSON.parse(r.stdout) as { text: string };
-    expect(text).toMatch(/Layer 1 Sandbox\s+Namespace/);
-    expect(text).toMatch(/PID namespaces\s+Yes/);
-    expect(text).toMatch(/Seccomp-BPF sandbox\s+Yes/);
-    expect(text).toMatch(/adequately sandboxed/);
+    expect(JSON.parse(r.stdout)).toEqual({ title: 'probe' });
   });
 
-  it('without the profile (Docker default seccomp) the Chromium sandbox does not start', () => {
-    const args = hardened(['--entrypoint', 'node'], { seccomp: false });
+  it('prints a PDF from a saved report with the image default mode', () => {
+    const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-pdf-'));
+    const input = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-pdf-in-'));
+    writeFileSync(path.join(input, 'report.json'), readFileSync(SAMPLE_REPORT));
 
-    const r = docker([...args, image, '--input-type=module', '-e', SANDBOX_PROBE], SLOW_TIMEOUT_MS);
+    const r = docker(
+      [
+        ...hardened(['--volume', `${out}:/out`, '--volume', `${input}:/in:ro`]),
+        image,
+        'report',
+        '/in/report.json',
+        '--format',
+        'pdf',
+        '--out',
+        '/out',
+      ],
+      SLOW_TIMEOUT_MS,
+    );
 
-    expect(r.status).not.toBe(0);
-    expect(`${r.stdout}${r.stderr}`).toMatch(/sandbox/i);
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+    expect(readFileSync(path.join(out, 'report.pdf')).subarray(0, 5).toString()).toBe('%PDF-');
   });
 
   describe.skipIf(!ACTION_PATH)('action.yml scan step', () => {
