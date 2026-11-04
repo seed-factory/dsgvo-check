@@ -4,7 +4,7 @@
  */
 import { type CheckStatus, type Severity, SeveritySchema } from '../../src/core/report/schema.ts';
 import { type Confidence, DETECTED_CMPS, type DetectedCmpId, type SiteResult } from './load.ts';
-import type { SiteRef } from './results.ts';
+import type { SiteMeta, SiteRef } from './results.ts';
 import { EXPECTED_CMPS, type ExpectedCmp, KNOWN_CMPS, type KnownCmp, type Region } from './sites.ts';
 
 export const GROUPS = ['all', 'eu-eea', 'de', 'eu', 'non-eu'] as const;
@@ -193,6 +193,8 @@ function makeScrubber(sites: readonly SiteRef[], enabled: boolean): (code: strin
       }
     }
   }
+
+  // Longest first, so "shop.example.de" is replaced before "example.de" can leave a fragment.
   const ordered = [...needles].filter((n) => n.length >= 4).sort((a, b) => b.length - a.length);
   return (code: string) => {
     let out = code.replace(/[^\x20-\x7e]/g, '?').slice(0, 120);
@@ -240,9 +242,83 @@ function emptyGroup(): GroupAggregate {
   };
 }
 
+/** Counters of one finished site's scan outcome; returns the scan duration for the group statistics. */
+function tallyScanOutcome(
+  g: GroupAggregate,
+  r: SiteResult,
+  meta: SiteMeta,
+  status: ScanStatusKey,
+  scrub: (s: string) => string,
+): number {
+  g.scanStatus[status]++;
+  if (meta.error) g.runnerErrors++;
+  inc(g.exitCodes, meta.exitCode === null ? 'none' : String(meta.exitCode));
+
+  if (status === 'failed') inc(g.failureCodes, scrub(r.report?.scan?.failure?.code ?? 'unknown'));
+  for (const reason of r.report?.summary?.exitReasons ?? []) inc(g.exitReasons, scrub(reason));
+  for (const code of siteDiagnostics(r)) inc(g.diagnostics, scrub(code));
+
+  return meta.scanDurationMs ?? meta.durationMs;
+}
+
+function tallyFindings(g: GroupAggregate, r: SiteResult): void {
+  const severities = new Set<string>();
+
+  for (const f of r.report?.findings ?? []) {
+    if (!(SEVERITIES as readonly string[]).includes(f.severity)) continue;
+    g.findings.total++;
+    g.findings.bySeverity[f.severity as Severity]++;
+    severities.add(f.severity);
+  }
+
+  for (const s of severities) g.findings.sitesWithSeverity[s as Severity]++;
+}
+
+function emptyCheckAggregate(): CheckAggregate {
+  return {
+    results: 0,
+    evaluated: 0,
+    inconclusive: 0,
+    inconclusiveShare: null,
+    statuses: zeros(CHECK_STATUSES),
+    reasons: {},
+  };
+}
+
+function tallyChecks(g: GroupAggregate, r: SiteResult, scrub: (s: string) => string): void {
+  for (const c of r.report?.checks ?? []) {
+    g.checks[c.id] ??= emptyCheckAggregate();
+    const agg = g.checks[c.id] as CheckAggregate;
+    // A status this version does not know counts as an error rather than vanishing from the table.
+    const st = (CHECK_STATUSES as readonly string[]).includes(c.status) ? (c.status as CheckStatus) : 'error';
+
+    agg.results++;
+    agg.statuses[st]++;
+    if (st !== 'skipped') agg.evaluated++;
+    if (st === 'inconclusive') agg.inconclusive++;
+    if (st !== 'completed') inc(agg.reasons, `${st}:${scrub(c.reason ?? c.error?.code ?? 'none')}`);
+  }
+}
+
+/** Derived shares and sorted keys, so two summaries of the same data are byte-identical. */
+function finalizeGroup(g: GroupAggregate, durations: readonly number[]): void {
+  for (const agg of Object.values(g.checks)) {
+    agg.inconclusiveShare = agg.evaluated > 0 ? agg.inconclusive / agg.evaluated : null;
+    agg.reasons = sortedRecord(agg.reasons);
+  }
+
+  g.checks = Object.fromEntries(Object.entries(g.checks).sort(([a], [b]) => a.localeCompare(b)));
+  g.exitCodes = sortedRecord(g.exitCodes);
+  g.failureCodes = sortedRecord(g.failureCodes);
+  g.exitReasons = sortedRecord(g.exitReasons);
+  g.diagnostics = sortedRecord(g.diagnostics);
+  g.durations = durationStats(durations);
+}
+
 function aggregateGroup(results: readonly SiteResult[], scrub: (s: string) => string): GroupAggregate {
   const g = emptyGroup();
   const durations: number[] = [];
+
   for (const r of results) {
     g.sites++;
     const status = scanStatusOf(r);
@@ -250,78 +326,49 @@ function aggregateGroup(results: readonly SiteResult[], scrub: (s: string) => st
       g.pending++;
       continue;
     }
+
     g.finished++;
-    g.scanStatus[status]++;
-    if (r.meta.error) g.runnerErrors++;
-    inc(g.exitCodes, r.meta.exitCode === null ? 'none' : String(r.meta.exitCode));
-    durations.push(r.meta.scanDurationMs ?? r.meta.durationMs);
-    if (status === 'failed') inc(g.failureCodes, scrub(r.report?.scan?.failure?.code ?? 'unknown'));
-    for (const reason of r.report?.summary?.exitReasons ?? []) inc(g.exitReasons, scrub(reason));
-    for (const code of siteDiagnostics(r)) inc(g.diagnostics, scrub(code));
+    durations.push(tallyScanOutcome(g, r, r.meta, status, scrub));
     if (!evaluable(r)) continue;
 
-    const severities = new Set<string>();
-    for (const f of r.report?.findings ?? []) {
-      if (!(SEVERITIES as readonly string[]).includes(f.severity)) continue;
-      g.findings.total++;
-      g.findings.bySeverity[f.severity as Severity]++;
-      severities.add(f.severity);
-    }
-    for (const s of severities) g.findings.sitesWithSeverity[s as Severity]++;
+    tallyFindings(g, r);
+    tallyChecks(g, r, scrub);
+  }
 
-    for (const c of r.report?.checks ?? []) {
-      g.checks[c.id] ??= {
-        results: 0,
-        evaluated: 0,
-        inconclusive: 0,
-        inconclusiveShare: null,
-        statuses: zeros(CHECK_STATUSES),
-        reasons: {},
-      };
-      const agg = g.checks[c.id] as CheckAggregate;
-      const st = (CHECK_STATUSES as readonly string[]).includes(c.status)
-        ? (c.status as CheckStatus)
-        : 'error';
-      agg.results++;
-      agg.statuses[st]++;
-      if (st !== 'skipped') agg.evaluated++;
-      if (st === 'inconclusive') agg.inconclusive++;
-      if (st !== 'completed') inc(agg.reasons, `${st}:${scrub(c.reason ?? c.error?.code ?? 'none')}`);
-    }
-  }
-  for (const agg of Object.values(g.checks)) {
-    agg.inconclusiveShare = agg.evaluated > 0 ? agg.inconclusive / agg.evaluated : null;
-    agg.reasons = sortedRecord(agg.reasons);
-  }
-  g.checks = Object.fromEntries(Object.entries(g.checks).sort(([a], [b]) => a.localeCompare(b)));
-  g.exitCodes = sortedRecord(g.exitCodes);
-  g.failureCodes = sortedRecord(g.failureCodes);
-  g.exitReasons = sortedRecord(g.exitReasons);
-  g.diagnostics = sortedRecord(g.diagnostics);
-  g.durations = durationStats(durations);
+  finalizeGroup(g, durations);
   return g;
 }
 
+type VariantTally = VariantRow & { siteIds: Set<string> };
+
+function newVariantTally(f: { checkId: string; variant: string; severity: string }): VariantTally {
+  return {
+    checkId: f.checkId,
+    variant: f.variant,
+    severity: f.severity,
+    findings: 0,
+    sites: 0,
+    sitesByRegion: { de: 0, eu: 0, 'non-eu': 0 },
+    siteIds: new Set(),
+  };
+}
+
 function variantRows(results: readonly SiteResult[]): VariantRow[] {
-  const rows = new Map<string, VariantRow & { siteIds: Set<string> }>();
+  const rows = new Map<string, VariantTally>();
+
   for (const r of results) {
     if (!evaluable(r)) continue;
+
     for (const f of r.report?.findings ?? []) {
       const key = `${f.checkId}\u0000${f.variant}\u0000${f.severity}`;
       let row = rows.get(key);
       if (!row) {
-        row = {
-          checkId: f.checkId,
-          variant: f.variant,
-          severity: f.severity,
-          findings: 0,
-          sites: 0,
-          sitesByRegion: { de: 0, eu: 0, 'non-eu': 0 },
-          siteIds: new Set(),
-        };
+        row = newVariantTally(f);
         rows.set(key, row);
       }
+
       row.findings++;
+      // Each site counts once per variant, however many findings it has.
       if (!row.siteIds.has(r.site.id)) {
         row.siteIds.add(r.site.id);
         row.sites++;
@@ -329,6 +376,7 @@ function variantRows(results: readonly SiteResult[]): VariantRow[] {
       }
     }
   }
+
   const sevRank = (s: string) => SEVERITIES.indexOf(s as Severity);
   return [...rows.values()]
     .map(({ siteIds: _ids, ...row }) => row)
@@ -351,39 +399,45 @@ function cmpSection(results: readonly SiteResult[]): CanarySummary['cmp'] {
   const recognition = Object.fromEntries(
     KNOWN_CMPS.map((c) => [c, { high: 0, medium: 0, low: 0 }]),
   ) as Record<KnownCmp, Record<Confidence, number>>;
+
   for (const r of results) {
     if (!r.meta) continue;
     const expected = r.site.expectedCmp;
     const detected = r.cmp.id;
     matrix[expected][detected]++;
+
     if ((KNOWN_CMPS as readonly string[]).includes(expected)) {
       const s = perCmp[expected as KnownCmp];
       s.expected++;
       if (detected !== 'n/a') s.evaluated++;
       if (detected === expected) s.matched++;
     }
+
     if ((KNOWN_CMPS as readonly string[]).includes(detected)) {
       if (detected !== expected) perCmp[detected as KnownCmp].unexpected++;
       if (r.cmp.confidence) recognition[detected as KnownCmp][r.cmp.confidence]++;
     }
   }
+
   for (const s of Object.values(perCmp)) s.recall = s.evaluated > 0 ? s.matched / s.evaluated : null;
   return { matrix, perCmp, recognition };
 }
 
 function collectorDurations(results: readonly SiteResult[]): Record<string, DurationStats> {
-  const by: Record<string, number[]> = {};
+  const byCollector: Record<string, number[]> = {};
   for (const r of results) {
     if (!r.meta) continue;
+
     for (const [name, c] of Object.entries(r.report?.scan?.coverage?.collectors ?? {})) {
       if (typeof c?.durationMs !== 'number' || c.status === 'not-run') continue;
-      by[name] ??= [];
-      by[name].push(c.durationMs);
+      byCollector[name] ??= [];
+      byCollector[name].push(c.durationMs);
     }
   }
+
   const out: Record<string, DurationStats> = {};
-  for (const name of Object.keys(by).sort()) {
-    const s = durationStats(by[name] ?? []);
+  for (const name of Object.keys(byCollector).sort()) {
+    const s = durationStats(byCollector[name] ?? []);
     if (s) out[name] = s;
   }
   return out;
@@ -398,33 +452,42 @@ function topErrors(results: readonly SiteResult[], scrub: (s: string) => string,
     row.count++;
     counts.set(key, row);
   };
+
   for (const r of results) {
     if (!r.meta) continue;
     if (r.meta.error) add('runner', r.meta.error.code);
     if (r.report?.scan?.status === 'failed') add('scan-failure', r.report.scan.failure?.code ?? 'unknown');
+
     for (const c of r.report?.checks ?? []) {
       if (c.status === 'error') add('check-error', `${c.id}:${c.reason ?? c.error?.code ?? 'unknown'}`);
     }
+
     for (const [name, c] of Object.entries(r.report?.scan?.coverage?.collectors ?? {})) {
       if (c?.status === 'error' || c?.status === 'partial') {
         add('collector', `${name}:${c.status}:${c.reason ?? 'none'}`);
       }
     }
   }
+
   return [...counts.values()]
     .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind) || a.code.localeCompare(b.code))
     .slice(0, limit);
 }
 
+function severityCounts(r: SiteResult): Record<Severity, number> {
+  const counts = zeros(SEVERITIES);
+  if (!evaluable(r)) return counts;
+
+  for (const f of r.report?.findings ?? []) {
+    if ((SEVERITIES as readonly string[]).includes(f.severity)) counts[f.severity as Severity]++;
+  }
+  return counts;
+}
+
 function siteRows(results: readonly SiteResult[]): SiteRow[] {
   return results.map((r) => {
-    const findings = zeros(SEVERITIES);
-    if (evaluable(r)) {
-      for (const f of r.report?.findings ?? []) {
-        if ((SEVERITIES as readonly string[]).includes(f.severity)) findings[f.severity as Severity]++;
-      }
-    }
     const status = scanStatusOf(r);
+
     return {
       id: r.site.id,
       url: r.site.url,
@@ -440,7 +503,7 @@ function siteRows(results: readonly SiteResult[]): SiteRow[] {
       durationMs: r.meta ? (r.meta.scanDurationMs ?? r.meta.durationMs) : null,
       failureCode: status === 'failed' ? (r.report?.scan?.failure?.code ?? 'unknown') : null,
       runnerError: r.meta?.error?.code ?? null,
-      findings,
+      findings: severityCounts(r),
       diagnostics: siteDiagnostics(r),
     };
   });
@@ -451,6 +514,7 @@ export function aggregate(results: readonly SiteResult[], o: AggregateOptions): 
     results.map((r) => r.site),
     !o.withSites,
   );
+
   const groups = Object.fromEntries(
     GROUPS.map((g) => [
       g,
@@ -460,6 +524,7 @@ export function aggregate(results: readonly SiteResult[], o: AggregateOptions): 
       ),
     ]),
   ) as Record<GroupKey, GroupAggregate>;
+
   const summary: CanarySummary = {
     summaryVersion: 1,
     runId: o.runId,
@@ -477,6 +542,7 @@ export function aggregate(results: readonly SiteResult[], o: AggregateOptions): 
     collectorDurations: collectorDurations(results),
     topErrors: topErrors(results, scrub, o.topErrors ?? 15),
   };
+
   if (o.withSites) summary.sites = siteRows(results);
   return summary;
 }

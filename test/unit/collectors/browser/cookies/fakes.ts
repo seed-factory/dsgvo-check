@@ -115,11 +115,13 @@ export async function recorded(
   const rec = new NetworkRecorder('A', 'example.de', counter, false, undefined, options);
   rec.attach(ctx as unknown as BrowserContext);
   rec.beginNavigation(START);
+
   for (const [url, lines] of responses) {
     const req = fakeRequest(url);
     ctx.emit('request', req);
     ctx.emit('response', fakeResponse(req, lines));
   }
   await rec.flush();
+
   return rec;
 }

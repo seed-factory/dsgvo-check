@@ -3,7 +3,7 @@
  * navigation/action/frame/parent ids and the versioned safe `features`. No legacy relative times.
  */
 import { describe, expect, it } from 'vitest';
-import { cookieEvidence, requestEvidence, storageEvidence } from '../../../../src/checks/browser/shared.ts';
+import { cookieEvidence, requestEvidence, storageEvidence } from '../../../../src/checks/browser/evidence.ts';
 import { EvidenceSchema } from '../../../../src/core/report/schema.ts';
 import type { ClassifiedRequest } from '../../../../src/derive/types.ts';
 import { makeCookie, makeRequest, makeStorage } from '../../../utils/snapshot-builder.ts';
@@ -86,7 +86,7 @@ describe('requestEvidence (5.3)', () => {
     // Times relative to navigation/click are computed from the ids, not stored.
     for (const legacy of ['state', 'status', 'tStartMs', 'tRef', 'identifierPresent'])
       expect(ev).not.toHaveProperty(legacy);
-    expect(EvidenceSchema.safeParse({ id: 'ev-1', ...ev }).success).toBe(true);
+    expect(() => EvidenceSchema.parse({ id: 'ev-1', ...ev })).not.toThrow();
   });
 
   it('a record from an older snapshot: delivery/result from the legacy state, parser version 1', () => {
@@ -153,7 +153,7 @@ describe('cookie and storage evidence on the same time scale (5.3)', () => {
     expect(cookieEvidence(makeCookie({ name: '_ga', tMs: 15 }))).not.toHaveProperty('tMs');
     const s = storageEvidence(makeStorage({ key: 'k', tMs: 15, atMs: 9_000, navigationId: 'A-n2' }));
     expect(s).toMatchObject({ tMs: 9_000, navigationId: 'A-n2' });
-    expect(EvidenceSchema.safeParse({ id: 'ev-c', ...c }).success).toBe(true);
-    expect(EvidenceSchema.safeParse({ id: 'ev-s', ...s }).success).toBe(true);
+    expect(() => EvidenceSchema.parse({ id: 'ev-c', ...c })).not.toThrow();
+    expect(() => EvidenceSchema.parse({ id: 'ev-s', ...s })).not.toThrow();
   });
 });

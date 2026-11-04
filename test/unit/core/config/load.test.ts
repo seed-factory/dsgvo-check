@@ -257,9 +257,11 @@ describe('.env files', () => {
       'DSGVO_CHECK_SCAN_MAX_PAGES=2\nDSGVO_CHECK_HTTP_MAX_REDIRECTS=3\nDSGVO_CHECK_DNS_SERVERS=1.1.1.1\n',
     );
     const loaded = loadConfig({ cwd: d, env: { DSGVO_CHECK_HTTP_MAX_REDIRECTS: '7' } });
+
     expect(loaded.config.scan.maxPages).toBe(2);
     expect(loaded.config.http.maxRedirects).toBe(7);
     expect(loaded.config.dns.servers).toEqual(['1.1.1.1']);
+
     expect(loaded.file).toBe(path.join(d, '.env'));
     expect(loaded.fromFile).toEqual(['DSGVO_CHECK_SCAN_MAX_PAGES', 'DSGVO_CHECK_DNS_SERVERS']);
     expect(loaded.set).toEqual([

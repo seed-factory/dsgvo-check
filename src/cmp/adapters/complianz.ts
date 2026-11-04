@@ -27,32 +27,47 @@ function readComplianz(): ComplianzRead {
   };
   const cz = w.complianz;
   const prefix = typeof cz?.prefix === 'string' ? cz.prefix : 'cmplz_';
-  const jar: Record<string, string> = {};
-  for (const part of w.document.cookie.split(';')) {
-    const i = part.indexOf('=');
-    const name = part.slice(0, i).trim();
-    if (i > 0 && name.startsWith(prefix)) jar[name] = part.slice(i + 1).trim();
-  }
-  const cats = ['preferences', 'statistics', 'marketing'];
-  const cookieCategories: Record<string, boolean | null> = {};
-  let anyCategoryCookie = false;
-  for (const c of cats) {
-    const v = jar[prefix + c];
-    cookieCategories[c] = v === 'allow' ? true : v === 'deny' ? false : null;
-    if (v !== undefined) anyCategoryCookie = true;
-  }
-  let apiCategories: Record<string, boolean | null> | null = null;
-  if (typeof w.cmplz_has_consent === 'function') {
-    apiCategories = {};
-    for (const c of cats) {
+  const CATEGORIES = ['preferences', 'statistics', 'marketing'];
+
+  /** The plugin's cookies by name. */
+  const readJar = (): Record<string, string> => {
+    const jar: Record<string, string> = {};
+    for (const part of w.document.cookie.split(';')) {
+      const i = part.indexOf('=');
+      const name = part.slice(0, i).trim();
+      if (i > 0 && name.startsWith(prefix)) jar[name] = part.slice(i + 1).trim();
+    }
+    return jar;
+  };
+
+  /** `allow` / `deny` per category; `any` is true when the visitor has a category cookie at all. */
+  const readCookieCategories = (jar: Record<string, string>) => {
+    const categories: Record<string, boolean | null> = {};
+    let any = false;
+    for (const c of CATEGORIES) {
+      const v = jar[prefix + c];
+      categories[c] = v === 'allow' ? true : v === 'deny' ? false : null;
+      if (v !== undefined) any = true;
+    }
+    return { categories, any };
+  };
+
+  /** `cmplz_has_consent(category)` per category; null when the plugin does not offer the function. */
+  const readApiCategories = (): Record<string, boolean | null> | null => {
+    if (typeof w.cmplz_has_consent !== 'function') return null;
+
+    const categories: Record<string, boolean | null> = {};
+    for (const c of CATEGORIES) {
       try {
         const v = w.cmplz_has_consent(c);
-        apiCategories[c] = typeof v === 'boolean' ? v : null;
+        categories[c] = typeof v === 'boolean' ? v : null;
       } catch {
-        apiCategories[c] = null;
+        categories[c] = null;
       }
     }
-  }
+    return categories;
+  };
+
   const call = (f: (() => unknown) | undefined): boolean | null => {
     if (typeof f !== 'function') return null;
     try {
@@ -62,11 +77,15 @@ function readComplianz(): ComplianzRead {
     }
   };
   const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+
+  const jar = readJar();
+  const cookie = readCookieCategories(jar);
+
   return {
     present: !!cz,
-    apiCategories,
-    cookieCategories,
-    anyCategoryCookie,
+    apiCategories: readApiCategories(),
+    cookieCategories: cookie.categories,
+    anyCategoryCookie: cookie.any,
     bannerDismissed: jar[`${prefix}banner-status`] === 'dismissed',
     region: str(cz?.region),
     consentType: str(cz?.consenttype),
@@ -83,9 +102,11 @@ export const complianz = defineAdapter({
   async readState(page) {
     const r = await read(page);
     if (!r.present) return [];
+
     const responded = r.bannerDismissed || r.anyCategoryCookie;
     const special = r.isBot === true || r.isSpeedbot === true || (r.region !== null && r.region !== 'eu');
     const origin = special ? 'special-branch' : responded ? 'stored' : 'default';
+
     const facts: ConsentStateFact[] = [];
     if (r.apiCategories) {
       facts.push({

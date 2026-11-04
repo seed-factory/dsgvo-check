@@ -2,27 +2,27 @@
  * CONSENT-05: tracking after a technically confirmed reject. The reject is confirmed by CMP state only, never by
  * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`.
  */
-import type { CmpPhaseFacts, ConsentStateFact } from '../../cmp/types.ts';
-import { defineCheck, type EvidenceInput, isCookieHeld, type Observation, subjects } from '../../core/api.ts';
-import type { RequestRecord } from '../../core/snapshot/browser.ts';
-import type { ClassifiedCookie, ClassifiedRequest, ClassifiedStorage } from '../../derive/types.ts';
+import type { CmpPhaseFacts, CmpSection, ConsentStateFact } from '../../cmp/types.ts';
 import {
-  classifiedCookies,
-  classifiedStorage,
-  consentSignals,
-  cookieEvidence,
-  MAX_EVIDENCE,
-  persistentIdentifier,
-  phaseRecord,
-  requestEvidence,
-  requestIndex,
-  serviceFields,
-  serviceName,
-  signalOutcome,
-  sortedUniq,
-  storageEvidence,
-  TRACKING_CATEGORIES,
-} from './shared.ts';
+  type CheckOutcome,
+  defineCheck,
+  type EvidenceInput,
+  isCookieHeld,
+  type Observation,
+  subjects,
+} from '../../core/api.ts';
+import type { BrowserSection, RequestRecord } from '../../core/snapshot/browser.ts';
+import type {
+  ClassifiedCookie,
+  ClassifiedRequest,
+  ClassifiedStorage,
+  DerivedSection,
+} from '../../derive/types.ts';
+import { cookieEvidence, MAX_EVIDENCE, requestEvidence, storageEvidence } from './evidence.ts';
+import { sortedUniq } from './lists.ts';
+import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
+import { consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-05';
 
@@ -77,6 +77,156 @@ function stateEvidence(s: ConsentStateFact, page: string | null): EvidenceInput 
   };
 }
 
+type Groups = Map<string, Group>;
+
+/**
+ * The group of a service or third party. A stronger variant replaces a weaker one; at the same strength a request
+ * replaces a storage write as the kind.
+ */
+function groupFor(
+  groups: Groups,
+  variant: Variant,
+  kind: Group['kind'],
+  cls: ClassifiedRequest | ClassifiedCookie | ClassifiedStorage,
+  etld1: string | null,
+): Group {
+  const subject = subjects.service(cls.serviceId, etld1);
+  const g = groups.get(subject);
+  if (!g) {
+    const created: Group = {
+      subject,
+      variant,
+      kind,
+      serviceId: cls.serviceId,
+      etld1,
+      category: cls.category,
+      pages: new Set(),
+      evidence: [],
+      names: new Set(),
+      host: null,
+      consentModeDenied: false,
+    };
+    groups.set(subject, created);
+    return created;
+  }
+
+  if (RANK.indexOf(variant) < RANK.indexOf(g.variant)) {
+    g.variant = variant;
+    g.kind = kind;
+  } else if (variant === g.variant && kind === 'request') {
+    g.kind = kind;
+  }
+  return g;
+}
+
+/** Tracking hits delivered after the reject. */
+function addRequestHits(groups: Groups, derived: DerivedSection, records: Map<string, RequestRecord>): void {
+  for (const c of derived.requests) {
+    if (c.phase !== 'B' || c.timing !== 'after-reject') continue;
+    if (!TRACKING_CATEGORIES.has(c.category) || !c.delivered || c.kind !== 'hit') continue;
+    const r = records.get(c.requestId);
+    if (!r) continue;
+
+    const g = groupFor(groups, requestVariant(c), 'request', c, c.etld1);
+    g.pages.add(r.pageUrl);
+    g.host ??= c.host;
+    if (c.cookieless) g.consentModeDenied = true;
+    if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(requestEvidence(r, c));
+  }
+}
+
+/** Tracking cookies and storage entries written after the reject. */
+function addStorageWrites(groups: Groups, browser: BrowserSection, derived: DerivedSection): void {
+  const stored = [
+    ...classifiedCookies(browser, derived).map((x) => ({
+      ...x,
+      name: x.record.name,
+      ev: cookieEvidence(x.record),
+    })),
+    ...classifiedStorage(browser, derived).map((x) => ({
+      ...x,
+      name: x.record.key,
+      ev: storageEvidence(x.record),
+    })),
+  ];
+
+  for (const s of stored) {
+    if (s.record.phase !== 'B' || s.cls.timing !== 'after-reject' || !s.cls.tracking) continue;
+    // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not.
+    if ('state' in s.record && !isCookieHeld(s.record.state)) continue;
+
+    const g = groupFor(groups, 'tracking-after-reject', 'storage', s.cls, s.cls.etld1 ?? null);
+    g.pages.add(s.record.pageUrl);
+    g.names.add(s.name);
+    if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(s.ev);
+  }
+}
+
+function groupObservations(
+  groups: Groups,
+  derived: DerivedSection,
+  rejectEvidence: EvidenceInput[],
+): Observation[] {
+  return [...groups.values()]
+    .sort((a, b) => a.subject.localeCompare(b.subject))
+    .map((g) => ({
+      checkId: ID,
+      variant: g.variant,
+      confidence: 'high',
+      subject: g.subject,
+      category: g.category,
+      phases: ['B'],
+      pages: [...g.pages].sort(),
+      evidence: [...g.evidence, ...rejectEvidence],
+      params: {
+        kind: g.kind,
+        service: serviceName(derived, g.serviceId, g.etld1),
+        name: sortedUniq(g.names).join(', ') || null,
+        host: g.host,
+        pageCount: g.pages.size,
+        consentModeDenied: g.consentModeDenied,
+      },
+      ...serviceFields(derived, g.serviceId),
+    }));
+}
+
+/**
+ * The reject is a basis for the evaluation only when phase B ran, our click rejected and the CMP state confirms it;
+ * otherwise the outcome says why not.
+ */
+function rejectBasis(
+  browser: BrowserSection,
+  cmp: CmpSection,
+):
+  | { outcome: CheckOutcome }
+  | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
+  const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
+  if (signal) return { outcome: signal };
+
+  const phaseB = phaseRecord(browser, 'B');
+  if (!phaseB || phaseB.status === 'skipped') {
+    return {
+      outcome: { status: 'inconclusive', reason: phaseB?.reason ?? 'phase-b-missing', observations: [] },
+    };
+  }
+
+  const cmpB = cmp.phases.find((p) => p.phase === 'B');
+  const click = cmpB?.click;
+  if (click?.action !== 'reject' || !click.clicked) {
+    return { outcome: { status: 'inconclusive', reason: 'no-reject-click', observations: [] } };
+  }
+
+  const confirmed = confirmedReject(cmpB);
+  if (!confirmed)
+    return { outcome: { status: 'inconclusive', reason: 'reject-not-confirmed', observations: [] } };
+
+  const rejectEvidence = [
+    stateEvidence(confirmed.action, phaseB.click?.pageUrl ?? null),
+    stateEvidence(confirmed.stored, phaseB.pages.find((p) => p.reload)?.finalUrl ?? null),
+  ];
+  return { phaseB, rejectEvidence };
+}
+
 export const consent05 = defineCheck({
   id: ID,
   module: 'browser',
@@ -84,116 +234,21 @@ export const consent05 = defineCheck({
   // `connect-only-after-reject` needs the proxy CONNECT log (in-process egress proxy, not in the prototype).
   variants: RANK.map((variant) => ({ variant, variantGroup: 'after-reject' })),
   run({ browser, cmp, derived }) {
-    const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
-    if (signal) return signal;
-    const phaseB = phaseRecord(browser, 'B');
-    if (!phaseB || phaseB.status === 'skipped') {
-      return { status: 'inconclusive', reason: phaseB?.reason ?? 'phase-b-missing', observations: [] };
-    }
-    const cmpB = cmp.phases.find((p) => p.phase === 'B');
-    const click = cmpB?.click;
-    if (click?.action !== 'reject' || !click.clicked) {
-      return { status: 'inconclusive', reason: 'no-reject-click', observations: [] };
-    }
-    const confirmed = confirmedReject(cmpB);
-    if (!confirmed) return { status: 'inconclusive', reason: 'reject-not-confirmed', observations: [] };
-    const rejectEvidence = [
-      stateEvidence(confirmed.action, phaseB.click?.pageUrl ?? null),
-      stateEvidence(confirmed.stored, phaseB.pages.find((p) => p.reload)?.finalUrl ?? null),
-    ];
+    const basis = rejectBasis(browser, cmp);
+    if ('outcome' in basis) return basis.outcome;
+    const { phaseB, rejectEvidence } = basis;
 
-    const records = requestIndex(browser);
-    const groups = new Map<string, Group>();
-    const group = (
-      variant: Variant,
-      kind: Group['kind'],
-      cls: ClassifiedRequest | ClassifiedCookie | ClassifiedStorage,
-      etld1: string | null,
-    ) => {
-      const subject = subjects.service(cls.serviceId, etld1);
-      let g = groups.get(subject);
-      if (!g) {
-        g = {
-          subject,
-          variant,
-          kind,
-          serviceId: cls.serviceId,
-          etld1,
-          category: cls.category,
-          pages: new Set(),
-          evidence: [],
-          names: new Set(),
-          host: null,
-          consentModeDenied: false,
-        };
-        groups.set(subject, g);
-      } else if (RANK.indexOf(variant) < RANK.indexOf(g.variant)) {
-        g.variant = variant;
-        g.kind = kind;
-      } else if (variant === g.variant && kind === 'request') g.kind = kind;
-      return g;
-    };
-
-    for (const c of derived.requests) {
-      if (c.phase !== 'B' || c.timing !== 'after-reject') continue;
-      if (!TRACKING_CATEGORIES.has(c.category) || !c.delivered || c.kind !== 'hit') continue;
-      const r: RequestRecord | undefined = records.get(c.requestId);
-      if (!r) continue;
-      const g = group(requestVariant(c), 'request', c, c.etld1);
-      g.pages.add(r.pageUrl);
-      g.host ??= c.host;
-      if (c.cookieless) g.consentModeDenied = true;
-      if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(requestEvidence(r, c));
-    }
-    const stored = [
-      ...classifiedCookies(browser, derived).map((x) => ({
-        ...x,
-        name: x.record.name,
-        ev: cookieEvidence(x.record),
-      })),
-      ...classifiedStorage(browser, derived).map((x) => ({
-        ...x,
-        name: x.record.key,
-        ev: storageEvidence(x.record),
-      })),
-    ];
-    for (const s of stored) {
-      if (s.record.phase !== 'B' || s.cls.timing !== 'after-reject' || !s.cls.tracking) continue;
-      // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not.
-      if ('state' in s.record && !isCookieHeld(s.record.state)) continue;
-      const g = group('tracking-after-reject', 'storage', s.cls, s.cls.etld1 ?? null);
-      g.pages.add(s.record.pageUrl);
-      g.names.add(s.name);
-      if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(s.ev);
-    }
-
-    const observations: Observation[] = [...groups.values()]
-      .sort((a, b) => a.subject.localeCompare(b.subject))
-      .map((g) => ({
-        checkId: ID,
-        variant: g.variant,
-        confidence: 'high',
-        subject: g.subject,
-        category: g.category,
-        phases: ['B'],
-        pages: [...g.pages].sort(),
-        evidence: [...g.evidence, ...rejectEvidence],
-        params: {
-          kind: g.kind,
-          service: serviceName(derived, g.serviceId, g.etld1),
-          name: sortedUniq(g.names).join(', ') || null,
-          host: g.host,
-          pageCount: g.pages.size,
-          consentModeDenied: g.consentModeDenied,
-        },
-        ...serviceFields(derived, g.serviceId),
-      }));
+    const groups: Groups = new Map();
+    addRequestHits(groups, derived, requestIndex(browser));
+    addStorageWrites(groups, browser, derived);
+    const observations = groupObservations(groups, derived, rejectEvidence);
 
     const afterPages = phaseB.pages.filter((p) => p.reload || p.role !== 'start' || p.order > 0);
     const coverage = {
       observed: phaseB.pages.length,
       evaluated: afterPages.filter((p) => p.evaluable).length,
     };
+
     // Without the page-exit capture the evaluation after the reject is not conclusive, even with findings; they still gate.
     if (browser.knownGaps.includes('pagehide-beacons')) {
       return {

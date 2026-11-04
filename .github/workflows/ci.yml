@@ -19,15 +19,11 @@ env:
 
 jobs:
   test:
-    name: test (Node ${{ matrix.node }})
+    name: test
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["24", "26"]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,12 +31,12 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version-file: .node-version
 
+      # Node 26 no longer bundles corepack, which runs the pnpm version pinned in package.json.
       - name: corepack
         run: |
-          if ! command -v corepack > /dev/null; then npm install --global "corepack@${COREPACK_VERSION}"; fi
-          corepack --version
+          npm install --global "corepack@${COREPACK_VERSION}"
           corepack pnpm --version
 
       - name: pnpm store path
@@ -50,8 +46,8 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-store.outputs.dir }}
-          key: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('.node-version', 'pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
 
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
@@ -73,7 +69,7 @@ jobs:
         run: node dist/cli.js report test/fixtures/reports/sample-full.report.json --format html,pdf --out report-preview
       - uses: actions/upload-artifact@v7
         with:
-          name: offline-html-pdf-report-${{ matrix.node }}
+          name: offline-html-pdf-report
           path: report-preview/
           retention-days: 14
 
@@ -101,7 +97,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version-file: .node-version
+      - name: corepack
+        run: npm install --global "corepack@${COREPACK_VERSION}"
       - name: Package version
         id: version
         run: node .github/scripts/version.ts

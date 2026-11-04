@@ -51,6 +51,9 @@ export interface JarOptions {
 }
 
 const DEFAULT_EVAL_TIMEOUT_MS = 1_000;
+/** Storage keys read per frame; the rest is not needed to name the origin's storage use. */
+const MAX_STORAGE_KEYS = 200;
+const SECONDS_PER_DAY = 86_400;
 
 type LoggedWrite = ScriptWrite & { t: number };
 
@@ -109,6 +112,7 @@ export function mapCookie(
 ): CookieRecord {
   const domain = c.domain.replace(/^\./, '').toLowerCase();
   const persistent = typeof c.expires === 'number' && c.expires > 0;
+
   return {
     name: c.name,
     domain,
@@ -120,7 +124,10 @@ export function mapCookie(
     sameSite:
       c.sameSite === 'Strict' || c.sameSite === 'Lax' || c.sameSite === 'None' ? c.sameSite : 'unknown',
     lifetime: persistent
-      ? { kind: 'persistent', days: Math.max(0, Math.round(((c.expires - nowSec) / 86_400) * 10) / 10) }
+      ? {
+          kind: 'persistent',
+          days: Math.max(0, Math.round(((c.expires - nowSec) / SECONDS_PER_DAY) * 10) / 10),
+        }
       : { kind: 'session' },
     length: c.value.length,
     ...cleanSetter(setter),
@@ -187,6 +194,7 @@ export class JarTracker {
   async snapshot(context: BrowserContext, page: Page, m: Moment): Promise<string[]> {
     const dead = new Set<Frame>();
     await this.readScriptWrites(page, m, dead);
+
     const cookies = (await this.bounded(context.cookies(), 'jar.cookies')) ?? ([] as Cookie[]);
     const nowSec = Date.now() / 1000;
     for (const c of cookies) {
@@ -194,31 +202,44 @@ export class JarTracker {
       const seen = this.jarDomains.get(c.name) ?? new Set<string>();
       seen.add(domainOf);
       this.jarDomains.set(c.name, seen);
-      const rec = mapCookie(c, m, this.target, nowSec, this.setterOf(c));
-      const key = cookieKey(rec);
-      if (!this.cookieKeys.has(key)) {
-        this.cookieKeys.add(key);
-        this.cookies.push(rec);
-      } else if (
-        m.afterClick &&
-        this.writtenAfterClick(rec.name, rec.domain, rec.path, rec.partitionKey !== null) &&
-        !this.cookieKeys.has(key + AFTER)
-      ) {
-        this.cookieKeys.add(key + AFTER);
-        this.cookies.push(rec);
-      }
+
+      this.addCookie(mapCookie(c, m, this.target, nowSec, this.setterOf(c)), m);
     }
+
     await this.readStorage(page, m, dead);
     return cookies.map((c) => c.value);
   }
 
+  /** A key seen before gets a second record only when a write follows the click. */
+  private addCookie(rec: CookieRecord, m: Moment): void {
+    const key = cookieKey(rec);
+    if (!this.cookieKeys.has(key)) {
+      this.cookieKeys.add(key);
+      this.cookies.push(rec);
+    } else if (
+      m.afterClick &&
+      this.writtenAfterClick(rec.name, rec.domain, rec.path, rec.partitionKey !== null) &&
+      !this.cookieKeys.has(key + AFTER)
+    ) {
+      this.cookieKeys.add(key + AFTER);
+      this.cookies.push(rec);
+    }
+  }
+
   /** Writes seen that never reached the jar become `attempted`. */
   finalize(defaultMoment: Moment): void {
+    this.attemptScriptWrites();
+    this.attemptSetCookieOrigins(defaultMoment);
+  }
+
+  private attemptScriptWrites(): void {
     for (const [key, w] of this.scriptWrites) {
       if (w.deletion || this.jarHas(w.name, (d) => scriptCanSet(w, d))) continue;
+
       // Unknown document and no Domain=: cannot be placed on a domain.
       const domain = writeDomain(w);
       if (!domain) continue;
+
       const where = {
         domain,
         ...(w.script && hostOf(w.script) ? { setterHost: hostOf(w.script) as string } : {}),
@@ -228,11 +249,15 @@ export class JarTracker {
       const later = this.scriptWritesAfterClick.get(key);
       if (later && !w.m.afterClick) this.pushAttempted(w.name, 'script', where, later.m, AFTER);
     }
+  }
+
+  private attemptSetCookieOrigins(defaultMoment: Moment): void {
     for (const o of this.setCookieOrigins.values()) {
       const domain = originDomain(o);
       if (this.jarHas(o.name, (d) => d === domain)) continue;
       if ([...this.scriptWrites.values()].some((w) => w.name === o.name && writeDomain(w) === domain))
         continue;
+
       this.pushAttempted(
         o.name,
         'http-response',
@@ -291,6 +316,7 @@ export class JarTracker {
       afterClick: m.afterClick,
       ...momentIds(m),
     };
+
     const key = cookieKey(rec) + suffix;
     if (this.cookieKeys.has(key)) return;
     this.cookieKeys.add(key);
@@ -305,11 +331,13 @@ export class JarTracker {
     const domain = normalizeDomain(c.domain) ?? c.domain;
     const path = c.path || '/';
     const partitioned = !!c.partitionKey;
+
     for (const o of this.setCookieOrigins.values()) {
       if (o.rejected || o.name !== c.name || originDomain(o) !== domain || o.path !== path) continue;
       if (o.partitioned !== partitioned) continue;
       return { setter: 'http-response', setterHost: o.host, setterUrl: o.url };
     }
+
     for (const w of this.scriptWrites.values()) {
       if (w.name !== c.name || !scriptCanSet(w, domain)) continue;
       return w.script
@@ -336,29 +364,33 @@ export class JarTracker {
       if (dead.has(frame)) continue;
       const logged = await this.bounded(frame.evaluate(cookieWritesInPage), 'jar.cookie-writes', frame, dead);
       if (!logged) continue;
+
       const frameHost = documentHostOf(frame);
-      for (const raw of logged as LoggedWrite[]) {
-        const documentHost = normalizeDomain(raw.host) ?? frameHost;
-        const domainAttr = normalizeDomain(raw.domain);
-        const w: StoredWrite = {
-          name: raw.name,
-          script: raw.script,
-          deletion: raw.deletion,
-          m,
-          ...(documentHost ? { documentHost } : {}),
-          ...(domainAttr ? { domainAttr } : {}),
-        };
-        const key = `${w.name}|${writeDomain(w) ?? ''}`;
-        if (!this.scriptWrites.has(key)) this.scriptWrites.set(key, w);
-        if (
-          this.clickAt !== null &&
-          raw.t >= this.clickAt &&
-          m.afterClick &&
-          !this.scriptWritesAfterClick.has(key)
-        )
-          this.scriptWritesAfterClick.set(key, w);
-      }
+      for (const raw of logged as LoggedWrite[]) this.rememberScriptWrite(raw, frameHost, m);
     }
+  }
+
+  private rememberScriptWrite(raw: LoggedWrite, frameHost: string | undefined, m: Moment): void {
+    const documentHost = normalizeDomain(raw.host) ?? frameHost;
+    const domainAttr = normalizeDomain(raw.domain);
+    const w: StoredWrite = {
+      name: raw.name,
+      script: raw.script,
+      deletion: raw.deletion,
+      m,
+      ...(documentHost ? { documentHost } : {}),
+      ...(domainAttr ? { domainAttr } : {}),
+    };
+
+    const key = `${w.name}|${writeDomain(w) ?? ''}`;
+    if (!this.scriptWrites.has(key)) this.scriptWrites.set(key, w);
+    if (
+      this.clickAt !== null &&
+      raw.t >= this.clickAt &&
+      m.afterClick &&
+      !this.scriptWritesAfterClick.has(key)
+    )
+      this.scriptWritesAfterClick.set(key, w);
   }
 
   private async readStorage(page: Page, m: Moment, dead: Set<Frame>): Promise<void> {
@@ -371,49 +403,71 @@ export class JarTracker {
       if (origin === undefined) continue;
       if (seenOrigins.has(origin)) continue;
       seenOrigins.add(origin);
-      const raw: RawStorage | null = await this.bounded(
-        frame.evaluate(storageInPage, { maxKeys: 200 }),
-        'jar.storage',
-        frame,
-        dead,
-      );
-      if (!raw) continue;
-      const host = hostOf(raw.origin);
-      if (!host) continue; // opaque origin (sandboxed frame): no storage of its own
-      const writes =
-        (await this.bounded(frame.evaluate(storageWritesInPage), 'jar.storage-writes', frame, dead)) ?? [];
-      for (const w of writes) {
-        const k = `${w.type}|${raw.origin}|${w.key}`;
-        if (w.t > (this.storageWriteAt.get(k) ?? Number.NEGATIVE_INFINITY)) this.storageWriteAt.set(k, w.t);
-      }
-      const firstParty = isFirstParty(host, this.target.etld1, this.target.host);
-      const add = (storageType: StorageRecord['storageType'], key: string, length?: number) => {
-        const k = `${storageType}|${raw.origin}|${key}`;
-        if (this.storageKeys.has(k)) {
-          const at = this.storageWriteAt.get(k);
-          const again = m.afterClick && this.clickAt !== null && at !== undefined && at >= this.clickAt;
-          if (!again || this.storageKeys.has(k + AFTER)) return;
-          this.storageKeys.add(k + AFTER);
-        } else {
-          this.storageKeys.add(k);
-        }
-        this.storage.push({
-          storageType,
-          origin: raw.origin,
-          key,
-          firstParty,
-          ...(length !== undefined ? { length } : {}),
-          phase: m.phase,
-          pageUrl: m.pageUrl,
-          tMs: m.tMs,
-          afterClick: m.afterClick,
-          ...momentIds(m),
-        });
-      };
-      for (const e of raw.local) add('localStorage', e.key, e.length);
-      for (const e of raw.session) add('sessionStorage', e.key, e.length);
-      for (const name of raw.idb) add('indexedDB', name);
+
+      await this.readFrameStorage(frame, m, dead);
     }
+  }
+
+  private async readFrameStorage(frame: Frame, m: Moment, dead: Set<Frame>): Promise<void> {
+    const raw: RawStorage | null = await this.bounded(
+      frame.evaluate(storageInPage, { maxKeys: MAX_STORAGE_KEYS }),
+      'jar.storage',
+      frame,
+      dead,
+    );
+    if (!raw) return;
+    const host = hostOf(raw.origin);
+    if (!host) return; // opaque origin (sandboxed frame): no storage of its own
+
+    const writes =
+      (await this.bounded(frame.evaluate(storageWritesInPage), 'jar.storage-writes', frame, dead)) ?? [];
+    for (const w of writes) {
+      const k = `${w.type}|${raw.origin}|${w.key}`;
+      if (w.t > (this.storageWriteAt.get(k) ?? Number.NEGATIVE_INFINITY)) this.storageWriteAt.set(k, w.t);
+    }
+
+    const firstParty = isFirstParty(host, this.target.etld1, this.target.host);
+    const add = (storageType: StorageRecord['storageType'], key: string, length?: number) =>
+      this.addStorage(m, { storageType, origin: raw.origin, key, firstParty, length });
+    for (const e of raw.local) add('localStorage', e.key, e.length);
+    for (const e of raw.session) add('sessionStorage', e.key, e.length);
+    for (const name of raw.idb) add('indexedDB', name);
+  }
+
+  /** A key seen before gets a second record only when its last write is after the click. */
+  private addStorage(
+    m: Moment,
+    entry: {
+      storageType: StorageRecord['storageType'];
+      origin: string;
+      key: string;
+      firstParty: boolean;
+      length?: number | undefined;
+    },
+  ): void {
+    const { storageType, origin, key, firstParty, length } = entry;
+    const k = `${storageType}|${origin}|${key}`;
+    if (this.storageKeys.has(k)) {
+      const at = this.storageWriteAt.get(k);
+      const again = m.afterClick && this.clickAt !== null && at !== undefined && at >= this.clickAt;
+      if (!again || this.storageKeys.has(k + AFTER)) return;
+      this.storageKeys.add(k + AFTER);
+    } else {
+      this.storageKeys.add(k);
+    }
+
+    this.storage.push({
+      storageType,
+      origin,
+      key,
+      firstParty,
+      ...(length !== undefined ? { length } : {}),
+      phase: m.phase,
+      pageUrl: m.pageUrl,
+      tMs: m.tMs,
+      afterClick: m.afterClick,
+      ...momentIds(m),
+    });
   }
 }
 

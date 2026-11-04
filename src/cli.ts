@@ -9,7 +9,7 @@ import { Command, CommanderError } from 'commander';
 import { ConfigError, type ConfigProblem, describeProblems, loadConfig } from './core/config/load.ts';
 import { envName } from './core/config/names.ts';
 import { type Config, defaultConfig } from './core/config/schema.ts';
-import { loadTexts } from './core/data/load.ts';
+import { loadTexts, type Texts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import { buildFailedReport } from './core/report/build.ts';
 import { REPORT_FILES, REPORT_FORMATS, type ReportFormat } from './core/report/reporter.ts';
@@ -31,8 +31,8 @@ import { createLogger } from './core/runtime/logger.ts';
 import { TOOL_VERSION } from './core/runtime/version.ts';
 import { redactTarget } from './core/url/url.ts';
 import { renderJson } from './reporters/json.ts';
-import { writeReports } from './reporters/write.ts';
-import { scan } from './scan.ts';
+import { type WriteResult, writeReports } from './reporters/write.ts';
+import { type ScanResult, scan } from './scan.ts';
 import type { ScanOptions } from './scan-options.ts';
 
 interface RawOptions {
@@ -92,18 +92,13 @@ export function toScanOptions(
   config?: Config,
 ): ScanOptions & { invalid?: InvalidOption } {
   const { formats, bad: badFormat } = parseFormats(raw.format);
-  let timeoutMs: number;
-  try {
-    timeoutMs = parseDuration(raw.timeout);
-  } catch {
-    timeoutMs = Number.NaN;
-  }
+
   const opts: ScanOptions & { invalid?: InvalidOption } = {
     failOn: raw.failOn as FailOn,
     formats,
     outDir: raw.out,
     maxPages: /^\d+$/.test(raw.maxPages) ? Number(raw.maxPages) : Number.NaN,
-    timeoutMs,
+    timeoutMs: parseTimeoutOrNaN(raw.timeout),
     // Without the flag the proxy of the settings applies.
     ...(raw.proxy === undefined ? {} : { proxy: raw.proxy }),
     assumeRegion: (raw.assumeRegion ?? null) as ScanOptions['assumeRegion'],
@@ -123,9 +118,19 @@ export function toScanOptions(
   };
   if (config) opts.config = config;
   if (url) opts.url = url;
+
   const invalid = firstInvalidOption(raw, badFormat);
   if (invalid) opts.invalid = invalid;
   return opts;
+}
+
+/** NaN marks an unparsable duration so that scan() reports it as invalid input. */
+function parseTimeoutOrNaN(raw: string): number {
+  try {
+    return parseDuration(raw);
+  } catch {
+    return Number.NaN;
+  }
 }
 
 /** The first option whose value is outside its allowed set; `--format` is checked first. */
@@ -158,6 +163,7 @@ function writeFailedSync(
   } catch {
     texts = null;
   }
+
   const message = texts ? uiText(texts, `failure.${code}`, params) : code;
   const report = buildFailedReport({
     target,
@@ -166,6 +172,7 @@ function writeFailedSync(
     exitReasons: [reason],
     texts,
   });
+
   try {
     mkdirSync(outDir, { recursive: true });
     // With texts, the JSON reporter composes the conditional disclaimer paragraphs.
@@ -198,6 +205,7 @@ export function loadCliSettings(
 ): CliSettings {
   try {
     const loaded = loadConfig({ env, cwd });
+
     const notes: CliSettings['notes'] = [];
     if (loaded.file && loaded.fromFile.length > 0) {
       notes.push({ key: 'console.configFile', params: { path: loaded.file, count: loaded.fromFile.length } });
@@ -205,6 +213,7 @@ export function loadCliSettings(
     if (loaded.unknown.length > 0) {
       notes.push({ key: 'console.configUnknown', params: { names: loaded.unknown.join(', ') } });
     }
+
     return { config: loaded.config, notes, explicit: new Set(loaded.set), error: null };
   } catch (err) {
     if (err instanceof ConfigError) return { ...builtInSettings(), error: err.problems };
@@ -218,59 +227,25 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
   const outDir = path.resolve(raw.out);
   // The target in the minimal failed reports written here is redacted like in scan().
   const target = url ? redactTarget(url) : (raw.fromSnapshot ?? '');
+  const writeFailed: FailedReportWriter = (code, params, reason) =>
+    writeFailedSync(outDir, target, code, params, reason, lang);
 
-  if (opts.invalid) {
-    const message = writeFailedSync(
-      outDir,
-      target,
-      'invalid-cli-option',
-      { ...opts.invalid },
-      'invalid-input',
-      lang,
-    );
-    process.stderr.write(`dsgvo-check: ${message}\n`);
-    return exit(2);
-  }
+  if (opts.invalid) return failBeforeScan(writeFailed, 'invalid-cli-option', { ...opts.invalid });
   if (settings.error) {
     const problems = describeProblems(settings.error, lang);
-    const message = writeFailedSync(outDir, target, 'invalid-config', { problems }, 'invalid-input', lang);
-    process.stderr.write(`dsgvo-check: ${message}\n`);
-    return exit(2);
+    return failBeforeScan(writeFailed, 'invalid-config', { problems });
   }
-  const notes = loadTexts(lang);
-  for (const n of settings.notes) await write(process.stderr, `${uiText(notes, n.key, n.params)}\n`);
 
-  const onSignal = (sig: string) => {
-    process.stderr.write(`dsgvo-check: ${sig} received, aborting\n`);
-    writeFailedSync(outDir, target, 'interrupted', { signal: sig }, 'internal-error', lang);
-    process.exit(2);
-  };
-  process.once('SIGINT', () => onSignal('SIGINT'));
-  process.once('SIGTERM', () => onSignal('SIGTERM'));
-  const crash = (err: unknown) => {
-    process.stderr.write(`dsgvo-check: internal error: ${errorMessage(err)}\n`);
-    writeFailedSync(outDir, target, 'internal-error', { message: errorMessage(err) }, 'internal-error', lang);
-    process.exit(2);
-  };
-  process.on('unhandledRejection', crash);
-  process.on('uncaughtException', crash);
+  const texts = loadTexts(lang);
+  for (const n of settings.notes) await write(process.stderr, `${uiText(texts, n.key, n.params)}\n`);
 
-  // Watchdog: --timeout plus the reserve for writing reports. scan() itself stops collectors at the deadline.
-  const watchdogMs =
-    (Number.isFinite(opts.timeoutMs) ? (opts.timeoutMs as number) : settings.config.scan.timeoutMs) +
-    settings.config.scan.reportWriteReserveMs;
-  const watchdogDeadline = Date.now() + watchdogMs;
-  setTimeout(() => {
-    process.stderr.write('dsgvo-check: watchdog timeout, aborting\n');
-    writeFailedSync(outDir, target, 'watchdog-timeout', {}, 'internal-error', lang);
-    process.exit(2);
-  }, watchdogMs).unref();
+  installAbortHandlers(writeFailed);
+  const watchdogDeadline = startWatchdog(opts, settings.config, writeFailed);
 
   const result = await scan(opts);
-  const formats = opts.formats ?? settings.config.report.formats;
   const written = await writeReports(result, {
     outDir,
-    formats,
+    formats: opts.formats ?? settings.config.report.formats,
     lang,
     color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
     pdf: { sandbox: opts.sandbox },
@@ -278,11 +253,72 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
     watchdogDeadline,
     outputConsole: (text) => write(process.stdout, text),
   });
-  const texts = loadTexts(lang);
+
+  await printScanOutcome(result, written, opts.sandbox, texts);
+  return exit(written.exitCode);
+}
+
+/** Writes the minimal failed report for a code and returns the user-facing message. */
+type FailedReportWriter = (code: string, params: MessageParams, reason: string) => string;
+
+/** Invalid CLI values and settings end the run before any collector starts: exit code 2 with `invalid-input`. */
+function failBeforeScan(
+  writeFailed: FailedReportWriter,
+  code: string,
+  params: MessageParams,
+): Promise<never> {
+  const message = writeFailed(code, params, 'invalid-input');
+  process.stderr.write(`dsgvo-check: ${message}\n`);
+  return exit(2);
+}
+
+/** A signal or a crash still leaves a failed report behind before the process ends. */
+function installAbortHandlers(writeFailed: FailedReportWriter): void {
+  const onSignal = (sig: string) => {
+    process.stderr.write(`dsgvo-check: ${sig} received, aborting\n`);
+    writeFailed('interrupted', { signal: sig }, 'internal-error');
+    process.exit(2);
+  };
+  process.once('SIGINT', () => onSignal('SIGINT'));
+  process.once('SIGTERM', () => onSignal('SIGTERM'));
+
+  const crash = (err: unknown) => {
+    process.stderr.write(`dsgvo-check: internal error: ${errorMessage(err)}\n`);
+    writeFailed('internal-error', { message: errorMessage(err) }, 'internal-error');
+    process.exit(2);
+  };
+  process.on('unhandledRejection', crash);
+  process.on('uncaughtException', crash);
+}
+
+/**
+ * Last-resort timer: --timeout plus the reserve for writing reports. scan() itself stops collectors at the deadline.
+ * Returns the deadline so that the report writers can hold to it.
+ */
+function startWatchdog(opts: ScanOptions, config: Config, writeFailed: FailedReportWriter): number {
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? (opts.timeoutMs as number) : config.scan.timeoutMs;
+  const watchdogMs = timeoutMs + config.scan.reportWriteReserveMs;
+  const deadline = Date.now() + watchdogMs;
+
+  setTimeout(() => {
+    process.stderr.write('dsgvo-check: watchdog timeout, aborting\n');
+    writeFailed('watchdog-timeout', {}, 'internal-error');
+    process.exit(2);
+  }, watchdogMs).unref();
+  return deadline;
+}
+
+/** stderr after the reports are written: scan failure, sandbox notice, written files, write errors, warnings. */
+async function printScanOutcome(
+  result: ScanResult,
+  written: WriteResult,
+  sandbox: ScanOptions['sandbox'],
+  texts: Texts,
+): Promise<void> {
   if (result.report.scan.status === 'failed') {
     await write(process.stderr, `dsgvo-check: ${result.report.scan.failure.message}\n`);
   }
-  if (opts.sandbox === 'off') await write(process.stderr, `${uiText(texts, 'console.sandboxOff')}\n`);
+  if (sandbox === 'off') await write(process.stderr, `${uiText(texts, 'console.sandboxOff')}\n`);
   for (const f of written.written)
     await write(process.stderr, `${uiText(texts, 'console.reportWritten', { path: f })}\n`);
   for (const e of written.errors) {
@@ -292,7 +328,6 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
     );
   }
   for (const warning of written.warnings) await write(process.stderr, `${warning}\n`);
-  return exit(written.exitCode);
 }
 
 interface ReportOptions {
@@ -309,27 +344,27 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
     await write(process.stderr, `dsgvo-check: ${uiText(texts, 'failure.invalid-config', { problems })}\n`);
     return exit(2);
   }
+
   const { formats, bad } = parseFormats(raw.format);
   try {
     if (!LangSchema.safeParse(raw.lang).success || formats.length === 0 || bad !== undefined) {
       throw new Error('invalid options');
     }
-    const input: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    const parsed = ReportSchema.safeParse(input);
-    if (!parsed.success || parsed.data.schemaVersion !== SCHEMA_VERSION) throw new Error('invalid report');
-    // Validate without discarding future optional fields from the open report schema.
-    const report = input as Report;
+    const report = readReportFile(file);
+    const inputDir = path.dirname(path.resolve(file));
+
     const written = await writeReports(
       { report, snapshot: null, exitCode: 0 },
       {
-        outDir: raw.out ?? path.dirname(path.resolve(file)),
+        outDir: raw.out ?? inputDir,
         formats,
         lang,
-        artifactsDir: path.dirname(path.resolve(file)),
+        artifactsDir: inputDir,
         config: settings.config,
         outputConsole: (text) => write(process.stdout, text),
       },
     );
+
     for (const warning of written.warnings) await write(process.stderr, `${warning}\n`);
     for (const error of written.errors) {
       await write(process.stderr, `${uiText(texts, 'console.reportWriteFailed', error)}\n`);
@@ -339,6 +374,15 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
     await write(process.stderr, `${uiText(texts, 'report.cli.invalid')} (${errorMessage(err)})\n`);
     return exit(2);
   }
+}
+
+/** Reads a report.json of the current schema version; throws when it is not one. */
+function readReportFile(file: string): Report {
+  const input: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  const parsed = ReportSchema.safeParse(input);
+  if (!parsed.success || parsed.data.schemaVersion !== SCHEMA_VERSION) throw new Error('invalid report');
+  // Validate without discarding future optional fields from the open report schema.
+  return input as Report;
 }
 
 function installBrowser(withDeps: boolean): Promise<number> {
@@ -390,11 +434,20 @@ function wrap(text: string, width: number): string {
 
 /** `settings` fill the defaults of the flags that have a setting: flag, then environment, then `.env`, then built-in. */
 export function buildProgram(settings: CliSettings = builtInSettings()): Command {
-  const { config } = settings;
   const program = new Command();
   const texts = loadTexts('de');
   program.enablePositionalOptions();
   program.exitOverride();
+
+  addScanCommand(program, texts, settings);
+  addReportCommand(program, texts, settings);
+  addInstallCommand(program, texts);
+  return program;
+}
+
+/** The root command: `dsgvo-check <url>` scans, `--from-snapshot` re-evaluates a saved snapshot. */
+function addScanCommand(program: Command, texts: Texts, settings: CliSettings): void {
+  const { config } = settings;
   program
     .name('dsgvo-check')
     .description(uiText(texts, 'cli.description'))
@@ -427,12 +480,16 @@ export function buildProgram(settings: CliSettings = builtInSettings()): Command
       }
       return runScan(url, raw, settings);
     });
+}
 
+function addReportCommand(program: Command, texts: Texts, settings: CliSettings): void {
+  const { config } = settings;
   // The built-in format list is for scans (console, json); a re-rendered report is read, so it defaults to html
   // unless the operator named formats in the settings.
   const reportFormats = settings.explicit.has(envName('report', 'formats'))
     ? config.report.formats
     : ['html'];
+
   program
     .command('report <report.json>')
     .description(uiText(texts, 'report.cli.description'))
@@ -440,7 +497,9 @@ export function buildProgram(settings: CliSettings = builtInSettings()): Command
     .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
     .option('--out <dir>', uiText(texts, 'report.cli.output'))
     .action((file: string, raw: ReportOptions) => runReport(file, raw, settings));
+}
 
+function addInstallCommand(program: Command, texts: Texts): void {
   program
     .command('install')
     .description(uiText(texts, 'cli.install'))
@@ -448,8 +507,6 @@ export function buildProgram(settings: CliSettings = builtInSettings()): Command
     .action(async (o: { withDeps?: boolean }) =>
       exit((await installBrowser(Boolean(o.withDeps))) === 0 ? 0 : 2),
     );
-
-  return program;
 }
 
 export async function main(argv: string[]): Promise<void> {

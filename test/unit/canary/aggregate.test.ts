@@ -204,10 +204,12 @@ describe('aggregate', () => {
       runnerErrors: 1,
       scanStatus: { complete: 3, partial: 1, failed: 2, 'no-report': 1 },
     });
+
     expect(s.groups.de.scanStatus).toEqual({ complete: 1, partial: 1, failed: 1, 'no-report': 0 });
     expect(s.groups.eu.scanStatus).toEqual({ complete: 1, partial: 0, failed: 1, 'no-report': 0 });
     expect(s.groups['eu-eea'].sites).toBe(5);
     expect(s.groups['non-eu']).toMatchObject({ sites: 3, pending: 1, runnerErrors: 1 });
+
     expect(s.groups.all.failureCodes).toEqual({ 'blocked-403': 1, 'target-nxdomain': 1 });
     expect(s.groups.all.exitReasons).toEqual({ blocked: 1, unreachable: 1 });
   });
@@ -230,6 +232,7 @@ describe('aggregate', () => {
       bySeverity: { critical: 3, warning: 2, info: 1 },
       sitesWithSeverity: { critical: 2, warning: 2, info: 1 },
     });
+
     expect(s.variants).toEqual([
       {
         checkId: 'CONSENT-01',
@@ -270,6 +273,7 @@ describe('aggregate', () => {
     });
     expect(c4?.inconclusiveShare).toBeCloseTo(2 / 3);
     expect(s.groups['non-eu'].checks['CONSENT-04']?.inconclusiveShare).toBe(0);
+
     expect(s.groups.all.checks['CONSENT-01']).toMatchObject({
       evaluated: 4,
       inconclusive: 0,
@@ -284,6 +288,7 @@ describe('aggregate', () => {
     expect(s.cmp.matrix.borlabs).toMatchObject({ none: 1 });
     expect(s.cmp.matrix.unknown).toMatchObject({ usercentrics: 1 });
     expect(s.cmp.matrix.none).toMatchObject({ other: 1 });
+
     expect(s.cmp.perCmp.cookiebot).toEqual({
       expected: 2,
       evaluated: 1,
@@ -362,13 +367,16 @@ describe('aggregate', () => {
       reason: 'blocked-by:www.de-beta.example',
       durationMs: 1,
     };
+
     const s = aggregate(list, { runId: 'r1', generatedAt: 'x', mode: 'scan', withSites: false });
+
     expect(JSON.stringify(s)).not.toContain('de-beta');
     expect(s.topErrors.map((e) => e.code)).toContain('browser:error:blocked-by:<site>');
   });
 
   it('renders a deterministic Markdown summary with the main sections', () => {
     const md = renderMarkdown(summarize());
+
     expect(md).toBe(renderMarkdown(summarize()));
     for (const heading of [
       '# Canary run r1',
@@ -382,6 +390,7 @@ describe('aggregate', () => {
     ]) {
       expect(md).toContain(heading);
     }
+
     expect(md).toMatch(/\| CONSENT-04 \|.*66\.7 %/);
     expect(md).not.toContain('## Sites');
   });
@@ -426,6 +435,7 @@ describe('CMP detection', () => {
         },
       ],
     });
+
     expect(detectedCmpFromSnapshot({ collection: { browser: { status: 'ok' } }, cmp })).toEqual({
       id: 'borlabs',
       confidence: 'high',
@@ -453,6 +463,7 @@ describe('CMP detection', () => {
         },
       ],
     });
+
     expect(detectedCmpFromSnapshot({ collection: { browser: { status: 'ok' } }, cmp: heuristic })?.id).toBe(
       'other',
     );
@@ -468,6 +479,7 @@ describe('CMP detection', () => {
   it('falls back to cmp evidence in the report', () => {
     const r = sampleFullReport();
     r.evidence = [{ id: 'ev-1', type: 'cmp', cmpId: 'complianz', recognitionConfidence: 'medium' }];
+
     expect(detectedCmpFromReport(r)).toEqual({ id: 'complianz', confidence: 'medium', source: 'report' });
     expect(detectedCmpFromReport(sampleFailedReport())).toBeNull();
   });
@@ -483,6 +495,8 @@ describe('loadRun', () => {
       path.join(runDir, 'run.json'),
       JSON.stringify({ runVersion: 1, runId: 'r1', mode: 'scan', sites: [a, b, c] }),
     );
+
+    // alpha is complete, beta has a corrupt report, gamma is pending (no directory)
     mkdirSync(path.join(runDir, 'de-alpha'));
     writeFileSync(path.join(runDir, 'de-alpha', 'meta.json'), JSON.stringify(meta(a)));
     writeFileSync(path.join(runDir, 'de-alpha', 'report.json'), JSON.stringify(full({})));
@@ -511,6 +525,7 @@ describe('loadRun', () => {
         }),
       }),
     );
+
     mkdirSync(path.join(runDir, 'de-beta'));
     writeFileSync(path.join(runDir, 'de-beta', 'meta.json'), JSON.stringify(meta(b)));
     writeFileSync(path.join(runDir, 'de-beta', 'report.json'), '{ not json');

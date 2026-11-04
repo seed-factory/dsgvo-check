@@ -7,6 +7,7 @@ import {
   type BrowserTiming,
   createBrowserCollector,
 } from '../../../src/collectors/browser/index.ts';
+import { defineCheck } from '../../../src/core/api.ts';
 import { parseConfigInput } from '../../../src/core/config/load.ts';
 import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
@@ -95,3 +96,24 @@ export async function collect(
 export function persisted(run: CollectRun): string {
   return JSON.stringify(run.result);
 }
+
+/** Resolves once `condition` holds, checked every `intervalMs` (e.g. "the fixture server has seen the request"). */
+export function waitUntil(condition: () => boolean, intervalMs: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const poll = setInterval(() => {
+      if (condition()) {
+        clearInterval(poll);
+        resolve();
+      }
+    }, intervalMs);
+  });
+}
+
+/** A check that only needs the browser sections, so that `scan` runs the browser collector. */
+export const BROWSER_PROBE_CHECK = defineCheck({
+  id: 'TEST-01',
+  module: 'browser',
+  requires: ['browser', 'documents', 'cmp'],
+  variants: [{ variant: 'seen' }],
+  run: () => [],
+});

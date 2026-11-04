@@ -7,8 +7,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { type BrowserContext, type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../../src/collectors/browser/index.ts';
-import { profilesOfPid } from '../../../../src/collectors/browser/launch/launch.ts';
-import { defineCheck } from '../../../../src/core/api.ts';
+import { profilesOfPid } from '../../../../src/collectors/browser/launch/profile.ts';
 import { CheckRegistry } from '../../../../src/core/evaluation/registry.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import { scan } from '../../../../src/scan.ts';
@@ -20,7 +19,14 @@ import {
 import { expectValidReport } from '../../../utils/report/validator.ts';
 import { fakeCollectors, testDataDir } from '../../../utils/scan-harness.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
-import { collect, FAST_TIMING, TEST_SANDBOX } from '../helpers.ts';
+import {
+  BROWSER_PROBE_CHECK,
+  type CollectRun,
+  collect,
+  FAST_TIMING,
+  TEST_SANDBOX,
+  waitUntil,
+} from '../helpers.ts';
 
 const html = (title: string, body: string) =>
   `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
@@ -91,6 +97,7 @@ function hangingClose(from: number) {
       launches++;
       dirs.push(dir);
       if (launches < from) return ctx;
+
       contexts.push(ctx);
       return new Proxy(ctx, {
         get(t, p) {
@@ -111,15 +118,39 @@ function hangingClose(from: number) {
 const processesUsing = (dir: string) =>
   execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' }).includes(dir);
 
+/** What each phase ended with: `[phase, status, reason]`. */
+const phaseOutcomes = (run: CollectRun) =>
+  run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason]);
+
+/**
+ * Runs a full A/B/C collection of `host` and aborts it as soon as `seen` holds, i.e. once the collection has really
+ * started. The poll interval is part of the timing the test depends on.
+ */
+async function collectAbortedOnceSeen(host: string, seen: () => boolean, pollMs: number) {
+  const ac = new AbortController();
+  const started = waitUntil(seen, pollMs);
+  const pending = collect(server, {
+    url: `https://${host}/`,
+    signal: ac.signal,
+    deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] },
+  });
+
+  await started;
+  ac.abort();
+  return pending;
+}
+
 describe('a phase browser that does not close', () => {
   it('is killed after the close budget; the phase and its pages are kept, the profile is gone', async () => {
     const h = hangingClose(2);
     const t0 = Date.now();
+
     const run = await collect(server, {
       url: 'https://hang.example.test/',
       maxPages: 2,
       deps: { chromium: h.spy, closeBudgetMs: 700 },
     });
+
     expect(run.result.status).toBe('ok');
     expect(run.result.sections.browser?.phases[0]?.pages.length).toBeGreaterThanOrEqual(2);
     expect(Date.now() - t0).toBeLessThan(60_000);
@@ -130,111 +161,97 @@ describe('a phase browser that does not close', () => {
     }
   });
 
-  it('after the global timeout the collector hands over phase A although the close hangs', async () => {
-    const h = hangingClose(2);
-    const lines: string[] = [];
-    const t0 = Date.now();
+  describe('after the global timeout, although the close of phase A hangs', () => {
     const timeoutMs = 14_000;
-    const dataDir = testDataDir({ ruleset: { 'TEST-01': { seen: 'info' } } });
-    const probe = defineCheck({
-      id: 'TEST-01',
-      module: 'browser',
-      requires: ['browser', 'documents', 'cmp'],
-      variants: [{ variant: 'seen' }],
-      run: () => [],
-    });
-    const r = await scan({
-      url: 'https://abort.example.test/',
-      network: server.network(),
-      registry: new CheckRegistry([probe]),
-      dataDir,
-      log: { ...silentLogger, warn: (m) => lines.push(m) },
-      sandbox: TEST_SANDBOX,
-      maxPages: 2,
-      timeoutMs,
-      collectors: fakeCollectors({
-        browser: createBrowserCollector({
-          timing: FAST_TIMING,
-          phases: ['A', 'B', 'C'],
-          chromium: h.spy,
-          // The orderly shutdown would need longer than the patience after the abort.
-          closeBudgetMs: 120_000,
-          abortOrderlyMs: 400,
+    const warnings: string[] = [];
+    let r: Awaited<ReturnType<typeof scan>>;
+    let elapsedMs: number;
+
+    beforeAll(async () => {
+      const h = hangingClose(2);
+      const t0 = Date.now();
+
+      r = await scan({
+        url: 'https://abort.example.test/',
+        network: server.network(),
+        registry: new CheckRegistry([BROWSER_PROBE_CHECK]),
+        dataDir: testDataDir({ ruleset: { 'TEST-01': { seen: 'info' } } }),
+        log: { ...silentLogger, warn: (m) => warnings.push(m) },
+        sandbox: TEST_SANDBOX,
+        maxPages: 2,
+        timeoutMs,
+        collectors: fakeCollectors({
+          browser: createBrowserCollector({
+            timing: FAST_TIMING,
+            phases: ['A', 'B', 'C'],
+            chromium: h.spy,
+            // The orderly shutdown would need longer than the patience after the abort.
+            closeBudgetMs: 120_000,
+            abortOrderlyMs: 400,
+          }),
         }),
-      }),
+      });
+
+      elapsedMs = Date.now() - t0;
+    }, 60_000);
+
+    it('hands over a valid partial report with the timeout reason, not a failed scan', () => {
+      expectValidReport(r.report);
+      expect(r.report.scan.status).toBe('partial');
+      expect(r.snapshot?.collection.browser).toMatchObject({ status: 'partial', reason: 'timeout' });
+      expect(r.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
+      expect(r.report.scan.status).not.toBe('failed');
     });
-    expectValidReport(r.report);
-    expect(r.report.scan.status).toBe('partial');
-    expect(r.snapshot?.collection.browser).toMatchObject({ status: 'partial', reason: 'timeout' });
-    const a = r.snapshot?.browser?.phases.find((p) => p.phase === 'A');
-    expect(a?.pages.length).toBeGreaterThanOrEqual(2);
-    expect(a?.status).toBe('completed');
-    // Phase A ended by itself; only the close of its browser hung. B and C did not run: cut by the deadline.
-    expect(
-      r.snapshot?.browser?.phases.filter((p) => p.phase !== 'A').map((p) => [p.phase, p.status, p.reason]),
-    ).toEqual([
-      ['B', 'skipped', 'timeout'],
-      ['C', 'skipped', 'timeout'],
-    ]);
-    expect(r.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
-    expect(r.report.scan.status).not.toBe('failed');
-    // The result came within the grace period after the deadline.
-    expect(Date.now() - t0).toBeLessThan(timeoutMs + 10_000);
-    expect(lines.some((l) => /handing over the collected facts/.test(l))).toBe(true);
-  }, 60_000);
+
+    it('keeps phase A as completed with its pages; B and C did not run, cut by the deadline', () => {
+      const a = r.snapshot?.browser?.phases.find((p) => p.phase === 'A');
+      expect(a?.pages.length).toBeGreaterThanOrEqual(2);
+      // Phase A ended by itself; only the close of its browser hung.
+      expect(a?.status).toBe('completed');
+      expect(
+        r.snapshot?.browser?.phases.filter((p) => p.phase !== 'A').map((p) => [p.phase, p.status, p.reason]),
+      ).toEqual([
+        ['B', 'skipped', 'timeout'],
+        ['C', 'skipped', 'timeout'],
+      ]);
+    });
+
+    it('answers within the grace period after the deadline and logs the hand-over', () => {
+      expect(elapsedMs).toBeLessThan(timeoutMs + 10_000);
+      expect(warnings.some((l) => /handing over the collected facts/.test(l))).toBe(true);
+    });
+  });
 });
 
 describe('a collection cut by the deadline', () => {
   it('phases that did not run are skipped/timeout, the running one is partial/timeout; the result carries the reason', async () => {
-    const ac = new AbortController();
-    const started = new Promise<void>((resolve) => {
-      const poll = setInterval(() => {
-        if (server.requestsTo('budget.example.test').some((r) => r.path.startsWith('/kontakt'))) {
-          clearInterval(poll);
-          resolve();
-        }
-      }, 20);
-    });
-    const pending = collect(server, {
-      url: 'https://budget.example.test/',
-      signal: ac.signal,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] },
-    });
-    await started;
-    ac.abort();
-    const run = await pending;
+    const run = await collectAbortedOnceSeen(
+      'budget.example.test',
+      () => server.requestsTo('budget.example.test').some((r) => r.path.startsWith('/kontakt')),
+      20,
+    );
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'timeout' });
-    const phases = run.result.sections.browser?.phases ?? [];
-    expect(phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
+    expect(phaseOutcomes(run)).toEqual([
       ['A', 'partial', 'timeout'],
       ['B', 'skipped', 'timeout'],
       ['C', 'skipped', 'timeout'],
     ]);
-    expect(phases[0]?.pages.length).toBeGreaterThanOrEqual(1);
+    expect(run.result.sections.browser?.phases[0]?.pages.length).toBeGreaterThanOrEqual(1);
   });
 
   // A deadline that cuts the queue of phase A or later phases means `timeout`, never the local `time-budget`.
   it('the abort while pages are still queued in phase A: A is partial/timeout (not time-budget), B and C skipped/timeout', async () => {
     server.reset();
-    const ac = new AbortController();
-    const started = new Promise<void>((resolve) => {
-      const poll = setInterval(() => {
-        if (server.requestsTo('queue.example.test').some((r) => r.path.startsWith('/impressum'))) {
-          clearInterval(poll);
-          resolve();
-        }
-      }, 20);
-    });
-    const pending = collect(server, {
-      url: 'https://queue.example.test/',
-      signal: ac.signal,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] },
-    });
-    await started;
-    ac.abort();
-    const run = await pending;
+
+    const run = await collectAbortedOnceSeen(
+      'queue.example.test',
+      () => server.requestsTo('queue.example.test').some((r) => r.path.startsWith('/impressum')),
+      20,
+    );
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'timeout' });
-    expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
+    expect(phaseOutcomes(run)).toEqual([
       ['A', 'partial', 'timeout'],
       ['B', 'skipped', 'timeout'],
       ['C', 'skipped', 'timeout'],
@@ -243,25 +260,15 @@ describe('a collection cut by the deadline', () => {
 
   it('the abort during phase B: B is cut by the deadline (partial/timeout, not failed), C is skipped/timeout', async () => {
     server.reset();
-    const ac = new AbortController();
-    const started = new Promise<void>((resolve) => {
-      const poll = setInterval(() => {
-        if (server.requestsTo('phaseb.example.test').filter((r) => r.path === '/').length >= 2) {
-          clearInterval(poll);
-          resolve();
-        }
-      }, 10);
-    });
-    const pending = collect(server, {
-      url: 'https://phaseb.example.test/',
-      signal: ac.signal,
-      deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] },
-    });
-    await started;
-    ac.abort();
-    const run = await pending;
+
+    const run = await collectAbortedOnceSeen(
+      'phaseb.example.test',
+      () => server.requestsTo('phaseb.example.test').filter((r) => r.path === '/').length >= 2,
+      10,
+    );
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'timeout' });
-    expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
+    expect(phaseOutcomes(run)).toEqual([
       ['A', 'completed', undefined],
       ['B', 'partial', 'timeout'],
       ['C', 'skipped', 'timeout'],
@@ -270,21 +277,25 @@ describe('a collection cut by the deadline', () => {
 
   it('a partial result names its reason: throttling', async () => {
     server.reset();
+
     const run = await collect(server, {
       url: 'https://throttled.example.test/',
       deps: { phases: ['A', 'B', 'C'] },
     });
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'throttled' });
   });
 
   it('a partial result names its reason: the time budget', async () => {
     server.reset();
+
     const run = await collect(server, {
       url: 'https://budget.example.test/',
       deps: { timing: { ...FAST_TIMING, deadlineReserveMs: 600_000 }, phases: ['A', 'B', 'C'] },
     });
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'time-budget' });
-    expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
+    expect(phaseOutcomes(run)).toEqual([
       ['A', 'partial', 'time-budget'],
       ['B', 'skipped', 'time-budget'],
       ['C', 'skipped', 'time-budget'],
@@ -293,7 +304,9 @@ describe('a collection cut by the deadline', () => {
 
   it('counterexample: a complete collection has no reason', async () => {
     server.reset();
+
     const run = await collect(server, { url: 'https://budget.example.test/', maxPages: 2 });
+
     expect(run.result.status).toBe('ok');
     expect(run.result.reason).toBeUndefined();
   });
@@ -306,20 +319,23 @@ describe('a collection cut by the deadline', () => {
 describe('the fallback probe skipped by the time budget', () => {
   const BUDGET_MS = 5_000;
 
+  const sleepUntil = (at: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, at - Date.now())));
+
+  /** A site whose start page (answered at `delayStartUntil`) links nothing; every other path is a 404. */
   const addSite = (host: string, delayStartUntil: number) =>
     server.addHandler({
       host,
       path: /.*/,
       handle: async (_req, res, ctx) => {
-        // The start page links nothing: the queue is empty, only the fallback probe of the two paths is left.
+        // The queue is empty after the start page: only the fallback probe of the two paths is left.
         if (ctx.url.pathname === '/') await sleepUntil(delayStartUntil);
         const body = ctx.url.pathname === '/' ? html('Start', '<main><h1>Start</h1></main>') : undefined;
         res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' });
         res.end(body ?? html('404', '<h1>Nicht gefunden</h1>'));
       },
     });
-  const sleepUntil = (at: number) =>
-    new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, at - Date.now())));
+
   const fallbackPaths = (host: string) =>
     server
       .requestsTo(host)
@@ -330,14 +346,14 @@ describe('the fallback probe skipped by the time budget', () => {
     server.reset();
     const host = 'fallbackcut.example.test';
     addSite(host, Date.now() + BUDGET_MS + 300);
+
     const run = await collect(server, {
       url: `https://${host}/`,
       deps: { timing: { ...FAST_TIMING, deadlineReserveMs: 110_000 - BUDGET_MS } },
     });
+
     expect(run.result).toMatchObject({ status: 'partial', reason: 'time-budget' });
-    expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
-      ['A', 'partial', 'time-budget'],
-    ]);
+    expect(phaseOutcomes(run)).toEqual([['A', 'partial', 'time-budget']]);
     expect(fallbackPaths(host)).toEqual([]);
   }, 60_000);
 
@@ -345,12 +361,12 @@ describe('the fallback probe skipped by the time budget', () => {
     server.reset();
     const host = 'fallbackdone.example.test';
     addSite(host, 0);
+
     const run = await collect(server, { url: `https://${host}/` });
+
     expect(run.result.status).toBe('ok');
     expect(run.result.reason).toBeUndefined();
-    expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
-      ['A', 'completed', undefined],
-    ]);
+    expect(phaseOutcomes(run)).toEqual([['A', 'completed', undefined]]);
     expect(fallbackPaths(host).sort()).toEqual(['/datenschutz', '/impressum']);
   }, 60_000);
 });

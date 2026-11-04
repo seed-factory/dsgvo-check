@@ -3,7 +3,7 @@
 import type { Page } from 'playwright-core';
 import type { DocumentKind, DocumentPart, DocumentRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.ts';
-import { documentInPage, type RawDocument } from '../in-page/document.ts';
+import { type DocumentPatterns, documentInPage, type RawDocument } from '../in-page/document.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
 import { loadDomPatterns } from '../rules.ts';
 import { normalizeText, redactFreeText, sha256Hex } from '../util.ts';
@@ -124,84 +124,138 @@ export function pdfDocument(c: Omit<DocumentContext, 'contentType'> & { id: stri
   };
 }
 
+/** Everything read from the main document and its same-origin frames. */
+interface ReadDocument {
+  parts: DocumentPart[];
+  /** Headings of navigation or footer prove nothing about the page type; `documentInPage` sorts them into chrome and content. */
+  chromeHeads: Set<string>;
+  contentHeads: Set<string>;
+  // Completeness covers every included part: truncation, unopened expandables and unreadable same-origin frames count
+  // like the main document's.
+  truncated: boolean;
+  expandablesFound: number;
+  expandablesWithContent: number;
+  framesFound: number;
+  framesIncluded: number;
+  /** Other-origin http(s) frames: only reported, never read. */
+  foreignFrames: number;
+  unreadableFrames: number;
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function noteHeadingPlaces(read: ReadDocument, places: RawDocument['headingPlaces']): void {
+  for (const t of places?.chrome ?? []) read.chromeHeads.add(redactFreeText(normalizeText(t)));
+  for (const t of places?.content ?? []) read.contentHeads.add(redactFreeText(normalizeText(t)));
+}
+
+async function readParts(
+  page: Page,
+  c: DocumentContext & { id: string },
+  main: RawDocument,
+  finalUrl: SanitizedUrl,
+  patterns: DocumentPatterns,
+): Promise<ReadDocument> {
+  const read: ReadDocument = {
+    parts: partsOf(main, finalUrl, `${c.id}-p`),
+    chromeHeads: new Set(),
+    contentHeads: new Set(),
+    truncated: main.truncated,
+    expandablesFound: main.expandablesFound,
+    expandablesWithContent: main.expandablesWithContent,
+    framesFound: 0,
+    framesIncluded: 0,
+    foreignFrames: 0,
+    unreadableFrames: 0,
+  };
+  noteHeadingPlaces(read, main.headingPlaces);
+
+  const pageOrigin = originOf(page.url());
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    read.framesFound++;
+
+    const origin = originOf(frame.url());
+    if (origin === null) continue;
+    if (origin !== pageOrigin) {
+      if (/^https?:/.test(frame.url())) read.foreignFrames++;
+      continue;
+    }
+
+    const fr = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }).catch(() => null);
+    if (!fr) {
+      read.unreadableFrames++;
+      continue;
+    }
+    read.framesIncluded++;
+    noteHeadingPlaces(read, fr.headingPlaces);
+    read.truncated ||= fr.truncated;
+    read.expandablesFound += fr.expandablesFound;
+    read.expandablesWithContent += fr.expandablesWithContent;
+    read.parts.push(
+      ...partsOf(fr, finalUrl, `${c.id}-f${read.framesIncluded}`, sanitizeRequestUrl(frame.url())),
+    );
+  }
+  return read;
+}
+
+function documentErrors(p: {
+  kind: DocumentKind;
+  status: number | null;
+  verdict: DocumentVerdict;
+  read: ReadDocument;
+  textLength: number;
+}): string[] {
+  const errors: string[] = [];
+  const ok = p.status !== null && p.status >= 200 && p.status < 300;
+  if (!ok) errors.push(p.status === null ? 'navigation-failed' : `http-${p.status}`);
+  if (ok && p.verdict !== 'ok') errors.push(p.verdict);
+  if (p.read.truncated) errors.push('truncated');
+  if (p.read.expandablesWithContent < p.read.expandablesFound) errors.push('expand-failed');
+  if (p.read.unreadableFrames > 0) errors.push('frame-unreadable');
+  if (p.textLength < MIN_TEXT[p.kind]) {
+    errors.push(p.read.foreignFrames > 0 ? 'content-in-foreign-frame' : 'too-short');
+  }
+  return errors;
+}
+
 export async function extractDocument(
   page: Page,
   c: DocumentContext & { id: string },
 ): Promise<DocumentRecord> {
   const finalUrl = sanitizeRequestUrl(page.url());
   if (/application\/pdf/i.test(c.contentType)) return { ...pdfDocument(c), finalUrl };
-  const errors: string[] = [];
+
   const patterns = loadDomPatterns().document;
   const main = await page.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns });
-  const parts = partsOf(main, finalUrl, `${c.id}-p`);
-  // Headings of navigation or footer prove nothing about the page type; `documentInPage` sorts headings into chrome and
-  // content.
-  const chromeHeads = new Set<string>();
-  const contentHeads = new Set<string>();
-  const notePlaces = (places: RawDocument['headingPlaces']) => {
-    for (const t of places?.chrome ?? []) chromeHeads.add(redactFreeText(normalizeText(t)));
-    for (const t of places?.content ?? []) contentHeads.add(redactFreeText(normalizeText(t)));
-  };
-  notePlaces(main.headingPlaces);
-  let framesIncluded = 0;
-  let pageOrigin = '';
-  try {
-    pageOrigin = new URL(page.url()).origin;
-  } catch {
-    pageOrigin = '';
-  }
-  let foreignFrames = 0;
-  // Completeness covers every included part: truncation, unopened expandables and unreadable same-origin frames count
-  // like the main document's.
-  let truncated = main.truncated;
-  let expandablesFound = main.expandablesFound;
-  let expandablesWithContent = main.expandablesWithContent;
-  let unreadableFrames = 0;
-  let framesFound = 0;
-  for (const frame of page.frames()) {
-    if (frame === page.mainFrame()) continue;
-    framesFound++;
-    let origin = '';
-    try {
-      origin = new URL(frame.url()).origin;
-    } catch {
-      continue;
-    }
-    if (origin !== pageOrigin) {
-      if (/^https?:/.test(frame.url())) foreignFrames++;
-      continue;
-    }
-    const fr = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }).catch(() => null);
-    if (!fr) {
-      unreadableFrames++;
-      continue;
-    }
-    framesIncluded++;
-    notePlaces(fr.headingPlaces);
-    truncated ||= fr.truncated;
-    expandablesFound += fr.expandablesFound;
-    expandablesWithContent += fr.expandablesWithContent;
-    parts.push(...partsOf(fr, finalUrl, `${c.id}-f${framesIncluded}`, sanitizeRequestUrl(frame.url())));
-  }
+  const read = await readParts(page, c, main, finalUrl, patterns);
+  const { parts } = read;
+
   const fullText = parts.map((p) => p.text).join('\n');
   const textLength = fullText.length;
   const ok = c.status !== null && c.status >= 200 && c.status < 300;
-  if (!ok) errors.push(c.status === null ? 'navigation-failed' : `http-${c.status}`);
   const judged = judgeDocumentDetail(c.kind, {
     title: main.title,
     // Only an h1 of the content (the reader leaves out navigation, footer and hidden elements).
     h1: main.h1,
     // A text that is a heading in the content as well stays (a footer column "Impressum" next to a real one).
-    sections: headingsOf(parts).filter((h) => !chromeHeads.has(h) || contentHeads.has(h)),
+    sections: headingsOf(parts).filter((h) => !read.chromeHeads.has(h) || read.contentHeads.has(h)),
     textLength,
   });
-  if (ok && judged.verdict !== 'ok') errors.push(judged.verdict);
-  if (truncated) errors.push('truncated');
-  if (expandablesWithContent < expandablesFound) errors.push('expand-failed');
-  if (unreadableFrames > 0) errors.push('frame-unreadable');
-  if (textLength < MIN_TEXT[c.kind]) {
-    errors.push(foreignFrames > 0 ? 'content-in-foreign-frame' : 'too-short');
-  }
+  const errors = documentErrors({
+    kind: c.kind,
+    status: c.status,
+    verdict: judged.verdict,
+    read,
+    textLength,
+  });
+
   return {
     id: c.id,
     kind: c.kind,
@@ -216,11 +270,11 @@ export async function extractDocument(
     lang: documentLang(main.lang || null, ok ? judged.languages : []),
     parts,
     manifest: {
-      expandablesFound,
+      expandablesFound: read.expandablesFound,
       // Collapsed content is read from the DOM without clicking (counted as opened when present).
-      expandablesOpened: expandablesWithContent,
-      framesIncluded,
-      framesFound,
+      expandablesOpened: read.expandablesWithContent,
+      framesIncluded: read.framesIncluded,
+      framesFound: read.framesFound,
       linkedPages: 0,
       textLength,
     },

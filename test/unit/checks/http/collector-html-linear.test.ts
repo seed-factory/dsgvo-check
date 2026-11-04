@@ -336,6 +336,7 @@ describe('HTML parsing of ordinary and malformed markup', () => {
     // visible through the meta tags that are (not) removed with the comment
     const m = (s: string) => extractMeta(s).referrer;
     const REF = '<meta name="referrer" content="origin">';
+
     expect(m(`<!--${REF}-->`)).toBeNull();
     expect(m(`<!--a-->${REF}<!--b-->`)).toBe('origin');
     expect(m(`<!--<!--${REF}-->`)).toBeNull();

@@ -174,25 +174,33 @@ describe('the whole local part goes, whatever characters it has', () => {
     expect(expectStable(`a@b.test@c.test`)).toBe(`${REDACTED}@c.test`);
     expect(expectStable(`${MARK}@x.test@y.test@z.test.`)).toBe(`${REDACTED}@z.test.`);
     expect(expectStableUrl(`https://${D}/a@b.test@c.test`)).toBe(`https://${D}/${REDACTED}@c.test`);
+
     // an "@" that does not continue into a domain is not part of the chain
     expect(expectStable('a@b.test @c.test und x@y')).toBe(`${REDACTED}@b.test @c.test und x@y`);
   });
 
   it('randomized: no fragment of a generated local part survives and the result is stable', () => {
     const rnd = random(20261031);
+    /** The marker followed by 1 to 24 random characters of `alphabet`. */
+    const randomLocal = (alphabet: string[]) => {
+      const pick = () => alphabet[Math.floor(rnd() * alphabet.length)];
+      return `${MARK}${Array.from({ length: 1 + Math.floor(rnd() * 24) }, pick).join('')}`;
+    };
     const alphabet = "abcXYZ019!#$%&'*+-/=?^_`{|}~.".split('');
-    const pick = () => alphabet[Math.floor(rnd() * alphabet.length)];
-    for (let i = 0; i < 3000; i++) {
-      const local = `${MARK}${Array.from({ length: 1 + Math.floor(rnd() * 24) }, pick).join('')}`;
-      const out = expectStable(`Kontakt: ${local}@${D}.`);
-      expect(out, local).toBe(`Kontakt: ${REDACTED}@${D}.`);
-    }
     // in a path segment: the characters that are the structure of a URL are left out
     const pathAlphabet = "abcXYZ019!$&'*+-^_`{|}~.".split('');
-    const pickPath = () => pathAlphabet[Math.floor(rnd() * pathAlphabet.length)];
+
     for (let i = 0; i < 3000; i++) {
-      const local = `${MARK}${Array.from({ length: 1 + Math.floor(rnd() * 24) }, pickPath).join('')}`;
+      const local = randomLocal(alphabet);
+      const out = expectStable(`Kontakt: ${local}@${D}.`);
+
+      expect(out, local).toBe(`Kontakt: ${REDACTED}@${D}.`);
+    }
+
+    for (let i = 0; i < 3000; i++) {
+      const local = randomLocal(pathAlphabet);
       const out = expectStableUrl(`https://${D}/kontakt/${local}@${D}`);
+
       expect(out, local).toBe(`https://${D}/kontakt/${REDACTED}@${D}`);
     }
   });
@@ -335,12 +343,15 @@ describe('an address glued to a URL does not survive in a kept query value or ke
     const glue = ["'", '`', ',', '.', ';', ')', '%2C', '%27', '+', '-', '_', '|', '~', '!'];
     const names = ['family', 'hl', 'display', 'subset', 'render', 'output', 'libraries', 'en', 'ver', 'tok'];
     const forms = (m: string) => [`${m}@${D}`, `mailto:${m}@${D}`, `${m}%40${D}`, `"${m}"@${D}`];
+
     for (let i = 0; i < 4000; i++) {
       const g = glue[Math.floor(rnd() * glue.length)] as string;
       const name = names[Math.floor(rnd() * names.length)] as string;
       const form = forms(MARK)[Math.floor(rnd() * 4)] as string;
       const url = `https://x.test/p?${name}=de${g}${form}`;
+
       const out = expectStable(`'${url}'`);
+
       expect(out, url).not.toContain(MARK);
       expectStableUrl(url);
     }

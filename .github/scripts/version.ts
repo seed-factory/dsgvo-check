@@ -1,6 +1,4 @@
-import { appendFileSync, readFileSync } from 'node:fs';
+/** Step output `version` from package.json: the docker job tags and labels the image with it. */
+import { packageVersion, setOutput } from './common.ts';
 
-const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
-  version: string;
-};
-appendFileSync(process.env.GITHUB_OUTPUT as string, `version=${version}\n`);
+setOutput('version', packageVersion());

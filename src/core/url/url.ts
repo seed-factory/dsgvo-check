@@ -104,20 +104,25 @@ export function maskMailto(raw: string): string {
     .split(',')
     .map((r) => r.trim())
     .filter(Boolean)
-    .map((r) => {
-      const prefixed = /^mailto:/i.test(r);
-      const address = prefixed ? r.slice('mailto:'.length).trim() : r;
-      const at = address.lastIndexOf('@');
-      const rawDomain = at >= 0 ? /^[\p{L}\p{N}.-]+/u.exec(address.slice(at + 1))?.[0] : undefined;
-      // a domain of only dots and hyphens would turn `[redacted]@` into `[redacted]` on a second pass
-      const domain = rawDomain?.replace(/[.-]+$/, '');
-      const masked = domain ? `${REDACTED}@${domain.toLowerCase()}` : REDACTED;
-      return prefixed ? `mailto:${masked}` : masked;
-    });
+    .map(maskRecipient);
+
   // a first recipient with its own prefix (`mailto:,mailto:x@y`) must not double the one in front
   return `mailto:${recipients.length > 0 ? recipients.join(',') : REDACTED}`
     .replace(/^mailto:(?:mailto:)+/, 'mailto:')
     .slice(0, MAX_URL_LENGTH);
+}
+
+/** One recipient of a `mailto:` list reduced to `[redacted]@domain`; a `mailto:` prefix of its own is kept. */
+function maskRecipient(recipient: string): string {
+  const prefixed = /^mailto:/i.test(recipient);
+  const address = prefixed ? recipient.slice('mailto:'.length).trim() : recipient;
+
+  const at = address.lastIndexOf('@');
+  const rawDomain = at >= 0 ? /^[\p{L}\p{N}.-]+/u.exec(address.slice(at + 1))?.[0] : undefined;
+  // a domain of only dots and hyphens would turn `[redacted]@` into `[redacted]` on a second pass
+  const domain = rawDomain?.replace(/[.-]+$/, '');
+  const masked = domain ? `${REDACTED}@${domain.toLowerCase()}` : REDACTED;
+  return prefixed ? `mailto:${masked}` : masked;
 }
 
 /** Path parameters (`;k=v`, `prefix:k=v&k=v`) carry visitor ids like a query: allowlisted names keep a well-formed value, all else is redacted. */
@@ -208,6 +213,7 @@ function maskSegmentAddresses(
 
 function redactPathSegmentOnce(segment: string, url: URL, allowlist: ReadonlySet<string>): string {
   let out = segment;
+
   // only a segment with a parameter is rewritten
   const syntax = segment.replace(
     ENCODED_PARAM_SYNTAX,
@@ -220,6 +226,7 @@ function redactPathSegmentOnce(segment: string, url: URL, allowlist: ReadonlySet
       ...rest.map((p) => redactPathParam(p, url, allowlist)),
     ].join(';');
   }
+
   return maskSegmentAddresses(out);
 }
 
@@ -239,6 +246,7 @@ function redactPath(u: URL, allowlist: ReadonlySet<string>): void {
   const path = u.pathname;
   // `%` for encoded `@` (also encoded twice or three times) and `=`
   if (!path.startsWith('/') || !/[=@%]/.test(path)) return;
+
   const next = path
     .split('/')
     .map((segment) => redactPathSegment(segment, u, allowlist))
@@ -251,12 +259,14 @@ function redactOpaquePath(u: URL): string {
   const href = u.toString();
   const path = u.pathname;
   if (path === '' || path.startsWith('/')) return href;
+
   const masked = path
     .split('/')
     .map((piece) => maskSegmentAddresses(piece, escapeDecodedOpaque))
     .join('/');
   if (masked === path) return href;
   if (!href.startsWith(u.protocol + path)) return `${u.protocol}${REDACTED}`;
+
   try {
     return new URL(`${u.protocol}${masked}${href.slice(u.protocol.length + path.length)}`).toString();
   } catch {
@@ -281,6 +291,7 @@ function withoutParserNoise(raw: string): string {
 /** Best-effort redaction of a non-parsable URL: userinfo, query and fragment removed, addresses masked, also encoded ones. */
 function redactUnparsable(input: string): string {
   const raw = withoutParserNoise(input);
+
   // a blank before the fragment is dropped by the URL parser once the fragment is gone, and what is left may parse
   const withoutFragment = withoutParserNoise(raw.replace(/#.*$/s, ''));
   if (withoutFragment !== raw) {
@@ -291,9 +302,11 @@ function redactUnparsable(input: string): string {
       // still no URL: masked below
     }
   }
+
   const masked = maskEmailsInUrl(
     withoutFragment.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/is, '$1').replace(/\?.*$/s, `?${REDACTED}`),
   );
+
   // run both masks to a fixed point: decoded pieces can land next to an escape (`%2F@…`) that the bare-address mask reads as a local part
   let current = masked;
   for (let pass = 0; pass < MASK_PASSES; pass++) {
@@ -301,6 +314,7 @@ function redactUnparsable(input: string): string {
     if (next === current) break;
     current = next;
   }
+
   // a blank left by the removed fragment or query would read differently on the next pass
   return withoutParserNoise(current).slice(0, MAX_URL_LENGTH);
 }
@@ -316,6 +330,7 @@ const escapeDecodedUnparsable = (text: string) =>
 function maskEncodedAddresses(text: string): string {
   const head = /^([a-z][a-z0-9+.-]*:)([/\\]*)([^/?#]*)/i.exec(text);
   if (head && containsAddress(head[3] as string)) return schemeOnly(head[1] as string);
+
   const rest = text.slice(head?.[0].length ?? 0);
   const query = rest.indexOf('?');
   const path = query < 0 ? rest : rest.slice(0, query);
@@ -346,6 +361,11 @@ function formDecode(s: string): string {
   } catch {
     // invalid UTF-8 or a stray `%`: go through the bytes
   }
+  return formDecodeBytes(spaced);
+}
+
+/** Percent-decodes byte by byte: a valid `%XX` becomes its byte, anything else stays as it is. */
+function formDecodeBytes(spaced: string): string {
   const bytes = FORM_ENCODER.encode(spaced);
   const out = new Uint8Array(bytes.length);
   let n = 0;
@@ -368,6 +388,7 @@ function redactQuery(u: URL, allowlist: ReadonlySet<string>): void {
   const query = u.search.slice(1);
   const out = new URLSearchParams();
   let size = 0;
+
   for (let start = 0; start <= query.length; ) {
     let end = query.indexOf('&', start);
     if (end < 0) end = query.length;
@@ -376,6 +397,7 @@ function redactQuery(u: URL, allowlist: ReadonlySet<string>): void {
       const eq = pair.indexOf('=');
       const k = formDecode(eq < 0 ? pair : pair.slice(0, eq));
       const v = eq < 0 ? '' : formDecode(pair.slice(eq + 1));
+
       // a key is a part of the page too: `?alice@example.test` is the key `alice@example.test` with an empty value
       const key = containsAddress(k) ? REDACTED : k;
       const value = keepValue(k, v, u, allowlist) ? v : REDACTED;
@@ -385,6 +407,7 @@ function redactQuery(u: URL, allowlist: ReadonlySet<string>): void {
     }
     start = end + 1;
   }
+
   u.search = out.toString().replaceAll('%5Bredacted%5D', REDACTED);
 }
 
@@ -398,11 +421,13 @@ export function sanitizeUrl(raw: string, allowlist: ReadonlySet<string> = QUERY_
   }
   if (u.protocol === 'data:' || u.protocol === 'blob:') return `${u.protocol}${REDACTED}`;
   if (u.protocol === 'mailto:') return maskMailto(raw);
+
   u.username = '';
   u.password = '';
   u.hash = '';
   // an opaque host (`foo://alice%40mail.invalid/`) can carry an address
   if (u.host.includes('%') && containsAddress(u.host)) return schemeOnly(u.protocol);
+
   if (u.search) redactQuery(u, allowlist);
   redactPath(u, allowlist);
   return redactOpaquePath(u).slice(0, MAX_URL_LENGTH);
@@ -419,6 +444,7 @@ const hasScheme = (s: string) => /^[a-z][a-z0-9+.-]*:/i.test(s);
 export function redactTarget(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return '';
+
   const withScheme = hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     new URL(withScheme);
@@ -452,6 +478,7 @@ export function isSameSite(hostA: string, hostB: string): boolean {
 export function parseTarget(input: string): TargetInfo {
   const trimmed = input.trim();
   if (!trimmed) throw new InvalidInputError('target-missing');
+
   const withScheme = hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
   let u: URL;
   try {
@@ -459,6 +486,7 @@ export function parseTarget(input: string): TargetInfo {
   } catch {
     throw new InvalidInputError('target-invalid-url', { url: redactTarget(trimmed) });
   }
+
   if (!isHttpUrl(u)) {
     throw new InvalidInputError('target-unsupported-scheme', { scheme: u.protocol });
   }
@@ -466,6 +494,7 @@ export function parseTarget(input: string): TargetInfo {
     throw new InvalidInputError('target-credentials');
   }
   if (!u.hostname) throw new InvalidInputError('target-invalid-url', { url: redactTarget(trimmed) });
+
   u.hash = '';
   const host = u.hostname.toLowerCase().replace(/\.$/, '');
   return {

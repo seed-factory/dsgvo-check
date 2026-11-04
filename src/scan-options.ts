@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { ConfigError, describeProblems, parseConfigInput } from './core/config/load.ts';
 import { configOverrides } from './core/config/overrides.ts';
-import { type Config, type ConfigInput, DEFAULT_CONFIG } from './core/config/schema.ts';
+import { type Config, type ConfigInput, DEFAULT_CONFIG, SECTIONS } from './core/config/schema.ts';
 import { DEFAULT_DATA_DIR } from './core/data/load.ts';
 import type { SeverityOverride } from './core/evaluation/assess.ts';
 import type { CheckRegistry } from './core/evaluation/registry.ts';
@@ -101,12 +101,14 @@ function validConfig(o: ScanOptions): Config {
 
 export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
   const config = validConfig(o);
+
   const failOn = o.failOn ?? config.scan.failOn;
   if (!FailOnSchema.options.includes(failOn)) {
     throw new InvalidInputError('invalid-fail-on', { value: failOn });
   }
   const maxPages = o.maxPages ?? config.scan.maxPages;
-  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 50) {
+  // `--max-pages` has the bounds of the `scan.maxPages` setting; the schema is their only definition.
+  if (!SECTIONS.scan.shape.maxPages.safeParse(maxPages).success) {
     throw new InvalidInputError('invalid-max-pages', { value: String(maxPages) });
   }
   const timeoutMs = o.timeoutMs ?? config.scan.timeoutMs;
@@ -119,12 +121,14 @@ export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
   if (proxy !== null && !/^http:\/\/[^\s]+$/i.test(proxy)) {
     throw new InvalidInputError('invalid-proxy');
   }
+
   const formats = o.formats ?? config.report.formats;
   const lang = o.lang ?? config.report.lang;
   const sandbox = o.sandbox ?? config.browser.sandbox;
   const screenshots = o.screenshots ?? true;
   const outDir = o.outDir ?? config.report.outDir;
   const abortGraceMs = Math.max(0, o.abortGraceMs ?? config.scan.abortGraceMs);
+
   // The settings of a scan are what `config` says plus what the caller's own options changed.
   const effective: Config = {
     ...config,
@@ -132,6 +136,7 @@ export function resolveOptions(o: ScanOptions): ResolvedScanOptions {
     browser: { ...config.browser, sandbox },
     report: { ...config.report, formats, outDir, lang },
   };
+
   return {
     url: o.url ?? null,
     failOn,

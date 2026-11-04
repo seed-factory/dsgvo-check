@@ -97,6 +97,7 @@ export function loadRuleset(dataDir = DEFAULT_DATA_DIR): Ruleset {
   const dir = path.join(dataDir, 'ruleset', 'de-2026');
   const files = yamlFiles(dir);
   if (files.length === 0) throw new DataError(`ruleset de-2026: no files in ${dir}`);
+
   let meta: Ruleset['profile'] | undefined;
   const checks: Record<string, RulesetCheck> = {};
   for (const file of files) {
@@ -107,6 +108,7 @@ export function loadRuleset(dataDir = DEFAULT_DATA_DIR): Ruleset {
     }
     mergeUnique(checks, parsed.checks ?? undefined, file, 'ruleset check');
   }
+
   if (!meta) throw new DataError(`ruleset de-2026: missing profile block`);
   return { profile: meta, checks };
 }
@@ -162,24 +164,37 @@ export function loadTexts(lang: Lang, dataDir = DEFAULT_DATA_DIR): Texts {
   const dir = path.join(dataDir, 'texts', lang);
   const files = yamlFiles(dir);
   if (files.length === 0) throw new DataError(`texts ${lang}: no files in ${dir}`);
+
   const out: Texts = { lang, messages: {}, legalNotes: {}, ui: {} };
   for (const file of files) {
-    const parsed = parseFile(file, TextsFileSchema);
-    const messages: Record<string, TextEntry> = {};
-    for (const [k, m] of Object.entries(parsed.messages ?? {})) {
-      messages[k] = { title: m.title, body: m.body, draft: m.draft ?? parsed.draft };
-    }
-    const notes: Record<string, LegalNote> = {};
-    for (const [k, n] of Object.entries(parsed.legalNotes ?? {})) {
-      notes[k] = { ...n, draft: n.draft ?? parsed.draft };
-    }
-    const ui: Record<string, { text: string; draft: boolean }> = {};
-    for (const [k, t] of Object.entries(parsed.ui ?? {})) ui[k] = { text: t, draft: parsed.draft };
+    const { messages, notes, ui } = textsOfFile(parseFile(file, TextsFileSchema));
     mergeUnique(out.messages, messages, file, 'message');
     mergeUnique(out.legalNotes, notes, file, 'legal note');
     mergeUnique(out.ui, ui, file, 'ui string');
   }
   return out;
+}
+
+/** The entries of one texts file; each inherits the file's `draft` flag unless it sets its own. */
+function textsOfFile(parsed: z.infer<typeof TextsFileSchema>): {
+  messages: Record<string, TextEntry>;
+  notes: Record<string, LegalNote>;
+  ui: Texts['ui'];
+} {
+  const messages: Record<string, TextEntry> = {};
+  for (const [k, m] of Object.entries(parsed.messages ?? {})) {
+    messages[k] = { title: m.title, body: m.body, draft: m.draft ?? parsed.draft };
+  }
+
+  const notes: Record<string, LegalNote> = {};
+  for (const [k, n] of Object.entries(parsed.legalNotes ?? {})) {
+    notes[k] = { ...n, draft: n.draft ?? parsed.draft };
+  }
+
+  const ui: Texts['ui'] = {};
+  for (const [k, t] of Object.entries(parsed.ui ?? {})) ui[k] = { text: t, draft: parsed.draft };
+
+  return { messages, notes, ui };
 }
 
 const RoutingFileSchema = z.object({

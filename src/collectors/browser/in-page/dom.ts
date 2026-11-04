@@ -78,29 +78,35 @@ export function domFactsInPage(arg: {
   maxScripts: number;
   patterns: DomPatterns;
 }): RawDomFacts {
+  const MAX_SHADOW_DEPTH = 8;
+  const MAX_PLACEHOLDERS = 20;
+  const LINK_PROBE_CHARS = 600;
+  const TEXT_SAMPLE_CHARS = 4000;
+  // Tags that can hold the short text of a two-click placeholder.
+  const PLACEHOLDER_TEXT_TAGS = ['button', 'a', 'div', 'span', 'p'];
+  const LINK_REL_RE = /(preconnect|dns-prefetch|preload|modulepreload|prefetch|prerender|stylesheet)/;
+
   const BANNER_RE = new RegExp(arg.patterns.bannerNames, 'i');
   const BANNER_TEXT_RE = new RegExp(arg.patterns.bannerDialogText, 'i');
   const PH_CLASS_RE = new RegExp(arg.patterns.placeholderClass, 'i');
   const PH_TEXT_RE = new RegExp(arg.patterns.placeholderText, 'i');
+  const LEGAL_LINK_RE = new RegExp(arg.patterns.legalLinkHints, 'i');
   const PH_KINDS = arg.patterns.placeholderKinds.map((k) => ({
     kind: k.kind,
     re: new RegExp(k.source, 'i'),
   }));
 
-  const all: any[] = [];
-  const collect = (root: any, depth: number) => {
-    if (depth > 8) return;
-    for (const el of root.querySelectorAll('*')) {
-      all.push(el);
-      if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
-    }
-  };
-  collect(document, 0);
-
+  const clean = (s: string, max = 200) => (s || '').replace(/\s+/g, ' ').trim().slice(0, max);
+  const idAndClass = (el: any): string =>
+    `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
   const parentOf = (n: any): any => {
     if (n.parentElement) return n.parentElement;
     const root = n.getRootNode ? n.getRootNode() : null;
     return root && root.host ? root.host : null;
+  };
+  const inShadow = (el: any) => {
+    const root = el.getRootNode ? el.getRootNode() : null;
+    return Boolean(root && root.host);
   };
   const isFixed = (el: any): boolean => {
     try {
@@ -110,9 +116,20 @@ export function domFactsInPage(arg: {
       return false;
     }
   };
+  const visible = (el: any): boolean => {
+    try {
+      if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+        return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    } catch {
+      // Unknown visibility counts as visible, like in the text walk: a dropped link would read as a missing one.
+      return true;
+    }
+  };
+
   const isBannerContainer = (el: any): boolean => {
-    const idc = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
-    if (BANNER_RE.test(idc)) return true;
+    if (BANNER_RE.test(idAndClass(el))) return true;
     const role = el.getAttribute ? el.getAttribute('role') : null;
     if (
       role === 'dialog' ||
@@ -138,32 +155,27 @@ export function domFactsInPage(arg: {
     }
     return 'other';
   };
-  const visible = (el: any): boolean => {
-    try {
-      if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
-        return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    } catch {
-      // Unknown visibility counts as visible, like in the text walk: a dropped link would read as a missing one.
-      return true;
-    }
-  };
-  const clean = (s: string, max = 200) => (s || '').replace(/\s+/g, ' ').trim().slice(0, max);
-  const inShadow = (el: any) => {
-    const root = el.getRootNode ? el.getRootNode() : null;
-    return Boolean(root && root.host);
+
+  const collectElements = (): any[] => {
+    const found: any[] = [];
+    const collect = (root: any, depth: number) => {
+      if (depth > MAX_SHADOW_DEPTH) return;
+      for (const el of root.querySelectorAll('*')) {
+        found.push(el);
+        if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
+      }
+    };
+    collect(document, 0);
+    return found;
   };
 
-  const LEGAL_LINK_RE = new RegExp(arg.patterns.legalLinkHints, 'i');
-  const linkEls = all.filter((el) => {
-    const t = (el.tagName || '').toLowerCase();
-    return (t === 'a' || t === 'area') && el.hasAttribute('href');
-  });
-  const chosenLinks = new Set<any>();
-  if (linkEls.length <= arg.maxLinks) {
-    for (const el of linkEls) chosenLinks.add(el);
-  } else {
+  const chooseLinks = (linkEls: any[]): Set<any> => {
+    const chosen = new Set<any>();
+    if (linkEls.length <= arg.maxLinks) {
+      for (const el of linkEls) chosen.add(el);
+      return chosen;
+    }
+
     const legal: any[] = [];
     const footer: any[] = [];
     const navigation: any[] = [];
@@ -171,20 +183,113 @@ export function domFactsInPage(arg: {
     for (const el of linkEls) {
       const probe = `${el.getAttribute('href') || ''} ${el.textContent || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`;
       const region = regionOf(el);
-      if (LEGAL_LINK_RE.test(probe.slice(0, 600))) legal.push(el);
+      if (LEGAL_LINK_RE.test(probe.slice(0, LINK_PROBE_CHARS))) legal.push(el);
       else if (region === 'footer') footer.push(el);
       else if (region === 'banner' || region === 'header' || region === 'nav') navigation.push(el);
       else rest.push(el);
     }
-    for (const el of [...legal, ...footer, ...navigation].slice(0, arg.maxLinks * 2)) chosenLinks.add(el);
-    let budget = arg.maxLinks - chosenLinks.size;
+
+    for (const el of [...legal, ...footer, ...navigation].slice(0, arg.maxLinks * 2)) chosen.add(el);
+    let budget = arg.maxLinks - chosen.size;
     for (const el of rest) {
       if (budget <= 0) break;
-      chosenLinks.add(el);
+      chosen.add(el);
       budget--;
     }
-  }
-  const linksTruncated = chosenLinks.size < linkEls.length;
+    return chosen;
+  };
+
+  /** Accessible name of a link: aria-label, aria-labelledby, title, then the alt text of an image inside. */
+  const linkName = (el: any): string => {
+    let name = clean(el.getAttribute('aria-label') || '');
+    if (!name && el.getAttribute('aria-labelledby')) {
+      name = clean(
+        el
+          .getAttribute('aria-labelledby')
+          .split(/\s+/)
+          .map((id: string) => {
+            const t = document.getElementById(id);
+            return t ? t.textContent : '';
+          })
+          .join(' '),
+      );
+    }
+    if (!name) name = clean(el.getAttribute('title') || '');
+    if (!name) {
+      const img = el.querySelector ? el.querySelector('img[alt]') : null;
+      if (img) name = clean(img.getAttribute('alt') || '');
+    }
+    return name;
+  };
+  const readLink = (el: any): RawLink => {
+    const text = clean(el.innerText || el.textContent || '');
+    const name = linkName(el);
+    return {
+      href: String(el.href || ''),
+      attr: String(el.getAttribute('href') || ''),
+      text,
+      name: name && name !== text ? name : '',
+      region: regionOf(el),
+      visible: visible(el),
+      inShadowDom: inShadow(el),
+      rel: String(el.getAttribute('rel') || ''),
+    };
+  };
+  const readForm = (el: any): RawForm => {
+    const fields = el.querySelectorAll('input:not([type=hidden]), select, textarea');
+    return {
+      action: String(el.getAttribute('action') === null ? '' : el.action || ''),
+      method: String(el.getAttribute('method') || 'get').toLowerCase(),
+      visible: visible(el),
+      fieldCount: fields.length,
+      hasPasswordField: Boolean(el.querySelector('input[type=password]')),
+      hasEmailField: Boolean(el.querySelector('input[type=email], input[name*=mail i]')),
+    };
+  };
+  const readIframe = (el: any): RawIframe => {
+    const r = el.getBoundingClientRect();
+    return {
+      src: String(el.getAttribute('src') === null ? '' : el.src || ''),
+      srcdoc: el.hasAttribute('srcdoc'),
+      title: clean(el.getAttribute('title') || ''),
+      visible: visible(el),
+      box: r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null,
+      loading: String(el.getAttribute('loading') || ''),
+    };
+  };
+  const readScript = (el: any): RawDomFacts['scripts'][number] => {
+    const src = el.getAttribute('src');
+    return {
+      src: src === null ? '' : String(el.src || ''),
+      inline: src === null,
+      type: String(el.getAttribute('type') || ''),
+      async: el.hasAttribute('async'),
+      defer: el.hasAttribute('defer'),
+    };
+  };
+
+  /** A two-click placeholder ("Karte laden") by class name or by a short own text; null for any other element. */
+  const readPlaceholder = (el: any, tag: string): RawDomFacts['placeholders'][number] | null => {
+    const idc = idAndClass(el);
+    let hit = PH_CLASS_RE.test(idc);
+    if (!hit && PLACEHOLDER_TEXT_TAGS.includes(tag)) {
+      const own = clean(el.innerText || '', 160);
+      hit = own.length > 0 && own.length < 160 && PH_TEXT_RE.test(own) && el.children.length <= 3;
+    }
+    if (!hit) return null;
+
+    const text = clean(el.innerText || '', 120);
+    const probe = `${idc} ${text}`;
+    const kind = PH_KINDS.find((k) => k.re.test(probe))?.kind ?? 'other';
+    return { kind, text };
+  };
+
+  const all = collectElements();
+  const linkEls = all.filter((el) => {
+    const t = (el.tagName || '').toLowerCase();
+    return (t === 'a' || t === 'area') && el.hasAttribute('href');
+  });
+  const chosenLinks = chooseLinks(linkEls);
 
   const links: RawLink[] = [];
   const forms: RawForm[] = [];
@@ -197,89 +302,32 @@ export function domFactsInPage(arg: {
   for (const el of all) {
     const tag = (el.tagName || '').toLowerCase();
     if ((tag === 'a' || tag === 'area') && chosenLinks.has(el)) {
-      const text = clean(el.innerText || el.textContent || '');
-      let name = clean(el.getAttribute('aria-label') || '');
-      if (!name && el.getAttribute('aria-labelledby')) {
-        name = clean(
-          el
-            .getAttribute('aria-labelledby')
-            .split(/\s+/)
-            .map((id: string) => {
-              const t = document.getElementById(id);
-              return t ? t.textContent : '';
-            })
-            .join(' '),
-        );
-      }
-      if (!name) name = clean(el.getAttribute('title') || '');
-      if (!name) {
-        const img = el.querySelector ? el.querySelector('img[alt]') : null;
-        if (img) name = clean(img.getAttribute('alt') || '');
-      }
-      links.push({
-        href: String(el.href || ''),
-        attr: String(el.getAttribute('href') || ''),
-        text,
-        name: name && name !== text ? name : '',
-        region: regionOf(el),
-        visible: visible(el),
-        inShadowDom: inShadow(el),
-        rel: String(el.getAttribute('rel') || ''),
-      });
+      links.push(readLink(el));
     } else if (tag === 'form') {
-      const fields = el.querySelectorAll('input:not([type=hidden]), select, textarea');
-      forms.push({
-        action: String(el.getAttribute('action') === null ? '' : el.action || ''),
-        method: String(el.getAttribute('method') || 'get').toLowerCase(),
-        visible: visible(el),
-        fieldCount: fields.length,
-        hasPasswordField: Boolean(el.querySelector('input[type=password]')),
-        hasEmailField: Boolean(el.querySelector('input[type=email], input[name*=mail i]')),
-      });
+      forms.push(readForm(el));
     } else if (tag === 'iframe' || tag === 'frame') {
-      const r = el.getBoundingClientRect();
-      iframes.push({
-        src: String(el.getAttribute('src') === null ? '' : el.src || ''),
-        srcdoc: el.hasAttribute('srcdoc'),
-        title: clean(el.getAttribute('title') || ''),
-        visible: visible(el),
-        box: r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null,
-        loading: String(el.getAttribute('loading') || ''),
-      });
+      iframes.push(readIframe(el));
     } else if (tag === 'link' && el.hasAttribute('rel') && el.hasAttribute('href')) {
       const rel = String(el.getAttribute('rel') || '').toLowerCase();
-      if (/(preconnect|dns-prefetch|preload|modulepreload|prefetch|prerender|stylesheet)/.test(rel)) {
+      if (LINK_REL_RE.test(rel)) {
         linkRels.push({ rel, href: String(el.href || ''), as: String(el.getAttribute('as') || '') });
       }
     } else if (tag === 'script' && scripts.length < arg.maxScripts) {
-      const src = el.getAttribute('src');
-      scripts.push({
-        src: src === null ? '' : String(el.src || ''),
-        inline: src === null,
-        type: String(el.getAttribute('type') || ''),
-        async: el.hasAttribute('async'),
-        defer: el.hasAttribute('defer'),
-      });
+      scripts.push(readScript(el));
     } else if (tag === 'meta' && /^refresh$/i.test(el.getAttribute('http-equiv') || '')) {
       metaRefresh = String(el.getAttribute('content') || '');
     }
-    if (placeholders.length < 20 && tag !== 'script' && tag !== 'style') {
-      const idc = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
-      let hit = PH_CLASS_RE.test(idc);
-      if (!hit && (tag === 'button' || tag === 'a' || tag === 'div' || tag === 'span' || tag === 'p')) {
-        const own = clean(el.innerText || '', 160);
-        hit = own.length > 0 && own.length < 160 && PH_TEXT_RE.test(own) && el.children.length <= 3;
-      }
-      if (hit) {
-        const text = clean(el.innerText || '', 120);
-        const probe = `${idc} ${text}`;
-        const kind = PH_KINDS.find((k) => k.re.test(probe))?.kind ?? 'other';
-        if (!placeholders.some((p) => p.text === text && p.kind === kind)) placeholders.push({ kind, text });
+
+    if (placeholders.length < MAX_PLACEHOLDERS && tag !== 'script' && tag !== 'style') {
+      const found = readPlaceholder(el, tag);
+      if (found && !placeholders.some((p) => p.text === found.text && p.kind === found.kind)) {
+        placeholders.push(found);
       }
     }
   }
 
   const bodyText = document.body ? String(document.body.innerText || '') : '';
+  const normalizedBodyText = bodyText.replace(/\s+/g, ' ').trim();
   const h1 = document.querySelector('h1');
   return {
     title: clean(document.title || '', 300),
@@ -291,11 +339,11 @@ export function domFactsInPage(arg: {
     linkRels,
     scripts,
     metaRefresh,
-    visibleTextLength: bodyText.replace(/\s+/g, ' ').trim().length,
-    textSample: bodyText.replace(/\s+/g, ' ').trim().slice(0, 4000),
+    visibleTextLength: normalizedBodyText.length,
+    textSample: normalizedBodyText.slice(0, TEXT_SAMPLE_CHARS),
     placeholders,
     linksTotal: linkEls.length,
-    linksTruncated,
+    linksTruncated: chosenLinks.size < linkEls.length,
   };
 }
 
@@ -306,6 +354,7 @@ export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }>; 
   reason: string;
 } {
   const BANNER_RE = new RegExp(arg.bannerNames, 'i');
+
   const parentOf = (n: any): any => {
     if (n.parentElement) return n.parentElement;
     const root = n.getRootNode ? n.getRootNode() : null;
@@ -316,14 +365,16 @@ export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }>; 
     for (let n = el; n; n = parentOf(n)) out.push(n);
     return out;
   };
-  const els = arg.points.map((p) => document.elementFromPoint(p.x, p.y)).filter(Boolean);
-  if (els.length === 0) return { box: null, reason: 'no-element-at-buttons' };
-  let common = chain(els[0]);
-  for (const e of els.slice(1)) {
-    const set = new Set(chain(e));
-    common = common.filter((x) => set.has(x));
-  }
-  const candidate = common.find((el) => {
+  /** Ancestors (the elements themselves included) that every given element shares, innermost first. */
+  const commonAncestors = (els: any[]): any[] => {
+    let common = chain(els[0]);
+    for (const e of els.slice(1)) {
+      const set = new Set(chain(e));
+      common = common.filter((x) => set.has(x));
+    }
+    return common;
+  };
+  const isBannerCandidate = (el: any): boolean => {
     if (el === document.body || el === document.documentElement) return false;
     let position = '';
     try {
@@ -341,15 +392,24 @@ export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }>; 
       BANNER_RE.test(idc) ||
       el.tagName === 'IFRAME'
     );
-  });
+  };
+  /** The part of the element's box inside the viewport; null when nothing of it is on screen. */
+  const boxInViewport = (el: any) => {
+    const r = el.getBoundingClientRect();
+    const x = Math.max(0, r.x);
+    const y = Math.max(0, r.y);
+    const width = Math.min(window.innerWidth, r.x + r.width) - x;
+    const height = Math.min(window.innerHeight, r.y + r.height) - y;
+    return width > 0 && height > 0 ? { x, y, width, height } : null;
+  };
+
+  const els = arg.points.map((p) => document.elementFromPoint(p.x, p.y)).filter(Boolean);
+  if (els.length === 0) return { box: null, reason: 'no-element-at-buttons' };
+
+  const candidate = commonAncestors(els).find(isBannerCandidate);
   if (!candidate) return { box: null, reason: 'no-unique-container' };
-  const r = candidate.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const x = Math.max(0, r.x);
-  const y = Math.max(0, r.y);
-  const width = Math.min(vw, r.x + r.width) - x;
-  const height = Math.min(vh, r.y + r.height) - y;
-  if (width <= 0 || height <= 0) return { box: null, reason: 'container-off-screen' };
-  return { box: { x, y, width, height }, reason: 'ok' };
+
+  const box = boxInViewport(candidate);
+  if (!box) return { box: null, reason: 'container-off-screen' };
+  return { box, reason: 'ok' };
 }

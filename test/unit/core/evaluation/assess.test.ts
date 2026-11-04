@@ -226,12 +226,14 @@ describe('assess', () => {
         },
       },
     ];
+
     const out = run([c], {
       'TEST-01': exec([
         obs({ evidence, serviceId: 'google-analytics-4' }),
         obs({ variant: 'inventory', subject: 'inv' }),
       ]),
     });
+
     const hit = out.findings.find((f) => f.variant === 'hit')!;
     expect(hit.fingerprint).toBe(fingerprint({ checkId: 'TEST-01', variantGroup: 'hit', subject: 'svc-a' }));
     expect(hit.crmCode).toBe('T1_TRACKER_BEFORE_CONSENT');
@@ -239,6 +241,7 @@ describe('assess', () => {
     expect(hit.evidenceIds).toHaveLength(1);
     expect(out.evidence[0]?.id).toBe(hit.evidenceIds[0]);
     expect(out.findings.find((f) => f.variant === 'inventory')?.crmCode).toBeNull();
+
     expect(out.checks[0]).toMatchObject({
       id: 'TEST-01',
       status: 'completed',

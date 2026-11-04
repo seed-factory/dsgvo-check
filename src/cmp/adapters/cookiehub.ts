@@ -13,12 +13,15 @@ interface CookiehubRead {
   cookiePresent: boolean;
 }
 
+/** In-page, self-contained. */
 function readCookiehub(): CookiehubRead {
   const w = globalThis as unknown as {
     cookiehub?: { hasAnswered?: () => unknown; hasConsented?: (c: string) => unknown };
     document: { cookie: string };
   };
   const ch = w.cookiehub;
+  const CATEGORIES = ['preferences', 'analytics', 'marketing'];
+
   const call = (f: () => unknown): boolean | null => {
     try {
       const v = f();
@@ -27,12 +30,13 @@ function readCookiehub(): CookiehubRead {
       return null;
     }
   };
+
   const answered = typeof ch?.hasAnswered === 'function' ? call(() => ch.hasAnswered?.()) : null;
   const categories: Record<string, boolean | null> = {};
   if (typeof ch?.hasConsented === 'function') {
-    for (const c of ['preferences', 'analytics', 'marketing'])
-      categories[c] = call(() => ch.hasConsented?.(c));
+    for (const c of CATEGORIES) categories[c] = call(() => ch.hasConsented?.(c));
   }
+
   return {
     present: !!ch,
     ready: answered !== null,
@@ -51,6 +55,7 @@ export const cookiehub = defineAdapter({
   async readState(page) {
     const r = await read(page);
     if (!r.present) return [];
+
     return [
       {
         source: 'api',

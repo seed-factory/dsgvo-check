@@ -24,41 +24,32 @@ export function detectChallenge(
 ): ChallengeFacts {
   const signals: string[] = [];
   let kind: ChallengeFacts['kind'];
+  /** The first signal names the kind. */
+  const note = (signal: string, k: ChallengeFacts['kind']) => {
+    signals.push(signal);
+    kind ??= k;
+  };
   const header = (n: string) => i.headers.find((h) => h.name === n)?.value;
   const short = i.text.trim().length < SHORT_TEXT;
 
   for (const h of rules.headers) {
     const value = header(h.name);
     const present = h.allowEmptyValue ? value !== undefined : Boolean(value);
-    if (present && (h.status === undefined || i.status === h.status)) {
-      signals.push(h.signal);
-      kind ??= h.kind;
-    }
+    if (present && (h.status === undefined || i.status === h.status)) note(h.signal, h.kind);
   }
   for (const { re, kind: k, signal } of rules.scripts) {
-    if (i.scripts.some((src) => re.test(src))) {
-      signals.push(signal);
-      kind ??= k;
-    }
+    if (i.scripts.some((src) => re.test(src))) note(signal, k);
   }
   if (short) {
     for (const { re, kind: k, signal } of rules.titles) {
-      if (re.test(i.title.trim())) {
-        signals.push(signal);
-        kind ??= k;
-      }
+      if (re.test(i.title.trim())) note(signal, k);
     }
     for (const { re, kind: k, signal } of rules.texts) {
-      if (re.test(i.text)) {
-        signals.push(signal);
-        kind ??= k;
-      }
+      if (re.test(i.text)) note(signal, k);
     }
   }
-  if (i.status === 403) {
-    signals.push('status:403');
-    kind ??= 'http-403';
-  }
+  if (i.status === 403) note('status:403', 'http-403');
+
   // A challenge-platform script alone on a long, normal page (e.g. Turnstile in a form) is not a block.
   const detected =
     signals.some((s) => s.startsWith('status:') || s.startsWith('header:') || s.startsWith('title:')) ||

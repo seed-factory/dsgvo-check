@@ -79,6 +79,7 @@ beforeAll(async () => {
           ),
         ),
       }),
+
       // (b) a section of the policy itself whose content is not in the DOM until it is opened
       site('accordion.example.test', {
         '/': send(START()),
@@ -90,6 +91,7 @@ beforeAll(async () => {
           ),
         ),
       }),
+
       // /impressum redirects to the home page; the footer link to the Impressum leads to another site
       site('homeredirect.example.test', {
         '/': send(
@@ -102,6 +104,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
+
       // /impressum redirects to the home page whose footer has a column titled "Impressum"
       site('footerheading.example.test', {
         '/': send(
@@ -114,6 +117,7 @@ beforeAll(async () => {
         '/impressum/': redirect('/'),
         '/datenschutz/': send(POLICY()),
       }),
+
       // the policy link redirects to the home page whose language switcher is a navigation heading in French and
       // whose footer (a div named like a footer) has a column "Datenschutz & Sicherheit"
       site('navheading.example.test', {
@@ -127,6 +131,7 @@ beforeAll(async () => {
         '/datenschutz': redirect('/'),
         '/datenschutz/': redirect('/'),
       }),
+
       // /impressum (fallback) is an ordinary page whose only "Impressum" is the h1 of the navigation
       site('navh1.example.test', {
         '/': send(
@@ -143,6 +148,7 @@ beforeAll(async () => {
         ),
         '/datenschutz/': send(POLICY()),
       }),
+
       // counterexample: the type is confirmed by headings inside the content, also next to a footer heading of
       // the same text; the page title and the h1 say only "Rechtliches"
       site('contentheading.example.test', {
@@ -160,6 +166,7 @@ beforeAll(async () => {
           ),
         ),
       }),
+
       // Portuguese policy and legal notice; the lang attribute is wrong ("en") on purpose
       site('pt.example.test', {
         '/': send(
@@ -209,17 +216,36 @@ function snapshotOf(run: CollectRun): Snapshot {
 const privacyDoc = (run: CollectRun) =>
   run.result.sections.documents?.documents.find((d) => d.kind === 'privacy');
 
+const documentsOf = (run: CollectRun) => run.result.sections.documents?.documents ?? [];
+
+/** Documents of `kind` that were taken as plain documents, without an error tag such as `unconfirmed`. */
+const plainDocuments = (run: CollectRun, kind: 'impressum' | 'privacy') =>
+  documentsOf(run).filter((d) => d.kind === kind && d.errors.length === 0);
+
+/** How the fallback probe of the Impressum ended. */
+const impressumFallbackOutcome = (run: CollectRun) =>
+  (run.result.sections.documents?.attempts ?? []).find((a) => a.kind === 'impressum' && a.via === 'fallback')
+    ?.outcome;
+
+/** What LEGAL-01 observed about the Impressum. */
+const impressumObservations = (run: CollectRun) =>
+  observationsOf(runCheck(legal01, snapshotOf(run))).filter((o) => o.subject === 'impressum');
+
 describe('expandable elements outside and inside the text of the policy', () => {
   it('(a) an empty navigation panel: the policy is complete and PRIV-01 is not inconclusive', async () => {
     const run = await collect(server, { url: 'https://navpanel.example.test/' });
+
     const r = runCheck(priv01, snapshotOf(run));
-    expect(r.status === 'completed' || r.status === 'partial').toBe(true);
+
+    expect(['completed', 'partial']).toContain(r.status);
     expect(r.reason).toBeNull();
   });
 
   it('(a) the navigation panel is not counted as a part of the policy (manifest, no expand-failed)', async () => {
     const run = await collect(server, { url: 'https://navpanel.example.test/' });
+
     const doc = privacyDoc(run);
+
     expect(doc?.manifest.expandablesFound).toBe(0);
     expect(doc?.errors).not.toContain('expand-failed');
     expect(doc?.complete).toBe(true);
@@ -227,6 +253,7 @@ describe('expandable elements outside and inside the text of the policy', () => 
 
   it('(b) an unopened section of the policy stays in the manifest; PRIV-01 is partial with banner-open', async () => {
     const run = await collect(server, { url: 'https://accordion.example.test/' });
+
     const doc = privacyDoc(run);
     expect(doc?.manifest).toMatchObject({ expandablesFound: 1, expandablesOpened: 0 });
     expect(doc?.errors).toContain('expand-failed');
@@ -239,51 +266,43 @@ describe('expandable elements outside and inside the text of the policy', () => 
 describe('the type of a fetched page is confirmed by its headings', () => {
   it('impressum redirecting to the home page is no Impressum: no reachable-via-intermediate', async () => {
     const run = await collect(server, { url: 'https://homeredirect.example.test/' });
-    const docs = run.result.sections.documents?.documents ?? [];
+
     // The home page may be kept as a tagged candidate, never as a plain document.
-    expect(docs.filter((d) => d.kind === 'impressum' && d.errors.length === 0)).toEqual([]);
-    const r = runCheck(legal01, snapshotOf(run));
-    const impressum = observationsOf(r).filter((o) => o.subject === 'impressum');
-    expect(impressum.map((o) => o.variant)).not.toContain('reachable-via-intermediate');
-    expect(impressum.map((o) => o.variant)).toEqual(['unresolved']);
+    expect(plainDocuments(run, 'impressum')).toEqual([]);
+    const variants = impressumObservations(run).map((o) => o.variant);
+    expect(variants).not.toContain('reachable-via-intermediate');
+    expect(variants).toEqual(['unresolved']);
   });
 
   it('a footer column titled "Impressum" does not make the home page an Impressum (fallback → home page)', async () => {
     const run = await collect(server, { url: 'https://footerheading.example.test/' });
-    const docs = run.result.sections.documents?.documents ?? [];
-    expect(docs.filter((d) => d.kind === 'impressum' && d.errors.length === 0)).toEqual([]);
-    const attempts = run.result.sections.documents?.attempts ?? [];
-    expect(attempts.find((a) => a.kind === 'impressum' && a.via === 'fallback')?.outcome).not.toBe('found');
-    const r = runCheck(legal01, snapshotOf(run));
-    const impressum = observationsOf(r).filter((o) => o.subject === 'impressum');
-    expect(impressum.map((o) => o.variant)).toEqual(['unresolved']);
+
+    expect(plainDocuments(run, 'impressum')).toEqual([]);
+    expect(impressumFallbackOutcome(run)).not.toBe('found');
+    expect(impressumObservations(run).map((o) => o.variant)).toEqual(['unresolved']);
   });
 
   it('a navigation heading in another language does not set the language of the home page as a policy', async () => {
     const run = await collect(server, { url: 'https://navheading.example.test/' });
-    const docs = run.result.sections.documents?.documents ?? [];
-    expect(docs.filter((d) => d.kind === 'privacy' && d.errors.length === 0)).toEqual([]);
+
+    expect(plainDocuments(run, 'privacy')).toEqual([]);
     expect(runCheck(priv01, snapshotOf(run)).reason).not.toBe('language-unsupported');
   });
 
   it('the h1 of the navigation does not make an ordinary page the Impressum (fallback)', async () => {
     const run = await collect(server, { url: 'https://navh1.example.test/' });
-    const docs = run.result.sections.documents?.documents ?? [];
-    expect(docs.filter((d) => d.kind === 'impressum' && d.errors.length === 0)).toEqual([]);
-    const attempts = run.result.sections.documents?.attempts ?? [];
-    expect(attempts.find((a) => a.kind === 'impressum' && a.via === 'fallback')?.outcome).not.toBe('found');
-    const impressum = observationsOf(runCheck(legal01, snapshotOf(run))).filter(
-      (o) => o.subject === 'impressum',
-    );
+
+    expect(plainDocuments(run, 'impressum')).toEqual([]);
+    expect(impressumFallbackOutcome(run)).not.toBe('found');
     // A navigation h1 cannot confirm a document when neither a start-page link nor the fallback supplies one.
-    expect(impressum.map((o) => o.variant)).toEqual(['document-not-found']);
+    expect(impressumObservations(run).map((o) => o.variant)).toEqual(['document-not-found']);
   });
 
   it('counterexample: headings inside the content confirm the type, also next to a footer heading of the same text', async () => {
     const run = await collect(server, { url: 'https://contentheading.example.test/' });
-    const docs = run.result.sections.documents?.documents ?? [];
-    const impressum = docs.find((d) => d.kind === 'impressum');
-    const privacy = docs.find((d) => d.kind === 'privacy');
+
+    const impressum = documentsOf(run).find((d) => d.kind === 'impressum');
+    const privacy = documentsOf(run).find((d) => d.kind === 'privacy');
     expect(impressum?.errors).toEqual([]);
     expect(privacy?.errors).toEqual([]);
     expect(privacy?.lang).toBe('de');
@@ -291,12 +310,14 @@ describe('the type of a fetched page is confirmed by its headings', () => {
 
   it('a Portuguese policy behind the label "Aviso de Privacidade": a document, language pt, not an error', async () => {
     const run = await collect(server, { url: 'https://pt.example.test/' });
+
     const doc = privacyDoc(run);
     expect(doc).toBeDefined();
     expect(doc?.errors).toEqual([]);
     expect(doc?.foundVia).toBe('link');
     // The markers decide; the lang attribute of the page says "en".
     expect(doc?.lang).toBe('pt');
+
     const snap = snapshotOf(run);
     const legal = runCheck(legal01, snap);
     expect(observationsOf(legal)).toEqual([]);
@@ -305,6 +326,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
 
   it('the Portuguese footer is found by its labels ("Aviso legal", "Aviso de Privacidade")', async () => {
     const run = await collect(server, { url: 'https://pt.example.test/' });
+
     const roles = run.result.sections.plan?.pages.map((p) => [p.role, p.source]);
     expect(roles).toEqual(
       expect.arrayContaining([
@@ -322,7 +344,9 @@ describe('the type of a fetched page is confirmed by its headings', () => {
 describe('free text of the documents is masked before it is stored', () => {
   it('no local part of an e-mail address in the stored documents; the domain stays', async () => {
     const run = await collect(server, { url: 'https://navpanel.example.test/' });
+
     const stored = JSON.stringify(run.result.sections.documents);
+
     expect(stored).not.toContain('max.mustermann');
     expect(stored).not.toContain('privat.person');
     expect(stored).toContain('[redacted]@example.test');

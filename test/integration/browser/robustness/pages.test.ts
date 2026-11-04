@@ -15,7 +15,7 @@ import {
 } from '../../../fixture-server/server.ts';
 import { fakeCollectors, testDataDir } from '../../../utils/scan-harness.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
-import { collect, FAST_TIMING, TEST_SANDBOX } from '../helpers.ts';
+import { type CollectRun, collect, FAST_TIMING, TEST_SANDBOX } from '../helpers.ts';
 
 const LOREM =
   'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
@@ -79,6 +79,48 @@ const redirect = (to: string) =>
     res.end();
   }) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
 
+/** The start page is fine in phase A and challenged on every later visit (phase B). */
+function laterBlockSite(host: string): DynamicHandler {
+  let starts = 0;
+  return {
+    host,
+    path: /.*/,
+    handle: (_req, res, ctx) => {
+      if (ctx.url.pathname === '/') {
+        starts++;
+        if (starts > 1) {
+          res.writeHead(403, { 'content-type': 'text/html; charset=utf-8', 'cf-mitigated': 'challenge' });
+          res.end(html('Just a moment...', '<p>Checking your browser</p>'));
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(html('Start', `<main><h1>Start</h1></main>${FOOTER}`));
+        return;
+      }
+
+      const body =
+        ctx.url.pathname === '/impressum/' ? IMPRESSUM : html('Seite', `<main>${LOREM.repeat(3)}</main>`);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(body);
+    },
+  };
+}
+
+/** A LEGAL-01-only scan of `url` with the browser collector's phase A. */
+function scanLegal01(url: string) {
+  return scan({
+    url,
+    network: server.network(),
+    registry: new CheckRegistry([legal01]),
+    dataDir: testDataDir({ ruleset: {} }),
+    log: silentLogger,
+    sandbox: TEST_SANDBOX,
+    collectors: fakeCollectors({
+      browser: createBrowserCollector({ timing: FAST_TIMING, phases: ['A'] }),
+    }),
+  });
+}
+
 let server: FixtureServer;
 
 beforeAll(async () => {
@@ -99,6 +141,7 @@ beforeAll(async () => {
         '/loop-a': redirect('/loop-b'),
         '/loop-b': redirect('/loop-a'),
       }),
+
       // Control: the endless 302 loop on the navigation itself (Playwright reports the error).
       site('hardloop.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1></main>${FOOTER}`)),
@@ -107,6 +150,7 @@ beforeAll(async () => {
         '/loop-a': redirect('/loop-b'),
         '/loop-b': redirect('/loop-a'),
       }),
+
       // Privacy policy served inline as application/pdf (no Content-Disposition), behind a link without .pdf.
       site('pdf.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>${FOOTER}`)),
@@ -114,6 +158,7 @@ beforeAll(async () => {
         '/impressum/': send(IMPRESSUM),
         '/datenschutz/': send(minimalPdf(), 'application/pdf'),
       }),
+
       // a 403 on the fallback probe /impressum (the start page has no legal links).
       site('probe403.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>`)),
@@ -123,6 +168,7 @@ beforeAll(async () => {
           html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`),
         ),
       }),
+
       // a Cloudflare-like challenge on the linked privacy page.
       site('challenge.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1></main>${FOOTER}`)),
@@ -132,36 +178,9 @@ beforeAll(async () => {
           res.end(html('Just a moment...', '<p>Checking if the site connection is secure</p>'));
         },
       }),
-      // the start page is fine in phase A and challenged afterwards (phase B).
-      ((): DynamicHandler => {
-        let starts = 0;
-        return {
-          host: 'laterblock.example.test',
-          path: /.*/,
-          handle: (_req, res, ctx) => {
-            if (ctx.url.pathname === '/') {
-              starts++;
-              if (starts > 1) {
-                res.writeHead(403, {
-                  'content-type': 'text/html; charset=utf-8',
-                  'cf-mitigated': 'challenge',
-                });
-                res.end(html('Just a moment...', '<p>Checking your browser</p>'));
-                return;
-              }
-              res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-              res.end(html('Start', `<main><h1>Start</h1></main>${FOOTER}`));
-              return;
-            }
-            const body =
-              ctx.url.pathname === '/impressum/'
-                ? IMPRESSUM
-                : html('Seite', `<main>${LOREM.repeat(3)}</main>`);
-            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-            res.end(body);
-          },
-        };
-      })(),
+
+      laterBlockSite('laterblock.example.test'),
+
       // Two links "Datenschutz": the first leads to a substantive page of another kind (a news page),
       // the second is the policy.
       site('candidates.example.test', {
@@ -183,6 +202,7 @@ beforeAll(async () => {
           html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(5)}</p></main>`),
         ),
       }),
+
       site('plain.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1></main>${FOOTER}`)),
         '/impressum/': send(IMPRESSUM),
@@ -205,22 +225,26 @@ describe('the browser error page is a failed navigation, not a page and not a do
   ] as const) {
     it(name, async () => {
       const run = await collect(server, { url: `https://${host}/` });
+
       const phase = run.result.sections.browser?.phases[0];
       const privacy = phase?.pages.find((p) => p.role === 'privacy');
       expect(privacy).toBeDefined();
-      expect(privacy?.finalUrl.startsWith('chrome-error:')).toBe(false);
+      expect(privacy?.finalUrl).not.toMatch(/^chrome-error:/);
       expect(privacy?.evaluable).toBe(false);
       expect(privacy?.notEvaluableReason).toBe('navigation-failed:ERR_TOO_MANY_REDIRECTS');
       expect(privacy?.navigation.ok).toBe(false);
       expect(privacy?.navigation.error).toBe('ERR_TOO_MANY_REDIRECTS');
       expect(privacy?.dom).toBeNull();
+
       // No document is taken from the error page; the attempt is an error, not a soft-404.
       expect(run.result.sections.documents?.documents.filter((d) => d.kind === 'privacy')).toEqual([]);
       expect(
         run.result.sections.documents?.attempts.filter((a) => a.kind === 'privacy').map((a) => a.outcome),
       ).toEqual(['error']);
+
       // The impressum is unaffected.
       expect(run.result.sections.documents?.documents.map((d) => d.kind)).toEqual(['impressum']);
+
       // No page of the plan or the request records carries the error page's URL.
       expect(JSON.stringify(run.result.sections)).not.toContain('chrome-error:');
     });
@@ -229,17 +253,8 @@ describe('the browser error page is a failed navigation, not a page and not a do
 
 describe('LEGAL-01 over a privacy page that ended on the browser error page', () => {
   it('no links-broken and no finding about the error page; the page is a limitation', async () => {
-    const r = await scan({
-      url: 'https://loop.example.test/',
-      network: server.network(),
-      registry: new CheckRegistry([legal01]),
-      dataDir: testDataDir({ ruleset: {} }),
-      log: silentLogger,
-      sandbox: TEST_SANDBOX,
-      collectors: fakeCollectors({
-        browser: createBrowserCollector({ timing: FAST_TIMING, phases: ['A'] }),
-      }),
-    });
+    const r = await scanLegal01('https://loop.example.test/');
+
     const legal = (r.report.findings ?? []).filter((f) => f.checkId === 'LEGAL-01');
     expect(legal.filter((f) => f.variant === 'links-broken')).toEqual([]);
     expect(JSON.stringify(r.report)).not.toContain('chrome-error:');
@@ -251,7 +266,9 @@ describe('LEGAL-01 over a privacy page that ended on the browser error page', ()
 describe('an inline PDF behind a legal link does not stall phase A', () => {
   it('phase A completes with all pages and phase B runs; no time-budget stop', async () => {
     const t0 = Date.now();
+
     const run = await collect(server, { url: 'https://pdf.example.test/', deps: { phases: ['A', 'B'] } });
+
     const phases = run.result.sections.browser?.phases ?? [];
     expect(phases.map((p) => p.phase)).toEqual(['A', 'B']);
     expect(phases[0]?.status).toBe('completed');
@@ -260,20 +277,21 @@ describe('an inline PDF behind a legal link does not stall phase A', () => {
     expect(pdfPage?.dom).toBeNull();
     expect(pdfPage?.evaluable).toBe(false);
     expect(Date.now() - t0).toBeLessThan(60_000);
+
     // The viewer page is not read in-page (no read can run out of time there). Response metadata that never arrives
     // is cut off by the page budget and stays visible as a phase error.
     const codes = phases[0]?.errors.map((e) => e.code) ?? [];
     expect(codes).not.toContain('in-page-read-timeout');
-    expect(codes.every((c) => c === 'recorder-flush-timeout' || c.endsWith('-timeout'))).toBe(true);
+    expect(codes.filter((c) => c !== 'recorder-flush-timeout' && !c.endsWith('-timeout'))).toEqual([]);
   });
 });
 
 describe('SCAN-BLOCKED names the page and the checks it affects', () => {
-  const blocked = (run: Awaited<ReturnType<typeof collect>>) =>
-    run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
+  const blocked = (run: CollectRun) => run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
 
   it('a 403 on the fallback probe /impressum: the page, affects LEGAL-01 only (no HDR-01)', async () => {
     const run = await collect(server, { url: 'https://probe403.example.test/' });
+
     const d = blocked(run);
     expect(d).toHaveLength(1);
     expect(d[0]?.affects).toEqual(['LEGAL-01']);
@@ -284,6 +302,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
       kind: 'http-403',
     });
     expect(String(d[0]?.params?.signals)).toContain('status:403');
+
     // The probe itself is not suppressed: the page stays not evaluable.
     expect(run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'fallback')?.evaluable).toBe(
       false,
@@ -292,6 +311,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
 
   it('a challenge on the privacy page: affects LEGAL-01 and PRIV-01', async () => {
     const run = await collect(server, { url: 'https://challenge.example.test/' });
+
     const d = blocked(run);
     expect(d).toHaveLength(1);
     expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01']);
@@ -308,6 +328,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
       maxPages: 1,
       deps: { cmp: stubCmpApi(), phases: ['A', 'B'] },
     });
+
     const d = blocked(run);
     expect(d).toHaveLength(1);
     expect(d[0]?.affects).toEqual(['CONSENT-04', 'CONSENT-05']);
@@ -327,16 +348,19 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
 describe('a page of the wrong type behind the first legal link is followed by the next candidate', () => {
   it('the first "Datenschutz" link leads to a news page: unconfirmed, then the policy is found', async () => {
     const run = await collect(server, { url: 'https://candidates.example.test/' });
+
     const attempts = run.result.sections.documents?.attempts.filter((a) => a.kind === 'privacy') ?? [];
     expect(attempts.map((a) => a.outcome)).toEqual(['unconfirmed', 'found']);
     expect(attempts.map((a) => a.url)).toEqual([
       'https://candidates.example.test/info-a/',
       'https://candidates.example.test/info-b/',
     ]);
+
     // No fallback probe was needed.
     expect(
       server.requestsTo('candidates.example.test').filter((r) => r.path.startsWith('/datenschutz')),
     ).toEqual([]);
+
     const docs = run.result.sections.documents?.documents.filter((d) => d.kind === 'privacy') ?? [];
     const policy = docs.find((d) => d.url.endsWith('/info-b/'));
     expect(policy?.complete).toBe(true);
@@ -345,17 +369,8 @@ describe('a page of the wrong type behind the first legal link is followed by th
   });
 
   it('LEGAL-01 over this collection: no links-broken, no document-not-found for the privacy policy', async () => {
-    const r = await scan({
-      url: 'https://candidates.example.test/',
-      network: server.network(),
-      registry: new CheckRegistry([legal01]),
-      dataDir: testDataDir({ ruleset: {} }),
-      log: silentLogger,
-      sandbox: TEST_SANDBOX,
-      collectors: fakeCollectors({
-        browser: createBrowserCollector({ timing: FAST_TIMING, phases: ['A'] }),
-      }),
-    });
+    const r = await scanLegal01('https://candidates.example.test/');
+
     const variants = (r.report.findings ?? [])
       .filter((f) => f.checkId === 'LEGAL-01')
       .map((f) => `${f.variant}:${f.subject}`);
@@ -365,6 +380,7 @@ describe('a page of the wrong type behind the first legal link is followed by th
 
   it('counterexample: a single link to a page of the wrong type stays unconfirmed (no invented document)', async () => {
     const run = await collect(server, { url: 'https://probe403.example.test/' });
-    expect(run.result.sections.documents?.attempts.some((a) => a.outcome === 'unconfirmed')).toBe(false);
+
+    expect(run.result.sections.documents?.attempts.map((a) => a.outcome)).not.toContain('unconfirmed');
   });
 });

@@ -24,43 +24,54 @@ const FORBIDDEN = [
 ];
 
 function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.ts') ? [path.join(dir, e.name)] : [],
-  );
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return walk(full);
+    return e.name.endsWith('.ts') ? [full] : [];
+  });
+}
+
+/** `import type X`, and `import { type A, type B }` without a default or namespace part, leave no runtime import. */
+function isTypeOnlyClause(clause: string): boolean {
+  if (/^type\b/.test(clause)) return true;
+
+  const braces = clause.match(/\{([^}]*)\}/s);
+  const outside = clause
+    .replace(/\{[^}]*\}/s, '')
+    .replace(/,/g, '')
+    .trim();
+  const named = (braces?.[1] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return outside === '' && named.length > 0 && named.every((n) => n.startsWith('type '));
 }
 
 /** Runtime import specifiers of a module (type-only imports and re-exports are erased by tsc). */
 function runtimeImports(source: string): string[] {
   const out: string[] = [];
   const re = /^\s*(import|export)\s+([^'";]*?)\s*from\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gms;
+
   for (const m of source.matchAll(re)) {
     if (m[4]) {
       out.push(m[4]);
       continue;
     }
-    const clause = (m[2] ?? '').trim();
-    if (/^type\b/.test(clause)) continue;
-    const braces = clause.match(/\{([^}]*)\}/s);
-    const outside = clause
-      .replace(/\{[^}]*\}/s, '')
-      .replace(/,/g, '')
-      .trim();
-    const named = (braces?.[1] ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (outside === '' && named.length > 0 && named.every((n) => n.startsWith('type '))) continue;
+    if (isTypeOnlyClause((m[2] ?? '').trim())) continue;
     out.push(m[3] as string);
   }
   return out;
 }
 
+/** Every module reachable through relative imports from `entry`, with its runtime import specifiers. */
 function closure(entry: string): Map<string, string[]> {
   const seen = new Map<string, string[]>();
   const stack = [entry];
+
   while (stack.length > 0) {
     const file = stack.pop() as string;
     if (seen.has(file)) continue;
+
     const specs = runtimeImports(readFileSync(file, 'utf8'));
     seen.set(file, specs);
     for (const s of specs) {
@@ -88,6 +99,7 @@ describe('import graph of checks', () => {
 
   it('positive control: the CMP entry point (adapters, data loader) does reach node:fs', () => {
     const specs = [...closure(path.join(ROOT, 'src/cmp/index.ts')).values()].flat();
+
     expect(specs).toContain('node:fs');
   });
 
@@ -97,10 +109,12 @@ describe('import graph of checks', () => {
     (_, f) => {
       const graph = closure(f);
       const offending: string[] = [];
+
       for (const [file, specs] of graph) {
         for (const s of specs)
           if (FORBIDDEN.includes(s)) offending.push(`${path.relative(ROOT, file)} → ${s}`);
       }
+
       expect(offending).toEqual([]);
     },
   );
@@ -110,6 +124,7 @@ describe('import graph of checks', () => {
   const CONFIG_DIR = path.join(ROOT, 'src/core/config') + path.sep;
   it.each(files.map((f) => [path.relative(ROOT, f), f]))('%s reaches no module of the settings', (_, f) => {
     const reached = [...closure(f).keys()].filter((file) => file.startsWith(CONFIG_DIR));
+
     expect(reached.map((file) => path.relative(ROOT, file))).toEqual([]);
   });
 });
@@ -123,6 +138,7 @@ describe('import graph of the core', () => {
         (m) => m[1] as string,
       );
       const upper = specs.filter((s) => UPPER.some((d) => path.resolve(path.dirname(f), s).startsWith(d)));
+
       expect(upper).toEqual([]);
     },
   );

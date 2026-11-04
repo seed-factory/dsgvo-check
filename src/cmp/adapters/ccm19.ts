@@ -14,6 +14,7 @@ interface Ccm19Read {
   embeddings: CategoryState | null;
 }
 
+/** In-page, self-contained. */
 function readCcm19(essentialEmbeddings: string[]): Ccm19Read {
   const w = globalThis as unknown as {
     CCM?: { acceptedEmbeddings?: unknown; embeddings?: unknown };
@@ -21,32 +22,43 @@ function readCcm19(essentialEmbeddings: string[]): Ccm19Read {
     localStorage: { length: number; key(i: number): string | null };
   };
   const ccm = w.CCM;
-  let stored = w.document.cookie.split(';').some((c) => c.trim().startsWith('ccm_consent'));
-  try {
-    for (let i = 0; i < w.localStorage.length && !stored; i++) {
-      if (w.localStorage.key(i)?.startsWith('ccm_consent')) stored = true;
+
+  /** A `ccm_consent` cookie or storage key exists, i.e. the visitor answered. */
+  const isConsentStored = (): boolean => {
+    if (w.document.cookie.split(';').some((c) => c.trim().startsWith('ccm_consent'))) return true;
+    try {
+      for (let i = 0; i < w.localStorage.length; i++) {
+        if (w.localStorage.key(i)?.startsWith('ccm_consent')) return true;
+      }
+    } catch {
+      // storage blocked
     }
-  } catch {
-    // storage blocked
-  }
+    return false;
+  };
+
   const names = (v: unknown): string[] | null =>
     Array.isArray(v) ? v.map((e) => String((e as { name?: unknown } | null)?.name ?? e)) : null;
   const essential = new RegExp(essentialEmbeddings.join('|'), 'i');
   const optional = (n: string) => !essential.test(n);
-  const accepted = names(ccm?.acceptedEmbeddings);
-  const all = names(ccm?.embeddings);
-  let embeddings: CategoryState | null = null;
-  if (accepted) {
+
+  /** Embeddings by what was accepted: no optional one is `denied`, all of them `granted`, otherwise `partial`. */
+  const embeddingsState = (accepted: string[] | null): CategoryState | null => {
+    if (!accepted) return null;
+
     const acceptedOptional = accepted.filter(optional).length;
+    const all = names(ccm?.embeddings);
     const totalOptional = all ? all.filter(optional).length : null;
-    embeddings =
-      acceptedOptional === 0
-        ? 'denied'
-        : totalOptional !== null && acceptedOptional >= totalOptional
-          ? 'granted'
-          : 'partial';
-  }
-  return { present: !!ccm, ready: !!ccm && accepted !== null, stored, embeddings };
+    if (acceptedOptional === 0) return 'denied';
+    return totalOptional !== null && acceptedOptional >= totalOptional ? 'granted' : 'partial';
+  };
+
+  const accepted = names(ccm?.acceptedEmbeddings);
+  return {
+    present: !!ccm,
+    ready: !!ccm && accepted !== null,
+    stored: isConsentStored(),
+    embeddings: embeddingsState(accepted),
+  };
 }
 
 const read = (page: Page) => page.evaluate(readCcm19, readerInput('ccm19', 'essentialEmbeddings'));

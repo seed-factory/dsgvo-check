@@ -13,6 +13,7 @@ import { browserCheck, emptyPhase, httpCheck, opts, withBrowser } from './fixtur
 describe('scan — pipeline', () => {
   it('runs collectors, derive, checks, assess and gate', async () => {
     const result = await scan(opts());
+
     expect(result.report.scan.status).toBe('complete');
     expect(result.exitCode).toBe(1);
     expect(result.report.summary.exitReasons).toEqual(['threshold']);
@@ -47,6 +48,7 @@ describe('scan — pipeline', () => {
         }),
       }),
     );
+
     expect(result.snapshot?.target.finalUrl).toBe('https://example.de/home?sid=[redacted]');
     expect(result.snapshot?.target.finalHost).toBe('example.de');
     expect(result.report.scan.finalUrl).toBe('https://example.de/home?sid=[redacted]');
@@ -70,12 +72,15 @@ describe('scan — pipeline', () => {
         },
       }),
     );
+
     expect(result.snapshot?.target.finalUrl).toBe('https://www.example.de/start');
   });
 
   it('fail-on warning / none', async () => {
     expect((await scan(opts({ failOn: 'none' }))).exitCode).toBe(0);
+
     const onlyHttp = await scan(opts({ failOn: 'warning', checks: ['TEST-02'] }));
+
     expect(onlyHttp.exitCode).toBe(1);
     expect(onlyHttp.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'skipped',
@@ -99,7 +104,9 @@ describe('scan — pipeline', () => {
         return { status: 'ok', sections: { http: makeHttp() } };
       },
     });
+
     await scan(opts({ collectors: spy, checks: ['TEST-02'] }));
+
     expect(called).toEqual(['http']);
   });
 
@@ -112,6 +119,7 @@ describe('scan — pipeline', () => {
         checks: ['TEST-01'],
       }),
     );
+
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'skipped',
       reason: 'not-implemented',
@@ -121,6 +129,7 @@ describe('scan — pipeline', () => {
 
   it('collector ok without its section → relevant check error → exit 2 (check-error)', async () => {
     const result = await scan(opts({ collectors: fakeCollectors(), checks: ['TEST-01'] }));
+
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'error',
       reason: 'collector-error:browser',
@@ -139,13 +148,16 @@ describe('scan — pipeline', () => {
       },
     });
     const reg = () => new CheckRegistry([browserCheck, throwing]);
+
     const result = await scan(opts({ registry: reg(), failOn: 'warning' }));
+
     expect(result.report.checks?.find((c) => c.id === 'TEST-02')).toMatchObject({
       status: 'error',
       reason: 'exception',
     });
     expect(result.exitCode).toBe(1);
     expect(result.report.summary.exitReasons).toEqual(['threshold', 'check-error:TEST-02']);
+
     // TEST-02 can reach only `warning`: under --fail-on critical it is not relevant.
     const notRelevant = await scan(opts({ registry: reg() }));
     expect(notRelevant.report.summary.exitReasons).toEqual(['threshold']);
@@ -153,11 +165,14 @@ describe('scan — pipeline', () => {
 
   it('sandbox off → SCAN-SANDBOX-OFF; --strict turns it into 2', async () => {
     const soft = await scan(opts({ sandbox: 'off', checks: ['TEST-02'], failOn: 'critical' }));
+
     expect(soft.report.diagnostics?.map((d) => d.code)).toContain('SCAN-SANDBOX-OFF');
     expect(soft.exitCode).toBe(0);
+
     const strict = await scan(
       opts({ sandbox: 'off', checks: ['TEST-02'], strict: true, assumeRegion: 'de' }),
     );
+
     expect(strict.exitCode).toBe(2);
     expect(strict.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
@@ -168,6 +183,7 @@ describe('scan — pipeline', () => {
     const first = await scan(opts({ saveSnapshot: file }));
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.derived).toBeUndefined();
+
     const explode = async () => {
       throw new Error('collectors must not run on replay');
     };
@@ -178,6 +194,7 @@ describe('scan — pipeline', () => {
         collectors: { browser: explode, http: explode, tls: explode, dns: explode },
       }),
     );
+
     expect(replay.report.findings?.map((f) => f.fingerprint)).toEqual(
       first.report.findings?.map((f) => f.fingerprint),
     );
@@ -193,12 +210,14 @@ describe('scan — --strict under --fail-on none (5.2: --strict acts independent
     const result = await scan(
       opts({ failOn: 'none', strict: true, sandbox: 'off', assumeRegion: 'de', checks: ['TEST-02'] }),
     );
+
     expect(result.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
 
   it('nothing strict-relevant → 0', async () => {
     const result = await scan(opts({ failOn: 'none', strict: true, assumeRegion: 'de' }));
+
     expect(result.exitCode).toBe(0);
   });
 });
@@ -209,13 +228,16 @@ describe('scan — one monotonic time scale for evidence (5.3 tMs)', () => {
     const clocked =
       (name: string, sections: Record<string, unknown>) => async (ctx: { clock?: () => number }) => {
         if (!ctx.clock) throw new Error(`${name}: no scan clock`);
+
         const a = ctx.clock();
         await new Promise((r) => setTimeout(r, 5));
         const b = ctx.clock();
         expect(b).toBeGreaterThanOrEqual(a);
+
         seen.push({ name, t: a });
         return { status: 'ok' as const, sections };
       };
+
     const result = await scan(
       opts({
         collectors: fakeCollectors({
@@ -226,6 +248,7 @@ describe('scan — one monotonic time scale for evidence (5.3 tMs)', () => {
         }),
       }),
     );
+
     expect(result.report.scan.status).not.toBe('failed');
     const browser = seen.find((s) => s.name === 'browser');
     const http = seen.find((s) => s.name === 'http');

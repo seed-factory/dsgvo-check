@@ -20,49 +20,15 @@ const IMAGE = process.env.DSGVO_E2E_IMAGE;
 const PROFILE = path.join(REPO_ROOT, 'docker/seccomp-chromium.json');
 const ACTION_PATH =
   process.env.DSGVO_E2E_ACTION_PATH ?? (process.platform === 'linux' ? process.env.PATH : undefined);
-
-function hardened(extra: string[] = [], opts: { seccomp?: boolean } = {}): string[] {
-  const { uid, gid } = userInfo();
-  return [
-    'run',
-    '--rm',
-    '--user',
-    `${uid}:${gid}`,
-    '--cap-drop=ALL',
-    '--security-opt',
-    'no-new-privileges',
-    ...(opts.seccomp === false ? [] : ['--security-opt', `seccomp=${PROFILE}`]),
-    '--read-only',
-    '--tmpfs',
-    '/tmp:rw,nosuid,nodev,size=512m',
-    '--shm-size=256m',
-    '--memory=2g',
-    '--pids-limit=1024',
-    '--network',
-    'none',
-    '--env',
-    'HOME=/tmp',
-    '--env',
-    'NO_COLOR=1',
-    ...extra,
-  ];
-}
-
-function docker(args: string[], timeout = 180_000) {
-  return spawnSync('docker', args, { encoding: 'utf8', timeout, maxBuffer: 32 * 1024 * 1024 });
-}
-
-/** Saved snapshot (JSON) of a site that sends a Google Analytics hit before any consent (CONSENT-01 finding). */
-function trackerSnapshot(): string {
-  const scenario = SCENARIOS['CONSENT-01']?.find((s) => s.file === 'violation-ga4-hit.json');
-  if (!scenario) throw new Error('CONSENT-01 scenario violation-ga4-hit.json not found');
-  return JSON.stringify(toSavedSnapshot(scenario.build()));
-}
-
 const PACKAGE_VERSION = (
   JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as { version: string }
 ).version;
 
+const DOCKER_TIMEOUT_MS = 180_000;
+/** For a Chromium launch or a whole scan inside the container; the CLI help and `docker inspect` need far less. */
+const SLOW_TIMEOUT_MS = 240_000;
+
+/** Opens chrome://sandbox in a sandboxed Chromium and prints what the page says about the sandbox layers. */
 const SANDBOX_PROBE = `
 const { chromium } = await import('/app/node_modules/playwright-core/index.mjs');
 const browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: true });
@@ -73,20 +39,76 @@ await browser.close();
 process.stdout.write(JSON.stringify({ text }));
 `;
 
+/** `docker run` arguments of a hardened container (non-root, no capabilities, read-only root, no network), plus `extra`. */
+function hardened(extra: string[] = [], opts: { seccomp?: boolean } = {}): string[] {
+  const { uid, gid } = userInfo();
+  return [
+    'run',
+    '--rm',
+
+    '--user',
+    `${uid}:${gid}`,
+    '--cap-drop=ALL',
+    '--security-opt',
+    'no-new-privileges',
+    ...(opts.seccomp === false ? [] : ['--security-opt', `seccomp=${PROFILE}`]),
+
+    '--read-only',
+    '--tmpfs',
+    '/tmp:rw,nosuid,nodev,size=512m',
+    '--shm-size=256m',
+
+    '--memory=2g',
+    '--pids-limit=1024',
+    '--network',
+    'none',
+
+    '--env',
+    'HOME=/tmp',
+    '--env',
+    'NO_COLOR=1',
+    ...extra,
+  ];
+}
+
+function docker(args: string[], timeout = DOCKER_TIMEOUT_MS) {
+  return spawnSync('docker', args, { encoding: 'utf8', timeout, maxBuffer: 32 * 1024 * 1024 });
+}
+
+/** Saved snapshot (JSON) of a site that sends a Google Analytics hit before any consent (CONSENT-01 finding). */
+function trackerSnapshot(): string {
+  const scenario = SCENARIOS['CONSENT-01']?.find((s) => s.file === 'violation-ga4-hit.json');
+  if (!scenario) throw new Error('CONSENT-01 scenario violation-ga4-hit.json not found');
+  return JSON.stringify(toSavedSnapshot(scenario.build()));
+}
+
+function readReport(file: string): Report {
+  return JSON.parse(readFileSync(file, 'utf8')) as Report;
+}
+
+/** Ids of the checks that produced a finding; `toContain` on it names the ids found when an assertion fails. */
+function findingCheckIds(report: Report): string[] {
+  return report.findings?.map((f) => f.checkId) ?? [];
+}
+
 describe.skipIf(!IMAGE)('docker image', () => {
   const image = IMAGE as string;
 
-  it('prints the help (exit 0) and runs as a non-root user', () => {
+  it('prints the help (exit 0)', () => {
     const help = docker(['run', '--rm', image, '--help']);
+
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain('--fail-on <level>');
+  });
+
+  it('runs as a non-root user', () => {
     const id = docker(['run', '--rm', '--entrypoint', 'id', image, '-u']);
+
     expect(id.stdout.trim()).not.toBe('0');
   });
 
   it('labels the image with the version the CLI reports, the one of package.json', () => {
     const version = docker(['run', '--rm', image, '--version']);
-    expect(version.status, version.stderr).toBe(0);
     const label = docker([
       'image',
       'inspect',
@@ -94,18 +116,22 @@ describe.skipIf(!IMAGE)('docker image', () => {
       '{{index .Config.Labels "org.opencontainers.image.version"}}',
       image,
     ]);
+
+    expect(version.status, version.stderr).toBe(0);
     expect(label.stdout.trim()).toBe(version.stdout.trim());
     expect(version.stdout.trim()).toBe(PACKAGE_VERSION);
   });
 
   it('ships the seccomp profile of this repository', () => {
     const r = docker(['run', '--rm', image, 'seccomp-profile']);
+
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual(JSON.parse(readFileSync(PROFILE, 'utf8')));
   });
 
   it('unreachable target with the hardened flags → exit 2, valid failed report, safe HTML', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-docker-'));
+
     const r = docker([
       ...hardened(['--volume', `${out}:/out`]),
       image,
@@ -115,8 +141,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
       '--format',
       'console,json,html,summary',
     ]);
+
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(2);
-    const report = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8')) as Report;
+    const report = readReport(path.join(out, 'report.json'));
     expectValidReport(report);
     expect(report.scan.status).toBe('failed');
     expect(report.summary.exitReasons).toContain('unreachable');
@@ -124,10 +151,12 @@ describe.skipIf(!IMAGE)('docker image', () => {
     expect(readFileSync(path.join(out, 'summary.md'), 'utf8')).toMatch(/^## dsgvo-check/);
   });
 
+  /** Scans the tracker snapshot offline in the hardened container and checks what every exit code has in common. */
   function scanSnapshot(failOn: string) {
     const input = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-snapshot-'));
     writeFileSync(path.join(input, 'snapshot.json'), trackerSnapshot());
     const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-docker-'));
+
     const r = docker([
       ...hardened(['--volume', `${out}:/out`, '--volume', `${input}:/in:ro`]),
       image,
@@ -141,7 +170,8 @@ describe.skipIf(!IMAGE)('docker image', () => {
       '--format',
       'console,json,html,summary',
     ]);
-    const report = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8')) as Report;
+
+    const report = readReport(path.join(out, 'report.json'));
     expectValidReport(report);
     expect(report.summary.exitCode).toBe(r.status);
     expect(htmlSafetyProblems(readFileSync(path.join(out, 'report.html'), 'utf8'))).toEqual([]);
@@ -151,24 +181,28 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
   it('finding at or above --fail-on with the hardened flags → exit 1 (threshold)', () => {
     const { r, report } = scanSnapshot('warning');
+
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(1);
     expect(report.scan.status).not.toBe('failed');
     expect(report.summary.exitReasons).toContain('threshold');
-    expect(report.findings?.some((f) => f.checkId === 'CONSENT-01' && f.severity !== 'info')).toBe(true);
+    const aboveInfo = report.findings?.filter((f) => f.severity !== 'info').map((f) => f.checkId);
+    expect(aboveInfo).toContain('CONSENT-01');
   });
 
   it('the same findings with --fail-on none → exit 0', () => {
     const { r, report } = scanSnapshot('none');
+
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     expect(report.summary.exitReasons).toEqual([]);
-    expect(report.findings?.some((f) => f.checkId === 'CONSENT-01')).toBe(true);
+    expect(findingCheckIds(report)).toContain('CONSENT-01');
   });
 
   it('starts Chromium with its sandbox under the seccomp profile, without any capability', () => {
     const r = docker(
       [...hardened(['--entrypoint', 'node']), image, '--input-type=module', '-e', SANDBOX_PROBE],
-      240_000,
+      SLOW_TIMEOUT_MS,
     );
+
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     const { text } = JSON.parse(r.stdout) as { text: string };
     expect(text).toMatch(/Layer 1 Sandbox\s+Namespace/);
@@ -179,7 +213,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
   it('without the profile (Docker default seccomp) the Chromium sandbox does not start', () => {
     const args = hardened(['--entrypoint', 'node'], { seccomp: false });
-    const r = docker([...args, image, '--input-type=module', '-e', SANDBOX_PROBE], 240_000);
+
+    const r = docker([...args, image, '--input-type=module', '-e', SANDBOX_PROBE], SLOW_TIMEOUT_MS);
+
     expect(r.status).not.toBe(0);
     expect(`${r.stdout}${r.stderr}`).toMatch(/sandbox/i);
   });
@@ -191,21 +227,38 @@ describe.skipIf(!IMAGE)('docker image', () => {
     const script = action.runs.steps.find((s) => s.id === 'scan')?.run as string;
     const resultScript = action.runs.steps.at(-1)?.run as string;
 
-    /** Runs the scan step; `files` are written into the workspace first (paths relative to it). */
-    function runStep(inputs: Record<string, string>, files: Record<string, string> = {}) {
+    /** A fresh workspace directory with `files` (paths relative to it) written into it. */
+    function makeWorkspace(files: Record<string, string>): string {
       const workspace = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-ws-'));
       for (const [rel, content] of Object.entries(files)) {
         mkdirSync(path.dirname(path.join(workspace, rel)), { recursive: true });
         writeFileSync(path.join(workspace, rel), content);
       }
+      return workspace;
+    }
+
+    /** The `name=value` lines the step appended to its GITHUB_OUTPUT file. */
+    function parseOutputs(text: string): Record<string, string> {
+      return Object.fromEntries(
+        text
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+      );
+    }
+
+    /** Runs the scan step; `files` are written into the workspace first (paths relative to it). */
+    function runStep(inputs: Record<string, string>, files: Record<string, string> = {}) {
+      const workspace = makeWorkspace(files);
       const runnerTemp = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-rt-'));
       const outputFile = path.join(runnerTemp, 'github-output');
       const summaryFile = path.join(runnerTemp, 'step-summary');
       writeFileSync(outputFile, '');
       writeFileSync(summaryFile, '');
+
       const r = spawnSync('bash', ['-c', script], {
         encoding: 'utf8',
-        timeout: 240_000,
+        timeout: SLOW_TIMEOUT_MS,
         env: {
           PATH: ACTION_PATH,
           HOME: process.env.HOME,
@@ -227,19 +280,17 @@ describe.skipIf(!IMAGE)('docker image', () => {
           ...inputs,
         },
       });
-      const outputs = Object.fromEntries(
-        readFileSync(outputFile, 'utf8')
-          .split('\n')
-          .filter(Boolean)
-          .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
-      );
+
+      const outputs = parseOutputs(readFileSync(outputFile, 'utf8'));
       return { ...r, outputs, summary: readFileSync(summaryFile, 'utf8'), workspace };
     }
 
+    /** Lines the step printed after its `::stop-commands::<token>` / `::<token>::` pair, i.e. the ones GitHub would act on. */
     function outputAfterResume(stdout: string): string[] {
       const lines = stdout.split(/\r?\n/);
       const stopIndex = lines.findIndex((line) => /^::stop-commands::[0-9a-f]{32}$/.test(line));
       expect(stopIndex).toBeGreaterThanOrEqual(0);
+
       const token = lines[stopIndex]!.slice('::stop-commands::'.length);
       const resumeIndex = lines.indexOf(`::${token}::`, stopIndex + 1);
       expect(resumeIndex).toBeGreaterThan(stopIndex);
@@ -248,14 +299,17 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
     it('runs the hardened container, sets outputs and appends the Job Summary', () => {
       const r = runStep({});
+
       expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
       expect(r.outputs['exit-code']).toBe('2');
       expect(r.outputs['json-path']).toMatch(/dsgvo-check-report\/report\.json$/);
       expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
-      const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+      const report = readReport(r.outputs['json-path'] as string);
       expectValidReport(report);
       expect(report.summary.exitReasons).toEqual(['invalid-input']);
       expect(report.disclaimer.lang).toBe('en');
+
       expect(r.summary).toMatch(/^## dsgvo-check/);
       expect(r.stdout).toMatch(/^::stop-commands::[0-9a-f]{32}$/m);
       expect(outputAfterResume(r.stdout)).toEqual([
@@ -277,14 +331,17 @@ describe.skipIf(!IMAGE)('docker image', () => {
           },
           { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
         );
+
         expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
         expect(r.outputs['exit-code']).toBe(String(code));
-        const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+        const report = readReport(r.outputs['json-path'] as string);
         expectValidReport(report);
         expect(report.scan.status).not.toBe('failed');
         expect(report.summary.exitCode).toBe(code);
         expect(report.summary.exitReasons).toEqual(code === 1 ? ['threshold'] : []);
-        expect(report.findings?.some((finding) => finding.checkId === 'CONSENT-01')).toBe(true);
+        expect(findingCheckIds(report)).toContain('CONSENT-01');
+
         expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
         expect(htmlSafetyProblems(readFileSync(r.outputs['html-path'] as string, 'utf8'))).toEqual([]);
         expect(r.summary).toMatch(/^## dsgvo-check/);
@@ -297,6 +354,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
               ]
             : [],
         );
+
         // The last step of the action turns the scan's exit code into the job result.
         const result = spawnSync('bash', ['-c', resultScript], { env: { DC_EXIT_CODE: String(code) } });
         expect(result.status).toBe(code);
@@ -307,9 +365,11 @@ describe.skipIf(!IMAGE)('docker image', () => {
       'reports invalid scanner input through the CLI: %j',
       (inputs) => {
         const r = runStep(inputs);
+
         expect(r.status, r.stderr).toBe(0);
         expect(r.outputs['exit-code']).toBe('2');
-        const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+        const report = readReport(r.outputs['json-path'] as string);
         expectValidReport(report);
         expect(report.scan.status).toBe('failed');
         expect(report.summary.exitCode).toBe(2);
@@ -331,12 +391,14 @@ describe.skipIf(!IMAGE)('docker image', () => {
         },
         { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
       );
+
       expect(r.status, r.stderr).toBe(0);
       expect(r.outputs['exit-code']).toBe('1');
       expect(r.outputs['json-path']).toMatch(/dsgvo-check-report\/report\.json$/);
       expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
       expect(r.outputs['pdf-path']).toBe('');
-      const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+      const report = readReport(r.outputs['json-path'] as string);
       expectValidReport(report);
       expect(report.scan.options?.failOn).toBe('warning');
       expect(report.summary.exitReasons).toEqual(['threshold']);
@@ -349,11 +411,14 @@ describe.skipIf(!IMAGE)('docker image', () => {
         const authored = mkdtempSync(path.join(tmpdir(), 'dsgvo-action-report-'));
         const out =
           location === 'workspace' ? '.' : location === 'parent' ? `../${path.basename(authored)}` : authored;
+
         const r = runStep({ DC_OUT: out });
+
         expect(r.status, r.stderr).toBe(0);
         expect(r.outputs['exit-code']).toBe('2');
         expect(path.dirname(r.outputs['json-path'] as string)).toBe(path.resolve(r.workspace, out));
-        const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+        const report = readReport(r.outputs['json-path'] as string);
         expectValidReport(report);
         expect(report.summary.exitReasons).toEqual(['invalid-input']);
         expect(readFileSync(r.outputs['html-path'] as string, 'utf8')).toContain('dsgvo-check');
@@ -363,7 +428,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
     it('passes shell syntax as URL data without executing it', () => {
       const marker = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-action-input-')), 'injected');
+
       const r = runStep({ DC_URL: `ftp://example.test/$(touch ${marker})` });
+
       expect(r.status, r.stderr).toBe(0);
       expect(r.outputs['exit-code']).toBe('2');
       expect(() => readFileSync(marker)).toThrow();
@@ -371,6 +438,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
     it('keeps a newline URL and stale report commands outside the active workflow command stream', () => {
       const command = '::set-output name=unsafe::injected';
+
       const r = runStep(
         {
           DC_URL: `https://example.test/\n${command}`,
@@ -382,11 +450,13 @@ describe.skipIf(!IMAGE)('docker image', () => {
           'dsgvo-check-report/annotations.txt': `${command}\n::warning::stale report command\n`,
         },
       );
+
       expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
       expect(r.outputs['exit-code']).toBe('0');
-      const report = JSON.parse(readFileSync(r.outputs['json-path'] as string, 'utf8')) as Report;
+
+      const report = readReport(r.outputs['json-path'] as string);
       expectValidReport(report);
-      expect(report.findings?.some((finding) => finding.checkId === 'CONSENT-01')).toBe(true);
+      expect(findingCheckIds(report)).toContain('CONSENT-01');
       expect(r.summary).toContain('Exit code **0**');
       expect(outputAfterResume(r.stdout)).toEqual([]);
       expect(r.stdout).not.toContain(command);
@@ -395,7 +465,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
     it('passes shell syntax in an image name as data and reports the Docker invocation failure', () => {
       const marker = path.join(mkdtempSync(path.join(tmpdir(), 'dsgvo-action-image-')), 'injected');
+
       const r = runStep({ DC_IMAGE: `invalid image;$(touch ${marker})` });
+
       expect(r.status, r.stderr).toBe(0);
       expect(r.outputs['exit-code']).toBe('125');
       expect(r.outputs['json-path']).toBe('');

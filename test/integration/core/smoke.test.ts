@@ -80,6 +80,7 @@ describe('Chromium → fixture server', () => {
 describe('Node clients → fixture server (test connect + test CA)', () => {
   it('undici reaches virtual hosts with SNI and sees Set-Cookie', async () => {
     const dispatcher = testDispatcher(server.network());
+
     const res = await request('https://www.example.test/set-cookie', { dispatcher });
     expect(res.statusCode).toBe(200);
     expect(res.headers['set-cookie']).toEqual([
@@ -87,6 +88,7 @@ describe('Node clients → fixture server (test connect + test CA)', () => {
       'fixture_pref=1; Path=/; Max-Age=3600',
     ]);
     await res.body.text();
+
     const redirect = await request('http://example.test/', { dispatcher });
     expect(redirect.statusCode).toBe(301);
     expect(redirect.headers.location).toBe('https://www.example.test/');

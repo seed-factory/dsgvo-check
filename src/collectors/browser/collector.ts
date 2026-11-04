@@ -2,7 +2,7 @@
 // verify, reload, ≤ 2 control pages), phase C (accept, same control pages), each in a fresh persistent profile. Fatal
 // start-page conditions go into `fatal`. The phases live in `phase-a.ts` and `consent-phase.ts` and share the
 // `BrowserCollection` state, so its members are not private.
-import type { BrowserType, Page } from 'playwright-core';
+import type { BrowserContext, BrowserType, Page } from 'playwright-core';
 import type { CmpAdapter, CmpFacts, CmpPhaseFacts, CmpSection } from '../../cmp/types.ts';
 import { browserUserAgent } from '../../core/runtime/user-agent.ts';
 import type {
@@ -40,8 +40,8 @@ import {
   launchPhase,
   type PhaseBrowser,
   probeEngine,
-  removeStaleProfiles,
 } from './launch/launch.ts';
+import { removeStaleProfiles } from './launch/profile.ts';
 import { type GuardHandle, type GuardVerdict, installSsrfGuard, type LookupError } from './launch/ssrf.ts';
 import { linkDocuments } from './legal/queue.ts';
 import { type BlockedPage, blockedDiagnostic, privateBlockedDiagnostic } from './pages/navigate.ts';
@@ -57,7 +57,27 @@ import {
   type RequestCounter,
   type ScanClock,
 } from './recording/recorder.ts';
-import { errorText, sleep } from './util.ts';
+import { ERROR_MESSAGE_MAX_CHARS, errorText, sleep } from './util.ts';
+
+/** How long sealing a phase waits for response handlers that are still running. */
+const FLUSH_BUDGET_MS = 2_000;
+/** The outer timer ends after the flush's own budget, so it only catches a flush that hangs. */
+const FLUSH_GRACE_MS = 250;
+// The orderly shutdown (browser closed, profile removed) takes milliseconds, at most about FLUSH_BUDGET_MS +
+// CLOSE_BUDGET_MS; after that the collector hands over what it has, before the orchestrator gives up (10 s).
+const ABORT_ORDERLY_MS = 5_500;
+/** Order of the phases in the snapshot. */
+const PHASE_ORDER: readonly BrowserPhase[] = ['A', 'B', 'C'];
+/** Reasons that name an unfinished phase; `cmp-not-recognized` is normal and not among them. */
+const UNFINISHED_PHASE_REASONS: ReadonlySet<string> = new Set([
+  'time-budget',
+  'throttled',
+  'request-cap',
+  'timeout',
+]);
+
+const byPhaseOrder = (a: { phase: BrowserPhase }, b: { phase: BrowserPhase }): number =>
+  PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase);
 
 export interface BrowserCollectorDeps {
   cmp: CmpApi;
@@ -99,11 +119,6 @@ export type PhaseAOutcome = { kind: 'ok' } | { kind: 'fatal'; fatal: FatalSignal
 function withoutFrames(page: Page): Page {
   return new Proxy(page, { get: (t, p) => (p === 'frames' ? () => [] : Reflect.get(t, p, t)) });
 }
-
-const FLUSH_BUDGET_MS = 2_000;
-// The orderly shutdown (browser closed, profile removed) takes milliseconds, at most about FLUSH_BUDGET_MS +
-// CLOSE_BUDGET_MS; after that the collector hands over what it has, before the orchestrator gives up (10 s).
-const ABORT_ORDERLY_MS = 5_500;
 
 export class BrowserCollection {
   readonly counter: RequestCounter;
@@ -158,6 +173,7 @@ export class BrowserCollection {
 
   async run(): Promise<CollectorResult<BrowserSections>> {
     const signal = this.ctx.signal;
+
     // Abort closes the running phase browser at once; every later close() awaits the same cleanup.
     let onAbort: () => void = () => undefined;
     const aborted = new Promise<'aborted'>((resolve) => {
@@ -168,11 +184,13 @@ export class BrowserCollection {
       if (signal.aborted) onAbort();
       else signal.addEventListener('abort', onAbort, { once: true });
     });
+
     const body = this.runBody();
     body.catch(() => undefined);
     try {
       const first = await Promise.race([body, aborted]);
       if (first !== 'aborted') return first;
+
       const orderly = await valueWithin(
         body,
         this.deps.abortOrderlyMs ?? ABORT_ORDERLY_MS,
@@ -187,27 +205,13 @@ export class BrowserCollection {
 
   private async runBody(): Promise<CollectorResult<BrowserSections>> {
     try {
-      // Profiles of killed scans hold cookies of the scanned site: remove them first.
-      try {
-        const removed = removeStaleProfiles();
-        if (removed.length > 0) this.ctx.log.info(`removed ${removed.length} stale browser profile(s)`);
-      } catch {
-        // housekeeping only
-      }
+      this.removeStaleProfilesQuietly();
+
       const cfg = this.launchConfig();
       try {
         this.engine = await probeEngine(cfg);
       } catch (err) {
-        if (this.ctx.signal.aborted) return this.abortedResult();
-        const fatal = classifyLaunchError(err, this.ctx.options.sandbox);
-        this.ctx.log.error(`browser launch failed: ${errorText(err).split('\n')[0]}`);
-        return {
-          status: 'error',
-          reason: fatal.code,
-          sections: {},
-          error: { code: fatal.code, message: errorText(err).split('\n')[0] ?? fatal.code },
-          fatal,
-        };
+        return this.launchFailure(err);
       }
       this.userAgent = browserUserAgent(this.engine.rawUserAgent);
 
@@ -215,37 +219,73 @@ export class BrowserCollection {
       try {
         a = await phaseA(this);
       } catch (err) {
-        if (this.ctx.signal.aborted) return this.abortedResult();
-        const message = errorText(err).split('\n')[0]?.slice(0, 300) ?? '';
-        this.ctx.log.error(`browser phase A failed: ${message}`);
-        return {
-          status: 'error',
-          reason: 'exception',
-          sections: {},
-          error: { code: 'phase-a-failed', message },
-        };
+        return this.phaseAFailure(err);
       }
       // A failure caused by the abort is not a fatal of the site.
       if (this.ctx.signal.aborted) return this.abortedResult();
       if (a.kind === 'tls-blocked') return { status: 'skipped', reason: 'tls-blocked', sections: {} };
       if (a.kind === 'fatal') return { ...this.result('error'), fatal: a.fatal, reason: a.fatal.code };
+
       if (this.deps.phases.includes('B')) await this.runPhase('B', () => phaseB(this));
       if (this.deps.phases.includes('C')) await this.runPhase('C', () => phaseC(this));
       if (this.ctx.signal.aborted) return this.abortedResult();
-      const partial =
-        this.counter.truncated ||
-        this.stoppedEarly !== null ||
-        this.phases.some(
-          (p) =>
-            p.status === 'failed' ||
-            p.reason === 'time-budget' ||
-            p.reason === 'request-cap' ||
-            p.reason === 'throttled',
-        );
-      return this.result(partial ? 'partial' : 'ok');
+
+      return this.result(this.isPartial() ? 'partial' : 'ok');
     } finally {
       await this.current?.close();
     }
+  }
+
+  // Profiles of killed scans hold cookies of the scanned site: remove them first.
+  private removeStaleProfilesQuietly(): void {
+    try {
+      const removed = removeStaleProfiles();
+      if (removed.length > 0) this.ctx.log.info(`removed ${removed.length} stale browser profile(s)`);
+    } catch {
+      // housekeeping only
+    }
+  }
+
+  private launchFailure(err: unknown): CollectorResult<BrowserSections> {
+    if (this.ctx.signal.aborted) return this.abortedResult();
+
+    const fatal = classifyLaunchError(err, this.ctx.options.sandbox);
+    this.ctx.log.error(`browser launch failed: ${errorText(err).split('\n')[0]}`);
+    return {
+      status: 'error',
+      reason: fatal.code,
+      sections: {},
+      error: { code: fatal.code, message: errorText(err).split('\n')[0] ?? fatal.code },
+      fatal,
+    };
+  }
+
+  private phaseAFailure(err: unknown): CollectorResult<BrowserSections> {
+    if (this.ctx.signal.aborted) return this.abortedResult();
+
+    const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
+    this.ctx.log.error(`browser phase A failed: ${message}`);
+    return {
+      status: 'error',
+      reason: 'exception',
+      sections: {},
+      error: { code: 'phase-a-failed', message },
+    };
+  }
+
+  /** The collection delivered less than planned; an abort is handled before this is asked. */
+  private isPartial(): boolean {
+    return (
+      this.counter.truncated ||
+      this.stoppedEarly !== null ||
+      this.phases.some(
+        (p) =>
+          p.status === 'failed' ||
+          p.reason === 'time-budget' ||
+          p.reason === 'request-cap' ||
+          p.reason === 'throttled',
+      )
+    );
   }
 
   // Nothing is delivered before the start page was visited (the orchestrator reports SCAN-TIMEOUT); afterwards the
@@ -305,58 +345,23 @@ export class BrowserCollection {
 
   async openPhase(phase: BrowserPhase): Promise<Session> {
     if (this.ctx.signal.aborted) throw new Error('aborted');
+
     const browser = await launchPhase(this.launchConfig(), this.userAgent);
     this.current = browser;
     if (this.ctx.signal.aborted) {
       await browser.close();
       throw new Error('aborted');
     }
+
     const etld1 = this.scope.etld1 ?? this.ctx.target.etld1;
-    const recorder = new NetworkRecorder(
-      phase,
-      etld1,
-      this.counter,
-      this.ctx.network.proxy !== null,
-      this.clock,
-      { signal: this.ctx.signal, metaTimeoutMs: this.ctx.config.browser.responseMetaTimeoutMs },
-    );
-    recorder.attach(browser.context);
+    const recorder = this.attachRecorder(phase, etld1, browser.context);
     await browser.context.addInitScript(cookieHookInit);
     await browser.context.addInitScript(storageHookInit);
     await browser.context.addInitScript(inputHookInit);
     const page = browser.context.pages()[0] ?? (await browser.context.newPage());
-    const guard = await installSsrfGuard(
-      browser.context,
-      this.ctx.network,
-      (url, verdict) => {
-        recorder.flagGuardBlocked(url);
-        this.guard.blocked++;
-        this.guardVerdicts.push(verdict);
-        try {
-          this.guardBlockedHosts.add(new URL(url).hostname.toLowerCase());
-        } catch {
-          // not a URL: no host to record
-        }
-      },
-      {
-        onLookupError: (e) => this.lookupErrors.push({ ...e, atMs: Math.max(0, Math.round(this.clock())) }),
-        ...(this.deps.lookupBackoffMs ? { backoffMs: this.deps.lookupBackoffMs } : {}),
-      },
-    );
-    this.guard.enabled = guard.enabled;
-    if (guard.scope) this.guardScope = guard.scope;
-    const record: PhaseRecord = {
-      phase,
-      status: 'completed',
-      startedAt: this.ctx.now().toISOString(),
-      durationMs: 0,
-      profile: 'persistent-tmp',
-      pages: [],
-      requests: [],
-      cookies: [],
-      storage: [],
-      errors: [],
-    };
+    const guard = await this.installGuard(browser.context, recorder);
+
+    const record = this.startedPhaseRecord(phase);
     const host = this.scope.finalHost || this.ctx.target.host;
     const session: Session = {
       phase,
@@ -376,6 +381,64 @@ export class BrowserCollection {
     return session;
   }
 
+  private attachRecorder(
+    phase: BrowserPhase,
+    etld1: string | null,
+    context: BrowserContext,
+  ): NetworkRecorder {
+    const recorder = new NetworkRecorder(
+      phase,
+      etld1,
+      this.counter,
+      this.ctx.network.proxy !== null,
+      this.clock,
+      { signal: this.ctx.signal, metaTimeoutMs: this.ctx.config.browser.responseMetaTimeoutMs },
+    );
+    recorder.attach(context);
+    return recorder;
+  }
+
+  private async installGuard(context: BrowserContext, recorder: NetworkRecorder): Promise<GuardHandle> {
+    const guard = await installSsrfGuard(
+      context,
+      this.ctx.network,
+      (url, verdict) => this.onGuardBlocked(recorder, url, verdict),
+      {
+        onLookupError: (e) => this.lookupErrors.push({ ...e, atMs: Math.max(0, Math.round(this.clock())) }),
+        ...(this.deps.lookupBackoffMs ? { backoffMs: this.deps.lookupBackoffMs } : {}),
+      },
+    );
+    this.guard.enabled = guard.enabled;
+    if (guard.scope) this.guardScope = guard.scope;
+    return guard;
+  }
+
+  private onGuardBlocked(recorder: NetworkRecorder, url: string, verdict: GuardVerdict): void {
+    recorder.flagGuardBlocked(url);
+    this.guard.blocked++;
+    this.guardVerdicts.push(verdict);
+    try {
+      this.guardBlockedHosts.add(new URL(url).hostname.toLowerCase());
+    } catch {
+      // not a URL: no host to record
+    }
+  }
+
+  private startedPhaseRecord(phase: BrowserPhase): PhaseRecord {
+    return {
+      phase,
+      status: 'completed',
+      startedAt: this.ctx.now().toISOString(),
+      durationMs: 0,
+      profile: 'persistent-tmp',
+      pages: [],
+      requests: [],
+      cookies: [],
+      storage: [],
+      errors: [],
+    };
+  }
+
   /** A read that ran out of time becomes a phase error. */
   newJar(
     recorder: NetworkRecorder,
@@ -391,7 +454,7 @@ export class BrowserCollection {
         if (record.errors.some((e) => e.code === code && e.message.startsWith(what))) return;
         record.errors.push({
           code,
-          message: `${what}: ${errorText(err)}`.slice(0, 300),
+          message: `${what}: ${errorText(err)}`.slice(0, ERROR_MESSAGE_MAX_CHARS),
           phase: record.phase,
         });
       },
@@ -416,7 +479,7 @@ export class BrowserCollection {
   async flushRecorder(s: Session): Promise<void> {
     await valueWithin(
       s.recorder.flush({ timeoutMs: FLUSH_BUDGET_MS, signal: this.ctx.signal }),
-      FLUSH_BUDGET_MS + 250,
+      FLUSH_BUDGET_MS + FLUSH_GRACE_MS,
       this.ctx.signal,
       true,
     );
@@ -429,10 +492,12 @@ export class BrowserCollection {
       await this.flushRecorder(s);
       s.jar.finalize(this.moment(s, s.record.pages.at(-1)?.finalUrl ?? sanitizeRequestUrl(this.startRaw)));
       s.recorder.dispose();
+
       s.record.requests = s.recorder.records;
       s.record.cookies = s.jar.cookies;
       s.record.storage = s.jar.storage;
       s.record.durationMs = Math.round(performance.now() - s.t0);
+
       if (s.recorder.dropped > 0 && s.record.status === 'completed') {
         s.record.status = 'partial';
         s.record.reason = 'request-cap';
@@ -441,6 +506,7 @@ export class BrowserCollection {
         s.record.status = 'partial';
         s.record.reason = 'timeout';
       }
+
       this.cmpSection.phases.push(s.cmpFacts);
       this.phases.push(s.record);
     })();
@@ -460,14 +526,20 @@ export class BrowserCollection {
       await fn();
     } catch (err) {
       this.ctx.log.warn(`phase ${phase} failed: ${errorText(err).split('\n')[0]}`);
+
       const existing = this.phases.find((p) => p.phase === phase);
-      const error = { code: 'phase-failed', message: errorText(err).slice(0, 300), phase };
+      const error = {
+        code: 'phase-failed',
+        message: errorText(err).slice(0, ERROR_MESSAGE_MAX_CHARS),
+        phase,
+      };
       if (existing) {
         existing.status = 'failed';
         existing.errors.push(error);
       } else {
         this.phases.push(this.skippedPhase(phase, 'failed', 'exception', [error]));
       }
+
       await this.current?.close();
       this.current = null;
       this.session = null;
@@ -506,6 +578,7 @@ export class BrowserCollection {
     // Facts are attributed to the page as shown (final URL), like its requests.
     const pageUrl = r.visit.finalUrl;
     const readable = !r.error && r.visit.dom !== null;
+
     const values = await s.jar.snapshot(
       s.browser.context,
       readable ? s.page : withoutFrames(s.page),
@@ -514,6 +587,7 @@ export class BrowserCollection {
     s.recorder.correlate(values);
     values.length = 0;
     if (!cmpMoment || !readable) return null;
+
     let a = adapter;
     if (s.phase === 'A') a = (await s.cmp.detect(s.page, pageUrl))?.adapter ?? null;
     const facts = await s.cmp.extract(s.page, a, cmpMoment, pageUrl);
@@ -521,33 +595,49 @@ export class BrowserCollection {
     return facts;
   }
 
-  /** First unfinished phase; `cmp-not-recognized` is normal. */
+  /** Reason of the first unfinished phase. */
   private partialReason(): string | undefined {
-    const order: BrowserPhase[] = ['A', 'B', 'C'];
-    const phases = [...this.phases].sort((a, b) => order.indexOf(a.phase) - order.indexOf(b.phase));
+    const phases = [...this.phases].sort(byPhaseOrder);
     for (const p of phases) {
       if (p.status === 'failed') return `phase-failed:${p.phase}`;
-      if (p.reason && ['time-budget', 'throttled', 'request-cap', 'timeout'].includes(p.reason))
-        return p.reason;
+      if (p.reason && UNFINISHED_PHASE_REASONS.has(p.reason)) return p.reason;
     }
     if (this.counter.truncated) return 'request-cap';
     return this.stoppedEarly ?? undefined;
   }
 
   private result(status: 'ok' | 'partial' | 'error'): CollectorResult<BrowserSections> {
-    const engine = this.engine as EngineProbe;
     if (this.guard.enabled) this.knownGaps.add('ssrf-guard-subresources-unchecked');
     if (this.guardScope === 'page') this.knownGaps.add('ssrf-guard-popups-unchecked');
+
     const diagnostics = [
       ...this.diagnostics,
       ...[privateBlockedDiagnostic(this), blockedDiagnostic(this)].filter((d) => d !== null),
     ];
     const reason = status === 'partial' ? this.partialReason() : undefined;
+
     linkDocuments(this.phases, this.documents);
-    const order: BrowserPhase[] = ['A', 'B', 'C'];
-    this.phases.sort((a, b) => order.indexOf(a.phase) - order.indexOf(b.phase));
-    this.cmpSection.phases.sort((a, b) => order.indexOf(a.phase) - order.indexOf(b.phase));
-    const browser: BrowserSection = {
+    this.phases.sort(byPhaseOrder);
+    this.cmpSection.phases.sort(byPhaseOrder);
+
+    return {
+      status,
+      ...(reason ? { reason } : {}),
+      sections: {
+        browser: this.browserSection(),
+        documents: this.documents,
+        cmp: this.cmpSection,
+        plan: this.plan,
+        ...(this.startRaw ? { finalUrl: this.startRaw } : {}),
+      },
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+      ...(this.probes.length > 0 ? { probes: this.probes } : {}),
+    };
+  }
+
+  private browserSection(): BrowserSection {
+    const engine = this.engine as EngineProbe;
+    return {
       engine: {
         name: 'chromium',
         channel: BROWSER_CHANNEL,
@@ -566,19 +656,6 @@ export class BrowserCollection {
       screenshots: this.screenshots,
       knownGaps: [...this.knownGaps].sort(),
       errors: this.errors,
-    };
-    return {
-      status,
-      ...(reason ? { reason } : {}),
-      sections: {
-        browser,
-        documents: this.documents,
-        cmp: this.cmpSection,
-        plan: this.plan,
-        ...(this.startRaw ? { finalUrl: this.startRaw } : {}),
-      },
-      ...(diagnostics.length > 0 ? { diagnostics } : {}),
-      ...(this.probes.length > 0 ? { probes: this.probes } : {}),
     };
   }
 }

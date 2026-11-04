@@ -24,6 +24,18 @@ function expectLinear(run: (size: number) => unknown): void {
 const stored = (name: string, value: string, sanitize = sanitizeUrl) =>
   storedHeaderRecord(name, value, BASE, sanitize);
 
+/** mulberry32: a small seeded generator of unsigned 32-bit integers, so a failing input is reproducible. */
+function seeded(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return (t ^ (t >>> 14)) >>> 0;
+  };
+}
+
 describe('Refresh: 64 KiB values are read in linear time', () => {
   const spaces = ' '.repeat(SIZE - 8);
   it.each<[string, (n: number) => string]>([
@@ -40,7 +52,9 @@ describe('Refresh: 64 KiB values are read in linear time', () => {
     ['a line terminator after the series', (n) => `0;x${' '.repeat(n - 8)}\ny`],
   ])('%s', (_what, build) => {
     expectLinear((n) => stored('refresh', build(n)));
+
     const record = stored('refresh', build(SIZE));
+
     expect(record.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
   });
 
@@ -50,7 +64,8 @@ describe('Refresh: 64 KiB values are read in linear time', () => {
 
   it('keeps what it read: the delay and the resolved address, cut at the limit', () => {
     const rec = stored('refresh', `0;x${spaces}y`);
-    expect(rec.value.startsWith('0; url=https://www.example.test/dir/x%20%20')).toBe(true);
+
+    expect(rec.value).toMatch(/^0; url=https:\/\/www\.example\.test\/dir\/x%20%20/);
     expect(rec.truncated).toBe(true);
     expect(rec.value).toHaveLength(MAX_HEADER_VALUE);
   });
@@ -193,6 +208,24 @@ function legacyRefresh(value: string): string {
 const legacyLink = (value: string): string =>
   value.replace(/<([^>]*)>/g, (_m, u: string) => `<${legacyResolve(u)}>`);
 
+/** Random short values built from `pieces` must give the same stored value as the old regular expression. */
+function expectSameAsLegacy(
+  header: 'refresh' | 'link',
+  legacy: (value: string) => string,
+  { pieces, seed, runs, maxParts }: { pieces: string[]; seed: number; runs: number; maxParts: number },
+) {
+  const next = seeded(seed);
+  const randomPiece = () => pieces[next() % pieces.length];
+
+  for (let i = 0; i < runs; i++) {
+    const value = Array.from({ length: 1 + (next() % maxParts) }, randomPiece).join('');
+    const got = stored(header, value, identity).value;
+    const want = legacy(value);
+
+    if (got !== want) expect.fail(`${JSON.stringify(value)}: ${got} instead of ${want}`);
+  }
+}
+
 describe('header parser equivalence', () => {
   it('differential: 30 000 random small values give the same record as the old expression', () => {
     const pieces = [
@@ -220,14 +253,10 @@ describe('header parser equivalence', () => {
       '%',
       '\u2028',
     ];
-    const next = seeded(20261031);
-    for (let i = 0; i < 30_000; i++) {
-      const value = Array.from({ length: 1 + (next() % 9) }, () => pieces[next() % pieces.length]).join('');
-      const got = stored('refresh', value, identity).value;
-      if (got !== legacyRefresh(value))
-        expect.fail(`${JSON.stringify(value)}: ${got} instead of ${legacyRefresh(value)}`);
-    }
+
+    expectSameAsLegacy('refresh', legacyRefresh, { pieces, seed: 20261031, runs: 30_000, maxParts: 9 });
   });
+
   it('differential: 20 000 random small values give the same record as the old expression', () => {
     const pieces = [
       '<',
@@ -243,23 +272,7 @@ describe('header parser equivalence', () => {
       'rel=next',
       '\n',
     ];
-    const next = seeded(31102026);
-    for (let i = 0; i < 20_000; i++) {
-      const value = Array.from({ length: 1 + (next() % 10) }, () => pieces[next() % pieces.length]).join('');
-      const got = stored('link', value, identity).value;
-      if (got !== legacyLink(value))
-        expect.fail(`${JSON.stringify(value)}: ${got} instead of ${legacyLink(value)}`);
-    }
+
+    expectSameAsLegacy('link', legacyLink, { pieces, seed: 31102026, runs: 20_000, maxParts: 10 });
   });
 });
-/** mulberry32: a small seeded generator of unsigned 32-bit integers, so a failing input is reproducible. */
-function seeded(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return (t ^ (t >>> 14)) >>> 0;
-  };
-}

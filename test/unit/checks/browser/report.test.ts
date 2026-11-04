@@ -58,9 +58,11 @@ describe('browser checks in a full report', () => {
       ],
     });
     const { report, exitCode } = await scanSnapshot(snapshot, 'sme');
+
     expectValidReport(report);
     expect(exitCode).toBe(1);
     expect(report.scan.status).toBe('complete');
+
     const findings = report.findings ?? [];
     const byCheck = (id: string) => findings.filter((f) => f.checkId === id);
     // Trustindex (reviews) is routed to EMBED-05, which is not part of the prototype.
@@ -81,6 +83,7 @@ describe('browser checks in a full report', () => {
       ['google-maps', 'warning', 'medium'],
       ['trustindex', 'warning', 'medium'],
     ]);
+
     const ga = byCheck('CONSENT-01')[0];
     expect(ga?.related.map((r) => r.checkId).sort()).toEqual(['CONSENT-02', 'PRIV-01', 'TRACK-01']);
     expect(report.datasets).toEqual(
@@ -95,6 +98,7 @@ describe('browser checks in a full report', () => {
     Object.entries(SCENARIOS).flatMap(([id, list]) => list.map((s) => [`${id}/${s.file}`, s] as const)),
   )('%s gives a schema-valid report', async (name, s) => {
     const { report } = await scanSnapshot(s.build(), name.replace(/[^a-zA-Z0-9]+/g, '-'));
+
     expectValidReport(report);
     expect(report.scan.status).not.toBe('failed');
   });

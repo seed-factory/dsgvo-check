@@ -90,6 +90,24 @@ function isContinuationOf(lead: number, next: number, part: number): boolean {
   );
 }
 
+/** The byte of the `%XX` escape that starts at `at`. */
+const escapeByteAt = (run: string, at: number) => Number.parseInt(run.slice(at + 1, at + 3), 16);
+
+/** The character of the UTF-8 sequence written as escapes from `at`; null when it is incomplete or invalid. */
+function decodeSequenceAt(run: string, at: number): { char: string; escapes: number } | null {
+  const byte = escapeByteAt(run, at);
+  const need = utf8SequenceLength(byte);
+  if (need === 0 || at + need * 3 > run.length) return null;
+
+  let point = byte & (0x7f >> need);
+  for (let part = 1; part < need; part++) {
+    const next = escapeByteAt(run, at + part * 3);
+    if (!isContinuationOf(byte, next, part)) return null;
+    point = (point << 6) | (next & 0x3f);
+  }
+  return { char: String.fromCodePoint(need === 1 ? byte : point), escapes: need };
+}
+
 /** Decodes a run of `%XX` escapes; an escape that is no valid UTF-8 stays as written, the others are decoded. */
 function decodeEscapeRun(run: string): string {
   try {
@@ -97,32 +115,19 @@ function decodeEscapeRun(run: string): string {
   } catch {
     // at least one escape is invalid: go through the bytes
   }
+
   // validate the UTF-8 bytes directly: malformed input must not throw once per escape
-  const byteAt = (at: number) => Number.parseInt(run.slice(at + 1, at + 3), 16);
   let out = '';
   let i = 0;
   while (i < run.length) {
-    const byte = byteAt(i);
-    const need = utf8SequenceLength(byte);
-    if (need > 0 && i + need * 3 <= run.length) {
-      let point = byte & (0x7f >> need);
-      let valid = true;
-      for (let part = 1; part < need; part++) {
-        const next = byteAt(i + part * 3);
-        if (!isContinuationOf(byte, next, part)) {
-          valid = false;
-          break;
-        }
-        point = (point << 6) | (next & 0x3f);
-      }
-      if (valid) {
-        out += String.fromCodePoint(need === 1 ? byte : point);
-        i += need * 3;
-        continue;
-      }
+    const decoded = decodeSequenceAt(run, i);
+    if (decoded) {
+      out += decoded.char;
+      i += decoded.escapes * 3;
+    } else {
+      out += run.slice(i, i + 3);
+      i += 3;
     }
-    out += run.slice(i, i + 3);
-    i += 3;
   }
   return out;
 }

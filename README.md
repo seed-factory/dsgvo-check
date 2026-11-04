@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml)
 [![Lizenz: Apache-2.0](https://img.shields.io/badge/Lizenz-Apache--2.0-blue.svg)](LICENSE)
-[![Node.js ≥ 24](https://img.shields.io/badge/Node.js-%E2%89%A5%2024-339933.svg)](#voraussetzungen)
+[![Node.js ≥ 26](https://img.shields.io/badge/Node.js-%E2%89%A5%2026-339933.svg)](#voraussetzungen)
 
 Passiver Scan einer Website auf DSGVO/TDDDG/DDG-Indizien und grundlegende Sicherheitsprobleme, mit Exit-Code für
 CI. Der Scanner öffnet die Website in Chromium (Playwright) und hält fest, was **vor** einer Einwilligung passiert,
@@ -188,14 +188,14 @@ Geklickt wird nur über sie.
 
 | Komponente     | Anforderung                                                                                           |
 | -------------- | ----------------------------------------------------------------------------------------------------- |
-| Node.js        | ≥ 24 (`.node-version`: 24); die CI testet 24 und 26. `engine-strict` weist ältere Versionen ab.       |
+| Node.js        | ≥ 26 (`.node-version`); nur diese Version wird getestet. `engine-strict` weist ältere Versionen ab.   |
 | pnpm           | 12.16.1 über `corepack` (`packageManager` in `package.json`); ein globales pnpm ist nicht nötig.      |
 | Chromium       | Chrome for Testing im neuen Headless-Modus (kein Headless-Shell), installiert über `playwright-core`. |
 | Linux          | Systembibliotheken für Chromium: `dsgvo-check install --with-deps` (Root) oder das Docker-Image.      |
 | Docker         | Optional: für Image, GitHub Action und GitLab-Template.                                               |
 | Betriebssystem | Die CI läuft auf Ubuntu 24.04; lokal wird unter macOS entwickelt. Andere Systeme sind nicht getestet. |
 
-- Ab Node 25 liefert Node `corepack` nicht mehr mit: `npm install --global corepack` (die CI nutzt 0.36.0).
+- Node 26 liefert `corepack` nicht mehr mit: einmal `npm install --global corepack@0.36.0` (so auch CI und Image).
 - Die Chromium-Sandbox braucht unprivilegierte User-Namespaces. Unter Ubuntu 24.04 schränkt AppArmor sie ein; die CI
   setzt dafür `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. Im Container löst das
   [seccomp-Profil](#warum-ein-eigenes-seccomp-profil) das Problem.
@@ -388,7 +388,7 @@ docker run --rm \
 
 | Bestandteil     | Wert                                                                                                     |
 | --------------- | -------------------------------------------------------------------------------------------------------- |
-| Basis           | `node:24-bookworm-slim`                                                                                  |
+| Basis           | `node:26-bookworm-slim`                                                                                  |
 | Browser         | Volles Chrome for Testing im neuen Headless-Modus (kein Headless-Shell), Revision laut `playwright-core` |
 | Nutzer          | uid/gid `10001` (`scanner`), Arbeitsverzeichnis `/work`                                                  |
 | Prozess 1       | `tini`                                                                                                   |
@@ -596,7 +596,7 @@ Derselbe Text steht in `dsgvo-check --help` (Quelle: `test/data/texts/de/core.ya
 
 ### Tech-Stack
 
-TypeScript 7 (nativer `tsc`, Ausgabe nach `dist/`, ohne Bundler) auf Node.js ≥ 24, pnpm über corepack. Alle Versionen
+TypeScript 7 (nativer `tsc`, Ausgabe nach `dist/`, ohne Bundler) auf Node.js ≥ 26, pnpm über corepack. Alle Versionen
 sind exakt gepinnt (`.npmrc`: `save-exact=true`). Eine neue Abhängigkeit braucht eine permissive Lizenz (MIT,
 Apache-2.0, BSD, ISC, MPL-2.0); NC-, SA- und GPL-Daten kommen nicht in die Lieferung.
 
@@ -618,7 +618,7 @@ Apache-2.0, BSD, ISC, MPL-2.0); NC-, SA- und GPL-Daten kommen nicht in die Liefe
 | `ajv`, `ajv-formats`      | 8.20.0, 3.0.1 | Prüft Berichte gegen das JSON Schema               |
 | `dns2`                    | 3.1.1         | Fake-DNS-Server für die Integrationstests          |
 | `@peculiar/x509`          | 3.1.0         | Testzertifikate (braucht `reflect-metadata` 0.2.2) |
-| `@types/node`             | 24.19.2       | Node-Typen                                         |
+| `@types/node`             | 26.6.6        | Node-Typen                                         |
 
 ### Projektstruktur
 
@@ -702,7 +702,7 @@ Gegenbeispiel; `registry-completeness.test.ts` führt alle aus und vergleicht St
 `test/unit/checks/browser/scenarios/<id>.ts`; DNS: `test/unit/checks/dns/fixtures.ts`; HTTP: JSON unter
 `test/fixtures/snapshots/http/<ID>/`.
 
-**CI.** `.github/workflows/ci.yml` läuft auf Ubuntu 24.04. Der Job `test` (Node 24 und 26) führt Typprüfung, Lint,
+**CI.** `.github/workflows/ci.yml` läuft auf Ubuntu 24.04. Der Job `test` (Node 26) führt Typprüfung, Lint,
 Unit-, Integrations- (echtes Chromium mit Sandbox) und End-to-End-Tests und prüft das gepackte CLI; der Job `docker`
 baut das Image und testet Image und Action. Ein Beispielbericht (HTML und PDF) wird als Artefakt hochgeladen.
 

@@ -45,6 +45,7 @@ describe('GA4 before consent (phase A)', () => {
       'https://www.google-analytics.com/g/collect?v=2&tid=G-TEST123&gcs=G111&cid=[redacted]&en=page_view&dl=[redacted]',
     );
     expect(hit?.tStartMs).toBeGreaterThanOrEqual(0);
+
     const loader = run.requests.find((r) => r.host === 'www.googletagmanager.com');
     expect(loader).toMatchObject({
       resourceType: 'script',
@@ -64,6 +65,7 @@ describe('GA4 before consent (phase A)', () => {
       lifetime: { kind: 'persistent' },
     });
     expect(ga?.setterUrl).toBe('https://www.googletagmanager.com/gtag/js?id=G-TEST123');
+
     const text = persisted(run);
     expect(text).not.toContain('987654321');
     expect(text).not.toContain('1700000000');
@@ -71,6 +73,7 @@ describe('GA4 before consent (phase A)', () => {
 
   it('uses the real Chrome UA plus the repository token, new headless, de-DE, 1366×768, sandbox per option', () => {
     const b = run.result.sections.browser;
+
     expect(b?.engine).toMatchObject({
       name: 'chromium',
       channel: 'chromium',
@@ -86,6 +89,7 @@ describe('GA4 before consent (phase A)', () => {
       locale: 'de-DE',
       timezoneId: 'Europe/Berlin',
     });
+
     const seen = server.requestsTo('www.example.test').filter((r) => r.path === '/');
     expect(seen[0]?.userAgent).toBe(b?.engine.userAgent);
   });
@@ -108,9 +112,15 @@ describe('GA4 before consent (phase A)', () => {
 
   it('every page of phase A is a fresh-profile visit with the quiet algorithm', () => {
     const a = run.result.sections.browser?.phases[0];
+
     expect(a?.profile).toBe('persistent-tmp');
     expect(a?.pages[0]).toMatchObject({ role: 'start', firstVisit: true, evaluable: true });
-    expect(a?.pages.slice(1).every((p) => p.firstVisit === false)).toBe(true);
+    expect(
+      a?.pages
+        .slice(1)
+        .filter((p) => p.firstVisit !== false)
+        .map((p) => p.url),
+    ).toEqual([]);
     for (const p of a?.pages ?? []) expect(p.navigation.dwellMs).toBeGreaterThanOrEqual(400);
     expect(server.unexpected).toEqual([]);
   });

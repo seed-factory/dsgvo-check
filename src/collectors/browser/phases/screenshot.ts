@@ -16,6 +16,9 @@ import { sha256Hex } from '../util.ts';
 
 export type ShotResult = { record: ScreenshotRecord } | { skipped: string };
 
+/** JPEG qualities tried in order until the image fits `maxBytes`. */
+const JPEG_QUALITIES = [70, 50, 35] as const;
+
 /** From the CMP facts when measured, else from the button positions. */
 export async function bannerBox(page: Page, facts: CmpFacts): Promise<{ box: Box | null; reason: string }> {
   const { containerBox, containerUnambiguous } = facts.firstLayer;
@@ -62,6 +65,7 @@ export async function bannerScreenshot(
     maxBytes: DEFAULT_CONFIG.browser.screenshotMaxBytes,
     maxViewportShare: DEFAULT_CONFIG.browser.screenshotMaxViewportShare,
   };
+
   if (!facts.firstLayer.bannerPresent || !facts.firstLayer.bannerVisible) return { skipped: 'no-banner' };
   const { box, reason } = await bannerBox(page, facts);
   if (!box) return { skipped: reason };
@@ -70,15 +74,10 @@ export async function bannerScreenshot(
   // The saved image is the container cut at the viewport edge (no scrolling): size the record by that part.
   const clip = clipForBox(box, page.viewportSize() ?? VIEWPORT);
   if (!clip) return { skipped: 'container-outside-viewport' };
-  let buf: Buffer | null = null;
-  for (const quality of [70, 50, 35]) {
-    const b = await page.screenshot({ clip, type: 'jpeg', quality, scale: 'css', animations: 'allow' });
-    if (b.length <= maxBytes) {
-      buf = b;
-      break;
-    }
-  }
+
+  const buf = await jpegWithin(page, clip, maxBytes);
   if (!buf) return { skipped: 'too-large' };
+
   const file = `banner-${o.phase}.jpg`;
   await mkdir(o.artifactsDir, { recursive: true });
   await writeFile(path.join(o.artifactsDir, file), buf);
@@ -95,4 +94,17 @@ export async function bannerScreenshot(
       pageUrl: o.pageUrl,
     },
   };
+}
+
+/** The first quality whose JPEG is at most `maxBytes`, or null. */
+async function jpegWithin(
+  page: Page,
+  clip: { x: number; y: number; width: number; height: number },
+  maxBytes: number,
+): Promise<Buffer | null> {
+  for (const quality of JPEG_QUALITIES) {
+    const b = await page.screenshot({ clip, type: 'jpeg', quality, scale: 'css', animations: 'allow' });
+    if (b.length <= maxBytes) return b;
+  }
+  return null;
 }

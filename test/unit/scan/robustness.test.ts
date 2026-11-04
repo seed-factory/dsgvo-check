@@ -218,15 +218,19 @@ describe('scan after the deadline cut phase B', () => {
 
   it('CONSENT-05 error/timeout (phase B cut); CONSENT-03 stays inconclusive (phase A ended by itself); SCAN-TIMEOUT names only the first; the other collectors keep their results', async () => {
     const r = await scan(base());
+
     expectValidReport(r.report);
+
     const byId = Object.fromEntries((r.report.checks ?? []).map((c) => [c.id, c]));
     expect(byId['CONSENT-05']).toMatchObject({ status: 'error', reason: 'timeout' });
     // one page in a completed phase A is the site's fact, not the deadline's doing.
     expect(byId['CONSENT-03']).toMatchObject({ status: 'inconclusive', reason: 'insufficient-pages' });
+
     const diag = r.report.diagnostics?.find((d) => d.code === 'SCAN-TIMEOUT');
     expect(diag?.affects).toEqual(['CONSENT-05']);
     expect(diag?.params).toMatchObject({ count: 1 });
     expect(r.snapshot?.dns?.queries).toHaveLength(1);
+
     expect(r.report.scan.status).toBe('partial');
     // The gate counts the unfinished relevant checks: exit 2 with the timeout among the reasons.
     expect(r.report.summary.exitReasons).toEqual(expect.arrayContaining(['timeout']));
@@ -237,6 +241,7 @@ describe('scan after the deadline cut phase B', () => {
 
   it('fail-on none: the diagnostic stays, the exit code is 0', async () => {
     const r = await scan(base({ failOn: 'none' }));
+
     expect(r.exitCode).toBe(0);
     expect(r.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
   });
@@ -250,15 +255,25 @@ describe('texts of SCAN-TIMEOUT', () => {
       const none = renderMessage(texts, 'diagnostic.SCAN-TIMEOUT', { count: 0 });
       const two = renderMessage(texts, 'diagnostic.SCAN-TIMEOUT', { count: 2 });
       const one = renderMessage(texts, 'diagnostic.SCAN-TIMEOUT', { count: 1 });
+
       expect(none.body).not.toMatch(/Fehler|errors|markiert|marked|\d/);
       expect(two.body).toContain('2');
       expect(one.body).not.toContain('{');
       expect(two.body).not.toContain('{');
+
       // The observations that were collected stay in the report.
       expect(none.body).toMatch(lang === 'de' ? /bleiben im Bericht/ : /remain in the report/);
     },
   );
 });
+
+/** A browser collector that hands over an empty partial result as soon as the global deadline aborts it. */
+const emptyPartialOnAbort: Collectors['browser'] = (ctx) =>
+  new Promise((resolve) => {
+    ctx.signal.addEventListener('abort', () => resolve({ status: 'partial', sections: {} } as never), {
+      once: true,
+    });
+  });
 
 describe('no hand-over after the global timeout', () => {
   it('a collector that never returns: its own failure code and a warning, not "before the start page"', async () => {
@@ -274,15 +289,17 @@ describe('no hand-over after the global timeout', () => {
       abortGraceMs: 30,
       collectors: fakeCollectors({ browser: () => new Promise(() => {}) }),
     });
+
     expect(r.report.scan.status).toBe('failed');
     if (r.report.scan.status === 'failed') {
       expect(r.report.scan.failure.code).toBe('browser-no-handover');
       expect(r.report.scan.failure.message).not.toMatch(/bevor die Startseite/);
     }
     expect(r.report.summary.exitReasons).toContain('timeout');
-    expect(lines.some((l) => /warn/.test(l) && /browser/.test(l) && /handed over no result/.test(l))).toBe(
-      true,
-    );
+    expect(
+      lines.some((l) => /warn/.test(l) && /browser/.test(l) && /handed over no result/.test(l)),
+      `log lines: ${lines.join(' | ')}`,
+    ).toBe(true);
     expectValidReport(r.report);
   });
 
@@ -296,19 +313,9 @@ describe('no hand-over after the global timeout', () => {
       log: createLogger('silent'),
       timeoutMs: 80,
       abortGraceMs: 300,
-      collectors: fakeCollectors({
-        browser: (ctx) =>
-          new Promise((resolve) => {
-            ctx.signal.addEventListener(
-              'abort',
-              () => resolve({ status: 'partial', sections: {} } as never),
-              {
-                once: true,
-              },
-            );
-          }),
-      }),
+      collectors: fakeCollectors({ browser: emptyPartialOnAbort }),
     });
+
     if (r.report.scan.status === 'failed') expect(r.report.scan.failure.code).toBe('scan-timeout');
     else throw new Error('expected a failed report');
   });
@@ -338,6 +345,7 @@ describe('the failure message of a scan cut by the global timeout is a text of t
     '%s: browser-no-handover is rendered from the texts with the seconds',
     async (lang) => {
       const f = await failed(lang, () => new Promise(() => {}));
+
       expect(f.code).toBe('browser-no-handover');
       expect(f.message).toBe(uiText(loadTexts(lang), 'failure.browser-no-handover', { seconds: 1 }));
       expect(f.message).toContain('1 s');
@@ -349,19 +357,8 @@ describe('the failure message of a scan cut by the global timeout is a text of t
   it.each(['de', 'en'] as const)(
     '%s: scan-timeout is rendered from the texts with the seconds',
     async (lang) => {
-      const f = await failed(
-        lang,
-        (ctx) =>
-          new Promise((resolve) => {
-            ctx.signal.addEventListener(
-              'abort',
-              () => resolve({ status: 'partial', sections: {} } as never),
-              {
-                once: true,
-              },
-            );
-          }),
-      );
+      const f = await failed(lang, emptyPartialOnAbort);
+
       expect(f.code).toBe('scan-timeout');
       expect(f.message).toBe(uiText(loadTexts(lang), 'failure.scan-timeout', { seconds: 1 }));
       if (lang === 'en') expect(f.message).not.toMatch(GERMAN);
@@ -372,9 +369,11 @@ describe('the failure message of a scan cut by the global timeout is a text of t
     for (const lang of ['de', 'en'] as const) {
       const texts = loadTexts(lang);
       for (const key of ['failure.scan-timeout', 'failure.browser-no-handover']) {
+        const rendered = uiText(texts, key, { seconds: 7 });
+
         expect(texts.ui[key], `${lang} ${key}`).toBeDefined();
-        expect(uiText(texts, key, { seconds: 7 })).not.toMatch(/[{}]/);
-        expect(uiText(texts, key, { seconds: 7 })).toContain('7');
+        expect(rendered).not.toMatch(/[{}]/);
+        expect(rendered).toContain('7');
       }
     }
   });
@@ -389,11 +388,13 @@ describe('SCAN-BLOCKED names the page', () => {
     });
     expect(one.body).toContain('https://www.example.de/impressum');
     expect(one.body).not.toContain('{');
+
     const many = renderMessage(texts, 'diagnostic.SCAN-BLOCKED', {
       count: 3,
       page: 'https://www.example.de/a',
       pages: 'https://www.example.de/a, https://www.example.de/b, https://www.example.de/c',
     });
+
     expect(many.body).toContain('3');
     expect(many.body).toContain('https://www.example.de/b');
     expect(many.body).not.toContain('{');
@@ -416,6 +417,7 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
     expect(unresolved).toContain('Name nicht auflösbar');
     expect(unresolved).toContain('EAI_AGAIN');
     expect(unresolved).not.toContain('Private Adresse');
+
     const priv = render('de', {
       count: 1,
       addressClass: 'private',
@@ -423,6 +425,7 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
       nonPublic: 1,
       hasLookupCodes: false,
     });
+
     expect(priv).toContain('Private Adresse');
     expect(priv).not.toContain('Name nicht auflösbar');
     expect(priv).not.toContain('{');
@@ -436,6 +439,7 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
       nonPublic: 0,
       hasLookupCodes: false,
     });
+
     expect(unresolved).toContain('Name not resolvable');
     expect(unresolved).not.toContain('Private address');
     expect(unresolved).not.toContain('{');
@@ -448,18 +452,22 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
   ] as const)('%s: a recovered navigation is stated as loaded after the retry', (lang, loaded, one, many) => {
     const base = { count: 1, addressClass: 'private', unresolved: 0, nonPublic: 1, hasLookupCodes: false };
     const plain = render(lang, base);
+    const withOne = render(lang, { ...base, recovered: 1 });
+    const withTwo = render(lang, { ...base, recovered: 2 });
+
     expect(plain).not.toMatch(loaded);
     expect(render(lang, { ...base, recovered: 0 })).toBe(plain);
-    expect(render(lang, { ...base, recovered: 1 })).toMatch(one);
-    expect(render(lang, { ...base, recovered: 1 })).toMatch(loaded);
-    expect(render(lang, { ...base, recovered: 2 })).toMatch(many);
-    expect(render(lang, { ...base, recovered: 2 })).not.toMatch(/[{}#]/);
+    expect(withOne).toMatch(one);
+    expect(withOne).toMatch(loaded);
+    expect(withTwo).toMatch(many);
+    expect(withTwo).not.toMatch(/[{}#]/);
   });
 });
 
 describe('Nutzungshinweise', () => {
   it('en: the IP address is "disclosed to" the third parties, not "transmitted"', () => {
     const text = uiText(loadTexts('en'), 'usageNotes', { version: '1' });
+
     expect(text).not.toMatch(/transmits/i);
     expect(text).toMatch(/Phase C discloses the scanning machine's IP address to the third parties/);
   });
@@ -468,11 +476,13 @@ describe('Nutzungshinweise', () => {
     const de = uiText(loadTexts('de'), 'usageNotes', { version: '<version>' }).replace(/\s+/g, ' ');
     const phaseC =
       'Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach der Annahme im Banner lädt.';
-    expect(de).toContain(phaseC);
     const readme = readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
     const section = readme.slice(readme.indexOf('## Nutzungshinweise'), readme.indexOf('## Entwicklung'));
     const flat = section.replace(/`/g, '').replace(/\s+/g, ' ');
+
+    expect(de).toContain(phaseC);
     expect(flat).toContain(phaseC);
+
     // The README paragraph is the de text of test/data/texts (modulo markdown backticks and typographic quotes).
     const plain = (t: string) => t.replace(/[`„“]/g, '').replace(/\s+/g, ' ');
     expect(plain(section)).toContain(plain(de));
@@ -493,12 +503,14 @@ describe('trust store of the process', () => {
           collectors: fakeCollectors(),
         })
       ).snapshot?.environment.trustStore;
+
     vi.stubEnv('NODE_USE_SYSTEM_CA', '1');
     try {
       expect(await run()).toBe('system');
     } finally {
       vi.unstubAllEnvs();
     }
+
     vi.stubEnv('NODE_USE_SYSTEM_CA', '');
     try {
       expect(await run()).toBe('node-bundled');

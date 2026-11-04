@@ -27,6 +27,7 @@ function table(header: string[], body: string[][]): string {
   const separator = `| ${widths.map((w) => '-'.repeat(w)).join(' | ')} |`;
   return [line(header), separator, ...body.map(line)].join('\n');
 }
+
 const rendered = table(['ID', '`critical`', '`warning`', '`info`'], rows);
 
 const current = readFileSync(doc, 'utf8');

@@ -10,7 +10,7 @@ import * as x509 from '@peculiar/x509';
 type CryptoKey = webcrypto.CryptoKey;
 type CryptoKeyPair = webcrypto.CryptoKeyPair;
 
-x509.cryptoProvider.set(webcrypto as unknown as Parameters<typeof x509.cryptoProvider.set>[0]);
+x509.cryptoProvider.set(globalThis.crypto);
 
 const ALG = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' } as const;
 const DAY = 86_400_000;
@@ -66,101 +66,123 @@ async function spkiHash(key: CryptoKey): Promise<string> {
 let serial = 1;
 const nextSerial = () => (serial++).toString(16).padStart(8, '0');
 
-export async function createTestPki(now: Date = new Date()): Promise<TestPki> {
-  const caKeys = await keyPair();
-  const ca = await x509.X509CertificateGenerator.createSelfSigned({
+const daysFrom = (at: Date, days: number) => new Date(at.getTime() + days * DAY);
+
+/** The test CA: self-signed, valid from a day ago for ten years. */
+async function createCa(now: Date) {
+  const keys = await keyPair();
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
     serialNumber: nextSerial(),
     name: 'CN=dsgvo-check Test CA, O=dsgvo-check tests',
-    notBefore: new Date(now.getTime() - DAY),
-    notAfter: new Date(now.getTime() + 3650 * DAY),
-    keys: caKeys,
+    notBefore: daysFrom(now, -1),
+    notAfter: daysFrom(now, 3650),
+    keys,
     signingAlgorithm: ALG,
     extensions: [
       new x509.BasicConstraintsExtension(true, 0, true),
       new x509.KeyUsagesExtension(x509.KeyUsageFlags.keyCertSign | x509.KeyUsageFlags.cRLSign, true),
-      await x509.SubjectKeyIdentifierExtension.create(caKeys.publicKey),
+      await x509.SubjectKeyIdentifierExtension.create(keys.publicKey),
     ],
   });
+  return { keys, cert };
+}
+
+/** What every leaf carries: the host names as SAN, no CA rights, server authentication only. */
+async function leafExtensions(hosts: string[], publicKey: CryptoKey): Promise<x509.Extension[]> {
+  return [
+    new x509.SubjectAlternativeNameExtension(hosts.map((h) => ({ type: 'dns' as const, value: h }))),
+    new x509.BasicConstraintsExtension(false, undefined, true),
+    new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
+    new x509.ExtendedKeyUsageExtension([x509.ExtendedKeyUsage.serverAuth]),
+    await x509.SubjectKeyIdentifierExtension.create(publicKey),
+  ];
+}
+
+interface Validity {
+  notBefore: Date;
+  notAfter: Date;
+}
+
+function createSelfSignedLeaf(cn: string, v: Validity, keys: CryptoKeyPair, extensions: x509.Extension[]) {
+  return x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: nextSerial(),
+    name: `CN=${cn}`,
+    ...v,
+    keys,
+    signingAlgorithm: ALG,
+    extensions,
+  });
+}
+
+/** Issue options per certificate kind; `at` is the moment the validity dates are relative to. */
+const KIND_OPTIONS: Record<CertKind, (hosts: string[], at: Date) => IssueOptions> = {
+  valid: (hosts) => ({ hosts }),
+  expiring: (hosts, at) => ({ hosts, notBefore: daysFrom(at, -80), notAfter: daysFrom(at, 10) }),
+  // Its own key: Chromium's SPKI allowlist must not cover a broken certificate.
+  expired: (hosts, at) => ({
+    hosts,
+    ownKey: true,
+    notBefore: daysFrom(at, -400),
+    notAfter: daysFrom(at, -10),
+  }),
+  'wrong-name': () => ({
+    hosts: ['*.alfahosting-server.de'],
+    ownKey: true,
+    commonName: '*.alfahosting-server.de',
+  }),
+  'self-signed': (hosts) => ({ hosts, selfSigned: true }),
+};
+
+export async function createTestPki(now: Date = new Date()): Promise<TestPki> {
+  const { keys: caKeys, cert: ca } = await createCa(now);
   const caPem = ca.toString('pem');
   const sharedLeaf = await keyPair();
   const sharedLeafPem = await keyPem(sharedLeaf.privateKey);
   const trustedSpki = await spkiHash(sharedLeaf.publicKey);
 
+  async function createCaSignedLeaf(
+    cn: string,
+    v: Validity,
+    publicKey: CryptoKey,
+    extensions: x509.Extension[],
+  ) {
+    const authorityKey = await x509.AuthorityKeyIdentifierExtension.create(ca, false);
+    return x509.X509CertificateGenerator.create({
+      serialNumber: nextSerial(),
+      subject: `CN=${cn}`,
+      issuer: ca.subject,
+      ...v,
+      signingKey: caKeys.privateKey,
+      publicKey,
+      signingAlgorithm: ALG,
+      extensions: [...extensions, authorityKey],
+    });
+  }
+
   async function issue(o: IssueOptions): Promise<IssuedCert> {
-    const notBefore = o.notBefore ?? new Date(now.getTime() - DAY);
-    const notAfter = o.notAfter ?? new Date(now.getTime() + 365 * DAY);
+    const validity = {
+      notBefore: o.notBefore ?? daysFrom(now, -1),
+      notAfter: o.notAfter ?? daysFrom(now, 365),
+    };
     const cn = o.commonName ?? o.hosts[0] ?? 'localhost';
     const leafKeys = o.selfSigned || o.ownKey ? await keyPair() : sharedLeaf;
-    const extensions: x509.Extension[] = [
-      new x509.SubjectAlternativeNameExtension(o.hosts.map((h) => ({ type: 'dns' as const, value: h }))),
-      new x509.BasicConstraintsExtension(false, undefined, true),
-      new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
-      new x509.ExtendedKeyUsageExtension([x509.ExtendedKeyUsage.serverAuth]),
-      await x509.SubjectKeyIdentifierExtension.create(leafKeys.publicKey),
-    ];
-    let cert: x509.X509Certificate;
-    if (o.selfSigned) {
-      cert = await x509.X509CertificateGenerator.createSelfSigned({
-        serialNumber: nextSerial(),
-        name: `CN=${cn}`,
-        notBefore,
-        notAfter,
-        keys: leafKeys,
-        signingAlgorithm: ALG,
-        extensions,
-      });
-    } else {
-      extensions.push(await x509.AuthorityKeyIdentifierExtension.create(ca, false));
-      cert = await x509.X509CertificateGenerator.create({
-        serialNumber: nextSerial(),
-        subject: `CN=${cn}`,
-        issuer: ca.subject,
-        notBefore,
-        notAfter,
-        signingKey: caKeys.privateKey,
-        publicKey: leafKeys.publicKey,
-        signingAlgorithm: ALG,
-        extensions,
-      });
-    }
+    const extensions = await leafExtensions(o.hosts, leafKeys.publicKey);
+
+    const cert = o.selfSigned
+      ? await createSelfSignedLeaf(cn, validity, leafKeys, extensions)
+      : await createCaSignedLeaf(cn, validity, leafKeys.publicKey, extensions);
     const certPem = cert.toString('pem');
+
     return {
       certPem,
       keyPem: leafKeys === sharedLeaf ? sharedLeafPem : await keyPem(leafKeys.privateKey),
       chainPem: o.selfSigned ? certPem : `${certPem}\n${caPem}`,
-      notBefore,
-      notAfter,
+      ...validity,
       hosts: o.hosts,
     };
   }
 
-  async function issueKind(kind: CertKind, hosts: string[], at: Date = now): Promise<IssuedCert> {
-    switch (kind) {
-      case 'valid':
-        return issue({ hosts });
-      case 'expiring':
-        return issue({
-          hosts,
-          notBefore: new Date(at.getTime() - 80 * DAY),
-          notAfter: new Date(at.getTime() + 10 * DAY),
-        });
-      case 'expired':
-        return issue({
-          hosts,
-          ownKey: true,
-          notBefore: new Date(at.getTime() - 400 * DAY),
-          notAfter: new Date(at.getTime() - 10 * DAY),
-        });
-      case 'wrong-name':
-        return issue({
-          hosts: ['*.alfahosting-server.de'],
-          ownKey: true,
-          commonName: '*.alfahosting-server.de',
-        });
-      case 'self-signed':
-        return issue({ hosts, selfSigned: true });
-    }
-  }
+  const issueKind = (kind: CertKind, hosts: string[], at: Date = now) => issue(KIND_OPTIONS[kind](hosts, at));
 
   return { caPem, trustedSpki, issue, issueKind };
 }

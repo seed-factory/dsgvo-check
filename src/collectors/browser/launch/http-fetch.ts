@@ -29,6 +29,8 @@ function dispatcherFor(network: NetworkConfig): Dispatcher | null {
   return new Agent();
 }
 
+const ACCEPT_HEADER = 'text/plain, application/xml, text/xml, */*;q=0.1';
+
 export async function fetchText(
   url: string,
   network: NetworkConfig,
@@ -47,6 +49,7 @@ export async function fetchText(
   }
   const dispatcher = dispatcherFor(network);
   if (!dispatcher) return null;
+
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), opts.timeoutMs);
   const onAbort = () => ac.abort();
@@ -55,25 +58,15 @@ export async function fetchText(
     const res = await request(url, {
       method: 'GET',
       dispatcher,
-      headers: { 'user-agent': userAgent, accept: 'text/plain, application/xml, text/xml, */*;q=0.1' },
+      headers: { 'user-agent': userAgent, accept: ACCEPT_HEADER },
       signal: ac.signal,
     });
-    let size = 0;
-    const chunks: Buffer[] = [];
-    for await (const chunk of res.body) {
-      const b = chunk as Buffer;
-      size += b.length;
-      if (size > opts.maxBytes) {
-        chunks.push(b.subarray(0, Math.max(0, opts.maxBytes - (size - b.length))));
-        break;
-      }
-      chunks.push(b);
-    }
-    res.body.destroy();
+    const body = await readCapped(res.body, opts.maxBytes);
+
     const ct = res.headers['content-type'];
     return {
       status: res.statusCode,
-      text: Buffer.concat(chunks).toString('utf8'),
+      text: body.toString('utf8'),
       contentType: Array.isArray(ct) ? (ct[0] ?? '') : (ct ?? ''),
     };
   } catch {
@@ -84,4 +77,21 @@ export async function fetchText(
     opts.signal.removeEventListener('abort', onAbort);
     await dispatcher.close().catch(() => undefined);
   }
+}
+
+/** Reads at most `maxBytes` and closes the stream: the rest of a large body is never downloaded. */
+async function readCapped(body: Dispatcher.ResponseData['body'], maxBytes: number): Promise<Buffer> {
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of body) {
+    const b = chunk as Buffer;
+    size += b.length;
+    if (size > maxBytes) {
+      chunks.push(b.subarray(0, Math.max(0, maxBytes - (size - b.length))));
+      break;
+    }
+    chunks.push(b);
+  }
+  body.destroy();
+  return Buffer.concat(chunks);
 }

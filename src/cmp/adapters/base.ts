@@ -39,6 +39,17 @@ import type {
   VerifyResult,
 } from '../types.ts';
 
+const CLICK_TIMEOUT_MS = 5000;
+
+/** Default wait for the reload and the adapter's readiness in `verify`. */
+const VERIFY_TIMEOUT_MS = 8000;
+
+const WAIT_STEP_MS = 200;
+
+/** Error texts in the facts keep the first line of the message, cut to this length. */
+const CLICK_ERROR_MAX_LENGTH = 160;
+const RELOAD_ERROR_MAX_LENGTH = 120;
+
 export type ConfigValue = string | number | boolean | null;
 
 export interface AdapterConfig {
@@ -130,9 +141,10 @@ export async function tcfGeoSignals(page: Page): Promise<GeoSignal[]> {
 export async function clickButton(
   page: Page,
   button: Pick<CmpButton, 'selector'>,
-  timeoutMs = 5000,
+  timeoutMs = CLICK_TIMEOUT_MS,
 ): Promise<{ clicked: boolean; error?: string }> {
   if (!button.selector) return { clicked: false, error: 'no-selector' };
+
   const locator = page.locator(button.selector);
   let n: number;
   try {
@@ -141,19 +153,20 @@ export async function clickButton(
     return { clicked: false, error: 'invalid-selector' };
   }
   if (n !== 1) return { clicked: false, error: n === 0 ? 'target-not-found' : 'target-ambiguous' };
+
   try {
     await locator.click({ timeout: timeoutMs });
     return { clicked: true };
   } catch (err) {
     const msg = (err as Error).message.split('\n')[0] ?? 'error';
-    return { clicked: false, error: `click-failed: ${msg.slice(0, 160)}` };
+    return { clicked: false, error: `click-failed: ${msg.slice(0, CLICK_ERROR_MAX_LENGTH)}` };
   }
 }
 
 export async function waitUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,
-  stepMs = 200,
+  stepMs = WAIT_STEP_MS,
 ): Promise<boolean> {
   const end = Date.now() + timeoutMs;
   for (;;) {
@@ -272,10 +285,11 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     accept: (page, opts) => decideOrExecute(page, 'accept', opts),
 
     async verify(page, action, opts: VerifyOptions = {}): Promise<VerifyResult> {
-      const timeoutMs = opts.timeoutMs ?? 8000;
-      const now = await adapter.state(page);
+      const timeoutMs = opts.timeoutMs ?? VERIFY_TIMEOUT_MS;
+
       // `action` only in the document of our click and only for an answer the click produced; after any
       // reload (ours or the collector's) the adapter's own origin (`stored`) stays.
+      const now = await adapter.state(page);
       const click = await clickInThisDocument(page);
       const stateNow = originAfterClick(now, click?.before ?? null, click !== null);
       const ignoreCategories =
@@ -283,28 +297,25 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
           ? unchangedDeniedAfterAccept(click.before, now)
           : [];
       const verdict = stateVerdict(stateNow, action, { requireAction: click !== null, ignoreCategories });
+
       const methods = [...verdict.methods];
       const bannerOpen = await safe(
         measureBanner(page, data().banner, loadLexicon()).then((m) => m.firstLayer.bannerVisible),
         false,
       );
       if (!bannerOpen) methods.push('ui-closed');
+
+      let reason = verdict.ok ? undefined : verdict.reason;
       let persisted: boolean | null = null;
       let afterReload: ConsentStateFact[] = [];
-      let reason = verdict.ok ? undefined : verdict.reason;
       if (opts.reload !== false) {
-        try {
-          await page.reload({ waitUntil: 'load', timeout: timeoutMs });
-          await waitUntil(() => spec.isReady(page), timeoutMs);
-          afterReload = await adapter.state(page);
-          const again = stateVerdict(afterReload, action, { ignoreCategories });
-          persisted = again.ok;
-          if (again.ok) methods.push('persisted-after-reload');
-          else reason ??= `after-reload:${again.reason ?? 'not-confirmed'}`;
-        } catch (err) {
-          reason ??= `reload-failed: ${((err as Error).message.split('\n')[0] ?? '').slice(0, 120)}`;
-        }
+        const reloaded = await recheckAfterReload(page, action, ignoreCategories, timeoutMs);
+        persisted = reloaded.persisted;
+        afterReload = reloaded.state;
+        if (reloaded.persisted) methods.push('persisted-after-reload');
+        reason ??= reloaded.reason;
       }
+
       return {
         action,
         verified: verdict.ok && persisted !== false,
@@ -317,6 +328,34 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
 
     ready: (page) => safe(spec.isReady(page), false),
   };
+
+  /** Reloads the page and reads the state again: a stored answer survives the reload, a session-only one does not. */
+  async function recheckAfterReload(
+    page: Page,
+    action: 'reject' | 'accept',
+    ignoreCategories: readonly string[],
+    timeoutMs: number,
+  ): Promise<{ persisted: boolean | null; state: ConsentStateFact[]; reason?: string }> {
+    try {
+      await page.reload({ waitUntil: 'load', timeout: timeoutMs });
+      await waitUntil(() => spec.isReady(page), timeoutMs);
+
+      const state = await adapter.state(page);
+      const again = stateVerdict(state, action, { ignoreCategories });
+      return {
+        persisted: again.ok,
+        state,
+        ...(again.ok ? {} : { reason: `after-reload:${again.reason ?? 'not-confirmed'}` }),
+      };
+    } catch (err) {
+      const msg = (err as Error).message.split('\n')[0] ?? '';
+      return {
+        persisted: null,
+        state: [],
+        reason: `reload-failed: ${msg.slice(0, RELOAD_ERROR_MAX_LENGTH)}`,
+      };
+    }
+  }
 
   /** Clicks exactly the target core chose; no classification here. */
   async function execute(

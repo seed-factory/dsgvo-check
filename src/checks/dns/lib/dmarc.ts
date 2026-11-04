@@ -56,47 +56,67 @@ export function isDmarcLike(txt: string): boolean {
   return /(^|;)\s*v\s*=\s*dmarc1\b/i.test(txt);
 }
 
-export function parseDmarcRecord(raw: string): DmarcRecord {
+/** Splits `tag=value` pairs (the first occurrence of a tag wins) and notes the first syntax problem. */
+function readTags(raw: string): { tags: Record<string, string>; problem: DmarcInvalidReason | null } {
   const tags: Record<string, string> = {};
-  let invalid: DmarcInvalidReason | null = null;
+  let problem: DmarcInvalidReason | null = null;
   const parts = raw
     .split(';')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+
   parts.forEach((part, i) => {
     const m = /^([a-z0-9]+)\s*=\s*(.*)$/i.exec(part);
     if (!m) {
-      invalid ??= 'syntax';
+      problem ??= 'syntax';
       return;
     }
+
     const name = (m[1] as string).toLowerCase();
     const value = (m[2] as string).trim();
-    if (i === 0 && name !== 'v') invalid ??= 'version-not-first';
-    if (name === 'v' && value.toUpperCase() !== 'DMARC1') invalid ??= 'syntax';
+    if (i === 0 && name !== 'v') problem ??= 'version-not-first';
+    if (name === 'v' && value.toUpperCase() !== 'DMARC1') problem ??= 'syntax';
     if (!Object.hasOwn(tags, name)) tags[name] = value;
   });
-  if (!isDmarcStart(raw) && invalid === null) invalid = 'version-not-first';
-  const p = policy(tags.p);
-  if (invalid === null) {
-    if (tags.p === undefined) invalid = 'p-missing';
-    else if (p === null) invalid = 'p-invalid';
-  }
-  const pctRaw = tags.pct?.trim();
-  const pct = pctRaw && /^\d{1,3}$/.test(pctRaw) && Number(pctRaw) <= 100 ? Number(pctRaw) : null;
+  return { tags, problem };
+}
+
+/** The tag problem wins; otherwise the version must come first and `p` must be present and valid. */
+function invalidReason(
+  raw: string,
+  tags: Record<string, string>,
+  problem: DmarcInvalidReason | null,
+): DmarcInvalidReason | null {
+  if (problem !== null) return problem;
+  if (!isDmarcStart(raw)) return 'version-not-first';
+  if (tags.p === undefined) return 'p-missing';
+  if (policy(tags.p) === null) return 'p-invalid';
+  return null;
+}
+
+/** 0 to 100 as digits; anything else is ignored. */
+function percentage(v: string | undefined): number | null {
+  const x = v?.trim();
+  return x && /^\d{1,3}$/.test(x) && Number(x) <= 100 ? Number(x) : null;
+}
+
+export function parseDmarcRecord(raw: string): DmarcRecord {
+  const { tags, problem } = readTags(raw);
   const t = tags.t?.trim().toLowerCase();
   const psd = tags.psd?.trim().toLowerCase();
+
   return {
     raw,
     tags,
-    p,
+    p: policy(tags.p),
     sp: policy(tags.sp),
     np: policy(tags.np),
     psd: psd === 'y' || psd === 'n' || psd === 'u' ? psd : null,
     t: t === 'y' || t === 'n' ? t : null,
-    pct,
+    pct: percentage(tags.pct),
     rua: uriList(tags.rua),
     ruf: uriList(tags.ruf),
-    invalid,
+    invalid: invalidReason(raw, tags, problem),
   };
 }
 
@@ -106,9 +126,9 @@ export function parseDmarcRecord(raw: string): DmarcRecord {
  */
 export function dmarcTreeWalkNames(host: string): string[] {
   const labels = normalizeName(host).split('.').filter(Boolean);
-  const names: string[] = [];
-  if (labels.length === 0) return names;
-  names.push(labels.join('.'));
+  if (labels.length === 0) return [];
+
+  const names = [labels.join('.')];
   let current = labels.length >= 5 ? labels.slice(-4) : labels.slice(1);
   while (current.length > 0 && names.length < DMARC_MAX_WALK) {
     names.push(current.join('.'));
@@ -165,8 +185,8 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
     found: null,
     next: null,
   };
-  const names = dmarcTreeWalkNames(h);
-  for (const [step, domain] of names.entries()) {
+
+  for (const [step, domain] of dmarcTreeWalkNames(h).entries()) {
     const qname = `_dmarc.${domain}`;
     const query = lookup(qname, 'TXT');
     if (!query) {
@@ -174,6 +194,7 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
       out.next = { qname, step };
       return out;
     }
+
     const s: DmarcWalkStep = { step, domain, qname, query };
     out.steps.push(s);
     if (isFailure(query.rcode)) {
@@ -182,8 +203,10 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
       out.state = 'failed';
       return out;
     }
+
     const records = txtValues(query).filter(isDmarcLike);
     if (records.length === 0) continue;
+
     const record = records.length === 1 ? parseDmarcRecord(records[0] as string) : null;
     out.state = 'found';
     out.found = {
@@ -195,6 +218,7 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
     };
     return out;
   }
+
   out.state = 'missing';
   return out;
 }

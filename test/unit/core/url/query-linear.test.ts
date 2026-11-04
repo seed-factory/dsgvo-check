@@ -59,6 +59,7 @@ describe('query processing scales with parameter count and value size', () => {
     'cuts a query of %i short parameters at the same character boundary',
     (n) => {
       const expected = `http://h.test/?${Array.from({ length: n }, () => `a=${REDACTED}`).join('&')}`;
+
       expect(sanitizeUrl(`http://h.test/?${'a&'.repeat(n)}`)).toBe(expected.slice(0, 2048));
     },
   );
@@ -78,6 +79,7 @@ function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST
   u.username = '';
   u.password = '';
   u.hash = '';
+
   if (u.search) {
     const out = new URLSearchParams();
     for (const [k, v] of u.searchParams) {
@@ -88,6 +90,7 @@ function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST
     }
     u.search = out.toString().replaceAll('%5Bredacted%5D', REDACTED);
   }
+
   return u.toString().slice(0, 2048);
 }
 

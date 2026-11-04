@@ -3,7 +3,7 @@ import type { Page, Response } from 'playwright-core';
 import { snapshotHeaderRecords } from '../../../core/redaction/headers.ts';
 import type { PageRole, PageVisit } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase, HeaderRecord } from '../../../core/snapshot/common.ts';
-import { retryAfterMs } from '../../http/client.ts';
+import { retryAfterMs } from '../../http/pacing.ts';
 import type { BrowserTiming, PhaseTiming } from '../config.ts';
 import { sanitizeRequestUrl, splitSetCookieNames } from '../recording/features.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
@@ -46,6 +46,8 @@ export interface VisitResult {
 const MAX_HEADER_VALUE = 2048;
 /** Floor of the page budget left for response metadata after the quiet wait. */
 const MIN_META_BUDGET_MS = 500;
+/** One more read of the DOM when the page navigated itself while it was read. */
+const DOM_READ_ATTEMPTS = 2;
 
 export interface SettledValue<T> {
   value: T;
@@ -92,52 +94,52 @@ function errorCodeOfErrorPage(title: string, text: string): string | null {
   return /\b(ERR_[A-Z0-9_]+)\b/.exec(`${title}\n${text}`)?.[1] ?? null;
 }
 
-export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResult> {
-  const startedAt = i.now().toISOString();
-  const navigationId = i.recorder.beginNavigation(sanitizeRequestUrl(s.rawUrl));
-  const t0 = Date.now();
-  let resp: Response | null = null;
-  let error: string | undefined;
-  let domContentLoadedMs: number | undefined;
-  let loadMs: number | undefined;
-  let pageLoadIncomplete = false;
-  const limitations: Array<{ code: string; message: string }> = [];
-  /** What is left of HARD_CAP, with a floor: the budget for everything after the navigation. */
-  const budgetLeft = () => Math.max(MIN_META_BUDGET_MS, i.phaseTiming.hardCapMs - (Date.now() - t0));
-  /** Await response metadata within the page budget; on a cut keep what is known and record the limitation. */
-  const bounded = async <T>(code: string, what: string, p: Promise<T>, fallback: T): Promise<T> => {
-    const ms = budgetLeft();
-    const r = await valueWithin(p, ms, i.signal, fallback);
-    if (r.cut === 'timeout') limitations.push({ code, message: `${what} not completed within ${ms} ms` });
-    return r.value;
-  };
+/** Awaits response metadata within the page budget; on a cut the fallback is used and the limitation recorded. */
+type Bounded = <T>(code: string, what: string, p: Promise<T>, fallback: T) => Promise<T>;
+
+interface Loaded {
+  resp: Response | null;
+  error?: string;
+  domContentLoadedMs?: number;
+  loadMs?: number;
+  pageLoadIncomplete: boolean;
+}
+
+/** The navigation itself: `goto` (or reload) until DOMContentLoaded, then the load event within its own timeout. */
+async function loadPage(i: VisitInput, s: VisitSpec, t0: number): Promise<Loaded> {
+  const loaded: Loaded = { resp: null, pageLoadIncomplete: false };
   try {
-    resp = s.reload
+    loaded.resp = s.reload
       ? await i.page.reload({ waitUntil: 'domcontentloaded', timeout: i.timing.navigationTimeoutMs })
       : await i.page.goto(s.rawUrl, { waitUntil: 'domcontentloaded', timeout: i.timing.navigationTimeoutMs });
-    domContentLoadedMs = Date.now() - t0;
+    loaded.domContentLoadedMs = Date.now() - t0;
   } catch (err) {
-    error = firstLine(errorText(err));
+    loaded.error = firstLine(errorText(err));
   }
-  if (!error) {
+
+  if (!loaded.error) {
     try {
       await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs });
-      loadMs = Date.now() - t0;
+      loaded.loadMs = Date.now() - t0;
     } catch {
-      pageLoadIncomplete = true;
+      loaded.pageLoadIncomplete = true;
     }
   }
-  const quiet = await waitForQuiet(
-    i.recorder,
-    t0,
-    { ...i.phaseTiming, quietWindowMs: i.timing.quietWindowMs, maxInflight: i.timing.maxInflight },
-    i.signal,
-  );
-  // The wait for the recorder's handlers is the page's, not theirs: a `timeoutMs` here would make the recorder abandon
-  // every pending handler, and a late `Set-Cookie`, address or identifier would be lost although the handler's own
-  // budget allows it. The phase end and `dispose()` abandon what is left.
-  await bounded('recorder-flush-timeout', 'network records', i.recorder.flush({ signal: i.signal }), true);
+  return loaded;
+}
 
+interface ResponseFacts {
+  setCookieNames: string[];
+  /** In memory only: challenge detection, `Link` hints and Retry-After read the live values. */
+  liveHeaders: HeaderRecord[];
+  headers: HeaderRecord[];
+  redirectChain: string[];
+  serverIp: string | null;
+  status: number | null;
+  contentType: string;
+}
+
+async function readResponse(resp: Response | null, rawUrl: string, bounded: Bounded): Promise<ResponseFacts> {
   // `headers()` is the fallback when the raw headers do not arrive in time: it still tells the content type, so a PDF
   // viewer page is not read as HTML.
   const rawHeaders = resp
@@ -151,83 +153,150 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   const setCookieNames = splitSetCookieNames(
     rawHeaders.filter((h) => h.name.toLowerCase() === 'set-cookie').map((h) => h.value),
   );
-  // In memory only: challenge detection, `Link` hints and Retry-After read the live values.
   const liveHeaders: HeaderRecord[] = rawHeaders
     .filter((h) => h.name.toLowerCase() !== 'set-cookie')
     .map((h) => ({ name: h.name.toLowerCase(), value: truncate(h.value, MAX_HEADER_VALUE) }));
-  const headers = snapshotResponseHeaders(rawHeaders, resp?.url() ?? s.rawUrl);
+  const headers = snapshotResponseHeaders(rawHeaders, resp?.url() ?? rawUrl);
+
   const redirectChain: string[] = [];
   for (let r = resp?.request().redirectedFrom() ?? null; r; r = r.redirectedFrom()) {
     redirectChain.unshift(sanitizeRequestUrl(r.url()));
   }
+
   const serverIp = resp
     ? ((await bounded('server-address-timeout', 'server address', resp.serverAddr(), null))?.ipAddress ??
       null)
     : null;
-  const status = resp?.status() ?? null;
-  const contentType = liveHeaders.find((h) => h.name === 'content-type')?.value ?? '';
 
-  let dom: PageVisit['dom'] = null;
-  let candidates: CandidateLink[] = [];
-  let title = '';
-  let text = '';
-  let scripts: string[] = [];
-  let domError: string | undefined;
-  if (!error && /html|xml|^$/i.test(contentType)) {
-    for (let attempt = 0; attempt < 2 && !dom; attempt++) {
-      try {
-        const r = await withTimeout(
-          collectDom(i.page, i.target, liveHeaders),
-          i.timing.cmpCallTimeoutMs,
-          'DOM facts',
-        );
-        dom = r.dom;
-        candidates = r.candidates;
-        title = r.raw.title;
-        text = r.raw.textSample;
-        scripts = r.raw.scripts.map((x) => x.src).filter(Boolean);
-        domError = undefined;
-      } catch (err) {
-        domError = firstLine(errorText(err));
-        if (err instanceof TimeoutError) {
-          limitations.push({ code: 'dom-collect-timeout', message: domError });
-          break;
-        }
-        // The page navigated itself (JS/meta redirect) while we read it: wait for the new document once.
-        if (!/context was destroyed|navigat/i.test(domError)) break;
-        await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs }).catch(() => undefined);
+  return {
+    setCookieNames,
+    liveHeaders,
+    headers,
+    redirectChain,
+    serverIp,
+    status: resp?.status() ?? null,
+    contentType: liveHeaders.find((h) => h.name === 'content-type')?.value ?? '',
+  };
+}
+
+interface PageContent {
+  dom: PageVisit['dom'];
+  candidates: CandidateLink[];
+  title: string;
+  text: string;
+  scripts: string[];
+  domError?: string | undefined;
+}
+
+function emptyContent(): PageContent {
+  return { dom: null, candidates: [], title: '', text: '', scripts: [] };
+}
+
+/** DOM facts of the loaded document; a failed read leaves `dom` null and the reason in `domError`. */
+async function readContent(
+  i: VisitInput,
+  liveHeaders: readonly HeaderRecord[],
+  limitations: Array<{ code: string; message: string }>,
+): Promise<PageContent> {
+  const content = emptyContent();
+  for (let attempt = 0; attempt < DOM_READ_ATTEMPTS && !content.dom; attempt++) {
+    try {
+      const r = await withTimeout(
+        collectDom(i.page, i.target, liveHeaders),
+        i.timing.cmpCallTimeoutMs,
+        'DOM facts',
+      );
+      content.dom = r.dom;
+      content.candidates = r.candidates;
+      content.title = r.raw.title;
+      content.text = r.raw.textSample;
+      content.scripts = r.raw.scripts.map((x) => x.src).filter(Boolean);
+      content.domError = undefined;
+    } catch (err) {
+      const domError = firstLine(errorText(err));
+      content.domError = domError;
+      if (err instanceof TimeoutError) {
+        limitations.push({ code: 'dom-collect-timeout', message: domError });
+        break;
       }
+      // The page navigated itself (JS/meta redirect) while we read it: wait for the new document once.
+      if (!/context was destroyed|navigat/i.test(domError)) break;
+      await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs }).catch(() => undefined);
     }
   }
+  return content;
+}
+
+function notEvaluableReasonOf(p: {
+  error: string | undefined;
+  challenge: boolean;
+  status: number | null;
+  content: PageContent;
+}): string | undefined {
+  if (p.error) return `navigation-failed:${navigationErrorCode(p.error)}`;
+  if (p.challenge) return 'challenge';
+  if (p.status !== null && p.status >= 400) return `http-${p.status}`;
+  if (p.content.dom === null) return p.content.domError ? 'dom-unavailable' : 'not-html';
+  return undefined;
+}
+
+export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResult> {
+  const startedAt = i.now().toISOString();
+  const navigationId = i.recorder.beginNavigation(sanitizeRequestUrl(s.rawUrl));
+  const t0 = Date.now();
+  const limitations: Array<{ code: string; message: string }> = [];
+  /** What is left of HARD_CAP, with a floor: the budget for everything after the navigation. */
+  const budgetLeft = () => Math.max(MIN_META_BUDGET_MS, i.phaseTiming.hardCapMs - (Date.now() - t0));
+  const bounded: Bounded = async <T>(code: string, what: string, p: Promise<T>, fallback: T): Promise<T> => {
+    const ms = budgetLeft();
+    const r = await valueWithin(p, ms, i.signal, fallback);
+    if (r.cut === 'timeout') limitations.push({ code, message: `${what} not completed within ${ms} ms` });
+    return r.value;
+  };
+
+  const loaded = await loadPage(i, s, t0);
+  let error = loaded.error;
+
+  const quiet = await waitForQuiet(
+    i.recorder,
+    t0,
+    { ...i.phaseTiming, quietWindowMs: i.timing.quietWindowMs, maxInflight: i.timing.maxInflight },
+    i.signal,
+  );
+  // The wait for the recorder's handlers is the page's, not theirs: a `timeoutMs` here would make the recorder abandon
+  // every pending handler, and a late `Set-Cookie`, address or identifier would be lost although the handler's own
+  // budget allows it. The phase end and `dispose()` abandon what is left.
+  await bounded('recorder-flush-timeout', 'network records', i.recorder.flush({ signal: i.signal }), true);
+
+  const response = await readResponse(loaded.resp, s.rawUrl, bounded);
+  let content =
+    !error && /html|xml|^$/i.test(response.contentType)
+      ? await readContent(i, response.liveHeaders, limitations)
+      : emptyContent();
+
   // Read after the DOM: a JS/meta redirect during the quiet window changes the final URL.
   let rawFinalUrl = error ? s.rawUrl : i.page.url();
   if (!error && !/^https?:/i.test(rawFinalUrl)) {
     // The browser ended on its own error page (`chrome-error://`) or left http(s): a failed navigation, nothing read
     // from the page belongs to the site.
-    error = `net::${errorCodeOfErrorPage(title, text) ?? 'ERR_FAILED'}`;
+    error = `net::${errorCodeOfErrorPage(content.title, content.text) ?? 'ERR_FAILED'}`;
     rawFinalUrl = s.rawUrl;
-    dom = null;
-    candidates = [];
-    title = '';
-    text = '';
-    scripts = [];
+    content = { ...emptyContent(), domError: content.domError };
   }
   // Requests of this navigation belong to the page as shown; later ones too until the next navigation.
   if (!error) i.recorder.rebindNavigation(sanitizeRequestUrl(rawFinalUrl));
+
+  const { status } = response;
   const challenge = error
     ? { detected: false, signals: [] }
-    : detectChallenge({ status, headers: liveHeaders, title, text, scripts });
-  const notEvaluableReason = error
-    ? `navigation-failed:${navigationErrorCode(error)}`
-    : challenge.detected
-      ? 'challenge'
-      : status !== null && status >= 400
-        ? `http-${status}`
-        : dom === null
-          ? domError
-            ? 'dom-unavailable'
-            : 'not-html'
-          : undefined;
+    : detectChallenge({
+        status,
+        headers: response.liveHeaders,
+        title: content.title,
+        text: content.text,
+        scripts: content.scripts,
+      });
+  const notEvaluableReason = notEvaluableReasonOf({ error, challenge: challenge.detected, status, content });
 
   const visit: PageVisit = {
     url: sanitizeRequestUrl(s.rawUrl),
@@ -242,29 +311,31 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
       status,
       ok: !error && status !== null && status < 400,
       ...(error ? { error: navigationErrorCode(error) } : {}),
-      redirectChain,
+      redirectChain: response.redirectChain,
       startedAt,
-      ...(domContentLoadedMs !== undefined ? { domContentLoadedMs } : {}),
-      ...(loadMs !== undefined ? { loadMs } : {}),
+      ...(loaded.domContentLoadedMs !== undefined ? { domContentLoadedMs: loaded.domContentLoadedMs } : {}),
+      ...(loaded.loadMs !== undefined ? { loadMs: loaded.loadMs } : {}),
       quietReached: quiet.quietReached,
       dwellMs: quiet.dwellMs,
-      ...(pageLoadIncomplete ? { pageLoadIncomplete: true } : {}),
-      serverIp,
+      ...(loaded.pageLoadIncomplete ? { pageLoadIncomplete: true } : {}),
+      serverIp: response.serverIp,
     },
-    responseHeaders: headers,
-    setCookieNames,
+    responseHeaders: response.headers,
+    setCookieNames: response.setCookieNames,
     challenge,
     evaluable: notEvaluableReason === undefined,
     ...(notEvaluableReason ? { notEvaluableReason } : {}),
-    dom,
+    dom: content.dom,
   };
+
   const retry =
-    retryAfterMs(liveHeaders.find((h) => h.name === 'retry-after')?.value ?? null, Date.now()) ?? undefined;
+    retryAfterMs(response.liveHeaders.find((h) => h.name === 'retry-after')?.value ?? null, Date.now()) ??
+    undefined;
   return {
     visit,
-    candidates,
+    candidates: content.candidates,
     rawFinalUrl,
-    contentType,
+    contentType: response.contentType,
     ...(error ? { error } : {}),
     ...(retry !== undefined ? { retryAfterMs: retry } : {}),
     ...(limitations.length > 0 ? { limitations } : {}),

@@ -54,7 +54,11 @@ afterAll(async () => {
   await server?.close();
 });
 
-const collector = createTlsCollector({ timeoutMs: 3_000 });
+/** Long enough for a handshake on a loaded machine; the "never answers" case uses its own short limit. */
+const HANDSHAKE_TIMEOUT_MS = 3_000;
+const SHORT_TIMEOUT_MS = 500;
+
+const collector = createTlsCollector({ timeoutMs: HANDSHAKE_TIMEOUT_MS });
 
 async function endpoints(url: string, network: NetworkConfig): Promise<TlsSection> {
   const res = await collector(collectorContext(url, network));
@@ -63,8 +67,11 @@ async function endpoints(url: string, network: NetworkConfig): Promise<TlsSectio
 }
 
 const target = (s: TlsSection) => s.endpoints.find((e) => e.hostVariant === 'target') as TlsEndpoint;
+const tls02Snapshot = (url: string, tls: TlsSection) =>
+  makeSnapshot({ target: makeTarget(url), tls, http: makeHttp() });
+/** TLS-02 with the real clock: the fixture server issues its certificates relative to it. */
 const tls02Result = (url: string, tls: TlsSection) =>
-  runCheck(tls02, makeSnapshot({ target: makeTarget(url), tls, http: makeHttp() }), { now: new Date() });
+  runCheck(tls02, tls02Snapshot(url, tls), { now: new Date() });
 const tls02Variants = (url: string, tls: TlsSection) => variantsOf(tls02Result(url, tls));
 
 describe('TLS collector with the test PKI', () => {
@@ -74,6 +81,7 @@ describe('TLS collector with the test PKI', () => {
       withRoutes(server.network(), { 'valid.test': closed }),
     );
     const ep = target(s);
+
     expect(ep).toMatchObject({
       host: 'www.valid.test',
       servername: 'www.valid.test',
@@ -89,6 +97,7 @@ describe('TLS collector with the test PKI', () => {
       trustStore: 'test',
     });
     expect(ep.cipher).toBeTruthy();
+
     expect(ep.chain).toHaveLength(2);
     expect(ep.chain[0]).toMatchObject({
       subject: 'CN=www.valid.test',
@@ -100,6 +109,7 @@ describe('TLS collector with the test PKI', () => {
       keyBits: 256,
     });
     expect(ep.chain[1]).toMatchObject({ isCa: true, selfSigned: true });
+
     expect(s.endpoints.find((e) => e.hostVariant === 'apex')?.outcome).toBe('connection-refused');
     expect(tls02Variants('https://www.valid.test/', s)).toEqual([]);
   });
@@ -110,7 +120,9 @@ describe('TLS collector with the test PKI', () => {
     ['www.selfsigned.test', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'self-signed'],
   ])('%s → %s → TLS-02 certificate-invalid (%s)', async (host, error, reason) => {
     const apex = host.replace(/^www\./, '');
+
     const s = await endpoints(`https://${host}/`, withRoutes(server.network(), { [apex]: closed }));
+
     expect(target(s)).toMatchObject({ outcome: 'handshake', authorized: false, authorizationError: error });
     const r = tls02Result(`https://${host}/`, s);
     expect(variantsOf(r)).toEqual(['certificate-invalid']);
@@ -145,31 +157,28 @@ describe('TLS collector with the test PKI', () => {
       chain: [],
       error: { code: 'ECONNREFUSED' },
     });
-    expect(
-      runCheck(
-        tls02,
-        makeSnapshot({ target: makeTarget('https://www.noport.test/'), tls: s, http: makeHttp() }),
-      ),
-    ).toMatchObject({ status: 'not_applicable', reason: 'no-https' });
+    expect(runCheck(tls02, tls02Snapshot('https://www.noport.test/', s))).toMatchObject({
+      status: 'not_applicable',
+      reason: 'no-https',
+    });
   });
 
   it('server that never completes the handshake → timeout, TLS-02 inconclusive', async () => {
     const silent = await silentServer();
     try {
-      const res = await createTlsCollector({ timeoutMs: 500 })(
+      const res = await createTlsCollector({ timeoutMs: SHORT_TIMEOUT_MS })(
         collectorContext(
           'https://www.slow.test/',
           withRoutes(server.network(), { 'www.slow.test': silent.port, 'slow.test': closed }),
         ),
       );
+
       const s = res.sections.tls as TlsSection;
       expect(target(s)).toMatchObject({ outcome: 'timeout', error: { code: 'timeout' } });
-      expect(
-        runCheck(
-          tls02,
-          makeSnapshot({ target: makeTarget('https://www.slow.test/'), tls: s, http: makeHttp() }),
-        ),
-      ).toMatchObject({ status: 'inconclusive', reason: 'handshake-inconclusive' });
+      expect(runCheck(tls02, tls02Snapshot('https://www.slow.test/', s))).toMatchObject({
+        status: 'inconclusive',
+        reason: 'handshake-inconclusive',
+      });
     } finally {
       await silent.close();
     }
@@ -208,6 +217,7 @@ describe('TLS collector: certificate chains', () => {
 
   it('leaf + intermediate sent, root not in the client store → UNABLE_TO_GET_ISSUER_CERT_LOCALLY → certificate-invalid', async () => {
     const s = await endpoints('https://www.chain.test/', chainNet(fullChain, false));
+
     expect(target(s)).toMatchObject({
       authorized: false,
       authorizationError: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
@@ -255,9 +265,8 @@ describe('TLS collector through --proxy (no test routing)', () => {
   it('HTTP CONNECT tunnel: handshake via the proxy, peer address unknown', async () => {
     const proxy = await httpProxy(server.httpPort, server.httpsPort);
     try {
-      const res = await createTlsCollector({ timeoutMs: 3_000 })(
-        collectorContext('https://www.valid.test/', proxyNetwork(proxy.url)),
-      );
+      const res = await collector(collectorContext('https://www.valid.test/', proxyNetwork(proxy.url)));
+
       const ep = target(res.sections.tls as TlsSection);
       // The label follows the CA setting of this process: `system` with NODE_USE_SYSTEM_CA=1, else the bundle.
       expect(ep).toMatchObject({

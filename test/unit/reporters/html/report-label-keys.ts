@@ -16,17 +16,22 @@ import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixt
 
 const source = (file: string) => readFileSync(new URL(`../../../../src/${file}`, import.meta.url), 'utf8');
 
-/** Collect consumers rather than deriving the expected set from the translation dictionary itself. */
-export function usedReportLabelKeys(): string[] {
+/** Keys that the template, the CLI and the writers name literally. */
+function literalLabelKeys(): Set<string> {
   const keys = new Set<string>();
   const template = readFileSync(path.join(DEFAULT_DATA_DIR, 'report/report.html'), 'utf8');
+
   for (const match of template.matchAll(/{{t\s+"(report\.[^"]+)"/g)) keys.add(match[1]!);
   for (const file of ['cli.ts', 'reporters/write.ts', 'reporters/pdf.ts']) {
     for (const match of source(file).matchAll(/\buiText\([^,]+,\s*['"](report\.[^'"]+)['"]/g)) {
       keys.add(match[1]!);
     }
   }
+  return keys;
+}
 
+/** A reporter context whose label dictionary adds every `report.*` key that gets read to `keys`. */
+function recordingContext(keys: Set<string>): ReporterContext {
   const texts = loadTexts('en');
   const ui = new Proxy(texts.ui, {
     get(target, key, receiver) {
@@ -36,16 +41,32 @@ export function usedReportLabelKeys(): string[] {
     // Draft detection enumerates the whole dictionary. Enumeration is not a use of every label.
     ownKeys: () => [],
   });
-  const context: ReporterContext = {
+  return {
     texts: { ...texts, ui },
     lang: 'en',
     color: false,
     outDir: path.join(tmpdir(), 'report-label-key-contract'),
   };
+}
+
+/** The statuses a legal note can have, read from the schema source so that a new one is exercised automatically. */
+function legalNoteStatuses(): Array<LegalNote['status']> {
+  const statuses = source('core/data/load.ts').match(
+    /const LegalNoteSchema = z\.object\(\{[\s\S]*?status:\s*z\.enum\(\[([\s\S]*?)\]\)/,
+  )?.[1];
+  if (!statuses) throw new Error('The legal-note status domain could not be read');
+  return [...statuses.matchAll(/'([^']+)'/g)].map((match) => match[1] as LegalNote['status']);
+}
+
+/** Collect consumers rather than deriving the expected set from the translation dictionary itself. */
+export function usedReportLabelKeys(): string[] {
+  const keys = literalLabelKeys();
+  const context = recordingContext(keys);
   const capture = (report: Report) => {
     buildReportView(report, context);
     renderSummary(report, context);
   };
+
   const full = sampleFullReport();
   // The settings row only appears for settings that differ from the defaults.
   full.scan.options = { ...full.scan.options!, settings: { DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS: 3000 } };
@@ -72,14 +93,10 @@ export function usedReportLabelKeys(): string[] {
     full.checks[0]!.status = status;
     capture(full);
   }
-  const statuses = source('core/data/load.ts').match(
-    /const LegalNoteSchema = z\.object\(\{[\s\S]*?status:\s*z\.enum\(\[([\s\S]*?)\]\)/,
-  )?.[1];
-  if (!statuses) throw new Error('The legal-note status domain could not be read');
-  for (const match of statuses.matchAll(/'([^']+)'/g)) {
+  for (const status of legalNoteStatuses()) {
     context.texts.legalNotes['label-fixture'] = {
       text: 'Technical observation.',
-      status: match[1] as LegalNote['status'],
+      status,
       draft: true,
       reviewedAt: null,
       reviewBy: null,
@@ -93,6 +110,7 @@ export function usedReportLabelKeys(): string[] {
     capture(full);
   }
 
+  // Empty and oversized lists, and an evidence reference without evidence.
   full.summary.exitReasons = [];
   full.findings[0]!.evidenceIds.push('missing-label-evidence');
   capture(full);
@@ -100,6 +118,7 @@ export function usedReportLabelKeys(): string[] {
   capture(full);
   full.findings = [];
   capture(full);
+
   return [...keys].sort();
 }
 

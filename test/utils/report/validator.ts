@@ -13,6 +13,7 @@ export function validateReport(report: unknown): { valid: boolean; errors: strin
     addFormats(ajv);
     validateFn = ajv.compile(JSON.parse(JSON.stringify(reportJsonSchema())));
   }
+
   const valid = validateFn(report) as boolean;
   return {
     valid,

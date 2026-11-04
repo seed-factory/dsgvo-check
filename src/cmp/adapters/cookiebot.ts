@@ -32,52 +32,67 @@ function readCookiebot(): CookiebotRead {
     Cookiebot?: Api;
     document: { cookie: string; querySelector(s: string): { getAttribute(n: string): string | null } | null };
   };
-  const cats = ['preferences', 'statistics', 'marketing'];
+  const CATEGORIES = ['preferences', 'statistics', 'marketing'];
   const cb = w.Cookiebot;
   const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
-  const categories: Record<string, boolean | null> = {};
-  for (const c of cats) categories[c] = bool(cb?.consent?.[c]);
-  let spider: boolean | null = null;
-  try {
-    spider = typeof cb?.isSpider === 'function' ? cb.isSpider() === true : null;
-  } catch {
-    spider = null;
-  }
-  const entry = w.document.cookie
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('CookieConsent='));
-  let value: string | null = null;
-  if (entry) {
+
+  const readApiCategories = (): Record<string, boolean | null> => {
+    const categories: Record<string, boolean | null> = {};
+    for (const c of CATEGORIES) categories[c] = bool(cb?.consent?.[c]);
+    return categories;
+  };
+
+  const readSpider = (): boolean | null => {
     try {
-      value = decodeURIComponent(entry.slice('CookieConsent='.length));
+      return typeof cb?.isSpider === 'function' ? cb.isSpider() === true : null;
     } catch {
-      value = entry.slice('CookieConsent='.length);
+      return null;
     }
-  }
-  const cookieCategories: Record<string, boolean | null> = {};
-  let cookieMethod: string | null = null;
-  if (value !== null && value !== '-1') {
-    for (const c of cats) {
-      const m = new RegExp(`${c}:(true|false)`).exec(value);
-      cookieCategories[c] = value === '0' ? false : m ? m[1] === 'true' : null;
+  };
+
+  /** The `CookieConsent` cookie: `-1` means "out of region", else the categories and the consent method. */
+  const readConsentCookie = () => {
+    const entry = w.document.cookie
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith('CookieConsent='));
+    let value: string | null = null;
+    if (entry) {
+      try {
+        value = decodeURIComponent(entry.slice('CookieConsent='.length));
+      } catch {
+        value = entry.slice('CookieConsent='.length);
+      }
     }
-    cookieMethod = /method:'?(explicit|implied)/.exec(value)?.[1] ?? null;
-  }
+
+    const categories: Record<string, boolean | null> = {};
+    let method: string | null = null;
+    if (value !== null && value !== '-1') {
+      for (const c of CATEGORIES) {
+        const m = new RegExp(`${c}:(true|false)`).exec(value);
+        categories[c] = value === '0' ? false : m ? m[1] === 'true' : null;
+      }
+      method = /method:'?(explicit|implied)/.exec(value)?.[1] ?? null;
+    }
+    return { present: value !== null, outOfRegion: value === '-1', categories, method };
+  };
+
+  const consent = readConsentCookie();
   const method = cb?.consent?.method;
+
   return {
     apiPresent: !!cb,
     apiLoaded: !!cb && typeof cb.hasResponse === 'boolean',
     hasResponse: bool(cb?.hasResponse),
     method: typeof method === 'string' ? method : null,
-    categories,
+    categories: readApiCategories(),
     isOutOfRegion: bool(cb?.isOutOfRegion),
     gdprApplies: bool(cb?.regulations?.gdprApplies),
-    spider,
-    cookiePresent: value !== null,
-    cookieOutOfRegion: value === '-1',
-    cookieCategories,
-    cookieMethod,
+    spider: readSpider(),
+    cookiePresent: consent.present,
+    cookieOutOfRegion: consent.outOfRegion,
+    cookieCategories: consent.categories,
+    cookieMethod: consent.method,
     blockingMode:
       w.document.querySelector('script[src*="cookiebot"]')?.getAttribute('data-blockingmode') ?? null,
   };
@@ -90,6 +105,7 @@ export const cookiebot = defineAdapter({
   async readState(page) {
     const r = await read(page);
     const special = r.isOutOfRegion === true || r.spider === true || r.cookieOutOfRegion;
+
     const facts: ConsentStateFact[] = [];
     if (r.apiPresent) {
       facts.push({

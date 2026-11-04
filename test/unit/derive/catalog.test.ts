@@ -98,6 +98,7 @@ describe('service catalog data', () => {
       allowlist: { version: '1', cookies: {} },
     };
     const svc = { id: 'a', name: 'A', category: 'analytics', policyRelevance: 'required' };
+
     expect(() => parseCatalog({ ...base, services: [{ ...svc, typo: 1 }] })).toThrow(/typo/);
     expect(() =>
       parseCatalog({

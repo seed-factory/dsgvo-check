@@ -77,6 +77,7 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
     ]);
     const jar = new JarTracker(target, rec.setCookieOrigins);
     const page = fakePage([{ url: START, cookieWrites: [writeFrom('uid', 'https://cdn.script.test/t.js')] }]);
+
     await jar.snapshot(
       fakeContext([
         jarCookie('uid', '.tracker-a.test'),
@@ -86,6 +87,7 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
       page,
       moment,
     );
+
     const by = (domain: string) => jar.cookies.find((c) => c.name === 'uid' && c.domain === domain);
     expect(by('tracker-a.test')).toMatchObject({ setter: 'http-response', setterHost: 'gum.tracker-a.test' });
     expect(by('tracker-b.test')).toMatchObject({ setter: 'http-response', setterHost: 'tracker-b.test' });

@@ -14,7 +14,7 @@ import type {
 import type { ClickPlan } from '../../core/snapshot/browser.ts';
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
 import { sanitizeRequestUrl } from './recording/features.ts';
-import { errorText, redactFreeText, withTimeout } from './util.ts';
+import { ERROR_MESSAGE_MAX_CHARS, errorText, redactFreeText, withTimeout } from './util.ts';
 
 export type Detected = { adapter: CmpAdapter | null; detection: CmpDetection };
 export type ClickTargets = { reject: CmpButton | null; accept: CmpButton | null };
@@ -61,6 +61,7 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
   facts.phase = phase;
   facts.pageUrl = pageUrl;
   if (facts.detection.frameUrl) facts.detection.frameUrl = sanitizeRequestUrl(facts.detection.frameUrl);
+
   const layer = facts.firstLayer;
   layer.buttons = layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) }));
   if (layer.legalLinks) {
@@ -120,7 +121,7 @@ export class CmpBridge {
       return await withTimeout(fn(), this.timeoutMs, `cmp.${what}`);
     } catch (err) {
       const code = `cmp-${what}-failed`;
-      const message = errorText(err).split('\n')[0]?.slice(0, 300) ?? '';
+      const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
       // The same failure on every page is reported once per phase.
       if (!this.errors.some((e) => e.code === code && e.message === message)) {
         this.errors.push({ code, message, phase: this.phase, url });

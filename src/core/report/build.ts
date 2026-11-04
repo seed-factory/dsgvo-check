@@ -105,16 +105,27 @@ export function environmentOf(snapshot: Snapshot): ScanEnvironment {
 }
 
 export function coverageOf(snapshot: Snapshot): ScanCoverage {
+  return {
+    pages: pageCoverage(snapshot),
+    collectors: collectorCoverage(snapshot),
+    ...(snapshot.browser ? { browserRequests: snapshot.browser.requestCap } : {}),
+  };
+}
+
+/** One row per page that was planned or visited, with what happened to it. */
+function pageCoverage(snapshot: Snapshot): ScanCoverage['pages'] {
   const planned = snapshot.plan.browser?.pages ?? [];
   const control = snapshot.plan.browser?.controlPages ?? [];
   const visits = (snapshot.browser?.phases ?? []).flatMap((p) => p.pages);
   const plans = [...planned, ...control];
+
   // A visit is the page as shown (`finalUrl`); a plan entry matches it by the requested or the final URL, so a
   // redirected start page (requested URL in A, final URL in plan and B/C) is one row.
   const planOf = (v: (typeof visits)[number]) => plans.find((p) => p.url === v.url || p.url === v.finalUrl);
   const keyOf = (v: (typeof visits)[number]) => planOf(v)?.url ?? (v.finalUrl || v.url);
   const urls = [...new Set([...plans.map((p) => p.url), ...visits.map(keyOf)])];
-  const pages = urls.map((url) => {
+
+  return urls.map((url) => {
     const plan = plans.find((p) => p.url === url);
     const seen = visits.filter((v) => keyOf(v) === url);
     const evaluable = seen.some((v) => v.evaluable);
@@ -129,20 +140,19 @@ export function coverageOf(snapshot: Snapshot): ScanCoverage {
       ...(reason ? { reason } : {}),
     };
   });
+}
+
+function collectorCoverage(snapshot: Snapshot): ScanCoverage['collectors'] {
   const collectors: ScanCoverage['collectors'] = {};
   for (const [name, st] of Object.entries(snapshot.collection)) {
-    if (st)
-      collectors[name] = {
-        status: st.status,
-        durationMs: st.durationMs,
-        ...(st.reason ? { reason: st.reason } : {}),
-      };
+    if (!st) continue;
+    collectors[name] = {
+      status: st.status,
+      durationMs: st.durationMs,
+      ...(st.reason ? { reason: st.reason } : {}),
+    };
   }
-  return {
-    pages,
-    collectors,
-    ...(snapshot.browser ? { browserRequests: snapshot.browser.requestCap } : {}),
-  };
+  return collectors;
 }
 
 export interface FullReportInput {
@@ -236,12 +246,14 @@ export function buildFailedReport(i: FailedReportInput): FailedReport {
     },
     disclaimer: i.texts ? disclaimerOf(i.texts) : FALLBACK_DISCLAIMER,
   };
+
   if (i.ruleset) report.ruleset = rulesetInfo(i.ruleset);
   if (i.snapshot) {
     report.scan.finalUrl = i.snapshot.target.finalUrl;
     report.scan.environment = environmentOf(i.snapshot);
     report.scan.coverage = coverageOf(i.snapshot);
   }
+
   if (i.checks) {
     report.checks = i.checks;
     report.findings = i.findings ?? [];
@@ -251,6 +263,7 @@ export function buildFailedReport(i: FailedReportInput): FailedReport {
   } else if (i.diagnostics?.length) {
     report.diagnostics = i.diagnostics;
   }
+
   if (i.texts) report.disclaimer.text = disclaimerText(report, i.texts);
   return report;
 }

@@ -9,7 +9,7 @@ import { sampleFullReport } from '../../utils/report/fixtures.ts';
 describe('sample report fixture', () => {
   it('matches the JSON renderer and report schema', () => {
     const fixture = readFileSync('test/fixtures/reports/sample-full.report.json', 'utf8');
-    expect(ReportSchema.safeParse(JSON.parse(fixture)).success).toBe(true);
+    expect(() => ReportSchema.parse(JSON.parse(fixture))).not.toThrow();
     expect(fixture).toBe(
       renderJson(sampleFullReport(), { texts: loadTexts('de'), lang: 'de', outDir: '.', color: false }),
     );

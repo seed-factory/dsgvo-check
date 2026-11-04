@@ -122,8 +122,10 @@ function checksSection(s: CanarySummary): Blocks {
     '## Checks: status and inconclusive share',
     'Share = inconclusive / (results − skipped).',
   ];
+
   const checkIds = Object.keys(all.checks);
   if (checkIds.length === 0) return [...out, '_no check results_'];
+
   out.push(
     table(
       ['check', ...CHECK_STATUSES, 'inconclusive share', 'EU/EEA', 'non-EU'],
@@ -139,9 +141,11 @@ function checksSection(s: CanarySummary): Blocks {
       }),
     ),
   );
+
   const reasonRows = checkIds.flatMap((id) =>
     Object.entries((all.checks[id] as CheckAggregate).reasons).map(([k, n]) => [id, k, n] as const),
   );
+
   out.push(
     '### Reasons (non-completed results)',
     reasonRows.length === 0 ? NONE : table(['check', 'status:reason', 'count'], reasonRows),

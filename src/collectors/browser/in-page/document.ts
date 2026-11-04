@@ -52,6 +52,12 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
     'OBJECT',
     'CANVAS',
   ]);
+  const MAX_HEADING_CHARS = 120;
+  const MAX_H1_CHARS = 200;
+  // Landmarks whose content is page chrome, not document text.
+  const CHROME_TAGS = ['nav', 'aside'];
+  const CHROME_ROLES = ['navigation', 'complementary', 'search', 'menu', 'menubar'];
+
   const BANNER_RE = new RegExp(arg.patterns.bannerNames, 'i');
   const NAV_WRAPPER_RE = new RegExp(arg.patterns.navWrapper, 'i');
   // A layout state, not a part (`has-fixed-header`, `with-footer`): the token ends in a part name but says the page has
@@ -62,6 +68,13 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
   // noun (`item`, `entry`, `post`, `article`, `section`, `block`) is a component bar: `section-footer` is as often a
   // page footer, and a footer column "Impressum" in it must not confirm the page.
   const COMPONENT_BAR_RE = new RegExp(arg.patterns.componentBar, 'gi');
+
+  const squash = (text: any): string =>
+    String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const idAndClass = (el: any): string =>
+    `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
   const namesPageChrome = (idc: string): boolean =>
     NAV_WRAPPER_RE.test(
       idc
@@ -70,11 +83,10 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
         .filter((t) => !LAYOUT_STATE_RE.test(t))
         .join(' '),
     );
+
   const out: RawDocument = {
     lang: String(document.documentElement.getAttribute('lang') || ''),
-    title: String(document.title || '')
-      .replace(/\s+/g, ' ')
-      .trim(),
+    title: squash(document.title),
     h1: '',
     headingPlaces: { chrome: [], content: [] },
     parts: [],
@@ -88,8 +100,7 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
   if (!body) return out;
 
   const isBanner = (el: any): boolean => {
-    const idc = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`;
-    if (!BANNER_RE.test(idc)) return false;
+    if (!BANNER_RE.test(idAndClass(el))) return false;
     try {
       const p = window.getComputedStyle(el).position;
       return p === 'fixed' || p === 'sticky' || el.getAttribute('role') === 'dialog';
@@ -108,63 +119,60 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
     const popup = el.getAttribute ? el.getAttribute('aria-haspopup') : null;
     const ownRole = el.getAttribute ? el.getAttribute('role') : null;
     if ((popup && popup !== 'false') || ownRole === 'menuitem') return true;
+
     let inContent = false;
     let chrome = false;
     for (let n = parentOf(el); n && n !== document.body && n !== document.documentElement; n = parentOf(n)) {
       const tag = String(n.tagName || '').toLowerCase();
       const role = n.getAttribute ? n.getAttribute('role') : null;
-      if (
-        tag === 'nav' ||
-        tag === 'aside' ||
-        role === 'navigation' ||
-        role === 'complementary' ||
-        role === 'search' ||
-        role === 'menu' ||
-        role === 'menubar'
-      ) {
-        return true;
-      }
+      if (CHROME_TAGS.includes(tag) || CHROME_ROLES.includes(role)) return true;
       if (isBanner(n)) return true;
       if (tag === 'main' || tag === 'article' || role === 'main') inContent = true;
       if (tag === 'header' || tag === 'footer' || role === 'banner' || role === 'contentinfo') chrome = true;
-      const idc = `${n.id || ''} ${typeof n.className === 'string' ? n.className : ''}`;
-      if (namesPageChrome(idc)) chrome = true;
+      if (namesPageChrome(idAndClass(n))) chrome = true;
     }
     return chrome && !inContent;
   };
 
   const expandable = new Set<any>();
   let ignored = 0;
-  for (const d of document.querySelectorAll('details')) {
-    if (outsideText(d)) {
-      ignored++;
-      continue;
-    }
-    out.expandablesFound++;
-    const content = Array.from(d.children).filter((c: any) => c.tagName !== 'SUMMARY');
-    if (content.some((c: any) => String(c.textContent || '').trim())) out.expandablesWithContent++;
-    if (!d.open) for (const c of content) expandable.add(c);
-  }
-  for (const t of document.querySelectorAll('[aria-expanded="false"]')) {
-    const ids = String(t.getAttribute('aria-controls') || '')
-      .split(/\s+/)
-      .filter(Boolean);
-    const panels = ids.map((id) => document.getElementById(id)).filter(Boolean);
-    if (panels.length === 0 && t.nextElementSibling && !t.nextElementSibling.checkVisibility()) {
-      panels.push(t.nextElementSibling);
-    }
-    const chrome = outsideText(t) || panels.some((p: any) => outsideText(p));
-    for (const p of panels) {
-      if (expandable.has(p)) continue;
-      if (chrome) {
+  const collectDetails = () => {
+    for (const d of document.querySelectorAll('details')) {
+      if (outsideText(d)) {
         ignored++;
         continue;
       }
       out.expandablesFound++;
-      if (String(p.textContent || '').trim()) out.expandablesWithContent++;
-      expandable.add(p);
+      const content = Array.from(d.children).filter((c: any) => c.tagName !== 'SUMMARY');
+      if (content.some((c: any) => String(c.textContent || '').trim())) out.expandablesWithContent++;
+      if (!d.open) for (const c of content) expandable.add(c);
     }
-  }
+  };
+  const collectAriaExpanded = () => {
+    for (const t of document.querySelectorAll('[aria-expanded="false"]')) {
+      const ids = String(t.getAttribute('aria-controls') || '')
+        .split(/\s+/)
+        .filter(Boolean);
+      const panels = ids.map((id) => document.getElementById(id)).filter(Boolean);
+      if (panels.length === 0 && t.nextElementSibling && !t.nextElementSibling.checkVisibility()) {
+        panels.push(t.nextElementSibling);
+      }
+
+      const chrome = outsideText(t) || panels.some((p: any) => outsideText(p));
+      for (const p of panels) {
+        if (expandable.has(p)) continue;
+        if (chrome) {
+          ignored++;
+          continue;
+        }
+        out.expandablesFound++;
+        if (String(p.textContent || '').trim()) out.expandablesWithContent++;
+        expandable.add(p);
+      }
+    }
+  };
+  collectDetails();
+  collectAriaExpanded();
   out.expandablesIgnored = ignored;
 
   const headings: Array<{ level: number; text: string }> = [];
@@ -198,36 +206,39 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
     }
     return v as boolean;
   };
+
+  const startSection = (heading: any, level: number) => {
+    while (headings.length > 0 && (headings[headings.length - 1] as { level: number }).level >= level) {
+      headings.pop();
+    }
+    const full = squash(heading.textContent);
+    headings.push({ level, text: full.slice(0, MAX_HEADING_CHARS) });
+    cur = null;
+
+    // One rule for chrome and content: the place of a heading is judged by the function that judges collapsed
+    // elements. Only headings of the content name the type of the page.
+    if (full === '') return;
+    const chromeHeading = outsideText(heading);
+    places[chromeHeading ? 'chrome' : 'content'].push(full.slice(0, MAX_HEADING_CHARS));
+    if (level === 1 && !chromeHeading && out.h1 === '') out.h1 = full.slice(0, MAX_H1_CHARS);
+  };
+  const walkText = (textNode: any, inherited: 'visible' | 'expandable') => {
+    const t = squash(textNode.textContent);
+    if (!t) return;
+    if (inherited === 'expandable') push(t, 'expandable');
+    else
+      push(t, textNode.parentElement && isVisible(textNode.parentElement) ? 'visible' : 'hidden-irrelevant');
+  };
   const walk = (node: any, inherited: 'visible' | 'expandable') => {
     for (const child of node.childNodes) {
       if (child.nodeType === 3) {
-        const t = String(child.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (!t) continue;
-        if (inherited === 'expandable') push(t, 'expandable');
-        else push(t, child.parentElement && isVisible(child.parentElement) ? 'visible' : 'hidden-irrelevant');
+        walkText(child, inherited);
       } else if (child.nodeType === 1) {
         if (SKIP.has(child.tagName) || isBanner(child)) continue;
+
         const m = /^H([1-6])$/.exec(child.tagName);
-        if (m && isVisible(child)) {
-          const level = Number(m[1]);
-          while (headings.length > 0 && (headings[headings.length - 1] as { level: number }).level >= level) {
-            headings.pop();
-          }
-          const full = String(child.textContent || '')
-            .replace(/\s+/g, ' ')
-            .trim();
-          headings.push({ level, text: full.slice(0, 120) });
-          cur = null;
-          // One rule for chrome and content: the place of a heading is judged by the function that judges collapsed
-          // elements. Only headings of the content name the type of the page.
-          if (full !== '') {
-            const chromeHeading = outsideText(child);
-            places[chromeHeading ? 'chrome' : 'content'].push(full.slice(0, 120));
-            if (level === 1 && !chromeHeading && out.h1 === '') out.h1 = full.slice(0, 200);
-          }
-        }
+        if (m && isVisible(child)) startSection(child, Number(m[1]));
+
         const origin = inherited === 'expandable' || expandable.has(child) ? 'expandable' : 'visible';
         if (child.shadowRoot) walk(child.shadowRoot, origin);
         walk(child, origin);

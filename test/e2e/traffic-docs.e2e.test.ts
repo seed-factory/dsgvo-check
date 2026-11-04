@@ -72,7 +72,9 @@ describe('README.md section "Was der Scanner sendet" describes the probes the sc
   });
 
   it('promises no probe that the code does not send', () => {
+    const mentioningSecurityTxt = sources('src').filter((rel) => read(rel).includes('security.txt'));
+
     expect(section).not.toMatch(/security\.txt|\.well-known/);
-    expect(sources('src').some((rel) => read(rel).includes('security.txt'))).toBe(false);
+    expect(mentioningSecurityTxt, 'sources that mention security.txt').toEqual([]);
   });
 });

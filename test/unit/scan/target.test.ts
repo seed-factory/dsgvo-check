@@ -12,6 +12,7 @@ describe('scan — target redaction', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');
     const seen: string[] = [];
+
     const result = await scan(
       opts({
         url: 'https://www.example.de/?token=secret#frag',
@@ -25,6 +26,8 @@ describe('scan — target redaction', () => {
         },
       }),
     );
+
+    // the collectors get the raw URL, everything stored gets the redacted one
     expect(seen).toEqual(['https://www.example.de/?token=secret']);
     expect(result.report.scan.target).toBe('https://www.example.de/?token=[redacted]');
     expect(JSON.stringify(result.report)).not.toContain('secret');
@@ -38,6 +41,7 @@ describe('scan — target redaction', () => {
     ['unsupported scheme', 'ftp://demo-user:demo-password@example.de/?sid=demo-session'],
   ])('failed report for a rejected target (%s) carries no credentials or query values', async (_n, url) => {
     const result = await scan(opts({ url }));
+
     expect(result.exitCode).toBe(2);
     const json = JSON.stringify(result.report);
     for (const secret of ['demo-user', 'demo-password', 'demo-session']) expect(json).not.toContain(secret);
@@ -48,6 +52,7 @@ describe('scan — target redaction', () => {
     const result = await scan(
       opts({ url: 'https://www.example.de/?token=secret', network: { lookup: nxdomainLookup } }),
     );
+
     expect(result.report.scan.target).toBe('https://www.example.de/?token=[redacted]');
   });
 });
@@ -59,9 +64,11 @@ describe('scan — preflight', () => {
       asked.push(host);
       return nxdomainLookup(host);
     };
+
     const result = await scan(
       opts({ url: 'https://[2606:4700:4700::1111]/', checks: ['TEST-02'], network: { lookup } }),
     );
+
     expect(asked).toEqual([]);
     expect(result.report.scan.status).not.toBe('failed');
     expect(result.report.scan.target).toBe('https://[2606:4700:4700::1111]/');
@@ -73,12 +80,14 @@ describe('scan — preflight', () => {
     ['https://[64:ff9b::a9fe:a9fe]/', 'target-not-public'],
   ])('IP literal %s → invalid-input/%s', async (url, code) => {
     const result = await scan(opts({ url, network: { lookup: nxdomainLookup } }));
+
     expect(result.report.scan.status).toBe('failed');
     if (result.report.scan.status === 'failed') expect(result.report.scan.failure.code).toBe(code);
   });
 
   it('a host with public and non-public addresses is rejected up front (same policy as the browser guard)', async () => {
     let collectorsRan = false;
+
     const result = await scan(
       opts({
         network: {
@@ -95,6 +104,7 @@ describe('scan — preflight', () => {
         }),
       }),
     );
+
     expect(collectorsRan).toBe(false);
     expect(result.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toEqual(['invalid-input']);

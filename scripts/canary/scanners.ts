@@ -1,8 +1,8 @@
 /** Site scanners of the canary runner: in-process via the programmatic API, or one CLI child process per site. */
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { removeProfilesOfPid } from '../../src/collectors/browser/launch/launch.ts';
+import { removeProfilesOfPid } from '../../src/collectors/browser/launch/profile.ts';
 import type { AssumeRegion, Lang, SandboxMode } from '../../src/core/report/schema.ts';
 import type { Logger } from '../../src/core/runtime/logger.ts';
 import { detectTrustStore, useSystemCaOption } from '../../src/core/snapshot/index.ts';
@@ -74,6 +74,7 @@ export function apiScanner(o: ScannerOptions & { scanOverrides?: Partial<ScanOpt
         job.mode === 'scan'
           ? { url: job.site.url, saveSnapshot: job.snapshotPath }
           : { fromSnapshot: job.snapshotPath };
+
       const result = await scan({
         ...target,
         failOn: 'none',
@@ -87,6 +88,7 @@ export function apiScanner(o: ScannerOptions & { scanOverrides?: Partial<ScanOpt
         log: bufferLogger(lines),
         ...o.scanOverrides,
       });
+
       const written = await writeReports(result, { outDir: job.dir, formats: ['json'], lang });
       return { exitCode: written.exitCode, scanStatus: result.report.scan.status };
     } finally {
@@ -95,40 +97,50 @@ export function apiScanner(o: ScannerOptions & { scanOverrides?: Partial<ScanOpt
   };
 }
 
+/** CLI arguments for one site: a live scan of its URL, or a replay of the saved snapshot. */
+function cliArgs(job: SiteJob, o: ScannerOptions, lang: Lang): string[] {
+  const common = ['--fail-on', 'none', '--format', 'json', '--out', job.dir, '--lang', lang];
+  if (job.mode !== 'scan') return ['--from-snapshot', job.snapshotPath, ...common];
+
+  return [
+    job.site.url,
+    ...common,
+    '--timeout',
+    `${job.timeoutMs}ms`,
+    '--sandbox',
+    o.sandbox,
+    '--save-snapshot',
+    job.snapshotPath,
+    ...(o.screenshots ? [] : ['--no-screenshots']),
+    ...(o.assumeRegion ? ['--assume-region', o.assumeRegion] : []),
+  ];
+}
+
+/** SIGTERM first so the CLI can clean up; SIGKILL when the child is still running after the grace period. */
+function terminateChild(child: ChildProcess, graceMs: number): void {
+  child.kill('SIGTERM');
+  const hard = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }, graceMs);
+  hard.unref();
+  child.once('close', () => clearTimeout(hard));
+}
+
 /** Scanner that runs the CLI in a child process per site (isolation; killed by the watchdog). */
 export function cliScanner(o: ScannerOptions & { cliPath: string }): SiteScanner {
   const lang = o.lang ?? 'de';
   return (job, signal) =>
     new Promise((resolve, reject) => {
-      const common = ['--fail-on', 'none', '--format', 'json', '--out', job.dir, '--lang', lang];
-      const args =
-        job.mode === 'scan'
-          ? [
-              job.site.url,
-              ...common,
-              '--timeout',
-              `${job.timeoutMs}ms`,
-              '--sandbox',
-              o.sandbox,
-              '--save-snapshot',
-              job.snapshotPath,
-              ...(o.screenshots ? [] : ['--no-screenshots']),
-              ...(o.assumeRegion ? ['--assume-region', o.assumeRegion] : []),
-            ]
-          : ['--from-snapshot', job.snapshotPath, ...common];
       const out = createWriteStream(job.logPath);
-      const child = spawn(process.execPath, [o.cliPath, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(process.execPath, [o.cliPath, ...cliArgs(job, o, lang)], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
       child.stdout.pipe(out, { end: false });
       child.stderr.pipe(out, { end: false });
-      const kill = () => {
-        child.kill('SIGTERM');
-        const hard = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-        }, o.killGraceMs ?? KILL_GRACE_MS);
-        hard.unref();
-        child.once('close', () => clearTimeout(hard));
-      };
+
+      const kill = () => terminateChild(child, o.killGraceMs ?? KILL_GRACE_MS);
       signal.addEventListener('abort', kill, { once: true });
+
       child.on('error', (err) => {
         signal.removeEventListener('abort', kill);
         out.end();

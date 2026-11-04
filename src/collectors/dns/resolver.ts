@@ -43,10 +43,36 @@ export function errorToRcode(code: string | undefined): DnsRcode {
   return (code !== undefined && RCODE_BY_ERROR_CODE.get(code)) || 'ERROR';
 }
 
+/** Transient failures that get another attempt; NXDOMAIN, NODATA and REFUSED are final answers. */
 const RETRYABLE: ReadonlySet<DnsRcode> = new Set(['SERVFAIL', 'TIMEOUT']);
 
 function stripDot(name: string): string {
   return name.toLowerCase().replace(/\.+$/, '');
+}
+
+/** Answers for the record types the collector asks for; any other `DnsRecordType` fails with ENOTIMP. */
+async function resolveAnswers(r: Resolver, qname: string, type: DnsRecordType): Promise<DnsAnswer[]> {
+  switch (type) {
+    case 'TXT':
+      return (await r.resolveTxt(qname)).map((chunks) => ({ type, value: chunks.join(''), chunks }));
+
+    case 'MX':
+      return (await r.resolveMx(qname)).map((mx) => ({
+        type,
+        // RFC 7505 Null MX: c-ares returns the root name as ''
+        value: mx.exchange === '' || mx.exchange === '.' ? '.' : stripDot(mx.exchange),
+        priority: mx.priority,
+      }));
+
+    case 'A':
+      return (await r.resolve4(qname, { ttl: true })).map((a) => ({ type, value: a.address, ttl: a.ttl }));
+
+    case 'AAAA':
+      return (await r.resolve6(qname, { ttl: true })).map((a) => ({ type, value: a.address, ttl: a.ttl }));
+
+    default:
+      throw Object.assign(new Error(`unsupported query type ${type}`), { code: 'ENOTIMP' });
+  }
 }
 
 async function resolveOnce(
@@ -55,40 +81,12 @@ async function resolveOnce(
   type: DnsRecordType,
 ): Promise<{ rcode: DnsRcode; answers: DnsAnswer[]; error?: CollectorError }> {
   try {
-    let answers: DnsAnswer[];
-    switch (type) {
-      case 'TXT':
-        answers = (await r.resolveTxt(qname)).map((chunks) => ({ type, value: chunks.join(''), chunks }));
-        break;
-      case 'MX':
-        answers = (await r.resolveMx(qname)).map((mx) => ({
-          type,
-          // RFC 7505 Null MX: c-ares returns the root name as ''
-          value: mx.exchange === '' || mx.exchange === '.' ? '.' : stripDot(mx.exchange),
-          priority: mx.priority,
-        }));
-        break;
-      case 'A':
-        answers = (await r.resolve4(qname, { ttl: true })).map((a) => ({
-          type,
-          value: a.address,
-          ttl: a.ttl,
-        }));
-        break;
-      case 'AAAA':
-        answers = (await r.resolve6(qname, { ttl: true })).map((a) => ({
-          type,
-          value: a.address,
-          ttl: a.ttl,
-        }));
-        break;
-      default:
-        throw Object.assign(new Error(`unsupported query type ${type}`), { code: 'ENOTIMP' });
-    }
+    const answers = await resolveAnswers(r, qname, type);
     return { rcode: answers.length > 0 ? 'NOERROR' : 'NODATA', answers };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     const rcode = errorToRcode(code);
+
     if (rcode === 'NXDOMAIN' || rcode === 'NODATA') return { rcode, answers: [] };
     return {
       rcode,
@@ -104,6 +102,7 @@ export function createNodeDnsClient(opts: NodeDnsClientOptions): DnsClient {
   const r = new Resolver({ timeout, tries: 1 });
   const custom = opts.servers.length > 0;
   if (custom) r.setServers([...opts.servers]);
+
   return {
     resolver: custom
       ? { kind: 'custom', servers: [...opts.servers] }
@@ -112,6 +111,7 @@ export function createNodeDnsClient(opts: NodeDnsClientOptions): DnsClient {
     async query(qname, type) {
       const t0 = performance.now();
       let attempts = 0;
+
       for (;;) {
         attempts++;
         const res = await resolveOnce(r, qname, type);

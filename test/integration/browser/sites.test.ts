@@ -6,18 +6,23 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { type CollectRun, collect, persisted } from './helpers.ts';
 
+/** One phase A collection of the fixture site `browser/<name>`, shared by the tests in `fn`. */
 function site(name: string, fn: (get: () => { run: CollectRun; server: FixtureServer }) => void) {
   describe(name, () => {
     let server: FixtureServer;
     let run: CollectRun;
+
     beforeAll(async () => {
       server = await startFixtureServer({ sites: [`browser/${name}`] });
       run = await collect(server);
     });
+
     afterAll(async () => {
       await server?.close();
     });
+
     fn(() => ({ run, server }));
+
     it('touches only declared hosts', () => {
       expect(server.unexpected).toEqual([]);
     });
@@ -27,9 +32,10 @@ function site(name: string, fn: (get: () => { run: CollectRun; server: FixtureSe
 site('clean', (get) => {
   it('no third-party request, no cookies, both legal documents found', () => {
     const { run } = get();
+
     expect(run.result.status).toBe('ok');
     expect(run.requests.length).toBeGreaterThan(0);
-    expect(run.requests.every((r) => r.host === 'www.example.test')).toBe(true);
+    expect(run.requests.map((r) => r.host).filter((host) => host !== 'www.example.test')).toEqual([]);
     const a = run.result.sections.browser?.phases[0];
     expect(a?.cookies).toEqual([]);
     expect(a?.storage).toEqual([]);
@@ -74,6 +80,7 @@ site('clean', (get) => {
 site('fonts', (get) => {
   it('records the Google Fonts CSS and font requests and the preconnect hints', () => {
     const { run } = get();
+
     const css = run.requests.find((r) => r.host === 'fonts.googleapis.com');
     expect(css).toMatchObject({
       resourceType: 'stylesheet',
@@ -86,6 +93,7 @@ site('fonts', (get) => {
       resourceType: 'font',
       url: 'https://fonts.gstatic.com/s/roboto/v30/fixture-roboto.woff2',
     });
+
     const rels = run.result.sections.browser?.phases[0]?.pages[0]?.dom?.linkRels ?? [];
     expect(rels.map((r) => [r.rel, r.href, r.source])).toEqual([
       ['preconnect', 'https://fonts.gstatic.com/', 'dom'],
@@ -96,14 +104,21 @@ site('fonts', (get) => {
 });
 
 site('maps', (get) => {
-  it('Kontakt is selected and its Google Maps iframe is seen in DOM and network', () => {
-    const { run } = get();
-    const plan = run.result.sections.plan;
+  const kontaktPage = (run: CollectRun) =>
+    run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'contact');
+
+  it('Kontakt is selected into the plan by its navigation link', () => {
+    const plan = get().run.result.sections.plan;
+
     expect(plan?.pages.find((p) => p.role === 'contact')).toMatchObject({
       url: 'https://www.example.test/kontakt/',
       reasons: ['nav-link:kontakt'],
     });
-    const kontakt = run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'contact');
+  });
+
+  it('its Google Maps iframe is seen in the DOM', () => {
+    const kontakt = kontaktPage(get().run);
+
     expect(kontakt?.dom?.iframes[0]).toMatchObject({
       src: 'https://www.google.com/maps/embed?pb=[redacted]',
       title: 'Karte',
@@ -111,7 +126,11 @@ site('maps', (get) => {
       depth: 1,
       loading: 'eager',
     });
-    const embed = run.requests.find((r) => r.host === 'www.google.com');
+  });
+
+  it('its Google Maps iframe is seen in the network', () => {
+    const embed = get().run.requests.find((r) => r.host === 'www.google.com');
+
     expect(embed).toMatchObject({
       resourceType: 'document',
       isNavigation: true,
@@ -120,7 +139,11 @@ site('maps', (get) => {
       pageUrl: 'https://www.example.test/kontakt/',
       url: 'https://www.google.com/maps/embed?pb=[redacted]',
     });
-    // The page with the embed becomes a B/C control page (DOM/network signals).
+  });
+
+  it('the page with the embed becomes a B/C control page (DOM/network signals)', () => {
+    const plan = get().run.result.sections.plan;
+
     expect(plan?.controlPages[0]).toMatchObject({
       url: 'https://www.example.test/kontakt/',
       reasons: ['iframe-signal', 'network-signal', 'role:contact'],
@@ -131,6 +154,7 @@ site('maps', (get) => {
 site('no-legal', (get) => {
   it('hops via "Über uns", then falls back to /impressum and /datenschutz, finds nothing', () => {
     const { run } = get();
+
     const plan = run.result.sections.plan;
     expect(plan?.pages.map((p) => [p.url, p.role, p.source, p.reasons])).toEqual([
       ['https://www.example.test/', 'start', 'start', ['start']],
@@ -138,6 +162,7 @@ site('no-legal', (get) => {
       ['https://www.example.test/impressum', 'fallback', 'fallback', ['fallback:/impressum']],
       ['https://www.example.test/datenschutz', 'fallback', 'fallback', ['fallback:/datenschutz']],
     ]);
+
     const docs = run.result.sections.documents;
     expect(docs?.documents).toEqual([]);
     expect(docs?.attempts.map((a) => [a.kind, a.via, a.outcome, a.status])).toEqual([
@@ -146,23 +171,33 @@ site('no-legal', (get) => {
       ['impressum', 'fallback', 'not-found', 404],
       ['privacy', 'fallback', 'not-found', 404],
     ]);
+
     const fallback = run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'fallback');
     expect(fallback).toMatchObject({ evaluable: false, notEvaluableReason: 'http-404' });
   });
 });
 
 site('dse', (get) => {
-  it('extracts the privacy policy by sections with provenance; PDF Impressum is not evaluated', () => {
-    const docs = get().run.result.sections.documents?.documents ?? [];
-    const pdf = docs.find((d) => d.kind === 'impressum');
-    expect(pdf).toMatchObject({
+  const documentOf = (kind: 'impressum' | 'privacy') =>
+    (get().run.result.sections.documents?.documents ?? []).find((d) => d.kind === kind);
+
+  /** The texts of the policy parts that were read from `origin`. */
+  const partsFrom = (origin: string) =>
+    (documentOf('privacy')?.parts ?? []).filter((p) => p.origin === origin).map((p) => p.text);
+
+  it('a PDF Impressum is found but not evaluated', () => {
+    expect(documentOf('impressum')).toMatchObject({
       format: 'pdf',
       complete: false,
       errors: ['pdf-not-evaluated'],
       url: 'https://www.example.test/impressum.pdf',
       foundVia: 'link',
     });
-    const dse = docs.find((d) => d.kind === 'privacy');
+  });
+
+  it('the privacy policy is a complete HTML document with a hash and the link it was found by', () => {
+    const dse = documentOf('privacy');
+
     expect(dse).toMatchObject({
       url: 'https://www.example.test/datenschutz/',
       status: 200,
@@ -172,21 +207,29 @@ site('dse', (get) => {
       errors: [],
     });
     expect(dse?.sha256).toMatch(/^[0-9a-f]{64}$/);
-    const byOrigin = (o: string) => (dse?.parts ?? []).filter((p) => p.origin === o).map((p) => p.text);
-    expect(byOrigin('visible').join(' ')).toContain('Google Analytics 4 der Google Ireland Limited');
-    expect(byOrigin('expandable')).toEqual(
+    expect(dse?.linkedFrom).toEqual([{ pageUrl: 'https://www.example.test/', text: 'Datenschutz' }]);
+  });
+
+  it('the policy parts keep their origin: visible, expandable, hidden, frame', () => {
+    expect(partsFrom('visible').join(' ')).toContain('Google Analytics 4 der Google Ireland Limited');
+    expect(partsFrom('expandable')).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Matomo setzt keine Cookies'),
         expect.stringContaining('Google Fonts werden lokal'),
       ]),
     );
-    expect(byOrigin('hidden-irrelevant').join(' ')).toContain('Verstecktes Navigationsfragment');
-    expect(byOrigin('frame').join(' ')).toContain('Beispiel Hosting GmbH');
-    expect(byOrigin('visible').join(' ')).not.toContain('Matomo');
+    expect(partsFrom('hidden-irrelevant').join(' ')).toContain('Verstecktes Navigationsfragment');
+    expect(partsFrom('frame').join(' ')).toContain('Beispiel Hosting GmbH');
+    // What sits in an expandable section is not attributed to the visible text.
+    expect(partsFrom('visible').join(' ')).not.toContain('Matomo');
+  });
+
+  it('the policy parts carry their section path; the manifest counts expandables and frames', () => {
+    const dse = documentOf('privacy');
+
     const analyse = dse?.parts.find((p) => p.text.includes('Google Analytics 4'));
     expect(analyse?.section).toBe('Datenschutzerklärung > 2. Analyse');
     expect(dse?.manifest).toMatchObject({ expandablesFound: 2, expandablesOpened: 2, framesIncluded: 1 });
-    expect(dse?.linkedFrom).toEqual([{ pageUrl: 'https://www.example.test/', text: 'Datenschutz' }]);
   });
 });
 
@@ -238,7 +281,9 @@ site('cookies', (get) => {
 
   it('no cookie, storage or query value reaches the collector output', () => {
     const { run } = get();
+
     const text = persisted(run);
+
     for (let i = 1; i <= 8; i++) expect(text).not.toMatch(new RegExp(`SECRET_[A-Z0-9]+_VALUE_${i}`));
     const pixel = run.requests.find((r) => r.host === 'tracker.example.net');
     expect(pixel).toMatchObject({

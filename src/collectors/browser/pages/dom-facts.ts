@@ -17,6 +17,10 @@ import { loadDomPatterns } from '../rules.ts';
 import { redactFreeText } from '../util.ts';
 import type { CandidateLink } from './pages.ts';
 
+/** Read caps of the in-page walk; a page over them is marked `linksTruncated` and the rest is not read. */
+const MAX_LINKS = 1500;
+const MAX_SCRIPTS = 300;
+
 export interface DomResult {
   dom: DomFacts;
   candidates: CandidateLink[];
@@ -51,12 +55,14 @@ export function parseLinkHeader(value: string, base: string): LinkRelFact[] {
   for (const part of value.split(/,(?=\s*<)/)) {
     const m = /<([^>]*)>\s*(.*)$/.exec(part.trim());
     if (!m) continue;
+
     const params = m[2] as string;
     const rel = /rel\s*=\s*"?([^";]+)"?/i.exec(params)?.[1]?.toLowerCase().trim();
     if (!rel || !/(preconnect|dns-prefetch|preload|modulepreload|prefetch|prerender|stylesheet)/.test(rel))
       continue;
     const href = parseUrl(m[1] as string, base)?.toString();
     if (href === undefined) continue;
+
     const as = /\bas\s*=\s*"?([^";]+)"?/i.exec(params)?.[1];
     out.push({ rel, href: sanitizeRequestUrl(href), ...(as ? { as } : {}), source: 'header' });
   }
@@ -85,6 +91,7 @@ async function nestedFrames(page: Page): Promise<IframeFact[]> {
   for (const f of page.frames()) {
     const depth = depthOf(f);
     if (depth < 2) continue;
+
     const url = f.url();
     let visible = false;
     try {
@@ -98,17 +105,17 @@ async function nestedFrames(page: Page): Promise<IframeFact[]> {
   return out;
 }
 
-export async function collectDom(
-  page: Page,
+function actionSchemeOf(action: string): FormFact['actionScheme'] {
+  if (!action) return 'none';
+  if (action.startsWith('https:')) return 'https';
+  if (action.startsWith('http:')) return 'http';
+  return 'other';
+}
+
+function mapLinks(
+  raw: RawDomFacts,
   target: { etld1: string | null; host: string },
-  responseHeaders: readonly HeaderRecord[],
-): Promise<DomResult> {
-  const raw = await page.evaluate(domFactsInPage, {
-    maxLinks: 1500,
-    maxScripts: 300,
-    patterns: loadDomPatterns().page,
-  });
-  const base = page.url();
+): { links: LinkFact[]; candidates: CandidateLink[] } {
   const candidates: CandidateLink[] = [];
   const links: LinkFact[] = raw.links.map((l, order) => {
     const kind = hrefKind(l.attr, l.href);
@@ -125,6 +132,7 @@ export async function collectDom(
       visible: l.visible,
       order,
     });
+
     const sameSite = navigable ? sameSiteAs(l.href, target.etld1, target.host) : undefined;
     return {
       href: navigable || kind === 'other' ? sanitizeRequestUrl(l.href) : null,
@@ -138,14 +146,12 @@ export async function collectDom(
       ...(l.rel ? { rel: l.rel } : {}),
     };
   });
-  const forms: FormFact[] = raw.forms.map((f) => {
-    const scheme: FormFact['actionScheme'] = !f.action
-      ? 'none'
-      : f.action.startsWith('https:')
-        ? 'https'
-        : f.action.startsWith('http:')
-          ? 'http'
-          : 'other';
+  return { links, candidates };
+}
+
+function mapForms(raw: RawDomFacts): FormFact[] {
+  return raw.forms.map((f) => {
+    const scheme = actionSchemeOf(f.action);
     return {
       action: f.action && (scheme === 'http' || scheme === 'https') ? sanitizeRequestUrl(f.action) : null,
       actionScheme: scheme,
@@ -156,6 +162,10 @@ export async function collectDom(
       hasEmailField: f.hasEmailField,
     };
   });
+}
+
+/** Iframes of the main document (depth 1) and the nested frames Playwright knows (depth 2 and deeper). */
+async function mapIframes(page: Page, raw: RawDomFacts): Promise<IframeFact[]> {
   const iframes: IframeFact[] = raw.iframes.map((f) => ({
     src: /^https?:/.test(f.src) ? sanitizeRequestUrl(f.src) : null,
     srcdoc: f.srcdoc,
@@ -166,6 +176,15 @@ export async function collectDom(
     depth: 1,
   }));
   iframes.push(...(await nestedFrames(page)));
+  return iframes;
+}
+
+/** `<link rel>` hints of the document and of the `Link` response headers. */
+function mapLinkRels(
+  raw: RawDomFacts,
+  responseHeaders: readonly HeaderRecord[],
+  base: string,
+): LinkRelFact[] {
   const linkRels: LinkRelFact[] = raw.linkRels
     .filter((r) => /^https?:/.test(r.href))
     .map((r) => ({
@@ -175,7 +194,37 @@ export async function collectDom(
       source: 'dom',
     }));
   for (const h of responseHeaders) if (h.name === 'link') linkRels.push(...parseLinkHeader(h.value, base));
+  return linkRels;
+}
+
+function mapScripts(raw: RawDomFacts): DomFacts['scripts'] {
+  return raw.scripts.map((s) => ({
+    src: s.src && /^https?:/.test(s.src) ? sanitizeRequestUrl(s.src) : null,
+    inline: s.inline,
+    ...(s.type ? { type: s.type } : {}),
+    ...(s.async ? { async: true } : {}),
+    ...(s.defer ? { defer: true } : {}),
+  }));
+}
+
+export async function collectDom(
+  page: Page,
+  target: { etld1: string | null; host: string },
+  responseHeaders: readonly HeaderRecord[],
+): Promise<DomResult> {
+  const raw = await page.evaluate(domFactsInPage, {
+    maxLinks: MAX_LINKS,
+    maxScripts: MAX_SCRIPTS,
+    patterns: loadDomPatterns().page,
+  });
+  const base = page.url();
+
+  const { links, candidates } = mapLinks(raw, target);
+  const forms = mapForms(raw);
+  const iframes = await mapIframes(page, raw);
+  const linkRels = mapLinkRels(raw, responseHeaders, base);
   const refresh = metaRefresh(raw.metaRefresh, base);
+
   const dom: DomFacts = {
     ...(raw.title ? { title: redactFreeText(raw.title) } : {}),
     ...(raw.lang ? { lang: raw.lang } : {}),
@@ -185,13 +234,7 @@ export async function collectDom(
     forms,
     iframes,
     linkRels,
-    scripts: raw.scripts.map((s) => ({
-      src: s.src && /^https?:/.test(s.src) ? sanitizeRequestUrl(s.src) : null,
-      inline: s.inline,
-      ...(s.type ? { type: s.type } : {}),
-      ...(s.async ? { async: true } : {}),
-      ...(s.defer ? { defer: true } : {}),
-    })),
+    scripts: mapScripts(raw),
     ...(refresh ? { metaRefresh: refresh } : {}),
     visibleTextLength: raw.visibleTextLength,
     ...(raw.placeholders.length > 0

@@ -12,11 +12,13 @@ import { fixtureFrom, loadFixtures, runCheck, type SnapshotFixture, variantsOf }
 
 /** Fixtures of a check: browser and dns ones are built from TS tables, the http ones are JSON files. */
 export function checkFixtures(check: AnyCheck): SnapshotFixture[] {
-  if (check.module === 'dns')
+  if (check.module === 'dns') {
     return (DNS_FIXTURES[check.id] ?? []).map((f) =>
       fixtureFrom(f.file, dnsFixture(f), `test/unit/checks/dns/fixtures.ts (${check.id}/${f.file})`),
     );
+  }
   if (check.module !== 'browser') return loadFixtures(check.module, check.id);
+
   return scenariosOf(check.id).map((s) =>
     fixtureFrom(
       s.file,
@@ -41,97 +43,140 @@ function params(t: Texts, key: string): string[] | null {
   return [...new Set([...templateParams(m.title), ...templateParams(m.body)])].sort();
 }
 
-export function completenessProblems(checks: readonly AnyCheck[], d: CompletenessData): string[] {
+const LANGS = ['de', 'en'] as const;
+
+/** Ruleset entries and message keys that name a check which is not registered. */
+function unregisteredChecks(known: ReadonlySet<string>, d: CompletenessData): string[] {
   const problems: string[] = [];
-  const known = new Set(checks.map((c) => c.id));
 
   for (const id of Object.keys(d.ruleset.checks))
     if (!known.has(id)) problems.push(`ruleset: unregistered check ${id}`);
-  for (const lang of ['de', 'en'] as const) {
+
+  for (const lang of LANGS) {
     for (const key of Object.keys(d.texts[lang].messages)) {
       if (key.startsWith('diagnostic.')) continue;
       if (!known.has(key.split('.')[0] as string))
         problems.push(`texts/${lang}: unregistered check in ${key}`);
     }
   }
+  return problems;
+}
+
+/** The check and its ruleset entry declare the same variants. */
+function rulesetProblems(check: AnyCheck, d: CompletenessData): string[] {
+  const id = check.id;
+  const entry = d.ruleset.checks[id];
+  const declared = check.variants.map((v) => v.variant);
+  if (!entry) return [`${id}: no ruleset entry (test/data/ruleset/de-2026/${check.module}.yaml)`];
+
+  const problems: string[] = [];
+  for (const v of declared) if (!entry.variants[v]) problems.push(`${id}.${v}: no ruleset severity`);
+  for (const [v, rule] of Object.entries(entry.variants)) {
+    if (!declared.includes(v)) problems.push(`${id}.${v}: ruleset variant not declared by the check`);
+    // Ruleset rule: a T3 catalog code stays at most `warning`.
+    if (rule.crm?.startsWith('T3_') && rule.severity === 'critical')
+      problems.push(`${id}.${v}: T3 code ${rule.crm} with severity critical`);
+  }
+  return problems;
+}
+
+/** Legal note and message texts in both languages: present, well-formed templates, the same parameters in de and en. */
+function textProblems(check: AnyCheck, d: CompletenessData): string[] {
+  const problems: string[] = [];
+  const id = check.id;
+
+  for (const lang of LANGS) {
+    if (!d.texts[lang].legalNotes[id])
+      problems.push(`${id}: no legalNote in test/data/texts/${lang}/${check.module}.yaml`);
+  }
+
+  for (const { variant } of check.variants) {
+    const key = `${id}.${variant}`;
+    for (const lang of LANGS) {
+      const m = d.texts[lang].messages[key];
+      if (!m) {
+        problems.push(`${key}: no ${lang} text (test/data/texts/${lang}/${check.module}.yaml)`);
+        continue;
+      }
+      for (const part of [m.title, m.body]) {
+        try {
+          validateTemplate(part);
+        } catch (err) {
+          if (err instanceof MessageSyntaxError)
+            problems.push(`${key}: ${lang} template error: ${err.message}`);
+        }
+      }
+    }
+
+    const pde = params(d.texts.de, key);
+    const pen = params(d.texts.en, key);
+    if (pde && pen && pde.join(',') !== pen.join(',')) {
+      problems.push(`${key}: de/en use different params (${pde.join(',')} vs ${pen.join(',')})`);
+    }
+  }
+  return problems;
+}
+
+/** Every check has a violation, a clean and an inconclusive (or error) fixture. */
+function fixtureCoverageProblems(check: AnyCheck, files: readonly string[]): string[] {
+  const id = check.id;
+  const dir =
+    {
+      browser: `test/unit/checks/browser/scenarios/${id.toLowerCase()}.ts ${id}/`,
+      dns: `test/unit/checks/dns/fixtures.ts ${id}/`,
+    }[check.module as string] ?? `test/fixtures/snapshots/${check.module}/${id}/`;
+  const problems: string[] = [];
+
+  if (!files.some((f) => f.startsWith('violation'))) problems.push(`${id}: no ${dir}violation*.json`);
+  if (!files.some((f) => f.startsWith('clean'))) problems.push(`${id}: no ${dir}clean*.json`);
+  if (!files.some((f) => f.startsWith('inconclusive') || f.startsWith('error'))) {
+    problems.push(`${id}: no ${dir}inconclusive*.json or error*.json`);
+  }
+  return problems;
+}
+
+/** Runs each fixture through the check and compares status, variants and reason with its `$expect` block. */
+function fixtureRunProblems(check: AnyCheck, fixtures: readonly SnapshotFixture[]): string[] {
+  const problems: string[] = [];
+  const id = check.id;
+
+  for (const fx of fixtures) {
+    if (!fx.expect) {
+      problems.push(`${id}/${fx.name}: missing $expect`);
+      continue;
+    }
+
+    const result = runCheck(check, fx.snapshot);
+    const got = variantsOf(result);
+    const want = [...(fx.expect.variants ?? [])].sort();
+    if (result.status !== fx.expect.status) {
+      problems.push(
+        `${id}/${fx.name}: status ${result.status} (${result.reason ?? ''}) ≠ expected ${fx.expect.status}`,
+      );
+    }
+    if (got.join(',') !== want.join(','))
+      problems.push(`${id}/${fx.name}: variants [${got}] ≠ expected [${want}]`);
+    if (fx.expect.reason && result.reason !== fx.expect.reason) {
+      problems.push(`${id}/${fx.name}: reason ${result.reason} ≠ expected ${fx.expect.reason}`);
+    }
+    if (fx.kind === 'violation' && got.length === 0)
+      problems.push(`${id}/${fx.name}: violation fixture emits nothing`);
+  }
+  return problems;
+}
+
+export function completenessProblems(checks: readonly AnyCheck[], d: CompletenessData): string[] {
+  const problems = unregisteredChecks(new Set(checks.map((c) => c.id)), d);
 
   for (const check of checks) {
-    const id = check.id;
-    const entry = d.ruleset.checks[id];
-    const declared = check.variants.map((v) => v.variant);
-    if (!entry) problems.push(`${id}: no ruleset entry (test/data/ruleset/de-2026/${check.module}.yaml)`);
-    else {
-      for (const v of declared) if (!entry.variants[v]) problems.push(`${id}.${v}: no ruleset severity`);
-      for (const [v, rule] of Object.entries(entry.variants)) {
-        if (!declared.includes(v)) problems.push(`${id}.${v}: ruleset variant not declared by the check`);
-        // Ruleset rule: a T3 catalog code stays at most `warning`.
-        if (rule.crm?.startsWith('T3_') && rule.severity === 'critical')
-          problems.push(`${id}.${v}: T3 code ${rule.crm} with severity critical`);
-      }
-    }
-    for (const lang of ['de', 'en'] as const) {
-      if (!d.texts[lang].legalNotes[id])
-        problems.push(`${id}: no legalNote in test/data/texts/${lang}/${check.module}.yaml`);
-    }
-    for (const v of declared) {
-      const key = `${id}.${v}`;
-      for (const lang of ['de', 'en'] as const) {
-        const m = d.texts[lang].messages[key];
-        if (!m) {
-          problems.push(`${key}: no ${lang} text (test/data/texts/${lang}/${check.module}.yaml)`);
-          continue;
-        }
-        for (const part of [m.title, m.body]) {
-          try {
-            validateTemplate(part);
-          } catch (err) {
-            if (err instanceof MessageSyntaxError)
-              problems.push(`${key}: ${lang} template error: ${err.message}`);
-          }
-        }
-      }
-      const pde = params(d.texts.de, key);
-      const pen = params(d.texts.en, key);
-      if (pde && pen && pde.join(',') !== pen.join(',')) {
-        problems.push(`${key}: de/en use different params (${pde.join(',')} vs ${pen.join(',')})`);
-      }
-    }
+    problems.push(...rulesetProblems(check, d), ...textProblems(check, d));
 
     const fixtures = d.runFixtures === false ? [] : checkFixtures(check);
     const files = d.fixtures ? d.fixtures(check) : fixtures.map((f) => f.name);
-    const dir =
-      {
-        browser: `test/unit/checks/browser/scenarios/${id.toLowerCase()}.ts ${id}/`,
-        dns: `test/unit/checks/dns/fixtures.ts ${id}/`,
-      }[check.module as string] ?? `test/fixtures/snapshots/${check.module}/${id}/`;
-    if (!files.some((f) => f.startsWith('violation'))) problems.push(`${id}: no ${dir}violation*.json`);
-    if (!files.some((f) => f.startsWith('clean'))) problems.push(`${id}: no ${dir}clean*.json`);
-    if (!files.some((f) => f.startsWith('inconclusive') || f.startsWith('error'))) {
-      problems.push(`${id}: no ${dir}inconclusive*.json or error*.json`);
-    }
+    problems.push(...fixtureCoverageProblems(check, files));
 
     if (d.runFixtures === false) continue;
-    for (const fx of fixtures) {
-      if (!fx.expect) {
-        problems.push(`${id}/${fx.name}: missing $expect`);
-        continue;
-      }
-      const result = runCheck(check, fx.snapshot);
-      const got = variantsOf(result);
-      const want = [...(fx.expect.variants ?? [])].sort();
-      if (result.status !== fx.expect.status) {
-        problems.push(
-          `${id}/${fx.name}: status ${result.status} (${result.reason ?? ''}) ≠ expected ${fx.expect.status}`,
-        );
-      }
-      if (got.join(',') !== want.join(','))
-        problems.push(`${id}/${fx.name}: variants [${got}] ≠ expected [${want}]`);
-      if (fx.expect.reason && result.reason !== fx.expect.reason) {
-        problems.push(`${id}/${fx.name}: reason ${result.reason} ≠ expected ${fx.expect.reason}`);
-      }
-      if (fx.kind === 'violation' && got.length === 0)
-        problems.push(`${id}/${fx.name}: violation fixture emits nothing`);
-    }
+    problems.push(...fixtureRunProblems(check, fixtures));
   }
   return problems;
 }

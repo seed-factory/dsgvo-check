@@ -8,7 +8,7 @@ import {
   type Phase,
   subjects,
 } from '../../core/api.ts';
-import type { BrowserSection } from '../../core/snapshot/browser.ts';
+import type { BrowserSection, RequestRecord } from '../../core/snapshot/browser.ts';
 import type {
   ClassifiedRequest,
   DerivedSection,
@@ -16,15 +16,10 @@ import type {
   ServiceCategory,
   TrackingStage,
 } from '../../derive/types.ts';
-import {
-  MAX_EVIDENCE,
-  requestEvidence,
-  requestIndex,
-  serviceFields,
-  serviceName,
-  sortedUniq,
-  throttleAware,
-} from './shared.ts';
+import { MAX_EVIDENCE, requestEvidence } from './evidence.ts';
+import { sortedUniq } from './lists.ts';
+import { serviceFields, serviceName } from './services.ts';
+import { requestIndex, throttleAware } from './snapshot.ts';
 
 const ID = 'TRACK-01';
 const INVENTORY: ReadonlySet<ServiceCategory> = new Set([
@@ -81,6 +76,68 @@ function stageAt(
   return stage;
 }
 
+/** Tracking services with the requests that reached the page. */
+function requestsByService(
+  derived: DerivedSection,
+  records: Map<string, RequestRecord>,
+): Map<string, ClassifiedRequest[]> {
+  const byService = new Map<string, ClassifiedRequest[]>();
+  for (const c of derived.requests) {
+    if (!c.serviceId || !INVENTORY.has(c.category)) continue;
+    // Reached the page (network response, SW or cache); a blocked or unanswered request is no inventory.
+    if (!records.has(c.requestId) || !c.loaded) continue;
+    byService.set(c.serviceId, [...(byService.get(c.serviceId) ?? []), c]);
+  }
+  return byService;
+}
+
+function inventoryObservation(
+  serviceId: string,
+  reqs: readonly ClassifiedRequest[],
+  browser: BrowserSection,
+  derived: DerivedSection,
+  records: Map<string, RequestRecord>,
+): Observation {
+  const byTiming = TIMINGS.map(
+    ([timing, param]) => [param, stageAt(browser, derived, serviceId, reqs, timing)] as const,
+  );
+  // `stage` is the highest stage over all timings; the text pairs every timing with its own stage.
+  const stage = byTiming.reduce<TrackingStage>(
+    (best, [, st]) => (st === 'none' || st === 'not-checked' ? best : higher(best, st)),
+    'loaded',
+  );
+  const timings = new Set(reqs.map((c) => c.timing));
+
+  const sorted = [...reqs].sort(
+    (a, b) => STAGES.indexOf(b.stage ?? 'loaded') - STAGES.indexOf(a.stage ?? 'loaded'),
+  );
+  const evidence: EvidenceInput[] = sorted.slice(0, MAX_EVIDENCE).flatMap((c) => {
+    const r = records.get(c.requestId);
+    return r ? [requestEvidence(r, c)] : [];
+  });
+
+  return {
+    checkId: ID,
+    variant: 'service-inventory',
+    confidence: reqs.every((c) => c.firstPartyProxy) ? 'medium' : 'high',
+    subject: subjects.service(serviceId),
+    category: reqs[0]?.category ?? 'unknown',
+    phases: sortedUniq(reqs.map((c) => c.phase)) as Phase[],
+    pages: sortedUniq(reqs.flatMap((c) => records.get(c.requestId)?.pageUrl ?? [])),
+    evidence,
+    params: {
+      service: serviceName(derived, serviceId),
+      stage,
+      ...Object.fromEntries(byTiming),
+      beforeInteraction: timings.has('before-interaction'),
+      afterReject: timings.has('after-reject'),
+      afterAccept: timings.has('after-accept'),
+      firstPartyProxy: reqs.some((c) => c.firstPartyProxy),
+    },
+    ...serviceFields(derived, serviceId),
+  };
+}
+
 export const track01 = defineCheck({
   id: ID,
   module: 'browser',
@@ -92,54 +149,12 @@ export const track01 = defineCheck({
       const reason = throttled ? 'throttled' : 'no-network-observation';
       return { status: 'inconclusive', reason, observations: [] };
     }
-    const records = requestIndex(browser);
-    const byService = new Map<string, ClassifiedRequest[]>();
-    for (const c of derived.requests) {
-      if (!c.serviceId || !INVENTORY.has(c.category)) continue;
-      // Reached the page (network response, SW or cache); a blocked or unanswered request is no inventory.
-      if (!records.has(c.requestId) || !c.loaded) continue;
-      byService.set(c.serviceId, [...(byService.get(c.serviceId) ?? []), c]);
-    }
 
-    const observations: Observation[] = [];
-    for (const [serviceId, reqs] of [...byService.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      const byTiming = TIMINGS.map(
-        ([timing, param]) => [param, stageAt(browser, derived, serviceId, reqs, timing)] as const,
-      );
-      // `stage` is the highest stage over all timings; the text pairs every timing with its own stage.
-      const stage = byTiming.reduce<TrackingStage>(
-        (best, [, st]) => (st === 'none' || st === 'not-checked' ? best : higher(best, st)),
-        'loaded',
-      );
-      const timings = new Set(reqs.map((c) => c.timing));
-      const sorted = [...reqs].sort(
-        (a, b) => STAGES.indexOf(b.stage ?? 'loaded') - STAGES.indexOf(a.stage ?? 'loaded'),
-      );
-      const evidence: EvidenceInput[] = sorted.slice(0, MAX_EVIDENCE).flatMap((c) => {
-        const r = records.get(c.requestId);
-        return r ? [requestEvidence(r, c)] : [];
-      });
-      observations.push({
-        checkId: ID,
-        variant: 'service-inventory',
-        confidence: reqs.every((c) => c.firstPartyProxy) ? 'medium' : 'high',
-        subject: subjects.service(serviceId),
-        category: reqs[0]?.category ?? 'unknown',
-        phases: sortedUniq(reqs.map((c) => c.phase)) as Phase[],
-        pages: sortedUniq(reqs.flatMap((c) => records.get(c.requestId)?.pageUrl ?? [])),
-        evidence,
-        params: {
-          service: serviceName(derived, serviceId),
-          stage,
-          ...Object.fromEntries(byTiming),
-          beforeInteraction: timings.has('before-interaction'),
-          afterReject: timings.has('after-reject'),
-          afterAccept: timings.has('after-accept'),
-          firstPartyProxy: reqs.some((c) => c.firstPartyProxy),
-        },
-        ...serviceFields(derived, serviceId),
-      });
-    }
+    const records = requestIndex(browser);
+    const observations = [...requestsByService(derived, records).entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([serviceId, reqs]) => inventoryObservation(serviceId, reqs, browser, derived, records));
+
     return throttleAware(browser, {
       status: 'completed',
       observations,

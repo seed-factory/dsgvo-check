@@ -43,17 +43,17 @@ const DERIVED_IDS = [
 /** Every id a problem can carry; each one has a text `config.problem.<id>` in every language (checked by a test). */
 export const REASON_IDS: readonly string[] = [...Object.values(REASON), ...DERIVED_IDS];
 
+/** Parameters of an own reason: the ones a custom check attached, or the bound of a too-small value. */
+function ownReasonParams(issue: z.core.$ZodIssue): MessageParams | undefined {
+  if (issue.code === 'custom') return issue.params as MessageParams | undefined;
+  if (issue.code === 'too_small') return { min: Number(issue.minimum) };
+  return undefined;
+}
+
 /** The reason of one zod issue: our own id when the check carries one, otherwise derived from the issue itself. */
 export function reasonOf(issue: z.core.$ZodIssue): ProblemReason {
-  if (OWN_IDS.has(issue.message)) {
-    const extra =
-      issue.code === 'custom'
-        ? (issue.params as MessageParams | undefined)
-        : issue.code === 'too_small'
-          ? { min: Number(issue.minimum) }
-          : undefined;
-    return { id: issue.message, params: { ...extra } };
-  }
+  if (OWN_IDS.has(issue.message)) return { id: issue.message, params: { ...ownReasonParams(issue) } };
+
   switch (issue.code) {
     case 'too_small': {
       const min = Number(issue.minimum);
@@ -61,14 +61,19 @@ export function reasonOf(issue: z.core.$ZodIssue): ProblemReason {
       if (issue.origin === 'string') return { id: 'length-min', params: { min } };
       return { id: issue.inclusive ? 'min' : 'above', params: { min } };
     }
+
     case 'too_big':
       return { id: 'max', params: { max: Number(issue.maximum) } };
+
     case 'invalid_value':
       return { id: 'option', params: { options: issue.values.join(', ') } };
+
     case 'invalid_type':
       return { id: 'type', params: { expected: issue.expected } };
+
     case 'unrecognized_keys':
       return { id: 'unknown-keys', params: { keys: issue.keys.join(', ') } };
+
     default:
       return { id: 'invalid', params: {} };
   }

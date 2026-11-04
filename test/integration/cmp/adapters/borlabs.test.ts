@@ -19,10 +19,12 @@ describeCmpScenarios(
       const { page } = await env.open('https://www.borlabs.test/v2.html');
       const adapter = await recognized(page, 'borlabs');
       await waitForBanner(page, adapter);
+
       const facts = await extract(page, adapter, 'first-screen');
+
       expect(facts.detection.version).toBe('2.2.67');
       expect(facts.detection.versionSupported).toBe(true);
-      expect(facts.blocking.overlay || facts.blocking.scrollLock).toBe(false);
+      expect([facts.blocking.overlay, facts.blocking.scrollLock]).toEqual([false, false]);
       const reject = facts.firstLayer.buttons.find((b) => b.kind === 'reject');
       expect(reject).toMatchObject({
         role: 'link',
@@ -31,6 +33,7 @@ describeCmpScenarios(
         kindConfidence: 'high',
       });
       expect(classifyFirstLayer(facts, loadLexicon()).variant).toBe('ok');
+
       expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(true);
       const verify = await adapter.verify(page, 'reject');
       expect(verify.verified).toBe(true);
@@ -39,7 +42,9 @@ describeCmpScenarios(
     it('config facts: dialogHideDialogOnPages is evaluated for the current page', async () => {
       const { page } = await env.open('https://www.borlabs.test/');
       const adapter = await recognized(page, 'borlabs');
+
       const facts = await extract(page, adapter, 'first-screen');
+
       expect(facts.config['borlabs.hideDialogOnThisPage']).toBe(false);
       expect(facts.config['borlabs.cookiesForBots']).toBe(true);
     });
@@ -48,6 +53,7 @@ describeCmpScenarios(
       const { page } = await env.open('https://www.borlabs.test/', `${CHROME_UA} examplebot/1.0`);
       const adapter = await recognized(page, 'borlabs');
       const facts = await extract(page, adapter, 'first-screen');
+
       expect(facts.botSignals.map((b) => b.signal)).toEqual(['borlabs:cookies-for-bots']);
       expect(facts.firstLayer.bannerVisible).toBe(false);
       expect(facts.state[0]?.origin).toBe('special-branch');

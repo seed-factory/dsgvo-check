@@ -10,6 +10,12 @@ import { defaultNetworkConfig } from '../core/url/net.ts';
 
 export const PDF_TIMEOUT_MS = reporterLimits().pdfTimeoutMs;
 
+/** Time the browser gets to shut down after printing. */
+const CLOSE_BUDGET_MS = 3000;
+
+/** The report is self-contained, so only inline `data:` and `about:` URLs may load. */
+const INLINE_URL = /^(?:data:|about:)/;
+
 export interface PdfOptions {
   chromium?: BrowserType;
   executablePath?: string;
@@ -28,10 +34,17 @@ function footerText(text: string): string {
     .replace(/T([0-9])_/g, 'T$1&#95;');
 }
 
+function footerTemplate(ctx: ReporterContext): string {
+  const footer = footerText(uiText(ctx.texts, 'report.pdf.footer'));
+  const pageLabel = footerText(uiText(ctx.texts, 'report.pdf.page'));
+  return `<div style="font:8px sans-serif;width:100%;padding:0 12mm"><span>${footer}</span> <span>${pageLabel} <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
+}
+
 export async function renderPdf(html: string, ctx: ReporterContext, opts: PdfOptions = {}): Promise<Buffer> {
   const timeoutMs = opts.timeoutMs ?? ctx.limits?.pdfTimeoutMs ?? PDF_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, deadline - Date.now());
+
   const phase = await launchPhase(
     {
       chromium: opts.chromium ?? chromium,
@@ -41,27 +54,27 @@ export async function renderPdf(html: string, ctx: ReporterContext, opts: PdfOpt
       offline: true,
       executablePath: opts.executablePath,
       timeoutMs,
-      closeBudgetMs: 3000,
+      closeBudgetMs: CLOSE_BUDGET_MS,
     },
     '',
   );
   let printTimer: ReturnType<typeof setTimeout> | undefined;
+
   try {
     await phase.context.route('**/*', (route) =>
-      /^(?:data:|about:)/.test(route.request().url()) ? route.continue() : route.abort(),
+      INLINE_URL.test(route.request().url()) ? route.continue() : route.abort(),
     );
     const page = phase.context.pages()[0] ?? (await phase.context.newPage());
     page.setDefaultTimeout(remaining());
     await page.setContent(html, { waitUntil: 'load', timeout: remaining() });
-    const footer = footerText(uiText(ctx.texts, 'report.pdf.footer'));
-    const pageLabel = footerText(uiText(ctx.texts, 'report.pdf.page'));
+
     return await Promise.race([
       page.pdf({
         format: 'A4',
         printBackground: true,
         displayHeaderFooter: true,
         headerTemplate: '<div></div>',
-        footerTemplate: `<div style="font:8px sans-serif;width:100%;padding:0 12mm"><span>${footer}</span> <span>${pageLabel} <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
+        footerTemplate: footerTemplate(ctx),
         margin: { top: '12mm', right: '12mm', bottom: '18mm', left: '12mm' },
       }),
       new Promise<never>((_, reject) => {

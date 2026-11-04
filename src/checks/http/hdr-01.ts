@@ -4,6 +4,7 @@
  */
 
 import {
+  type CheckOutcome,
   cspFrameAncestors,
   defineCheck,
   type EvidenceInput,
@@ -34,6 +35,7 @@ interface Problem {
   params?: Record<string, string>;
 }
 
+/** The values the Referrer Policy spec knows; any other token is ignored. */
 const REFERRER_POLICIES = new Set([
   'no-referrer',
   'no-referrer-when-downgrade',
@@ -44,6 +46,7 @@ const REFERRER_POLICIES = new Set([
   'strict-origin-when-cross-origin',
   'unsafe-url',
 ]);
+/** Policies that send the full URL to other origins, or to http after a downgrade. */
 const UNSAFE_REFERRER = new Set(['unsafe-url', 'no-referrer-when-downgrade']);
 
 /** RFC 6797 §6.1: `max-age` is required; the UA uses only the first header. */
@@ -94,92 +97,105 @@ function cspFraming(records: readonly HeaderRecord[]): 'restricts' | 'open' | 'u
   return unknown ? 'unknown' : 'open';
 }
 
-function problemsOf(doc: DocumentResponse): { problems: Problem[]; limitations: string[] } {
-  const out: Problem[] = [];
-  const limitations: string[] = [];
+const nonBlank = (v: string): boolean => v.trim() !== '';
+
+/** An HTTPS response without a working `Strict-Transport-Security` header. */
+function hstsProblem(doc: DocumentResponse): Problem | null {
+  if (!doc.finalUrl.startsWith('https:')) return null;
+
+  const missing = (value: string | null, problem: string): Problem => ({
+    variant: 'hsts-missing',
+    mechanism: 'strict-transport-security',
+    evidence: [{ name: 'strict-transport-security', value }],
+    params: { problem },
+  });
+  const hsts = headerValues(doc.headers, 'strict-transport-security')[0];
+  if (hsts === undefined) return missing(null, 'absent');
+
+  // A header without effect (no max-age, max-age=0) leaves the response without HSTS.
+  const parsed = parseHsts(hsts.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0] ?? '');
+  return parsed.ok ? null : missing(hsts, parsed.problem);
+}
+
+/** No `X-Frame-Options` and no CSP `frame-ancestors`; a CSP cut at the limit gives a limitation, not a finding. */
+function antiFramingProblem(doc: DocumentResponse): { problem: Problem | null; limitation: string | null } {
   const h = doc.headers;
-  const https = doc.finalUrl.startsWith('https:');
-
-  if (https) {
-    const hsts = headerValues(h, 'strict-transport-security')[0];
-    if (hsts === undefined) {
-      out.push({
-        variant: 'hsts-missing',
-        mechanism: 'strict-transport-security',
-        evidence: [{ name: 'strict-transport-security', value: null }],
-        params: { problem: 'absent' },
-      });
-    } else {
-      // A header without effect (no max-age, max-age=0) leaves the response without HSTS.
-      const parsed = parseHsts(hsts.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0] ?? '');
-      if (!parsed.ok) {
-        out.push({
-          variant: 'hsts-missing',
-          mechanism: 'strict-transport-security',
-          evidence: [{ name: 'strict-transport-security', value: hsts }],
-          params: { problem: parsed.problem },
-        });
-      }
-    }
-  }
-
   const xfo = headerValues(h, 'x-frame-options').join(',');
   const xfoValues = new Set(xfo.split(',').map((value) => value.trim().toLowerCase()));
   const xfoOk =
     [...xfoValues].some((value) => value === 'deny' || value === 'sameorigin') ||
     (xfoValues.size > 1 && xfoValues.has('allowall'));
-  const csp = headerValues(h, 'content-security-policy');
-  const framing = xfoOk
-    ? 'open'
-    : cspFraming(h.filter((r) => r.name.toLowerCase() === 'content-security-policy'));
-  // A cut CSP without the derived fact may still hold the directive: no finding on a guess.
-  if (!xfoOk && framing === 'unknown') limitations.push('csp-truncated');
-  if (!xfoOk && framing === 'open') {
-    const metaCsp = doc.metaHttpEquiv
-      .filter((m) => m.name.toLowerCase() === 'content-security-policy')
-      .map((m) => m.value);
-    out.push({
-      variant: 'anti-framing-missing',
-      mechanism: 'anti-framing',
-      evidence: [
-        { name: 'x-frame-options', value: xfo || null },
-        ...(csp.length > 0 ? [{ name: 'content-security-policy', value: csp.join(', ') }] : []),
-      ],
-      params: { hint: cspRestrictsFraming(metaCsp) ? 'meta-csp' : 'none' },
-    });
-  }
+  if (xfoOk) return { problem: null, limitation: null };
 
+  const framing = cspFraming(h.filter((r) => r.name.toLowerCase() === 'content-security-policy'));
+  // A cut CSP without the derived fact may still hold the directive: no finding on a guess.
+  if (framing === 'unknown') return { problem: null, limitation: 'csp-truncated' };
+  if (framing === 'restricts') return { problem: null, limitation: null };
+
+  const csp = headerValues(h, 'content-security-policy');
+  const metaCsp = doc.metaHttpEquiv
+    .filter((m) => m.name.toLowerCase() === 'content-security-policy')
+    .map((m) => m.value);
+  const problem: Problem = {
+    variant: 'anti-framing-missing',
+    mechanism: 'anti-framing',
+    evidence: [
+      { name: 'x-frame-options', value: xfo || null },
+      ...(csp.length > 0 ? [{ name: 'content-security-policy', value: csp.join(', ') }] : []),
+    ],
+    params: { hint: cspRestrictsFraming(metaCsp) ? 'meta-csp' : 'none' },
+  };
+  return { problem, limitation: null };
+}
+
+/** No Referrer-Policy at all, or one that leaks the full URL. A `<meta name=referrer>` wins over the header. */
+function referrerProblem(doc: DocumentResponse): Problem | null {
+  const fromHeader = headerValues(doc.headers, 'referrer-policy');
   const referrer = doc.metaReferrer
-    ? (effectiveReferrerPolicy([doc.metaReferrer]) ??
-      effectiveReferrerPolicy(headerValues(h, 'referrer-policy')))
-    : effectiveReferrerPolicy(headerValues(h, 'referrer-policy'));
-  if (referrer === null) {
-    out.push(headerMissing('referrer-policy', headerValues(h, 'referrer-policy').join(', ') || null));
-  } else if (UNSAFE_REFERRER.has(referrer)) {
-    out.push({
-      variant: 'referrer-policy-permissive',
-      mechanism: 'referrer-policy',
-      evidence: [{ name: 'referrer-policy', value: referrer }],
-      params: { policy: referrer },
-    });
-  }
+    ? (effectiveReferrerPolicy([doc.metaReferrer]) ?? effectiveReferrerPolicy(fromHeader))
+    : effectiveReferrerPolicy(fromHeader);
+
+  if (referrer === null) return headerMissing('referrer-policy', fromHeader.join(', ') || null);
+  if (!UNSAFE_REFERRER.has(referrer)) return null;
+  return {
+    variant: 'referrer-policy-permissive',
+    mechanism: 'referrer-policy',
+    evidence: [{ name: 'referrer-policy', value: referrer }],
+    params: { policy: referrer },
+  };
+}
+
+/** CSP (enforcing, report-only or meta), `nosniff` and Permissions-Policy: each missing header is its own finding. */
+function missingHeaderProblems(doc: DocumentResponse): Problem[] {
+  const h = doc.headers;
+  const out: Problem[] = [];
 
   const anyCsp =
-    csp.some((v) => v.trim() !== '') ||
-    headerValues(h, 'content-security-policy-report-only').some((v) => v.trim() !== '') ||
-    doc.metaHttpEquiv.some(
-      (m) => m.name.toLowerCase() === 'content-security-policy' && m.value.trim() !== '',
-    );
+    headerValues(h, 'content-security-policy').some(nonBlank) ||
+    headerValues(h, 'content-security-policy-report-only').some(nonBlank) ||
+    doc.metaHttpEquiv.some((m) => m.name.toLowerCase() === 'content-security-policy' && nonBlank(m.value));
   if (!anyCsp) out.push(headerMissing('content-security-policy', null));
 
   const nosniff = headerValues(h, 'x-content-type-options')[0];
-  if (nosniff?.trim().toLowerCase() !== 'nosniff')
+  if (nosniff?.trim().toLowerCase() !== 'nosniff') {
     out.push(headerMissing('x-content-type-options', nosniff ?? null));
+  }
 
-  if (!headerValues(h, 'permissions-policy').some((v) => v.trim() !== '')) {
+  if (!headerValues(h, 'permissions-policy').some(nonBlank)) {
     out.push(headerMissing('permissions-policy', null));
   }
-  return { problems: out, limitations };
+  return out;
+}
+
+function problemsOf(doc: DocumentResponse): { problems: Problem[]; limitations: string[] } {
+  const antiFraming = antiFramingProblem(doc);
+  const problems = [
+    hstsProblem(doc),
+    antiFraming.problem,
+    referrerProblem(doc),
+    ...missingHeaderProblems(doc),
+  ].filter((p): p is Problem => p !== null);
+  return { problems, limitations: antiFraming.limitation ? [antiFraming.limitation] : [] };
 }
 
 function headerMissing(mechanism: string, value: string | null): Problem {
@@ -197,6 +213,62 @@ function evaluable(doc: DocumentResponse): boolean {
   );
 }
 
+/** The start page decides whether the headers can be judged at all; null when they can. */
+function startPageOutcome(start: DocumentResponse): CheckOutcome | null {
+  if (start.error || start.status === null) {
+    return {
+      status: 'inconclusive',
+      reason: start.error?.code === 'timeout' ? 'timeout' : 'start-page-unavailable',
+      observations: [],
+    };
+  }
+  if (!isSuccess(start.status)) {
+    return {
+      status: 'inconclusive',
+      reason: 'start-page-status',
+      limitations: [`status:${start.status}`],
+      observations: [],
+    };
+  }
+  if (!browserAcceptsTls(start.tlsAuthorized, start.tlsAuthorizationError)) {
+    return { status: 'inconclusive', reason: 'tls-invalid', observations: [] };
+  }
+  return null;
+}
+
+/** One observation per (variant, mechanism); a repeat on another page adds the page and its evidence. */
+function addProblem(byMechanism: Map<string, Observation>, page: string, p: Problem): void {
+  const evidence: EvidenceInput[] = p.evidence.map((e) => ({
+    type: 'header',
+    phase: 'http',
+    page,
+    url: page,
+    name: e.name,
+    present: e.value !== null,
+    value: evidenceValue(e.value),
+  }));
+
+  const key = `${p.variant}|${p.mechanism}`;
+  const existing = byMechanism.get(key);
+  if (existing) {
+    if (!existing.pages.includes(page)) existing.pages.push(page);
+    existing.evidence.push(...evidence);
+    existing.params.count = existing.pages.length;
+    return;
+  }
+
+  byMechanism.set(key, {
+    checkId: ID,
+    variant: p.variant,
+    confidence: 'high',
+    subject: subjects.header(p.mechanism),
+    phases: ['http'],
+    pages: [page],
+    evidence,
+    params: { url: page, count: 1, ...p.params },
+  });
+}
+
 export const hdr01 = defineCheck({
   id: ID,
   module: 'http',
@@ -211,64 +283,18 @@ export const hdr01 = defineCheck({
     const docs = slice.http.documents;
     const start = docs.find((d) => d.role === 'start');
     if (!start) throw new Error('http section has no start document');
-    if (start.error || start.status === null) {
-      return {
-        status: 'inconclusive',
-        reason: start.error?.code === 'timeout' ? 'timeout' : 'start-page-unavailable',
-        observations: [],
-      };
-    }
-    if (!isSuccess(start.status)) {
-      return {
-        status: 'inconclusive',
-        reason: 'start-page-status',
-        limitations: [`status:${start.status}`],
-        observations: [],
-      };
-    }
-    if (!browserAcceptsTls(start.tlsAuthorized, start.tlsAuthorizationError)) {
-      return { status: 'inconclusive', reason: 'tls-invalid', observations: [] };
-    }
+    const unusable = startPageOutcome(start);
+    if (unusable) return unusable;
 
     const evaluated = docs.filter(evaluable);
     const limitations = docs.filter((d) => !evaluable(d)).map((d) => `document-unavailable:${d.role}`);
     if (slice.http.throttled) limitations.push('throttled');
 
-    // One observation per (variant, mechanism): `header-missing` covers several headers.
     const byMechanism = new Map<string, Observation>();
     for (const doc of evaluated) {
-      const page = doc.finalUrl;
       const { problems, limitations: docLimitations } = problemsOf(doc);
       limitations.push(...docLimitations);
-      for (const p of problems) {
-        const evidence: EvidenceInput[] = p.evidence.map((e) => ({
-          type: 'header',
-          phase: 'http',
-          page,
-          url: page,
-          name: e.name,
-          present: e.value !== null,
-          value: evidenceValue(e.value),
-        }));
-        const key = `${p.variant}|${p.mechanism}`;
-        const existing = byMechanism.get(key);
-        if (existing) {
-          if (!existing.pages.includes(page)) existing.pages.push(page);
-          existing.evidence.push(...evidence);
-          existing.params.count = existing.pages.length;
-          continue;
-        }
-        byMechanism.set(key, {
-          checkId: ID,
-          variant: p.variant,
-          confidence: 'high',
-          subject: subjects.header(p.mechanism),
-          phases: ['http'],
-          pages: [page],
-          evidence,
-          params: { url: page, count: 1, ...p.params },
-        });
-      }
+      for (const p of problems) addProblem(byMechanism, doc.finalUrl, p);
     }
 
     return {

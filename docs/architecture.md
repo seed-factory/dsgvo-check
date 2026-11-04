@@ -111,7 +111,7 @@ dsgvo-check/
 │   ├── fixture-server/        # сервер виртуальных хостов с настоящим TLS
 │   ├── fixtures/              # снимки HTTP-проверок, образец отчёта
 │   └── utils/                 # общие помощники тестов
-├── Dockerfile                 # образ: Node 24, Chrome for Testing, non-root
+├── Dockerfile                 # образ: Node 26, Chrome for Testing, non-root
 ├── action.yml                 # composite Action: docker run образа
 ├── AGENTS.md                  # правила для агентов и людей, команды
 ├── README.md                  # документация для пользователей (Deutsch)

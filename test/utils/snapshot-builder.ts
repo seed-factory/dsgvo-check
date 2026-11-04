@@ -45,12 +45,14 @@ export function makeTarget(url = 'https://www.example.de/', finalUrl: string | n
 /** Full snapshot with defaults; pass sections you need. `collection` defaults to `ok` for every given section. */
 export function makeSnapshot(partial: Partial<Snapshot> = {}): Snapshot {
   const target = partial.target ?? makeTarget();
+
   const collection: Snapshot['collection'] = {};
   if (partial.browser || partial.documents || partial.cmp)
     collection.browser = { status: 'ok', durationMs: 0 };
   if (partial.http) collection.http = { status: 'ok', durationMs: 0 };
   if (partial.tls) collection.tls = { status: 'ok', durationMs: 0 };
   if (partial.dns) collection.dns = { status: 'ok', durationMs: 0 };
+
   return {
     snapshotVersion: SNAPSHOT_VERSION,
     tool: { name: 'dsgvo-check', version: '0.0.0-test' },
@@ -416,6 +418,7 @@ export function checkContext(p: Partial<CheckContext> & { dataDirs?: readonly st
   routingCache ??= loadRouting();
   const data: Record<string, unknown> = { ...p.data };
   for (const name of p.dataDirs ?? []) data[name] ??= loadDataDir(name);
+
   return {
     now: FIXED_NOW,
     lang: 'de',
@@ -492,6 +495,7 @@ export function fixtureFrom(name: string, raw: RawFixture, file: string): Snapsh
   const { $expect, $description, ...partial } = raw;
   let snapshot = makeSnapshot(partial);
   if (!partial.derived && snapshot.browser) snapshot = withDerived(snapshot);
+
   const kind = FIXTURE_KINDS.find((k) => name.startsWith(k)) ?? 'other';
   return {
     file,

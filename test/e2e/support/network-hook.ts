@@ -19,6 +19,9 @@ if (!raw) throw new Error('network-hook: DSGVO_E2E_NETWORK is not set');
 const cfg = JSON.parse(raw) as E2eNetworkConfig;
 const known = new Set(cfg.hosts.map((h) => h.toLowerCase()));
 
+/** Ports 80 and 443 go to the fixture server's listeners; any other port is used as it is. */
+const fixturePort = (port: number) => (port === 443 ? cfg.httpsPort : port === 80 ? cfg.httpPort : port);
+
 (globalThis as Record<string, unknown>).__dsgvoE2eNetwork = (base: Record<string, unknown>) => ({
   ...base,
   allowPrivateAddresses: true,
@@ -32,10 +35,7 @@ const known = new Set(cfg.hosts.map((h) => h.toLowerCase()));
     return [{ address: '127.0.0.1', family: 4 }];
   },
   test: {
-    connect: (_host: string, port: number) => ({
-      host: '127.0.0.1',
-      port: port === 443 ? cfg.httpsPort : port === 80 ? cfg.httpPort : port,
-    }),
+    connect: (_host: string, port: number) => ({ host: '127.0.0.1', port: fixturePort(port) }),
     browserArgs: cfg.browserArgs,
     caPem: cfg.caPem,
   },
@@ -47,6 +47,7 @@ registerHooks({
   load(url, context, nextLoad) {
     const result = nextLoad(url, context);
     if (!url.endsWith('/dist/core/url/net.js')) return result;
+
     const src = result.source;
     const source = typeof src === 'string' ? src : Buffer.from(src as Uint8Array).toString('utf8');
     if (!source.includes(MARK)) {
@@ -54,6 +55,8 @@ registerHooks({
         'network-hook: `export function defaultNetworkConfig(` not found in dist/core/url/net.js',
       );
     }
+
+    // The original function stays under another name; the new one wraps its result with the test network.
     return {
       ...result,
       source: `${source.replace(MARK, 'function __originalDefaultNetworkConfig(')}

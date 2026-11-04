@@ -30,6 +30,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const rec = new NetworkRecorder('B', 'example.de', counter, false);
     rec.attach(ctx as unknown as BrowserContext);
     rec.beginNavigation(START);
+
     const send = async (url: string, lines: string[]) => {
       const req = fakeRequest(url);
       ctx.emit('request', req);
@@ -45,6 +46,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     await send('https://www.example.de/a.gif', ['uid=1; Path=/']);
     await send('https://tracker-a.test/p.gif', ['uid=2; Path=/']);
     await send('https://tracker-b.test/p.gif', ['uid=3; Path=/']);
+
     const jar = new JarTracker(target, rec.setCookieOrigins);
     const context = fakeContext([
       jarCookie('uid', 'www.example.de', extra),
@@ -54,10 +56,12 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const page = fakePage([{ url: START }]);
     await jar.snapshot(context, page, { ...moment, phase: 'B' });
     await sleep(5);
+
     rec.markClickAt(performance.now());
     jar.markClick(Date.now());
     return { rec, send, jar, context, page };
   }
+
   const flags = (jar: JarTracker, domain: string) =>
     jar.cookies.filter((c) => c.name === 'uid' && c.domain === domain).map((c) => c.afterClick);
 
@@ -65,6 +69,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const { send, jar, context, page } = await threeUids();
     await send('https://tracker-b.test/p.gif?x=1', ['uid=4; Path=/']);
     await jar.snapshot(context, page, post);
+
     expect(flags(jar, 'www.example.de')).toEqual([false]);
     expect(flags(jar, 'tracker-a.test')).toEqual([false]);
     expect(flags(jar, 'tracker-b.test')).toEqual([false, true]);
@@ -75,6 +80,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const { send, jar, context, page } = await threeUids();
     await send('https://www.example.de/b.gif', ['uid=9; Path=/']);
     await jar.snapshot(context, page, post);
+
     expect(flags(jar, 'www.example.de')).toEqual([false, true]);
     expect(flags(jar, 'tracker-a.test')).toEqual([false]);
     expect(flags(jar, 'tracker-b.test')).toEqual([false]);
@@ -84,6 +90,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const { send, jar, context, page } = await threeUids();
     await send('https://tracker-b.test/p.gif?x=1', ['uid=4; Path=/other']);
     await jar.snapshot(context, page, post);
+
     expect(flags(jar, 'tracker-b.test')).toEqual([false]);
   });
 
@@ -91,6 +98,7 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const { send, jar, context, page } = await threeUids();
     await send('https://tracker-b.test/p.gif?x=1', ['uid=4; Path=/; Partitioned']);
     await jar.snapshot(context, page, post);
+
     expect(flags(jar, 'tracker-b.test')).toEqual([false]);
   });
 
@@ -102,9 +110,11 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const page = fakePage([{ url: START }]);
     await jar.snapshot(context, page, { ...moment, phase: 'B' });
     await sleep(5);
+
     rec.markClickAt(performance.now());
     jar.markClick(Date.now());
     await jar.snapshot(context, page, post);
+
     expect(flags(jar, 'tracker-a.test')).toEqual([false]);
   });
 
@@ -112,8 +122,10 @@ describe('JarTracker: a Set-Cookie after the click marks only the cookie it can 
     const { rec, send } = liveRecorder();
     await send('https://tracker-a.test/p.gif', ['uid=2; Path=/']);
     await sleep(5);
+
     rec.markClickAt(performance.now());
     await send('https://tracker-a.test/q.gif', ['uid=3; Path=/']);
+
     const [origin, ...rest] = [...rec.setCookieOrigins.values()];
     expect(rest).toEqual([]);
     expect(origin).toMatchObject({

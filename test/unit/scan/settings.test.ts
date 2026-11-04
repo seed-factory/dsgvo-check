@@ -59,6 +59,7 @@ describe('scan — settings', () => {
 
   it('an invalid setting ends the scan as invalid input, naming the setting', async () => {
     const result = await scan(opts({ config: { browser: { navigationPauseMs: 1_000 } } }));
+
     expect(result.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toEqual(['invalid-input']);
     expect(result.report.scan.failure).toMatchObject({ code: 'invalid-config' });
@@ -69,6 +70,7 @@ describe('scan — settings', () => {
 
   it('words the refusal in the language of the scan', async () => {
     const result = await scan(opts({ lang: 'en', config: { browser: { navigationPauseMs: 1_000 } } }));
+
     expect(result.report.scan.failure?.message).toBe(
       'Invalid setting(s): browser.navigationPauseMs (config option): must be at least 1500: values may only be made stricter, the scan stays passive',
     );
@@ -93,6 +95,7 @@ describe('scan — settings', () => {
       variants: [{ variant: 'header' }],
       run: () => [],
     });
+
     await scan(
       opts({
         collectors,
@@ -100,6 +103,7 @@ describe('scan — settings', () => {
         config: { http: { maxRedirects: 2 }, dns: { servers: ['9.9.9.9'], queryBudget: 10 } },
       }),
     );
+
     expect(seen).toHaveLength(2);
     for (const ctx of seen) {
       expect(ctx.config.http.maxRedirects).toBe(2);
@@ -120,6 +124,7 @@ describe('scan — settings', () => {
         return [];
       },
     });
+
     await scan(
       opts({
         registry: new CheckRegistry([check]),
@@ -132,6 +137,7 @@ describe('scan — settings', () => {
         config: { cmp: { blockingCoveredRatio: 0.6 }, tls: { expiringDays: 7, approachingDays: 20 } },
       }),
     );
+
     expect(seen).toEqual({
       cmp: { blockingCoveredRatio: 0.6 },
       tls: {

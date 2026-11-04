@@ -48,69 +48,27 @@ const EXPIRED = Symbol('lookup-deadline');
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+type LookupAttempt = { verdict: GuardVerdict } | { code: string } | { timedOut: true };
+
+interface LookupSettings {
+  network: NetworkConfig;
+  options: ClassifierOptions;
+  backoff: readonly number[];
+  budgetMs: number;
+}
+
 export function hostClassifier(
   network: NetworkConfig,
   options: ClassifierOptions = {},
 ): (host: string) => Promise<GuardVerdict> {
+  const settings: LookupSettings = {
+    network,
+    options,
+    backoff: options.backoffMs ?? DEFAULT_BACKOFF_MS,
+    budgetMs: options.budgetMs ?? DEFAULT_BUDGET_MS,
+  };
   const cache = new Map<string, Promise<GuardVerdict>>();
-  const backoff = options.backoffMs ?? DEFAULT_BACKOFF_MS;
-  const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
-  // One ask of the resolver, bounded by what is left of the shared deadline: on expiry it ends as `timedOut` and
-  // reports `ETIMEOUT`; a late answer is ignored. A spent budget asks nothing.
-  const lookupOnce = async (
-    h: string,
-    attempt: number,
-    deadline: number,
-  ): Promise<{ verdict: GuardVerdict } | { code: string } | { timedOut: true }> => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const remaining = deadline - Date.now();
-      let addrs: Awaited<ReturnType<Lookup>> | typeof EXPIRED = EXPIRED;
-      if (remaining > 0) {
-        const expired = new Promise<typeof EXPIRED>((resolve) => {
-          timer = setTimeout(() => resolve(EXPIRED), remaining);
-        });
-        addrs = await Promise.race([network.lookup(h), expired]);
-      }
-      if (addrs === EXPIRED) {
-        options.onLookupError?.({ host: h, code: 'ETIMEOUT', attempt });
-        return { timedOut: true };
-      }
-      if (addrs.length === 0) return { verdict: 'unresolved' };
-      // Any non-public address is enough to refuse: the browser may pick it.
-      const bad = addrs.map((a) => classifyAddress(a.address)).find((c) => c !== 'public');
-      return { verdict: bad ?? 'public' };
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException | undefined)?.code;
-      const known = typeof code === 'string' && code !== '' ? code : 'UNKNOWN';
-      options.onLookupError?.({ host: h, code: known, attempt });
-      return { code: known }; // resolver error (ENOTFOUND, EAI_AGAIN, timeout)
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  };
-  // Up to 3 attempts within one `budgetMs` deadline. A transient error is retried after a backoff; a definitive answer
-  // (`ENOTFOUND`, no code) gets one immediate re-ask. At the deadline the name counts as unresolved.
-  const resolve = async (h: string): Promise<GuardVerdict | null> => {
-    const started = Date.now();
-    const deadline = started + budgetMs;
-    let r = await lookupOnce(h, 1, deadline);
-    if ('verdict' in r) return r.verdict;
-    if ('timedOut' in r) return null;
-    if (!TRANSIENT_CODES.has(r.code)) {
-      r = await lookupOnce(h, 2, deadline);
-      return 'verdict' in r ? r.verdict : null;
-    }
-    for (let i = 0; i < backoff.length; i++) {
-      const wait = backoff[i] as number;
-      if (Date.now() - started + wait > budgetMs) break;
-      await pause(wait);
-      r = await lookupOnce(h, i + 2, deadline);
-      if ('verdict' in r) return r.verdict;
-      if ('timedOut' in r || !TRANSIENT_CODES.has(r.code)) break;
-    }
-    return null;
-  };
+
   return (host) => {
     const h = host.replace(/^\[|\]$/g, '').toLowerCase();
     let p = cache.get(h);
@@ -118,8 +76,9 @@ export function hostClassifier(
       p = (async (): Promise<GuardVerdict> => {
         if (isIP(h)) return classifyAddress(h);
         if (h === 'localhost' || h.endsWith('.localhost')) return 'loopback';
+
         // A failure is not cached (the next document asks again).
-        const v = await resolve(h);
+        const v = await resolveHost(settings, h);
         if (v === null) {
           cache.delete(h);
           return 'unresolved';
@@ -130,6 +89,75 @@ export function hostClassifier(
     }
     return p;
   };
+}
+
+// Up to 3 attempts within one `budgetMs` deadline. A transient error is retried after a backoff; a definitive answer
+// (`ENOTFOUND`, no code) gets one immediate re-ask. At the deadline the name counts as unresolved (`null`).
+async function resolveHost(l: LookupSettings, h: string): Promise<GuardVerdict | null> {
+  const started = Date.now();
+  const deadline = started + l.budgetMs;
+
+  let r = await lookupOnce(l, h, 1, deadline);
+  if ('verdict' in r) return r.verdict;
+  if ('timedOut' in r) return null;
+  if (!TRANSIENT_CODES.has(r.code)) {
+    r = await lookupOnce(l, h, 2, deadline);
+    return 'verdict' in r ? r.verdict : null;
+  }
+
+  for (let i = 0; i < l.backoff.length; i++) {
+    const wait = l.backoff[i] as number;
+    if (Date.now() - started + wait > l.budgetMs) break;
+    await pause(wait);
+    r = await lookupOnce(l, h, i + 2, deadline);
+    if ('verdict' in r) return r.verdict;
+    if ('timedOut' in r || !TRANSIENT_CODES.has(r.code)) break;
+  }
+  return null;
+}
+
+// One ask of the resolver, bounded by what is left of the shared deadline: on expiry it ends as `timedOut` and reports
+// `ETIMEOUT`; a late answer is ignored. A spent budget asks nothing.
+async function lookupOnce(
+  l: LookupSettings,
+  h: string,
+  attempt: number,
+  deadline: number,
+): Promise<LookupAttempt> {
+  try {
+    const remaining = deadline - Date.now();
+    const addrs = remaining > 0 ? await lookupWithin(l.network, h, remaining) : EXPIRED;
+    if (addrs === EXPIRED) {
+      l.options.onLookupError?.({ host: h, code: 'ETIMEOUT', attempt });
+      return { timedOut: true };
+    }
+    if (addrs.length === 0) return { verdict: 'unresolved' };
+
+    // Any non-public address is enough to refuse: the browser may pick it.
+    const bad = addrs.map((a) => classifyAddress(a.address)).find((c) => c !== 'public');
+    return { verdict: bad ?? 'public' };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    const known = typeof code === 'string' && code !== '' ? code : 'UNKNOWN';
+    l.options.onLookupError?.({ host: h, code: known, attempt });
+    return { code: known }; // resolver error (ENOTFOUND, EAI_AGAIN, timeout)
+  }
+}
+
+async function lookupWithin(
+  network: NetworkConfig,
+  host: string,
+  ms: number,
+): Promise<Awaited<ReturnType<Lookup>> | typeof EXPIRED> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const expired = new Promise<typeof EXPIRED>((resolve) => {
+      timer = setTimeout(() => resolve(EXPIRED), ms);
+    });
+    return await Promise.race([network.lookup(host), expired]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 /** Verdict for a document URL: only http(s) hosts are classified; other schemes pass, unparsable URLs block. */
@@ -191,17 +219,36 @@ export async function installSsrfGuard(
 ): Promise<GuardHandle> {
   if (network.allowPrivateAddresses) return { enabled: false };
   const classify = hostClassifier(network, options);
+
+  if (await interceptBrowserWide(context, classify, onBlocked)) return { enabled: true, scope: 'browser' };
+  await interceptEachPage(context, classify, onBlocked);
+  return { enabled: true, scope: 'page' };
+}
+
+/** One session on the browser sees popups and redirect hops too; false when the browser does not offer it. */
+async function interceptBrowserWide(
+  context: BrowserContext,
+  classify: (host: string) => Promise<GuardVerdict>,
+  onBlocked: (url: string, verdict: GuardVerdict) => void,
+): Promise<boolean> {
   const browser = context.browser();
-  if (browser) {
-    try {
-      const cdp = await browser.newBrowserCDPSession();
-      intercept(cdp, classify, onBlocked);
-      await cdp.send('Fetch.enable', DOCUMENT_PATTERNS);
-      return { enabled: true, scope: 'browser' };
-    } catch {
-      // fall back to page-level sessions below
-    }
+  if (!browser) return false;
+  try {
+    const cdp = await browser.newBrowserCDPSession();
+    intercept(cdp, classify, onBlocked);
+    await cdp.send('Fetch.enable', DOCUMENT_PATTERNS);
+    return true;
+  } catch {
+    return false; // the caller falls back to page-level sessions
   }
+}
+
+/** Fallback with one session per page; popups are not covered. */
+async function interceptEachPage(
+  context: BrowserContext,
+  classify: (host: string) => Promise<GuardVerdict>,
+  onBlocked: (url: string, verdict: GuardVerdict) => void,
+): Promise<void> {
   const attach = async (page: Page): Promise<void> => {
     let cdp: CDPSession;
     try {
@@ -212,9 +259,9 @@ export async function installSsrfGuard(
     intercept(cdp, classify, onBlocked);
     await cdp.send('Fetch.enable', DOCUMENT_PATTERNS).catch(() => undefined);
   };
+
   for (const page of context.pages()) await attach(page);
   context.on('page', (page) => {
     void attach(page);
   });
-  return { enabled: true, scope: 'page' };
 }

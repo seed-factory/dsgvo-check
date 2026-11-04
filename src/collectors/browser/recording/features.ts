@@ -15,7 +15,10 @@ export interface RequestFeatures {
 }
 
 const MAX_PATH_PARAMS = 200;
+/** Larger bodies are not parsed for query-like pairs. */
 const MAX_BODY = 16 * 1024;
+/** Cap of a kept event type or consent signal value. */
+const MAX_SIGNAL_CHARS = 64;
 
 export const REQUEST_FEATURES_VERSION = 'request-features/2';
 
@@ -68,6 +71,7 @@ export function extractRequestFeatures(url: string, postData: string | null): Re
   } catch {
     parsed = null;
   }
+
   for (const params of paramSets(url, postData)) {
     for (const [rawKey, value] of params) {
       const key = rawKey.toLowerCase();
@@ -76,16 +80,17 @@ export function extractRequestFeatures(url: string, postData: string | null): Re
         values.push(value);
       }
       if (eventType === undefined && rules.eventParams.includes(key) && value) {
-        eventType = value.slice(0, 64);
+        eventType = value.slice(0, MAX_SIGNAL_CHARS);
       }
       if (hitType === undefined && key === 't' && parsed && QUERY_VALUE_RULES.t?.(value, parsed)) {
-        hitType = value.slice(0, 64);
+        hitType = value.slice(0, MAX_SIGNAL_CHARS);
       }
       if (rules.consentModeParams.includes(key) && value && consent[key] === undefined) {
-        consent[key] = value.slice(0, 64);
+        consent[key] = value.slice(0, MAX_SIGNAL_CHARS);
       }
     }
   }
+
   if (parsed) {
     for (const [rawKey, value] of pathParameters(parsed.pathname)) {
       const key = rawKey.toLowerCase();
@@ -95,6 +100,7 @@ export function extractRequestFeatures(url: string, postData: string | null): Re
       }
     }
   }
+
   eventType ??= hitType;
   return {
     identifierNames: [...names].sort(),
@@ -127,6 +133,7 @@ export function parseSetCookies(headers: readonly string[]): SetCookieAttrs[] {
       if (eq <= 0) continue;
       const name = pair.slice(0, eq).trim();
       if (!name) continue;
+
       const c: SetCookieAttrs = { name, partitioned: false };
       for (const a of attrs) {
         const i = a.indexOf('=');

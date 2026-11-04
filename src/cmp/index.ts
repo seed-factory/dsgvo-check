@@ -34,6 +34,14 @@ export const adapters: readonly CmpAdapter[] = [
 
 const RANK = { high: 2, medium: 1, low: 0 } as const;
 
+/** How long `waitForCmp` and `waitForBanner` wait by default, and how often they look. */
+const DEFAULT_WAIT_MS = 5000;
+const DEFAULT_POLL_MS = 250;
+
+const SETTLE_STEP_MS = 200;
+/** A banner that has not settled after this long is measured as is and marked `geometryUnsettled`. */
+const SETTLE_MAX_MS = 2000;
+
 /** Best adapter detection, else the generic heuristic (never `high`) or `none`; a snapshot, see `waitForCmp` for polling. */
 export async function detectCmp(
   page: Page,
@@ -66,20 +74,17 @@ export async function waitForCmp(
   page: Page,
   opts: { timeoutMs?: number; stepMs?: number } = {},
 ): Promise<{ adapter: CmpAdapter | null; detection: CmpDetection }> {
-  const end = Date.now() + (opts.timeoutMs ?? 5000);
+  const end = Date.now() + (opts.timeoutMs ?? DEFAULT_WAIT_MS);
   for (;;) {
     const res = await detectAdapter(page);
     const ready = res && res.detection.recognitionConfidence === 'high' && (await res.adapter.ready?.(page));
     if (ready || Date.now() >= end) {
       return res ?? { adapter: null, detection: await heuristicDetection(page) };
     }
-    await new Promise((r) => setTimeout(r, opts.stepMs ?? 250));
+
+    await new Promise((r) => setTimeout(r, opts.stepMs ?? DEFAULT_POLL_MS));
   }
 }
-
-const SETTLE_STEP_MS = 200;
-/** A banner that has not settled after this long is measured as is and marked `geometryUnsettled`. */
-const SETTLE_MAX_MS = 2000;
 
 /** Result of the last `waitForBanner` per page, consumed by the next first-screen `extract`. */
 const settleResults = new WeakMap<Page, { url: string; unsettled: boolean }>();
@@ -96,6 +101,7 @@ async function geometrySettled(page: Page, adapter: CmpAdapter, first: CmpFirstL
   let prev = first;
   for (;;) {
     await new Promise((r) => setTimeout(r, SETTLE_STEP_MS));
+
     const next = await adapter.firstLayer(page).catch(() => null);
     if (!next?.bannerVisible) return false;
     if (
@@ -105,6 +111,7 @@ async function geometrySettled(page: Page, adapter: CmpAdapter, first: CmpFirstL
     ) {
       return true;
     }
+
     if (Date.now() >= end) return false;
     prev = next;
   }
@@ -116,7 +123,7 @@ export async function waitForBanner(
   adapter: CmpAdapter,
   opts: { timeoutMs?: number; stepMs?: number } = {},
 ): Promise<boolean> {
-  const end = Date.now() + (opts.timeoutMs ?? 5000);
+  const end = Date.now() + (opts.timeoutMs ?? DEFAULT_WAIT_MS);
   for (;;) {
     const layer = await adapter.firstLayer(page).catch(() => null);
     if (layer?.bannerVisible) {
@@ -124,11 +131,12 @@ export async function waitForBanner(
       settleResults.set(page, { url: page.url(), unsettled: !settled });
       return true;
     }
+
     if (Date.now() >= end) {
       settleResults.delete(page);
       return false;
     }
-    await new Promise((r) => setTimeout(r, opts.stepMs ?? 250));
+    await new Promise((r) => setTimeout(r, opts.stepMs ?? DEFAULT_POLL_MS));
   }
 }
 
@@ -143,8 +151,10 @@ async function withHeuristicBanner(page: Page, facts: CmpFacts, lexicon: ReturnT
     (facts.detection.recognitionConfidence === 'high' || facts.firstLayer.bannerVisible)
   )
     return facts;
+
   const heuristic = await measureHeuristic(page, lexicon).catch(() => null);
   if (!heuristic?.measured.firstLayer.bannerPresent) return facts;
+
   const hint = facts.detection.cmpId ? [`adapter-hint:${facts.detection.cmpId}`] : [];
   return {
     ...facts,
@@ -170,17 +180,12 @@ function markGeometry(page: Page, facts: CmpFacts): CmpFacts {
   return facts;
 }
 
-/** Facts via the adapter, or the generic heuristic when `adapter` is null (`info` only). */
-export async function extract(
+/** Facts from the generic heuristic alone, for a page without a recognized adapter (`info` only). */
+async function heuristicFacts(
   page: Page,
-  adapter: CmpAdapter | null,
   moment: CmpFacts['moment'],
-  opts: ExtractOptions = {},
+  opts: ExtractOptions,
 ): Promise<CmpFacts> {
-  if (adapter) {
-    const own = await adapter.extract(page, moment, opts);
-    return markGeometry(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon()));
-  }
   const lexicon = opts.lexicon ?? loadLexicon();
   const takenAt = (opts.now ?? (() => new Date()))().toISOString();
   const [heuristic, geoSignals] = await Promise.all([
@@ -188,6 +193,7 @@ export async function extract(
     tcfGeoSignals(page),
   ]);
   const viewport = page.viewportSize() ?? { width: 0, height: 0 };
+
   return {
     phase: opts.phase ?? 'B',
     pageUrl: sanitizeUrl(page.url()),
@@ -214,4 +220,17 @@ export async function extract(
     botSignals: [],
     config: {},
   };
+}
+
+/** Facts via the adapter, or the generic heuristic when `adapter` is null (`info` only). */
+export async function extract(
+  page: Page,
+  adapter: CmpAdapter | null,
+  moment: CmpFacts['moment'],
+  opts: ExtractOptions = {},
+): Promise<CmpFacts> {
+  if (!adapter) return heuristicFacts(page, moment, opts);
+
+  const own = await adapter.extract(page, moment, opts);
+  return markGeometry(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon()));
 }

@@ -14,27 +14,41 @@ export interface ExtraCheckData {
   crm?: Record<string, string | null>;
 }
 
-/** Copy test/data/ to a temp dir and add a `zz-test.yaml` with ruleset (including crm) and texts (de, en). */
-export function testDataDir(extra: ExtraCheckData): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'dsgvo-data-'));
-  cpSync(path.join(REPO_ROOT, 'test/data'), dir, { recursive: true });
-  const checks: Record<string, unknown> = {};
+function rulesetChecks(extra: ExtraCheckData): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(extra.ruleset).map(([id, variants]) => [
+      id,
+      {
+        gating: true,
+        variants: Object.fromEntries(
+          Object.entries(variants).map(([v, severity]) => [
+            v,
+            { severity, crm: extra.crm?.[`${id}.${v}`] ?? null },
+          ]),
+        ),
+      },
+    ]),
+  );
+}
+
+/** One placeholder text per variant; the checks under test only need a message to exist. */
+function placeholderMessages(extra: ExtraCheckData): Record<string, { title: string; body: string }> {
   const messages: Record<string, { title: string; body: string }> = {};
   for (const [id, variants] of Object.entries(extra.ruleset)) {
-    checks[id] = {
-      gating: true,
-      variants: Object.fromEntries(
-        Object.entries(variants).map(([v, s]) => [
-          v,
-          { severity: s, crm: extra.crm?.[`${id}.${v}`] ?? null },
-        ]),
-      ),
-    };
     for (const v of Object.keys(variants)) {
       messages[`${id}.${v}`] = { title: `${id} ${v}`, body: `Beobachtet: {detail}` };
     }
   }
-  writeFileSync(path.join(dir, 'ruleset/de-2026/zz-test.yaml'), stringify({ checks }));
+  return messages;
+}
+
+/** Copy test/data/ to a temp dir and add a `zz-test.yaml` with ruleset (including crm) and texts (de, en). */
+export function testDataDir(extra: ExtraCheckData): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'dsgvo-data-'));
+  cpSync(path.join(REPO_ROOT, 'test/data'), dir, { recursive: true });
+
+  writeFileSync(path.join(dir, 'ruleset/de-2026/zz-test.yaml'), stringify({ checks: rulesetChecks(extra) }));
+  const messages = placeholderMessages(extra);
   for (const lang of ['de', 'en']) {
     writeFileSync(path.join(dir, `texts/${lang}/zz-test.yaml`), stringify({ draft: true, messages }));
   }

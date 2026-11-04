@@ -303,6 +303,7 @@ describe('TLS-02 certificate', () => {
 
   it('inconclusive: handshake timed out', () => {
     const r = run(ep({ outcome: 'timeout', chain: [], protocol: null, authorized: false }));
+
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'handshake-inconclusive' });
     expect(r.outcome?.limitations).toEqual(['undecided:target', 'handshake-timeout']);
   });
@@ -323,6 +324,7 @@ describe('TLS-02 certificate', () => {
 
   it('partial: www timed out, target evaluated', () => {
     const r = run(ep(), ep({ hostVariant: 'www', outcome: 'timeout', chain: [], authorized: false }));
+
     expect(r.status).toBe('partial');
     expect(r.outcome?.limitations).toEqual(['undecided:www']);
   });
@@ -333,8 +335,10 @@ describe('TLS-02 certificate', () => {
 
   it('tls collector failed without a section → error', () => {
     const s = makeSnapshot({ collection: { tls: { status: 'error', durationMs: 0 } } });
+
     expect(runCheck(tls02, s)).toMatchObject({ status: 'error', reason: 'collector-error:tls' });
   });
+
   describe('the final host of a redirect to another domain', () => {
     /** Start chain https://www.example.de/ → 301 → https://www.moved.de/ (200). */
     const movedHttp = (finalTls?: TlsEndpoint[]): HttpSection => {
@@ -348,6 +352,7 @@ describe('TLS-02 certificate', () => {
         ],
       });
       chain.final = chain.hops.at(-1) ?? null;
+
       return makeHttp({
         chains: [chain],
         documents: [
@@ -361,6 +366,7 @@ describe('TLS-02 certificate', () => {
         ...(finalTls ? { finalTls } : {}),
       });
     };
+
     const finalEp = (p: Partial<TlsEndpoint> = {}, left = 200, age = 165) =>
       ep({ id: 'tls-final-target', role: 'final', host: 'www.moved.de', ...p }, left, age);
     const runMoved = (http: HttpSection, ...endpoints: TlsEndpoint[]) =>
@@ -378,6 +384,7 @@ describe('TLS-02 certificate', () => {
         movedHttp([finalEp({ authorized: false, authorizationError: 'CERT_HAS_EXPIRED' }, -2, 90)]),
         ep(),
       );
+
       expect(r.status).toBe('completed');
       expect(variantsOf(r)).toEqual(['certificate-invalid']);
       expect(observationsOf(r)[0]).toMatchObject({
@@ -400,18 +407,21 @@ describe('TLS-02 certificate', () => {
         ]),
         ep(),
       );
+
       expect(r.status).toBe('completed');
       expect(variantsOf(r)).toEqual([]);
     });
 
     it('final host known but not probed (e.g. older snapshot) → partial with limitation', () => {
       const r = runMoved(movedHttp(), ep());
+
       expect(r.status).toBe('partial');
       expect(r.outcome?.limitations).toEqual(['final-host-not-probed']);
     });
 
     it('final host handshake timed out → partial with limitation', () => {
       const r = runMoved(movedHttp([finalEp({ outcome: 'timeout', chain: [], authorized: false })]), ep());
+
       expect(r.status).toBe('partial');
       expect(r.outcome?.limitations).toEqual(['undecided:final-target']);
     });
@@ -422,7 +432,9 @@ describe('TLS-02 certificate', () => {
       if (start) start.finalUrl = 'https://example.de/';
       const chain = http.chains[0];
       if (chain?.final) chain.final.url = 'https://example.de/';
+
       const r = runMoved(http, ep(), ep({ hostVariant: 'apex', host: 'example.de' }));
+
       expect(r.status).toBe('completed');
     });
   });
@@ -438,6 +450,7 @@ describe('TLS-02 certificate', () => {
         http: makeHttp(),
       }),
     );
+
     expect(variantsOf(r)).toEqual(['certificate-invalid']);
     expect(observationsOf(r)[0]?.evidence[0]).toMatchObject({ port: 8443 });
   });

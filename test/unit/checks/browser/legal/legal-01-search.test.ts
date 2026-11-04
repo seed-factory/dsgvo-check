@@ -26,6 +26,7 @@ import {
 } from '../helpers.ts';
 
 type Attempt = DocumentsSection['attempts'][number];
+
 const att = (
   kind: Attempt['kind'],
   via: Attempt['via'],
@@ -33,28 +34,32 @@ const att = (
   status: number | null,
   outcome: Attempt['outcome'],
 ): Attempt => ({ kind, via, url, status, outcome });
+const fallback = (kind: Attempt['kind'] = 'impressum') =>
+  att(kind, 'fallback', kind === 'privacy' ? PRIVACY : IMPRESSUM, 404, 'not-found');
+const unconfirmed = att('privacy', 'link', PRIVACY, 200, 'unconfirmed');
+
 const doc = (kind: 'impressum' | 'privacy') => defaultDocuments().documents.find((d) => d.kind === kind)!;
-const link = (text: string, href: string, extra: Partial<LinkFact> = {}) =>
-  makeLink({ text, href, hrefKind: 'https', sameSite: true, ...extra });
-const impressum = (href = IMPRESSUM) => link('Impressum', href);
-const privacy = (href = PRIVACY) => link('Datenschutz', href);
-const twoPages = (links: LinkFact[]) => [
-  page(START, 'start', 'A', {}, links),
-  page(CONTACT, 'contact', 'A', {}, links),
-];
 const documents = (stored: DocumentsSection['documents'], attempts: Attempt[] = []): DocumentsSection => ({
   documents: stored,
   attempts,
 });
+
+const link = (text: string, href: string, extra: Partial<LinkFact> = {}) =>
+  makeLink({ text, href, hrefKind: 'https', sameSite: true, ...extra });
+const impressum = (href = IMPRESSUM) => link('Impressum', href);
+const privacy = (href = PRIVACY) => link('Datenschutz', href);
+
+const twoPages = (links: LinkFact[]) => [
+  page(START, 'start', 'A', {}, links),
+  page(CONTACT, 'contact', 'A', {}, links),
+];
 const linked = (
   links: LinkFact[],
   stored: DocumentsSection['documents'],
   attempts: Attempt[] = [],
 ): SiteSpec => ({ phases: [phase('A', { pages: twoPages(links) })], documents: documents(stored, attempts) });
-const fallback = (kind: Attempt['kind'] = 'impressum') =>
-  att(kind, 'fallback', kind === 'privacy' ? PRIVACY : IMPRESSUM, 404, 'not-found');
+
 const missing = (kind = 'impressum', variant = 'document-not-found') => [[kind, variant]];
-const unconfirmed = att('privacy', 'link', PRIVACY, 200, 'unconfirmed');
 
 interface Expected {
   kinds?: string[][];
@@ -74,12 +79,13 @@ interface Scenario {
 function verify(input: SiteSpec, expected: Expected) {
   const result = runCheck(legal01, site(input));
   const observations = observationsOf(result);
-  if (expected.kinds) expect(observations.map((o) => [o.subject, o.variant])).toEqual(expected.kinds);
-  if (expected.status) expect(result.status).toBe(expected.status);
-  if (expected.limitations) expect(result.outcome?.limitations ?? []).toEqual(expected.limitations);
   const first = expected.firstSubject
     ? observations.find((o) => o.subject === expected.firstSubject)
     : observations[0];
+
+  if (expected.kinds) expect(observations.map((o) => [o.subject, o.variant])).toEqual(expected.kinds);
+  if (expected.status) expect(result.status).toBe(expected.status);
+  if (expected.limitations) expect(result.outcome?.limitations ?? []).toEqual(expected.limitations);
   if (expected.first) expect(first).toMatchObject(expected.first);
   if (expected.pages) expect(first?.pages).toEqual(expected.pages);
   if (expected.emptySubject)
@@ -497,6 +503,37 @@ describe('LEGAL-01 unavailable and unconfirmed targets', () => {
 });
 
 describe('LEGAL-01 confidence of footer coverage', () => {
+  const HEURISTIC_DETECTION = {
+    cmpId: null,
+    method: 'heuristic' as const,
+    version: null,
+    versionSupported: null,
+    recognitionConfidence: 'medium' as const,
+    signals: ['dom:fixed-bottom'],
+  };
+  const COVERED_FOOTER_LINK = {
+    label: 'Impressum',
+    box: { x: 0, y: 700, width: 80, height: 20 },
+    coveredBy: 'banner' as const,
+  };
+
+  /** A banner that covers the footer; `measured` adds the measured overlap with a footer link. */
+  function bannerCoveringFooter(heuristic: boolean, measured: boolean) {
+    const facts = cmpFacts(heuristic ? { detection: HEURISTIC_DETECTION } : {});
+    facts.firstLayer = {
+      ...facts.firstLayer,
+      bannerPresent: true,
+      bannerVisible: true,
+      buttons: [],
+      purAbo: false,
+      closeMeansAccept: null,
+      coversFooter: true,
+      legalLinks: [],
+      ...(measured ? { coveredFooterLinks: [COVERED_FOOTER_LINK] } : {}),
+    };
+    return facts;
+  }
+
   it.each([
     { name: 'heuristic banner geometry', heuristic: true, measured: false, confidence: 'medium' },
     {
@@ -507,45 +544,13 @@ describe('LEGAL-01 confidence of footer coverage', () => {
     },
     { name: 'an adapter with high recognition', heuristic: false, measured: false, confidence: 'high' },
   ])('$name yields $confidence confidence', ({ heuristic, measured, confidence }) => {
-    const facts = cmpFacts(
-      heuristic
-        ? {
-            detection: {
-              cmpId: null,
-              method: 'heuristic',
-              version: null,
-              versionSupported: null,
-              recognitionConfidence: 'medium',
-              signals: ['dom:fixed-bottom'],
-            },
-          }
-        : {},
-    );
-    facts.firstLayer = {
-      ...facts.firstLayer,
-      bannerPresent: true,
-      bannerVisible: true,
-      buttons: [],
-      purAbo: false,
-      closeMeansAccept: null,
-      coversFooter: true,
-      legalLinks: [],
-      ...(measured
-        ? {
-            coveredFooterLinks: [
-              {
-                label: 'Impressum',
-                box: { x: 0, y: 700, width: 80, height: 20 },
-                coveredBy: 'banner' as const,
-              },
-            ],
-          }
-        : {}),
-    };
+    const facts = bannerCoveringFooter(heuristic, measured);
+
     const result = runCheck(legal01, site({ cmp: cmpWith({ phase: 'B', facts: [facts] }) }));
+
     const covers = observationsOf(result).filter((o) => o.variant === 'footer-covered-by-banner');
     expect(covers.length).toBeGreaterThan(0);
-    expect(covers.every((o) => o.confidence === confidence)).toBe(true);
+    expect(covers.map((o) => o.confidence)).toEqual(covers.map(() => confidence));
     expect(variantsOf(result)).toContain('footer-covered-by-banner');
   });
 });

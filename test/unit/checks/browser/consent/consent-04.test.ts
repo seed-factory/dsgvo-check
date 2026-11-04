@@ -129,6 +129,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) }),
     );
     expect(variantsOf(ok)).toEqual([]);
+
     const flagged = runCheck(
       createConsent04(fixed('blocking-no-reject', { flags: ['pur-abo'] })),
       site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) }),
@@ -152,43 +153,60 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
   });
 
-  it('only own adapters with high recognition give a verdict: medium → banner-not-recognized, version out of range → cmp-not-supported', () => {
+  describe('only own adapters with high recognition give a verdict', () => {
     const det = visibleBanner().detection;
-    const medium = runCheck(
-      createConsent04(fixed('blocking-no-reject')),
-      site({
-        cmp: cmpWith({
-          phase: 'B',
-          facts: [visibleBanner({ detection: { ...det, recognitionConfidence: 'medium' } })],
+
+    it('medium recognition → banner-not-recognized', () => {
+      const medium = runCheck(
+        createConsent04(fixed('blocking-no-reject')),
+        site({
+          cmp: cmpWith({
+            phase: 'B',
+            facts: [visibleBanner({ detection: { ...det, recognitionConfidence: 'medium' } })],
+          }),
         }),
-      }),
-    );
-    expect(variantsOf(medium)).toEqual(['banner-not-recognized']);
-    const version = runCheck(
-      createConsent04(fixed('blocking-no-reject')),
-      site({
-        cmp: cmpWith({
-          phase: 'B',
-          facts: [visibleBanner({ detection: { ...det, versionSupported: false } })],
+      );
+
+      expect(variantsOf(medium)).toEqual(['banner-not-recognized']);
+    });
+
+    it('version out of range → cmp-not-supported', () => {
+      const version = runCheck(
+        createConsent04(fixed('blocking-no-reject')),
+        site({
+          cmp: cmpWith({
+            phase: 'B',
+            facts: [visibleBanner({ detection: { ...det, versionSupported: false } })],
+          }),
         }),
-      }),
-    );
-    expect(version).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-supported' });
-    expect(observationsOf(version)[0]?.params).toMatchObject({ cmp: 'cookiebot' });
-    const named = runCheck(
-      consent04,
-      site({
-        cmp: cmpWith({
-          phase: 'B',
-          facts: [
-            visibleBanner({
-              detection: { ...det, cmpId: 'onetrust', method: 'heuristic', recognitionConfidence: 'medium' },
-            }),
-          ],
+      );
+
+      expect(version).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-supported' });
+      expect(observationsOf(version)[0]?.params).toMatchObject({ cmp: 'cookiebot' });
+    });
+
+    it('a heuristic match of a named CMP → cmp-not-supported', () => {
+      const named = runCheck(
+        consent04,
+        site({
+          cmp: cmpWith({
+            phase: 'B',
+            facts: [
+              visibleBanner({
+                detection: {
+                  ...det,
+                  cmpId: 'onetrust',
+                  method: 'heuristic',
+                  recognitionConfidence: 'medium',
+                },
+              }),
+            ],
+          }),
         }),
-      }),
-    );
-    expect(variantsOf(named)).toEqual(['cmp-not-supported']);
+      );
+
+      expect(variantsOf(named)).toEqual(['cmp-not-supported']);
+    });
   });
 
   it('reject clicked but the state is not denied → reject-ineffective', () => {
@@ -427,16 +445,19 @@ describe('CONSENT-04 evidence: vendorRole', () => {
     };
     const plain = button('Alle akzeptieren', 'accept');
     const facts = visibleBanner({ firstLayer: firstLayer([save, plain]) });
+
     const r = runCheck(
       createConsent04(fixed('blocking-no-reject')),
       site({ cmp: cmpWith({ phase: 'B', facts: [facts] }) }),
     );
+
     const cmpEv = observationsOf(r)[0]?.evidence.find((e) => e.type === 'cmp');
     expect(cmpEv).toBeDefined();
     const parsed = EvidenceSchema.parse({ id: 'ev-1', ...cmpEv });
     const buttons = (parsed as { buttons?: Array<Record<string, unknown>> }).buttons ?? [];
     expect(buttons[0]).toMatchObject({ kind: 'accept', kindConfidence: 'low', vendorRole: 'save' });
     expect(buttons[1]?.vendorRole ?? null).toBeNull();
+
     const json = JSON.parse(JSON.stringify(parsed)) as { buttons: Array<Record<string, unknown>> };
     expect(json.buttons[0]?.vendorRole).toBe('save');
   });
@@ -573,6 +594,7 @@ describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
       }),
     );
     const r = runCheck(consent04, snap);
+
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({
@@ -581,6 +603,7 @@ describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
       pages: ['https://www.example.de/'],
     });
     expect((o?.evidence ?? []).map((e) => e.type)).toEqual(['cmp', 'screenshot']);
+
     const cmp = (o?.evidence ?? []).find((e) => e.type === 'cmp') as { buttons: unknown[]; page: string };
     expect(cmp.buttons).toHaveLength(2);
     expect(cmp.page).toBe('https://www.example.de/');
@@ -597,6 +620,7 @@ describe('CONSENT-04 primary facts: adapter below high vs heuristic', () => {
         ),
       }),
     );
+
     expect(r).toMatchObject({ status: 'completed' });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({ variant: 'blocking-no-reject', phases: ['A'] });

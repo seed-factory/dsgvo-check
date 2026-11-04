@@ -237,11 +237,14 @@ describe('e-mail addresses in a path segment', () => {
       const pick = <T>(list: readonly T[]) => list[Math.floor(rnd() * list.length)] as T;
       const address = (name: string) =>
         `${MARK}${name}${pick(at)}${pick(['a', 'b', 'ab'])}${pick(dot)}${pick(['invalid', 'test'])}`;
+
       for (let i = 0; i < 40_000; i++) {
         const x = address('x');
         const y = address('y');
         const segment = `${x}${pick(glue)}${y}`;
+
         const out = expectStable(`https://x.test/${segment}`);
+
         // an address that is not visible in at most three rounds of decoding is text and may stay
         if (containsAddress(x) && containsAddress(y)) {
           expect(out, `${segment} -> ${out}`).not.toContain(MARK);

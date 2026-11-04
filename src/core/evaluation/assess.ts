@@ -148,6 +148,8 @@ interface Draft {
   evidence: EvidenceInput[];
 }
 
+type ResultBase = Pick<CheckResult, 'id' | 'module' | 'maxSeverity' | 'gating'>;
+
 export function assess(input: AssessInput): AssessOutput {
   const overrides = input.overrides ?? [];
   const maxEvidence = input.maxEvidencePerFinding ?? DEFAULT_CONFIG.report.maxEvidencePerFinding;
@@ -159,14 +161,13 @@ export function assess(input: AssessInput): AssessOutput {
 
   for (const check of input.checks) {
     const exec = input.executed.get(check.id);
-    const maxSeverity = maxSeverityOf(check, input.ruleset, overrides);
-    const gating = isGating(input.ruleset, check.id);
-    const base = {
+    const base: ResultBase = {
       id: check.id,
       module: check.module,
-      maxSeverity: maxSeverity ?? undefined,
-      gating,
+      maxSeverity: maxSeverityOf(check, input.ruleset, overrides) ?? undefined,
+      gating: isGating(input.ruleset, check.id),
     };
+
     if (!exec) {
       results.push({
         ...base,
@@ -193,54 +194,8 @@ export function assess(input: AssessInput): AssessOutput {
 
     const outcome = exec.outcome;
     const limitations = [...(exec.limitations ?? []), ...(outcome.limitations ?? [])];
-    const drafts = new Map<string, Draft>();
-    let invalid: string | null = null;
-
-    for (const obs of outcome.observations) {
-      const variant = check.variants.find((v) => v.variant === obs.variant);
-      if (obs.checkId !== check.id || !variant) {
-        invalid = `invalid observation ${obs.checkId}.${obs.variant}`;
-        break;
-      }
-      if (obs.category && routingOwners.has(check.id)) {
-        const owner = input.routing[obs.category];
-        if (owner && owner !== check.id) continue;
-      }
-      const ruleSeverity = resolveSeverity(input.ruleset, check.id, obs.variant, overrides);
-      if (ruleSeverity === undefined) {
-        invalid = `ruleset entry missing for ${check.id}.${obs.variant}`;
-        break;
-      }
-      const severity = capByConfidence(ruleSeverity, obs.confidence);
-      const variantGroup = variant.variantGroup ?? variant.variant;
-      const fp = fingerprint({ checkId: check.id, variantGroup, subject: obs.subject });
-      const existing = drafts.get(fp);
-      if (!existing) {
-        drafts.set(fp, {
-          obs,
-          severity,
-          variantGroup,
-          fp,
-          phases: new Set(obs.phases),
-          pages: new Set(obs.pages),
-          evidence: [...obs.evidence],
-        });
-        continue;
-      }
-      for (const p of obs.phases) existing.phases.add(p);
-      for (const p of obs.pages) existing.pages.add(p);
-      existing.evidence.push(...obs.evidence);
-      const stronger =
-        severityRank(severity) > severityRank(existing.severity) ||
-        (severity === existing.severity &&
-          CONFIDENCE_RANK[obs.confidence] > CONFIDENCE_RANK[existing.obs.confidence]);
-      if (stronger) {
-        existing.obs = obs;
-        existing.severity = severity;
-      }
-    }
-
-    if (invalid) {
+    const drafted = draftObservations(check, outcome.observations, input, overrides, routingOwners);
+    if ('invalid' in drafted) {
       results.push({
         ...base,
         status: 'error',
@@ -248,48 +203,15 @@ export function assess(input: AssessInput): AssessOutput {
         limitations,
         coverage: null,
         durationMs: exec.durationMs,
-        error: { code: 'invalid-observation', message: invalid },
+        error: { code: 'invalid-observation', message: drafted.invalid },
       });
       continue;
     }
 
-    for (const d of drafts.values()) {
-      const ids: string[] = [];
-      for (const ev of d.evidence) {
-        const id = store.add(ev);
-        if (!ids.includes(id)) ids.push(id);
-      }
-      const messageId = `${check.id}.${d.obs.variant}`;
-      const finding: Finding = {
-        checkId: check.id,
-        variant: d.obs.variant,
-        variantGroup: d.variantGroup,
-        severity: d.severity,
-        confidence: d.obs.confidence,
-        crmCode: input.ruleset.checks[check.id]?.variants[d.obs.variant]?.crm ?? null,
-        fingerprint: d.fp,
-        subject: d.obs.subject,
-        phases: [...d.phases],
-        pages: [...d.pages].sort(),
-        evidenceIds: ids.slice(0, maxEvidence),
-        messageId,
-        params: d.obs.params,
-        legalNoteId: check.id,
-        related: [],
-        classification: d.obs.classification ?? { source: 'check', datasetVersion: null },
-      };
-      if (ids.length > maxEvidence) finding.evidenceTruncated = true;
-      if (d.obs.serviceId) finding.serviceId = d.obs.serviceId;
-      if (d.obs.trigger) finding.trigger = d.obs.trigger;
-      if (d.obs.replicated !== undefined) finding.replicated = d.obs.replicated;
-      if (d.obs.provider) finding.provider = d.obs.provider;
-      if (d.obs.parent) finding.parent = d.obs.parent;
-      if (d.obs.dpfEntity) finding.dpfEntity = d.obs.dpfEntity;
-      if (input.texts) {
-        const msg = renderMessage(input.texts, messageId, d.obs.params);
-        finding.text = { lang: input.texts.lang, title: msg.title, body: msg.body, draft: msg.draft };
-      }
+    for (const draft of drafted.drafts.values()) {
+      const finding = buildFinding(check, draft, store, input, maxEvidence);
       findings.push(finding);
+
       const key = `${check.id}|${finding.subject}`;
       bySubject.set(key, [...(bySubject.get(key) ?? []), finding]);
     }
@@ -315,6 +237,119 @@ export function assess(input: AssessInput): AssessOutput {
   return { findings, evidence: store.all(), checks: results };
 }
 
+/** One draft per fingerprint, or the reason why an observation is invalid (a broken check, reported as an error). */
+type DraftResult = { drafts: Map<string, Draft> } | { invalid: string };
+
+function draftObservations(
+  check: AnyCheck,
+  observations: readonly Observation[],
+  input: AssessInput,
+  overrides: readonly SeverityOverride[],
+  routingOwners: ReadonlySet<string>,
+): DraftResult {
+  const drafts = new Map<string, Draft>();
+
+  for (const obs of observations) {
+    const variant = check.variants.find((v) => v.variant === obs.variant);
+    if (obs.checkId !== check.id || !variant) {
+      return { invalid: `invalid observation ${obs.checkId}.${obs.variant}` };
+    }
+
+    // Another check owns this category: its observation is dropped here.
+    if (obs.category && routingOwners.has(check.id)) {
+      const owner = input.routing[obs.category];
+      if (owner && owner !== check.id) continue;
+    }
+
+    const ruleSeverity = resolveSeverity(input.ruleset, check.id, obs.variant, overrides);
+    if (ruleSeverity === undefined) {
+      return { invalid: `ruleset entry missing for ${check.id}.${obs.variant}` };
+    }
+    const severity = capByConfidence(ruleSeverity, obs.confidence);
+    const variantGroup = variant.variantGroup ?? variant.variant;
+    const fp = fingerprint({ checkId: check.id, variantGroup, subject: obs.subject });
+
+    const existing = drafts.get(fp);
+    if (existing) {
+      mergeIntoDraft(existing, obs, severity);
+    } else {
+      drafts.set(fp, {
+        obs,
+        severity,
+        variantGroup,
+        fp,
+        phases: new Set(obs.phases),
+        pages: new Set(obs.pages),
+        evidence: [...obs.evidence],
+      });
+    }
+  }
+  return { drafts };
+}
+
+/** Observations with one fingerprint become one finding: union of phases, pages and evidence, the strongest one speaks. */
+function mergeIntoDraft(existing: Draft, obs: Observation, severity: Severity): void {
+  for (const p of obs.phases) existing.phases.add(p);
+  for (const p of obs.pages) existing.pages.add(p);
+  existing.evidence.push(...obs.evidence);
+
+  const stronger =
+    severityRank(severity) > severityRank(existing.severity) ||
+    (severity === existing.severity &&
+      CONFIDENCE_RANK[obs.confidence] > CONFIDENCE_RANK[existing.obs.confidence]);
+  if (stronger) {
+    existing.obs = obs;
+    existing.severity = severity;
+  }
+}
+
+function buildFinding(
+  check: AnyCheck,
+  d: Draft,
+  store: EvidenceStore,
+  input: AssessInput,
+  maxEvidence: number,
+): Finding {
+  const ids: string[] = [];
+  for (const ev of d.evidence) {
+    const id = store.add(ev);
+    if (!ids.includes(id)) ids.push(id);
+  }
+
+  const messageId = `${check.id}.${d.obs.variant}`;
+  const finding: Finding = {
+    checkId: check.id,
+    variant: d.obs.variant,
+    variantGroup: d.variantGroup,
+    severity: d.severity,
+    confidence: d.obs.confidence,
+    crmCode: input.ruleset.checks[check.id]?.variants[d.obs.variant]?.crm ?? null,
+    fingerprint: d.fp,
+    subject: d.obs.subject,
+    phases: [...d.phases],
+    pages: [...d.pages].sort(),
+    evidenceIds: ids.slice(0, maxEvidence),
+    messageId,
+    params: d.obs.params,
+    legalNoteId: check.id,
+    related: [],
+    classification: d.obs.classification ?? { source: 'check', datasetVersion: null },
+  };
+
+  if (ids.length > maxEvidence) finding.evidenceTruncated = true;
+  if (d.obs.serviceId) finding.serviceId = d.obs.serviceId;
+  if (d.obs.trigger) finding.trigger = d.obs.trigger;
+  if (d.obs.replicated !== undefined) finding.replicated = d.obs.replicated;
+  if (d.obs.provider) finding.provider = d.obs.provider;
+  if (d.obs.parent) finding.parent = d.obs.parent;
+  if (d.obs.dpfEntity) finding.dpfEntity = d.obs.dpfEntity;
+  if (input.texts) {
+    const msg = renderMessage(input.texts, messageId, d.obs.params);
+    finding.text = { lang: input.texts.lang, title: msg.title, body: msg.body, draft: msg.draft };
+  }
+  return finding;
+}
+
 function linkRelated(
   findings: Finding[],
   bySubject: Map<string, Finding[]>,
@@ -325,12 +360,14 @@ function linkRelated(
   for (const f of findings) {
     if (f.serviceId) byService.set(f.serviceId, [...(byService.get(f.serviceId) ?? []), f]);
   }
+
   const relatedRefs = new Map<string, Observation['related']>();
   for (const c of checks) {
     for (const o of executed.get(c.id)?.outcome?.observations ?? []) {
       if (o.related?.length) relatedRefs.set(`${o.checkId}|${o.subject}`, o.related);
     }
   }
+
   for (const f of findings) {
     const out = new Map<string, Finding['related'][number]>();
     for (const other of byService.get(f.serviceId ?? '') ?? []) {
@@ -342,6 +379,7 @@ function linkRelated(
         });
       }
     }
+
     for (const ref of relatedRefs.get(`${f.checkId}|${f.subject}`) ?? []) {
       for (const target of bySubject.get(`${ref.checkId}|${ref.subject}`) ?? []) {
         if (target.fingerprint === f.fingerprint) continue;
@@ -352,6 +390,7 @@ function linkRelated(
         });
       }
     }
+
     f.related = [...out.values()].sort((a, b) => a.fingerprint.localeCompare(b.fingerprint));
   }
 }

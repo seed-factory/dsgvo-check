@@ -11,6 +11,7 @@ export function testDispatcher(network: NetworkConfig, opts: { rejectUnauthorize
     ...(test ? { ca: test.caPem } : {}),
     rejectUnauthorized: opts.rejectUnauthorized ?? true,
   });
+
   return new Agent({
     connect: (o, cb) => {
       const defaultPort = o.protocol === 'https:' ? 443 : 80;

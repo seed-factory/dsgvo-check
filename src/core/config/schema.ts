@@ -228,6 +228,7 @@ export const ConfigSchema = z
   .superRefine((c, ctx) => {
     const issue = (path: [string, string], message: string, params: MessageParams) =>
       ctx.addIssue({ code: 'custom', path, message, params });
+
     for (const p of ['A', 'B', 'C'] as const) {
       const min = c.browser[`phase${p}MinDwellMs`];
       if (c.browser[`phase${p}HardCapMs`] < min) {
@@ -237,18 +238,22 @@ export const ConfigSchema = z
         });
       }
     }
+
     if (c.tls.expiringDays > c.tls.approachingDays) {
       issue(['tls', 'expiringDays'], REASON.tlsDaysOrder, {
         other: envName('tls', 'approachingDays'),
         value: c.tls.approachingDays,
       });
     }
+
     if (c.tls.expiringLifetimeShare > c.tls.approachingLifetimeShare) {
       issue(['tls', 'expiringLifetimeShare'], REASON.tlsShareOrder, {
         other: envName('tls', 'approachingLifetimeShare'),
         value: c.tls.approachingLifetimeShare,
       });
     }
+
+    // The reserve for writing reports must outlast the grace period of the collectors and the PDF print.
     const needed = c.scan.abortGraceMs + c.pdf.timeoutMs;
     if (c.scan.reportWriteReserveMs < needed) {
       issue(['scan', 'reportWriteReserveMs'], REASON.reportReserve, {

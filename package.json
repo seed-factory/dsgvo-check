@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "packageManager": "pnpm@12.16.1",
   "bin": {
@@ -57,7 +57,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
     "@peculiar/x509": "3.1.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "dns2": "3.1.1",

@@ -18,6 +18,9 @@ export const CLI = process.env.DSGVO_E2E_CLI ?? path.join(REPO_ROOT, 'dist/cli.j
 const HOOK = fileURLToPath(new URL('./network-hook.ts', import.meta.url));
 const SITES = fileURLToPath(new URL('../sites/', import.meta.url));
 
+/** A hung CLI is killed shortly before the e2e test timeout (300 s), so the test fails with its output instead of timing out blind. */
+const DEFAULT_CLI_TIMEOUT_MS = 280_000;
+
 /** Marker contained in every cookie and storage value the fixture sites set; it must never reach a report. */
 export const SECRET_MARKER = 'E2ESECRET';
 
@@ -48,40 +51,55 @@ export interface E2eEnvironment {
   close(): Promise<void>;
 }
 
-/** Fixture sites: www.clean-shop.test (no third parties) and www.tracker-shop.test (analytics before consent). */
-export async function startE2eEnvironment(): Promise<E2eEnvironment> {
-  const hosts: Record<string, string> = {
-    'www.clean-shop.test': path.join(SITES, 'clean/www'),
-    'www.tracker-shop.test': path.join(SITES, 'tracker/www'),
-    'www.google-analytics.com': path.join(SITES, 'tracker/ga'),
-  };
+const SHOP_DOMAINS = ['clean-shop.test', 'tracker-shop.test'];
+const ANALYTICS_HOST = 'www.google-analytics.com';
+
+/** Site directory per host name the fixture server answers for. */
+const FIXTURE_HOSTS: Record<string, string> = {
+  'www.clean-shop.test': path.join(SITES, 'clean/www'),
+  'www.tracker-shop.test': path.join(SITES, 'tracker/www'),
+  [ANALYTICS_HOST]: path.join(SITES, 'tracker/ga'),
+};
+
+function fixtureRoutes(): RouteSpec[] {
   const routes: RouteSpec[] = [];
-  for (const domain of ['clean-shop.test', 'tracker-shop.test']) {
+  for (const domain of SHOP_DOMAINS) {
     // http → https on the same host first, then apex → www (TLS-01: first hop stays on the host).
     const home = `https://www.${domain}/`;
     routes.push(redirectAll(domain, 'http', `https://${domain}/`), redirectAll(domain, 'https', home));
     routes.push(redirectAll(`www.${domain}`, 'http', home));
   }
-  routes.push({ host: 'www.google-analytics.com', path: '/g/collect', status: 204 });
-  const server = await startFixtureServer({ hosts, routes });
+  routes.push({ host: ANALYTICS_HOST, path: '/g/collect', status: 204 });
+  return routes;
+}
 
+/** Mail records the DNS checks read: the fixture domains neither send nor accept mail (SPF -all, DMARC reject, null MX). */
+function startFixtureDns(): Promise<FakeDnsServer> {
   const mail = (domain: string) => ({
     [`_dmarc.${domain}`]: [`v=DMARC1; p=reject; rua=mailto:dmarc@${domain}`],
     [domain]: ['v=spf1 -all'],
   });
-  const dns = await startFakeDns({
+  return startFakeDns({
     txt: { ...mail('clean-shop.test'), ...mail('tracker-shop.test') },
     mx: { 'clean-shop.test': [[0, '.']], 'tracker-shop.test': [[0, '.']] },
-    names: ['www.clean-shop.test', 'www.tracker-shop.test', 'www.google-analytics.com'],
+    names: ['www.clean-shop.test', 'www.tracker-shop.test', ANALYTICS_HOST],
   });
+}
+
+/** Fixture sites: www.clean-shop.test (no third parties) and www.tracker-shop.test (analytics before consent). */
+export async function startE2eEnvironment(): Promise<E2eEnvironment> {
+  const server = await startFixtureServer({ hosts: FIXTURE_HOSTS, routes: fixtureRoutes() });
+  const dns = await startFixtureDns();
+
   const network: E2eNetworkConfig = {
     httpPort: server.httpPort,
     httpsPort: server.httpsPort,
-    hosts: [...Object.keys(hosts), 'clean-shop.test', 'tracker-shop.test'],
+    hosts: [...Object.keys(FIXTURE_HOSTS), ...SHOP_DOMAINS],
     browserArgs: server.browserArgs(),
     caPem: [server.pki.caPem],
     dnsServers: [dns.address],
   };
+
   return {
     server,
     dns,
@@ -110,18 +128,11 @@ function readIf(file: string): string | null {
   return existsSync(file) ? readFileSync(file, 'utf8') : null;
 }
 
-/**
- * Run the built CLI asynchronously (the fixture server lives in this process, so spawnSync would deadlock).
- * The child gets a minimal environment: no GITHUB_STEP_SUMMARY unless `stepSummary` is given; `env` adds variables and
- * `dotenv` becomes the `.env` file of its working directory (the output directory).
- */
-export function runCli(
+/** Minimal child environment, so a result never depends on the developer's shell or CI variables. */
+function childEnvironment(
   env: E2eEnvironment | null,
-  args: string[],
-  opts: { stepSummary?: string; timeoutMs?: number; env?: Record<string, string>; dotenv?: string } = {},
-): Promise<CliRun> {
-  const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-out-'));
-  if (opts.dotenv !== undefined) writeFileSync(path.join(outDir, '.env'), opts.dotenv);
+  opts: { stepSummary?: string; env?: Record<string, string> },
+): NodeJS.ProcessEnv {
   const childEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -134,12 +145,46 @@ export function runCli(
   if (env) childEnv.DSGVO_E2E_NETWORK = JSON.stringify(env.network);
   if (opts.stepSummary) childEnv.GITHUB_STEP_SUMMARY = opts.stepSummary;
   Object.assign(childEnv, opts.env);
+
   for (const k of Object.keys(childEnv)) if (childEnv[k] === undefined) delete childEnv[k];
+  return childEnv;
+}
+
+/** The report files a finished run left in `outDir`, and all text output joined for leak checks. */
+function collectRun(outcome: Pick<CliRun, 'code' | 'signal' | 'stdout' | 'stderr'>, outDir: string): CliRun {
+  const jsonText = readIf(path.join(outDir, 'report.json'));
+  const texts = [outcome.stdout, outcome.stderr];
+  for (const f of readdirSync(outDir, { recursive: true }) as string[]) {
+    if (/\.(json|html|md|txt|log)$/.test(f)) texts.push(readFileSync(path.join(outDir, f), 'utf8'));
+  }
+
+  return {
+    ...outcome,
+    outDir,
+    json: jsonText ? (JSON.parse(jsonText) as Report) : null,
+    html: readIf(path.join(outDir, 'report.html')),
+    summary: readIf(path.join(outDir, 'summary.md')),
+    allText: texts.join('\n'),
+  };
+}
+
+/**
+ * Run the built CLI asynchronously (the fixture server lives in this process, so spawnSync would deadlock).
+ * The child gets a minimal environment: no GITHUB_STEP_SUMMARY unless `stepSummary` is given; `env` adds variables and
+ * `dotenv` becomes the `.env` file of its working directory (the output directory).
+ */
+export function runCli(
+  env: E2eEnvironment | null,
+  args: string[],
+  opts: { stepSummary?: string; timeoutMs?: number; env?: Record<string, string>; dotenv?: string } = {},
+): Promise<CliRun> {
+  const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-out-'));
+  if (opts.dotenv !== undefined) writeFileSync(path.join(outDir, '.env'), opts.dotenv);
 
   const nodeArgs = env ? ['--import', pathToFileURL(HOOK).href, CLI] : [CLI];
   const child = spawn(process.execPath, [...nodeArgs, ...args, '--out', outDir], {
     cwd: outDir,
-    env: childEnv,
+    env: childEnvironment(env, opts),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '';
@@ -150,29 +195,13 @@ export function runCli(
   child.stderr.setEncoding('utf8').on('data', (d: string) => {
     stderr += d;
   });
-  const timer = setTimeout(() => child.kill('SIGKILL'), opts.timeoutMs ?? 280_000);
+  const timer = setTimeout(() => child.kill('SIGKILL'), opts.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS);
+
   return new Promise((resolve, reject) => {
     child.on('error', reject);
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      const jsonText = readIf(path.join(outDir, 'report.json'));
-      const html = readIf(path.join(outDir, 'report.html'));
-      const summary = readIf(path.join(outDir, 'summary.md'));
-      const texts = [stdout, stderr];
-      for (const f of readdirSync(outDir, { recursive: true }) as string[]) {
-        if (/\.(json|html|md|txt|log)$/.test(f)) texts.push(readFileSync(path.join(outDir, f), 'utf8'));
-      }
-      resolve({
-        code,
-        signal,
-        stdout,
-        stderr,
-        outDir,
-        json: jsonText ? (JSON.parse(jsonText) as Report) : null,
-        html,
-        summary,
-        allText: texts.join('\n'),
-      });
+      resolve(collectRun({ code, signal, stdout, stderr }, outDir));
     });
   });
 }
@@ -185,6 +214,7 @@ export function pipelineGaps(report: Report, requiredChecks: readonly string[]):
   else if (browser.status === 'skipped' && browser.reason === 'not-implemented') {
     gaps.push('browser collector is the scaffold stub (not-implemented)');
   }
+
   const ids = new Set((report.checks ?? []).map((c) => c.id));
   for (const id of requiredChecks) if (!ids.has(id)) gaps.push(`check ${id} is not registered`);
   return gaps;

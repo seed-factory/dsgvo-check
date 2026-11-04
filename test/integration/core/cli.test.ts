@@ -67,7 +67,9 @@ describe('dsgvo-check CLI', () => {
     [['https://does-not-exist.invalid'], 'unreachable'],
   ])('%j → 2 with a valid failed report', (args, reason) => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
+
     const r = run(...args, '--out', out);
+
     expect(r.status).toBe(2);
     const file = path.join(out, 'report.json');
     expect(existsSync(file)).toBe(true);
@@ -80,6 +82,7 @@ describe('dsgvo-check CLI', () => {
   it('the unreachable target is resolved only by the offline test resolver', () => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
     const r = run('https://does-not-exist.invalid', '--out', out);
+
     expect(r.status).toBe(2);
     expect(r.lookups).toEqual(['does-not-exist.invalid']);
     const report = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
@@ -92,6 +95,7 @@ describe('dsgvo-check CLI', () => {
   ])('a target with credentials and query (%s) is redacted in report.json and stderr', (_n, extra) => {
     const out = mkdtempSync(path.join(tmpdir(), 'cli-out-'));
     const r = run('https://demo-user:demo-password@example.de/?sid=demo-session', ...extra, '--out', out);
+
     expect(r.status).toBe(2);
     const json = readFileSync(path.join(out, 'report.json'), 'utf8');
     expectValidReport(JSON.parse(json));

@@ -19,15 +19,26 @@ interface UsercentricsRead {
 /** In-page, self-contained, async (the v3 API returns promises). Read-only calls only. */
 async function readUsercentrics(): Promise<UsercentricsRead> {
   type Fn = (...a: unknown[]) => unknown;
+  type Api = Record<string, Fn | undefined>;
+  type State = Omit<UsercentricsRead, 'v3' | 'v2'>;
   const w = globalThis as unknown as {
-    __ucCmp?: Record<string, Fn | undefined>;
-    UC_UI?: Record<string, Fn | undefined>;
+    __ucCmp?: Api;
+    UC_UI?: Api;
     localStorage: { getItem(k: string): string | null };
     setTimeout: typeof setTimeout;
   };
+  /** An API call that does not answer within this time counts as no answer. */
+  const CALL_TIMEOUT_MS = 2000;
+  /** v3 `consent.type` to the recorded answer; any other type (or none) is unknown. */
+  const ANSWER_BY_CONSENT_TYPE: Record<string, Pick<State, 'responded' | 'method'>> = {
+    EXPLICIT: { responded: true, method: 'explicit' },
+    IMPLICIT: { responded: false, method: 'implied' },
+  };
+
   const withTimeout = async (v: unknown): Promise<unknown> =>
-    Promise.race([Promise.resolve(v), new Promise((r) => w.setTimeout(() => r(undefined), 2000))]);
-  const call = async (obj: Record<string, Fn | undefined> | undefined, name: string): Promise<unknown> => {
+    Promise.race([Promise.resolve(v), new Promise((r) => w.setTimeout(() => r(undefined), CALL_TIMEOUT_MS))]);
+
+  const call = async (obj: Api | undefined, name: string): Promise<unknown> => {
     const f = obj?.[name];
     if (typeof f !== 'function') return undefined;
     try {
@@ -36,9 +47,11 @@ async function readUsercentrics(): Promise<UsercentricsRead> {
       return undefined;
     }
   };
+
   const stateOf = (v: unknown): CategoryState => {
     if (v === true) return 'granted';
     if (v === false) return 'denied';
+
     const s = String(
       (v as { state?: unknown; status?: unknown } | null)?.state ??
         (v as { status?: unknown } | null)?.status ??
@@ -49,64 +62,95 @@ async function readUsercentrics(): Promise<UsercentricsRead> {
     if (/SOME/i.test(s)) return 'partial';
     return 'unknown';
   };
-  const out: UsercentricsRead = {
-    v3: !!w.__ucCmp,
-    v2: !!w.UC_UI,
+
+  const emptyState = (): State => ({
     initialized: false,
     categories: {},
     responded: 'unknown',
     method: 'unknown',
     consentRequired: null,
-  };
-  if (w.__ucCmp) {
-    out.initialized = (await call(w.__ucCmp, 'isInitialized')) === true;
-    const details = (await call(w.__ucCmp, 'getConsentDetails')) as
+  });
+
+  const readV3 = async (api: Api): Promise<State> => {
+    const state = emptyState();
+    state.initialized = (await call(api, 'isInitialized')) === true;
+
+    const details = (await call(api, 'getConsentDetails')) as
       | { consent?: { type?: unknown }; categories?: Record<string, unknown> }
       | undefined;
     if (details) {
-      out.initialized = true;
+      state.initialized = true;
       for (const [id, v] of Object.entries(details.categories ?? {})) {
         const essential =
           (v as { essential?: unknown } | null)?.essential === true || /^essential$/i.test(id);
-        if (!essential) out.categories[id] = stateOf(v);
+        if (!essential) state.categories[id] = stateOf(v);
       }
+
       const type = String(details.consent?.type ?? '').toUpperCase();
-      out.responded = type === 'EXPLICIT' ? true : type === 'IMPLICIT' ? false : 'unknown';
-      out.method = type === 'EXPLICIT' ? 'explicit' : type === 'IMPLICIT' ? 'implied' : 'unknown';
-    }
-    const req = await call(w.__ucCmp, 'isConsentRequired');
-    out.consentRequired = typeof req === 'boolean' ? req : null;
-  } else if (w.UC_UI) {
-    out.initialized = (await call(w.UC_UI, 'isInitialized')) === true;
-    const services = await call(w.UC_UI, 'getServicesBaseInfo');
-    if (Array.isArray(services)) {
-      const byCat: Record<string, boolean[]> = {};
-      for (const s of services as Array<{
-        categorySlug?: unknown;
-        isEssential?: unknown;
-        consent?: { status?: unknown };
-      }>) {
-        if (s.isEssential === true) continue;
-        const cat = typeof s.categorySlug === 'string' ? s.categorySlug : 'uncategorized';
-        const list = byCat[cat] ?? [];
-        list.push(s.consent?.status === true);
-        byCat[cat] = list;
-      }
-      for (const [cat, list] of Object.entries(byCat)) {
-        out.categories[cat] = list.every(Boolean) ? 'granted' : list.some(Boolean) ? 'partial' : 'denied';
+      const answer = ANSWER_BY_CONSENT_TYPE[type];
+      if (answer) {
+        state.responded = answer.responded;
+        state.method = answer.method;
       }
     }
+
+    const req = await call(api, 'isConsentRequired');
+    state.consentRequired = typeof req === 'boolean' ? req : null;
+    return state;
+  };
+
+  /** v2 lists services, not categories: a category is granted when all its optional services are. */
+  const categoriesOfServices = (services: unknown[]): Record<string, CategoryState> => {
+    const byCat: Record<string, boolean[]> = {};
+    for (const s of services as Array<{
+      categorySlug?: unknown;
+      isEssential?: unknown;
+      consent?: { status?: unknown };
+    }>) {
+      if (s.isEssential === true) continue;
+
+      const cat = typeof s.categorySlug === 'string' ? s.categorySlug : 'uncategorized';
+      const list = byCat[cat] ?? [];
+      list.push(s.consent?.status === true);
+      byCat[cat] = list;
+    }
+
+    const categories: Record<string, CategoryState> = {};
+    for (const [cat, list] of Object.entries(byCat)) {
+      categories[cat] = list.every(Boolean) ? 'granted' : list.some(Boolean) ? 'partial' : 'denied';
+    }
+    return categories;
+  };
+
+  const readV2 = async (api: Api): Promise<State> => {
+    const state = emptyState();
+    state.initialized = (await call(api, 'isInitialized')) === true;
+
+    const services = await call(api, 'getServicesBaseInfo');
+    if (Array.isArray(services)) state.categories = categoriesOfServices(services);
+
     let interaction: string | null = null;
     try {
       interaction = w.localStorage.getItem('uc_user_interaction');
     } catch {
       interaction = null;
     }
-    out.responded =
+    state.responded =
       interaction === 'true' ? true : interaction === 'false' || interaction === null ? false : 'unknown';
-    out.method = out.responded === true ? 'explicit' : 'unknown';
-  }
-  return out;
+    state.method = state.responded === true ? 'explicit' : 'unknown';
+    return state;
+  };
+
+  // Both globals are read once, before any await: a v3 loader that appears while a v2 read is in flight must not turn
+  // the v2 state into a v3 one.
+  const v3Api = w.__ucCmp;
+  const v2Api = w.UC_UI;
+
+  let state = emptyState();
+  if (v3Api) state = await readV3(v3Api);
+  else if (v2Api) state = await readV2(v2Api);
+
+  return { v3: !!v3Api, v2: !!v2Api, ...state };
 }
 
 const read = (page: Page) => page.evaluate(readUsercentrics);
@@ -116,6 +160,7 @@ export const usercentrics = defineAdapter({
   async readState(page) {
     const r = await read(page);
     if (!r.v3 && !r.v2) return [];
+
     const geo = r.v3 && r.consentRequired === false && r.responded !== true;
     return [
       {

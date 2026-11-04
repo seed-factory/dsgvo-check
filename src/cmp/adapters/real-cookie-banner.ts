@@ -16,10 +16,12 @@ interface RcbRead {
   bannerVisible: boolean;
 }
 
+/** In-page, self-contained. The cookie value is parsed here and never leaves the page. */
 function readRcb(botUserAgent: string): RcbRead {
   interface El {
     getBoundingClientRect(): { width: number; height: number };
   }
+  type Group = { id?: unknown; slug?: unknown; isEssential?: unknown };
   const w = globalThis as unknown as {
     consentApi?: unknown;
     realCookieBanner?: { isAcceptAllForBots?: unknown; isRespectDoNotTrack?: unknown; groups?: unknown };
@@ -27,42 +29,53 @@ function readRcb(botUserAgent: string): RcbRead {
     navigator: { userAgent: string };
   };
   const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+
   const entry = w.document.cookie
     .split(';')
     .map((c) => c.trim())
     .find((c) => c.startsWith('real_cookie_banner'));
-  let consented: string[] = [];
-  if (entry) {
+
+  /** Ids of the groups with at least one consented service in the cookie. */
+  const readConsented = (): string[] => {
+    if (!entry) return [];
     try {
       const value = decodeURIComponent(entry.slice(entry.indexOf('=') + 1));
       const json = value.slice(value.indexOf('{'));
-      consented = Object.entries(JSON.parse(json) as Record<string, unknown>)
+      return Object.entries(JSON.parse(json) as Record<string, unknown>)
         .filter(([, v]) => Array.isArray(v) && v.length > 0)
         .map(([k]) => k);
     } catch {
-      consented = [];
+      return [];
     }
-  }
-  const groups = Array.isArray(w.realCookieBanner?.groups)
-    ? (w.realCookieBanner.groups as Array<{ id?: unknown; slug?: unknown; isEssential?: unknown }>)
-    : [];
-  const categories: Record<string, boolean | null> = {};
-  for (const g of groups) {
-    if (g.isEssential === true) continue;
-    const key = typeof g.slug === 'string' ? g.slug : String(g.id);
-    categories[key] = entry ? consented.includes(String(g.id)) : false;
-  }
-  if (groups.length === 0 && entry) categories['non-essential'] = consented.length > 1;
-  const banner = w.document.querySelector('div[consent-skip-blocker="1"][data-bg]');
-  const rect = banner?.getBoundingClientRect();
+  };
+
+  const readCategories = (consented: string[]): Record<string, boolean | null> => {
+    const groups = Array.isArray(w.realCookieBanner?.groups) ? (w.realCookieBanner.groups as Group[]) : [];
+    const categories: Record<string, boolean | null> = {};
+    for (const g of groups) {
+      if (g.isEssential === true) continue;
+
+      const key = typeof g.slug === 'string' ? g.slug : String(g.id);
+      categories[key] = entry ? consented.includes(String(g.id)) : false;
+    }
+    // Without a group list the cookie can only say whether anything beyond the essential group was consented.
+    if (groups.length === 0 && entry) categories['non-essential'] = consented.length > 1;
+    return categories;
+  };
+
+  const isBannerVisible = (): boolean => {
+    const rect = w.document.querySelector('div[consent-skip-blocker="1"][data-bg]')?.getBoundingClientRect();
+    return !!rect && rect.width > 0 && rect.height > 0;
+  };
+
   return {
     present: w.consentApi !== undefined && w.consentApi !== null,
     cookiePresent: !!entry,
-    categories,
+    categories: readCategories(readConsented()),
     acceptAllForBots: bool(w.realCookieBanner?.isAcceptAllForBots),
     respectDnt: bool(w.realCookieBanner?.isRespectDoNotTrack),
     uaBot: new RegExp(botUserAgent, 'i').test(w.navigator.userAgent),
-    bannerVisible: !!rect && rect.width > 0 && rect.height > 0,
+    bannerVisible: isBannerVisible(),
   };
 }
 
@@ -76,6 +89,7 @@ export const realCookieBanner = defineAdapter({
   async readState(page) {
     const r = await read(page);
     if (!r.present && !r.cookiePresent) return [];
+
     const bot = botBranch(r);
     return [
       {

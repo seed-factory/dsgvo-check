@@ -9,7 +9,7 @@ import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
 import { FIXED_NOW, makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
-import { type FakeDnsServer, localDnsNetwork, MAIL_SITE, startFakeDns } from './dns-server.ts';
+import { type FakeDnsServer, type FakeZone, localDnsNetwork, MAIL_SITE, startFakeDns } from './dns-server.ts';
 
 let dns: FakeDnsServer;
 
@@ -21,47 +21,69 @@ afterAll(async () => {
   await dns?.close();
 });
 
+/** A node:dns client against the fake server, which answers from `zone` from now on. */
+function clientFor(zone: FakeZone, timeoutMs = 1_000) {
+  dns.setZone(zone);
+  return createNodeDnsClient({ servers: [dns.server], timeoutMs });
+}
+
 describe('node:dns client against dns2', () => {
-  it('joins TXT chunks, keeps NXDOMAIN and NODATA apart, reads Null MX', async () => {
-    dns.setZone({
-      'TXT spf.example.test': [['v=spf1 include:a.test ', '-all']],
-      'MX nullmx.example.test': ['0 .'],
-      'A nodata.example.test': ['192.0.2.1'],
+  describe('answer shapes', () => {
+    const client = () =>
+      clientFor({
+        'TXT spf.example.test': [['v=spf1 include:a.test ', '-all']],
+        'MX nullmx.example.test': ['0 .'],
+        'A nodata.example.test': ['192.0.2.1'],
+      });
+
+    it('joins the chunks of a TXT record into one value', async () => {
+      const c = client();
+      expect(c.resolver).toEqual({ kind: 'custom', servers: [dns.server] });
+
+      const txt = await c.query('spf.example.test', 'TXT');
+
+      expect(txt).toMatchObject({ rcode: 'NOERROR', attempts: 1 });
+      expect(txt.answers).toEqual([
+        { type: 'TXT', value: 'v=spf1 include:a.test -all', chunks: ['v=spf1 include:a.test ', '-all'] },
+      ]);
     });
-    const client = createNodeDnsClient({ servers: [dns.server], timeoutMs: 1000 });
-    expect(client.resolver).toEqual({ kind: 'custom', servers: [dns.server] });
-    const txt = await client.query('spf.example.test', 'TXT');
-    expect(txt).toMatchObject({ rcode: 'NOERROR', attempts: 1 });
-    expect(txt.answers).toEqual([
-      { type: 'TXT', value: 'v=spf1 include:a.test -all', chunks: ['v=spf1 include:a.test ', '-all'] },
-    ]);
-    expect(await client.query('nullmx.example.test', 'MX')).toMatchObject({
-      rcode: 'NOERROR',
-      answers: [{ type: 'MX', value: '.', priority: 0 }],
+
+    it('reads a Null MX', async () => {
+      expect(await client().query('nullmx.example.test', 'MX')).toMatchObject({
+        rcode: 'NOERROR',
+        answers: [{ type: 'MX', value: '.', priority: 0 }],
+      });
     });
-    expect((await client.query('gone.example.test', 'TXT')).rcode).toBe('NXDOMAIN');
-    expect((await client.query('nodata.example.test', 'TXT')).rcode).toBe('NODATA');
+
+    it('keeps NXDOMAIN (unknown name) and NODATA (name without this type) apart', async () => {
+      const c = client();
+
+      expect((await c.query('gone.example.test', 'TXT')).rcode).toBe('NXDOMAIN');
+      expect((await c.query('nodata.example.test', 'TXT')).rcode).toBe('NODATA');
+    });
   });
 
   it('retries SERVFAIL exactly once', async () => {
-    dns.setZone({ 'TXT _dmarc.example.test': 'SERVFAIL' });
-    const client = createNodeDnsClient({ servers: [dns.server], timeoutMs: 1000 });
+    const client = clientFor({ 'TXT _dmarc.example.test': 'SERVFAIL' });
+
     const r = await client.query('_dmarc.example.test', 'TXT');
+
     expect(r).toMatchObject({ rcode: 'SERVFAIL', attempts: 2 });
     expect(dns.requests).toEqual(['TXT _dmarc.example.test', 'TXT _dmarc.example.test']);
   });
 
   it('retries a timeout exactly once', async () => {
-    dns.setZone({ 'TXT slow.example.test': 'DROP' });
-    const client = createNodeDnsClient({ servers: [dns.server], timeoutMs: 200 });
+    const client = clientFor({ 'TXT slow.example.test': 'DROP' }, 200);
+
     const r = await client.query('slow.example.test', 'TXT');
+
     expect(r).toMatchObject({ rcode: 'TIMEOUT', attempts: 2 });
     expect(dns.requests).toHaveLength(2);
   });
 
   it('does not retry REFUSED', async () => {
-    dns.setZone({ 'TXT refused.example.test': 'REFUSED' });
-    const client = createNodeDnsClient({ servers: [dns.server], timeoutMs: 1000 });
+    const client = clientFor({ 'TXT refused.example.test': 'REFUSED' });
+
     expect(await client.query('refused.example.test', 'TXT')).toMatchObject({
       rcode: 'REFUSED',
       attempts: 1,
@@ -89,7 +111,9 @@ function collectorContext(url: string, config: ConfigInput = {}): CollectorConte
 describe('collectDns with dnsServers', () => {
   it('collects MX, the DMARC walk and the SPF tree; masks mailto; drops unrelated TXT', async () => {
     dns.setZone(MAIL_SITE);
+
     const r = await collectDns(collectorContext('https://www.example.test/'));
+
     expect(r.status).toBe('ok');
     const section = r.sections.dns;
     if (!section) throw new Error('no dns section');
@@ -101,6 +125,7 @@ describe('collectDns with dnsServers', () => {
       'TXT _spf.provider.test NOERROR',
     ]);
     expect(section.resolver).toEqual({ kind: 'custom', servers: [dns.server] });
+
     const json = JSON.stringify(section);
     expect(json).toContain('rua=mailto:[redacted]@example.test');
     expect(json).not.toContain('dmarc-reports@');
@@ -113,7 +138,9 @@ describe('collectDns with dnsServers', () => {
 
   it('the query budget of the settings stops the collection and is recorded', async () => {
     dns.setZone(MAIL_SITE);
+
     const r = await collectDns(collectorContext('https://www.example.test/', { dns: { queryBudget: 2 } }));
+
     expect(r).toMatchObject({ status: 'partial', reason: 'dns-budget-exhausted' });
     expect(r.sections.dns?.budget).toEqual({ limit: 2, used: 2 });
     expect(r.sections.dns?.queries).toHaveLength(2);
@@ -138,6 +165,7 @@ describe('collectDns with dnsServers', () => {
       'TXT _dmarc.test': 'SERVFAIL',
     });
     const r = await collectDns(collectorContext('https://www.example.test/'));
+
     const snap = makeSnapshot({ target: makeTarget('https://www.example.test/'), dns: r.sections.dns });
     expect(runCheck(mail01, snap)).toMatchObject({ status: 'error', reason: 'exception' });
   });

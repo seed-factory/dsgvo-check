@@ -17,9 +17,11 @@ const planTarget: NonNullable<ClickPlan['target']> = {
   kindConfidence: 'high',
 };
 
+/** An adapter that records how it was called; `withAct` decides whether it offers `act` besides reject/accept. */
 function fakeAdapter(withAct: boolean) {
   const calls: Array<{ via: string; action: string; target?: ClickTarget | null; opts?: ActOptions }> = [];
   const outcome = (action: 'reject' | 'accept'): ClickOutcome => ({ action, clicked: true, button: null });
+
   const adapter = {
     id: 'cookiebot',
     reject: async (_p: Page, opts?: ActOptions) => {
@@ -39,6 +41,7 @@ function fakeAdapter(withAct: boolean) {
         }
       : {}),
   } as unknown as CmpAdapter;
+
   return { adapter, calls };
 }
 
@@ -46,6 +49,7 @@ describe('CmpBridge.act executes the plan.click target', () => {
   it('passes the core decision to adapter.act; the adapter gets no facts to decide on', async () => {
     const { adapter, calls } = fakeAdapter(true);
     const errors: CollectorError[] = [];
+
     const out = await new CmpBridge(api, 1_000, errors, 'B', DEFAULT_CLASSIFY).act(
       page,
       adapter,
@@ -53,6 +57,7 @@ describe('CmpBridge.act executes the plan.click target', () => {
       planTarget,
       'u',
     );
+
     expect(out?.clicked).toBe(true);
     expect(calls).toEqual([
       {
@@ -72,13 +77,16 @@ describe('CmpBridge.act executes the plan.click target', () => {
   it('without act: reject/accept get `{ target }`; a null target is passed on as null (nothing is clicked)', async () => {
     const { adapter, calls } = fakeAdapter(false);
     const bridge = new CmpBridge(api, 1_000, [], 'C', DEFAULT_CLASSIFY);
+
     await bridge.act(page, adapter, 'accept', { ...planTarget, name: 'Alle akzeptieren' }, 'u');
     await bridge.act(page, adapter, 'reject', null, 'u');
+
     const targetOf = (o?: ActOptions) => (o && 'target' in o ? (o.target?.name ?? null) : 'absent');
     expect(calls.map((c) => [c.via, targetOf(c.opts)])).toEqual([
       ['accept', 'Alle akzeptieren'],
       ['reject', null],
     ]);
-    expect(calls.every((c) => c.opts && !('facts' in c.opts))).toBe(true);
+    // the adapter decides nothing: it is handed no facts
+    expect(calls.filter((c) => !c.opts || 'facts' in c.opts)).toEqual([]);
   });
 });

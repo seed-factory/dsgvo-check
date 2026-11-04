@@ -28,8 +28,10 @@ export async function launchTestBrowser(
     viewport: opts.viewport ?? { width: 1366, height: 768 },
     args: [...server.browserArgs(), ...(opts.args ?? [])],
   });
+
   const requests: Request[] = [];
   context.on('request', (r) => requests.push(r));
+
   return {
     context,
     requests,

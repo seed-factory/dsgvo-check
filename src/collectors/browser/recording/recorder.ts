@@ -12,6 +12,8 @@ import {
   extractRequestFeatures,
   parseSetCookies,
   REQUEST_FEATURES_VERSION,
+  type RequestFeatures,
+  type SetCookieAttrs,
   sanitizeRequestUrl,
   splitSetCookieNames,
 } from './features.ts';
@@ -96,15 +98,18 @@ export function settleWithin<T>(p: Promise<T>, ms: number, signal?: AbortSignal)
       resolve(r);
     };
     const onAbort = () => done({ status: 'expired' });
+
     p.then(
       (value) => done({ status: 'ok', value }),
       () => done({ status: 'error' }),
     );
+
     if (signal?.aborted || ms <= 0) {
       // Settled promises resolve in the microtask queue first.
       queueMicrotask(() => queueMicrotask(onAbort));
       return;
     }
+
     // `Infinity` would overflow `setTimeout` into a 1 ms timer, so only the signal can end the wait.
     if (Number.isFinite(ms)) timer = setTimeout(onAbort, Math.min(ms, MAX_TIMER_MS));
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -138,6 +143,13 @@ interface Entry {
   countsForQuiet: boolean;
 }
 
+interface FrameFacts {
+  frameId?: string;
+  isMainFrame: boolean;
+  /** Only for a subframe request with an http(s) document. */
+  frameUrl?: string;
+}
+
 const BLOCKED_RE = /ERR_BLOCKED_BY_(CLIENT|RESPONSE|CSP|ORB|ADMINISTRATOR)|ERR_BLOCKED_BY/;
 const ABORTED_RE = /ERR_ABORTED/;
 
@@ -147,6 +159,36 @@ export type ScanClock = () => number;
 export function localScanClock(): ScanClock {
   const origin = performance.now();
   return () => performance.now() - origin;
+}
+
+function hostnameOf(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function postDataOf(r: Request): string | null {
+  try {
+    return r.postData();
+  } catch {
+    return null;
+  }
+}
+
+/** Third-party request that carries identifier cookies: records their names (sorted), never the values. */
+function recordSentIdentifierCookies(rec: RequestRecord, cookieHeader: string): void {
+  const names = cookieHeader
+    .split(';')
+    .map((p) => p.split('=')[0]?.trim() ?? '')
+    .filter((n) => n && loadIdentifierRules().cookies.some((re) => re.test(n)));
+  if (names.length === 0) return;
+
+  const sent = [...new Set(names)].sort();
+  rec.sentCookieNames = sent;
+  rec.identifierPresent = true;
+  rec.identifierNames = [...new Set([...(rec.identifierNames ?? []), ...sent])].sort();
 }
 
 export class NetworkRecorder implements ActivitySource {
@@ -252,6 +294,7 @@ export class NetworkRecorder implements ActivitySource {
   // while the adapter call was still returning.
   markClickAt(at: number): void {
     const actionId = `${this.phase}-a${++this.actionSeq}`;
+
     for (const [rec, start] of this.starts) {
       if (start < at) continue;
       rec.afterClick = true;
@@ -261,6 +304,7 @@ export class NetworkRecorder implements ActivitySource {
       for (const o of this.originsOfRequest.get(rec) ?? []) o.afterClick = true;
       this.originsOfRequest.delete(rec);
     }
+
     this.currentAction = actionId;
     this.afterClick = true;
     this.tRef = 'click';
@@ -352,47 +396,30 @@ export class NetworkRecorder implements ActivitySource {
     if (this.startsMainDocument(r)) this.inflightSet.clear();
     this.inflightSet.add(r);
     if (countsForQuiet) this.lastStart = Date.now();
+
     if (this.counter.issued > this.counter.limit) {
       this.counter.truncated = true;
       this.dropped++;
       this.entries.set(r, { record: null, identifierValues: [], countsForQuiet });
       return;
     }
+
     const raw = r.url();
-    let host = '';
-    try {
-      host = new URL(raw).hostname.toLowerCase();
-    } catch {
-      host = '';
-    }
-    let postData: string | null = null;
-    try {
-      postData = r.postData();
-    } catch {
-      postData = null;
-    }
-    const features = extractRequestFeatures(raw, postData);
-    let isMainFrame = false;
-    let frameUrl: string | undefined;
-    let frameId: string | undefined;
+    const features = extractRequestFeatures(raw, postDataOf(r));
+    const record = this.buildRecord(r, raw, features);
+
+    this.records.push(record);
+    this.starts.set(record, performance.now());
+    this.entries.set(r, { record, identifierValues: features.identifierValues, countsForQuiet });
+  }
+
+  private buildRecord(r: Request, raw: string, features: RequestFeatures): RequestRecord {
     const sw = r.serviceWorker();
-    if (!sw) {
-      try {
-        const frame = r.frame();
-        frameId = this.frameIdOf(frame);
-        isMainFrame = frame.parentFrame() === null;
-        if (!isMainFrame) {
-          // A subframe's own navigation: the frame is the requested document.
-          const fu = r.isNavigationRequest() ? raw : frame.url();
-          if (/^https?:/.test(fu)) frameUrl = sanitizeRequestUrl(fu);
-        }
-      } catch {
-        // frame detached
-      }
-    }
+    const { frameId, isMainFrame, frameUrl } = sw ? { isMainFrame: false } : this.frameFacts(r, raw);
     const redirectedFrom = r.redirectedFrom();
     const parentRequestId = redirectedFrom ? this.entries.get(redirectedFrom)?.record?.id : undefined;
-    const record: RequestRecord = {
+
+    return {
       id: `${this.phase}-${String(++this.seq).padStart(4, '0')}`,
       phase: this.phase,
       pageUrl: this.pageUrl,
@@ -400,7 +427,7 @@ export class NetworkRecorder implements ActivitySource {
       isNavigation: r.isNavigationRequest(),
       isMainFrame,
       url: sanitizeRequestUrl(raw),
-      host,
+      host: hostnameOf(raw),
       method: r.method(),
       resourceType: r.resourceType(),
       tStartMs: this.relative(),
@@ -425,9 +452,24 @@ export class NetworkRecorder implements ActivitySource {
       parserVersion: REQUEST_FEATURES_VERSION,
       observationSource: 'playwright',
     };
-    this.records.push(record);
-    this.starts.set(record, performance.now());
-    this.entries.set(r, { record, identifierValues: features.identifierValues, countsForQuiet });
+  }
+
+  /** Frame ids of a request that has a frame; whatever is known when the frame is already detached. */
+  private frameFacts(r: Request, raw: string): FrameFacts {
+    const facts: FrameFacts = { isMainFrame: false };
+    try {
+      const frame = r.frame();
+      facts.frameId = this.frameIdOf(frame);
+      facts.isMainFrame = frame.parentFrame() === null;
+      if (!facts.isMainFrame) {
+        // A subframe's own navigation: the frame is the requested document.
+        const frameUrl = r.isNavigationRequest() ? raw : frame.url();
+        if (/^https?:/.test(frameUrl)) facts.frameUrl = sanitizeRequestUrl(frameUrl);
+      }
+    } catch {
+      // frame detached
+    }
+    return facts;
   }
 
   /** A redirect hop, a subframe document and a popup document are not a new main-frame document. */
@@ -445,9 +487,9 @@ export class NetworkRecorder implements ActivitySource {
 
   private async onResponse(resp: Response): Promise<void> {
     const req = resp.request();
-    const e = this.entries.get(req);
-    if (!e?.record) return;
-    const rec = e.record;
+    const rec = this.entries.get(req)?.record;
+    if (!rec) return;
+
     rec.status = resp.status();
     rec.delivery = 'sent';
     rec.result = { kind: 'response', status: resp.status() };
@@ -457,45 +499,16 @@ export class NetworkRecorder implements ActivitySource {
     } else {
       rec.state = 'completed';
     }
+
     const budget = new MetaBudget(this.metaTimeoutMs);
     this.budgets.add(budget);
     try {
       const within = <T>(p: Promise<T>) => this.within(p, budget);
+
       const headers = await within(resp.headersArray());
       if (budget.expired) return;
-      if (headers.status === 'ok') {
-        const lines = headers.value.filter((h) => h.name.toLowerCase() === 'set-cookie').map((h) => h.value);
-        const names = splitSetCookieNames(lines);
-        if (names.length > 0) {
-          rec.setCookieNames = names;
-          const defaultPath = defaultCookiePath(req.url());
-          for (const c of parseSetCookies(lines)) {
-            const verdict = cookieDomainVerdict(rec.host, c.domain);
-            const origin: SetCookieOrigin = {
-              name: c.name,
-              host: rec.host,
-              url: rec.url,
-              ...(c.domain && verdict === 'domain' ? { domain: c.domain } : {}),
-              path: c.path ?? defaultPath,
-              partitioned: c.partitioned,
-              at: performance.now(),
-              ...(verdict === 'rejected' ? { rejected: true as const } : {}),
-            };
-            const key = setCookieKey(origin);
-            let stored = this.setCookieOrigins.get(key);
-            if (!stored) {
-              stored = rec.afterClick ? { ...origin, afterClick: true } : origin;
-              this.setCookieOrigins.set(key, stored);
-            } else if (rec.afterClick) stored.afterClick = true;
-            // A late `markClickAt` re-times this request and must flag the origin too.
-            if (!rec.afterClick) {
-              const written = this.originsOfRequest.get(rec);
-              if (written) written.push(stored);
-              else this.originsOfRequest.set(rec, [stored]);
-            }
-          }
-        }
-      }
+      if (headers.status === 'ok') this.recordSetCookies(rec, req.url(), headers.value);
+
       const addr = await within(resp.serverAddr());
       if (budget.expired) return;
       if (addr.status === 'ok' && addr.value?.ipAddress) {
@@ -505,24 +518,57 @@ export class NetworkRecorder implements ActivitySource {
         };
         if (!resp.fromServiceWorker()) rec.provenance = 'network';
       }
+
       if (this.thirdParty(rec.host)) {
         const all = await within(req.allHeaders());
         if (budget.expired) return;
-        if (all.status === 'ok') {
-          const cookieHeader = all.value.cookie ?? '';
-          const sent = cookieHeader
-            .split(';')
-            .map((p) => p.split('=')[0]?.trim() ?? '')
-            .filter((n) => n && loadIdentifierRules().cookies.some((re) => re.test(n)));
-          if (sent.length > 0) {
-            rec.sentCookieNames = [...new Set(sent)].sort();
-            rec.identifierPresent = true;
-            rec.identifierNames = [...new Set([...(rec.identifierNames ?? []), ...sent])].sort();
-          }
-        }
+        if (all.status === 'ok') recordSentIdentifierCookies(rec, all.value.cookie ?? '');
       }
     } finally {
       this.budgets.delete(budget);
+    }
+  }
+
+  /** Names and setter origins of the `Set-Cookie` headers of a response; the values are dropped by the parser. */
+  private recordSetCookies(
+    rec: RequestRecord,
+    requestUrl: string,
+    headers: readonly { name: string; value: string }[],
+  ): void {
+    const lines = headers.filter((h) => h.name.toLowerCase() === 'set-cookie').map((h) => h.value);
+    const names = splitSetCookieNames(lines);
+    if (names.length === 0) return;
+
+    rec.setCookieNames = names;
+    const defaultPath = defaultCookiePath(requestUrl);
+    for (const c of parseSetCookies(lines)) this.recordSetCookieOrigin(rec, c, defaultPath);
+  }
+
+  private recordSetCookieOrigin(rec: RequestRecord, c: SetCookieAttrs, defaultPath: string): void {
+    const verdict = cookieDomainVerdict(rec.host, c.domain);
+    const origin: SetCookieOrigin = {
+      name: c.name,
+      host: rec.host,
+      url: rec.url,
+      ...(c.domain && verdict === 'domain' ? { domain: c.domain } : {}),
+      path: c.path ?? defaultPath,
+      partitioned: c.partitioned,
+      at: performance.now(),
+      ...(verdict === 'rejected' ? { rejected: true as const } : {}),
+    };
+
+    const key = setCookieKey(origin);
+    let stored = this.setCookieOrigins.get(key);
+    if (!stored) {
+      stored = rec.afterClick ? { ...origin, afterClick: true } : origin;
+      this.setCookieOrigins.set(key, stored);
+    } else if (rec.afterClick) stored.afterClick = true;
+
+    // A late `markClickAt` re-times this request and must flag the origin too.
+    if (!rec.afterClick) {
+      const written = this.originsOfRequest.get(rec);
+      if (written) written.push(stored);
+      else this.originsOfRequest.set(rec, [stored]);
     }
   }
 
@@ -536,6 +582,7 @@ export class NetworkRecorder implements ActivitySource {
     this.inflightSet.delete(r);
     const rec = this.entries.get(r)?.record;
     if (!rec) return;
+
     if (failure === null) {
       if (rec.state === 'attempted') {
         rec.state = 'completed';
@@ -543,6 +590,7 @@ export class NetworkRecorder implements ActivitySource {
       }
       return;
     }
+
     rec.failureText = truncate(failure, 200);
     if (rec.result?.kind === 'response') {
       // The response arrived and only reading the body failed: delivery and result stay, the error goes into
@@ -550,6 +598,7 @@ export class NetworkRecorder implements ActivitySource {
       rec.state = 'failed';
       return;
     }
+
     if (/ERR_BLOCKED_BY_CLIENT/.test(failure) && this.guardBlocked.has(r.url())) rec.blockedByGuard = true;
     if (BLOCKED_RE.test(failure) || rec.blockedByGuard) {
       rec.state = 'blocked-by-browser';

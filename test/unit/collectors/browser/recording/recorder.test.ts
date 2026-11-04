@@ -58,9 +58,11 @@ describe('NetworkRecorder: 5.3 request fields', () => {
   it('atMs is on the scan clock, ids link navigation, click, frame and redirect', async () => {
     let now = 1_000;
     const { ctx, rec } = setup(() => now);
-    const nav1 = rec.beginNavigation('https://www.example.de/');
     const main = frame(null);
     const sub = frame(main, 'https://widget.example.net/frame');
+
+    // navigation 1: a document, its redirect, a request of a sub-frame
+    const nav1 = rec.beginNavigation('https://www.example.de/');
     const first = request('http://www.example.de/', { frame: main, nav: true, type: 'document' });
     ctx.emit('request', first);
     now = 1_050;
@@ -73,6 +75,8 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     ctx.emit('request', second);
     now = 2_000;
     ctx.emit('request', request('https://widget.example.net/x.js', { frame: sub, type: 'script' }));
+
+    // the click, a request after it, then the reload as navigation 2
     now = 3_000;
     rec.markClickAt(performance.now());
     now = 3_400;
@@ -91,11 +95,13 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     expect(a?.frameId).toBe(b?.frameId);
     expect(c?.frameId).toBeDefined();
     expect(c?.frameId).not.toBe(a?.frameId);
+
     // The click is an action of the phase; requests after it carry its id (also after the reload).
     expect(rec.actionId).toBe('B-a1');
     expect([a, b, c].map((r) => r?.actionId)).toEqual([undefined, undefined, undefined]);
     expect(d?.actionId).toBe('B-a1');
     expect(e?.actionId).toBe('B-a1');
+
     for (const r of rec.records) {
       expect(r).toMatchObject({ parserVersion: REQUEST_FEATURES_VERSION, observationSource: 'playwright' });
     }
@@ -108,8 +114,10 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     ctx.emit('request', hit);
     ctx.emit('response', response(hit, 204));
     await rec.flush();
+
     ctx.emit('requestfailed', request('unused'));
     ctx.emit('requestfailed', Object.assign(hit, { failure: () => ({ errorText: 'net::ERR_ABORTED' }) }));
+
     const r = rec.records[0];
     expect(r).toMatchObject({ delivery: 'sent', result: { kind: 'response', status: 204 } });
     expect(r?.failureText).toBe('net::ERR_ABORTED');

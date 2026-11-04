@@ -31,6 +31,7 @@ export interface Measured {
   raw?: ProbeResult;
 }
 
+/** Controls the probe returns per banner; over this the first layer is kept (see `cmpPageProbe`). */
 const MAX_BUTTONS = 40;
 
 const MAX_COVERED_LEGAL_LINKS = 5;
@@ -38,7 +39,10 @@ const MAX_COVERED_LEGAL_LINKS = 5;
 /** Banner keywords the body of a large frame needs when its title, aria-label and name give no hint. */
 const MIN_BODY_KEYWORDS = 2;
 
+/** Share of the viewport a frame must cover to count as a consent-dialog candidate. */
 const FRAME_CANDIDATE_MIN_SHARE = 0.5;
+
+const FRAME_HINT_ATTRIBUTES = ['title', 'aria-label', 'name'];
 
 function phrasesOf(
   lexicon: CmpLexicon,
@@ -71,6 +75,7 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
     };
     phrasesCache.set(lexicon, phrases);
   }
+
   return {
     mode: 'banner',
     containers: [],
@@ -109,6 +114,7 @@ export function toButton(
 ): CmpButton {
   const vendorRole = (b.vendorRole as ButtonKind | null) ?? null;
   const { kind, kindConfidence } = classifyButton({ name: b.name, role: b.role, vendorRole }, lexicon);
+
   return {
     role: b.role,
     name: b.name,
@@ -149,14 +155,17 @@ export function toMeasured(
     legal?: LegalLexicon;
   } = {},
 ): Measured {
+  // Blocking facts come from the page that holds the banner's container: the main page for a banner inside an iframe.
   const outer = opts.blockingFrom ?? raw;
   const legal = () => opts.legal ?? loadLegalLexicon();
+
   const legalLinks = raw.buttons
     .filter((b) => b.role === 'link' && b.name !== '' && namesLegalDocument(legal(), b.name))
     .map((b) => ({ text: b.name, href: absoluteHref(b.href, pageUrl) }));
   const coveredFooterLinks = outer.coveredLinks
     .filter((l) => namesLegalDocument(legal(), l.label))
     .slice(0, MAX_COVERED_LEGAL_LINKS);
+
   const firstLayer: CmpFirstLayer = {
     bannerPresent: raw.found,
     bannerVisible: raw.found && raw.visible && outer.visible,
@@ -173,6 +182,7 @@ export function toMeasured(
     containerAnimating: outer.animating,
     coveredFooterLinks,
   };
+
   const b = outer.blocking;
   return {
     firstLayer,
@@ -204,7 +214,66 @@ export async function measureBanner(
       vendorRoles: [...(spec.vendorRoles ?? [])],
     }),
   );
+
   return toMeasured(raw, lexicon, page.url(), { closeMeansAccept });
+}
+
+interface HeuristicHit {
+  frame: Frame;
+  raw: ProbeResult;
+  frameEl: ElementHandle | null;
+  offset: { x: number; y: number } | null;
+}
+
+/** The iframe element of a child frame and its box in the main viewport; null when it is not rendered. */
+async function frameGeometry(frame: Frame): Promise<{ frameEl: ElementHandle; box: Box } | null> {
+  const frameEl = await frame.frameElement().catch(() => null);
+  const box = frameEl ? await frameEl.boundingBox().catch(() => null) : null;
+  if (!frameEl || !box || box.width < 1 || box.height < 1) return null;
+  return { frameEl, box };
+}
+
+/** The main frame or a rendered child frame with the highest heuristic score; the main frame wins ties. */
+async function bestHeuristicHit(
+  page: Page,
+  lexicon: CmpLexicon,
+  mainRaw: ProbeResult | null,
+): Promise<HeuristicHit | null> {
+  const main = page.mainFrame();
+  let best: HeuristicHit | null = null;
+  if (mainRaw?.found && mainRaw.heuristic) best = { frame: main, raw: mainRaw, frameEl: null, offset: null };
+
+  for (const frame of page.frames()) {
+    if (frame === main) continue;
+
+    const raw = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
+      () => null,
+    );
+    if (!raw?.found || !raw.heuristic) continue;
+
+    const geometry = await frameGeometry(frame);
+    if (!geometry) continue;
+    if (!best || raw.heuristic.score > (best.raw.heuristic?.score ?? 0)) {
+      best = { frame, raw, frameEl: geometry.frameEl, offset: { x: geometry.box.x, y: geometry.box.y } };
+    }
+  }
+  return best;
+}
+
+function heuristicDetection(
+  best: HeuristicHit,
+  heuristic: { score: number; signals: string[] },
+): CmpDetection {
+  return {
+    cmpId: null,
+    method: 'heuristic',
+    version: null,
+    versionSupported: null,
+    // A heuristic is never `high`: it only feeds `banner-not-recognized`.
+    recognitionConfidence: heuristic.score >= 5 ? 'medium' : 'low',
+    signals: [...heuristic.signals, ...(best.frameEl ? ['heuristic:frame'] : [])],
+    ...(best.frameEl ? { frameUrl: sanitizeUrl(best.frame.url()) } : {}),
+  };
 }
 
 export async function measureHeuristic(
@@ -212,28 +281,12 @@ export async function measureHeuristic(
   lexicon: CmpLexicon,
 ): Promise<{ measured: Measured; detection: CmpDetection } | null> {
   const main = page.mainFrame();
-  let best: {
-    frame: Frame;
-    raw: ProbeResult;
-    frameEl: ElementHandle | null;
-    offset: { x: number; y: number } | null;
-  } | null = null;
   const mainRaw = await runProbe(main, probeArgs(lexicon, { mode: 'heuristic' })).catch(() => null);
-  if (mainRaw?.found && mainRaw.heuristic) best = { frame: main, raw: mainRaw, frameEl: null, offset: null };
-  for (const frame of page.frames()) {
-    if (frame === main) continue;
-    const raw = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
-      () => null,
-    );
-    if (!raw?.found || !raw.heuristic) continue;
-    const frameEl = await frame.frameElement().catch(() => null);
-    const box = frameEl ? await frameEl.boundingBox().catch(() => null) : null;
-    if (!frameEl || !box || box.width < 1 || box.height < 1) continue;
-    if (!best || raw.heuristic.score > (best.raw.heuristic?.score ?? 0)) {
-      best = { frame, raw, frameEl, offset: { x: box.x, y: box.y } };
-    }
-  }
+
+  const best = await bestHeuristicHit(page, lexicon, mainRaw);
   if (!best?.raw.heuristic) return unresolvedConsentFrame(page, lexicon, mainRaw);
+
+  // Blocking is measured on the main page, with the iframe element as the banner container.
   let blockingFrom: ProbeResult | undefined;
   if (best.frameEl) {
     blockingFrom = await runProbe(
@@ -241,20 +294,87 @@ export async function measureHeuristic(
       probeArgs(lexicon, { mode: 'banner', containerEl: best.frameEl }),
     ).catch(() => undefined);
   }
+
   const measured = toMeasured(best.raw, lexicon, best.frame.url(), { offset: best.offset, blockingFrom });
-  const score = best.raw.heuristic.score;
-  const signals = [...best.raw.heuristic.signals, ...(best.frameEl ? ['heuristic:frame'] : [])];
-  const detection: CmpDetection = {
+  return { measured, detection: heuristicDetection(best, best.raw.heuristic) };
+}
+
+/** Share of the viewport that the box covers; 0 when it lies outside. */
+function viewportShare(box: Box, vp: Viewport): number {
+  const w = Math.min(vp.width, box.x + box.width) - Math.max(0, box.x);
+  const h = Math.min(vp.height, box.y + box.height) - Math.max(0, box.y);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / (vp.width * vp.height);
+}
+
+/** Tests a text against the banner keywords of the lexicon; an invalid pattern matches nothing. */
+function keywordHint(lexicon: CmpLexicon): (text: string | null) => boolean {
+  const patterns: RegExp[] = [];
+  for (const k of lexicon.bannerKeywords ?? []) {
+    try {
+      patterns.push(new RegExp(k, 'iu'));
+    } catch {
+      // an invalid pattern matches nothing (the lexicon test compiles every source)
+    }
+  }
+  return (text) => text !== null && patterns.some((p) => p.test(text.toLowerCase()));
+}
+
+function consentFrameMeasured(
+  box: Box,
+  vp: Viewport,
+  outer: ProbeResult | null,
+  raw: ProbeResult | null,
+): Measured {
+  return {
+    firstLayer: {
+      bannerPresent: true,
+      bannerVisible: true,
+      buttons: [],
+      purAbo: false,
+      closeMeansAccept: null,
+      coversFooter: false,
+      legalLinks: [],
+      textLength: 0,
+      containerBox: outer?.containerBox ?? {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      },
+      containerUnambiguous: true,
+      containerFixed: outer?.containerFixed ?? false,
+      containerAnimating: outer?.animating ?? false,
+      consentFrameUnresolved: true,
+    },
+    blocking: {
+      overlay: outer?.blocking.overlay ?? false,
+      scrollLock: outer?.blocking.scrollLock ?? false,
+      inert: outer?.blocking.inert ?? false,
+      coveredRatio: outer?.blocking.coveredRatio ?? null,
+      method: outer?.blocking.method ?? [],
+      ariaModal: outer?.blocking.ariaModal ?? false,
+    },
+    viewport: vp,
+    ...(raw ? { raw } : {}),
+  };
+}
+
+function consentFrameDetection(frame: Frame, byAttribute: boolean, hits: number): CmpDetection {
+  return {
     cmpId: null,
     method: 'heuristic',
     version: null,
     versionSupported: null,
-    // A heuristic is never `high`: it only feeds `banner-not-recognized`.
-    recognitionConfidence: score >= 5 ? 'medium' : 'low',
-    signals,
-    ...(best.frameEl ? { frameUrl: sanitizeUrl(best.frame.url()) } : {}),
+    recognitionConfidence: 'low',
+    signals: [
+      'heuristic:frame-candidate',
+      'heuristic:frame',
+      ...(byAttribute ? ['heuristic:frame-label'] : []),
+      ...(hits > 0 ? [`heuristic:keywords:${hits}`] : []),
+    ],
+    frameUrl: sanitizeUrl(frame.url()),
   };
-  return { measured, detection };
 }
 
 /**
@@ -269,84 +389,35 @@ async function unresolvedConsentFrame(
   const main = page.mainFrame();
   const vp = mainRaw?.viewport ?? page.viewportSize() ?? { width: 0, height: 0 };
   if (vp.width < 1 || vp.height < 1) return null;
-  const patterns: RegExp[] = [];
-  for (const k of lexicon.bannerKeywords ?? []) {
-    try {
-      patterns.push(new RegExp(k, 'iu'));
-    } catch {
-      // an invalid pattern matches nothing (the lexicon test compiles every source)
-    }
-  }
-  const hint = (text: string | null) => text !== null && patterns.some((p) => p.test(text.toLowerCase()));
+
+  const hint = keywordHint(lexicon);
   for (const frame of page.frames()) {
     if (frame === main) continue;
-    const frameEl = await frame.frameElement().catch(() => null);
-    const box = frameEl ? await frameEl.boundingBox().catch(() => null) : null;
-    if (!frameEl || !box || box.width < 1 || box.height < 1) continue;
-    const w = Math.min(vp.width, box.x + box.width) - Math.max(0, box.x);
-    const h = Math.min(vp.height, box.y + box.height) - Math.max(0, box.y);
-    if (w <= 0 || h <= 0 || (w * h) / (vp.width * vp.height) < FRAME_CANDIDATE_MIN_SHARE) continue;
+
+    const geometry = await frameGeometry(frame);
+    if (!geometry) continue;
+    const { frameEl, box } = geometry;
+    if (viewportShare(box, vp) < FRAME_CANDIDATE_MIN_SHARE) continue;
     if (!(await frameEl.isVisible().catch(() => false))) continue;
+
     const attrs = await Promise.all(
-      ['title', 'aria-label', 'name'].map((a) => frameEl.getAttribute(a).catch(() => null)),
+      FRAME_HINT_ATTRIBUTES.map((a) => frameEl.getAttribute(a).catch(() => null)),
     );
-    const byAttribute = attrs.some(hint);
+    const byAttribute = attrs.some((a) => hint(a));
     const inner = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
       () => null,
     );
     const hits = inner?.keywordHits.length ?? 0;
     // The body wording alone needs two keywords: one "Privacy" link in a large booking frame is no consent dialog.
     if (!byAttribute && hits < MIN_BODY_KEYWORDS) continue;
+
     const outer = await runProbe(main, probeArgs(lexicon, { mode: 'banner', containerEl: frameEl })).catch(
       () => null,
     );
-    const measured: Measured = {
-      firstLayer: {
-        bannerPresent: true,
-        bannerVisible: true,
-        buttons: [],
-        purAbo: false,
-        closeMeansAccept: null,
-        coversFooter: false,
-        legalLinks: [],
-        textLength: 0,
-        containerBox: outer?.containerBox ?? {
-          x: Math.round(box.x),
-          y: Math.round(box.y),
-          width: Math.round(box.width),
-          height: Math.round(box.height),
-        },
-        containerUnambiguous: true,
-        containerFixed: outer?.containerFixed ?? false,
-        containerAnimating: outer?.animating ?? false,
-        consentFrameUnresolved: true,
-      },
-      blocking: {
-        overlay: outer?.blocking.overlay ?? false,
-        scrollLock: outer?.blocking.scrollLock ?? false,
-        inert: outer?.blocking.inert ?? false,
-        coveredRatio: outer?.blocking.coveredRatio ?? null,
-        method: outer?.blocking.method ?? [],
-        ariaModal: outer?.blocking.ariaModal ?? false,
-      },
-      viewport: vp,
-      ...((outer ?? inner ?? mainRaw) ? { raw: (outer ?? inner ?? mainRaw) as ProbeResult } : {}),
+    return {
+      measured: consentFrameMeasured(box, vp, outer, outer ?? inner ?? mainRaw),
+      detection: consentFrameDetection(frame, byAttribute, hits),
     };
-    const detection: CmpDetection = {
-      cmpId: null,
-      method: 'heuristic',
-      version: null,
-      versionSupported: null,
-      recognitionConfidence: 'low',
-      signals: [
-        'heuristic:frame-candidate',
-        'heuristic:frame',
-        ...(byAttribute ? ['heuristic:frame-label'] : []),
-        ...(hits > 0 ? [`heuristic:keywords:${hits}`] : []),
-      ],
-      frameUrl: sanitizeUrl(frame.url()),
-    };
-    return { measured, detection };
   }
   return null;
 }

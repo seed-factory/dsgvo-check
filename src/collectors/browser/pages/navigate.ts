@@ -4,7 +4,7 @@
 import type { PageRole } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.ts';
 import type { DiagnosticInput } from '../../../core/snapshot/index.ts';
-import { MAX_RETRY_AFTER_MS } from '../../http/client.ts';
+import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
 import type { BrowserCollection, Session } from '../collector.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sleep } from '../util.ts';
@@ -33,8 +33,20 @@ const BROWSER_CHECKS = [
   'PRIV-01',
   'TRACK-01',
 ];
+
 export const THROTTLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
+/** Throttling responses of the target host in one phase that end further navigation to it. */
 const THROTTLE_RESPONSES = 3;
+
+// Check ids that read a page by its role; a role not listed is read by none. The start page of B/C is read by the
+// consent checks (phase A's start page is the fatal case, not a gap).
+const CHECKS_READING_ROLE: ReadonlyMap<PageRole, readonly string[]> = new Map([
+  ['impressum', ['LEGAL-01']],
+  ['legal-hop', ['LEGAL-01']],
+  ['privacy', ['LEGAL-01', 'PRIV-01']],
+  ['contact', ['EMBED-02']],
+]);
+const CHECKS_READING_START_BC: readonly string[] = ['CONSENT-04', 'CONSENT-05'];
 
 export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): Promise<VisitResult> {
   await c.pace();
@@ -53,6 +65,7 @@ export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): 
     },
     spec,
   );
+
   c.lastNavigationEnd = Date.now();
   s.record.pages.push(r.visit);
   // Facts the page budget cut off stay visible as phase errors; what was gathered before the cut is kept.
@@ -63,16 +76,6 @@ export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): 
   // still deliver the page.
   return r;
 }
-
-// Check ids that read a page by its role; a role not listed is read by none. The start page of B/C is read by the
-// consent checks (phase A's start page is the fatal case, not a gap).
-const CHECKS_READING_ROLE: ReadonlyMap<PageRole, readonly string[]> = new Map([
-  ['impressum', ['LEGAL-01']],
-  ['legal-hop', ['LEGAL-01']],
-  ['privacy', ['LEGAL-01', 'PRIV-01']],
-  ['contact', ['EMBED-02']],
-]);
-const CHECKS_READING_START_BC: readonly string[] = ['CONSENT-04', 'CONSENT-05'];
 
 /** A fallback probe stands for the document its path names. */
 function fallbackRole(rawUrl: string): PageRole {
@@ -93,6 +96,7 @@ export function blockedAffects(spec: VisitSpec): string[] {
 
 function noteBlocked(c: BrowserCollection, spec: VisitSpec, r: VisitResult): void {
   const v = r.visit;
+
   // One entry per page and phase, however often the page was navigated to.
   if (c.blockedPages.some((b) => b.page === v.url && b.phase === spec.phase)) return;
   c.blockedPages.push({
@@ -112,6 +116,7 @@ export async function navigate(c: BrowserCollection, s: Session, spec: VisitSpec
   let r = await visit(c, s, spec);
   const firstAttempt = r;
   const first = throttleStatus(r);
+
   let repeated = false;
   if (first !== null && c.timeLeft()) {
     await sleep(Math.min(MAX_RETRY_AFTER_MS, r.retryAfterMs ?? c.timing.retryDelayMs), c.ctx.signal);
@@ -121,6 +126,7 @@ export async function navigate(c: BrowserCollection, s: Session, spec: VisitSpec
     const second = throttleStatus(r);
     if (second !== null) markThrottled(c, s, 'navigation', r.visit.url, [first, second]);
   }
+
   settleBlocked(c, s, spec, repeated ? firstAttempt : null, r);
   checkThrottleResponses(c, s, r.visit.url);
   return r;
@@ -137,16 +143,14 @@ function settleBlocked(
   final: VisitResult,
 ): void {
   if (spec.role === 'start' && spec.phase === 'A') return;
+
   const first = firstAttempt?.visit.challenge.detected ? firstAttempt : null;
   if (final.visit.challenge.detected) noteBlocked(c, spec, final);
   else if (first && !final.visit.evaluable) noteBlocked(c, spec, first);
   if (!first) return;
+
   const v = first.visit;
-  const outcome = final.visit.challenge.detected
-    ? 'was blocked again'
-    : final.visit.evaluable
-      ? 'delivered the page'
-      : 'gave no evaluable page';
+  const outcome = repeatOutcome(final);
   s.record.errors.push({
     code: `http-${v.navigation.status ?? 0}`,
     message:
@@ -155,6 +159,11 @@ function settleBlocked(
     phase: s.phase,
     url: v.url,
   });
+}
+
+function repeatOutcome(final: VisitResult): string {
+  if (final.visit.challenge.detected) return 'was blocked again';
+  return final.visit.evaluable ? 'delivered the page' : 'gave no evaluable page';
 }
 
 export function throttleStatus(r: VisitResult): number | null {
@@ -201,6 +210,7 @@ export function blockedDiagnostic(c: BrowserCollection): DiagnosticInput | null 
   if (c.blockedPages.length === 0) return null;
   const unique = (xs: readonly string[]) => [...new Set(xs)];
   const urls = unique(c.blockedPages.map((b) => b.page));
+
   return {
     code: 'SCAN-BLOCKED',
     affects: unique(c.blockedPages.flatMap((b) => b.affects)).sort(),
@@ -228,6 +238,7 @@ export function privateBlockedDiagnostic(c: BrowserCollection): DiagnosticInput 
   }
   const blocked = c.guard.blocked - c.guardRecovered.length;
   if (blocked <= 0) return null;
+
   const unresolved = verdicts.filter((v) => v === 'unresolved').length;
   const codes = [...new Set(c.lookupErrors.map((e) => e.code))].sort();
   const first = c.lookupErrors[0];

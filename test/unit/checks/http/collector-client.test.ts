@@ -1,14 +1,11 @@
 /** Pure parts of the HTTP/TLS collectors: header redaction, outcome mapping, pacing, host variants. */
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import {
-  decodeBody,
-  HostPacer,
-  outcomeOf,
-  retryAfterMs,
-  snapshotHeaders,
-} from '../../../../src/collectors/http/client.ts';
+import { decodeBody } from '../../../../src/collectors/http/body.ts';
+import { outcomeOf } from '../../../../src/collectors/http/errors.ts';
 import { hostVariants } from '../../../../src/collectors/http/index.ts';
+import { HostPacer, retryAfterMs } from '../../../../src/collectors/http/pacing.ts';
+import { snapshotHeaders } from '../../../../src/collectors/http/response-head.ts';
 
 describe('snapshotHeaders', () => {
   it('keeps names only for Set-Cookie and redacts query values in Location', () => {
@@ -142,6 +139,7 @@ function virtualClock(lateBy: number[] = []) {
   let time = 1_000;
   let sleeps = 0;
   const timers: Array<{ at: number; wake: () => void }> = [];
+
   const clock = {
     now: () => time,
     sleep: (ms: number) =>
@@ -149,13 +147,16 @@ function virtualClock(lateBy: number[] = []) {
         timers.push({ at: time + ms + (lateBy[sleeps++] ?? 0), wake: resolve });
       }),
   };
+  /** Lets the pacer run until it waits on a timer again. */
   const settle = () => new Promise<void>((r) => setImmediate(r));
+
   async function run<T>(work: Promise<T>): Promise<T> {
     let done = false;
     const result = work.finally(() => {
       done = true;
     });
     await settle();
+
     while (!done) {
       const next = timers.sort((a, b) => a.at - b.at).shift();
       if (!next) throw new Error('pacer waits for a timer that does not exist');
@@ -165,6 +166,7 @@ function virtualClock(lateBy: number[] = []) {
     }
     return result;
   }
+
   return { clock, run };
 }
 
@@ -177,7 +179,9 @@ describe('HostPacer', () => {
       await pacer.wait(host);
       starts[host]?.push(clock.now());
     };
+
     await run(Promise.all([request('a'), request('a'), request('a'), request('b')]));
+
     expect(starts).toEqual({ a: [1_000, 1_060, 1_120], b: [1_000] });
   });
 
@@ -190,7 +194,9 @@ describe('HostPacer', () => {
       await pacer.wait('a');
       starts.push(clock.now());
     };
+
     await run(Promise.all([request(), request(), request(), request()]));
+
     expect(starts).toEqual([1_000, 1_530, 2_030, 2_530]);
     for (let i = 1; i < starts.length; i++)
       expect((starts[i] as number) - (starts[i - 1] as number)).toBeGreaterThanOrEqual(500);
@@ -200,18 +206,22 @@ describe('HostPacer', () => {
     const { clock, run } = virtualClock([30]);
     const pacer = new HostPacer(500, clock);
     const starts: number[] = [];
+
     for (let i = 0; i < 3; i++) {
       await run(pacer.wait('a'));
       starts.push(clock.now());
     }
+
     expect(starts).toEqual([1_000, 1_530, 2_030]);
   });
 
   it('uses the real clock by default', async () => {
     const pacer = new HostPacer(30);
     await pacer.wait('a');
+
     const t0 = performance.now();
     await pacer.wait('a');
+
     expect(performance.now() - t0).toBeGreaterThanOrEqual(20);
   });
 
@@ -225,10 +235,12 @@ describe('HostPacer', () => {
       },
     });
     pacer.defer('a', 5_000);
+
     host = 'a';
     await pacer.wait('a');
     host = 'b';
     await pacer.wait('b');
+
     expect(sleeps).toEqual([['a', 5_000]]);
   });
 
@@ -237,7 +249,9 @@ describe('HostPacer', () => {
     await pacer.wait('a');
     const ac = new AbortController();
     const p = pacer.wait('a', ac.signal);
+
     ac.abort();
+
     await expect(p).rejects.toThrow();
   });
 });

@@ -61,7 +61,9 @@ describe('only Referrer-Policy keywords are stored, and few of them', () => {
 
   it('the stored size is bounded whatever the tag says', () => {
     const longest = 'strict-origin-when-cross-origin';
+
     const worst = storedMetaReferrer(`${longest},`.repeat(10_000)) as string;
+
     expect(worst.length).toBe(8 * longest.length + 7 * ', '.length);
     expect(worst.length).toBeLessThan(300);
   });
@@ -80,11 +82,13 @@ describe('only Referrer-Policy keywords are stored, and few of them', () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed / 4294967296;
     };
+
     for (let i = 0; i < 20_000; i++) {
       const count = 1 + Math.floor(next() * 14);
       const content = Array.from({ length: count }, () => pool[Math.floor(next() * pool.length)]).join(',');
       const stored = storedMetaReferrer(content);
       const policy = effectiveReferrerPolicy([content]);
+
       expect(stored === null ? null : effectiveReferrerPolicy([stored]), content).toBe(policy);
       if (stored !== null) expect(stored.split(', ').length).toBeLessThanOrEqual(8);
     }

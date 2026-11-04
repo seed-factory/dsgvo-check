@@ -32,6 +32,30 @@ const TYPE_NAMES: Record<number, string> = {
 };
 const RCODES = { SERVFAIL: 2, NXDOMAIN: 3, REFUSED: 5 } as const;
 
+/** Adds one answer record per zone value: TXT chunks, MX `"<prio> <exchange>"` (`.` = null MX), or an address. */
+function addAnswers(
+  response: dns2.Packet,
+  question: dns2.Packet.Question,
+  type: string,
+  values: ReadonlyArray<string | readonly string[]>,
+) {
+  const answer = (record: Partial<dns2.Packet.Resource>) =>
+    response.answers.push(
+      Packet.createResourceFromQuestion(question, { class: Packet.CLASS.IN, ttl: 300, ...record }),
+    );
+
+  for (const v of values) {
+    if (type === 'TXT') {
+      answer({ data: typeof v === 'string' ? [v] : [...v] });
+    } else if (type === 'MX') {
+      const [prio, exchange] = String(v).split(' ') as [string, string];
+      answer({ exchange: exchange === '.' ? '' : exchange, priority: Number(prio) });
+    } else {
+      answer({ address: String(v) });
+    }
+  }
+}
+
 export async function startFakeDns(initial: FakeZone): Promise<FakeDnsServer> {
   let zone = initial;
   const requests: string[] = [];
@@ -39,37 +63,32 @@ export async function startFakeDns(initial: FakeZone): Promise<FakeDnsServer> {
     const response = Packet.createResponseFromRequest(request);
     const question = request.questions[0];
     if (!question) return void send(response);
+
     const name = question.name.toLowerCase().replace(/\.$/, '');
     const type = TYPE_NAMES[question.type] ?? String(question.type);
     const key = `${type} ${name}`;
     requests.push(key);
     const value = zone[key];
+
     if (value === 'DROP') return;
     if (typeof value === 'string') {
       response.header.rcode = RCODES[value];
       return void send(response);
     }
     if (!value) {
+      // A name that has other records answers with an empty NOERROR (no data), an unknown name with NXDOMAIN.
       const exists = Object.keys(zone).some((k) => k.split(' ')[1] === name);
       if (!exists) response.header.rcode = RCODES.NXDOMAIN;
       return void send(response);
     }
-    const answer = (record: Partial<dns2.Packet.Resource>) =>
-      response.answers.push(
-        Packet.createResourceFromQuestion(question, { class: Packet.CLASS.IN, ttl: 300, ...record }),
-      );
-    for (const v of value) {
-      if (type === 'TXT') answer({ data: typeof v === 'string' ? [v] : [...v] });
-      else if (type === 'MX') {
-        const [prio, exchange] = String(v).split(' ') as [string, string];
-        answer({ exchange: exchange === '.' ? '' : exchange, priority: Number(prio) });
-      } else answer({ address: String(v) });
-    }
+
+    addAnswers(response, question, type, value);
     void send(response);
   });
   await server.listen(0, '127.0.0.1');
   const address = server.address();
   if (!address) throw new Error('fake DNS did not bind');
+
   return {
     port: address.port,
     server: `127.0.0.1:${address.port}`,

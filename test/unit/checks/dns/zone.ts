@@ -25,10 +25,13 @@ function purposeOf(qname: string, type: DnsRecordType): string {
 export function zoneQuery(key: string, entry: ZoneEntry): DnsQueryRecord {
   const [type, qname] = key.split(' ') as [DnsRecordType, string];
   const purpose = purposeOf(qname, type);
+
+  // a string is an rcode without answers; failures are retried once, so they took two attempts
   if (typeof entry === 'string') {
     const retried = entry === 'SERVFAIL' || entry === 'TIMEOUT';
     return makeDnsQuery({ qname, type, rcode: entry, answers: [], attempts: retried ? 2 : 1, purpose });
   }
+
   const answers: DnsAnswer[] = entry.map((v) => {
     if (type !== 'MX') return { type, value: v };
     const [prio, exchange] = v.split(' ') as [string, string];

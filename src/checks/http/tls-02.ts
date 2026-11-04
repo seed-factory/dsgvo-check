@@ -4,6 +4,7 @@
  */
 
 import {
+  type CheckContext,
   type CheckThresholds,
   defineCheck,
   type EvidenceInput,
@@ -15,6 +16,9 @@ import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
 import { DAY_MS, startFinalHost, type TlsProblem, tlsProblemOf } from './shared.ts';
 
 const ID = 'TLS-02';
+
+/** `names` in the finding lists at most this many certificate names. */
+const MAX_SAN_NAMES = 5;
 
 type InvalidCause = Exclude<TlsProblem, 'incomplete-chain'>;
 /** Order of the causes in `reasons`; the first present one is `reason`. */
@@ -60,7 +64,7 @@ function evidenceOf(ep: TlsEndpoint): EvidenceInput {
 
 function sanNames(ep: TlsEndpoint): string {
   const names = (ep.chain[0]?.subjectAltNames ?? []).map((n) => n.replace(/^(DNS|IP Address):/i, ''));
-  return names.length > 5 ? `${names.slice(0, 5).join(', ')}, …` : names.join(', ');
+  return names.length > MAX_SAN_NAMES ? `${names.slice(0, MAX_SAN_NAMES).join(', ')}, …` : names.join(', ');
 }
 
 interface Problems {
@@ -74,17 +78,39 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+/** Warns of a certificate that is running out, measured against its own lifetime; short-lived ones never warn. */
+function expiryOf(
+  notBefore: number,
+  notAfter: number,
+  now: Date,
+  t: CheckThresholds['tls'],
+): Problems['expiry'] {
+  const lifetime = notAfter - notBefore;
+  if (!Number.isFinite(lifetime) || lifetime <= t.shortLivedDays * DAY_MS) return null;
+
+  const left = notAfter - now.getTime();
+  if (left < Math.min(t.expiringDays * DAY_MS, t.expiringLifetimeShare * lifetime)) {
+    return 'certificate-expiring';
+  }
+  if (left < Math.min(t.approachingDays * DAY_MS, t.approachingLifetimeShare * lifetime)) {
+    return 'certificate-expiry-approaching';
+  }
+  return null;
+}
+
 function problemsOf(ep: TlsEndpoint, now: Date, t: CheckThresholds['tls']): Problems {
-  const causes = new Set<InvalidCause>();
-  const fromNode = tlsProblemOf(ep.authorizationError);
   const leaf = ep.chain[0];
   const notBefore = leaf ? Date.parse(leaf.notBefore) : Number.NaN;
   const notAfter = leaf ? Date.parse(leaf.notAfter) : Number.NaN;
+  const fromNode = tlsProblemOf(ep.authorizationError);
+
+  const causes = new Set<InvalidCause>();
   if (fromNode && fromNode !== 'incomplete-chain') causes.add(fromNode);
   if (notAfter < now.getTime()) causes.add('expired');
   if (notBefore > now.getTime()) causes.add('not-yet-valid');
   if (ep.hostnameMatches === false) causes.add('name-mismatch');
   if (leaf?.selfSigned && ep.chain.length === 1 && fromNode !== null) causes.add('self-signed');
+
   // The validator did not find an issuer. When the server did send the issuer of the leaf, the intermediate is not
   // missing: the chain ends at a root the store does not know (private CA, root newer than the bundle).
   const issuerNotFound = !ep.authorized && fromNode === 'incomplete-chain';
@@ -92,22 +118,66 @@ function problemsOf(ep: TlsEndpoint, now: Date, t: CheckThresholds['tls']): Prob
   if (issuerNotFound && issuerSent) causes.add('untrusted-root');
   const chainIncomplete = issuerNotFound && ep.chainComplete === false && !issuerSent;
 
-  let expiry: Problems['expiry'] = null;
-  const lifetime = notAfter - notBefore;
-  if (causes.size === 0 && Number.isFinite(lifetime) && lifetime > t.shortLivedDays * DAY_MS) {
-    const left = notAfter - now.getTime();
-    if (left < Math.min(t.expiringDays * DAY_MS, t.expiringLifetimeShare * lifetime)) {
-      expiry = 'certificate-expiring';
-    } else if (left < Math.min(t.approachingDays * DAY_MS, t.approachingLifetimeShare * lifetime)) {
-      expiry = 'certificate-expiry-approaching';
-    }
-  }
+  const expiry = causes.size === 0 ? expiryOf(notBefore, notAfter, now, t) : null;
   return { invalid: CAUSES.filter((c) => causes.has(c)), chainIncomplete, expiry };
 }
 
 /** Endpoint label for limitations: `www`, or `final-www` for the final host's group. */
 function label(ep: TlsEndpoint): string {
   return ep.role ? `${ep.role}-${ep.hostVariant}` : ep.hostVariant;
+}
+
+/** `reason` is the first cause, `reasons` all of them; every cause also has a yes/no param for the text. */
+function invalidParams(ep: TlsEndpoint, invalid: readonly InvalidCause[]): Observation['params'] {
+  const has = (c: InvalidCause) => (invalid.includes(c) ? 'yes' : 'no');
+  return {
+    reason: invalid[0] as InvalidCause,
+    reasons: invalid.join(','),
+    expired: has('expired'),
+    notYetValid: has('not-yet-valid'),
+    nameMismatch: has('name-mismatch'),
+    selfSigned: has('self-signed'),
+    untrustedRoot: has('untrusted-root'),
+    otherError: has('invalid'),
+    names: sanNames(ep),
+    error: ep.authorizationError ?? '–',
+    trustStore: ep.trustStore,
+  };
+}
+
+/** The findings about the certificate of one endpoint that completed its handshake. */
+function certificateObservations(ep: TlsEndpoint, roleBase: string, ctx: CheckContext): Observation[] {
+  const leaf = ep.chain[0];
+  const notAfter = leaf ? Date.parse(leaf.notAfter) : Number.NaN;
+  const params = {
+    host: ep.host,
+    notAfter: leaf?.notAfter.slice(0, 10) ?? null,
+    daysLeft: Number.isFinite(notAfter) ? Math.floor((notAfter - ctx.now.getTime()) / DAY_MS) : null,
+    lifetimeDays: lifetimeDaysOf(ep),
+    issuer: leaf?.issuer ?? null,
+  };
+  // Relative to the final host, so independent of how the target was typed.
+  const subject = subjects.tlsEndpoint('certificate', tlsHostRole(ep.host, roleBase));
+
+  const observations: Observation[] = [];
+  const emit = (variant: string, extra: Observation['params'] = {}) => {
+    observations.push({
+      checkId: ID,
+      variant,
+      confidence: 'high',
+      subject,
+      phases: ['tls'],
+      pages: [],
+      evidence: [evidenceOf(ep)],
+      params: { ...params, ...extra },
+    });
+  };
+
+  const p = problemsOf(ep, ctx.now, ctx.thresholds.tls);
+  if (p.invalid.length > 0) emit('certificate-invalid', invalidParams(ep, p.invalid));
+  if (p.chainIncomplete) emit('chain-incomplete');
+  if (p.expiry) emit(p.expiry);
+  return observations;
 }
 
 export const tls02 = defineCheck({
@@ -124,14 +194,13 @@ export const tls02 = defineCheck({
     const own = slice.tls.endpoints.filter((e) => !e.role);
     const target = own.find((e) => e.hostVariant === 'target');
     if (!target) throw new Error('tls section has no endpoint for the target');
-    const final = slice.http.finalTls ?? [];
-    const endpoints = [...own, ...final];
+    const endpoints = [...own, ...(slice.http.finalTls ?? [])];
 
-    const limitations: string[] = [];
     const finalHost = startFinalHost(slice.http);
     // Roles relative to the final host of the HTTP start chain (the hosts whose certificates were probed), else the
     // final host of the scan, else the target.
     const roleBase = finalHost ?? slice.target.finalHost ?? slice.target.host;
+    const limitations: string[] = [];
     if (finalHost && !endpoints.some((e) => e.host.toLowerCase() === finalHost)) {
       limitations.push('final-host-not-probed');
     }
@@ -147,49 +216,9 @@ export const tls02 = defineCheck({
           targetUndecided = ep.outcome === 'timeout' ? 'handshake-timeout' : 'handshake-failed';
         continue;
       }
-      handshakes++;
-      const leaf = ep.chain[0];
-      const notAfter = leaf ? Date.parse(leaf.notAfter) : Number.NaN;
-      const params = {
-        host: ep.host,
-        notAfter: leaf?.notAfter.slice(0, 10) ?? null,
-        daysLeft: Number.isFinite(notAfter) ? Math.floor((notAfter - ctx.now.getTime()) / DAY_MS) : null,
-        lifetimeDays: lifetimeDaysOf(ep),
-        issuer: leaf?.issuer ?? null,
-      };
-      // Relative to the final host, so independent of how the target was typed.
-      const subject = subjects.tlsEndpoint('certificate', tlsHostRole(ep.host, roleBase));
-      const emit = (variant: string, extra: Observation['params'] = {}) =>
-        observations.push({
-          checkId: ID,
-          variant,
-          confidence: 'high',
-          subject,
-          phases: ['tls'],
-          pages: [],
-          evidence: [evidenceOf(ep)],
-          params: { ...params, ...extra },
-        });
 
-      const p = problemsOf(ep, ctx.now, ctx.thresholds.tls);
-      if (p.invalid.length > 0) {
-        const has = (c: InvalidCause) => (p.invalid.includes(c) ? 'yes' : 'no');
-        emit('certificate-invalid', {
-          reason: p.invalid[0] as InvalidCause,
-          reasons: p.invalid.join(','),
-          expired: has('expired'),
-          notYetValid: has('not-yet-valid'),
-          nameMismatch: has('name-mismatch'),
-          selfSigned: has('self-signed'),
-          untrustedRoot: has('untrusted-root'),
-          otherError: has('invalid'),
-          names: sanNames(ep),
-          error: ep.authorizationError ?? '–',
-          trustStore: ep.trustStore,
-        });
-      }
-      if (p.chainIncomplete) emit('chain-incomplete');
-      if (p.expiry) emit(p.expiry);
+      handshakes++;
+      observations.push(...certificateObservations(ep, roleBase, ctx));
     }
 
     if (targetUndecided) {

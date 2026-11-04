@@ -85,13 +85,15 @@ afterAll(async () => {
 describe('a retry leaves the queued candidates of the other document kind intact', () => {
   it('the next Impressum candidate is queued as the policy: the page is read for both kinds', async () => {
     const run = await collect(server, { url: 'https://crossqueue.example.test/' });
+
     const docs = run.result.sections.documents?.documents ?? [];
     const confirmed = docs.filter((d) => !d.errors.includes('unconfirmed'));
     expect(confirmed.map((d) => d.kind).sort()).toEqual(['impressum', 'privacy']);
     for (const d of confirmed) expect(d.url).toMatch(/\/legal\/$/);
     const pages = run.result.sections.plan?.pages ?? [];
     expect(pages.filter((p) => /\/legal\/$/.test(p.url))).toHaveLength(1);
-    expect(pages.some((p) => p.role === 'fallback')).toBe(false);
+    expect(pages.filter((p) => p.role === 'fallback').map((p) => p.url)).toEqual([]);
+
     const attempts = run.result.sections.documents?.attempts ?? [];
     expect(attempts.filter((a) => a.via === 'fallback')).toEqual([]);
     expect(attempts.filter((a) => a.kind === 'privacy').map((a) => a.outcome)).toEqual(['found']);
@@ -103,6 +105,7 @@ describe('a retry leaves the queued candidates of the other document kind intact
 
   it('counterexample: a next candidate that is not queued is followed as before', async () => {
     const run = await collect(server, { url: 'https://freshnext.example.test/' });
+
     const attempts = run.result.sections.documents?.attempts ?? [];
     expect(attempts.filter((a) => a.kind === 'impressum').map((a) => a.outcome)).toEqual([
       'unconfirmed',

@@ -20,7 +20,15 @@ import {
 
 export const SUMMARY_MAX_FINDINGS = reporterLimits().summaryMaxFindings;
 
+/** Invisible word joiner inserted into `www.` and `scheme://`, so Markdown renderers do not turn scanned URLs into links. */
 const WORD_JOINER = '⁠';
+
+const FINDING_COLUMNS = [
+  'summary.column.severity',
+  'summary.column.check',
+  'summary.column.finding',
+  'summary.column.pages',
+] as const;
 
 /** Inline Markdown text: sanitized, HTML and Markdown punctuation escaped, autolink triggers broken so scanned URLs never become links. */
 export function mdText(value: unknown, max = 300): string {
@@ -59,98 +67,112 @@ function cell(s: string): string {
   return s.replace(/(?<!\\)\|/g, '\\|');
 }
 
+/** Message params with every string escaped for Markdown and capped at `max` characters. */
+function escapedParams(params: MessageParams, max: number): MessageParams {
+  const out: MessageParams = {};
+  for (const [k, v] of Object.entries(params)) out[k] = typeof v === 'string' ? mdText(v, max) : v;
+  return out;
+}
+
 function findingTitle(f: Finding, ctx: ReporterContext): string {
   if (ctx.texts.messages[f.messageId]) {
-    const params: MessageParams = {};
-    for (const [k, v] of Object.entries(f.params)) params[k] = typeof v === 'string' ? mdText(v, 200) : v;
-    return trusted(renderMessage(ctx.texts, f.messageId, params).title, 600);
+    return trusted(renderMessage(ctx.texts, f.messageId, escapedParams(f.params, 200)).title, 600);
   }
   return mdText(f.text?.title ?? f.messageId, 300);
 }
 
-export const renderSummary: RenderReport = (report: Report, ctx: ReporterContext) => {
-  const { summaryMaxFindings: maxFindings, summaryMaxBytes: maxBytes } = ctx.limits ?? reporterLimits();
-  const out: string[] = [];
+/** Heading, status line with the exit code and reasons, and the failure and sandbox notes. */
+function headerLines(report: Report, ctx: ReporterContext): string[] {
   const draft = isDraftReport(report, ctx) ? ` · **${mdText(draftStamp(ctx), 40)}**` : '';
-  out.push(`## dsgvo-check – ${mdText(report.scan.target, 200)}${draft}`, '');
-
   const reasons = report.summary.exitReasons.length
     ? report.summary.exitReasons.map((r) => mdCode(r)).join(', ')
     : label(ctx, 'summary.none');
-  out.push(
+
+  const out = [
+    `## dsgvo-check – ${mdText(report.scan.target, 200)}${draft}`,
+    '',
     `**${label(ctx, `status.${report.scan.status}`)}** · ${label(ctx, 'summary.exitCode')} **${report.summary.exitCode}** (${reasons})`,
     '',
-  );
+  ];
   if (report.scan.failure) {
-    out.push(
-      `> ${label(ctx, 'summary.failure', { message: report.scan.failure.message, code: report.scan.failure.code })}`,
-      '',
-    );
+    const failure = label(ctx, 'summary.failure', {
+      message: report.scan.failure.message,
+      code: report.scan.failure.code,
+    });
+    out.push(`> ${failure}`, '');
   }
   if (report.scan.environment?.sandbox.mode === 'off') out.push(`> ${label(ctx, 'summary.sandboxOff')}`, '');
+  return out;
+}
 
-  const c = report.summary.counts;
-  if (c) {
-    const heads = [
-      label(ctx, 'severity.critical'),
-      label(ctx, 'severity.warning'),
-      label(ctx, 'severity.info'),
-      label(ctx, 'summary.checkErrors'),
-      label(ctx, 'summary.inconclusive'),
-    ];
-    out.push(`| ${heads.map(cell).join(' | ')} |`, `|${' ---: |'.repeat(heads.length)}`);
-    out.push(`| ${[c.critical, c.warning, c.info, c.checkErrors, c.inconclusive].join(' | ')} |`, '');
+/** One-row table of the severity and check-error counts. */
+function countsTable(c: NonNullable<Report['summary']['counts']>, ctx: ReporterContext): string[] {
+  const heads = [
+    label(ctx, 'severity.critical'),
+    label(ctx, 'severity.warning'),
+    label(ctx, 'severity.info'),
+    label(ctx, 'summary.checkErrors'),
+    label(ctx, 'summary.inconclusive'),
+  ];
+  return [
+    `| ${heads.map(cell).join(' | ')} |`,
+    `|${' ---: |'.repeat(heads.length)}`,
+    `| ${[c.critical, c.warning, c.info, c.checkErrors, c.inconclusive].join(' | ')} |`,
+    '',
+  ];
+}
+
+function findingsSection(findings: readonly Finding[], ctx: ReporterContext, maxFindings: number): string[] {
+  const out = [`### ${label(ctx, 'section.findings')}`, ''];
+  if (findings.length === 0) return [...out, label(ctx, 'findings.none'), ''];
+
+  out.push(
+    `| ${FINDING_COLUMNS.map((h) => cell(label(ctx, h))).join(' | ')} |`,
+    '| --- | --- | --- | ---: |',
+  );
+  for (const f of findings.slice(0, maxFindings)) {
+    const service = f.serviceId ? ` (${mdCode(f.serviceId, 80)})` : '';
+    out.push(
+      `| ${cell(label(ctx, `severity.${f.severity}`))} | ${mdCode(f.checkId, 20)} | ${cell(findingTitle(f, ctx))}${cell(service)} | ${f.pages.length} |`,
+    );
   }
+  out.push('');
+  if (findings.length > maxFindings) {
+    out.push(label(ctx, 'summary.more', { count: findings.length - maxFindings }), '');
+  }
+  return out;
+}
+
+function diagnosticsSection(diagnostics: NonNullable<Report['diagnostics']>, ctx: ReporterContext): string[] {
+  const out = [`### ${label(ctx, 'section.diagnostics')}`, ''];
+  for (const d of diagnostics) {
+    const params = escapedParams(d.params ?? {}, 200);
+    const title = trusted(renderMessage(ctx.texts, d.messageId ?? `diagnostic.${d.code}`, params).title, 600);
+    const affects = d.affects.length ? ` (${d.affects.map((a) => mdCode(a, 20)).join(', ')})` : '';
+    out.push(`- ${mdCode(d.code, 40)} ${title}${affects}`);
+  }
+  out.push('');
+  return out;
+}
+
+export const renderSummary: RenderReport = (report: Report, ctx: ReporterContext) => {
+  const { summaryMaxFindings: maxFindings, summaryMaxBytes: maxBytes } = ctx.limits ?? reporterLimits();
+  const failed = report.scan.status === 'failed';
+  const out = headerLines(report, ctx);
+
+  if (report.summary.counts) out.push(...countsTable(report.summary.counts, ctx));
 
   const errs = failedChecks(report);
   if (report.summary.exitCode === 1 && errs.length > 0) {
     out.push(`> ${label(ctx, 'summary.checkErrorsWithThreshold', { checks: errs.join(', ') })}`, '');
   }
 
-  const findings = sortFindings(report.findings ?? []);
-  if (report.scan.status !== 'failed') {
-    out.push(`### ${label(ctx, 'section.findings')}`, '');
-    if (findings.length === 0) {
-      out.push(label(ctx, 'findings.none'), '');
-    } else {
-      const heads = [
-        'summary.column.severity',
-        'summary.column.check',
-        'summary.column.finding',
-        'summary.column.pages',
-      ] as const;
-      out.push(`| ${heads.map((h) => cell(label(ctx, h))).join(' | ')} |`, '| --- | --- | --- | ---: |');
-      for (const f of findings.slice(0, maxFindings)) {
-        const service = f.serviceId ? ` (${mdCode(f.serviceId, 80)})` : '';
-        out.push(
-          `| ${cell(label(ctx, `severity.${f.severity}`))} | ${mdCode(f.checkId, 20)} | ${cell(findingTitle(f, ctx))}${cell(service)} | ${f.pages.length} |`,
-        );
-      }
-      out.push('');
-      if (findings.length > maxFindings) {
-        out.push(label(ctx, 'summary.more', { count: findings.length - maxFindings }), '');
-      }
-    }
-  }
+  if (!failed) out.push(...findingsSection(sortFindings(report.findings ?? []), ctx, maxFindings));
 
   const diags = report.diagnostics ?? [];
-  if (diags.length) {
-    out.push(`### ${label(ctx, 'section.diagnostics')}`, '');
-    for (const d of diags) {
-      const params: MessageParams = {};
-      for (const [k, v] of Object.entries(d.params ?? {}))
-        params[k] = typeof v === 'string' ? mdText(v, 200) : v;
-      const title = trusted(
-        renderMessage(ctx.texts, d.messageId ?? `diagnostic.${d.code}`, params).title,
-        600,
-      );
-      const affects = d.affects.length ? ` (${d.affects.map((a) => mdCode(a, 20)).join(', ')})` : '';
-      out.push(`- ${mdCode(d.code, 40)} ${title}${affects}`);
-    }
-    out.push('');
-  }
+  if (diags.length) out.push(...diagnosticsSection(diags, ctx));
 
-  if (report.scan.status !== 'failed') out.push(`${label(ctx, 'summary.files')}`, '');
+  if (!failed) out.push(`${label(ctx, 'summary.files')}`, '');
   for (const p of disclaimerParagraphs(report, ctx.texts)) out.push(`<sub>${mdText(p, 3000)}</sub>`, '');
 
   let md = `${out.join('\n')}\n`;

@@ -59,6 +59,9 @@ export function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) : s;
 }
 
+/** Exception texts are cut here before they enter the snapshot. */
+export const ERROR_MESSAGE_MAX_CHARS = 300;
+
 export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

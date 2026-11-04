@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=1
 WORKDIR /app
+# Node 26 no longer bundles corepack, which runs the pnpm version pinned in package.json.
+RUN npm install --global corepack@0.36.0
 COPY package.json pnpm-lock.yaml .npmrc ./
 RUN corepack pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
@@ -9,7 +11,7 @@ COPY src ./src
 COPY scripts/emit-schema.ts ./scripts/
 RUN corepack pnpm build && corepack pnpm prune --prod --ignore-scripts
 
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 ENV NODE_ENV=production \
     DSGVO_CHECK_CONTAINER=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \

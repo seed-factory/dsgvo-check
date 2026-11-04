@@ -32,10 +32,13 @@ describe('scan — global timeout (5.2)', () => {
         checks: ['TEST-01'],
       }),
     );
+
     expect(result.report.scan.status).toBe('failed');
+
     // The collector handed over nothing: whether the start page was captured is unknown, the code says so.
     if (result.report.scan.status === 'failed')
       expect(result.report.scan.failure.code).toBe('browser-no-handover');
+
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'error',
       reason: 'timeout',
@@ -55,10 +58,12 @@ describe('scan — global timeout (5.2)', () => {
         collectors: { ...withBrowser, browser: abortAware(() => ({})) },
       }),
     );
+
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('failed');
     expect(result.report.summary.exitReasons).toEqual(['timeout']);
     expect(result.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
+
     // HTTP finished before the deadline: its finding stays in the report.
     expect(result.report.findings?.map((f) => f.checkId)).toEqual(['TEST-02']);
     expectValidReport(result.report);
@@ -88,6 +93,7 @@ describe('scan — global timeout (5.2)', () => {
         },
       }),
     );
+
     expect(result.report.scan.status).toBe('failed');
     if (result.report.scan.status === 'failed') expect(result.report.scan.failure.code).toBe('scan-timeout');
     expect(result.report.summary.exitReasons).toContain('timeout');
@@ -113,7 +119,9 @@ describe('scan — global timeout (5.2)', () => {
         },
       }),
     );
+
     expect(result.report.scan.status).toBe('partial');
+
     // The critical finding of phase A survives the deadline in phase B → 1, not 2.
     expect(result.report.findings?.map((f) => `${f.checkId}.${f.variant}`)).toContain('TEST-01.hit');
     expect(result.exitCode).toBe(1);
@@ -137,12 +145,14 @@ describe('scan — global timeout (5.2)', () => {
         },
       }),
     );
+
     expect(result.report.scan.status).toBe('partial');
     expect(result.exitCode).toBe(0);
   });
 
   it('a collector that ignores the abort is given up after the grace period', async () => {
     const t0 = Date.now();
+
     const result = await scan(
       opts({
         timeoutMs: 100,
@@ -150,6 +160,7 @@ describe('scan — global timeout (5.2)', () => {
         collectors: { ...withBrowser, browser: () => new Promise(() => {}) },
       }),
     );
+
     expect(Date.now() - t0).toBeLessThan(2_000);
     expect(result.report.summary.exitReasons).toContain('timeout');
     expect(result.snapshot?.collection.browser).toMatchObject({ status: 'error', reason: 'timeout' });
@@ -164,6 +175,7 @@ describe('scan — global timeout (5.2)', () => {
         collectors: { ...withBrowser, http: () => new Promise(() => {}) },
       }),
     );
+
     expect(result.report.scan.status).toBe('partial');
     expect(result.report.summary.exitReasons).toEqual([]);
     expect(result.exitCode).toBe(0);

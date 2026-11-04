@@ -102,57 +102,82 @@ function checkRunId(name: string, id: string): string {
   return id;
 }
 
+const RUNNER_OPTIONS = {
+  sites: { type: 'string' },
+  'expected-count': { type: 'string' },
+  results: { type: 'string' },
+  'run-id': { type: 'string' },
+  concurrency: { type: 'string' },
+  pause: { type: 'string' },
+  timeout: { type: 'string' },
+  region: { type: 'string' },
+  id: { type: 'string' },
+  limit: { type: 'string' },
+  engine: { type: 'string' },
+  cli: { type: 'string' },
+  sandbox: { type: 'string' },
+  'no-screenshots': { type: 'boolean' },
+  'assume-region': { type: 'string' },
+  'retry-errors': { type: 'boolean' },
+  reanalyze: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+  confirm: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+} as const;
+
+function parseRegions(value: string | undefined): Region[] | null {
+  const regions = list(value);
+  for (const r of regions ?? []) {
+    if (!(REGIONS as readonly string[]).includes(r)) throw new Error(`--region: unknown region "${r}"`);
+  }
+  return regions as Region[] | null;
+}
+
+function parseEngine(value: string | undefined): Engine {
+  const engine = value ?? 'api';
+  if (engine !== 'api' && engine !== 'cli') throw new Error(`--engine: expected api|cli, got "${engine}"`);
+  return engine;
+}
+
+function parseSandbox(value: string | undefined): SandboxMode {
+  const sandbox = SandboxModeSchema.safeParse(value ?? 'require');
+  if (!sandbox.success) throw new Error(`--sandbox: expected ${SandboxModeSchema.options.join('|')}`);
+  return sandbox.data;
+}
+
+function parseAssumeRegion(value: string | undefined): AssumeRegion | null {
+  const assumeRegion = AssumeRegionSchema.nullable().safeParse(value ?? null);
+  if (!assumeRegion.success)
+    throw new Error(`--assume-region: expected ${AssumeRegionSchema.options.join('|')}`);
+  return assumeRegion.data;
+}
+
+/** An explicit id wins; a reanalysis derives its id from the source run so the pair stays recognisable. */
+function chooseRunId(explicit: string | undefined, reanalyze: string | null, now: Date): string {
+  if (explicit !== undefined) return checkRunId('run-id', explicit);
+  const stamp = newRunId(now);
+  return reanalyze ? `${reanalyze}.re-${stamp}` : stamp;
+}
+
 export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs {
   const { values } = parseArgs({
     args: [...argv],
     strict: true,
     allowPositionals: false,
-    options: {
-      sites: { type: 'string' },
-      'expected-count': { type: 'string' },
-      results: { type: 'string' },
-      'run-id': { type: 'string' },
-      concurrency: { type: 'string' },
-      pause: { type: 'string' },
-      timeout: { type: 'string' },
-      region: { type: 'string' },
-      id: { type: 'string' },
-      limit: { type: 'string' },
-      engine: { type: 'string' },
-      cli: { type: 'string' },
-      sandbox: { type: 'string' },
-      'no-screenshots': { type: 'boolean' },
-      'assume-region': { type: 'string' },
-      'retry-errors': { type: 'boolean' },
-      reanalyze: { type: 'string' },
-      'dry-run': { type: 'boolean' },
-      confirm: { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-    },
+    options: RUNNER_OPTIONS,
   });
 
-  const regions = list(values.region);
-  for (const r of regions ?? []) {
-    if (!(REGIONS as readonly string[]).includes(r)) throw new Error(`--region: unknown region "${r}"`);
-  }
-  const engine = values.engine ?? 'api';
-  if (engine !== 'api' && engine !== 'cli') throw new Error(`--engine: expected api|cli, got "${engine}"`);
-  const sandbox = SandboxModeSchema.safeParse(values.sandbox ?? 'require');
-  if (!sandbox.success) throw new Error(`--sandbox: expected ${SandboxModeSchema.options.join('|')}`);
-  const assumeRegion = AssumeRegionSchema.nullable().safeParse(values['assume-region'] ?? null);
-  if (!assumeRegion.success)
-    throw new Error(`--assume-region: expected ${AssumeRegionSchema.options.join('|')}`);
+  const regions = parseRegions(values.region);
+  const engine = parseEngine(values.engine);
+  const sandbox = parseSandbox(values.sandbox);
+  const assumeRegion = parseAssumeRegion(values['assume-region']);
+
   const pauseMs = values.pause === undefined ? DEFAULT_PAUSE_MS : parseDuration(values.pause);
   if (pauseMs < MIN_PAUSE_MS) throw new Error(`--pause: at least ${MIN_PAUSE_MS} ms`);
   const timeoutMs = values.timeout === undefined ? DEFAULT_TIMEOUT_MS : parseDuration(values.timeout);
+
   const reanalyze = values.reanalyze === undefined ? null : checkRunId('reanalyze', values.reanalyze);
-  const stamp = newRunId(now);
-  const runId =
-    values['run-id'] !== undefined
-      ? checkRunId('run-id', values['run-id'])
-      : reanalyze
-        ? `${reanalyze}.re-${stamp}`
-        : stamp;
+  const runId = chooseRunId(values['run-id'], reanalyze, now);
 
   return {
     sitesFile: path.resolve(values.sites ?? DEFAULT_SITES_FILE),
@@ -168,14 +193,14 @@ export function parseRunnerArgs(argv: readonly string[], now: Date): RunnerArgs 
         : intIn('concurrency', values.concurrency, 1, MAX_CONCURRENCY),
     pauseMs,
     timeoutMs,
-    regions: regions as Region[] | null,
+    regions,
     ids: list(values.id),
     limit: values.limit === undefined ? null : intIn('limit', values.limit, 1, 10_000),
     engine,
     cliPath: path.resolve(values.cli ?? DEFAULT_CLI_PATH),
-    sandbox: sandbox.data,
+    sandbox,
     screenshots: !values['no-screenshots'],
-    assumeRegion: assumeRegion.data,
+    assumeRegion,
     retryErrors: Boolean(values['retry-errors']),
     reanalyze,
     dryRun: Boolean(values['dry-run']),

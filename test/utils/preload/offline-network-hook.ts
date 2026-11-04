@@ -33,6 +33,7 @@ if (process.env.DSGVO_TEST_OFFLINE_NETWORK === '1') {
     load(url, context, nextLoad) {
       const result = nextLoad(url, context);
       if (!url.endsWith('/src/core/url/net.ts')) return result;
+
       const src = result.source;
       const source = typeof src === 'string' ? src : Buffer.from(src as Uint8Array).toString('utf8');
       if (!source.includes(MARK)) {
@@ -40,6 +41,7 @@ if (process.env.DSGVO_TEST_OFFLINE_NETWORK === '1') {
           'offline-network-hook: `export function defaultNetworkConfig(` not found in src/core/url/net.ts',
         );
       }
+
       return {
         ...result,
         source: `${source.replace(MARK, 'function __originalDefaultNetworkConfig(')}

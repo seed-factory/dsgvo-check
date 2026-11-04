@@ -73,24 +73,31 @@ function boundsOf(n: z.ZodNumber): Bounds | null {
   return { min: lower?.value ?? null, minExclusive: lower?.inclusive === false, max: upper?.value ?? null };
 }
 
-function describe(section: SectionName, key: string, schema: z.ZodType): ConfigField {
-  const inner = unwrap(schema);
+/** What the .env writer and the validator need to know about the type of one setting. */
+function shapeOf(inner: z.ZodType): {
+  kind: FieldKind;
+  options: readonly string[] | null;
+  bounds: Bounds | null;
+} {
   const type = inner.def.type;
-  let kind: FieldKind;
-  let options: readonly string[] | null = null;
-  let bounds: Bounds | null = null;
   if (type === 'number') {
     const n = inner as z.ZodNumber;
-    kind = n.isInt ? 'int' : 'number';
-    bounds = boundsOf(n);
-  } else if (type === 'enum') {
-    kind = 'enum';
-    options = (inner as z.ZodEnum).options as readonly string[];
-  } else if (type === 'array') {
-    kind = 'list';
+    return { kind: n.isInt ? 'int' : 'number', options: null, bounds: boundsOf(n) };
+  }
+  if (type === 'enum') {
+    return { kind: 'enum', options: (inner as z.ZodEnum).options as readonly string[], bounds: null };
+  }
+  if (type === 'array') {
     const element = (inner.def as Wrapper).element as z.ZodType;
-    if (element.def.type === 'enum') options = (element as z.ZodEnum).options as readonly string[];
-  } else kind = 'string';
+    const options =
+      element.def.type === 'enum' ? ((element as z.ZodEnum).options as readonly string[]) : null;
+    return { kind: 'list', options, bounds: null };
+  }
+  return { kind: 'string', options: null, bounds: null };
+}
+
+function describe(section: SectionName, key: string, schema: z.ZodType): ConfigField {
+  const { kind, options, bounds } = shapeOf(unwrap(schema));
   const path = `${section}.${key}`;
   return {
     section,

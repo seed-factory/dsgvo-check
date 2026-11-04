@@ -1,5 +1,6 @@
 /** Settings from the environment and a `.env` file: names, coercion of the text values, validation against the schema. */
 import path from 'node:path';
+import type { z } from 'zod';
 import { loadTexts, type Texts } from '../data/load.ts';
 import { uiText } from '../data/messages.ts';
 import type { Lang } from '../report/schema.ts';
@@ -72,8 +73,10 @@ function coerce(field: ConfigField, text: string): Coerced {
   switch (field.kind) {
     case 'int':
       return /^-?\d+$/.test(text) ? { ok: true, value: Number(text) } : refused(REASON.integer);
+
     case 'number':
       return /^-?\d+(\.\d+)?$/.test(text) ? { ok: true, value: Number(text) } : refused(REASON.number);
+
     case 'list':
       return {
         ok: true,
@@ -82,6 +85,7 @@ function coerce(field: ConfigField, text: string): Coerced {
           .map((s) => s.trim())
           .filter(Boolean),
       };
+
     default:
       return { ok: true, value: text };
   }
@@ -89,13 +93,28 @@ function coerce(field: ConfigField, text: string): Coerced {
 
 const SECTION_VARIABLE = new RegExp(`^${ENV_PREFIX}(?:${Object.keys(SECTIONS).join('|').toUpperCase()})_`);
 
+/** Where the text of a setting came from, for the message about it. */
+type Origins = Map<ConfigField, { text: string; source: ProblemSource }>;
+
 /** Validates the settings found in `sources`; the environment wins over the file, an empty value counts as unset. */
 export function resolveConfig(sources: ConfigSources): LoadedConfig {
   const fields = configFields();
+  const { raw, origin, problems, fromFile, set } = readSettings(fields, sources);
+
+  const parsed = ConfigSchema.safeParse(raw);
+  if (!parsed.success) problems.push(...schemaProblems(parsed.error.issues, fields, origin));
+  if (!parsed.success || problems.length > 0) throw new ConfigError(problems);
+
   const known = new Set(fields.map((f) => f.env));
-  const byPath = new Map(fields.map((f) => [`${f.section}.${f.key}`, f]));
+  const names = new Set([...Object.keys(sources.env), ...Object.keys(sources.file?.values ?? {})]);
+  const unknown = [...names].filter((n) => SECTION_VARIABLE.test(n) && !known.has(n)).sort();
+  return { config: parsed.data, file: sources.file?.path ?? null, fromFile, set, unknown };
+}
+
+/** The text of each setting that is set, coerced to its type; values that do not coerce become problems. */
+function readSettings(fields: readonly ConfigField[], sources: ConfigSources) {
   const raw: Record<string, Record<string, unknown>> = {};
-  const origin = new Map<ConfigField, { text: string; source: ProblemSource }>();
+  const origin: Origins = new Map();
   const problems: ConfigProblem[] = [];
   const fromFile: string[] = [];
   const set: string[] = [];
@@ -105,9 +124,11 @@ export function resolveConfig(sources: ConfigSources): LoadedConfig {
     const fromDotenv = sources.file?.values[f.env]?.trim();
     const text = fromEnv || fromDotenv;
     if (!text) continue;
+
     set.push(f.env);
     const source: ProblemSource = fromEnv ? 'environment' : { file: sources.file?.path ?? '.env' };
     origin.set(f, { text, source });
+
     const c = coerce(f, text);
     if (!c.ok) {
       problems.push({ variable: f.env, value: f.secret ? null : text, source, reason: c.reason });
@@ -118,25 +139,27 @@ export function resolveConfig(sources: ConfigSources): LoadedConfig {
     raw[f.section] = section;
     if (!fromEnv) fromFile.push(f.env);
   }
+  return { raw, origin, problems, fromFile, set };
+}
 
-  const parsed = ConfigSchema.safeParse(raw);
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      const field = byPath.get(`${String(issue.path[0])}.${String(issue.path[1])}`);
-      const set = field ? origin.get(field) : undefined;
-      problems.push({
-        variable: field?.env ?? issue.path.join('.'),
-        value: !field || field.secret ? null : (set?.text ?? String(field.default ?? '')),
-        source: set?.source ?? 'default',
-        reason: reasonOf(issue),
-      });
-    }
-  }
-  if (!parsed.success || problems.length > 0) throw new ConfigError(problems);
+/** What the schema refused, each issue tied back to the variable and the source that set it. */
+function schemaProblems(
+  issues: readonly z.core.$ZodIssue[],
+  fields: readonly ConfigField[],
+  origin: Origins,
+): ConfigProblem[] {
+  const byPath = new Map(fields.map((f) => [`${f.section}.${f.key}`, f]));
 
-  const names = new Set([...Object.keys(sources.env), ...Object.keys(sources.file?.values ?? {})]);
-  const unknown = [...names].filter((n) => SECTION_VARIABLE.test(n) && !known.has(n)).sort();
-  return { config: parsed.data, file: sources.file?.path ?? null, fromFile, set, unknown };
+  return issues.map((issue) => {
+    const field = byPath.get(`${String(issue.path[0])}.${String(issue.path[1])}`);
+    const found = field ? origin.get(field) : undefined;
+    return {
+      variable: field?.env ?? issue.path.join('.'),
+      value: !field || field.secret ? null : (found?.text ?? String(field.default ?? '')),
+      source: found?.source ?? 'default',
+      reason: reasonOf(issue),
+    };
+  });
 }
 
 function readEnvFileOrThrow(file: string): EnvFile | null {
