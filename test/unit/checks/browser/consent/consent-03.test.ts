@@ -347,9 +347,41 @@ describe('CONSENT-03 names what was stored apart from the services', () => {
     expect(body('en', o!)).toContain('Stored: _gcl_au (cookie), _gcl_ls (localStorage).');
   });
 
-  it('counterexample: requests without any storage say that no storage was observed', () => {
+  it('counterexample: requests without any storage say that no identifier or embed storage was observed', () => {
     const [o] = observationsOf(runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] })));
     expect(o?.params).toMatchObject({ storedCount: 0, stored: null });
-    expect(body('de', o!)).toContain('Eine Speicherung durch diese Dienste wurde nicht beobachtet.');
+    expect(body('de', o!)).toContain(
+      'Außer Einträgen auf der Allowlist wurde keine Speicherung von Analyse- oder Marketing-Kennungen oder durch eingebettete Dienste beobachtet.',
+    );
+    expect(body('en', o!)).toContain(
+      'Apart from allowlisted entries, no storage of analytics or marketing identifiers or by embedded services was observed.',
+    );
+  });
+
+  it('an entry of a listed service that the catalog lists as no identifier: the text does not say the service stored nothing', () => {
+    const r = runCheck(
+      consent03,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('a', 'https://static.hotjar.com/c/hotjar-123.js?sv=6'),
+              req('b', 'https://in.hotjar.com/api/v2/client/sites/123/visit-data?sv=6', {
+                resourceType: 'xhr',
+              }),
+            ],
+            cookies: [cookie('_hjFirstSeen')],
+          }),
+        ],
+      }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({
+      variant: 'no-banner-consent-services',
+      params: { services: 'Hotjar', storedCount: 0 },
+    });
+    expect(`${body('de', o!)}\n${body('en', o!)}`).not.toMatch(
+      /Speicherung durch diese Dienste|storage by these services/,
+    );
   });
 });

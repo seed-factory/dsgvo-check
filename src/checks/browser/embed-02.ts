@@ -5,7 +5,7 @@ import type { ClassifiedRequest, DerivedSection } from '../../derive/types.ts';
 import { distinctRequestEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName } from './services.ts';
-import { bannerFound, consentSignals, signalOutcome } from './signals.ts';
+import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
 import { hasPhaseA, noPhaseAReason, phaseRecord, requestIndex, throttleAware } from './snapshot.ts';
 
 const ID = 'EMBED-02';
@@ -31,7 +31,7 @@ function mapsObservation(
   reqs: ClassifiedRequest[],
   records: Map<string, RequestRecord>,
   derived: DerivedSection,
-  banner: boolean,
+  banner: BannerState,
 ): Observation {
   const integrations = new Set(reqs.map((c) => c.integration ?? 'other'));
   const integrationType = INTEGRATION_ORDER.find((i) => integrations.has(i)) ?? 'other';
@@ -85,7 +85,7 @@ export const embed02 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const banner = bannerFound(cmp);
+    const banner = bannerState(cmp);
     const observations = [...groupMapRequests(derived).entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([serviceId, reqs]) => mapsObservation(serviceId, reqs, records, derived, banner));

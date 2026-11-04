@@ -217,7 +217,7 @@ const isBlocked = (doc: DocumentResponse): boolean => doc.error?.code === BLOCKE
 
 /** The start page decides whether the headers can be judged at all; null when they can. */
 function startPageOutcome(start: DocumentResponse): CheckOutcome | null {
-  // A bot or WAF challenge answered instead of the site (the collector raised SCAN-BLOCKED): nothing to judge.
+  // A bot or WAF challenge answered instead of the site (the collector raised SCAN-HTTP-BLOCKED): nothing to judge.
   if (isBlocked(start)) {
     return {
       status: 'inconclusive',

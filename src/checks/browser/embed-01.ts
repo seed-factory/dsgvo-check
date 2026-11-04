@@ -10,7 +10,7 @@ import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName } from './services.ts';
-import { bannerFound, consentSignals, signalOutcome } from './signals.ts';
+import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
 import { hasPhaseA, noPhaseAReason, requestIndex, throttleAware } from './snapshot.ts';
 
 const ID = 'EMBED-01';
@@ -69,12 +69,21 @@ function groupFontUse(derived: DerivedSection, records: Map<string, RequestRecor
   return groups;
 }
 
+/**
+ * What a `preconnect-only` finding rests on. Its title and action speak of a connection hint only when one was seen: a
+ * group of failed fetches alone (always so for a host outside the catalog, which gets no hints) has none to remove.
+ */
+function withoutLoad(g: Group): 'hint' | 'attempt' | 'hint-and-attempt' {
+  if (g.hints.length === 0) return 'attempt';
+  return g.attempted.length > 0 ? 'hint-and-attempt' : 'hint';
+}
+
 /** `fonts-loaded` when a font arrived; otherwise the attempts and hints alone make a `preconnect-only` finding. */
 function fontObservation(
   g: Group,
   records: Map<string, RequestRecord>,
   derived: DerivedSection,
-  banner: boolean,
+  banner: BannerState,
 ): Observation {
   const loaded = g.loaded.length > 0;
   const reqs = loaded ? g.loaded : g.attempted;
@@ -112,6 +121,7 @@ function fontObservation(
       afterReject: reqs.some((c) => c.timing === 'after-reject'),
       bannerFound: banner,
       fontService: g.fontService,
+      ...(loaded ? {} : { observed: withoutLoad(g) }),
     },
     ...serviceFields(derived, g.serviceId),
   };
@@ -134,7 +144,7 @@ export const embed01 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const banner = bannerFound(cmp);
+    const banner = bannerState(cmp);
     const observations = [...groupFontUse(derived, records).values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))
       .map((g) => fontObservation(g, records, derived, banner));

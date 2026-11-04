@@ -258,7 +258,7 @@
             </ol>
             {{#if full}}{{else}}<p class="muted">{{t "report.actions.briefNote"}}</p>{{/if}}
           {{else}}
-            <p>{{emptyFindings}}</p>
+            <p>{{#if actionsEmpty}}{{actionsEmpty}}{{else}}{{emptyFindings}}{{/if}}</p>
           {{/if}}{{nl}}
         </section>{{nl}}
         {{#if services}}

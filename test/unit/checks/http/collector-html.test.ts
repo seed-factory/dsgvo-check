@@ -170,6 +170,53 @@ describe('findLegalLinks', () => {
       },
     ],
     [
+      'a page linked for both documents gives way to a later link named for the privacy policy alone',
+      '<a href="/impressum-datenschutz">Impressum &amp; Datenschutz</a><a href="/datenschutz">Datenschutzerklärung</a>',
+      {
+        impressum: 'http://www.example.test/impressum-datenschutz',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
+      'a page linked for both documents gives way to a later privacy path match',
+      '<a href="/rechtliches">Impressum &amp; Datenschutz</a><a href="/datenschutz"><svg></svg></a>',
+      {
+        impressum: 'http://www.example.test/rechtliches',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
+      'a page linked for both documents after the Impressum link is the privacy policy',
+      '<a href="/impressum">Impressum</a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/rechtliches',
+      },
+    ],
+    [
+      'a page linked for both documents comes before a privacy link found only by its path',
+      '<a href="/impressum">Impressum</a><a href="/datenschutz"><svg></svg></a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/rechtliches',
+      },
+    ],
+    [
+      'an anchor on the Impressum page is the Impressum only',
+      '<a href="/impressum">Impressum</a><a href="/impressum#datenschutz">Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+      },
+    ],
+    [
+      'a link is kept without the anchor it jumps to',
+      '<a href="/impressum#top">Impressum</a><a href="/datenschutz#cookies">Datenschutz</a>',
+      {
+        impressum: 'http://www.example.test/impressum',
+        privacy: 'http://www.example.test/datenschutz',
+      },
+    ],
+    [
       'a path match still counts when no text names the document',
       '<a href="/impressum"><svg></svg></a><a href="/datenschutz"><img alt=""></a>',
       {

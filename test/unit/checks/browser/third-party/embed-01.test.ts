@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../../src/checks/browser/embed-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
-import { renderMessage } from '../../../../../src/core/data/messages.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { PhaseRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { click, cmpFacts, cmpWith, defaultPages, page, phase, req, START, site } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -218,5 +219,69 @@ describe('EMBED-01 font files from other third-party servers', () => {
       }),
     );
     expect(variantsOf(r)).toEqual([]);
+  });
+});
+
+describe('EMBED-01 without a completed font load names what was observed', () => {
+  const failed = { state: 'failed', status: undefined } as const;
+  const hintedStart = page(START, 'start', 'A', {
+    dom: makeDom({ linkRels: [{ rel: 'preconnect', href: 'https://fonts.gstatic.com/', source: 'dom' }] }),
+  });
+  const otherHostFont = req('a', 'https://static.other-unknown.net/fonts/x.woff2', {
+    resourceType: 'font',
+    ...failed,
+  });
+
+  /** Input, what the finding rests on, and its title in de and en. */
+  const CASES: Array<[string, Partial<PhaseRecord>, string, string, string]> = [
+    [
+      'an unfinished font file request to a host outside the catalog',
+      { requests: [otherHostFont] },
+      'attempt',
+      'Nicht abgeschlossener Schriftabruf: other-unknown.net',
+      'Unfinished font request: other-unknown.net',
+    ],
+    [
+      'an unfinished request to a font service',
+      { requests: [css('a', failed)] },
+      'attempt',
+      'Nicht abgeschlossener Schriftabruf: Google Fonts',
+      'Unfinished font request: Google Fonts',
+    ],
+    [
+      'a preconnect to a font service',
+      { pages: [hintedStart, ...defaultPages('A').slice(1)] },
+      'hint',
+      'Nur Verbindungsvorbereitung zu einem Schriftdienst: Google Fonts',
+      'Only a connection hint to a font service: Google Fonts',
+    ],
+    [
+      'a preconnect and an unfinished request to a font service',
+      { pages: [hintedStart, ...defaultPages('A').slice(1)], requests: [css('a', failed)] },
+      'hint-and-attempt',
+      'Verbindungsvorbereitung oder nicht abgeschlossener Schriftabruf: Google Fonts',
+      'Connection hint or unfinished font request: Google Fonts',
+    ],
+  ];
+
+  it.each(CASES)('%s', (_name, input, observed, deTitle, enTitle) => {
+    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', input)] })));
+    expect(o).toMatchObject({ variant: 'preconnect-only', params: { observed } });
+    const de = loadTexts('de');
+    const en = loadTexts('en');
+    expect(renderMessage(de, 'EMBED-01.preconnect-only', o!.params).title).toBe(deTitle);
+    expect(renderMessage(en, 'EMBED-01.preconnect-only', o!.params).title).toBe(enTitle);
+    const actions = [
+      formatMessage(de.actions['EMBED-01.preconnect-only']!, o!.params, 'de'),
+      formatMessage(en.actions['EMBED-01.preconnect-only']!, o!.params, 'en'),
+    ].join('\n');
+    if (observed === 'attempt') expect(actions).not.toMatch(/Verbindungsvorbereitung|connection hint/);
+    else expect(actions).toMatch(/Verbindungsvorbereitung/);
+  });
+
+  it('a completed load carries no such param', () => {
+    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })] })));
+    expect(o?.variant).toBe('fonts-loaded');
+    expect(o?.params).not.toHaveProperty('observed');
   });
 });

@@ -288,6 +288,38 @@ describe('the table of observed services', () => {
     expect(actions.map((a) => a.title)).toEqual(['Eintrag a gefunden']);
   });
 
+  it.each(['full', 'brief'] as const)(
+    'is counted on its own in the overview of the %s report, which counts the findings of the action list',
+    (detail) => {
+      const rows = [
+        inventory(1, 'Matomo', ['loaded', 'none', 'none']),
+        inventory(2, 'Hotjar', ['loaded', 'none', 'none']),
+        inventory(3, 'Google Analytics', ['loaded', 'none', 'none']),
+      ];
+      const counts = (findings: Finding[]) =>
+        buildReportView(reportWith(findings), ctx(detail)).overview.slice(0, 2);
+
+      expect(counts([...rows, entry(1, 'a'), entry(2, 'b')])).toEqual([
+        'Es wurden keine kritischen Befunde beobachtet. Dazu kommen 2 Hinweise zur Information. Gleichartige Befunde sind unten zu einem Punkt zusammengefasst.',
+        '3 beobachtete Dienste stehen in der Tabelle „Beobachtete Dienste“.',
+      ]);
+      expect(counts(rows.slice(0, 1))).toEqual([
+        'Es wurden keine kritischen Befunde beobachtet.',
+        'Ein beobachteter Dienst steht in der Tabelle „Beobachtete Dienste“.',
+      ]);
+    },
+  );
+
+  it('is counted on its own at the severity the ruleset gives it, in English too', () => {
+    const raised: Finding = { ...inventory(1, 'Matomo', ['loaded', 'none', 'none']), severity: 'warning' };
+    const { overview } = buildReportView(reportWith([raised, entry(1, 'a')]), ctx('brief', 'en'));
+
+    expect(overview.slice(0, 2)).toEqual([
+      'No critical findings were observed. There is also one note for information.',
+      'One observed service is listed in the table "Observed services".',
+    ]);
+  });
+
   it('explains "not checked" only when a cell says so', () => {
     const checked = buildReportView(reportWith([inventory(1, 'Matomo', ['loaded', 'none', 'none'])]), ctx());
     const unchecked = buildReportView(
@@ -659,6 +691,22 @@ describe('the overview: checks without a result', () => {
     );
   });
 
+  it('gives the reason in words when the visit with the reject did not start', () => {
+    const open = (lang: 'de' | 'en') =>
+      overview(
+        [check('CONSENT-04', 'completed', null), check('CONSENT-05', 'inconclusive', 'time-budget')],
+        [],
+        lang,
+      );
+
+    expect(open('de')).toContain(
+      'Eine Prüfung (CONSENT-05) hat kein abschließendes Ergebnis: Restzeit des Scans nicht ausreichend.',
+    );
+    expect(open('en')).toContain(
+      'One check (CONSENT-05) has no conclusive result: remaining scan time not sufficient.',
+    );
+  });
+
   it('speaks English with --lang en', () => {
     const sentences = overview([check('CONSENT-01', 'skipped', 'tls-blocked')], [], 'en');
     expect(sentences).toContain(
@@ -938,6 +986,40 @@ describe('the full report in words', () => {
     expect(out).not.toContain('(Stand –)');
   });
 
+  // The reasons the evaluation and the checks end a check with; `collector-error` names its collector after the colon.
+  const CHECK_REASONS = [
+    // evaluation
+    'not-selected not-run not-collected collector-skipped collector-error:browser',
+    'tls-blocked timeout exception invalid-observation',
+    // browser checks; CONSENT-05 passes on why the visit with the reject did not start
+    'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
+    'first-layer-not-visible unknown-classification consent-frame-unresolved no-pre-consent-observation',
+    'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
+    'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',
+    'pdf-not-evaluated unsupported-format language-unsupported document-incomplete no-evaluable-pages',
+    'insufficient-pages contact-page-not-evaluable',
+    // http and dns checks
+    'blocked start-page-unavailable start-page-status tls-invalid no-https handshake-inconclusive undecided',
+    'ip-target no-registrable-domain multiple-records',
+  ].flatMap((line) => line.split(' '));
+
+  it.each(['de', 'en'] as const)('words every reason a check can end with (%s)', (lang) => {
+    const r = sampleFullReport();
+    const id = (n: number) => `TEST-${String(n).padStart(2, '0')}`;
+    r.checks = CHECK_REASONS.map((reason, n) => ({
+      id: id(n),
+      module: 'browser',
+      status: 'inconclusive',
+      reason,
+      limitations: [],
+      coverage: null,
+      durationMs: 1,
+    }));
+    const shown = new Map(buildReportView(r, ctx('full', lang)).checks!.map((c) => [c.id, c.reason]));
+
+    expect(CHECK_REASONS.filter((reason, n) => shown.get(id(n)) === reason)).toEqual([]);
+  });
+
   it('words the exit reasons and the phases', () => {
     const out = html();
     expect(out).toContain('<div>Befunde ab der eingestellten Schwelle</div>');
@@ -1018,5 +1100,53 @@ describe('the full report in words', () => {
     const r = sampleFullReport();
     r.findings = r.findings.filter((f) => f.checkId !== 'CONSENT-04');
     expect(html(r)).toContain('Weitere Screenshots');
+  });
+});
+
+describe('the action list without an item', () => {
+  const actionSection = (out: string) => {
+    const start = out.indexOf('>Was zu tun ist</h2>');
+    return out.slice(start, out.indexOf('</section>', start));
+  };
+
+  it('points to the services table when every finding is an inventory row', () => {
+    const r = reportWith([
+      inventory(1, 'Matomo', ['tracking', 'not-observed', 'not-observed']),
+      inventory(2, 'Vimeo', ['loaded', 'not-observed', 'not-observed']),
+    ]);
+    for (const detail of ['full', 'brief'] as const) {
+      const section = actionSection(renderHtml(r, ctx(detail)));
+      expect(section).toContain('Kein Befund, aus dem sich ein Schritt ergibt.');
+      expect(section).toContain('Die 2 beobachteten Dienste stehen in der Tabelle „Beobachtete Dienste“.');
+      expect(section).not.toContain('Keine Befunde beobachtet');
+    }
+  });
+
+  it('leaves a suppressed finding out of the list and says that it is suppressed', () => {
+    const suppressed = {
+      ...entry(1, 'a'),
+      suppression: { reason: 'geprüft', expires: '2099-01-01', expired: false },
+    };
+    const r = reportWith([suppressed]);
+    r.summary.counts = { ...r.summary.counts!, info: 0, suppressed: 1 };
+    const section = actionSection(renderHtml(r, ctx('brief')));
+
+    expect(section).not.toContain('Eintrag a gefunden');
+    expect(section).toContain('Ein Befund ist unterdrückt.');
+  });
+
+  it('keeps a finding whose suppression has expired in the list', () => {
+    const expired = {
+      ...entry(1, 'a'),
+      suppression: { reason: 'geprüft', expires: '2020-01-01', expired: true },
+    };
+
+    expect(actionSection(renderHtml(reportWith([expired]), ctx('brief')))).toContain('Eintrag a gefunden');
+  });
+
+  it('says no findings were observed when the report has none', () => {
+    const section = actionSection(renderHtml(reportWith([]), ctx('brief')));
+
+    expect(section).toContain('Keine Befunde beobachtet.');
   });
 });

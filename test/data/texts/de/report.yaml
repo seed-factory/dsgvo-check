@@ -46,8 +46,10 @@ ui:
   report.summary.column.finding: Befund
   report.summary.column.pages: Seiten
   report.summary.files: "Vollständiger Bericht: report.json und report.html im Artefakt."
-  # `items`: points of "Was zu tun ist" when similar findings share one, else 0.
+  # Counts of the findings in "Was zu tun ist"; `items`: its points when similar findings share one, else 0.
   report.overview.findings: "{critical, plural, =0 {Es wurden keine kritischen Befunde beobachtet.} one {Es wurde ein kritischer Befund beobachtet.} other {Es wurden # kritische Befunde beobachtet.}}{warning, plural, =0 {} one { Ein Befund sollte geprüft werden.} other { # Befunde sollten geprüft werden.}}{info, plural, =0 {} one { Dazu kommt ein Hinweis zur Information.} other { Dazu kommen # Hinweise zur Information.}}{items, plural, =0 {} one { Gleichartige Befunde sind unten zu einem Punkt zusammengefasst.} other { Gleichartige Befunde sind unten zu # Punkten zusammengefasst.}}"
+  # The rows of the table of observed services, which are findings too; `table` is the heading of the table.
+  report.overview.services: "{count, plural, one {Ein beobachteter Dienst steht} other {# beobachtete Dienste stehen}} in der Tabelle „{table}“."
   report.overview.failed: Der Scan wurde nicht durchgeführt, daher liegen keine Beobachtungen vor.
   # `gaps`: the scan ran to its end, but some checks gave no conclusive result (the next sentences say which).
   # `ran`: every check has a result, some only for a part (the next sentence says which and why).
@@ -87,6 +89,12 @@ ui:
   report.actions.covers: "{findings, plural, one {# Befund} other {# Befunde}}{pages, plural, =0 {} one {, # Seite} other {, # Seiten}}"
   # Tail of a list of differing values that names only the first ones.
   report.list.more: "{count, plural, other {und # weitere}}"
+  # "Was zu tun ist" without an item although the report has findings: inventory rows and suppressed findings.
+  report.actions.none: >-
+    Kein Befund, aus dem sich ein Schritt ergibt.{services, plural, =0 {} one { Der beobachtete Dienst steht in der
+    Tabelle „Beobachtete Dienste“.} other { Die # beobachteten Dienste stehen in der Tabelle „Beobachtete
+    Dienste“.}}{suppressed, plural, =0 {} one { Ein Befund ist unterdrückt.} other { # Befunde sind unterdrückt.}}
+    Das ist keine Bestätigung, dass Anforderungen erfüllt sind.
   report.actions.briefNote: Gleichartige Befunde sind zu einem Punkt zusammengefasst. Die Einzelheiten stehen im ausführlichen Bericht.
   report.services.name: Dienst
   report.services.beforeInteraction: Vor einer Interaktion
@@ -259,26 +267,32 @@ ui:
   report.reason: >-
     {code, select, tls-blocked {Zertifikat nicht als gültig angenommen, Website nicht aufgerufen} not-selected {nicht
     ausgewählt (--checks)} not-required {von keiner ausgewählten Prüfung benötigt} not-run {nicht ausgeführt}
-    not-collected {Rohdaten nicht erhoben} timeout {Zeitlimit erreicht} exception {Fehler bei der Auswertung}
+    not-collected {Rohdaten nicht erhoben} collector-skipped {Erhebung der Rohdaten übersprungen} collector-error
+    {Fehler bei der Erhebung der Rohdaten ({detail})} timeout {Zeitlimit erreicht} time-budget {Restzeit des Scans
+    nicht ausreichend} request-cap {Erfassungsgrenze für Anfragen erreicht} exception {Fehler bei der Auswertung}
     start-page-status {Startseite antwortete mit einem Fehlerstatus} start-page-unavailable {Startseite nicht
     abrufbar} start-page-not-evaluable {Startseite nicht auswertbar} no-banner {kein Einwilligungsbanner gefunden}
     cmp-not-observed {Einwilligungsbanner nicht beobachtet} banner-not-recognized {Einwilligungsbanner nicht erkannt}
     cmp-not-supported {Einwilligungsbanner erkannt, aber nicht unterstützt} first-layer-not-visible {erste Ebene des
-    Einwilligungsbanners nicht sichtbar} no-reject-click {Ablehnung im Einwilligungsbanner nicht ausgelöst}
-    reject-not-confirmed {Ablehnung vom Einwilligungsbanner nicht bestätigt} pagehide-capture-unavailable {Anfragen
-    beim Verlassen einer Seite werden nicht erfasst} geo {Einwilligungsbanner meldet einen Standort außerhalb des
-    EWR} bot-mode {Einwilligungsbanner behandelte den Scan als automatisierten Zugriff} throttled {Server hat Anfragen
-    gedrosselt} no-network-observation {keine Netzwerkbeobachtung} no-pre-consent-observation {keine Beobachtung vor
-    einer Interaktion} privacy-policy-not-found {Datenschutzerklärung nicht gefunden} pdf-not-evaluated
-    {Datenschutzerklärung nur als PDF, nicht ausgewertet} unsupported-format {Format nicht unterstützt}
-    language-unsupported {Sprache nicht unterstützt} document-incomplete {Dokument nicht vollständig gelesen}
-    no-evaluable-pages {keine auswertbare Seite} insufficient-pages {zu wenige auswertbare Seiten}
-    legal-targets-not-evaluable {Linkziele nicht auswertbar} contact-page-not-evaluable {Kontaktseite nicht
-    auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet} no-https {kein HTTPS}
-    tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht eindeutig}
-    multiple-records {mehrere Einträge} invalid-observation {ungültige Beobachtung} blocked {durch Bot-Schutz
-    blockiert} challenge {Seite des Bot-Schutzes} http {HTTP {detail}} navigation-failed {Aufruf fehlgeschlagen
-    ({detail})} dom-unavailable {Seitenaufbau nicht lesbar} not-html {kein HTML} other {}}
+    Einwilligungsbanners nicht sichtbar} unknown-classification {erste Ebene des Einwilligungsbanners nicht
+    eingeordnet} phase-b-missing {Besuch mit Ablehnung im Einwilligungsbanner nicht durchgeführt} phase-c-missing
+    {Besuch mit Zustimmung im Einwilligungsbanner nicht durchgeführt} no-reject-click {Ablehnung im
+    Einwilligungsbanner nicht ausgelöst} reject-not-confirmed {Ablehnung vom Einwilligungsbanner nicht bestätigt}
+    pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite werden nicht erfasst} geo {Einwilligungsbanner
+    meldet einen Standort außerhalb des EWR} bot-mode {Einwilligungsbanner behandelte den Scan als automatisierten
+    Zugriff} throttled {Server hat Anfragen gedrosselt} no-network-observation {keine Netzwerkbeobachtung}
+    no-pre-consent-observation {keine Beobachtung vor einer Interaktion} privacy-policy-not-found
+    {Datenschutzerklärung nicht gefunden} pdf-not-evaluated {Datenschutzerklärung nur als PDF, nicht ausgewertet}
+    unsupported-format {Format nicht unterstützt} language-unsupported {Sprache nicht unterstützt} document-incomplete
+    {Dokument nicht vollständig gelesen} no-evaluable-pages {keine auswertbare Seite} insufficient-pages {zu wenige
+    auswertbare Seiten} legal-targets-not-evaluable {Linkziele nicht auswertbar} contact-page-not-evaluable
+    {Kontaktseite nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
+    no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
+    eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
+    no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation
+    {ungültige Beobachtung} blocked {durch Bot-Schutz blockiert} challenge {Seite des Bot-Schutzes} http {HTTP
+    {detail}} navigation-failed {Aufruf fehlgeschlagen ({detail})} dom-unavailable {Seitenaufbau nicht lesbar}
+    not-html {kein HTML} other {}}
   report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
   report.collectorStatus: "{status, select, ok {abgeschlossen} partial {teilweise} error {Fehler} skipped {übersprungen} not-run {nicht ausgeführt} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Anfrage} other {Anfragen}}} cookie {Cookie} storage {Speichereintrag} header {Header} dns {DNS-Eintrag} tls {TLS-Verbindung} cmp {Einwilligungsbanner} consent-state {Einwilligungsstatus} document {Dokument} text-match {Textstelle} screenshot {Screenshot} page {{count, plural, one {Seite} other {Seiten}}} redirect-chain {Umleitungskette} link {{count, plural, one {Link} other {Links}}} other {{type}}}"

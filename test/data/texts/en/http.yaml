@@ -114,6 +114,13 @@ messages:
     body: >-
       The TLS certificate of {host} expires on {notAfter} ({daysLeft, plural, one {# day left} other {# days left}}
       of a lifetime of {lifetimeDays} days). Recommendation: check the automatic renewal.
+  # Raised by the HTTP collector: only the headers HDR-01 reads are missing, the browser may still evaluate the page.
+  diagnostic.SCAN-HTTP-BLOCKED:
+    title: "Security headers not evaluated: access blocked"
+    body: >-
+      {count, plural, one {The direct HTTP request for {page} was} other {The direct HTTP requests for # pages
+      ({pages}) were}} answered by an access block or challenge instead of the website; the security headers of
+      {count, plural, one {this page were} other {these pages were}} not evaluated.
 legalNotes:
   HDR-01:
     text: >-

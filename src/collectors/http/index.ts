@@ -268,16 +268,18 @@ function documentFrom(
   return doc;
 }
 
-/** One SCAN-BLOCKED for the documents a bot or WAF challenge answered; HDR-01 does not judge their headers. */
-function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[]): DiagnosticInput | null {
+/**
+ * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 does not judge their headers. Its own code:
+ * the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
+ */
+export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[]): DiagnosticInput | null {
   const blocked = documents.filter((d) => d.error?.code === BLOCKED_DOCUMENT);
   if (blocked.length === 0) return null;
   const pages = [...new Set(blocked.map((d) => d.finalUrl))];
   return {
-    code: 'SCAN-BLOCKED',
+    code: 'SCAN-HTTP-BLOCKED',
     affects: ['HDR-01'],
     params: {
-      scope: 'http',
       count: pages.length,
       page: pages[0] as string,
       pages: pages.slice(0, MAX_BLOCKED_LISTED).join(', '),

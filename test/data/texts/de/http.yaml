@@ -114,6 +114,13 @@ messages:
     body: >-
       Das TLS-Zertifikat von {host} läuft am {notAfter} ab ({daysLeft, plural, one {noch # Tag} other {noch # Tage}}
       bei einer Laufzeit von {lifetimeDays} Tagen). Empfehlung: die automatische Verlängerung prüfen.
+  # Raised by the HTTP collector: only the headers HDR-01 reads are missing, the browser may still evaluate the page.
+  diagnostic.SCAN-HTTP-BLOCKED:
+    title: "Sicherheits-Header nicht bewertet: Zugriff blockiert"
+    body: >-
+      {count, plural, one {Auf die direkte HTTP-Anfrage an {page} antwortete} other {Auf die direkten HTTP-Anfragen an
+      # Seiten ({pages}) antwortete}} eine Zugriffssperre oder Challenge statt der Website; die Sicherheits-Header
+      {count, plural, one {dieser Seite} other {dieser Seiten}} wurden nicht bewertet.
 legalNotes:
   HDR-01:
     text: >-

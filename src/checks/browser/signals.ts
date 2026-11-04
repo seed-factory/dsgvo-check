@@ -17,12 +17,24 @@ export function allCmpFacts(cmp: CmpSection): CmpFacts[] {
   return cmp.phases.flatMap((p) => p.facts);
 }
 
-/**
- * A consent banner was found on some page: a recognised CMP or a banner candidate in the DOM, visible or not. Texts
- * that speak of "the interaction with the banner" need one; without it they say that no banner was detected.
- */
+/** A consent banner was found on some page: a recognised CMP or a banner candidate in the DOM, visible or not. */
 export function bannerFound(cmp: CmpSection): boolean {
   return allCmpFacts(cmp).some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent);
+}
+
+/**
+ * The `bannerFound` param of texts before an interaction. Found or not stay booleans, so a stored report renders as
+ * before; `other` in their selects is the mixed case and the banner that was not evaluated.
+ */
+export type BannerState = boolean | 'not-observed';
+
+/**
+ * Texts that speak of "the interaction with the banner" need a banner, and say that none was found only when CMP
+ * facts were recorded. Without any (extraction failed or timed out on every page) the banner was not evaluated, as
+ * CONSENT-03 and CONSENT-04 report it inconclusive then.
+ */
+export function bannerState(cmp: CmpSection): BannerState {
+  return allCmpFacts(cmp).length === 0 ? 'not-observed' : bannerFound(cmp);
 }
 
 export interface ConsentSignals {

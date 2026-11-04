@@ -331,34 +331,41 @@ interface EmbedFrame {
 /**
  * Embedded service per third-party frame of a phase (by `frameId`): the service of the frame's document, or, for the
  * frame of a site builder or of an unknown host, the first embedded service loaded in it (a builder's map frame that
- * loads Google Maps). Frames of the site itself and frames without a document URL get none.
+ * loads Google Maps). A site builder is a host of no catalog service or a CDN of the catalog (Wix serves its pages
+ * from one). The frame of any other known service (payment, ads, consent) takes no embed from what it loads, so its
+ * own helper hosts and fonts are not attributed to that embed. Frames of the site itself and frames without a
+ * document URL get none.
  */
 function embedFrames(
   catalog: ServiceCatalog,
   scope: FirstPartyScope,
   requests: readonly RequestRecord[],
 ): Map<string, EmbedFrame> {
-  const embedded = (url: URL | null): ServiceEntry | null => {
-    const service = url ? catalog.matchUrl(url)?.service : undefined;
-    return service && EMBED_CATEGORIES.has(service.category) ? service : null;
-  };
+  const embedded = (service: ServiceEntry | undefined): ServiceEntry | null =>
+    service && EMBED_CATEGORIES.has(service.category) ? service : null;
 
-  const frames = new Map<string, { thirdParty: boolean; etld1: string | null; own: ServiceEntry | null }>();
+  const frames = new Map<
+    string,
+    { thirdParty: boolean; etld1: string | null; own: ServiceEntry | null; builder: boolean }
+  >();
   const loadedIn = new Map<string, ServiceEntry>();
   for (const r of requests) {
     if (r.isMainFrame || !r.frameId) continue;
     let frame = frames.get(r.frameId);
     if (!frame) {
       const url = r.frameUrl ? parseHttpUrl(r.frameUrl) : null;
+      const service = url ? catalog.matchUrl(url)?.service : undefined;
       frame = {
         thirdParty: url !== null && !scope.has(url.hostname),
         etld1: url ? registrableDomain(url.hostname) : null,
-        own: embedded(url),
+        own: embedded(service),
+        builder: !service || service.category === 'cdn',
       };
       frames.set(r.frameId, frame);
     }
-    if (frame.thirdParty && !frame.own && !loadedIn.has(r.frameId)) {
-      const service = embedded(parseHttpUrl(r.url));
+    if (frame.thirdParty && frame.builder && !loadedIn.has(r.frameId)) {
+      const url = parseHttpUrl(r.url);
+      const service = embedded(url ? catalog.matchUrl(url)?.service : undefined);
       if (service) loadedIn.set(r.frameId, service);
     }
   }

@@ -46,8 +46,10 @@ ui:
   report.summary.column.finding: Finding
   report.summary.column.pages: Pages
   report.summary.files: "Full report: report.json and report.html in the artifact."
-  # `items`: points of "What to do" when similar findings share one, else 0.
+  # Counts of the findings in "What to do"; `items`: its points when similar findings share one, else 0.
   report.overview.findings: "{critical, plural, =0 {No critical findings were observed.} one {One critical finding was observed.} other {# critical findings were observed.}}{warning, plural, =0 {} one { One finding should be checked.} other { # findings should be checked.}}{info, plural, =0 {} one { There is also one note for information.} other { There are also # notes for information.}}{items, plural, =0 {} one { Similar findings are combined into one point below.} other { Similar findings are combined into # points below.}}"
+  # The rows of the table of observed services, which are findings too; `table` is the heading of the table.
+  report.overview.services: '{count, plural, one {One observed service is} other {# observed services are}} listed in the table "{table}".'
   report.overview.failed: The scan was not performed, so there are no observations.
   # `gaps`: the scan ran to its end, but some checks gave no conclusive result (the next sentences say which).
   # `ran`: every check has a result, some only for a part (the next sentence says which and why).
@@ -83,6 +85,12 @@ ui:
   report.actions.covers: "{findings, plural, one {# finding} other {# findings}}{pages, plural, =0 {} one {, # page} other {, # pages}}"
   # Tail of a list of differing values that names only the first ones.
   report.list.more: "{count, plural, other {and # more}}"
+  # "What to do" without an item although the report has findings: inventory rows and suppressed findings.
+  report.actions.none: >-
+    No finding calls for a step.{services, plural, =0 {} one { The observed service is listed in the table “Observed
+    services”.} other { The # observed services are listed in the table “Observed services”.}}{suppressed, plural, =0 {}
+    one { One finding is suppressed.} other { # findings are suppressed.}} This does not confirm that requirements are
+    met.
   report.actions.briefNote: Similar findings are combined into one point. The details are in the full report.
   report.services.name: Service
   report.services.beforeInteraction: Before any interaction
@@ -253,24 +261,29 @@ ui:
   report.reason: >-
     {code, select, tls-blocked {certificate not accepted as valid, website not visited} not-selected {not selected
     (--checks)} not-required {not needed by any selected check} not-run {not run} not-collected {raw data not
-    collected} timeout {time limit reached} exception {error during evaluation} start-page-status {start page
-    answered with an error status} start-page-unavailable {start page not available} start-page-not-evaluable {start
-    page not evaluable} no-banner {no consent banner found} cmp-not-observed {consent banner not observed}
-    banner-not-recognized {consent banner not recognised} cmp-not-supported {consent banner recognised, but not
-    supported} first-layer-not-visible {first layer of the consent banner not visible} no-reject-click {rejection in
-    the consent banner not triggered} reject-not-confirmed {rejection not confirmed by the consent banner}
-    pagehide-capture-unavailable {requests sent when leaving a page are not captured} geo {consent banner reports a
-    location outside the EEA} bot-mode {consent banner treated the scan as automated traffic} throttled {server
-    throttled requests} no-network-observation {no network observation} no-pre-consent-observation {no observation
-    before any interaction} privacy-policy-not-found {privacy policy not found} pdf-not-evaluated {privacy policy only
-    as a PDF, not evaluated} unsupported-format {format not supported} language-unsupported {language not supported}
+    collected} collector-skipped {collection of raw data skipped} collector-error {error while collecting raw data
+    ({detail})} timeout {time limit reached} time-budget {remaining scan time not sufficient} request-cap {request
+    capture limit reached} exception {error during evaluation} start-page-status {start page answered with an error
+    status} start-page-unavailable {start page not available} start-page-not-evaluable {start page not evaluable}
+    no-banner {no consent banner found} cmp-not-observed {consent banner not observed} banner-not-recognized {consent
+    banner not recognised} cmp-not-supported {consent banner recognised, but not supported} first-layer-not-visible
+    {first layer of the consent banner not visible} unknown-classification {first layer of the consent banner not
+    classified} phase-b-missing {visit with rejection in the consent banner not carried out} phase-c-missing {visit
+    with acceptance in the consent banner not carried out} no-reject-click {rejection in the consent banner not
+    triggered} reject-not-confirmed {rejection not confirmed by the consent banner} pagehide-capture-unavailable
+    {requests sent when leaving a page are not captured} geo {consent banner reports a location outside the EEA}
+    bot-mode {consent banner treated the scan as automated traffic} throttled {server throttled requests}
+    no-network-observation {no network observation} no-pre-consent-observation {no observation before any interaction}
+    privacy-policy-not-found {privacy policy not found} pdf-not-evaluated {privacy policy only as a PDF, not
+    evaluated} unsupported-format {format not supported} language-unsupported {language not supported}
     document-incomplete {document not read completely} no-evaluable-pages {no evaluable page} insufficient-pages {too
     few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
     page not evaluable} consent-frame-unresolved {frame of the consent banner not attributed} no-https {no HTTPS}
-    tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} multiple-records {several
-    records} invalid-observation {invalid observation} blocked {blocked by bot protection} challenge {bot protection
-    page} http {HTTP {detail}} navigation-failed {navigation failed ({detail})} dom-unavailable {page structure not
-    readable} not-html {not HTML} other {}}
+    tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
+    could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
+    multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}
+    challenge {bot protection page} http {HTTP {detail}} navigation-failed {navigation failed ({detail})}
+    dom-unavailable {page structure not readable} not-html {not HTML} other {}}
   report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"

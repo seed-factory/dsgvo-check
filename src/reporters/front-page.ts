@@ -1,5 +1,6 @@
 /** The first page of the report for the site owner: what was found in plain words, what to do, which services were seen. */
 import { formatMessage, renderMessage } from '../core/data/messages.ts';
+import { countFindings } from '../core/report/build.ts';
 import type { ReporterContext } from '../core/report/reporter.ts';
 import type { Finding, MessageParams, Report, Severity } from '../core/report/schema.ts';
 import { registrableDomain } from '../core/url/url.ts';
@@ -136,7 +137,8 @@ function byImportance(a: Item, b: Item): number {
 function actionItems(report: Report): Item[] {
   const byMessage = new Map<string, Finding[]>();
   for (const f of report.findings ?? []) {
-    if (f.messageId === INVENTORY_MESSAGE) continue;
+    // The services table lists the inventory; an active suppression means the finding was reviewed and set aside.
+    if (f.messageId === INVENTORY_MESSAGE || (f.suppression && !f.suppression.expired)) continue;
     byMessage.set(f.messageId, [...(byMessage.get(f.messageId) ?? []), f]);
   }
 
@@ -343,10 +345,43 @@ function redirectedHost(report: Report): string | null {
   return site(from) === site(to) ? null : to;
 }
 
+/**
+ * The counts of the findings the action list covers, then the services of the table. The table rows are findings too,
+ * at whatever severity the ruleset gives them; counted with the others, the owner would look for them in the list.
+ */
+function countSentences(
+  counts: NonNullable<Report['summary']['counts']>,
+  items: readonly Item[],
+  rows: readonly Finding[],
+  tools: FrontPageTools,
+): string[] {
+  const inTable = countFindings(rows, []);
+  const listed = (severity: Severity) => Math.max(0, counts[severity] - inTable[severity]);
+  const grouped = items.some((i) => i.findings.length > 1);
+  const sentences = [
+    tools.label('overview.findings', {
+      critical: listed('critical'),
+      warning: listed('warning'),
+      info: listed('info'),
+      items: grouped ? Math.min(items.length, MAX_ROWS) : 0,
+    }),
+  ];
+  if (rows.length > 0) {
+    sentences.push(
+      tools.label('overview.services', {
+        count: Math.min(rows.length, MAX_ROWS),
+        table: tools.label('section.services'),
+      }),
+    );
+  }
+  return sentences;
+}
+
 /** The counts, the scan status, checks without a result, the banner, the region and a redirect to another site. */
 function overviewSentences(
   report: Report,
   items: readonly Item[],
+  rows: readonly Finding[],
   titles: ReadonlyMap<string, string[]>,
   tools: FrontPageTools,
 ): string[] {
@@ -354,18 +389,7 @@ function overviewSentences(
   const status = report.scan.status;
   if (status === 'failed') return [tools.label('overview.failed')];
 
-  const sentences: string[] = [];
-  if (counts) {
-    const grouped = items.some((i) => i.findings.length > 1);
-    sentences.push(
-      tools.label('overview.findings', {
-        critical: counts.critical,
-        warning: counts.warning,
-        info: counts.info,
-        items: grouped ? Math.min(items.length, MAX_ROWS) : 0,
-      }),
-    );
-  }
+  const sentences = counts ? countSentences(counts, items, rows, tools) : [];
 
   const banner = bannerState(report);
   const open = openChecks(report);
@@ -427,9 +451,15 @@ export function buildFrontPage(report: Report, ctx: ReporterContext, tools: Fron
   const items = actionItems(report);
   const rows = serviceRows(report);
   const actions = actionViews(items, ctx, tools);
+  const suppressed = (report.findings ?? []).filter((f) => f.suppression && !f.suppression.expired).length;
   return {
-    overview: overviewSentences(report, items, titlesByCheck(items, actions), tools),
+    overview: overviewSentences(report, items, rows, titlesByCheck(items, actions), tools),
     actions: actions.slice(0, MAX_ROWS),
+    // "No findings" would be untrue when the findings are all in the services table or suppressed.
+    actionsEmpty:
+      actions.length === 0 && (rows.length > 0 || suppressed > 0)
+        ? tools.label('actions.none', { services: rows.length, suppressed })
+        : null,
     services: serviceViews(rows, tools),
     serviceNotes: serviceNotes(report, rows, tools),
   };

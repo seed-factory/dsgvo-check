@@ -669,8 +669,8 @@ baut das Image und testet Image und Action. Ein Beispielbericht (HTML und PDF) w
 Der Canary ist ein passiver Messlauf des Scanners über eine **lokale, nie eingecheckte** Stichprobe öffentlicher
 Websites. Er misst den **Scanner**, nicht die Websites: wie oft Prüfungen `inconclusive`, `skipped` oder `error` enden,
 wie oft Bot-Modus, Geo-Modus, Blockaden und nicht erreichbare Hosts auftreten (`SCAN-BOTMODE`, `SCAN-GEO`,
-`SCAN-BLOCKED`, `SCAN-UNREACHABLE`), ob die CMP-Erkennung zum erwarteten CMP passt, wie lange Scans dauern und welche
-Fehler beim Sammeln am häufigsten sind.
+`SCAN-BLOCKED`, `SCAN-HTTP-BLOCKED`, `SCAN-UNREACHABLE`), ob die CMP-Erkennung zum erwarteten CMP passt, wie lange
+Scans dauern und welche Fehler beim Sammeln am häufigsten sind.
 
 Im Repository liegt nur `canary/sites.example.yaml` mit fiktiven Hosts und allen Eingabefeldern. Das echte Korpus
 gehört nach `canary/sites.yaml` (in `.gitignore`) oder in eine private Datei, die `--sites` übergibt.

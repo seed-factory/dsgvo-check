@@ -44,7 +44,6 @@ interface Group {
   /** Storage writes, at most `MAX_EVIDENCE`. */
   evidence: EvidenceInput[];
   names: Set<string>;
-  host: string | null;
   consentModeDenied: boolean;
 }
 
@@ -107,7 +106,6 @@ function groupFor(
       requests: [],
       evidence: [],
       names: new Set(),
-      host: null,
       consentModeDenied: false,
     };
     groups.set(subject, created);
@@ -133,7 +131,6 @@ function addRequestHits(groups: Groups, derived: DerivedSection, records: Map<st
 
     const g = groupFor(groups, requestVariant(c), 'request', c, c.etld1);
     g.pages.add(r.pageUrl);
-    g.host ??= c.host;
     if (c.cookieless) g.consentModeDenied = true;
     g.requests.push({ r, c });
   }
@@ -180,6 +177,13 @@ function groupEvidence(g: Group, rejectEvidence: EvidenceInput[]): EvidenceInput
 const groupKind = (g: Group): 'request' | 'storage' | 'both' =>
   g.variant === 'tracking-after-reject' && g.kind === 'request' && g.names.size > 0 ? 'both' : g.kind;
 
+/**
+ * Requests with a persistent identifier first, otherwise in their order. They make the group `tracking-after-reject`,
+ * so the host the text names and the capped evidence come from them, not from a cookieless hit of the same service.
+ */
+const persistentFirst = (requests: Group['requests']): Group['requests'] =>
+  [...requests].sort((a, b) => Number(persistentIdentifier(b.c)) - Number(persistentIdentifier(a.c)));
+
 function groupObservations(
   groups: Groups,
   derived: DerivedSection,
@@ -187,6 +191,7 @@ function groupObservations(
 ): Observation[] {
   return [...groups.values()]
     .sort((a, b) => a.subject.localeCompare(b.subject))
+    .map((g) => ({ ...g, requests: persistentFirst(g.requests) }))
     .map((g) => ({
       checkId: ID,
       variant: g.variant,
@@ -200,7 +205,7 @@ function groupObservations(
         kind: groupKind(g),
         service: serviceName(derived, g.serviceId, g.etld1),
         name: sortedUniq(g.names).join(', ') || null,
-        host: g.host,
+        host: g.requests[0]?.c.host ?? null,
         pageCount: g.pages.size,
         consentModeDenied: g.consentModeDenied,
         requestCount: g.requests.length,

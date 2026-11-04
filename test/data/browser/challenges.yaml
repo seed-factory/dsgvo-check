@@ -3,7 +3,7 @@
 # waf-block; `signal` is the label stored in the snapshot. Patterns are regular expression sources.
 challenges:
   # A response header that marks a challenge. `status` limits it to that HTTP status; an empty value counts only with
-  # `allowEmptyValue`. The HTTP collector reads these too (it has no DOM): a challenged document → SCAN-BLOCKED, and
+  # `allowEmptyValue`. The HTTP collector reads these too (it has no DOM): a challenged document → SCAN-HTTP-BLOCKED, and
   # HDR-01 does not judge its headers.
   headers:
     - { name: cf-mitigated, kind: cloudflare, signal: header:cf-mitigated }

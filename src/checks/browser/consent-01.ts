@@ -7,7 +7,13 @@ import { distinctRequestEvidence } from './evidence.ts';
 import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceInfo, serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { bannerFound, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import {
+  type BannerState,
+  bannerState,
+  consentSignals,
+  persistentIdentifier,
+  signalOutcome,
+} from './signals.ts';
 import {
   hasPhaseA,
   noPhaseAReason,
@@ -117,7 +123,7 @@ interface ObservationContext {
   routing: CheckContext['routing'];
   start: string | null;
   bObserved: boolean;
-  banner: boolean;
+  banner: BannerState;
 }
 
 /** The observation of one service, reported with its strongest variant; null for an empty group. */
@@ -193,7 +199,7 @@ export const consent01 = defineCheck({
       routing: ctx.routing,
       start: startPageUrl(browser),
       bObserved: phaseBObserved(browser),
-      banner: bannerFound(cmp),
+      banner: bannerState(cmp),
     };
     const observations = [...groups.values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))

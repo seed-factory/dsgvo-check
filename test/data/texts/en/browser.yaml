@@ -10,75 +10,83 @@ messages:
   CONSENT-01.tracking-completed:
     title: "{requestCount, plural, one {Request} other {Requests}} with a persistent identifier before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, a completed request to {service} ({host}) carrying a persistent identifier was
-      observed ({identifierKind, select, stored-match {matched against a stored cookie or storage entry} sent-cookie
-      {cookie sent with the request, an identifier per the service catalogue} persistent-param {parameter per
-      signature in the service catalogue} user-supplied {user or click identifier in a parameter} other
-      {{identifierKind}}}; {requestCount, plural, one {# request} other {# requests}} on {pageCount, plural, one {#
-      page} other {# pages}}). The identifier value was not stored.{embeddedCount, plural, =0 {} one { # of these
-      requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came from the
-      frame of the embedded service {embeddedIn}.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a completed request to {service} ({host}) carrying a persistent identifier was observed ({identifierKind,
+      select, stored-match {matched against a stored cookie or storage entry} sent-cookie {cookie sent with the
+      request, an identifier per the service catalogue} persistent-param {parameter per signature in the service
+      catalogue} user-supplied {user or click identifier in a parameter} other {{identifierKind}}}; {requestCount,
+      plural, one {# request} other {# requests}} on {pageCount, plural, one {# page} other {# pages}}). The
+      identifier value was not stored.{embeddedCount, plural, =0 {} one { # of these requests came from the frame of
+      the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded service
+      {embeddedIn}.}}
   CONSENT-01.cookieless-ping:
     title: "{requestCount, plural, one {Request} other {Requests}} without a persistent identifier before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, a request to {service} ({host}) was observed for which no persistent identifier is
-      evidenced ({consentModeDenied, select, true {storage denied per the transmitted Consent Mode signal} other
-      {identifier: {identifierKind, select, per-load {not evidenced as persistent} other {none detected}}}};
-      {requestCount, plural, one {# request} other {# requests}} on {pageCount, plural, one {# page} other {#
-      pages}}). Whether such a request is an access within the meaning of Section 25 TDDDG was not
-      assessed.{embeddedCount, plural, =0 {} one { # of these requests came from the frame of the embedded service
-      {embeddedIn}.} other { # of these requests came from the frame of the embedded service {embeddedIn}.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to {service} ({host}) was observed for which no persistent identifier is evidenced
+      ({consentModeDenied, select, true {storage denied per the transmitted Consent Mode signal} other {identifier:
+      {identifierKind, select, per-load {not evidenced as persistent} other {none detected}}}}; {requestCount, plural,
+      one {# request} other {# requests}} on {pageCount, plural, one {# page} other {# pages}}). Whether such a
+      request is an access within the meaning of Section 25 TDDDG was not assessed.{embeddedCount, plural, =0 {} one {
+      # of these requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came
+      from the frame of the embedded service {embeddedIn}.}}
   CONSENT-01.first-party-proxy:
     title: "Own endpoint with the signature of a tracking service before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, a request to the site's own host {host} was observed whose path and parameters
-      match the signature of {service} in the service catalogue (e.g. server-side tagging or a tag gateway).
-      Server-side forwarding cannot be determined passively.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to the site's own host {host} was observed whose path and parameters match the signature of {service}
+      in the service catalogue (e.g. server-side tagging or a tag gateway). Server-side forwarding cannot be
+      determined passively.
   CONSENT-01.library-loaded:
     title: "Loaded before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, a library or content of {service} ({host}) was loaded ({pageCount, plural, one {#
-      page} other {# pages}}). No related event was found in this evidence.{embeddedCount, plural, =0 {} one { # of
-      these requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came from
-      the frame of the embedded service {embeddedIn}.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a library or content of {service} ({host}) was loaded ({pageCount, plural, one {# page} other {# pages}}). No
+      related event was found in this evidence.{embeddedCount, plural, =0 {} one { # of these requests came from the
+      frame of the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded
+      service {embeddedIn}.}}
   CONSENT-01.third-party-resource:
     title: "{requestCount, plural, one {Third-party resource} other {Third-party resources}} before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, {requestCount, plural, one {# request} other {# requests}} to {service} ({hosts})
-      {requestCount, plural, one {was} other {were}} observed (category per service catalogue: {category, select,
-      cdn {content delivery network} payment {payment service} consent-provider {consent management} monitoring
-      {error monitoring} other {{category}}}). Whether the resource is required was not assessed.{embeddedCount,
-      plural, =0 {} one { # of these requests came from the frame of the embedded service {embeddedIn}.} other { # of
-      these requests came from the frame of the embedded service {embeddedIn}.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      {requestCount, plural, one {# request} other {# requests}} to {service} ({hosts}) {requestCount, plural, one
+      {was} other {were}} observed (category per service catalogue: {category, select, cdn {content delivery network}
+      payment {payment service} consent-provider {consent management} monitoring {error monitoring} other
+      {{category}}}). Whether the resource is required was not assessed.{embeddedCount, plural, =0 {} one { # of these
+      requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came from the
+      frame of the embedded service {embeddedIn}.}}
   CONSENT-01.unknown-host:
     title: "{requestCount, plural, one {Request} other {Requests}} not attributed to a service before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, {requestCount, plural, one {# request} other {# requests}} to {hostCount, plural,
-      one {the host {hosts}} other {# hosts of the domain {service} ({hosts})}} {requestCount, plural, one {was}
-      other {were}} observed; {requestCount, plural, one {it was} other {they were}} not attributed to any service in
-      the service catalogue. Please attribute purpose and provider manually.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      {requestCount, plural, one {# request} other {# requests}} to {hostCount, plural, one {the host {hosts}} other
+      {# hosts of the domain {service} ({hosts})}} {requestCount, plural, one {was} other {were}} observed;
+      {requestCount, plural, one {it was} other {they were}} not attributed to any service in the service catalogue.
+      Please attribute purpose and provider manually.
   CONSENT-01.request-not-completed:
     title: "{requestCount, plural, one {Request} other {Requests}} without an evidenced response before any interaction: {service}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, a request to {service} ({host}) was started, but no response was observed (e.g.
-      blocked by the browser or aborted). No answered exchange is evidenced.{embeddedCount, plural, =0 {} one { # of
-      these requests came from the frame of the embedded service {embeddedIn}.} other { # of these requests came from
-      the frame of the embedded service {embeddedIn}.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      a request to {service} ({host}) was started, but no response was observed (e.g. blocked by the browser or
+      aborted). No answered exchange is evidenced.{embeddedCount, plural, =0 {} one { # of these requests came from
+      the frame of the embedded service {embeddedIn}.} other { # of these requests came from the frame of the embedded
+      service {embeddedIn}.}}
 
   # CONSENT-02
   CONSENT-02.tracking-identifier-stored:
     title: "Known analytics or marketing identifier stored before any interaction: {name}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, storage of {name} ({storageKind}, {party}) was observed. Classified as an
-      identifier of the category analytics/marketing per {dataset}. Values were not stored.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      storage of {name} ({storageKind}, {party}) was observed. Classified as an identifier of the category
+      analytics/marketing per {dataset}. Values were not stored.
   CONSENT-02.unknown-third-party-persistent:
     title: >-
       {count, plural, one {{allKnown, select, true {Persistent entry of {services}} other {Persistent third-party
@@ -86,12 +94,13 @@ messages:
       true {entries of {services}} other {third-party entries}} not classified as identifiers before any interaction:
       {keys}{moreKeys, plural, =0 {} other { and # more}}}}
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, persistent storage of {count, plural, one {# entry} other {# entries}} by third
-      parties was observed, {count, plural, one {which is} other {which are}} not classified as analytics or
-      marketing identifiers in {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service
-      catalogue and listed there as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in
-      the service catalogue: {unknownNames}. Please review the purpose manually.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      persistent storage of {count, plural, one {# entry} other {# entries}} by third parties was observed, {count,
+      plural, one {which is} other {which are}} not classified as analytics or marketing identifiers in
+      {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service catalogue and listed there
+      as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in the service catalogue:
+      {unknownNames}. Please review the purpose manually.}}
   CONSENT-02.unknown-first-party-persistent:
     title: >-
       {count, plural, one {{allKnown, select, true {Persistent entry of {services}} other {Persistent entry}} not
@@ -99,12 +108,13 @@ messages:
       {entries of {services}} other {entries}} not classified as identifiers before any interaction: {keys}{moreKeys,
       plural, =0 {} other { and # more}}}}
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, persistent storage of {count, plural, one {# entry} other {# entries}} of the own
-      domain was observed, {count, plural, one {which is} other {which are}} not classified as analytics or
-      marketing identifiers in {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service
-      catalogue and listed there as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in
-      the service catalogue: {unknownNames}. Please review the purpose manually.}}
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      persistent storage of {count, plural, one {# entry} other {# entries}} of the own domain was observed, {count,
+      plural, one {which is} other {which are}} not classified as analytics or marketing identifiers in
+      {dataset}.{knownCount, plural, =0 {} other { Attributed to a service in the service catalogue and listed there
+      as no identifier: {knownNames}.}}{unknownCount, plural, =0 {} other { Not listed in the service catalogue:
+      {unknownNames}. Please review the purpose manually.}}
   CONSENT-02.cmp-cookie-with-uid:
     title: "Consent banner cookie with a unique identifier: {name}"
     body: >-
@@ -113,10 +123,10 @@ messages:
   CONSENT-02.storage-rejected-or-attempted:
     title: "Storage attempt before any interaction not accepted: {name}"
     body: >-
-      {bannerFound, select, true {Before any interaction with the consent banner} other {Before any interaction (no
-      consent banner found)}}, an attempt to store {name} ({storageKind}, {party}) was observed; the browser
-      rejected it or did not confirm it. Classified as an identifier of the category analytics/marketing per
-      {dataset}.
+      {bannerFound, select, true {Before any interaction with the consent banner} false {Before any interaction (no
+      consent banner found)} other {Before any interaction (consent banner not evaluated)}},
+      an attempt to store {name} ({storageKind}, {party}) was observed; the browser rejected it or did not confirm it.
+      Classified as an identifier of the category analytics/marketing per {dataset}.
 
   # CONSENT-03
   CONSENT-03.no-banner-strong-tracking:
@@ -132,9 +142,10 @@ messages:
     body: >-
       No consent banner was found on {pageCount, plural, one {# evaluable checked page} other {# evaluable
       checked pages}}. At the same time, services that the service catalogue lists in the categories analytics,
-      marketing or embedded content were observed before any interaction: {services}.{storedCount, plural, =0 { No
-      storage by these services was observed.} other { Stored: {stored}.}} Egress region: {regionAsserted, select,
-      true {EEA as stated by the user} other {not stated}}.
+      marketing or embedded content were observed before any interaction: {services}.{storedCount, plural, =0 { Apart
+      from allowlisted entries, no storage of analytics or marketing identifiers or by embedded services was
+      observed.} other { Stored:
+      {stored}.}} Egress region: {regionAsserted, select, true {EEA as stated by the user} other {not stated}}.
 
   # CONSENT-04
   CONSENT-04.blocking-no-reject:
@@ -232,10 +243,12 @@ messages:
       {fontService, select, true {Font files or stylesheets of {service} were loaded from an external server} other
       {Font files were loaded from the third-party server {service}}}, timing: {afterReject, select, true {before any
       interaction with the consent banner or after rejection} other {{bannerFound, select, true {before any
-      interaction with the consent banner} other {before any interaction, no consent banner found}}}}
-      ({pageCount, plural, one {# page} other {# pages}}).
+      interaction with the consent banner} false {before any interaction, no consent banner found} other {before
+      any interaction, consent banner not evaluated}}}} ({pageCount, plural, one {# page} other {# pages}}).
   EMBED-01.preconnect-only:
-    title: "Only a connection hint to a font service: {service}"
+    title: >-
+      {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
+      {service}} other {Connection hint or unfinished font request: {service}}}
     body: >-
       Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was observed; no
       completed download of font files was found.
@@ -247,8 +260,9 @@ messages:
       An external map service of {service} was loaded as {integrationType, select, iframe {embedded map (iframe)}
       js-api {JavaScript API} static {static map image} tiles {map tiles} other {map content}}, timing:
       {afterReject, select, true {before any interaction with the consent banner or after rejection} other
-      {{bannerFound, select, true {before any interaction with the consent banner} other {before any interaction, no
-      consent banner found}}}} ({pageCount, plural, one {# page} other {# pages}}).{frameResourceCount, plural,
+      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
+      consent banner found} other {before any interaction, consent banner not evaluated}}}} ({pageCount, plural,
+      one {# page} other {# pages}}).{frameResourceCount, plural,
       =0 {} one { This includes # request of the map's frame to font services or helper hosts.} other { This
       includes # requests of the map's frame to font services or helper hosts.}}
 
@@ -413,9 +427,9 @@ legalNotes:
 # also serve several findings at once (names as a list), hence no "this service" and no reference to the title.
 actions:
   CONSENT-01.tracking-completed:
-    text: "Load {service} only after consent, for example through the blocking feature of {bannerFound, select, true {your consent banner} other {a consent banner}} or your tag manager."
+    text: "Load {service} only after consent, for example through the blocking feature of {bannerFound, select, true {your consent banner} false {a consent banner} other {an existing or new consent banner}} or your tag manager."
   CONSENT-01.library-loaded:
-    text: "Check whether scripts and content of {service} are needed before consent, and otherwise have {bannerFound, select, true {the consent banner} other {a consent banner}} block them."
+    text: "Check whether scripts and content of {service} are needed before consent, and otherwise have {bannerFound, select, true {the consent banner} false {a consent banner} other {an existing or new consent banner}} block them."
   CONSENT-01.first-party-proxy:
     text: "Check whether your own endpoints with the signature of {service} pass on analytics or marketing data, and if so start them only after consent."
   CONSENT-01.cookieless-ping:
@@ -482,7 +496,11 @@ actions:
   EMBED-01.fonts-loaded:
     text: "{fontService, select, true {Serve the fonts of {service} from your own server instead of the external provider.} false {Check which integration loads the font files from {service}, and serve them from your own server or load the integration only after consent.} other {Serve the fonts of {service} from your own server, or load the integration that fetches them only after consent.}}"
   EMBED-01.preconnect-only:
-    text: "Remove the connection hint to {service} if you do not load the fonts from there."
+    text: >-
+      {observed, select, hint {Remove the connection hint to {service} if you do not load the fonts from there.}
+      attempt {Check which integration requests fonts from {service}, and remove the request or serve the fonts from
+      your own server.} other {Check the connection hints and font requests to {service}, and remove them if you do
+      not load the fonts from there.}}
   EMBED-02.maps-loaded:
     text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
   LEGAL-01.document-not-found:

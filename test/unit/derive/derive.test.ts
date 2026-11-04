@@ -550,29 +550,75 @@ describe('derive: requests of embedded frames', () => {
     expect(d.services.find((s) => s.serviceId === 'google-fonts')?.requestIds).toEqual(['site-font']);
   });
 
-  it("a builder's frame takes the embed it loads; the builder's own hosts stay its own", () => {
-    const builder = inFrame('A-f3', 'https://static.builder.example/map.html?lang=[redacted]');
-    const d = derive(
-      snap([
-        makePhase('A', {
-          requests: [
-            req('https://static.builder.example/map.js', { id: 'own', resourceType: 'script', ...builder }),
-            req('https://fonts.googleapis.com/css?family=Roboto', {
-              id: 'css',
-              resourceType: 'stylesheet',
-              ...builder,
-            }),
-            req('https://maps.googleapis.com/maps/api/js?key=[redacted]', { id: 'api', ...builder }),
-          ],
-        }),
-      ]),
-    );
-    expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
-      ['own', null, 'none', 'google-maps'],
-      ['css', 'google-maps', 'embed-frame', 'google-maps'],
-      ['api', 'google-maps', 'catalog', 'google-maps'],
-    ]);
-  });
+  it.each([
+    ['an unknown host', 'https://static.builder.example', [null, 'none']],
+    ['a CDN of the catalog (Wix)', 'https://static.parastorage.com', ['wix', 'catalog']],
+  ])(
+    "a builder's frame on %s takes the embed it loads; the builder's own hosts stay its own",
+    (_case, origin, own) => {
+      const builder = inFrame('A-f3', `${origin}/map.html?lang=[redacted]`);
+      const d = derive(
+        snap([
+          makePhase('A', {
+            requests: [
+              req(`${origin}/map.js`, { id: 'own', resourceType: 'script', ...builder }),
+              req('https://fonts.googleapis.com/css?family=Roboto', {
+                id: 'css',
+                resourceType: 'stylesheet',
+                ...builder,
+              }),
+              req('https://maps.googleapis.com/maps/api/js?key=[redacted]', { id: 'api', ...builder }),
+            ],
+          }),
+        ]),
+      );
+      expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
+        ['own', ...own, 'google-maps'],
+        ['css', 'google-maps', 'embed-frame', 'google-maps'],
+        ['api', 'google-maps', 'catalog', 'google-maps'],
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      'a payment frame (Stripe) that loads hCaptcha',
+      inFrame('A-f7', 'https://js.stripe.com/v3/hcaptcha-inner-abc.html'),
+      'https://js.hcaptcha.com/1/api.js',
+      'hcaptcha',
+    ],
+    [
+      'an ad frame (Google Ads) that loads the YouTube player API',
+      inFrame('A-f8', 'https://googleads.g.doubleclick.net/pagead/ads?client=[redacted]'),
+      'https://www.youtube.com/iframe_api',
+      'youtube',
+    ],
+  ])(
+    '%s takes no embed: the other requests of the frame keep their own classification',
+    (_case, frame, embedUrl, embedId) => {
+      const d = derive(
+        snap([
+          makePhase('A', {
+            requests: [
+              req(embedUrl, { id: 'embed', resourceType: 'script', ...frame }),
+              req('https://cdn.other-site.de/x.js', { id: 'unknown', resourceType: 'script', ...frame }),
+              req('https://fonts.gstatic.com/s/inter/v1/a.woff2', {
+                id: 'font',
+                resourceType: 'font',
+                ...frame,
+              }),
+            ],
+          }),
+        ]),
+      );
+      expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
+        ['embed', embedId, 'catalog', undefined],
+        ['unknown', null, 'none', undefined],
+        ['font', 'google-fonts', 'catalog', undefined],
+      ]);
+      expect(d.services.find((s) => s.serviceId === embedId)?.requestIds).toEqual(['embed']);
+    },
+  );
 
   it.each([
     ['a frame of the site', inFrame('A-f4', 'https://www.example.de/widget.html')],

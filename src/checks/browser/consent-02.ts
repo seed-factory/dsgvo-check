@@ -16,7 +16,7 @@ import type { ClassifiedCookie, ClassifiedStorage, DerivedSection } from '../../
 import { cookieEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceInfo } from './services.ts';
-import { bannerFound, consentSignals, signalOutcome } from './signals.ts';
+import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
 import {
   classifiedCookies,
   classifiedStorage,
@@ -193,7 +193,7 @@ const entryLabel = (e: Entry): string =>
 interface ListContext {
   derived: DerivedSection;
   dataset: string;
-  banner: boolean;
+  banner: BannerState;
 }
 
 function observationFor(e: Entry, ctx: ListContext): Observation {
@@ -281,7 +281,7 @@ function listedObservation(variant: Variant, group: Entry[], ctx: ListContext): 
 function entryObservations(
   entries: Map<string, Entry>,
   derived: DerivedSection,
-  banner: boolean,
+  banner: BannerState,
 ): Observation[] {
   const dataset = `${derived.datasets[0]?.name ?? 'catalog'} ${derived.catalogVersion ?? ''}`.trim();
   const ctx: ListContext = { derived, dataset, banner };
@@ -317,7 +317,7 @@ export const consent02 = defineCheck({
       browser,
       {
         status: 'completed',
-        observations: entryObservations(entries, derived, bannerFound(cmp)),
+        observations: entryObservations(entries, derived, bannerState(cmp)),
         coverage: { note: `allowlist-v${derived.allowlistVersion ?? '?'}:not-evaluated=${allowlisted}` },
         limitations: sortedUniq(
           browser.knownGaps.filter((g) => g.startsWith('cookie') || g.startsWith('storage')),

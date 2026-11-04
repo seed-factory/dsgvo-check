@@ -285,7 +285,7 @@ describe('HTTP collector: problem sites', () => {
     expect(variantsOf(hdr)).not.toContain('hsts-missing');
   });
 
-  it('a WAF challenge instead of the start page → SCAN-BLOCKED, HDR-01 inconclusive (blocked)', async () => {
+  it('a WAF challenge instead of the start page → SCAN-HTTP-BLOCKED, HDR-01 inconclusive (blocked)', async () => {
     const res = await collect('https://www.challenge.test/', { 'challenge.test': closed });
 
     const http = res.sections.http as HttpSection;
@@ -294,9 +294,9 @@ describe('HTTP collector: problem sites', () => {
     expect(start?.error?.message).toContain('header:x-vercel-mitigated');
     expect(res.diagnostics).toEqual([
       {
-        code: 'SCAN-BLOCKED',
+        code: 'SCAN-HTTP-BLOCKED',
         affects: ['HDR-01'],
-        params: expect.objectContaining({ scope: 'http', count: 1, page: 'https://www.challenge.test/' }),
+        params: expect.objectContaining({ count: 1, page: 'https://www.challenge.test/' }),
       },
     ]);
     // One 429 is no throttling: the challenge is answered once, not retried.
