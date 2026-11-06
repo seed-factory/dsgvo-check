@@ -14,9 +14,9 @@ const spec = (over: Partial<VisitSpec>): VisitSpec => ({
 
 describe('blockedAffects', () => {
   it.each<[string, Partial<VisitSpec>, string[]]>([
-    ['impressum', { role: 'impressum' }, ['LEGAL-01']],
-    ['legal hop', { role: 'legal-hop' }, ['LEGAL-01']],
-    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'PRIV-01', 'PRIV-02']],
+    ['impressum', { role: 'impressum' }, ['LEGAL-01', 'LEGAL-02']],
+    ['legal hop', { role: 'legal-hop' }, ['LEGAL-01', 'LEGAL-02']],
+    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02']],
     ['contact', { role: 'contact' }, ['EMBED-02']],
     ['start page of phase A', { role: 'start', phase: 'A' }, []],
     ['start page of phase B', { role: 'start', phase: 'B' }, ['CONSENT-04', 'CONSENT-05']],
@@ -27,20 +27,24 @@ describe('blockedAffects', () => {
     [
       'fallback probe of the privacy path',
       { role: 'fallback', rawUrl: 'https://www.example.test/datenschutz' },
-      ['LEGAL-01', 'PRIV-01', 'PRIV-02'],
+      ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02'],
     ],
     [
       'fallback probe of the impressum path',
       { role: 'fallback', rawUrl: 'https://www.example.test/impressum' },
-      ['LEGAL-01'],
+      ['LEGAL-01', 'LEGAL-02'],
     ],
-    ['fallback probe of an unparsable URL', { role: 'fallback', rawUrl: 'not a url' }, ['LEGAL-01']],
+    [
+      'fallback probe of an unparsable URL',
+      { role: 'fallback', rawUrl: 'not a url' },
+      ['LEGAL-01', 'LEGAL-02'],
+    ],
   ])('%s', (_name, over, affects) => {
     expect(blockedAffects(spec(over))).toEqual(affects);
   });
 
   it('returns a fresh list, so callers cannot change the table', () => {
     blockedAffects(spec({ role: 'privacy' })).push('X');
-    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
+    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual(['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02']);
   });
 });

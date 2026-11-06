@@ -14,6 +14,7 @@ import * as embed01 from './embed-01.ts';
 import * as embed02 from './embed-02.ts';
 import * as embed03 from './embed-03.ts';
 import * as legal01 from './legal-01.ts';
+import * as legal02 from './legal-02.ts';
 import * as priv01 from './priv-01.ts';
 import * as priv02 from './priv-02.ts';
 import type { Scenario } from './shared.ts';
@@ -32,6 +33,7 @@ export const SCENARIOS: Record<string, Scenario[]> = {
   'EMBED-02': embed02.scenarios,
   'EMBED-03': embed03.scenarios,
   'LEGAL-01': legal01.scenarios,
+  'LEGAL-02': legal02.scenarios,
   'PRIV-01': priv01.scenarios,
   'PRIV-02': priv02.scenarios,
 };
@@ -44,6 +46,7 @@ export const VARIANT_SCENARIOS: Record<string, Scenario[]> = {
   'CONSENT-05': consent05.variantScenarios,
   'EMBED-01': embed01.variantScenarios,
   'LEGAL-01': legal01.variantScenarios,
+  'LEGAL-02': legal02.variantScenarios,
   'PRIV-01': priv01.variantScenarios,
   'PRIV-02': priv02.variantScenarios,
 };

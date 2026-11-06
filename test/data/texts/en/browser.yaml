@@ -385,6 +385,18 @@ messages:
       could not be resolved on {missingCount} of {pageTotal} checked pages (e.g. a link to # or JavaScript without
       detected content). Please review manually.
 
+  # LEGAL-02
+  LEGAL-02.outdated-reference:
+    title: "Designation of a former legal situation observed in the {documentKind, select, impressum {legal notice} privacy {privacy policy} other {legal notice and privacy policy}}: {reference}"
+    body: >-
+      At {documentUrl}{hasSection, select, true {, section “{section}”,} other {}} the designation “{reference}” was
+      observed ({mentionCount, plural, one {# sentence} other {# sentences}}, wording in the evidence). {reason,
+      select, replaced {Replaced on {since} by: {replacedBy}.} renamed {Renamed on {since} to: {replacedBy}.}
+      invalidated {The adequacy decision it rests on was declared invalid by the CJEU on {since} (case {ruling}).}
+      other {Repealed with effect from {since}, replaced by: {replacedBy}.}} Sentences that name the designation as a
+      former rule or together with its successor were not counted. The legal significance of the statement was not
+      assessed.
+
   # PRIV-01
   PRIV-01.not-named:
     title: "Not found in the privacy policy: {service}"
@@ -551,6 +563,14 @@ legalNotes:
     status: court-appellate
     reviewedAt: null
     reviewBy: null
+  LEGAL-02:
+    text: >-
+      Section 5 DDG; Section 18 MStV; Section 25 TDDDG; Art. 13(1)(f), Art. 45 GDPR; CJEU C-311/18 (Schrems II). Only
+      whether the text uses a designation of a former legal situation is observed; whether the statement is legally
+      relevant is not assessed.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
   PRIV-01:
     text: >-
       Art. 13(1)(e), (f) GDPR. Naming categories of recipients may be sufficient; whether each service must be named
@@ -662,6 +682,8 @@ actions:
     text: "Make sure the banner does not cover the footer, or also link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} inside the banner."
   LEGAL-01.unresolved:
     text: "Check manually that the links to {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} work in a browser."
+  LEGAL-02.outdated-reference:
+    text: "Check the quoted passage and update the designation."
   PRIV-01.not-named:
     text: "Name {service}, with purpose and provider, in your privacy policy, or remove services you do not need from the site."
   PRIV-01.category-only:

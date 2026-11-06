@@ -137,6 +137,45 @@ describe('a broken data file is reported with its directory and key', () => {
     expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(/test\/data\/legal: claims\.topics/);
   });
 
+  it.each([
+    [
+      'a successor that occurs inside its own term, so no mention could count',
+      'successors: [DDG, Digitale-Dienste-Gesetz*]',
+      'successors: [TMG, DDG]',
+      /outdatedReferences\.references\.0\.successors: successor "TMG" occurs inside the term "TMG"/,
+    ],
+    [
+      'a historical cue that occurs inside a term',
+      '        ehemals,\n',
+      '        ehemals,\n        alt,\n',
+      /outdatedReferences\.references\.6\.terms: historical cue "alt" occurs inside the term "BDSG alt"/,
+    ],
+    [
+      'an invalidated framework without its ruling',
+      'ruling: C-311/18 (Schrems II)',
+      'ruling: null',
+      /outdatedReferences\.references\.3\.ruling: an invalidated reference names its ruling/,
+    ],
+    [
+      'two spellings that normalise alike',
+      'terms: [TMG, Telemediengesetz*, Telemedien-Gesetz*]',
+      'terms: [TMG, Telemediengesetz*, Telemedien Gesetz*, Telemedien-Gesetz*]',
+      /outdatedReferences\.references\.0\.terms\.3: Telemedien-Gesetz\*: normalises like another term/,
+    ],
+    [
+      'a date not written YYYY-MM-DD',
+      'since: "2024-05-14"',
+      'since: "14.05.2024"',
+      /\.since: a date written YYYY-MM-DD/,
+    ],
+  ])('outdated references: %s is refused', (_label, from, to, message) => {
+    const root = dataDirCopy('legal', 'outdated-references.yaml', (t) => {
+      expect(t).toContain(from);
+      return t.replace(from, to);
+    });
+    expect(() => loadSection(byKey('legal', 'outdatedReferences'), root)).toThrow(message);
+  });
+
   it('a free-mail entry that is no domain name (a URL or an address) is refused', () => {
     const root = dataDirCopy('dns', 'mail-domains.yaml', (t) =>
       t.replace('    - gmx.de\n', '    - mail@gmx.de\n'),
