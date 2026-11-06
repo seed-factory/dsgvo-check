@@ -266,6 +266,63 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r.outcome?.limitations).toContain('reject-unverified');
   });
 
+  // A CMP whose state cannot list its categories (Shopware) proves no failed reject by that state alone.
+  it.each([
+    ['the answer recorded, no category listed', {}, true, [], 'reject-unverified'],
+    ['the answer recorded, every category unknown', { statistics: 'unknown' }, true, [], 'reject-unverified'],
+    ['no answer recorded after the click', {}, false, ['reject-ineffective'], null],
+    [
+      'the answer recorded, a category granted',
+      { statistics: 'granted' },
+      true,
+      ['reject-ineffective'],
+      null,
+    ],
+  ] as const)(
+    'reject clicked, state after: %s → %j',
+    (_case, categories, responded, variants, limitation) => {
+      const r = runCheck(
+        createConsent04(fixed('ok')),
+        site({
+          phases: [phase('A'), phase('B')],
+          cmp: cmpWith({
+            phase: 'B',
+            facts: [visibleBanner()],
+            click: {
+              action: 'reject',
+              clicked: true,
+              button: {
+                name: 'Nur technisch notwendige',
+                role: 'button',
+                kind: 'reject',
+                kindConfidence: 'high',
+              },
+            },
+            verify: {
+              action: 'reject',
+              verified: false,
+              method: ['ui-closed'],
+              stateAfter: [
+                {
+                  source: 'cookie',
+                  ready: 'ready',
+                  categories,
+                  origin: responded ? 'action' : 'default',
+                  decision: { responded, method: responded ? 'explicit' : 'unknown' },
+                },
+              ],
+              persistedAfterReload: false,
+              reason: 'no-categories',
+            },
+          }),
+        }),
+      );
+      expect(variantsOf(r)).toEqual(variants);
+      if (limitation) expect(r.outcome?.limitations).toContain(limitation);
+      else expect(r.outcome?.limitations ?? []).not.toContain('reject-unverified');
+    },
+  );
+
   it('granted after our own accept (phase C after the click / after a reload) is not consent-without-action', () => {
     const granted = (origin: 'stored' | 'action') => [
       {
@@ -387,6 +444,10 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       close: [],
       later: [],
       hide: ['Verbergen'],
+      negations: ['nicht'],
+      necessity: ['notwendige'],
+      restrictions: ['nur'],
+      paid: ['abo'],
     };
     expect(lexiconFrom({ lexicon: lex })).toEqual(lex);
     expect(lexiconFrom(lex)).toEqual(lex);

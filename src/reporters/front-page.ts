@@ -201,14 +201,24 @@ export type BannerState = 'recognized' | 'notRecognized' | 'notFound' | 'notVisi
 /** CONSENT-04 variants of a banner that no adapter or heuristic could attribute. */
 const NOT_RECOGNIZED: ReadonlySet<string> = new Set(['banner-not-recognized', 'cmp-not-supported']);
 
-/** Reasons of an inconclusive check that the banner sentence already explains. */
-const BANNER_REASONS: ReadonlySet<string> = new Set([...NOT_RECOGNIZED, 'first-layer-not-visible']);
+/** CONSENT-03 saw something that looks like a banner but was not recognised, so it did not conclude "no banner". */
+const CANDIDATE_REASON = 'banner-candidate-unrecognized';
 
-/** Banner state when the report knows it: not recognized (a finding says so), else from the outcome of CONSENT-04. */
+/** Reasons of an inconclusive check that the banner sentence already explains. */
+const BANNER_REASONS: ReadonlySet<string> = new Set([
+  ...NOT_RECOGNIZED,
+  'first-layer-not-visible',
+  CANDIDATE_REASON,
+]);
+
+/**
+ * Banner state when the report knows it: not recognized (a finding or CONSENT-03 says so), else from the outcome of
+ * CONSENT-04.
+ */
 export function bannerState(report: Report): BannerState | null {
-  const notRecognized = (report.findings ?? []).some(
-    (f) => f.checkId === 'CONSENT-04' && NOT_RECOGNIZED.has(f.variant),
-  );
+  const notRecognized =
+    (report.findings ?? []).some((f) => f.checkId === 'CONSENT-04' && NOT_RECOGNIZED.has(f.variant)) ||
+    (report.checks ?? []).some((c) => c.id === 'CONSENT-03' && c.reason === CANDIDATE_REASON);
   if (notRecognized) return 'notRecognized';
 
   const check = (report.checks ?? []).find((c) => c.id === 'CONSENT-04');
@@ -394,8 +404,16 @@ function overviewSentences(
   const banner = bannerState(report);
   const open = openChecks(report);
   const partly = partlySentence(report, titles, tools);
+  // A banner that was not recognised was not clicked: the reject and the accept stay open whatever the checks say.
+  const bannerOpen = banner === 'notRecognized';
   const state =
-    status === 'partial' ? 'partial' : open.length > 0 ? 'gaps' : partly.length > 0 ? 'ran' : 'complete';
+    status === 'partial'
+      ? 'partial'
+      : open.length > 0 || bannerOpen
+        ? 'gaps'
+        : partly.length > 0
+          ? 'ran'
+          : 'complete';
   sentences.push(tools.label('overview.scan', { state }), ...openSentences(open, banner, tools), ...partly);
 
   if (banner) sentences.push(tools.label('overview.banner', { state: banner }));

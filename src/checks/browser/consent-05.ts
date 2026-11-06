@@ -21,7 +21,15 @@ import type {
 import { cookieEvidence, distinctRequestEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { allCmpFacts, bannerFound, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import {
+  allCmpFacts,
+  bannerFound,
+  bannerUndetermined,
+  consentSignals,
+  persistentIdentifier,
+  signalOutcome,
+  unrecognizedBanner,
+} from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-05';
@@ -221,14 +229,21 @@ function groupObservations(
 function rejectBasis(
   browser: BrowserSection,
   cmp: CmpSection,
+  minCandidatePages: number,
 ):
   | { outcome: CheckOutcome }
   | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
   const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
   if (signal) return { outcome: signal };
-  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog.
+  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
+  // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
   if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp)) {
-    return { outcome: { status: 'not_applicable', reason: 'no-banner', observations: [] } };
+    const outcome: CheckOutcome = unrecognizedBanner(cmp, browser, minCandidatePages)
+      ? { status: 'inconclusive', reason: 'banner-not-recognized', observations: [] }
+      : bannerUndetermined(cmp, browser, minCandidatePages)
+        ? { status: 'inconclusive', reason: 'banner-undetermined', observations: [] }
+        : { status: 'not_applicable', reason: 'no-banner', observations: [] };
+    return { outcome };
   }
 
   const phaseB = phaseRecord(browser, 'B');
@@ -261,8 +276,8 @@ export const consent05 = defineCheck({
   requires: ['browser', 'cmp', 'derived'],
   // `connect-only-after-reject` needs the proxy CONNECT log (in-process egress proxy, not in the prototype).
   variants: RANK.map((variant) => ({ variant, variantGroup: 'after-reject' })),
-  run({ browser, cmp, derived }) {
-    const basis = rejectBasis(browser, cmp);
+  run({ browser, cmp, derived }, ctx) {
+    const basis = rejectBasis(browser, cmp, ctx.thresholds.cmp.minCandidatePages);
     if ('outcome' in basis) return basis.outcome;
     const { phaseB, rejectEvidence } = basis;
 

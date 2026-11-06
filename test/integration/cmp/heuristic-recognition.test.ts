@@ -194,6 +194,143 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
   });
 
+  describe('one consent keyword: a choice or a banner name decides, else the dismissed candidate is kept', () => {
+    it('a fixed bar with one keyword ("Cookies") and reject and accept buttons is found', async () => {
+      const facts = await measure('one-keyword-choice.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.signals).toContain('heuristic:keywords:1');
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject', 'settings', 'settings']);
+      expect(classifyFirstLayer(facts, lexicon).targets).toEqual({ reject: null, accept: null });
+    });
+
+    it('a fixed box named after a cookie banner with one keyword and a settings button is found', async () => {
+      const facts = await measure('one-keyword-named.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.signals).toEqual(
+        expect.arrayContaining(['heuristic:fixed', 'heuristic:named', 'heuristic:keywords:1']),
+      );
+    });
+
+    it('a fixed bar with the cookie keyword and only an acknowledgement ("OK") is found', async () => {
+      const facts = await measure('one-keyword-cookie-acknowledge.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.signals).toContain('heuristic:keywords:1');
+      expect(buttonKinds(facts)).toEqual(['accept']);
+    });
+
+    it('counterexample: one keyword and only a "Mehr erfahren" link → no banner, the candidate is kept as facts', async () => {
+      const facts = await measure('one-keyword-no-control.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toEqual({
+        reason: 'keywords',
+        keywordHits: 1,
+        controls: ['other'],
+        cookieWording: true,
+        fixed: true,
+        dialog: false,
+        named: false,
+      });
+    });
+
+    it.each([
+      ['a shipping notice ("Tracking") with "Verstanden"', 'one-keyword-acknowledge-shipping.html'],
+      ['a policy update notice ("Datenschutzerklärung") with "OK"', 'one-keyword-acknowledge-policy.html'],
+    ])(
+      'counterexample: %s → no banner, the acknowledgement is no choice of the candidate',
+      async (_name, file) => {
+        const facts = await measure(file);
+
+        expect(facts.detection.method).toBe('none');
+        expect(facts.firstLayer.bannerPresent).toBe(false);
+        expect(facts.firstLayer.bannerCandidate).toMatchObject({
+          reason: 'keywords',
+          controls: ['other'],
+          cookieWording: false,
+        });
+      },
+    );
+
+    it.each([
+      [
+        'a discount box ("Datenschutz") with "Anmelden" and "Mehr Informationen"',
+        'one-keyword-newsletter-details.html',
+      ],
+      [
+        'a chat teaser ("Datenschutzhinweise") with "Chat starten" and "Details"',
+        'one-keyword-chat-details.html',
+      ],
+    ])('counterexample: %s → no banner, a candidate without cookie wording', async (_name, file) => {
+      const facts = await measure(file);
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerCandidate).toMatchObject({
+        reason: 'keywords',
+        controls: ['settings', 'other'],
+        cookieWording: false,
+      });
+    });
+
+    it.each([
+      ['a newsletter box with "Newsletter abonnieren" and a paid accept', 'one-keyword-newsletter.html'],
+      ['a chat box with "Chat starten" and a close button', 'one-keyword-chat.html'],
+    ])(
+      'counterexample: %s and one keyword → no banner, no lexicon control in the candidate',
+      async (_name, file) => {
+        const facts = await measure(file);
+
+        expect(facts.detection.method).toBe('none');
+        expect(facts.firstLayer.bannerPresent).toBe(false);
+        expect(facts.firstLayer.bannerCandidate).toMatchObject({ reason: 'keywords', controls: ['other'] });
+      },
+    );
+
+    it('the candidate holds features only: no page text, no control names', async () => {
+      const facts = await measure('one-keyword-no-control.html');
+
+      expect(JSON.stringify(facts.firstLayer.bannerCandidate)).not.toMatch(/Cookies|erfahren|Website/);
+    });
+
+    it.each([
+      ['two keywords', 'footer-link-strip.html'],
+      ['one keyword', 'footer-link-strip-one-keyword.html'],
+    ])(
+      'a settings link strip in the page footer with %s is kept as a candidate inside the page chrome',
+      async (_name, file) => {
+        const facts = await measure(file);
+
+        expect(facts.firstLayer.bannerPresent).toBe(false);
+        expect(facts.firstLayer.bannerCandidate).toMatchObject({ reason: 'page-section', fixed: true });
+      },
+    );
+
+    it('a page without anything banner-shaped records that the heuristic saw no candidate', async () => {
+      const facts = await measure('none.html');
+
+      expect(facts.firstLayer.bannerCandidate).toBeNull();
+    });
+
+    it('wording hidden from screen readers but shown on screen counts: a fixed bar with an aria-hidden description is found', async () => {
+      const facts = await measure('aria-hidden-text.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      const hits = facts.detection.signals.find((s) => s.startsWith('heuristic:keywords:'));
+      expect(Number(hits?.split(':')[2])).toBeGreaterThanOrEqual(2);
+      expect(buttonKinds(facts)).toEqual(['accept', 'settings']);
+    });
+
+    it('a fixed banner after more elements than the scan reads in document order is still found', async () => {
+      const facts = await measure('banner-after-long-body.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+    });
+  });
+
   describe('a medium adapter signal does not hide a visible generic banner', () => {
     it('stored-consent signal of an adapter (one signal kind) next to a visible fixed banner → heuristic facts, adapter kept as hint', async () => {
       const { page } = await env.open('https://www.generic.test/medium-storage.html');

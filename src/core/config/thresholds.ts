@@ -5,7 +5,7 @@ import type { Config } from './schema.ts';
 export function checkThresholds(config: Config): CheckThresholds {
   const { cmp, tls } = config;
   return {
-    cmp: { blockingCoveredRatio: cmp.blockingCoveredRatio },
+    cmp: { blockingCoveredRatio: cmp.blockingCoveredRatio, minCandidatePages: cmp.minCandidatePages },
     tls: {
       shortLivedDays: tls.shortLivedDays,
       expiringDays: tls.expiringDays,

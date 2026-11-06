@@ -139,7 +139,7 @@ describe('scan — settings', () => {
     );
 
     expect(seen).toEqual({
-      cmp: { blockingCoveredRatio: 0.6 },
+      cmp: { blockingCoveredRatio: 0.6, minCandidatePages: 2 },
       tls: {
         shortLivedDays: 10,
         expiringDays: 7,

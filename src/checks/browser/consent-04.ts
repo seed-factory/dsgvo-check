@@ -24,8 +24,17 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { BrowserPlan, BrowserSection } from '../../core/snapshot/browser.ts';
-import { allCmpFacts, bannerFound, consentSignals, signalOutcome } from './signals.ts';
-import { startPageUrl } from './snapshot.ts';
+import { pageEvidence } from './evidence.ts';
+import {
+  allCmpFacts,
+  bannerFound,
+  bannerUndetermined,
+  consentSignals,
+  signalOutcome,
+  type UnrecognizedBanner,
+  unrecognizedBanner,
+} from './signals.ts';
+import { phaseRecord, startPageUrl } from './snapshot.ts';
 
 const ID = 'CONSENT-04';
 
@@ -273,6 +282,14 @@ function judgeFirstLayer(
   }
 }
 
+/**
+ * A state that could show the reject failed: no answer recorded, or a category it lists. A CMP that records the answer
+ * but cannot list its categories (Shopware) shows neither success nor failure.
+ */
+const showsRejectOutcome = (s: ConsentStateFact): boolean =>
+  s.ready === 'ready' &&
+  (s.decision?.responded === false || Object.values(s.categories).some((v) => v !== 'unknown'));
+
 /** Our reject click ran: when the CMP state still shows a decision (or none was verified), the reject did nothing. */
 function judgeRejectClick(
   cmp: CmpSection,
@@ -285,12 +302,41 @@ function judgeRejectClick(
   if (b?.click?.action !== 'reject' || !b.click.clicked || !b.verify) return;
   if (b.verify.verified) return;
 
-  if (b.verify.stateAfter.some((s) => s.ready === 'ready')) {
+  if (b.verify.stateAfter.some(showsRejectOutcome)) {
     const states = b.verify.stateAfter.map((s) => stateEvidence(s, { phase: 'B', pageUrl: primary.pageUrl }));
     verdict.observations.push(base('reject-ineffective', 'high', [...factsEvidence, ...states]));
   } else {
     verdict.limitations.push('reject-unverified');
   }
+}
+
+/** Pages a "Banner nicht erkannt" observation for a banner candidate cites as evidence. */
+const MAX_CANDIDATE_PAGE_EVIDENCE = 4;
+
+/**
+ * A banner observed but not recognised, on which CONSENT-03 stays inconclusive too: info "Banner nicht erkannt", as for a
+ * banner the heuristic found. The candidate the heuristic kept is a fair sign, a banner link alone a weak one.
+ */
+function unrecognizedOutcome(
+  u: UnrecognizedBanner,
+  cmp: CmpSection,
+  browser: BrowserSection,
+  plan: ScanPlan,
+): CheckOutcome {
+  const start = startPageUrl(browser);
+  const primary =
+    u.facts.find((f) => f.pageUrl === start) ?? u.facts[0] ?? (primaryFacts(cmp, start) as CmpFacts);
+  const pages = (phaseRecord(browser, 'A')?.pages ?? []).filter((p) => u.pages.includes(p.finalUrl || p.url));
+  const evidence = [
+    cmpEvidence(primary, plan.browser),
+    ...pages.slice(0, MAX_CANDIDATE_PAGE_EVIDENCE).map(pageEvidence),
+  ];
+  const observation: Observation = {
+    ...makeBase(primary)('banner-not-recognized', 'medium', evidence, { reasons: 'banner-candidate' }),
+    phases: [...new Set(u.facts.map((f) => f.phase))].sort() as Phase[],
+    pages: u.pages,
+  };
+  return { status: 'inconclusive', reason: 'banner-not-recognized', observations: [observation] };
 }
 
 /** Consent granted without any action by the visitor: a default or stored state that grants non-essential categories. */
@@ -327,6 +373,11 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
       if (signal) return signal;
       if (!bannerFound(cmp)) {
+        const unrecognized = unrecognizedBanner(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
+        if (unrecognized) return unrecognizedOutcome(unrecognized, cmp, browser, plan);
+        if (bannerUndetermined(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
+          return { status: 'inconclusive', reason: 'banner-undetermined', observations: [] };
+        }
         return { status: 'not_applicable', reason: 'no-banner', observations: [] };
       }
 

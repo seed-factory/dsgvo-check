@@ -10,6 +10,8 @@
 # scripts {label, pattern} regex source tested against script and resource URLs; `label` is what the signal names
 # dom CSS selectors (document-wide); a hit counts as one signal
 # cookies / storage regex sources for consent cookie names and localStorage keys (names only, never values)
+# requiredKinds signal kinds (global, script, dom, stored) of which one must be found, else nothing is recognised:
+#   for a platform global that every page of the platform has, whether or not it shows a banner
 # version
 # fromScriptUrl read `?ver=` / `?v=` from the first matched script URL when no version global answered
 # rules first match wins: a `global`, `dom` selector or `script` label that was found gives that version
@@ -18,7 +20,9 @@
 # containers selectors in priority order; the first one that matches is the banner (open shadow roots included)
 # overlays selectors of backdrops that cover the page behind the banner
 # vendorRoles selector → button kind by the vendor's own markup (corroborates or backs up the visible label)
-# Reader inputs used by one adapter only: optionalGroups, botUserAgent, essentialEmbeddings.
+# Reader inputs used by one adapter only: optionalGroups, botUserAgent, essentialEmbeddings, answerCookie (name of the
+# cookie that records the visitor's answer; its value never leaves the page), groupsSource (element and attribute
+# with the site's own consent groups, configuration and no visitor data).
 adapters:
   borlabs:
     name: Borlabs Cookie
@@ -203,3 +207,60 @@ adapters:
         - { selector: ".ch2-open-settings-btn", role: settings }
         - { selector: ".ch2-save-settings-btn", role: save }
         - { selector: ".ch2-close-btn", role: close }
+
+  # The cookie bar built into the Shopware 6 storefront. Every storefront page sets the global `salesChannelId`, also
+  # one whose theme removed the bar: it is only the second signal next to the bar.
+  shopware:
+    name: Shopware
+    detect:
+      globals: [salesChannelId]
+      dom: [".cookie-permission-container[data-cookie-permission]"]
+      requiredKinds: [dom]
+    banner:
+      containers: [".cookie-permission-container[data-cookie-permission]"]
+      vendorRoles:
+        - { selector: ".js-cookie-permission-button button", role: reject }
+        - { selector: ".js-cookie-accept-all-button button", role: accept }
+        - { selector: ".js-cookie-configuration-button button", role: settings }
+    answerCookie: cookie-preference
+
+  # The cookie banner of Wix sites. The platform exposes the visitor's policy as `consentPolicyManager`, also on a
+  # site without the banner, so the banner or its script must be found as well.
+  wix:
+    name: Wix
+    detect:
+      globals: [consentPolicyManager]
+      scripts:
+        - {
+            label: static.parastorage.com/services/cookie-consent-banner-for-uou,
+            pattern: '^https://static\.parastorage\.com/services/cookie-consent-banner-for-uou/',
+          }
+      dom: ['[data-hook="consent-banner-root"]']
+      requiredKinds: [dom, script]
+    banner:
+      containers: ['[data-hook="consent-banner-root"]']
+      vendorRoles:
+        - { selector: '[data-hook="consent-banner-decline-all-button"]', role: reject }
+        - { selector: '[data-hook="consent-banner-apply-button"]', role: accept }
+        - { selector: '[data-hook="consent-banner-settings-button"]', role: settings }
+        - { selector: '[data-hook="consent-banner-close-button"]', role: close }
+    # The policy categories besides `essential`, which is always on.
+    optionalGroups: [functional, analytics, advertising]
+
+  # The TYPO3 extension cookieman. Its consent cookie is called `CookieConsent` like Cookiebot's, so no cookie is a
+  # signal here. The reject and accept buttons also carry `data-cookieman-save`, so they come before the save button.
+  cookieman:
+    name: cookieman
+    detect:
+      globals: [cookieman]
+      dom: ["#cookieman-modal"]
+    banner:
+      containers: ["#cookieman-modal .modal-content", "#cookieman-modal"]
+      overlays: ["#cookieman-modal"]
+      vendorRoles:
+        - { selector: "[data-cookieman-accept-none]", role: reject }
+        - { selector: "[data-cookieman-accept-all]", role: accept }
+        - { selector: "[data-cookieman-save]", role: save }
+        - { selector: '[data-target="#cookieman-settings"]', role: settings }
+    answerCookie: CookieConsent
+    groupsSource: { selector: "#cookieman-modal", attribute: data-cookieman-settings }

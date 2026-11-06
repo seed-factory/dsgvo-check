@@ -135,7 +135,7 @@ export const embed01 = defineCheck({
     { variant: 'fonts-loaded', variantGroup: 'fonts' },
     { variant: 'preconnect-only', variantGroup: 'fonts' },
   ],
-  run({ browser, cmp, derived }) {
+  run({ browser, cmp, derived }, ctx) {
     const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
     if (signal) return signal;
     if (!hasPhaseA(browser)) {
@@ -144,7 +144,7 @@ export const embed01 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const banner = bannerState(cmp);
+    const banner = bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
     const observations = [...groupFontUse(derived, records).values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))
       .map((g) => fontObservation(g, records, derived, banner));

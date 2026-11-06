@@ -287,6 +287,8 @@ ui:
     {Dokument nicht vollständig gelesen} no-evaluable-pages {keine auswertbare Seite} insufficient-pages {zu wenige
     auswertbare Seiten} legal-targets-not-evaluable {Linkziele nicht auswertbar} contact-page-not-evaluable
     {Kontaktseite nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
+    banner-candidate-unrecognized {Einwilligungsbanner beobachtet, aber nicht erkannt}
+    banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
     eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation

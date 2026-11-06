@@ -57,6 +57,7 @@ describe('built-in defaults', () => {
     ['dns', 'maxTimeoutResults', 3],
     ['cmp', 'blockingCoveredRatio', 0.85],
     ['cmp', 'waitMs', 5_000],
+    ['cmp', 'minCandidatePages', 2],
     ['report', 'formats', ['console', 'json']],
     ['report', 'detail', 'full'],
     ['report', 'outDir', './dsgvo-check-report'],
@@ -121,6 +122,7 @@ describe('field list', () => {
   // A bare number in a variable must never leave the unit open.
   const COUNTS = new Set([
     'maxPages',
+    'minCandidatePages',
     'maxInflight',
     'requestLimit',
     'maxRedirects',

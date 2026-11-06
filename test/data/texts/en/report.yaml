@@ -278,7 +278,9 @@ ui:
     evaluated} unsupported-format {format not supported} language-unsupported {language not supported}
     document-incomplete {document not read completely} no-evaluable-pages {no evaluable page} insufficient-pages {too
     few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
-    page not evaluable} consent-frame-unresolved {frame of the consent banner not attributed} no-https {no HTTPS}
+    page not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
+    banner-candidate-unrecognized {consent banner observed but not recognised}
+    banner-undetermined {whether a consent banner was shown could not be determined} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}

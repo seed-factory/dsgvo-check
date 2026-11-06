@@ -6,8 +6,13 @@
 # (German compounds such as "Datenschutzeinstellungen"). close/hide/later alone are never a reject.
 # After the German and English phrases of each class follow fr, es, it, pt, nl, da, no, sv, fi, is and pl phrases:
 # they classify the buttons of unknown banners (generic heuristic, info only). A phrase may stand in one class only.
+# negations, restrictions and paid qualify a reject or accept phrase, matched like the phrases: a reject or accept
+# with a negation before its phrase, an accept with a restriction outside its phrase, and any label with payment
+# wording are no decision (kind other), and the CMP's own markup cannot make them one. A negation directly followed by
+# a necessity word negates a cookie category, not the decision ("Nicht notwendige Cookies ablehnen"), and a negation
+# after the phrase never negates it ("Reject non-essential cookies", "Ablehnen (keine Statistik)").
 lexicon:
-  version: "2026.10.2"
+  version: "2026.11.1"
   reject:
     - ablehnen
     - alle ablehnen
@@ -19,9 +24,14 @@ lexicon:
     - cookies ablehnen
     - alle cookies ablehnen
     - optionale cookies ablehnen
+    - nicht notwendige cookies ablehnen
+    - nicht essenzielle cookies ablehnen
     - nicht zustimmen
     - nicht einverstanden
+    - ich bin nicht einverstanden
     - ich stimme nicht zu
+    - nicht akzeptieren
+    - ich akzeptiere nicht
     - ich lehne ab
     - verweigern
     - alle verweigern
@@ -38,6 +48,12 @@ lexicon:
     - nur technisch notwendige cookies
     - nur technisch notwendige cookies akzeptieren
     - nur technisch notwendige cookies zulassen
+    - nur technisch notwendige cookies erlauben
+    - nur technisch erforderliche
+    - nur technisch erforderliche cookies
+    - nur technisch erforderliche cookies akzeptieren
+    - nur technisch erforderliche cookies zulassen
+    - nur technisch erforderliche cookies erlauben
     - nur essenzielle
     - nur essenzielle cookies
     - nur essenzielle cookies akzeptieren
@@ -62,6 +78,8 @@ lexicon:
     - reject all
     - reject all cookies
     - reject cookies
+    - reject non-essential
+    - reject non-essential cookies
     - decline
     - decline all
     - decline cookies
@@ -69,6 +87,7 @@ lexicon:
     - reject and close
     - deny
     - deny all
+    - deny all cookies
     - refuse
     - refuse all
     - necessary only
@@ -86,6 +105,14 @@ lexicon:
     - continue without consent
     - do not consent
     - i do not accept
+    - i don't accept
+    - do not accept
+    - don't accept
+    - i do not agree
+    - i don't agree
+    - do not agree
+    - don't agree
+    - i disagree
     # fr, es, it, pt, nl, da, no, sv, fi, is, pl
     - refuser
     - tout refuser
@@ -314,6 +341,14 @@ lexicon:
     - zezwól
     - zezwól na wszystkie
     - przyjmuję
+  # Accept phrases that only acknowledge a notice: next to a single generic keyword (a shipping or policy update notice
+  # with "OK") they are no consent choice for the generic heuristic. Matched as whole labels like the phrases.
+  acknowledgements:
+    - ok
+    - okay
+    - verstanden
+    - ok verstanden
+    - got it
   settings:
     - einstellungen
     - cookie einstellungen
@@ -533,6 +568,166 @@ lexicon:
     - minimieren
     - hide
     - hide banner
+  # de, en, fr, es, it, pt, nl, da, no, sv, fi, is, pl. "don't" is the token pair "don t".
+  negations:
+    - nicht
+    - kein
+    - keine
+    - keinen
+    - ohne
+    - nie
+    - niemals
+    - not
+    - "don't"
+    - "won't"
+    - dont
+    - never
+    - without
+    - ne
+    - pas
+    - sans
+    - jamais
+    - "no"
+    - sin
+    - nunca
+    - non
+    - senza
+    - mai
+    - não
+    - sem
+    - niet
+    - geen
+    - zonder
+    - nooit
+    - ikke
+    - uden
+    - uten
+    - aldrig
+    - aldri
+    - inte
+    - utan
+    - ei
+    - ilman
+    - ekki
+    - án
+    - nie
+    - bez
+  # Necessity and category words after a negation ("nicht notwendige", "non-essential", "ikke-nødvendige"), in every
+  # inflection used on banners; "optional" is no such word ("Keine optionalen Cookies akzeptieren" is no accept).
+  necessity:
+    - notwendig
+    - notwendige
+    - notwendigen
+    - notwendiger
+    - erforderlich
+    - erforderliche
+    - erforderlichen
+    - essenziell
+    - essenzielle
+    - essenziellen
+    - essentiell
+    - essentielle
+    - essentiellen
+    - technisch
+    - benötigte
+    - benötigten
+    - essential
+    - necessary
+    - required
+    - strictly
+    - essentiel
+    - essentiels
+    - essentielles
+    - nécessaire
+    - nécessaires
+    - indispensables
+    - necesarias
+    - necesarios
+    - esenciales
+    - necessari
+    - necessarie
+    - essenziali
+    - necessários
+    - necessárias
+    - essenciais
+    - noodzakelijk
+    - noodzakelijke
+    - essentieel
+    - essentiële
+    - nødvendig
+    - nødvendige
+    - nödvändig
+    - nödvändiga
+    - välttämättömät
+    - välttämättömiä
+    - nauðsynlegar
+    - niezbędne
+    - niezbędnych
+    - wymagane
+  restrictions:
+    - nur
+    - lediglich
+    - ausschließlich
+    - only
+    - solely
+    - seulement
+    - uniquement
+    - solo
+    - sólo
+    - solamente
+    - únicamente
+    - apenas
+    - somente
+    - alleen
+    - uitsluitend
+    - kun
+    - bare
+    - endast
+    - bara
+    - enbart
+    - vain
+    - ainoastaan
+    - aðeins
+    - tylko
+    - wyłącznie
+  # Pay-or-OK models offer a subscription next to consent: such a button is never clicked as reject or accept.
+  # "*abo" covers compounds such as "Jahresabo"; "einkaufen" ("weiter einkaufen") is no purchase.
+  paid:
+    - abo
+    - "*abo"
+    - abos
+    - abonnieren
+    - abonniere
+    - abonnement
+    - "*abonnement"
+    - abonnent
+    - kaufen
+    - bezahlen
+    - zahlen
+    - kostenpflichtig
+    - subscribe
+    - subscription
+    - subscriber
+    - pay
+    - payment
+    - buy
+    - purchase
+    - abonner
+    - payer
+    - acheter
+    - suscribirse
+    - suscribirme
+    - suscripción
+    - pagar
+    - comprar
+    - abbonati
+    - abbonarsi
+    - abbonamento
+    - pagare
+    - acquista
+    - abonneren
+    - betalen
+    - kopen
   # Regex sources, case-insensitive, tested against the normalized banner text in the page (no text is stored).
   purAbo:
     - "\\bpur[ -]?abo"
@@ -590,3 +785,11 @@ lexicon:
     - "zgod[aęy]"
     - "prywatno"
     - "dane osobowe"
+  # The banner keywords that name cookies themselves. A box with a single keyword is a cookie notice only with one of
+  # these: datenschutz, privacy, tracking or partner also stand in newsletter, chat, shipping and policy notices.
+  cookieKeywords:
+    - "cookie"
+    - "traceur"
+    - "eväste"
+    - "informasjonskapsl"
+    - "vafrakök"

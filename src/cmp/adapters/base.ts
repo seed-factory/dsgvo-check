@@ -225,7 +225,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         ...raw.cookies.map((c) => `cookie:${c}`),
         ...raw.storage.map((k) => `storage:${k}`),
       ];
-      const confidence = confidenceFromSignals(signals);
+      const confidence = confidenceFromSignals(signals, vendor.detect.requiredKinds);
       if (!confidence) return null;
       const version = versionOf(raw, vendor);
       return {

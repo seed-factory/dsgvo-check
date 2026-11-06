@@ -199,7 +199,7 @@ export const consent01 = defineCheck({
       routing: ctx.routing,
       start: startPageUrl(browser),
       bObserved: phaseBObserved(browser),
-      banner: bannerState(cmp),
+      banner: bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages),
     };
     const observations = [...groups.values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))

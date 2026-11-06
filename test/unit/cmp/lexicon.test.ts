@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyButton,
   classifyLabel,
+  isPaidLabel,
   labelTokens,
   lexiconFromData,
   normalizeLabel,
 } from '../../../src/cmp/lexicon.ts';
 import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
+import type { ButtonKind } from '../../../src/cmp/types.ts';
 import { loadDataDir } from '../../../src/core/data/load.ts';
 
 const lexicon = loadLexicon();
@@ -38,9 +40,39 @@ describe('test/data/cmp/lexicon.yaml', () => {
   });
 
   it('every regex source compiles', () => {
-    for (const src of [...(lexicon.purAbo ?? []), ...(lexicon.bannerKeywords ?? [])]) {
+    for (const src of [
+      ...(lexicon.purAbo ?? []),
+      ...(lexicon.bannerKeywords ?? []),
+      ...(lexicon.cookieKeywords ?? []),
+    ]) {
       expect(() => new RegExp(src, 'iu')).not.toThrow();
     }
+  });
+});
+
+describe('heuristic wording', () => {
+  it('acknowledgements are accept phrases that only acknowledge a notice', () => {
+    const accepts = new Set(lexicon.accept.map((p) => labelTokens(p).join(' ')));
+    expect(lexicon.acknowledgements?.length).toBeGreaterThan(0);
+    for (const phrase of lexicon.acknowledgements ?? []) {
+      expect(accepts.has(labelTokens(phrase).join(' ')), phrase).toBe(true);
+    }
+    for (const consent of ['Akzeptieren', 'Zustimmen', 'Einverstanden', 'Accept all']) {
+      expect(lexicon.acknowledgements?.map((p) => labelTokens(p).join(' '))).not.toContain(
+        labelTokens(consent).join(' '),
+      );
+    }
+  });
+
+  it('cookie keywords are banner keywords that name cookies, not privacy or tracking in general', () => {
+    const keywords = new Set(lexicon.bannerKeywords);
+    expect(lexicon.cookieKeywords?.length).toBeGreaterThan(0);
+    for (const k of lexicon.cookieKeywords ?? []) expect(keywords.has(k), k).toBe(true);
+    const cookie = (text: string) =>
+      (lexicon.cookieKeywords ?? []).some((k) => new RegExp(k, 'iu').test(text));
+    expect(cookie('diese website verwendet cookies')).toBe(true);
+    expect(cookie('hinweise zum datenschutz')).toBe(false);
+    expect(cookie('lieferung mit sendungsverfolgung (tracking)')).toBe(false);
   });
 });
 
@@ -240,6 +272,164 @@ describe('classifyLabel: further languages', () => {
 
   it('the version of the lexicon is raised with the data', () => {
     expect(lexicon.version).not.toBe('2026.10.1');
+  });
+});
+
+// A click on a decision button must do what its label says: no consent, subscription or purchase by mistake.
+describe('classifyLabel: labels a click could turn into consent or a purchase', () => {
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    // The reject of newer Shopware versions, also with an accept verb after the restriction.
+    ['Nur technisch erforderliche', 'reject', 'high'],
+    ['Nur technisch erforderliche Cookies', 'reject', 'high'],
+    ['Nur technisch erforderliche Cookies akzeptieren', 'reject', 'high'],
+    ['Nur technisch erforderliche Cookies zulassen', 'reject', 'high'],
+    ['Nur technisch erforderliche Cookies erlauben', 'reject', 'high'],
+    ['Nur technisch notwendige Cookies erlauben', 'reject', 'high'],
+    // A negated consent is a refusal.
+    ['I do not agree', 'reject', 'high'],
+    ["I don't agree", 'reject', 'high'],
+    ['I don’t agree', 'reject', 'high'],
+    ['Do not accept', 'reject', 'high'],
+    ["Don't accept", 'reject', 'high'],
+    ['Nicht akzeptieren', 'reject', 'high'],
+    ['Nicht zustimmen', 'reject', 'high'],
+    ['Nicht einverstanden', 'reject', 'high'],
+    ['Ich stimme nicht zu', 'reject', 'high'],
+    ['Ich bin nicht einverstanden', 'reject', 'high'],
+    ['Cookies nicht akzeptieren', 'reject', 'medium'],
+    // A negation before the matched phrase, or a restriction outside it, leaves the meaning open: no decision.
+    ['Nicht alle akzeptieren', null, 'low'],
+    ['Weiter ohne Akzeptieren', null, 'low'],
+    ['Never accept', null, 'low'],
+    ['Cookies nie akzeptieren', null, 'low'],
+    ['Nicht ablehnen', null, 'low'],
+    ["Don't reject", null, 'low'],
+    ['Keine optionalen Cookies akzeptieren', null, 'low'],
+    ['Keine Tracking-Cookies erlauben', null, 'low'],
+    ['Ich bin nicht damit einverstanden', null, 'low'],
+    ['I do not want to accept', null, 'low'],
+    ['Ne pas accepter', null, 'low'],
+    ['No aceptar', null, 'low'],
+    // A negation of a cookie category, or one after the decision phrase, does not negate the decision.
+    ['Nicht notwendige Cookies ablehnen', 'reject', 'high'],
+    ['Nicht essenzielle Cookies ablehnen', 'reject', 'high'],
+    ['Reject non-essential cookies', 'reject', 'high'],
+    ['Reject non-essential', 'reject', 'high'],
+    ['Alle nicht notwendigen Cookies ablehnen', 'reject', 'medium'],
+    ['Nicht technisch notwendige Cookies ablehnen', 'reject', 'medium'],
+    ['Nicht erforderliche Cookies ablehnen', 'reject', 'medium'],
+    ['Ablehnen (keine Statistik)', 'reject', 'medium'],
+    ['Reject non-necessary cookies', 'reject', 'medium'],
+    ['Refuser les cookies non essentiels', 'reject', 'medium'],
+    ['Rechazar cookies no necesarias', 'reject', 'medium'],
+    ['Niet-essentiële cookies weigeren', 'reject', 'medium'],
+    ['Weigeren niet-noodzakelijke cookies', 'reject', 'medium'],
+    ['Afvis ikke-nødvendige cookies', 'reject', 'medium'],
+    ['Accept non-essential cookies', 'accept', 'medium'],
+    ['Nur Statistik-Cookies akzeptieren', null, 'low'],
+    ['Only accept analytics', null, 'low'],
+    // Subscription and payment wording is never a reject or accept.
+    ['Reject all and subscribe', null, 'low'],
+    ['Ablehnen und abonnieren', null, 'low'],
+    ['Ablehnen und Pur-Abo abschließen', null, 'low'],
+    ['Akzeptieren oder Jahresabo', null, 'low'],
+    ['Accept and pay', null, 'low'],
+    ['Zustimmen und kaufen', null, 'low'],
+    ['Ablehnen und bezahlen', null, 'low'],
+    // Counterexamples: the negation or restriction is part of the phrase, or there is none.
+    ['Weiter ohne Einwilligung', 'reject', 'high'],
+    ['Continue without accepting', 'reject', 'high'],
+    ['Nur notwendige Cookies akzeptieren', 'reject', 'high'],
+    ['Accept only necessary cookies', 'reject', 'high'],
+    ['Alle akzeptieren', 'accept', 'high'],
+    ['Akzeptieren und weiter einkaufen', 'accept', 'medium'],
+    ['Alle ablehnen', 'reject', 'high'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+
+  it('names why a decision phrase in the label is no decision', () => {
+    expect(classifyLabel('Reject all and subscribe', lexicon).qualified).toEqual({
+      kind: 'reject',
+      by: 'paid',
+    });
+    expect(classifyLabel('Nicht alle akzeptieren', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'negation',
+    });
+    expect(classifyLabel('Nur Statistik akzeptieren', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'restriction',
+    });
+    expect(classifyLabel('Alle akzeptieren', lexicon).qualified).toBeUndefined();
+    expect(classifyLabel('Abonnieren', lexicon).qualified).toBeUndefined();
+  });
+
+  it('subscription and payment wording is recognised on its own, also inside compounds', () => {
+    for (const label of [
+      'Abonnieren',
+      'Subscribe',
+      'Abo',
+      'Pur-Abo',
+      'Digitalabo',
+      'Kaufen',
+      'Bezahlen',
+      'Pay',
+    ]) {
+      expect(isPaidLabel(label, lexicon), label).toBe(true);
+    }
+    for (const label of [
+      'PayPal-Einstellungen',
+      'Weiter einkaufen',
+      'Alle akzeptieren',
+      'Ablehnen',
+      'Zahlungsarten',
+    ]) {
+      expect(isPaidLabel(label, lexicon), label).toBe(false);
+    }
+  });
+});
+
+describe('classifyButton: the vendor role cannot turn a qualified label into a decision', () => {
+  const cases: Array<
+    [name: string, role: string, vendorRole: ButtonKind | null, kind: ButtonKind, confidence: string]
+  > = [
+    ['Ablehnen und abonnieren', 'button', 'reject', 'other', 'low'],
+    ['Jetzt abonnieren', 'button', 'accept', 'other', 'low'],
+    ['Pur-Abo abschließen', 'link', 'reject', 'link', 'high'],
+    ['Nicht alle akzeptieren', 'button', 'accept', 'other', 'low'],
+    ['Nur Statistik akzeptieren', 'button', 'accept', 'other', 'low'],
+    ['Nicht ablehnen', 'button', 'reject', 'other', 'low'],
+    // A restricted or negated accept on the vendor's reject markup is that reject.
+    ['Nur technisch benötigte Cookies akzeptieren', 'button', 'reject', 'reject', 'medium'],
+    ['Cookies nie akzeptieren', 'button', 'reject', 'reject', 'medium'],
+    // A reject that negates a cookie category is the vendor's reject.
+    ['Reject non-essential cookies', 'button', 'reject', 'reject', 'high'],
+    ['Alle nicht notwendigen Cookies ablehnen', 'button', 'reject', 'reject', 'high'],
+    ['Rechazar cookies no necesarias', 'button', 'reject', 'reject', 'high'],
+    // Counterexample: an unqualified label with the vendor role.
+    ['Weiter', 'button', 'reject', 'reject', 'medium'],
+  ];
+  it.each(cases)('%s (%s, vendor %s) → %s (%s)', (name, role, vendorRole, kind, kindConfidence) => {
+    expect(classifyButton({ name, role, vendorRole }, lexicon)).toEqual({ kind, kindConfidence });
+  });
+});
+
+describe('lexicon qualifiers', () => {
+  it('lists negations, category words, restrictions and payment wording, none of them a decision phrase', () => {
+    const decisions = new Set([...lexicon.accept, ...lexicon.reject].map((p) => labelTokens(p).join(' ')));
+    for (const key of ['negations', 'necessity', 'restrictions', 'paid'] as const) {
+      const list = lexicon[key] ?? [];
+      expect(list.length, key).toBeGreaterThan(0);
+      for (const word of list)
+        expect(decisions.has(labelTokens(word).join(' ')), `${key}: ${word}`).toBe(false);
+    }
+  });
+
+  it('a lexicon without them is malformed', () => {
+    const { paid: _paid, ...withoutPaid } = lexicon;
+    expect(() => lexiconFromData(withoutPaid)).toThrow(/lexicon: paid/);
   });
 });
 

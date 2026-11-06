@@ -191,6 +191,12 @@ const cmp = z.strictObject({
     `Time to wait for a CMP and its banner to appear (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
     0,
   ),
+  minCandidatePages: int(
+    2,
+    'Pages of phase A on which a banner-like box the heuristic did not take (or, in older snapshots, the same banner link) must show, when not on the start page, before CONSENT-03 stops concluding that there is no banner.',
+    1,
+    50,
+  ),
 });
 
 const report = z.strictObject({

@@ -7,6 +7,7 @@ import { parseUrl, sanitizeUrl } from '../../core/url/url.ts';
 import { loadProbeData } from '../adapters-file.ts';
 import { classifyButton, labelTokens, normalizeLabel } from '../lexicon.ts';
 import type {
+  BannerCandidateFact,
   BlockingFacts,
   ButtonKind,
   CmpButton,
@@ -15,7 +16,7 @@ import type {
   CmpLexicon,
 } from '../types.ts';
 import { cmpPageProbe } from './probe.ts';
-import type { ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
+import type { KindPhrases, ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
 
 export interface BannerSpec {
   containers: readonly string[];
@@ -44,37 +45,40 @@ const FRAME_CANDIDATE_MIN_SHARE = 0.5;
 
 const FRAME_HINT_ATTRIBUTES = ['title', 'aria-label', 'name'];
 
-function phrasesOf(
-  lexicon: CmpLexicon,
-  kinds: ReadonlyArray<'accept' | 'reject' | 'settings' | 'save'>,
-): string[] {
+/** Phrases as the probe matches them: token sequences joined by a space, `*suffix` normalized. */
+function probePhrases(list: readonly string[] | undefined): string[] {
   const out = new Set<string>();
-  for (const kind of kinds) {
-    for (const phrase of lexicon[kind]) {
-      if (phrase.startsWith('*')) {
-        const suffix = normalizeLabel(phrase.slice(1));
-        if (suffix) out.add(`*${suffix}`);
-      } else {
-        const tokens = labelTokens(phrase);
-        if (tokens.length > 0) out.add(tokens.join(' '));
-      }
+  for (const phrase of list ?? []) {
+    if (phrase.startsWith('*')) {
+      const suffix = normalizeLabel(phrase.slice(1));
+      if (suffix) out.add(`*${suffix}`);
+    } else {
+      const tokens = labelTokens(phrase);
+      if (tokens.length > 0) out.add(tokens.join(' '));
     }
   }
   return [...out];
 }
 
-/** `control`: classes that offer a choice (accept, reject, settings, save); `choice`: accept and reject only. */
-const phrasesCache = new WeakMap<CmpLexicon, { control: string[]; choice: string[] }>();
+/** The lexicon classes that make a control a banner control, and the paid wording that unmakes a choice. */
+const phrasesCache = new WeakMap<CmpLexicon, { kinds: KindPhrases; paid: string[]; acknowledge: string[] }>();
 
 function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
   let phrases = phrasesCache.get(lexicon);
   if (!phrases) {
     phrases = {
-      control: phrasesOf(lexicon, ['accept', 'reject', 'settings', 'save']),
-      choice: phrasesOf(lexicon, ['accept', 'reject']),
+      kinds: {
+        accept: probePhrases(lexicon.accept),
+        reject: probePhrases(lexicon.reject),
+        settings: probePhrases(lexicon.settings),
+        save: probePhrases(lexicon.save),
+      },
+      paid: probePhrases(lexicon.paid),
+      acknowledge: probePhrases(lexicon.acknowledgements),
     };
     phrasesCache.set(lexicon, phrases);
   }
+  const probeData = loadProbeData();
 
   return {
     mode: 'banner',
@@ -85,9 +89,12 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
     keywords: lexicon.bannerKeywords ?? [],
     frameMode: false,
     maxButtons: MAX_BUTTONS,
-    selectorAttributes: loadProbeData().selectorAttributes,
-    controlPhrases: phrases.control,
-    choicePhrases: phrases.choice,
+    selectorAttributes: probeData.selectorAttributes,
+    kindPhrases: phrases.kinds,
+    paidPhrases: phrases.paid,
+    acknowledgePhrases: phrases.acknowledge,
+    cookieKeywords: lexicon.cookieKeywords ?? [],
+    bannerContainerNames: probeData.bannerContainerNames,
     ...p,
   };
 }
@@ -276,15 +283,33 @@ function heuristicDetection(
   };
 }
 
+export interface HeuristicOutcome {
+  hit: { measured: Measured; detection: CmpDetection } | null;
+  /**
+   * Without a hit: the best banner-shaped element the heuristic dismissed on the main page, null when it saw none.
+   * Absent when the probe of the main page failed.
+   */
+  candidate?: BannerCandidateFact | null;
+}
+
 export async function measureHeuristic(
   page: Page,
   lexicon: CmpLexicon,
 ): Promise<{ measured: Measured; detection: CmpDetection } | null> {
+  return (await probeHeuristic(page, lexicon)).hit;
+}
+
+/** The generic heuristic over the main page and its frames, with the dismissed candidate when it found nothing. */
+export async function probeHeuristic(page: Page, lexicon: CmpLexicon): Promise<HeuristicOutcome> {
   const main = page.mainFrame();
   const mainRaw = await runProbe(main, probeArgs(lexicon, { mode: 'heuristic' })).catch(() => null);
 
   const best = await bestHeuristicHit(page, lexicon, mainRaw);
-  if (!best?.raw.heuristic) return unresolvedConsentFrame(page, lexicon, mainRaw);
+  if (!best?.raw.heuristic) {
+    const frame = await unresolvedConsentFrame(page, lexicon, mainRaw);
+    if (frame || !mainRaw) return { hit: frame };
+    return { hit: null, candidate: mainRaw.rejectedCandidate ?? null };
+  }
 
   // Blocking is measured on the main page, with the iframe element as the banner container.
   let blockingFrom: ProbeResult | undefined;
@@ -296,7 +321,7 @@ export async function measureHeuristic(
   }
 
   const measured = toMeasured(best.raw, lexicon, best.frame.url(), { offset: best.offset, blockingFrom });
-  return { measured, detection: heuristicDetection(best, best.raw.heuristic) };
+  return { hit: { measured, detection: heuristicDetection(best, best.raw.heuristic) } };
 }
 
 /** Share of the viewport that the box covers; 0 when it lies outside. */

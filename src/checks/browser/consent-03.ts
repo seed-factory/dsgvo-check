@@ -15,7 +15,14 @@ import type { DerivedSection, ServiceCategory } from '../../derive/types.ts';
 import { cookieEvidence, distinctRequestEvidence, pageEvidence, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { allCmpFacts, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import {
+  allCmpFacts,
+  bannerUndetermined,
+  consentSignals,
+  persistentIdentifier,
+  signalOutcome,
+  unrecognizedBanner,
+} from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-03';
@@ -158,6 +165,13 @@ export const consent03 = defineCheck({
         observations: [],
         coverage,
       };
+    }
+    // Something that looks like a banner was observed but not recognised: "no banner" would not be a fact.
+    if (unrecognizedBanner(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
+      return { status: 'inconclusive', reason: 'banner-candidate-unrecognized', observations: [], coverage };
+    }
+    if (bannerUndetermined(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
+      return { status: 'inconclusive', reason: 'banner-undetermined', observations: [], coverage };
     }
 
     const regionAsserted = environment.egress.region === 'asserted' || ctx.options.assumeRegion !== null;

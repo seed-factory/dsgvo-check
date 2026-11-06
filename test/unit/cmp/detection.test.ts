@@ -4,6 +4,7 @@ import {
   confidenceFromSignals,
   majorSupported,
   originAfterClick,
+  outranks,
   signalKinds,
   stateVerdict,
   unchangedDeniedAfterAccept,
@@ -29,9 +30,61 @@ describe('recognition confidence', () => {
     expect(confidenceFromSignals(['cookie:ccm_consent', 'storage:ccm_consent'])).toBe('medium');
   });
 
+  it('an adapter that requires a banner signal kind recognises nothing from a platform global alone', () => {
+    expect(confidenceFromSignals(['global:salesChannelId'], ['dom'])).toBeNull();
+    expect(confidenceFromSignals(['global:consentPolicyManager'], ['dom', 'script'])).toBeNull();
+    expect(confidenceFromSignals(['dom:.cookie-permission-container'], ['dom'])).toBe('medium');
+    expect(
+      confidenceFromSignals(['global:salesChannelId', 'dom:.cookie-permission-container'], ['dom']),
+    ).toBe('high');
+    expect(confidenceFromSignals(['global:consentPolicyManager', 'script:banner'], ['dom', 'script'])).toBe(
+      'high',
+    );
+    expect(confidenceFromSignals(['global:Cookiebot'], [])).toBe('medium');
+  });
+
   it('no signal → null; unknown kinds are ignored', () => {
     expect(confidenceFromSignals([])).toBeNull();
     expect(confidenceFromSignals(['heuristic:dialog', 'heuristic:fixed'])).toBeNull();
+  });
+});
+
+describe('which adapter detection wins', () => {
+  const det = (recognitionConfidence: 'high' | 'medium' | 'low', signals: string[]) => ({
+    recognitionConfidence,
+    signals,
+  });
+
+  it.each([
+    ['higher confidence', det('high', ['dom:#a', 'global:a']), det('medium', ['dom:#b']), true],
+    ['lower confidence', det('medium', ['dom:#a']), det('high', ['dom:#b', 'global:b']), false],
+    // A consent cookie name is shared between vendors (cookieman and Cookiebot both write `CookieConsent`).
+    [
+      'a page signal against a stored consent only',
+      det('medium', ['dom:#a']),
+      det('medium', ['cookie:CookieConsent']),
+      true,
+    ],
+    [
+      'a stored consent only against a page signal',
+      det('medium', ['cookie:CookieConsent']),
+      det('medium', ['global:a']),
+      false,
+    ],
+    [
+      'two page signals of the same confidence (the earlier adapter stays)',
+      det('medium', ['dom:#a']),
+      det('medium', ['global:b']),
+      false,
+    ],
+    [
+      'the same confidence with stored consent on both sides',
+      det('medium', ['cookie:a']),
+      det('medium', ['storage:b']),
+      false,
+    ],
+  ] as const)('%s → %s', (_case, a, b, expected) => {
+    expect(outranks(a, b)).toBe(expected);
   });
 });
 

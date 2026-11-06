@@ -301,7 +301,7 @@ export const consent02 = defineCheck({
   module: 'browser',
   requires: ['browser', 'cmp', 'derived'],
   variants: RANK.map((variant) => ({ variant, variantGroup: 'storage' })),
-  run({ browser, cmp, derived }) {
+  run({ browser, cmp, derived }, ctx) {
     const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
     if (signal) return signal;
     if (!hasPhaseA(browser)) {
@@ -317,7 +317,11 @@ export const consent02 = defineCheck({
       browser,
       {
         status: 'completed',
-        observations: entryObservations(entries, derived, bannerState(cmp)),
+        observations: entryObservations(
+          entries,
+          derived,
+          bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages),
+        ),
         coverage: { note: `allowlist-v${derived.allowlistVersion ?? '?'}:not-evaluated=${allowlisted}` },
         limitations: sortedUniq(
           browser.knownGaps.filter((g) => g.startsWith('cookie') || g.startsWith('storage')),

@@ -1,6 +1,93 @@
 import { makeCmpFacts } from '../../../../utils/snapshot-builder.ts';
-import { cmpWith, cookie, phase, req, START, site } from '../helpers.ts';
+import {
+  bannerCandidate,
+  bannerLink,
+  CONTACT,
+  candidateCmp,
+  cmpWith,
+  cookie,
+  IMPRESSUM,
+  noBannerCmp,
+  PRIVACY,
+  pagesWithLinks,
+  phase,
+  req,
+  START,
+  site,
+} from '../helpers.ts';
 import { ga, type Scenario } from './shared.ts';
+
+/** Scenarios of a banner observed but not recognised, and what does not count as one. */
+const candidateScenarios: Scenario[] = [
+  {
+    file: 'inconclusive-banner-candidate.json',
+    description:
+      'The heuristic dismissed a fixed box with one consent keyword and a settings button on start and Impressum; GA hit with identifier: no "no banner" conclusion',
+    expect: { status: 'inconclusive', variants: [], reason: 'banner-candidate-unrecognized' },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] })],
+        cmp: candidateCmp(bannerCandidate()),
+      }),
+  },
+  {
+    file: 'inconclusive-banner-undetermined-older-snapshot.json',
+    description:
+      'Snapshot without the candidate fact: the same visible link of a banner-named container on start and Impressum, a banner or a menu; GA hit with identifier',
+    expect: { status: 'inconclusive', variants: [], reason: 'banner-undetermined' },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            pages: pagesWithLinks({ [START]: [bannerLink()], [IMPRESSUM]: [bannerLink()] }),
+            requests: [ga.lib('A-1'), ga.hit('A-2')],
+          }),
+        ],
+        cmp: noBannerCmp(),
+      }),
+  },
+  {
+    file: 'violation-banner-links-on-one-page-each.json',
+    description:
+      'Counterexample, older snapshot: banner-named links of the policy table of contents and of the navigation, each on one page only; GA hit with identifier',
+    expect: { status: 'completed', variants: ['no-banner-consent-services'] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            pages: pagesWithLinks({
+              [PRIVACY]: [bannerLink({ text: 'Welche Cookies wir setzen', href: `${PRIVACY}#cookies` })],
+              [CONTACT]: [bannerLink({ text: 'Kontakt', href: CONTACT })],
+            }),
+            requests: [ga.lib('A-1'), ga.hit('A-2')],
+          }),
+        ],
+        cmp: noBannerCmp(),
+      }),
+  },
+  {
+    file: 'violation-candidate-newsletter-without-cookie-wording.json',
+    description:
+      'Counterexample: the dismissed candidate is a fixed newsletter box with the word "Datenschutz" and a "Mehr Informationen" link, no cookie wording; GA hit with identifier',
+    expect: { status: 'completed', variants: ['no-banner-consent-services'] },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] })],
+        cmp: candidateCmp(bannerCandidate({ controls: ['settings', 'other'], cookieWording: false })),
+      }),
+  },
+  {
+    file: 'violation-candidate-chat-widget.json',
+    description:
+      'Counterexample: the dismissed candidate is a fixed chat box with the word "Datenschutz" and no control the lexicon knows; GA hit with identifier',
+    expect: { status: 'completed', variants: ['no-banner-consent-services'] },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] })],
+        cmp: candidateCmp(bannerCandidate({ controls: ['other'] })),
+      }),
+  },
+];
 
 export const scenarios: Scenario[] = [
   {
@@ -51,6 +138,7 @@ export const scenarios: Scenario[] = [
         }),
       }),
   },
+  ...candidateScenarios,
 ];
 
 export const variantScenarios: Scenario[] = [

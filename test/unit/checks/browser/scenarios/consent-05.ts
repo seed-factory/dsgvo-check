@@ -1,4 +1,14 @@
-import { click, cmpFacts, cmpWith, phase, req, site } from '../helpers.ts';
+import {
+  bannerCandidate,
+  candidateCmp,
+  click,
+  cmpFacts,
+  cmpWith,
+  noBannerCmp,
+  phase,
+  req,
+  site,
+} from '../helpers.ts';
 import { ga, type Scenario } from './shared.ts';
 
 /** Reject confirmed by state: changed by our click (`action`), then read back after the reload. */
@@ -27,7 +37,33 @@ const confirmedReject = () => {
   });
 };
 
+/** Without a recognised banner nothing was clicked: a banner observed but not recognised leaves the reject open. */
+const bannerScenarios: Scenario[] = [
+  {
+    file: 'inconclusive-banner-candidate.json',
+    description:
+      'The heuristic dismissed a fixed box with one consent keyword and a settings button on start and Impressum: no reject was clicked',
+    expect: { status: 'inconclusive', variants: [], reason: 'banner-not-recognized' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
+        cmp: candidateCmp(bannerCandidate()),
+      }),
+  },
+  {
+    file: 'clean-no-banner.json',
+    description: 'Counterexample: no banner and no candidate on any page: there is no reject to evaluate',
+    expect: { status: 'not_applicable', variants: [], reason: 'no-banner' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
+        cmp: noBannerCmp(['A', 'B']),
+      }),
+  },
+];
+
 export const scenarios: Scenario[] = [
+  ...bannerScenarios,
   {
     file: 'violation-tracking-after-reject.json',
     description:

@@ -289,6 +289,37 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.targets?.reject?.name).toBe('Ablehnen');
   });
 
+  it.each([
+    'Nicht notwendige Cookies ablehnen',
+    'Reject non-essential cookies',
+    'Ablehnen (keine Statistik)',
+  ])(
+    'a reject that negates a cookie category ("%s") is the reject target, as a link and as a button',
+    (label) => {
+      const asLink = classifyFirstLayer(
+        facts([btn(label, { role: 'link', tag: 'a' }), btn('Alle akzeptieren')], { blocking }),
+        lexicon,
+      );
+      expect(asLink.variant).toBe('reject-as-link');
+      expect(asLink.targets?.reject?.name).toBe(label);
+
+      const asButton = classifyFirstLayer(
+        facts([btn(label), btn('Alle akzeptieren')], { blocking }),
+        lexicon,
+      );
+      expect(asButton.variant).toBe('ok');
+      expect(asButton.targets?.reject?.name).toBe(label);
+    },
+  );
+
+  it('counterexample: a reject that negates the decision ("Nicht ablehnen") is no reject target', () => {
+    const r = classifyFirstLayer(
+      facts([btn('Nicht ablehnen', { vendorRole: 'reject' }), btn('Alle akzeptieren')], { blocking }),
+      lexicon,
+    );
+    expect(r.targets?.reject).toBeNull();
+  });
+
   it('counterexample: reject and accept both rendered as links (same element type) is ok', () => {
     const r = classifyFirstLayer(
       facts([
@@ -321,6 +352,31 @@ describe('classifyFirstLayer: variants', () => {
     );
     expect(r.variant).toBe('banner-not-recognized');
     expect(r.reasons).toContain('unclassified-buttons:1');
+  });
+
+  it('in a pay-or-OK banner a button with subscription wording is the known paid alternative', () => {
+    const base = facts([btn('Alle akzeptieren'), btn('Jetzt abonnieren')], { blocking });
+    const r = classifyFirstLayer({ ...base, firstLayer: { ...base.firstLayer, purAbo: true } }, lexicon);
+    expect(r.variant).toBe('blocking-no-reject');
+    expect(r.reasons).not.toContain('unclassified-buttons:1');
+    expect(r.targets?.reject).toBeNull();
+  });
+
+  it('a reject that also subscribes is no reject target, even on the vendor reject markup', () => {
+    const r = classifyFirstLayer(
+      facts([btn('Alle akzeptieren'), btn('Reject all and subscribe', { vendorRole: 'reject' })]),
+      lexicon,
+    );
+    expect(r.targets?.reject).toBeNull();
+    expect(r.variant).toBe('banner-not-recognized');
+    expect(r.reasons).toContain('unclassified-buttons:1');
+  });
+
+  it('an accept that also pays is no accept target', () => {
+    const r = classifyFirstLayer(facts([btn('Ablehnen'), btn('Accept and pay')]), lexicon);
+    expect(r.targets?.reject?.name).toBe('Ablehnen');
+    expect(r.targets?.accept).toBeNull();
+    expect(r.acceptAvailableAtFirstLayer).toBe(false);
   });
 
   it('pur-abo becomes the primary variant when the table gives ok', () => {
