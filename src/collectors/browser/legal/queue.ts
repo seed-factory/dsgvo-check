@@ -232,6 +232,49 @@ export async function recordDocument(
   return RESULT_BY_OUTCOME[outcome];
 }
 
+/** The record under another id: part ids start with the id of their record. */
+function withId(doc: DocumentRecord, id: string): DocumentRecord {
+  const rename = (partId: string) => (partId.startsWith(doc.id) ? id + partId.slice(doc.id.length) : partId);
+  return { ...doc, id, parts: doc.parts.map((p) => ({ ...p, id: rename(p.id) })) };
+}
+
+/**
+ * While no Impressum is found, the open contact page, intermediate page or start page is read for the details of one
+ * (no further navigation). `asDocument`: a page that the heading markers confirm is the Impressum, found via the
+ * intermediate page. Any other page that was read is kept as a candidate, which is no document.
+ */
+export async function readImpressumDetails(
+  c: BrowserCollection,
+  s: Session,
+  r: VisitResult,
+  asDocument: boolean,
+): Promise<'found' | 'candidate' | 'no'> {
+  const status = r.visit.navigation.status;
+  const html = !/application\/pdf/i.test(r.contentType);
+  if (r.error || !r.visit.evaluable || status === null || status < 200 || status >= 300 || !html) return 'no';
+
+  const url = r.visit.url;
+  const doc = await extractBounded(c, s, r, { kind: 'impressum', url, via: 'hop', status });
+  if (!doc) return 'no';
+
+  if (asDocument && outcomeOf(doc) === 'found') {
+    c.documents.documents.push(doc);
+    c.documents.attempts.push({ kind: 'impressum', via: 'hop', url, status, outcome: 'found' });
+    return 'found';
+  }
+  const candidates = c.documents.candidates ?? [];
+  candidates.push(withId(doc, `cand-impressum-${candidates.length + 1}`));
+  c.documents.candidates = candidates;
+  return 'candidate';
+}
+
+/** Candidates only stand in for an Impressum that was not found; once one is found they are dropped. */
+export function dropCandidatesIfFound(documents: DocumentsSection): void {
+  if (documents.attempts.some((a) => a.kind === 'impressum' && a.outcome === 'found')) {
+    delete documents.candidates;
+  }
+}
+
 /** Reads the document of the current page; null (and an error entry in the phase record) when the read fails. */
 async function extractBounded(
   c: BrowserCollection,

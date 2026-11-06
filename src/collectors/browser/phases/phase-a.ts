@@ -9,7 +9,13 @@ import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
 import type { AVisit, BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
 import { fetchText } from '../launch/http-fetch.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
-import { PageQueue, type QueueItem, recordDocument } from '../legal/queue.ts';
+import {
+  dropCandidatesIfFound,
+  PageQueue,
+  type QueueItem,
+  readImpressumDetails,
+  recordDocument,
+} from '../legal/queue.ts';
 import { checkThrottleResponses, markThrottled, navigate, throttleStatus, visit } from '../pages/navigate.ts';
 import {
   chooseControlPages,
@@ -70,9 +76,12 @@ async function phaseABody(c: BrowserCollection, s: Session): Promise<PhaseAOutco
   const scope: Scope = { startRaw: c.startRaw, finalHost: c.scope.finalHost, etld1: c.scope.etld1 };
   const selection = await selectSubpages(c, start, origin, robots, scope);
   const queue = queueSelection(c, selection, start, visited, scope);
+  // The start page is still open: without an Impressum link it is read for Impressum details before the queue leaves it.
+  if (selection.impressum.status === 'none') await readImpressumDetails(c, s, start, false);
 
   const order = await visitQueue(c, s, queue, visited, scope);
   await probeFallbacks(c, s, origin, visited, queue.found, order);
+  dropCandidatesIfFound(c.documents);
   chooseControl(c, s);
   return { kind: 'ok' };
 }
@@ -297,7 +306,7 @@ async function visitQueue(
     c.aVisits.push({ raw: item.choice.raw, result: r, source: item.choice.source });
 
     await recordQueuedDocuments(c, s, queue, item, r);
-    if (item.choice.role === 'contact' || item.hop) lookForLegalLinks(c, queue, item, r, scope);
+    if (item.choice.role === 'contact' || item.hop) await lookForLegalLinks(c, s, queue, item, r, scope);
   }
   return order;
 }
@@ -339,20 +348,33 @@ async function recordQueuedDocuments(
   }
 }
 
-/** On the contact page and on hops: the legal links not found yet are queued, a missing link is a recorded attempt. */
-function lookForLegalLinks(
+/**
+ * On the contact page and on hops: the legal links not found yet are queued, a missing link is a recorded attempt.
+ * Without an Impressum link the page itself is read for the Impressum, unless it was already read as one. It can only
+ * become the Impressum while no link of the site was tried for it: a broken or unconfirmed link keeps its verdict.
+ */
+async function lookForLegalLinks(
   c: BrowserCollection,
+  s: Session,
   queue: PageQueue,
   item: QueueItem,
   r: VisitResult,
   scope: Scope,
-): void {
+): Promise<void> {
+  const readAsImpressum = item.docKind === 'impressum' || item.alsoKinds?.includes('impressum') === true;
   for (const kind of LEGAL_KINDS) {
     if (queue.found[kind] || queue.pending(kind)) continue;
 
     const lr = findLegalLink(r.candidates, kind, scope);
     if (lr.status === 'page' || lr.status === 'pdf') {
       queue.handleLink(lr, 'hop', item.choice.role, r.candidates);
+    } else if (
+      kind === 'impressum' &&
+      lr.status === 'none' &&
+      !readAsImpressum &&
+      (await readImpressumDetails(c, s, r, !impressumLinkTried(c))) === 'found'
+    ) {
+      queue.found.impressum = true;
     } else {
       c.documents.attempts.push({
         kind,
@@ -364,6 +386,9 @@ function lookForLegalLinks(
     }
   }
 }
+
+const impressumLinkTried = (c: BrowserCollection): boolean =>
+  c.documents.attempts.some((a) => a.kind === 'impressum' && a.via === 'link');
 
 /** One GET of the conventional path per legal kind that was not found by link. */
 async function probeFallbacks(

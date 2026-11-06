@@ -307,6 +307,17 @@ messages:
       was not checked.}}{fallbackChecked, select, true { It was not found at the common paths either.} other
       {}}{inOtherDocument, select, true { The privacy policy that was found ({otherDocument})
       contains a section headed “{otherHeading}”; no link naming it as the legal notice was found.} other {}}
+  LEGAL-01.provider-details-without-link:
+    title: "Details of a legal notice (Impressum) observed, no link named “Impressum” found"
+    body: >-
+      {detailsPlace, select, privacy-section {In the privacy policy ({detailsUrl})} footer {In the page footer of
+      {detailsUrl}} start-page {On the start page ({detailsUrl})} other {At {detailsUrl}}}{hasHeading, select, true
+      {, in the section “{detailsHeading}”,} other {}} details from {groupCount} of 5 areas that a legal notice
+      contains were observed (register entry, VAT ID or tax number, authorised representatives, statement under § 5
+      DDG, person responsible for the content). A link naming them as the legal notice was not found on
+      {pageTotal, plural, one {the # checked page} other {the # checked pages}}{hopChecked, select, true {, nor via
+      a checked intermediate page (e.g. contact)} other {}}; no such page was found at the common paths either. The
+      completeness of the details was not assessed.
   LEGAL-01.links-broken:
     title: "{documentKind, select, impressum {Links to the legal notice lead} privacy {Links to the privacy policy lead} other {Links to the legal notice and privacy policy lead}} to error pages"
     body: >-
@@ -538,6 +549,8 @@ actions:
     text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
   LEGAL-01.document-not-found:
     text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} clearly in the footer of every page{inOtherDocument, select, true {, as a page of its own or directly to the section “{otherHeading}” of the privacy policy ({otherDocument})} other {}}."
+  LEGAL-01.provider-details-without-link:
+    text: "{detailsPlace, select, footer {Put the details from the page footer on a page of their own named “Impressum” and link it in the footer of every page.} other {Link the details at {detailsUrl} in the footer of every page with the label “Impressum”.}}"
   LEGAL-01.links-broken:
     text: "Fix the links to {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} so that they lead to the right pages."
   LEGAL-01.link-missing-on-some-pages:

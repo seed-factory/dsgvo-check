@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../../src/checks/browser/legal-01.ts';
+import { parseConfigInput } from '../../../../../src/core/config/load.ts';
+import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import {
@@ -22,9 +24,13 @@ import {
   START,
   site,
 } from '../helpers.ts';
-import { SCENARIOS } from '../scenarios/index.ts';
+import { scenariosOf } from '../scenarios/index.ts';
+import { candidate, unlinkedImpressum } from '../scenarios/legal-01.ts';
 
-const scenario = (file: string) => SCENARIOS['LEGAL-01']!.find((s) => s.file === file)!.build();
+const scenario = (file: string) =>
+  scenariosOf('LEGAL-01')
+    .find((s) => s.file === file)!
+    .build();
 const variantsByKind = (r: ReturnType<typeof runCheck>) =>
   observationsOf(r).map((o) => [o.subject, o.variant]);
 
@@ -534,5 +540,352 @@ describe('LEGAL-01: an Impressum kept as a section of the privacy policy', () =>
 
     expect(variantsByKind(r)).toEqual([['privacy', 'document-not-found']]);
     expect(o?.params).toMatchObject({ inOtherDocument: false });
+  });
+});
+
+describe('LEGAL-01: provider details of an Impressum without a link that names them', () => {
+  const texts = (lang: 'de' | 'en', o: { variant: string; params: Record<string, unknown> }) => {
+    const t = loadTexts(lang);
+    const id = `LEGAL-01.${o.variant}`;
+    return {
+      ...renderMessage(t, id, o.params as never),
+      action: formatMessage(t.actions[id]!, o.params as never, lang),
+    };
+  };
+  const impressum = (r: ReturnType<typeof runCheck>) =>
+    observationsOf(r).find((o) => o.subject === 'impressum');
+  const withMinGroups = (impressumMinGroups: number) => ({
+    thresholds: checkThresholds(parseConfigInput({ legal: { impressumMinGroups } })),
+  });
+
+  /** Register entry, representative, VAT ID, statement under § 5 DDG and the person responsible, one kind per entry. */
+  const KINDS = [
+    'Amtsgericht Musterstadt, HRB 12345.',
+    'Geschäftsführung: Erika Mustermann.',
+    'USt-IdNr.: DE123456789.',
+    'Angaben gemäß § 5 DDG.',
+    'Verantwortlich für den Inhalt: Max Muster.',
+  ];
+  const detailsOf = (n: number) =>
+    `Beispiel GmbH, Musterstraße 1, 10115 Berlin. ${KINDS.slice(0, n).join(' ')}`;
+  const onContact = (text: string, section?: string) =>
+    unlinkedImpressum({ candidates: [candidate(CONTACT, [{ ...(section ? { section } : {}), text }])] });
+
+  it('details in the footer of the policy page: warning variant, medium, with the place and the section', () => {
+    const r = runCheck(legal01, scenario('violation-impressum-details-in-footer.json'));
+    const o = impressum(r);
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
+    expect(o).toMatchObject({
+      confidence: 'medium',
+      pages: [START, CONTACT],
+      params: {
+        documentKind: 'impressum',
+        pageTotal: 2,
+        missingCount: 2,
+        hopChecked: true,
+        fallbackChecked: true,
+        detailsUrl: PRIVACY,
+        detailsPlace: 'footer',
+        hasHeading: true,
+        detailsHeading: 'Impressum',
+        groupCount: 3,
+      },
+    });
+    expect(o?.evidence[0]).toMatchObject({
+      type: 'document',
+      url: PRIVACY,
+      kind: 'privacy',
+      parts: [{ origin: 'visible', section: 'Datenschutzerklärung > Impressum' }],
+    });
+    expect(texts('de', o!)).toMatchObject({
+      title: 'Angaben eines Impressums beobachtet, Link „Impressum“ nicht gefunden',
+      body:
+        `Im Seitenfuß von ${PRIVACY} im Abschnitt „Impressum“ wurden Angaben aus 3 von 5 Bereichen beobachtet, die ` +
+        'ein Impressum enthält (Registereintrag, Umsatzsteuer-ID oder Steuernummer, Vertretungsberechtigte, Angaben ' +
+        'nach § 5 DDG, Verantwortliche für den Inhalt). Ein Link, der sie als Impressum benennt, wurde auf den 2 ' +
+        'geprüften Seiten nicht gefunden, auch nicht über eine geprüfte Zwischenseite (z. B. Kontakt); unter den ' +
+        'üblichen Pfaden wurde ebenfalls keine solche Seite gefunden. Die Vollständigkeit der Angaben wurde nicht ' +
+        'bewertet.',
+      action:
+        'Legen Sie die Angaben aus dem Seitenfuß als Seite „Impressum“ an und verlinken Sie diese im Seitenfuß jeder Seite.',
+    });
+    expect(texts('en', o!).body).toContain(
+      `In the page footer of ${PRIVACY}, in the section “Impressum”, details from 3 of 5 areas`,
+    );
+  });
+
+  it('details on the Kontakt page without a heading: the contact page is named, its role in the evidence', () => {
+    const r = runCheck(legal01, scenario('violation-impressum-details-on-contact.json'));
+    const o = impressum(r);
+
+    expect(o?.variant).toBe('provider-details-without-link');
+    expect(o?.params).toMatchObject({
+      detailsUrl: CONTACT,
+      detailsPlace: 'contact-page',
+      hasHeading: false,
+      detailsHeading: null,
+    });
+    expect(o?.evidence[0]).toMatchObject({ type: 'document', url: CONTACT, kind: 'contact' });
+    expect(texts('de', o!).body).toMatch(
+      new RegExp(`^Unter ${CONTACT} wurden Angaben aus 3 von 5 Bereichen`),
+    );
+    expect(texts('de', o!).action).toBe(
+      `Verlinken Sie die Angaben unter ${CONTACT} im Seitenfuß jeder Seite mit der Bezeichnung „Impressum“.`,
+    );
+  });
+
+  it('details on the start page: named as the start page', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({ candidates: [candidate(START, [{ section: 'Willkommen', text: detailsOf(3) }])] }),
+    );
+
+    expect(impressum(r)?.params).toMatchObject({
+      detailsUrl: START,
+      detailsPlace: 'start-page',
+      detailsHeading: 'Willkommen',
+    });
+    expect(texts('de', impressum(r)!).body).toMatch(
+      new RegExp(`^Auf der Startseite \\(${START}\\) im Abschnitt „Willkommen“ wurden`),
+    );
+  });
+
+  it('a section headed "Impressum" in the content of the policy holds the details: the warning variant', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        privacyParts: [{ section: 'Datenschutzerklärung > Impressum', text: detailsOf(3) }],
+        contentHeadings: ['Datenschutzerklärung', 'Impressum'],
+      }),
+    );
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
+    expect(impressum(r)?.params).toMatchObject({
+      detailsPlace: 'privacy-section',
+      detailsHeading: 'Impressum',
+    });
+    expect(texts('de', impressum(r)!).body).toMatch(
+      new RegExp(`^In der Datenschutzerklärung \\(${PRIVACY}\\) im Abschnitt „Impressum“ wurden`),
+    );
+  });
+
+  it('a snapshot without content headings, part places and candidates: the Impressum section of the policy counts', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        privacyParts: [
+          { section: 'Datenschutzerklärung > Anfahrt', text: 'Musterstraße 1, 10115 Berlin' },
+          { section: 'Datenschutzerklärung > Impressum', text: detailsOf(3) },
+        ],
+      }),
+    );
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
+    expect(impressum(r)?.params).toMatchObject({ detailsPlace: 'privacy-section', groupCount: 3 });
+  });
+
+  it('a section "Impressum" whose details sit in its subsections counts them together', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        privacyParts: [
+          { section: 'Datenschutzerklärung > Impressum > Registereintrag', text: KINDS[0]! },
+          { section: 'Datenschutzerklärung > Impressum > Vertretung', text: KINDS[1]! },
+          { section: 'Datenschutzerklärung > Impressum > Umsatzsteuer', text: KINDS[2]! },
+        ],
+      }),
+    );
+
+    expect(impressum(r)).toMatchObject({
+      variant: 'provider-details-without-link',
+      params: { detailsHeading: 'Impressum', groupCount: 3 },
+    });
+  });
+
+  it.each([
+    [
+      'a footer column "Impressum" with an address and a phone number only',
+      unlinkedImpressum({
+        privacyParts: [
+          {
+            section: 'Datenschutzerklärung > Impressum',
+            place: 'chrome',
+            text: 'Beispiel GmbH, Musterstraße 1, 10115 Berlin, Telefon 030 123456. Inhaber: Max Muster.',
+          },
+        ],
+        contentHeadings: ['Datenschutzerklärung'],
+      }),
+    ],
+    [
+      'the company details of a processor in a section of the policy',
+      unlinkedImpressum({
+        privacyParts: [
+          {
+            section: 'Datenschutzerklärung > Hosting',
+            text: 'Wir hosten bei der Beispiel Hosting GmbH, Amtsgericht Musterstadt HRB 1, Geschäftsführer Max Muster, USt-IdNr. DE123456789.',
+          },
+        ],
+        contentHeadings: ['Datenschutzerklärung', 'Hosting'],
+      }),
+    ],
+    [
+      'one kind of details in each of three unrelated sections',
+      unlinkedImpressum({
+        candidates: [
+          candidate(CONTACT, [
+            { section: 'Anfahrt', text: 'Gegenüber dem Amtsgericht.' },
+            { section: 'Team', text: 'Inhaber Max Muster begrüßt Sie.' },
+            { section: 'Buchhaltung', text: 'Rechnungen mit Steuernummer.' },
+          ]),
+        ],
+      }),
+    ],
+    [
+      'the details split between the content and the footer of a page',
+      unlinkedImpressum({
+        candidates: [
+          candidate(CONTACT, [
+            { section: 'Kontakt', place: 'content', text: `${KINDS[0]} ${KINDS[1]}` },
+            { section: 'Kontakt', place: 'chrome', text: KINDS[2]! },
+          ]),
+        ],
+      }),
+    ],
+    [
+      'details only in hidden text',
+      unlinkedImpressum({
+        candidates: [candidate(CONTACT, [{ origin: 'hidden-irrelevant', text: detailsOf(3) }])],
+      }),
+    ],
+    [
+      'details in the footer of a policy page behind a challenge',
+      unlinkedImpressum({
+        pages: [
+          page(START, 'start', 'A', {}, [footerLinks()[1]!]),
+          page(CONTACT, 'contact', 'A', {}, [footerLinks()[1]!]),
+          page(PRIVACY, 'privacy', 'A', {
+            evaluable: false,
+            notEvaluableReason: 'challenge',
+            challenge: { detected: true, kind: 'cloudflare', signals: ['status:403'] },
+          }),
+        ],
+        privacyParts: [{ section: 'Datenschutzerklärung', place: 'chrome', text: detailsOf(3) }],
+      }),
+    ],
+    [
+      'details on a page behind a challenge',
+      unlinkedImpressum({
+        pages: [
+          page(START, 'start', 'A', {}, [footerLinks()[1]!]),
+          page(CONTACT, 'contact', 'A', {}, [footerLinks()[1]!]),
+          page(`${START}ueber-uns`, 'legal-hop', 'A', {
+            evaluable: false,
+            notEvaluableReason: 'challenge',
+            challenge: { detected: true, kind: 'cloudflare', signals: ['status:403'] },
+          }),
+        ],
+        candidates: [candidate(`${START}ueber-uns`, [{ text: detailsOf(3) }])],
+      }),
+    ],
+  ])('counterexample: %s stays document-not-found (critical)', (_name, snap) => {
+    const r = runCheck(legal01, snap);
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'document-not-found']]);
+  });
+
+  it.each([
+    [3, 2, 'document-not-found'],
+    [3, 3, 'provider-details-without-link'],
+    [2, 1, 'document-not-found'],
+    [2, 2, 'provider-details-without-link'],
+    [5, 4, 'document-not-found'],
+    [5, 5, 'provider-details-without-link'],
+  ])('with at least %i kinds required, %i kinds on the Kontakt page give %s', (min, n, variant) => {
+    const r = runCheck(legal01, onContact(detailsOf(n)), withMinGroups(min));
+
+    expect(impressum(r)?.variant).toBe(variant);
+  });
+
+  it('a section "Impressum" without details keeps document-not-found with the hint to the section', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        privacyParts: [
+          { section: 'Datenschutzerklärung > Impressum', text: 'Beispiel GmbH, Musterstraße 1.' },
+        ],
+        contentHeadings: ['Datenschutzerklärung', 'Impressum'],
+      }),
+    );
+
+    expect(impressum(r)).toMatchObject({
+      variant: 'document-not-found',
+      params: { inOtherDocument: true, otherHeading: 'Impressum' },
+    });
+  });
+
+  it('the privacy policy is judged as before: details of an Impressum do not stand in for it', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        policy: false,
+        pages: [page(START, 'start', 'A', {}, []), page(CONTACT, 'contact', 'A', {}, [])],
+        candidates: [candidate(CONTACT, [{ text: detailsOf(5) }])],
+        attempts: [
+          { kind: 'impressum', via: 'hop', url: CONTACT, status: 200, outcome: 'not-found' },
+          { kind: 'impressum', via: 'fallback', url: IMPRESSUM, status: 404, outcome: 'not-found' },
+          { kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' },
+        ],
+      }),
+    );
+
+    expect(variantsByKind(r)).toEqual([
+      ['impressum', 'provider-details-without-link'],
+      ['privacy', 'document-not-found'],
+    ]);
+  });
+
+  it('an Impressum link that answers 404 stays links-broken although the details are on the Kontakt page', () => {
+    const links = footerLinks();
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
+        attempts: [
+          { kind: 'impressum', via: 'link', url: IMPRESSUM, status: 404, outcome: 'not-found' },
+          {
+            kind: 'impressum',
+            via: 'fallback',
+            url: `${START}impressum-x`,
+            status: 404,
+            outcome: 'not-found',
+          },
+        ],
+        candidates: [candidate(CONTACT, [{ text: detailsOf(3) }])],
+      }),
+    );
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
+  });
+
+  it('phase A ended by the time budget before the usual path: the search stays incomplete, also with details', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        phaseA: { status: 'partial', reason: 'time' },
+        attempts: [{ kind: 'impressum', via: 'hop', url: CONTACT, status: 200, outcome: 'not-found' }],
+        candidates: [candidate(CONTACT, [{ text: detailsOf(3) }])],
+      }),
+    );
+
+    expect(r.status).toBe('partial');
+    expect(variantsOf(r)).toEqual([]);
+    expect(r.outcome?.limitations).toEqual(['impressum-search-incomplete:time']);
+  });
+
+  it('candidates are ignored once the Impressum was found', () => {
+    expect(
+      variantsOf(runCheck(legal01, scenario('clean-impressum-link-and-details-on-contact.json'))),
+    ).toEqual([]);
   });
 });

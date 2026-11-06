@@ -95,7 +95,7 @@ dsgvo-check/
 ├── test/
 │   ├── data/                  # данные пакета: идут в npm и образ
 │   │   ├── browser/, cmp/     # словари и сигнатуры браузерного коллектора
-│   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки
+│   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки, данные Impressum
 │   │   ├── report/report.html # шаблон HTML-отчёта
 │   │   ├── ruleset/de-2026/   # варианты, уровни, gating, коды CRM
 │   │   ├── services/          # каталог сервисов (Apache-2.0)
@@ -125,7 +125,7 @@ dsgvo-check/
 | Поменять шаблон отчёта | разметка и стили — [report.html](../test/data/report/report.html); подписи — [report.yaml](../test/data/texts/de/report.yaml) (и в `en/`); какие данные попадают в шаблон — [report-view.ts](../src/reporters/report-view.ts), подача улик — [evidence-view.ts](../src/reporters/evidence-view.ts); язык шаблона — [template.ts](../src/reporters/template.ts); PDF печатает тот же HTML ([pdf.ts](../src/reporters/pdf.ts)). Консоль и Job Summary — [console.ts](../src/reporters/console.ts) и [summary.ts](../src/reporters/summary.ts) |
 | Добавить сервис в каталог или сменить его категорию | `test/data/services/*.yaml` (формат записи — [_catalog.yaml](../test/data/services/_catalog.yaml)); какая проверка владеет категорией — [routing.yaml](../test/data/routing.yaml) |
 | Поддержать новый CMP или подпись кнопки | id в `KNOWN_CMP_IDS` ([types.ts](../src/cmp/types.ts)), адаптер в `src/cmp/adapters/` (чтение API) и регистрация в [src/cmp/index.ts](../src/cmp/index.ts); признаки, версии и селекторы — [adapters.yaml](../test/data/cmp/adapters.yaml); подписи кнопок — [lexicon.yaml](../test/data/cmp/lexicon.yaml); ручной стенд — `test/fixture-server/sites/cmp/<имя>/` и [sites.ts](../test/fixture-server/sites.ts); тесты — `test/integration/cmp/` |
-| Добавить или поменять слово, имя параметра или cookie, сигнатуру бот-защиты, ключевое слово страницы | YAML из таблицы «Словари и сопоставления» ниже: [browser/](../test/data/browser), [cmp/](../test/data/cmp), [http/](../test/data/http), [legal/links.yaml](../test/data/legal/links.yaml); новый ключ верхнего уровня — со схемой (`dataSection`) и строкой в [sections.test.ts](../test/unit/core/data/sections.test.ts) |
+| Добавить или поменять слово, имя параметра или cookie, сигнатуру бот-защиты, ключевое слово страницы | YAML из таблицы «Словари и сопоставления» ниже: [browser/](../test/data/browser), [cmp/](../test/data/cmp), [http/](../test/data/http), [legal/](../test/data/legal); новый ключ верхнего уровня — со схемой (`dataSection`) и строкой в [sections.test.ts](../test/unit/core/data/sections.test.ts) |
 | Добавить или изменить порог, таймаут, лимит | поле в схеме [schema.ts](../src/core/config/schema.ts) (умолчание, границы, описание); имя переменной выводится из пути; затем `corepack pnpm env:example`. Коллекторы читают значение из `ctx.config`, проверки — из `ctx.thresholds`; протокольные константы и защитные пределы остаются в коде |
 | Понять или изменить код выхода и порог | [gate.ts](../src/core/evaluation/gate.ts) (чистая функция) и [gate.test.ts](../test/unit/core/evaluation/gate.test.ts) |
 | Проверить, что в снимок не попали значения | [redact.ts](../src/core/redaction/redact.ts), [email.ts](../src/core/url/email.ts), [url.ts](../src/core/url/url.ts), [headers.ts](../src/core/redaction/headers.ts); редактирует коллектор до записи |
@@ -143,12 +143,21 @@ dsgvo-check/
 |---|---|---|
 | [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05 |
 | [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung или причина, почему её нельзя прочитать; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
+| [impressum-details.ts](../src/checks/browser/impressum-details.ts) | блоки документа — раздел с подразделами внутри одного места (`content` или `chrome`) и одного фрейма, без скрытого текста; сколько видов данных Impressum в каждом | LEGAL-01 |
 | [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
 
 `derive` добавляет для проверок два факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
 
 - `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет.
 - `DerivedSection.serviceNames` — имя, псевдонимы, компании и категория каждого сервиса каталога с `policyRelevance` `required` или `optional`, замеченного или нет: по ним проверка понимает, о каком сервисе предложение политики.
+
+## Юридические документы в снимке
+
+Раздел `documents` пишет фаза A браузерного коллектора ([queue.ts](../src/collectors/browser/legal/queue.ts), [documents.ts](../src/collectors/browser/legal/documents.ts)).
+
+- `documents` — страницы, прочитанные как Impressum или Datenschutzerklärung, `attempts` — каждая попытка их найти (ссылка, промежуточная страница, пробный путь) с исходом.
+- `DocumentPart.place` — `content` или `chrome` по тому же правилу, что и места заголовков (`outsideText` в [document.ts](../src/collectors/browser/in-page/document.ts)); где место меняется, начинается новая часть, поэтому текст подвала без своего заголовка не сливается с разделом содержимого перед ним. В старых снимках поля нет.
+- `candidates` — страницы, прочитанные на данные Impressum, пока Impressum не найден: контактная и промежуточные страницы и стартовая без ссылки на Impressum. Страницы уже открыты, лишних навигаций нет; текст редактируется как у документов. Промежуточная страница, которую заголовки содержимого подтверждают как Impressum, становится документом `foundVia: hop`. Кандидаты — не документы: PRIV-01 и попытки их не читают, а когда Impressum найден, коллектор их убирает. Их читает только LEGAL-01 для варианта `provider-details-without-link`.
 
 ## Словари и сопоставления
 
@@ -161,6 +170,7 @@ dsgvo-check/
 | `cmp/categories.yaml` | имена необходимых категорий согласия | CONSENT-04 |
 | `cmp/probe.yaml` | атрибуты для селектора кнопки; имена контейнеров баннера (id и class), с которыми хватает одного слова баннера | замер баннера (в страницу — аргументом) |
 | `legal/links.yaml` | подписи, ключи и пути юридических ссылок, пробные пути | коллектор, LEGAL-01 |
+| `legal/provider-details.yaml` | слова пяти видов данных Impressum: регистр, USt-IdNr., представители, § 5 DDG, ответственный за содержание; схема — [sections.ts](../src/collectors/browser/legal/sections.ts) | LEGAL-01 |
 | `browser/identifiers.yaml` | имена параметров и cookies с идентификаторами, параметры Consent Mode | рекордер запросов |
 | `browser/challenges.yaml` | сигнатуры WAF и бот-защиты | `detectChallenge` |
 | `browser/dom.yaml` | словарь разметки для кода внутри страницы | `domFactsInPage`, `documentInPage`, `bannerBoxInPage` — аргументом `evaluate` |

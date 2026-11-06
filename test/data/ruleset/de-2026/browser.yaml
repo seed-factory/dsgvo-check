@@ -72,6 +72,7 @@ checks:
     variants:
       document-not-found: { severity: critical, crm: T1_OTHER }
       links-broken: { severity: critical, crm: T1_OTHER }
+      provider-details-without-link: { severity: warning, crm: T1_OTHER }
       link-missing-on-some-pages: { severity: warning, crm: T1_OTHER }
       reachable-via-intermediate: { severity: warning, crm: T1_OTHER }
       footer-covered-by-banner: { severity: warning, crm: T1_OTHER }

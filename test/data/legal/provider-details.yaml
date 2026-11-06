@@ -1,0 +1,88 @@
+# Provider details as an Impressum lists them, by kind. LEGAL-01 counts how many kinds one block of text holds (a
+# section with its subsections, inside the page content or inside the page chrome such as the footer); at least
+# DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS kinds make the block the details of an Impressum. Only the number of kinds
+# counts, never a value, and the completeness of the details is not judged.
+#
+# Matching (src/checks/browser/impressum-details.ts): text and phrases are normalised like the legal-link lexicon
+# (NFKC, lower case, ä→ae ö→oe ü→ue ß→ss, everything that is not a letter or digit becomes a space, so "§ 5 DDG" is
+# "5 ddg"); a phrase matches whole words in a row. List inflected forms as phrases of their own.
+#
+# Schema: src/collectors/browser/legal/sections.ts. Every kind has phrases per language.
+providerDetails:
+  groups:
+    # Register entry: register, court and number.
+    register:
+      de:
+        [
+          Handelsregister,
+          Registergericht,
+          Registernummer,
+          Vereinsregister,
+          Partnerschaftsregister,
+          Genossenschaftsregister,
+          HRB,
+          HRA,
+          VR,
+          Amtsgericht,
+        ]
+      en:
+        [
+          commercial register,
+          company register,
+          register court,
+          registration court,
+          registration number,
+          company number,
+        ]
+    # VAT identification number or tax number.
+    vatId:
+      de:
+        [
+          USt-IdNr,
+          USt-ID,
+          USt-Id-Nr,
+          Ust.-Id.-Nr.,
+          UStIdNr,
+          Umsatzsteuer-ID,
+          Umsatzsteuer-Identifikationsnummer,
+          Umsatzsteueridentifikationsnummer,
+          Steuernummer,
+          Steuer-Nr,
+        ]
+      en: [VAT ID, VAT number, VAT No, VAT identification number, VAT registration number, tax number]
+    # The persons who represent the provider.
+    representative:
+      de:
+        [
+          Geschäftsführer,
+          Geschäftsführerin,
+          Geschäftsführung,
+          Geschäftsführende,
+          vertreten durch,
+          vertretungsberechtigt,
+          vertretungsberechtigter,
+          Vorstand,
+          Inhaber,
+          Inhaberin,
+          Gesellschafter,
+          Gesellschafterin,
+        ]
+      en: [managing director, managing directors, represented by, executive board, board of directors, owner]
+    # The statement under § 5 DDG (formerly § 5 TMG).
+    statement:
+      de: [§ 5 DDG, § 5 TMG, Angaben gemäß § 5, Angaben nach § 5]
+      en: [Section 5 DDG, Section 5 TMG]
+    # The person responsible for the content under § 18 Abs. 2 MStV (formerly § 55 Abs. 2 RStV).
+    responsible:
+      de:
+        [
+          § 18 Abs. 2 MStV,
+          § 18 MStV,
+          § 55 Abs. 2 RStV,
+          § 55 RStV,
+          Verantwortlich für den Inhalt,
+          Verantwortlich für die Inhalte,
+          inhaltlich verantwortlich,
+          redaktionell verantwortlich,
+        ]
+      en: [responsible for the content, responsible for content, Section 18 (2) MStV]

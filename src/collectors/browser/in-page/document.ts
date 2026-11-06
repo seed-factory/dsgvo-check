@@ -15,7 +15,14 @@ export interface RawDocument {
   // menu-like wrapper outside `main` and `article` (`outsideText`); `content` is every other one. Banners and scripts
   // are skipped. Optional so that a reader without it sees no chrome headings.
   headingPlaces?: { chrome: string[]; content: string[] };
-  parts: Array<{ section: string; text: string; origin: 'visible' | 'expandable' | 'hidden-irrelevant' }>;
+  // `place` by the same rule as `headingPlaces`, so footer text after a content section is a part of its own. Optional
+  // like `headingPlaces`.
+  parts: Array<{
+    section: string;
+    text: string;
+    origin: 'visible' | 'expandable' | 'hidden-irrelevant';
+    place?: 'content' | 'chrome';
+  }>;
   expandablesFound: number;
   expandablesWithContent: number;
   /** Collapsed elements outside the document text (navigation, header, footer, aside, consent banner). */
@@ -177,9 +184,10 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
 
   const headings: Array<{ level: number; text: string }> = [];
   const places = out.headingPlaces as { chrome: string[]; content: string[] };
-  let cur: RawDocument['parts'][number] | null = null;
+  type Part = RawDocument['parts'][number];
+  let cur: Part | null = null;
   let total = 0;
-  const push = (text: string, origin: RawDocument['parts'][number]['origin']) => {
+  const push = (text: string, origin: Part['origin'], place: 'content' | 'chrome') => {
     if (total >= arg.maxChars) {
       out.truncated = true;
       return;
@@ -187,11 +195,22 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
     const t = text.slice(0, arg.maxChars - total);
     total += t.length + 1;
     const section = headings.map((h) => h.text).join(' > ');
-    if (cur && cur.section === section && cur.origin === origin) cur.text += ` ${t}`;
+    if (cur && cur.section === section && cur.origin === origin && cur.place === place) cur.text += ` ${t}`;
     else {
-      cur = { section, origin, text: t };
+      cur = { section, origin, place, text: t };
       out.parts.push(cur);
     }
+  };
+  // Text nodes of one element share its place; the walk up the ancestors runs once per element.
+  const placeCache = new Map<any, 'content' | 'chrome'>();
+  const placeOf = (textNode: any): 'content' | 'chrome' => {
+    const key = textNode.parentElement || parentOf(textNode);
+    let place = placeCache.get(key);
+    if (place === undefined) {
+      place = outsideText(textNode) ? 'chrome' : 'content';
+      placeCache.set(key, place);
+    }
+    return place;
   };
   const visibleCache = new Map<any, boolean>();
   const isVisible = (el: any): boolean => {
@@ -225,9 +244,14 @@ export function documentInPage(arg: { maxChars: number; patterns: DocumentPatter
   const walkText = (textNode: any, inherited: 'visible' | 'expandable') => {
     const t = squash(textNode.textContent);
     if (!t) return;
-    if (inherited === 'expandable') push(t, 'expandable');
+    const place = placeOf(textNode);
+    if (inherited === 'expandable') push(t, 'expandable', place);
     else
-      push(t, textNode.parentElement && isVisible(textNode.parentElement) ? 'visible' : 'hidden-irrelevant');
+      push(
+        t,
+        textNode.parentElement && isVisible(textNode.parentElement) ? 'visible' : 'hidden-irrelevant',
+        place,
+      );
   };
   const walk = (node: any, inherited: 'visible' | 'expandable') => {
     for (const child of node.childNodes) {

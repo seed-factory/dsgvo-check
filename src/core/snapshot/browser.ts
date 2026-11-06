@@ -397,6 +397,9 @@ export interface BrowserSection {
 export type DocumentKind = 'impressum' | 'privacy';
 export type DocumentPartOrigin = 'visible' | 'expandable' | 'frame' | 'linked' | 'hidden-irrelevant';
 
+/** `chrome`: text of navigation, aside, page header or footer (the reader's chrome rule); `content`: every other text. */
+export type DocumentPartPlace = 'content' | 'chrome';
+
 export interface DocumentPart {
   id: string;
   /** Heading path, e.g. `5 > Google Analytics`. */
@@ -404,6 +407,8 @@ export interface DocumentPart {
   /** Normalized text (NFC, whitespace-collapsed). Not normalized for matching — derive/checks do that. */
   text: string;
   origin: DocumentPartOrigin;
+  /** Where the text sits; a new part starts where it changes. Absent in snapshots of earlier versions. */
+  place?: DocumentPartPlace;
   sourceUrl: SanitizedUrl;
   frameUrl?: SanitizedUrl;
 }
@@ -451,4 +456,10 @@ export interface DocumentsSection {
     /** `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404). */
     outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved';
   }>;
+  /**
+   * Pages read for Impressum details while no Impressum was found: the contact page, intermediate pages and the start
+   * page without an Impressum link, each recorded like a document of kind `impressum` (same redaction). Not documents:
+   * the policy checks and the attempts ignore them. Absent when the Impressum was found and in older snapshots.
+   */
+  candidates?: DocumentRecord[];
 }
