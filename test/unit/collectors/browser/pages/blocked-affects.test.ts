@@ -64,39 +64,39 @@ describe('the checks the expectations are derived from', () => {
 describe('blockedAffects', () => {
   const MAIL = READS_IMPRESSUM_MAIL;
   it.each<[string, Partial<VisitSpec>, string[]]>([
-    ['impressum', { role: 'impressum' }, ['LEGAL-01', ...MAIL, 'TLS-01']],
-    ['legal hop', { role: 'legal-hop' }, ['LEGAL-01', 'TLS-01']],
+    ['impressum', { role: 'impressum' }, ['LEGAL-01', 'LEGAL-02', ...MAIL, 'TLS-01']],
+    ['legal hop', { role: 'legal-hop' }, ['LEGAL-01', 'LEGAL-02', 'TLS-01']],
     [
       'legal hop searched for the Impressum',
       { role: 'legal-hop', legalKinds: ['impressum'] },
-      ['LEGAL-01', ...MAIL, 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', ...MAIL, 'TLS-01'],
     ],
     [
       'legal hop searched for the privacy policy',
       { role: 'legal-hop', legalKinds: ['privacy'] },
-      ['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01'],
     ],
-    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01']],
+    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01']],
     ['contact', { role: 'contact' }, ['EMBED-02', 'TLS-01']],
     [
       'contact searched for the Impressum',
       { role: 'contact', legalKinds: ['impressum'] },
-      ['EMBED-02', 'LEGAL-01', ...MAIL, 'TLS-01'],
+      ['EMBED-02', 'LEGAL-01', 'LEGAL-02', ...MAIL, 'TLS-01'],
     ],
     [
       'contact searched for the privacy policy',
       { role: 'contact', legalKinds: ['privacy'] },
-      ['EMBED-02', 'LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01'],
+      ['EMBED-02', 'LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01'],
     ],
     [
       'privacy page also read as the Impressum',
       { role: 'privacy', legalKinds: ['impressum', 'privacy'] },
-      ['LEGAL-01', ...MAIL, 'PRIV-01', 'PRIV-02', 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', ...MAIL, 'PRIV-01', 'PRIV-02', 'TLS-01'],
     ],
     [
       'Impressum page also read as the privacy policy',
       { role: 'impressum', legalKinds: ['impressum', 'privacy'] },
-      ['LEGAL-01', ...MAIL, 'PRIV-01', 'PRIV-02', 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', ...MAIL, 'PRIV-01', 'PRIV-02', 'TLS-01'],
     ],
     ['start page of phase A', { role: 'start', phase: 'A' }, []],
     ['start page of phase B', { role: 'start', phase: 'B' }, ['CONSENT-04', 'CONSENT-05']],
@@ -107,20 +107,20 @@ describe('blockedAffects', () => {
     [
       'fallback probe of the privacy path',
       { role: 'fallback', rawUrl: 'https://www.example.test/datenschutz' },
-      ['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01'],
     ],
     [
       'fallback probe of the impressum path',
       { role: 'fallback', rawUrl: 'https://www.example.test/impressum' },
-      ['LEGAL-01', ...MAIL, 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', ...MAIL, 'TLS-01'],
     ],
     [
       'fallback probe of an unparsable URL',
       { role: 'fallback', rawUrl: 'not a url' },
-      ['LEGAL-01', ...MAIL, 'TLS-01'],
+      ['LEGAL-01', 'LEGAL-02', ...MAIL, 'TLS-01'],
     ],
-    ['impressum in phase B', { role: 'impressum', phase: 'B' }, ['LEGAL-01']],
-    ['privacy in phase C', { role: 'privacy', phase: 'C' }, ['LEGAL-01', 'PRIV-01', 'PRIV-02']],
+    ['impressum in phase B', { role: 'impressum', phase: 'B' }, ['LEGAL-01', 'LEGAL-02']],
+    ['privacy in phase C', { role: 'privacy', phase: 'C' }, ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02']],
     ['navigation page in phase B', { role: 'nav', phase: 'B' }, []],
     [
       'contact in phase B, even with a search',
@@ -133,7 +133,13 @@ describe('blockedAffects', () => {
 
   it('returns a fresh list, so callers cannot change the table', () => {
     blockedAffects(spec({ role: 'privacy' })).push('X');
-    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01']);
+    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual([
+      'LEGAL-01',
+      'LEGAL-02',
+      'PRIV-01',
+      'PRIV-02',
+      'TLS-01',
+    ]);
   });
 
   it('names registered checks only, and the phase-A-only checks never outside phase A', () => {

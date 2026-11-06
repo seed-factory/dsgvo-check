@@ -82,6 +82,11 @@ checks:
       reachable-via-intermediate: { severity: warning, crm: T1_OTHER }
       footer-covered-by-banner: { severity: warning, crm: T1_OTHER }
       unresolved: { severity: info, crm: null }
+  LEGAL-02:
+    gating: true
+    variants:
+      # The catalog has no code for a designation of a former legal situation.
+      outdated-reference: { severity: info, crm: null }
   PRIV-01:
     gating: true
     variants:

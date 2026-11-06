@@ -393,6 +393,18 @@ messages:
       {missingCount} von {pageTotal} geprüften Seiten nicht eindeutig aufgelöst werden (z. B. Link auf # oder
       JavaScript ohne erkannten Inhalt). Bitte manuell prüfen.
 
+  # LEGAL-02
+  LEGAL-02.outdated-reference:
+    title: "Bezeichnung einer früheren Rechtslage beobachtet {documentKind, select, impressum {im Impressum} privacy {in der Datenschutzerklärung} other {in Impressum und Datenschutzerklärung}}: {reference}"
+    body: >-
+      Unter {documentUrl}{hasSection, select, true {, Abschnitt „{section}“,} other {}} wurde die Bezeichnung
+      „{reference}“ beobachtet ({mentionCount, plural, one {# Satz} other {# Sätze}}, Wortlaut im Nachweis).
+      {reason, select, replaced {Abgelöst am {since} durch: {replacedBy}.} renamed {Umbenannt am {since} in:
+      {replacedBy}.} invalidated {Der zugehörige Angemessenheitsbeschluss wurde am {since} vom EuGH für ungültig
+      erklärt (Rechtssache {ruling}).} other {Aufgehoben mit Wirkung zum {since}, ersetzt durch: {replacedBy}.}}
+      Sätze, die die Bezeichnung als frühere Regelung oder zusammen mit ihrer Nachfolgeregelung nennen, wurden nicht
+      gezählt. Die rechtliche Bedeutung der Angabe wurde nicht bewertet.
+
   # PRIV-01
   PRIV-01.not-named:
     title: "Nicht gefunden in der Datenschutzerklärung: {service}"
@@ -562,6 +574,14 @@ legalNotes:
     status: court-appellate
     reviewedAt: null
     reviewBy: null
+  LEGAL-02:
+    text: >-
+      § 5 DDG; § 18 MStV; § 25 TDDDG; Art. 13 Abs. 1 lit. f, Art. 45 DSGVO; EuGH C-311/18 (Schrems II). Beobachtet
+      wird nur, ob der Text eine Bezeichnung einer früheren Rechtslage verwendet; ob die Angabe rechtlich erheblich
+      ist, wird nicht bewertet.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
   PRIV-01:
     text: >-
       Art. 13 Abs. 1 lit. e, f DSGVO. Die Angabe von Kategorien von Empfängern kann ausreichen; ob ein Dienst
@@ -673,6 +693,8 @@ actions:
     text: "Sorgen Sie dafür, dass das Banner den Seitenfuß nicht verdeckt, oder verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} auch im Banner."
   LEGAL-01.unresolved:
     text: "Prüfen Sie manuell, ob die Links auf {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} im Browser funktionieren."
+  LEGAL-02.outdated-reference:
+    text: "Prüfen Sie die zitierte Stelle und aktualisieren Sie die Bezeichnung."
   PRIV-01.not-named:
     text: "Nennen Sie {service} mit Zweck und Anbieter in Ihrer Datenschutzerklärung oder entfernen Sie nicht benötigte Dienste von der Seite."
   PRIV-01.category-only:

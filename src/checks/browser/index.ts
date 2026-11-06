@@ -9,6 +9,7 @@ import { embed01 } from './embed-01.ts';
 import { embed02 } from './embed-02.ts';
 import { embed03 } from './embed-03.ts';
 import { legal01 } from './legal-01.ts';
+import { legal02 } from './legal-02.ts';
 import { priv01 } from './priv-01.ts';
 import { priv02 } from './priv-02.ts';
 import { track01 } from './track-01.ts';
@@ -24,6 +25,7 @@ export const browserChecks: readonly AnyCheck[] = [
   embed02,
   embed03,
   legal01,
+  legal02,
   priv01,
   priv02,
 ];

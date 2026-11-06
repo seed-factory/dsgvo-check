@@ -1,7 +1,7 @@
 /**
- * Whether a legal document the collector fetched can be relied on as that document (LEGAL-01, PRIV-01, PRIV-02), and
- * the privacy policy the policy checks read: its HTML documents, their text normalised for word search, and the
- * evidence of what was read.
+ * Whether a legal document the collector fetched can be relied on as that document (LEGAL-01, LEGAL-02, PRIV-01,
+ * PRIV-02), and the privacy policy the policy checks read: its HTML documents, their text normalised for word search,
+ * and the evidence of what was read.
  */
 import type { EvidenceInput } from '../../core/api.ts';
 import type { DocumentPart, DocumentRecord, DocumentsSection } from '../../core/snapshot/browser.ts';

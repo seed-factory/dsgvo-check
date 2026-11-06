@@ -294,6 +294,8 @@ const hedged = (tokens: readonly string[], kind: ClaimKind, claims: PolicyClaims
 const ORDINAL_DIGITS = 3;
 /** A sentence ends at `.`, `!` or `?` (closing quotes may follow) before a capital letter (opening quotes may precede). */
 const BOUNDARY = /([.!?])["“”»’')\]]*(\s+)(?=["„“«‚'([]*[A-ZÄÖÜ])/gu;
+/** Also before a paragraph sign or a digit: a legal text starts sentences with them ("… § 5 DDG. § 7 TMG regelt …"). */
+const LEGAL_BOUNDARY = /([.!?])["“”»’')\]]*(\s+)(?=["„“«‚'([]*[A-ZÄÖÜ§\d])/gu;
 
 /** Whether the word before the dot at `dot` makes it no sentence end: an abbreviation, a letter, an ordinal. */
 function abbreviated(text: string, dot: number, abbreviations: ReadonlySet<string>): boolean {
@@ -308,12 +310,16 @@ function abbreviated(text: string, dot: number, abbreviations: ReadonlySet<strin
 
 /**
  * The sentences of a text, each verbatim (trimmed). Dots inside a URL or a domain are followed by no space, so they end
- * no sentence.
+ * no sentence. `legalStarts`: a sentence may also start with `§` or a digit.
  */
-export function splitSentences(text: string, abbreviations: ReadonlySet<string>): string[] {
+export function splitSentences(
+  text: string,
+  abbreviations: ReadonlySet<string>,
+  opts: { legalStarts?: boolean } = {},
+): string[] {
   const out: string[] = [];
   let start = 0;
-  for (const m of text.matchAll(BOUNDARY)) {
+  for (const m of text.matchAll(opts.legalStarts ? LEGAL_BOUNDARY : BOUNDARY)) {
     const dot = m.index;
     if (abbreviated(text, dot, abbreviations)) continue;
     const end = dot + m[0].length - (m[2] as string).length;

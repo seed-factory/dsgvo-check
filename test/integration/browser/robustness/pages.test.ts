@@ -340,12 +340,12 @@ describe('an inline PDF behind a legal link does not stall phase A', () => {
 describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   const blocked = (run: CollectRun) => run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
 
-  it('a 403 on the fallback probe /impressum: the page, affects LEGAL-01, the mail checks and TLS-01 (no HDR-01)', async () => {
+  it('a 403 on the fallback probe /impressum: the page, affects the legal checks, the mail checks and TLS-01 (no HDR-01)', async () => {
     const run = await collect(server, { url: 'https://probe403.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'MAIL-01', 'MAIL-02', 'MAIL-03', 'TLS-01']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'LEGAL-02', 'MAIL-01', 'MAIL-02', 'MAIL-03', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://probe403.example.test/impressum',
@@ -360,12 +360,12 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
     );
   });
 
-  it('a challenge on the privacy page: affects LEGAL-01, PRIV-01, PRIV-02 and TLS-01', async () => {
+  it('a challenge on the privacy page: affects LEGAL-01, LEGAL-02, PRIV-01, PRIV-02 and TLS-01', async () => {
     const run = await collect(server, { url: 'https://challenge.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://challenge.example.test/datenschutz/',
