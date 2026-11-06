@@ -118,6 +118,29 @@ describe('EMBED-01 external fonts', () => {
     expect(none.outcome?.limitations).toEqual([]);
   });
 
+  it('a page taller than the largest viewport of the reveal is a limitation, in phases A and B only', () => {
+    const capped = {
+      outcome: 'revealed',
+      documentHeightPx: 20_000,
+      viewportHeightPx: 10_000,
+      capped: true,
+    } as const;
+    const tall = (ph: 'A' | 'B' | 'C') => ({ pages: [page(START, 'start', ph, { reveal: capped })] });
+    const limitations = (phases: PhaseRecord[]) => runCheck(embed01, site({ phases })).outcome?.limitations;
+
+    expect(limitations([phase('A', { ...tall('A'), requests: [css('a')] })])).toEqual([
+      'reveal-height-capped',
+    ]);
+    expect(limitations([phase('A', { requests: [css('a')] }), phase('B', tall('B'))])).toEqual([
+      'reveal-height-capped',
+    ]);
+    // Phase C is not read by the check; a revealed page within the limit and an older snapshot are no limitation.
+    expect(limitations([phase('A', { requests: [css('a')] }), phase('C', tall('C'))])).toEqual([]);
+    const whole = { outcome: 'revealed', documentHeightPx: 4_000, viewportHeightPx: 4_000 } as const;
+    const fits = [page(START, 'start', 'A', { reveal: whole })];
+    expect(limitations([phase('A', { pages: fits, requests: [css('a')] })])).toEqual([]);
+  });
+
   it('bot signal → inconclusive', () => {
     const r = runCheck(
       embed01,

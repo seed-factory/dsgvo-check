@@ -160,6 +160,26 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     expect(JSON.stringify(rec.records)).not.toContain('PATH_MARKER_VALUE=');
   });
 
+  it('marks requests after the reveal `afterReveal` until the next navigation, beside the click timing', () => {
+    const { ctx, rec } = setup();
+    rec.beginNavigation('https://www.example.de/kontakt/');
+    ctx.emit('request', request('https://www.example.de/kontakt/', { nav: true, type: 'document' }));
+    rec.markClickAt(performance.now());
+    ctx.emit('request', request('https://www.example.de/app.js', { type: 'script' }));
+    rec.markReveal();
+    ctx.emit('request', request('https://www.google.com/maps/embed?pb=1', { nav: true, type: 'document' }));
+    rec.beginNavigation('https://www.example.de/impressum/');
+    ctx.emit('request', request('https://www.example.de/impressum/', { nav: true, type: 'document' }));
+
+    expect(rec.records.map((r) => [r.url, r.afterReveal, r.afterClick, r.tRef])).toEqual([
+      ['https://www.example.de/kontakt/', undefined, false, 'navigation'],
+      ['https://www.example.de/app.js', undefined, true, 'click'],
+      ['https://www.google.com/maps/embed?pb=[redacted]', true, true, 'click'],
+      ['https://www.example.de/impressum/', undefined, true, 'navigation'],
+    ]);
+    expect(rec.isAfterReveal).toBe(false);
+  });
+
   it('aborted before any response → result `aborted`; other failures → `failed`', () => {
     const { ctx, rec } = setup();
     rec.beginNavigation('https://www.example.de/');

@@ -194,7 +194,8 @@ ui:
     gegen interne Adressen geprüft} ssrf-guard-popups-unchecked {Popups werden nicht gegen interne Adressen geprüft}
     phase-a-prime-not-implemented {Phase A′ ist im Prototyp nicht umgesetzt} phase-m-not-implemented {Phase M ist im
     Prototyp nicht umgesetzt} egress-proxy-not-implemented {Netzausgang über einen Proxy in der Zielregion ist im
-    Prototyp nicht umgesetzt} other {{gap}}}
+    Prototyp nicht umgesetzt} below-fold-not-revealed {Inhalte unterhalb des ersten Bildschirms werden nicht
+    angezeigt} other {{gap}}}
   report.env.requests: Ausgelöste Anfragen
   report.env.settings: Abweichende Einstellungen
   report.env.requestsValue: Navigationen {navigations} · HTTP-Proben {probes} · DNS {dns} · TLS {tls}
@@ -265,7 +266,8 @@ ui:
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
     {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} supplement-not-evaluated
     {Weiterer Datenschutzhinweis der Website nicht ausgewertet (PDF, andere Sprache, unvollständig oder nicht
-    abrufbar)} other {}}
+    abrufbar)} reveal-height-capped {Unterer Teil einer langen Seite nicht angezeigt, die Fensterhöhe ist begrenzt}
+    other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -273,7 +275,8 @@ ui:
     ausgewählt (--checks)} not-required {von keiner ausgewählten Prüfung benötigt} not-run {nicht ausgeführt}
     not-collected {Rohdaten nicht erhoben} collector-skipped {Erhebung der Rohdaten übersprungen} collector-error
     {Fehler bei der Erhebung der Rohdaten ({detail})} timeout {Zeitlimit erreicht} time-budget {Restzeit des Scans
-    nicht ausreichend} request-cap {Erfassungsgrenze für Anfragen erreicht} exception {Fehler bei der Auswertung}
+    nicht ausreichend} request-cap {Erfassungsgrenze für Anfragen erreicht} viewport-not-restored {Fenstergröße nach
+    dem Anzeigen der ganzen Seite nicht wiederhergestellt} exception {Fehler bei der Auswertung}
     start-page-status {Startseite antwortete mit einem Fehlerstatus} start-page-unavailable {Startseite nicht
     abrufbar} start-page-not-evaluable {Startseite nicht auswertbar} no-banner {kein Einwilligungsbanner gefunden}
     cmp-not-observed {Einwilligungsbanner nicht beobachtet} banner-not-recognized {Einwilligungsbanner nicht erkannt}

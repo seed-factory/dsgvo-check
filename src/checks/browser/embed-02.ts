@@ -6,7 +6,14 @@ import { distinctRequestEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName } from './services.ts';
 import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
-import { hasPhaseA, noPhaseAReason, phaseRecord, requestIndex, throttleAware } from './snapshot.ts';
+import {
+  hasPhaseA,
+  noPhaseAReason,
+  phaseRecord,
+  requestIndex,
+  revealCapped,
+  throttleAware,
+} from './snapshot.ts';
 
 const ID = 'EMBED-02';
 /** Strongest integration first: an embedded frame says more than a static image. */
@@ -100,7 +107,10 @@ export const embed02 = defineCheck({
       {
         status: 'completed',
         observations,
-        limitations: contactBlocked ? ['contact-page-not-evaluable'] : [],
+        limitations: [
+          ...(contactBlocked ? ['contact-page-not-evaluable'] : []),
+          ...(revealCapped(browser, ['A', 'B']) ? ['reveal-height-capped'] : []),
+        ],
       },
       ['A', 'B'],
     );

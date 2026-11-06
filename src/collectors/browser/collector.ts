@@ -44,8 +44,14 @@ import {
 import { removeStaleProfiles } from './launch/profile.ts';
 import { type GuardHandle, type GuardVerdict, installSsrfGuard, type LookupError } from './launch/ssrf.ts';
 import { linkDocuments } from './legal/queue.ts';
-import { type BlockedPage, blockedDiagnostic, privateBlockedDiagnostic } from './pages/navigate.ts';
+import {
+  type BlockedPage,
+  blockedDiagnostic,
+  checkThrottleResponses,
+  privateBlockedDiagnostic,
+} from './pages/navigate.ts';
 import type { ControlChoice } from './pages/pages.ts';
+import { revealBelowFold, revealDwellMs } from './pages/reveal.ts';
 import { type VisitResult, valueWithin } from './pages/visit.ts';
 import { phaseB, phaseC } from './phases/consent-phase.ts';
 import { phaseA } from './phases/phase-a.ts';
@@ -74,6 +80,7 @@ const UNFINISHED_PHASE_REASONS: ReadonlySet<string> = new Set([
   'throttled',
   'request-cap',
   'timeout',
+  'viewport-not-restored',
 ]);
 
 const byPhaseOrder = (a: { phase: BrowserPhase }, b: { phase: BrowserPhase }): number =>
@@ -105,6 +112,11 @@ export interface Session {
   cmpFacts: CmpPhaseFacts;
   t0: number;
   sealing?: Promise<void>;
+  /**
+   * The first-screen viewport could not be set again after a reveal: the phase visits no further page, whose first
+   * screen would be measured in the enlarged one.
+   */
+  viewportLost?: true;
 }
 
 export interface AVisit {
@@ -283,7 +295,8 @@ export class BrowserCollection {
           p.status === 'failed' ||
           p.reason === 'time-budget' ||
           p.reason === 'request-cap' ||
-          p.reason === 'throttled',
+          p.reason === 'throttled' ||
+          p.reason === 'viewport-not-restored',
       )
     );
   }
@@ -595,6 +608,56 @@ export class BrowserCollection {
     return facts;
   }
 
+  /**
+   * Shows the content below the first screen of the page `r` that is still open: after its first-screen facts, before
+   * the next navigation or click. Cookies and storage that appear meanwhile are taken for this page.
+   */
+  async reveal(s: Session, r: VisitResult): Promise<void> {
+    const dwellMs = revealDwellMs(this.ctx.config.browser.revealDwellMs, this.timing.phases[s.phase]);
+    if (dwellMs === 0 || r.error || !r.visit.evaluable || r.visit.dom === null || s.viewportLost) return;
+    // Like a navigation: no new requests to a throttling host, past the request limit or into the deadline reserve.
+    if (this.throttled || this.counter.truncated || !this.timeLeft()) return;
+
+    const pageUrl = r.visit.finalUrl;
+    const out = await revealBelowFold({
+      page: s.page,
+      recorder: s.recorder,
+      viewport: VIEWPORT,
+      dwellMs,
+      maxHeightPx: this.ctx.config.browser.revealMaxHeightPx,
+      quietWindowMs: this.timing.quietWindowMs,
+      maxInflight: this.timing.maxInflight,
+      callTimeoutMs: this.timing.cmpCallTimeoutMs,
+      signal: this.ctx.signal,
+    });
+    r.visit.reveal = out.facts;
+    if (out.error)
+      s.record.errors.push({ code: 'reveal-failed', message: out.error, phase: s.phase, url: pageUrl });
+    if (!out.restored) {
+      s.viewportLost = true;
+      s.record.status = 'partial';
+      s.record.reason = 'viewport-not-restored';
+    }
+    if (out.facts.outcome !== 'revealed') return;
+
+    // Bounded like the page's own wait (`visitPage`): a handler still running keeps its own budget and is not
+    // abandoned, so a late `Set-Cookie` of what the reveal loaded is still recorded.
+    await valueWithin(s.recorder.flush({ signal: this.ctx.signal }), FLUSH_BUDGET_MS, this.ctx.signal, true);
+    const values = await s.jar.snapshot(s.browser.context, s.page, this.moment(s, pageUrl));
+    s.recorder.correlate(values);
+    values.length = 0;
+    // What the larger viewport loaded counts like the page's own requests: a host that throttled them gets no next
+    // navigation.
+    checkThrottleResponses(this, s, r.visit.url);
+  }
+
+  /** A phase that shows only the first screen of its pages. */
+  private revealOff(): boolean {
+    return this.deps.phases.some(
+      (p) => revealDwellMs(this.ctx.config.browser.revealDwellMs, this.timing.phases[p]) === 0,
+    );
+  }
+
   /** Reason of the first unfinished phase. */
   private partialReason(): string | undefined {
     const phases = [...this.phases].sort(byPhaseOrder);
@@ -609,6 +672,7 @@ export class BrowserCollection {
   private result(status: 'ok' | 'partial' | 'error'): CollectorResult<BrowserSections> {
     if (this.guard.enabled) this.knownGaps.add('ssrf-guard-subresources-unchecked');
     if (this.guardScope === 'page') this.knownGaps.add('ssrf-guard-popups-unchecked');
+    if (this.revealOff()) this.knownGaps.add('below-fold-not-revealed');
 
     const diagnostics = [
       ...this.diagnostics,

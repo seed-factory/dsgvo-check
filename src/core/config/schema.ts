@@ -107,6 +107,18 @@ const browser = z.strictObject({
     0,
     3,
   ),
+  revealDwellMs: int(
+    3_000,
+    `Longest stay on a page after its viewport was enlarged to the document height, so that maps, videos and other content below the first screen load as they do for a visitor who scrolls; no scroll or input event is sent, and the first screen was measured before. Capped by the hard cap of the phase (${envName('browser', 'phaseAHardCapMs')} and the others). 0 leaves the viewport at the first screen.`,
+    0,
+    60_000,
+  ),
+  revealMaxHeightPx: int(
+    10_000,
+    `Tallest viewport, in CSS pixels, for showing the content below the first screen (${envName('browser', 'revealDwellMs')}); what lies further down stays unseen and the embed checks name the limitation.`,
+    1_000,
+    30_000,
+  ),
   screenshotMaxBytes: int(
     204_800,
     `Largest banner screenshot kept. The HTML report embeds images up to ${envName('report', 'screenshotEmbedMaxBytes')}.`,

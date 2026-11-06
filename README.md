@@ -200,6 +200,16 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Dafür gibt es keine zusätzlichen Seitenaufrufe.
 - Jede Seite bleibt mindestens 6 s (Phase A) bzw. 4 s (B und C) offen, bis der Netzverkehr ruhig ist; Obergrenzen:
   20 s bzw. 12 s.
+- Erst nach den Feststellungen zum ersten Bildschirm (Banner, Screenshot, Links, Rechtstexte) vergrößert der Scanner
+  das Fenster auf die Höhe der Seite, höchstens auf 10 000 Pixel (`DSGVO_CHECK_BROWSER_REVEAL_MAX_HEIGHT_PX`), wartet
+  bis zu 3 s, bis der Netzverkehr ruhig ist (`DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS`, 0 schaltet das ab), und stellt das
+  Fenster vor der nächsten Navigation zurück. So laden Karten, Videos und andere Inhalte unterhalb des ersten
+  Bildschirms wie bei einem Besucher, der nach unten scrollt. Gescrollt wird nicht: Die Seite erhält kein Scroll-,
+  Maus- oder Tastaturereignis, Phase A bleibt ohne Interaktion, und ein Banner, das Scrollen als Einwilligung wertet,
+  wird nicht ausgelöst. In B und C geschieht das auf der Startseite erst nach dem Klick (in B auf der neu geladenen
+  Seite) und danach auf den Kontrollseiten. Seiten, die ins Fenster passen, sich nicht scrollen lassen (etwa unter
+  einem blockierenden Banner) oder selbst nach unten gescrollt haben, bleiben, wie sie sind. Anfragen danach tragen in
+  `report.json` `afterReveal: true`.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
@@ -352,8 +362,8 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 Der Scanner läuft ohne jede Konfiguration: Jeder Wert hat einen Standard. Schwellen, Zeitlimits und Grenzen lassen
 sich zusätzlich über Umgebungsvariablen der Form `DSGVO_CHECK_<ABSCHNITT>_<NAME>` setzen, etwa
 `DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS`, `DSGVO_CHECK_HTTP_MAX_REDIRECTS` oder `DSGVO_CHECK_TLS_EXPIRING_DAYS`. Die
-Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage). Eine Datei `.env` ist nicht nötig; liegt
-im aktuellen Verzeichnis eine, wird sie gelesen.
+Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel). Eine Datei `.env` ist
+nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
 
 - **Vorrang:** Flag, Umgebungsvariable, `.env`, Standardwert. Eine bereits gesetzte Umgebungsvariable wird von `.env`
   nicht überschrieben.
@@ -599,6 +609,11 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   oder gar nicht vorliegen, ergeben die Einschränkung `supplement-not-evaluated` (Status `partial`); die
   Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
   höchstens `medium`.
+- **Unterhalb des ersten Bildschirms** zeigt der Scanner eine Seite nur bis 10 000 Pixel Höhe: Was darunter liegt,
+  bleibt ungesehen, und EMBED-01 und EMBED-02 nennen die Einschränkung `reveal-height-capped`. Inhalte, die erst auf
+  ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit
+  `DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS=0` bleibt es beim ersten Bildschirm; der Bericht nennt dann die
+  Beobachtungslücke `below-fold-not-revealed`.
 - **Nur wenige Seiten.** Phase A sieht die Startseite, die Rechtstexte, die Kontaktseite und so viele weitere Seiten,
   wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
   Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu

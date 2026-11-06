@@ -216,6 +216,8 @@ export class NetworkRecorder implements ActivitySource {
   private refAt = performance.now();
   private tRef: 'navigation' | 'click' = 'navigation';
   private afterClick = false;
+  /** Set by `markReveal` for the rest of the current navigation. */
+  private afterReveal = false;
   private lastStart: number | null = null;
   private navSeq = 0;
   private navId = '';
@@ -276,8 +278,19 @@ export class NetworkRecorder implements ActivitySource {
     this.navStart = this.records.length;
     this.refAt = performance.now();
     this.tRef = 'navigation';
+    this.afterReveal = false;
     this.navId = `${this.phase}-n${++this.navSeq}`;
     return this.navId;
+  }
+
+  // Requests started from now until the next navigation are `afterReveal`: the viewport now shows the content below
+  // the first screen. Their timing against the click is unchanged.
+  markReveal(): void {
+    this.afterReveal = true;
+  }
+
+  get isAfterReveal(): boolean {
+    return this.afterReveal;
   }
 
   /** Rebinds the navigation to its final URL (HTTP, JS or meta redirect), the one the other phases use. */
@@ -438,6 +451,7 @@ export class NetworkRecorder implements ActivitySource {
       ...(frameId ? { frameId } : {}),
       ...(parentRequestId ? { parentRequestId } : {}),
       afterClick: this.afterClick,
+      ...(this.afterReveal ? { afterReveal: true as const } : {}),
       state: 'attempted',
       delivery: 'attempted',
       result: { kind: 'none' },

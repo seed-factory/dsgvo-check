@@ -46,6 +46,7 @@ export interface EvidenceTools {
  */
 const INTERNAL_FIELDS = new Set([
   'beforeClick',
+  'afterReveal',
   'tMs',
   'navigationId',
   'actionId',
@@ -64,6 +65,7 @@ const OCCURRENCE_FIELDS = new Set([
   'page',
   'phase',
   'beforeClick',
+  'afterReveal',
   'tMs',
   'navigationId',
   'frameId',

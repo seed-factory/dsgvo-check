@@ -1,6 +1,6 @@
 // Phase A: the start page (one repeat of a failed first navigation, fatal start-page conditions), then up to `maxPages`
 // pages without interaction (legal documents, contact page, extras from links or the sitemap) and the choice of control
-// pages for B and C.
+// pages for B and C. Each page shows its content below the first screen last, before the next navigation.
 
 import { TOOL_NAME } from '../../../core/runtime/version.ts';
 import type { FatalSignal } from '../../../core/snapshot/collector.ts';
@@ -81,6 +81,7 @@ async function phaseABody(c: BrowserCollection, s: Session): Promise<PhaseAOutco
   const queue = queueSelection(c, selection, start, visited, scope);
   // The start page is still open: without an Impressum link it is read for Impressum details before the queue leaves it.
   if (selection.impressum.status === 'none') await readImpressumDetails(c, s, start, false);
+  await c.reveal(s, start);
 
   const order = await visitQueue(c, s, queue, visited, scope);
   await probeFallbacks(c, s, origin, visited, queue.found, order);
@@ -318,13 +319,15 @@ async function visitQueue(
 
     await recordQueuedDocuments(c, s, queue, item, r);
     if (item.choice.role === 'contact' || item.hop) await lookForLegalLinks(c, s, queue, item, r, scope);
+    // Last on the page: the documents were read from the page as a visitor first sees it.
+    await c.reveal(s, r);
   }
   return order;
 }
 
 /** A limit that ends the queue; the phase record says why it is incomplete. */
 function queueCut(c: BrowserCollection, s: Session): boolean {
-  if (c.throttled) return true;
+  if (c.throttled || s.viewportLost) return true;
   if (!c.timeLeft()) {
     c.cutByTime(s.record);
     return true;
@@ -418,7 +421,7 @@ async function probeFallbacks(
   order: number,
 ): Promise<void> {
   for (const kind of LEGAL_KINDS) {
-    if (found[kind] || c.throttled) continue;
+    if (found[kind] || c.throttled || s.viewportLost) continue;
     if (!c.timeLeft()) {
       // A fallback probe that was not made leaves phase A unfinished, like a cut queue.
       if (s.record.status === 'completed') c.cutByTime(s.record);
@@ -448,6 +451,7 @@ async function probeFallbacks(
     await c.afterPage(s, r, 'first-screen');
     c.aVisits.push({ raw, result: r, source: 'fallback' });
     await recordDocument(c, s, r, kind, sanitizeRequestUrl(raw), 'fallback');
+    await c.reveal(s, r);
   }
 }
 

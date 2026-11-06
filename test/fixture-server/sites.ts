@@ -108,6 +108,25 @@ export const SITES: Record<string, SiteConfig> = {
     routes: [gaCollect],
     fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
   },
+  // A map far below the first screen of Kontakt whose frame loads a Google font, a page taller than the largest reveal,
+  // and a stub banner that takes scrolling as consent.
+  'browser/lazy-embed': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.google.com': 'google',
+      'fonts.gstatic.com': 'gstatic',
+      'www.googletagmanager.com': 'gtm',
+    },
+    routes: [gaCollect],
+    fileHeaders: {
+      'google/maps/embed': html,
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+    },
+  },
   'browser/maps': {
     hosts: { 'www.example.test': 'www', 'www.google.com': 'google' },
     fileHeaders: { 'google/maps/embed': html },

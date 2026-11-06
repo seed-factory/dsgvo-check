@@ -97,6 +97,10 @@ const RequestEvidence = z.object({
   url: z.string(),
   method: z.string(),
   resourceType: z.string(),
+  afterReveal: z.boolean().optional().meta({
+    description:
+      'Started after the viewport was enlarged to the document height, still without scrolling: content below the first screen',
+  }),
   initiator: z.object({ type: z.string().optional(), url: z.string().optional() }).optional(),
   ...observationIds,
   frameId: z.string().optional(),

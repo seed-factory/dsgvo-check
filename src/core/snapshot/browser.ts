@@ -163,6 +163,30 @@ export interface NavigationFacts {
   serverIp?: string | null;
 }
 
+/**
+ * After the first-screen facts the viewport was set to the document height (no scroll or input event), so that content
+ * below the first screen loads as it does for a visitor who scrolls down.
+ * - `revealed`: the viewport was enlarged and restored afterwards.
+ * - `fits-viewport`: nothing of the document lies below the viewport; it was not resized.
+ * - `scroll-locked`: the page could not be scrolled (overflow hidden on the root, as under a blocking banner), so a
+ *   visitor could not reach the rest either; it was not resized.
+ * - `scrolled`: the page had scrolled itself away from the top; a resize could move it back, which is a scroll event,
+ *   so it was not resized.
+ * - `failed`: the height could not be read or the viewport not set; the phase errors say why.
+ */
+export interface RevealFacts {
+  outcome: 'revealed' | 'fits-viewport' | 'scroll-locked' | 'scrolled' | 'failed';
+  /** Height of the document when it was measured, CSS px; null when it could not be read. */
+  documentHeightPx: number | null;
+  /** Height the viewport was set to: the document height, at most `browser.revealMaxHeightPx`. */
+  viewportHeightPx?: number;
+  /** The document was taller than the largest viewport allowed: its lower part stayed below it. */
+  capped?: true;
+  /** Quiet window reached before the end of the stay. */
+  quietReached?: boolean;
+  dwellMs?: RelativeMs;
+}
+
 export interface PageVisit {
   /** Requested URL (sanitized). */
   url: SanitizedUrl;
@@ -185,6 +209,8 @@ export interface PageVisit {
   reload?: boolean;
   notEvaluableReason?: string;
   dom: DomFacts | null;
+  /** Absent when the step did not run: switched off, page not evaluable, or a snapshot of an earlier version. */
+  reveal?: RevealFacts;
 }
 
 export type RequestState =
@@ -227,6 +253,8 @@ export interface RequestRecord {
   parserVersion?: string;
   observationSource?: 'playwright' | 'cdp' | 'proxy-log';
   afterClick: boolean;
+  /** Started after the viewport was enlarged for the content below the first screen (`PageVisit.reveal`). */
+  afterReveal?: true;
   state: RequestState;
   status?: number;
   failureText?: string;

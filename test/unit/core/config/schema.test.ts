@@ -42,6 +42,9 @@ describe('built-in defaults', () => {
     ['browser', 'maxControlPages', 2],
     // One further privacy notice per scan (a notice for course participants beside the policy).
     ['browser', 'maxSupplementaryPolicies', 1],
+    // Content below the first screen is shown for up to 3 s per page in a viewport of at most 10 000 px.
+    ['browser', 'revealDwellMs', 3_000],
+    ['browser', 'revealMaxHeightPx', 10_000],
     ['http', 'minIntervalMs', 500],
     ['http', 'connectTimeoutMs', 5_000],
     ['http', 'headersTimeoutMs', 10_000],
@@ -145,9 +148,9 @@ describe('field list', () => {
     'impressumMinGroups',
     'policyClaimMinContexts',
   ]);
-  it('names the unit of every number: _MS, _BYTES, _DAYS, a count or a share', () => {
+  it('names the unit of every number: _MS, _BYTES, _DAYS, _PX, a count or a share', () => {
     for (const f of fields.filter((x) => x.kind === 'int' || x.kind === 'number')) {
-      const ok = /(Ms|Bytes|Days|Share|Ratio)$/.test(f.key) || COUNTS.has(f.key);
+      const ok = /(Ms|Bytes|Days|Px|Share|Ratio)$/.test(f.key) || COUNTS.has(f.key);
       expect(ok, `${f.section}.${f.key}`).toBe(true);
     }
   });
@@ -207,6 +210,11 @@ describe('validation', () => {
     [{ browser: { maxSupplementaryPolicies: -1 } }],
     [{ browser: { maxSupplementaryPolicies: 4 } }],
     [{ browser: { maxSupplementaryPolicies: 1.5 } }],
+    [{ browser: { revealDwellMs: -1 } }],
+    [{ browser: { revealDwellMs: 60_001 } }],
+    [{ browser: { revealMaxHeightPx: 999 } }],
+    [{ browser: { revealMaxHeightPx: 30_001 } }],
+    [{ browser: { revealMaxHeightPx: 1_500.5 } }],
     [{ http: { maxRedirects: 21 } }],
     [{ dns: { servers: ['not a host'] } }],
     [{ dns: { queryBudget: 201 } }],
@@ -263,6 +271,24 @@ describe('validation', () => {
     );
     const { config } = resolveConfig({ env: { DSGVO_CHECK_BROWSER_MAX_SUPPLEMENTARY_POLICIES: '0' } });
     expect(config.browser.maxSupplementaryPolicies).toBe(0);
+  });
+
+  it('accepts the content below the first screen switched off or at its bounds, read from its variables', () => {
+    for (const [revealDwellMs, revealMaxHeightPx] of [
+      [0, 1_000],
+      [60_000, 30_000],
+    ] as const) {
+      expect(ConfigSchema.parse({ browser: { revealDwellMs, revealMaxHeightPx } }).browser).toMatchObject({
+        revealDwellMs,
+        revealMaxHeightPx,
+      });
+    }
+    expect(envName('browser', 'revealDwellMs')).toBe('DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS');
+    expect(envName('browser', 'revealMaxHeightPx')).toBe('DSGVO_CHECK_BROWSER_REVEAL_MAX_HEIGHT_PX');
+    const { config } = resolveConfig({
+      env: { DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS: '0', DSGVO_CHECK_BROWSER_REVEAL_MAX_HEIGHT_PX: '4000' },
+    });
+    expect(config.browser).toMatchObject({ revealDwellMs: 0, revealMaxHeightPx: 4_000 });
   });
 
   it('accepts DNS servers as host, host:port and bracketed IPv6', () => {

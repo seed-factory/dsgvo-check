@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fake map</title>
+  <style>
+    @font-face { font-family: 'Roboto'; src: url(https://fonts.gstatic.com/s/roboto/v30/fixture-roboto.woff2) format('woff2'); }
+    body { font-family: 'Roboto', sans-serif; }
+  </style>
+</head>
+<body><p>Fake map tile</p></body>
+</html>

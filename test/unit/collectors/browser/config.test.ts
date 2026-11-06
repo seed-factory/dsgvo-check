@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { browserTiming, DEFAULT_TIMING } from '../../../../src/collectors/browser/config.ts';
+import { revealDwellMs } from '../../../../src/collectors/browser/pages/reveal.ts';
 import { parseConfigInput } from '../../../../src/core/config/load.ts';
+import { DEFAULT_CONFIG } from '../../../../src/core/config/schema.ts';
 
 describe('browser timing from the settings', () => {
   it('the built-in settings give the timing the collector always had', () => {
@@ -55,5 +57,22 @@ describe('browser timing from the settings', () => {
       retryDelayMs: 8_000,
       deadlineReserveMs: 9,
     });
+  });
+});
+
+describe('stay on the content below the first screen', () => {
+  it('lasts up to 3 s by default in every phase, within its hard cap', () => {
+    for (const p of ['A', 'B', 'C'] as const) {
+      expect(revealDwellMs(DEFAULT_CONFIG.browser.revealDwellMs, DEFAULT_TIMING.phases[p])).toBe(3_000);
+    }
+    expect(DEFAULT_CONFIG.browser.revealMaxHeightPx).toBe(10_000);
+  });
+
+  it('never outlasts the hard cap of the phase, and 0 switches it off', () => {
+    const phase = { minDwellMs: 400, hardCapMs: 4_000 };
+    expect(revealDwellMs(60_000, phase)).toBe(4_000);
+    expect(revealDwellMs(1_500, phase)).toBe(1_500);
+    expect(revealDwellMs(0, phase)).toBe(0);
+    expect(revealDwellMs(3_000, { minDwellMs: 0, hardCapMs: 0 })).toBe(0);
   });
 });
