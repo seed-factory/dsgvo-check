@@ -25,6 +25,7 @@ export { type ClassifyOptions, classifyFirstLayer, isBlocking } from './classify
 export { confidenceFromSignals, signalKinds, stateVerdict } from './detection.ts';
 export { classifyButton, classifyLabel, lexiconFromData, normalizeLabel } from './lexicon.ts';
 export { loadLexicon } from './lexicon-file.ts';
+export { chooseSettingsOpener, chooseSettingsSave } from './settings-layer.ts';
 export type * from './types.ts';
 
 /** The catalog's CMPs in its order, then the shop and site systems; the order also breaks recognition ties. */

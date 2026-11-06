@@ -251,9 +251,10 @@ function expectBannerRecognized({ report, files }: { report: FullReport; files: 
 
 const firstScreen = (r: ScanResult, phase: 'A' | 'B' | 'C') =>
   r.snapshot?.cmp?.phases.find((p) => p.phase === phase)?.facts.find((f) => f.moment === 'first-screen');
+const cmpPhase = (r: ScanResult, phase: 'B' | 'C') => r.snapshot?.cmp?.phases.find((p) => p.phase === phase);
 
 describe('full browser pipeline on the Wix simulator', () => {
-  describe('first layer with "Cookie-Einstellungen", "Zustimmen" and × only', () => {
+  describe('first layer with "Cookie-Einstellungen", "Zustimmen" and × only: the reject is saved in the settings layer', () => {
     let scanned: Awaited<ReturnType<typeof run>>;
 
     beforeAll(async () => {
@@ -272,11 +273,12 @@ describe('full browser pipeline on the Wix simulator', () => {
       expect(report.findings.filter((f) => f.checkId === 'CONSENT-04')).toMatchObject([
         { variant: 'nonblocking-no-reject', severity: 'warning', confidence: 'high', params: { cmp: 'wix' } },
       ]);
+      expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
       expect(r.exitCode).toBe(0);
     });
 
-    it('clicks no reject: the × is measured as close and never taken for one, so CONSENT-05 stays open', () => {
-      const { r, report } = scanned;
+    it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Speichern"', () => {
+      const { r } = scanned;
 
       const kinds = firstScreen(r, 'B')?.firstLayer.buttons.map((b) => [b.name, b.kind]);
       expect(kinds).toEqual([
@@ -289,15 +291,32 @@ describe('full browser pipeline on the Wix simulator', () => {
         action: 'reject',
         target: null,
         reason: 'no-unambiguous-reject-at-first-layer',
+        settings: {
+          open: { cmpId: 'wix', name: 'Cookie-Einstellungen' },
+          save: { cmpId: 'wix', name: 'Speichern' },
+        },
       });
-      expect(r.snapshot?.cmp?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
+      expect(r.snapshot?.plan.browser?.click?.B?.settings?.reason).toBeUndefined();
+      const b = cmpPhase(r, 'B');
+      expect(b?.click).toMatchObject({
         action: 'reject',
-        clicked: false,
-        button: null,
+        clicked: true,
+        path: 'settings',
+        button: { name: 'Speichern' },
       });
-      expect(check(report, 'CONSENT-05')).toMatchObject({
-        status: 'inconclusive',
-        reason: 'no-reject-click',
+      expect(b?.settings).toMatchObject({
+        opened: true,
+        groups: [
+          { checked: true, disabled: true },
+          { checked: false, disabled: false },
+          { checked: false, disabled: false },
+          { checked: false, disabled: false },
+        ],
+      });
+      expect(r.snapshot?.browser?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
+        action: 'reject',
+        name: 'Speichern',
+        success: true,
       });
       expect(r.snapshot?.plan.browser?.click?.C).toMatchObject({
         action: 'accept',
@@ -305,9 +324,131 @@ describe('full browser pipeline on the Wix simulator', () => {
       });
     });
 
-    it('names the banner recognised in the overview and every text, never missing', () => {
+    it('confirms the save as the reject: every policy category denied by it and stored after the reload; CONSENT-05 rests on it', () => {
+      const { r, report } = scanned;
+      const b = cmpPhase(r, 'B');
+
+      expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
+      expect(b?.verify?.method).toContain('api:all-denied');
+      const denied = { functional: 'denied', analytics: 'denied', advertising: 'denied' };
+      expect(b?.verify?.stateAfter).toMatchObject([{ ready: 'ready', origin: 'action', categories: denied }]);
+      expect(['no-reject-click', 'reject-not-confirmed', 'no-banner']).not.toContain(
+        check(report, 'CONSENT-05')?.reason,
+      );
+      expect(ids(report).filter((x) => x.startsWith('CONSENT-05'))).toEqual([]);
+    });
+
+    it('what loads while the settings are open is before the reject: the settings stylesheet has no click, the reload has', () => {
+      const { r } = scanned;
+      const derived = r.snapshot?.derived?.requests ?? [];
+      const b = r.snapshot?.browser?.phases.find((p) => p.phase === 'B');
+      const timing = (id: string) => derived.find((c) => c.requestId === id)?.timing;
+
+      const stylesheet = b?.requests.filter((q) => q.url.endsWith('/settings.css')) ?? [];
+      expect(stylesheet).toHaveLength(1);
+      expect(stylesheet[0]).toMatchObject({ afterClick: false });
+      expect(stylesheet[0]?.actionId).toBeUndefined();
+      expect(timing(stylesheet[0]!.id)).toBe('before-interaction');
+
+      const reload = b?.requests.filter((q) => q.isNavigation && q.isMainFrame && q.afterClick) ?? [];
+      expect(reload.length).toBeGreaterThan(0);
+      expect(reload.map((q) => timing(q.id))).toEqual(reload.map(() => 'after-reject'));
+    });
+
+    it('the coverage names the reject through the settings, and the banner recognised in every text', () => {
+      const { report, files } = scanned;
+
+      expect(report.scan.coverage?.consentActions?.[0]).toEqual({
+        action: 'reject',
+        clicked: true,
+        verified: true,
+        path: 'settings',
+      });
+      expect(files).toContain('Ablehnen über die Einstellungen ausgelöst und bestätigt');
       expectBannerRecognized(scanned);
     });
+
+    // The saved choice lives in the value of the platform cookie; only its name may be recorded.
+    it('no value of the cookie the save wrote reaches the snapshot or a report', () => {
+      const { r, files } = scanned;
+      const snapshot = JSON.stringify(r.snapshot);
+
+      expect(r.snapshot?.browser?.phases.flatMap((p) => p.cookies).map((c) => c.name)).toContain(
+        'consent-policy',
+      );
+      for (const text of [snapshot, files]) expect(text).not.toMatch(/dt3|%22ess%22|"anl"/);
+    });
+  });
+
+  it('the Google tag and a map after the confirmed save in the settings: CONSENT-05 and EMBED-02 name the settings path, CONSENT-04 stays first-layer', async () => {
+    const { r, report, files } = await run('www.wix-nodecline-leaky-shop.test');
+
+    expect(cmpPhase(r, 'B')?.click).toMatchObject({ clicked: true, path: 'settings' });
+    expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
+    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
+      variant: 'tracking-after-reject',
+      severity: 'critical',
+      serviceId: 'google-analytics',
+      params: { rejectPath: 'settings' },
+    });
+    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
+      'nonblocking-no-reject',
+    ]);
+    expect(report.findings.find((f) => f.checkId === 'EMBED-02')).toMatchObject({
+      variant: 'maps-loaded',
+      params: { moment: 'before-and-after-reject', rejectConfirmed: true, rejectPath: 'settings' },
+    });
+    expect(files).toContain(
+      'Externer Kartendienst geladen, auch nach bestätigter Ablehnung über die Einstellungen',
+    );
+    expect(files).toContain('nach bestätigter Ablehnung über die Einstellungen');
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('counterexample: an optional group already on in the settings → nothing is saved, CONSENT-05 says why', async () => {
+    const scanned = await run('www.wix-preselected-shop.test');
+    const { r, report } = scanned;
+
+    expect(r.snapshot?.plan.browser?.click?.B).toMatchObject({
+      target: null,
+      settings: { open: { name: 'Cookie-Einstellungen' }, save: null, reason: 'preselected-groups' },
+    });
+    // Nothing was pressed in the settings: the click record is the first layer's, without a target.
+    expect(cmpPhase(r, 'B')?.click).toEqual({
+      action: 'reject',
+      clicked: false,
+      button: null,
+      error: 'no-unambiguous-reject',
+    });
+    expect(cmpPhase(r, 'B')?.verify).toBeUndefined();
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'no-reject-click',
+      limitations: ['preselected-groups'],
+    });
+    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
+      'nonblocking-no-reject',
+    ]);
+    expect(scanned.files).toContain('optionale Kategorien dort bereits eingeschaltet');
+    expectBannerRecognized(scanned);
+  });
+
+  it('a save that stores no answer: clicked but not confirmed, CONSENT-05 reject-not-confirmed, CONSENT-04 unchanged', async () => {
+    const scanned = await run('www.wix-unsaved-shop.test');
+    const { r, report, files } = scanned;
+
+    expect(cmpPhase(r, 'B')?.click).toMatchObject({ clicked: true, path: 'settings' });
+    expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: false });
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
+      'nonblocking-no-reject',
+    ]);
+    expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
+    expect(files).toContain('Ablehnen über die Einstellungen ausgelöst, nicht bestätigt');
+    expectBannerRecognized(scanned);
   });
 
   describe('visible "Alle ablehnen", confirmed by the platform policy', () => {
@@ -412,7 +553,6 @@ function expectNoShopwareValues({ r, files }: { r: ScanResult; files: string }):
   }
 }
 
-const cmpPhase = (r: ScanResult, phase: 'B' | 'C') => r.snapshot?.cmp?.phases.find((p) => p.phase === phase);
 const findingsOf = (report: FullReport, checkId: string) =>
   report.findings
     .filter((f) => f.checkId === checkId)

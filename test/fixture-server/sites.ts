@@ -335,14 +335,20 @@ export const SITES: Record<string, SiteConfig> = {
       { host: 'www.googleadservices.com', path: '^/pagead/', pathRegex: true, status: 204 },
     ],
   },
-  // A small Wix site on the Wix banner simulator of cmp/wix, which serves its script and tracker.
+  // A small Wix site on the Wix banner simulator of cmp/wix, which serves its script and tracker. The shops without a
+  // first-layer reject differ in their settings layer; the leaky one also loads the Google tag and, on Kontakt, a map.
   'pipeline/wix-shop': {
     hosts: {
       'www.wix-shop.test': 'decline',
       'www.wix-nodecline-shop.test': 'no-decline',
       'www.wix-unreadable-shop.test': 'policy-throws',
       'www.wix-leaky-shop.test': 'leaky',
+      'www.wix-nodecline-leaky-shop.test': 'no-decline-leaky',
+      'www.wix-preselected-shop.test': 'no-decline-preselected',
+      'www.wix-unsaved-shop.test': 'no-decline-unsaved',
+      'www.google.com': 'google',
     },
+    fileHeaders: { 'google/maps/embed': html },
   },
   // Shops on the cookieman simulator of cmp/cookieman with the start page on the bare domain and every other page on
   // www: one sets the answer cookie for the start host only, the other for the whole domain.

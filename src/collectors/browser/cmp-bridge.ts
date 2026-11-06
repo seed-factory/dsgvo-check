@@ -9,9 +9,11 @@ import type {
   CmpButton,
   CmpDetection,
   CmpFacts,
+  SettingsChoice,
+  SettingsLayerFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
-import type { ClickPlan } from '../../core/snapshot/browser.ts';
+import type { ClickPlan, ClickPlanTarget } from '../../core/snapshot/browser.ts';
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
 import { sanitizeRequestUrl } from './recording/features.ts';
 import { ERROR_MESSAGE_MAX_CHARS, errorText, redactFreeText, withTimeout } from './util.ts';
@@ -30,6 +32,10 @@ export interface CmpApi {
     phase: BrowserPhase,
   ): Promise<CmpFacts>;
   chooseTargets?(facts: CmpFacts, options: ClassifyOptions): Promise<ClickTargets | null>;
+  /** Core's settings control for a first layer without reject; null when the first layer does not qualify. */
+  chooseSettingsOpener?(facts: CmpFacts, options: ClassifyOptions): Promise<SettingsChoice | null>;
+  /** Core's save control of the opened settings layer, or why there is none. */
+  chooseSettingsSave?(layer: SettingsLayerFacts): Promise<SettingsChoice>;
 }
 
 /** Type only: signature drift is a compile error, not a runtime surprise. */
@@ -51,6 +57,14 @@ export const defaultCmpApi: CmpApi = {
   chooseTargets: async (facts, options) => {
     const m = await cmpModule();
     return m.classifyFirstLayer(facts, m.loadLexicon(), options).targets ?? null;
+  },
+  chooseSettingsOpener: async (facts, options) => {
+    const m = await cmpModule();
+    return m.chooseSettingsOpener(facts, m.loadLexicon(), options);
+  },
+  chooseSettingsSave: async (layer) => {
+    const m = await cmpModule();
+    return m.chooseSettingsSave(layer, m.loadLexicon());
   },
 };
 
@@ -77,6 +91,22 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
     }));
   }
   return facts;
+}
+
+/** Control names of the settings layer are page text: they pass `redactFreeText` like those of the first layer. */
+export function normalizeSettings(layer: SettingsLayerFacts): SettingsLayerFacts {
+  return { ...layer, buttons: layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) })) };
+}
+
+/** A plan target as the adapter clicks it. */
+function clickTarget(planned: ClickPlanTarget, kind: ClickTarget['kind']): ClickTarget {
+  return {
+    name: planned.name,
+    role: planned.role ?? 'button',
+    ...(planned.selector ? { selector: planned.selector } : {}),
+    kindConfidence: planned.kindConfidence,
+    kind,
+  };
 }
 
 // `v1` right after the click, `v2` after the collector's reload. A CMP that updates asynchronously may confirm the
@@ -170,19 +200,40 @@ export class CmpBridge {
     planned: ClickPlan['target'],
     url: string,
   ): Promise<ClickOutcome | null> {
-    const target: ClickTarget | null = planned
-      ? {
-          name: planned.name,
-          role: planned.role ?? 'button',
-          ...(planned.selector ? { selector: planned.selector } : {}),
-          kindConfidence: planned.kindConfidence,
-          kind: action,
-        }
-      : null;
+    const target = planned ? clickTarget(planned, action) : null;
     return this.call(action, url, () => {
       if (adapter.act) return adapter.act(page, action, target);
       return action === 'reject' ? adapter.reject(page, { target }) : adapter.accept(page, { target });
     });
+  }
+
+  /** Core's settings control on the first layer; null when the first layer does not qualify or the call failed. */
+  settingsOpener(facts: CmpFacts, url: string): Promise<SettingsChoice | null> {
+    const choose = this.api.chooseSettingsOpener;
+    if (!choose) return Promise.resolve(null);
+    return this.call('classify-settings', url, () => choose(facts, this.classify));
+  }
+
+  /** Clicks the settings control core chose and reads the layer; toggles and saves nothing. */
+  async openSettings(
+    page: Page,
+    adapter: CmpAdapter,
+    opener: ClickPlanTarget,
+    url: string,
+    waitMs: number,
+  ): Promise<SettingsLayerFacts | null> {
+    const open = adapter.openSettings;
+    if (!open) return null;
+    const layer = await this.call('settings', url, () =>
+      open.call(adapter, page, clickTarget(opener, 'settings'), { timeoutMs: waitMs }),
+    );
+    return layer ? normalizeSettings(layer) : null;
+  }
+
+  settingsSave(layer: SettingsLayerFacts, url: string): Promise<SettingsChoice | null> {
+    const choose = this.api.chooseSettingsSave;
+    if (!choose) return Promise.resolve(null);
+    return this.call('classify-settings', url, () => choose(layer));
   }
 
   /**

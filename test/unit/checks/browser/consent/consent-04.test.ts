@@ -14,7 +14,17 @@ import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { SanitizedUrl } from '../../../../../src/core/snapshot/common.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import { makeBrowserPlan, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { cmpFacts, cmpWith, phase, site, unopenedDialogCmp, unopenedDialogFacts } from '../helpers.ts';
+import {
+  cmpFacts,
+  cmpWith,
+  phase,
+  settingsClick,
+  settingsRejectCmp,
+  settingsRejectPlan,
+  site,
+  unopenedDialogCmp,
+  unopenedDialogFacts,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-04']!.find((s) => s.file === file)!.build();
@@ -252,6 +262,31 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     );
     expect(variantsOf(r)).toEqual(['reject-ineffective']);
   });
+
+  // CONSENT-04 rates the first layer; the save in the settings layer is CONSENT-05's basis, confirmed or not.
+  it.each([
+    ['confirmed', true],
+    ['left at the platform default', false],
+  ])(
+    'a first layer without reject saved in the settings layer (%s): nonblocking-no-reject only',
+    (_case, confirmed) => {
+      const run = (cmp: ReturnType<typeof settingsRejectCmp>) =>
+        runCheck(
+          consent04,
+          site({
+            phases: [phase('A'), phase('B', { click: settingsClick() })],
+            cmp,
+            plan: settingsRejectPlan(),
+          }),
+        );
+      const r = run(settingsRejectCmp({ confirmed }));
+      expect(variantsOf(r)).toEqual(['nonblocking-no-reject']);
+      expect(r.outcome?.limitations ?? []).not.toContain('reject-unverified');
+      // The same facts without the save: the first-layer verdict and its evidence stay the same.
+      const unsaved = run(settingsRejectCmp({ pressed: false }));
+      expect(observationsOf(r)).toEqual(observationsOf(unsaved));
+    },
+  );
 
   it('reject clicked, CMP API not ready afterwards → no reject-ineffective, limitation reject-unverified', () => {
     const r = runCheck(

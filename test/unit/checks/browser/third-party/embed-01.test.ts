@@ -17,6 +17,7 @@ import {
   rejectCmp,
   req,
   START,
+  settingsRejectCmp,
   site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -431,6 +432,28 @@ const MOMENT_CASES: Array<[string, PhaseRecord[], CmpSection, MomentParams | nul
     null,
   ],
 ];
+
+describe('EMBED-01 names where the reject was pressed', () => {
+  const both = [
+    phase('A', { requests: [css('a')] }),
+    rejectPhase([css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
+  ];
+  it.each([
+    ['the save of the settings layer', both, settingsRejectCmp(), 'settings', ' über die Einstellungen:'],
+    ['a first-layer reject', both, confirmed, 'first-layer', 'bestätigter Ablehnung: Google Fonts'],
+    [
+      'counterexample: no load after the reject',
+      [phase('A', { requests: [css('a')] })],
+      settingsRejectCmp(),
+      null,
+      'Externe Schriftarten geladen: Google Fonts',
+    ],
+  ])('%s', (_name, phases, cmp, rejectPath, title) => {
+    const [o] = observationsOf(runCheck(embed01, site({ phases, cmp })));
+    expect(o).toMatchObject({ variant: 'fonts-loaded', params: { rejectPath } });
+    expect(renderMessage(loadTexts('de'), 'EMBED-01.fonts-loaded', o!.params).title).toContain(title);
+  });
+});
 
 describe('EMBED-01 states whether the fonts loaded before the interaction, after the reject, or both', () => {
   it.each(MOMENT_CASES)('%s', (_name, phases, cmp, want) => {

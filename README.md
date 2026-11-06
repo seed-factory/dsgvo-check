@@ -223,6 +223,15 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Zustimmung: Was sie sendet oder speichert, gilt nicht als Befund nach der Ablehnung, die Seite nicht als ausgewertet
   (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
   Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
+- Bietet die erste Ebene eines mit hoher Konfidenz erkannten Banners keine Ablehnung und beschreibt der Adapter eine
+  Einstellungsebene (bisher nur Wix, `settingsLayer` in `test/data/cmp/adapters.yaml`), lehnt Phase B dort ab: Der
+  Scanner klickt die Einstellungsschaltfläche des Banners, liest die Schalter der Kategorien und klickt „Speichern“
+  nur, wenn jede Kategorie, die der Besucher umstellen kann, schon ausgeschaltet ist, kein gesperrter Schalter außer
+  dem für die erforderliche Verarbeitung des Anbieters eingeschaltet ist (bei Wix einer, `essentialGroups`) und genau
+  eine solche Schaltfläche des Anbieters zu sehen ist. Schalter stellt er nie um. Ist eine Kategorie schon
+  eingeschaltet, klickt er nichts mehr (`preselected-groups`). Der Zeitpunkt der Ablehnung ist das Speichern: Was lädt, während die
+  Einstellungen offen sind, zählt als vor der Ablehnung. Danach folgen wie sonst die Prüfung des Zustands, das
+  Neuladen und die Kontrollseiten. Die Befunde nennen die Ablehnung „über die Einstellungen“.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Sperrt Bot-Schutz eine weitere Seite (`SCAN-BLOCKED`) oder drosselt der Zielhost (`SCAN-THROTTLED`), nennt der Bericht
   die Prüfungen, denen dadurch Beobachtungen fehlen: für eine gesperrte Seite die Prüfungen, die Seiten ihrer Art lesen
@@ -252,7 +261,10 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
 - Fehlt auf der ersten Ebene eines erkannten Banners die Ablehnung, meldet CONSENT-04 `warning`, wenn das Banner die
   Seite nicht blockiert (`nonblocking-no-reject`, etwa nur „Cookie-Einstellungen“ und „Zustimmen“), und `critical`,
   wenn es sie blockiert und „Zustimmen“ anbietet (`blocking-no-reject`). Eine Schließen-Schaltfläche (×) zählt nie als
-  Ablehnen: Der Scanner klickt im Besuch mit Ablehnung dann nichts, und CONSENT-05 bleibt `inconclusive`.
+  Ablehnen. Der Scanner lehnt dann über die Einstellungen ab, wenn der Adapter sie kennt (siehe
+  [Ablauf im Browser](#ablauf-im-browser)); CONSENT-04 bewertet weiter die erste Ebene. Sonst klickt er im Besuch
+  mit Ablehnung nichts, und CONSENT-05 bleibt `inconclusive`, mit dem Grund als Einschränkung, wenn die Einstellungen
+  geöffnet, aber nicht gespeichert wurden.
 - Ein anderes Banner wird nur heuristisch erkannt: CONSENT-04 meldet `info` „Banner nicht erkannt“ (Status
   `inconclusive`), der Scanner klickt nicht.
 - Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort (auf der Seite oder in einem iframe, das
@@ -667,7 +679,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
   als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
   verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
-  Plugins bleiben unberücksichtigt. Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  Plugins bleiben unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
+  schon ausgeschaltet ist; voreingestellte Kategorien schaltet er nicht aus, die Ablehnung bleibt dann ungeprüft. Die
+  Selektoren der Wix-Einstellungen sind am eigenen Simulator getestet: Passt eine Wix-Version nicht dazu, öffnet der
+  Scanner die Einstellungen, speichert aber nichts (`settings-not-opened`). Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
   erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet

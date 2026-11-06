@@ -24,7 +24,13 @@ const verify = (action: 'reject' | 'accept', verified: boolean) => ({
   persistedAfterReload: null,
 });
 
-function withConsentRun(over: { acceptClicked: boolean; acceptVerified: boolean; screenshot?: boolean }) {
+function withConsentRun(over: {
+  acceptClicked: boolean;
+  acceptVerified: boolean;
+  screenshot?: boolean;
+  /** The reject was the save of the settings layer. */
+  viaSettings?: boolean;
+}) {
   return fakeCollectors({
     browser: async () => ({
       status: 'ok',
@@ -53,7 +59,26 @@ function withConsentRun(over: { acceptClicked: boolean; acceptVerified: boolean;
         }),
         cmp: makeCmp({
           phases: [
-            { phase: 'B', facts: [], verify: verify('reject', true) },
+            {
+              phase: 'B',
+              facts: [],
+              verify: verify('reject', true),
+              ...(over.viaSettings
+                ? {
+                    click: {
+                      action: 'reject' as const,
+                      clicked: true,
+                      button: {
+                        name: 'Speichern',
+                        role: 'button',
+                        kind: 'reject' as const,
+                        kindConfidence: 'high' as const,
+                      },
+                      path: 'settings' as const,
+                    },
+                  }
+                : {}),
+            },
             {
               phase: 'C',
               facts: [],
@@ -94,6 +119,27 @@ describe('scan — facts for the report', () => {
       { action: 'reject', clicked: true, verified: true },
       { action: 'accept', clicked, verified: clicked ? verified : null },
     ]);
+  });
+
+  it('a reject saved in the settings layer is recorded with its path; a first-layer reject has none', async () => {
+    const settings = await scan(
+      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true, viaSettings: true }) }),
+    );
+    const first = await scan(
+      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }) }),
+    );
+
+    expect(settings.report.scan.coverage?.consentActions?.[0]).toEqual({
+      action: 'reject',
+      clicked: true,
+      verified: true,
+      path: 'settings',
+    });
+    expect(first.report.scan.coverage?.consentActions?.[0]).toEqual({
+      action: 'reject',
+      clicked: true,
+      verified: true,
+    });
   });
 
   it('composes the disclaimer from the click outcome: no claim of a performed phase C without an accept', async () => {

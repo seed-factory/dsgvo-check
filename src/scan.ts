@@ -501,8 +501,14 @@ function consentActions(snapshot: Snapshot): ConsentAction[] {
     const record = snapshot.browser?.phases.find((p) => p.phase === phase);
     if (!record || record.status === 'skipped') continue;
     const clicked = record.click?.action === action && record.click.success === true;
-    const verify = snapshot.cmp?.phases.find((p) => p.phase === phase)?.verify;
-    out.push({ action, clicked, verified: clicked && verify?.action === action ? verify.verified : null });
+    const cmp = snapshot.cmp?.phases.find((p) => p.phase === phase);
+    const verify = cmp?.verify;
+    out.push({
+      action,
+      clicked,
+      verified: clicked && verify?.action === action ? verify.verified : null,
+      ...(clicked && cmp?.click?.path === 'settings' ? { path: 'settings' as const } : {}),
+    });
   }
   return out;
 }

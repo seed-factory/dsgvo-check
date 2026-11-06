@@ -22,6 +22,8 @@ export interface BannerSpec {
   containers: readonly string[];
   overlays?: readonly string[];
   vendorRoles?: ReadonlyArray<{ selector: string; role: ButtonKind }>;
+  /** Group switches of a settings layer, read in the measured container (`ProbeResult.switches`). */
+  switches?: string;
 }
 
 export interface Measured {
@@ -248,6 +250,7 @@ export async function measureBanner(
       containers: [...spec.containers],
       overlays: [...(spec.overlays ?? [])],
       vendorRoles: [...(spec.vendorRoles ?? [])],
+      ...(spec.switches ? { switches: spec.switches } : {}),
     }),
   );
 

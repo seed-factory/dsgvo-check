@@ -119,6 +119,55 @@ describe('adapter data', () => {
     expect(() => adaptersSection.parse(broken)).toThrow(message);
   });
 
+  // A reject through the settings layer is an opt-in of the adapter's data; today only Wix, whose first layer may lack one.
+  it('only Wix describes a settings layer: containers, group switches and its vendor save control', () => {
+    const withLayer = KNOWN_CMP_IDS.filter((id) => data[id].settingsLayer !== undefined);
+    expect(withLayer).toEqual(['wix']);
+    expect(adapters.filter((a) => a.rejectsViaSettings).map((a) => a.id)).toEqual(['wix']);
+    expect(data.wix.settingsLayer).toMatchObject({
+      containers: [expect.stringContaining('data-hook')],
+      essentialGroups: 1,
+      vendorRoles: [{ selector: expect.stringContaining('data-hook'), role: 'save' }],
+    });
+    // The opener is the first-layer control the vendor marks as settings.
+    expect(data.wix.banner.vendorRoles.filter((v) => v.role === 'settings')).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'without a first-layer settings role',
+      (w: Record<string, unknown>) => {
+        const banner = w.banner as { vendorRoles: Array<{ role: string }> };
+        banner.vendorRoles = banner.vendorRoles.filter((v) => v.role !== 'settings');
+      },
+      /vendor role settings/,
+    ],
+    [
+      'without a save or reject control',
+      (w: Record<string, unknown>) => {
+        (w.settingsLayer as Record<string, unknown>).vendorRoles = [];
+      },
+      /settingsLayer\.vendorRoles/,
+    ],
+    [
+      'with an accept role in the layer',
+      (w: Record<string, unknown>) => {
+        (w.settingsLayer as Record<string, unknown>).vendorRoles = [{ selector: '#all', role: 'accept' }];
+      },
+      /settingsLayer\.vendorRoles/,
+    ],
+    [
+      'without containers',
+      (w: Record<string, unknown>) => {
+        (w.settingsLayer as Record<string, unknown>).containers = [];
+      },
+      /settingsLayer\.containers/,
+    ],
+  ])('wix settings layer %s is a data error', (_case, edit, message) => {
+    const broken = withAdapters((all) => edit(all.wix as Record<string, unknown>));
+    expect(() => adaptersSection.parse(broken)).toThrow(message);
+  });
+
   it('a version rule names exactly one signal', () => {
     const both = withAdapters((all) => {
       const version = all.borlabs?.version as { rules: unknown[] };

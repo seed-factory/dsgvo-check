@@ -20,7 +20,7 @@ import {
 } from '../detection.ts';
 import { loadLexicon } from '../lexicon-file.ts';
 import { cmpDetectProbe, type DetectArgs, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
-import { measureBanner } from '../page/measure.ts';
+import { type BannerSpec, measureBanner } from '../page/measure.ts';
 import type {
   ActOptions,
   BotSignal,
@@ -35,6 +35,7 @@ import type {
   ExtractOptions,
   GeoSignal,
   KnownCmpId,
+  SettingsLayerFacts,
   VerifyOptions,
   VerifyResult,
 } from '../types.ts';
@@ -231,6 +232,9 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     get supportedVersions() {
       return supportedVersionsOf(data().supportedMajors);
     },
+    get rejectsViaSettings() {
+      return data().settingsLayer !== undefined;
+    },
 
     async detect(page): Promise<CmpDetection | null> {
       const vendor = data();
@@ -308,6 +312,8 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     act: (page, action, target, opts = {}) => execute(page, action, target, opts.timeoutMs),
     reject: (page, opts) => decideOrExecute(page, 'reject', opts),
     accept: (page, opts) => decideOrExecute(page, 'accept', opts),
+    openSettings: (page, opener, opts = {}) =>
+      openSettings(page, opener, opts.timeoutMs ?? VERIFY_TIMEOUT_MS),
 
     async verify(page, action, opts: VerifyOptions = {}): Promise<VerifyResult> {
       const timeoutMs = opts.timeoutMs ?? VERIFY_TIMEOUT_MS;
@@ -389,6 +395,59 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         reason: `reload-failed: ${msg.slice(0, RELOAD_ERROR_MAX_LENGTH)}`,
       };
     }
+  }
+
+  /**
+   * Clicks the settings control core chose and reads the layer once it shows and stands still: its controls, measured
+   * like a first layer with the vendor's save and reject roles, and its group switches. Not a click of `execute`: the
+   * consent state before the save, not before this click, is what `verify` compares with.
+   */
+  async function openSettings(
+    page: Page,
+    opener: ClickTarget,
+    timeoutMs: number,
+  ): Promise<SettingsLayerFacts> {
+    const layer = data().settingsLayer;
+    const closed = (error?: string): SettingsLayerFacts => ({
+      takenAt: new Date().toISOString(),
+      opened: false,
+      ...(error ? { error } : {}),
+      buttons: [],
+      containerUnambiguous: false,
+      buttonsTruncated: false,
+      groups: [],
+      essentialGroups: layer?.essentialGroups ?? 0,
+    });
+    if (!layer) return closed('no-settings-layer');
+
+    const res = await clickButton(page, opener, Math.min(timeoutMs, CLICK_TIMEOUT_MS));
+    if (!res.clicked) return closed(res.error ?? 'click-failed');
+
+    const lexicon = loadLexicon();
+    const spec: BannerSpec = {
+      containers: layer.containers,
+      vendorRoles: layer.vendorRoles,
+      switches: layer.groups,
+    };
+    const measure = () => measureBanner(page, spec, lexicon);
+    const shown = await waitUntil(async () => {
+      const m = (await measure()).firstLayer;
+      return m.bannerVisible && m.containerAnimating !== true;
+    }, timeoutMs);
+    if (!shown) return closed();
+
+    // One measurement for the controls and the switches: both come from the container the probe chose.
+    const measured = await measure();
+    const first = measured.firstLayer;
+    return {
+      takenAt: new Date().toISOString(),
+      opened: first.bannerVisible,
+      buttons: first.buttons,
+      containerUnambiguous: first.containerUnambiguous === true,
+      buttonsTruncated: first.buttonsTruncated === true,
+      groups: measured.raw?.switches ?? [],
+      essentialGroups: layer.essentialGroups,
+    };
   }
 
   /** Clicks exactly the target core chose; no classification here. */

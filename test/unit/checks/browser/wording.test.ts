@@ -138,6 +138,36 @@ describe('browser actions also serve several findings at once', () => {
     ).toBe('Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert: X');
   });
 
+  it('CONSENT-05: a reject saved in the settings layer is named in every title, after the moment of the reject', () => {
+    const titles = (lang: 'de' | 'en') =>
+      ['request', 'storage', 'both', 'request, storage'].map(
+        (kind) =>
+          renderMessage(loadTexts(lang), 'CONSENT-05.tracking-after-reject', {
+            kind,
+            service: 'X',
+            rejectPath: 'settings',
+          }).title,
+      );
+    expect(titles('de')).toEqual([
+      'Anfragen mit dauerhafter Kennung nach bestätigter Ablehnung über die Einstellungen: X',
+      'Analyse- oder Marketing-Kennung nach bestätigter Ablehnung über die Einstellungen gespeichert: X',
+      'Kennungen nach bestätigter Ablehnung über die Einstellungen gesendet und gespeichert: X',
+      'Kennungen nach bestätigter Ablehnung über die Einstellungen gesendet oder gespeichert: X',
+    ]);
+    expect(titles('en')).toEqual([
+      'Requests with a persistent identifier after a confirmed rejection via the settings: X',
+      'Analytics or marketing identifier stored after a confirmed rejection via the settings: X',
+      'Identifiers sent and stored after a confirmed rejection via the settings: X',
+      'Identifiers sent or stored after a confirmed rejection via the settings: X',
+    ]);
+    expect(
+      renderMessage(loadTexts('de'), 'CONSENT-05.cookieless-ping-after-reject', {
+        service: 'X',
+        rejectPath: 'settings',
+      }).title,
+    ).toBe('Anfragen ohne dauerhafte Kennung nach Ablehnung über die Einstellungen: X');
+  });
+
   it('titles put the service last, so a list of services reads as one', () => {
     const de = loadTexts('de');
     const params = { service: 'Google Ads, Google Analytics', requestCount: 12 };
@@ -203,6 +233,54 @@ describe('EMBED titles name the moment of the loads', () => {
     [
       'only after the confirmed reject',
       { moment: 'after-reject', rejectConfirmed: true },
+      {
+        de: [
+          'Externe Schriftarten nach bestätigter Ablehnung geladen',
+          'Externer Kartendienst nach bestätigter Ablehnung geladen',
+          'Externer Videodienst nach bestätigter Ablehnung geladen',
+        ],
+        en: [
+          'External fonts loaded after confirmed rejection',
+          'External map service loaded after confirmed rejection',
+          'External video service loaded after confirmed rejection',
+        ],
+      },
+    ],
+    [
+      'before the interaction and after the confirmed reject saved in the settings layer',
+      { moment: 'before-and-after-reject', rejectConfirmed: true, rejectPath: 'settings' },
+      {
+        de: [
+          'Externe Schriftarten geladen, auch nach bestätigter Ablehnung über die Einstellungen',
+          'Externer Kartendienst geladen, auch nach bestätigter Ablehnung über die Einstellungen',
+          'Externer Videodienst geladen, auch nach bestätigter Ablehnung über die Einstellungen',
+        ],
+        en: [
+          'External fonts loaded, also after confirmed rejection via the settings',
+          'External map service loaded, also after confirmed rejection via the settings',
+          'External video service loaded, also after confirmed rejection via the settings',
+        ],
+      },
+    ],
+    [
+      'only after a save in the settings layer the CMP state did not confirm',
+      { moment: 'after-reject', rejectConfirmed: false, rejectPath: 'settings' },
+      {
+        de: [
+          'Externe Schriftarten nach Ablehnung über die Einstellungen geladen',
+          'Externer Kartendienst nach Ablehnung über die Einstellungen geladen',
+          'Externer Videodienst nach Ablehnung über die Einstellungen geladen',
+        ],
+        en: [
+          'External fonts loaded after rejection via the settings',
+          'External map service loaded after rejection via the settings',
+          'External video service loaded after rejection via the settings',
+        ],
+      },
+    ],
+    [
+      'a first-layer reject keeps the wording without a path',
+      { moment: 'after-reject', rejectConfirmed: true, rejectPath: 'first-layer' },
       {
         de: [
           'Externe Schriftarten nach bestätigter Ablehnung geladen',

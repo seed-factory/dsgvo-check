@@ -1305,6 +1305,42 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
   };
 
+  /**
+   * The group switches inside the container: on or off from `checked` of an input, else from `aria-checked` (null when
+   * neither says), and whether the visitor can change it. A matched wrapper around another match (a `role="switch"`
+   * around its input) is the same group, so only the innermost one counts. Hidden switches count as well: a group the
+   * visitor cannot see is still saved with the layer.
+   */
+  const readSwitches = (root: DElement, sel: string): NonNullable<ProbeResult['switches']> => {
+    let found: DElement[];
+    try {
+      found = [...new Set(deepWithin(root, sel))];
+    } catch {
+      return [];
+    }
+    const wrappers = new Set<DElement>();
+    for (const el of found) {
+      for (let c = parentEl(el), i = 0; c && c !== root && i < MAX_ANCESTOR_STEPS; c = parentEl(c), i++) {
+        wrappers.add(c);
+      }
+    }
+    const disabledMark = (c: DElement) =>
+      c.getAttribute('aria-disabled') === 'true' ||
+      (c.tagName.toLowerCase() === 'fieldset' && c.hasAttribute('disabled'));
+    return found
+      .filter((el) => !wrappers.has(el))
+      .map((el) => {
+        const input = el as DElement & { checked?: boolean; type?: string };
+        const box =
+          el.tagName.toLowerCase() === 'input' && (input.type === 'checkbox' || input.type === 'radio');
+        const aria = el.getAttribute('aria-checked');
+        return {
+          checked: box ? input.checked === true : aria === 'true' ? true : aria === 'false' ? false : null,
+          disabled: el.disabled === true || hasAncestor(el, disabledMark, MAX_ANCESTOR_STEPS),
+        };
+      });
+  };
+
   const CONTAINER_TEXT_CAP = 20000;
 
   const { hit: container, rejected } = findContainer();
@@ -1340,5 +1376,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     coveredLinks,
     heuristic: container.heuristic,
     rejectedCandidate: null,
+    ...(args.switches ? { switches: readSwitches(root, args.switches) } : {}),
   };
 }
