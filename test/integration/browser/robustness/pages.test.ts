@@ -373,7 +373,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
     });
   });
 
-  it('a challenge on the contact page while no Impressum link is known: affects LEGAL-01 and the mail checks too', async () => {
+  it('a challenge on the contact page while no Impressum link is known: affects the legal checks and the mail checks too', async () => {
     const run = await collect(server, { url: 'https://contactblock.example.test/' });
 
     const d = blocked(run);
@@ -383,7 +383,15 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
       page: 'https://contactblock.example.test/kontakt/',
       phase: 'A',
     });
-    expect(d[0]?.affects).toEqual(['EMBED-02', 'LEGAL-01', 'MAIL-01', 'MAIL-02', 'MAIL-03', 'TLS-01']);
+    expect(d[0]?.affects).toEqual([
+      'EMBED-02',
+      'LEGAL-01',
+      'LEGAL-02',
+      'MAIL-01',
+      'MAIL-02',
+      'MAIL-03',
+      'TLS-01',
+    ]);
   });
 
   it('counterexample: the same challenge on the contact page with both legal links: EMBED-02 and TLS-01 only', async () => {
@@ -410,6 +418,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
     });
     expect(d[0]?.affects).toEqual([
       'LEGAL-01',
+      'LEGAL-02',
       'MAIL-01',
       'MAIL-02',
       'MAIL-03',

@@ -63,8 +63,8 @@ const CHECKS_READING_START_BC: readonly string[] = ['CONSENT-04', 'CONSENT-05'];
 // intermediate page may link or be. The mail checks read the Impressum's addresses. B and C revisit only pages phase A
 // could read, so a block there takes neither documents, links nor addresses from these checks.
 const CHECKS_READING_KIND: Readonly<Record<LegalKind, readonly string[]>> = {
-  impressum: ['LEGAL-01', ...CHECKS_READING_IMPRESSUM_MAIL],
-  privacy: ['LEGAL-01', 'PRIV-01', 'PRIV-02'],
+  impressum: ['LEGAL-01', 'LEGAL-02', ...CHECKS_READING_IMPRESSUM_MAIL],
+  privacy: ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02'],
 };
 
 export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): Promise<VisitResult> {

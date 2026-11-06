@@ -1,7 +1,7 @@
 /**
  * Which checks a page that bot protection blocked affects, by the page's role and phase (a fallback probe by its path),
  * and which checks a throttling target host affects. The expectations come from what the checks declare and read: the
- * browser section among their inputs, and the mail domains the DNS stage takes from the Impressum.
+ * browser sections among their inputs, and the mail domains the DNS stage takes from the Impressum.
  */
 import { describe, expect, it } from 'vitest';
 import { allChecks } from '../../../../../src/checks/index.ts';
@@ -10,6 +10,7 @@ import type { VisitSpec } from '../../../../../src/collectors/browser/pages/visi
 import type { AnyCheck } from '../../../../../src/core/evaluation/check.ts';
 import type { BrowserPhase } from '../../../../../src/core/snapshot/common.ts';
 import type { MailDomainStage } from '../../../../../src/core/snapshot/dns.ts';
+import { SNAPSHOT_SECTION_KEYS, sectionCollector } from '../../../../../src/core/snapshot/index.ts';
 import { runCheck } from '../../../../utils/snapshot-builder.ts';
 import { dnsSnapshot, type ZoneSpec } from '../../../checks/dns/zone.ts';
 
@@ -25,9 +26,13 @@ const spec = (over: Partial<VisitSpec>): VisitSpec => ({
 const ids = (checks: readonly AnyCheck[]) => checks.map((c) => c.id).sort();
 const inputsOf = (c: AnyCheck): readonly string[] => [...c.requires, ...(c.optional ?? [])];
 
-/** Checks that declare the browser section: required, or optional like TLS-01, which reads the links of phase A. */
-const READS_BROWSER = ids(allChecks.filter((c) => inputsOf(c).includes('browser')));
-const REQUIRES_BROWSER = ids(allChecks.filter((c) => c.requires.includes('browser')));
+/** Sections the browser collector produces: the page facts, the legal documents, the banner and what is derived from them. */
+const FROM_BROWSER = SNAPSHOT_SECTION_KEYS.filter((k) => sectionCollector(k) === 'browser');
+const fromBrowser = (keys: readonly string[]) =>
+  keys.some((k) => (FROM_BROWSER as readonly string[]).includes(k));
+/** Checks that declare a browser section: required, or optional like TLS-01, which reads the links of phase A. */
+const READS_BROWSER = ids(allChecks.filter((c) => fromBrowser(inputsOf(c))));
+const REQUIRES_BROWSER = ids(allChecks.filter((c) => fromBrowser(c.requires)));
 
 /**
  * Checks that read the mail domains the DNS stage takes from the Impressum the browser read: their outcome changes when

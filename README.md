@@ -224,14 +224,14 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
   Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
-- Sperrt Bot-Schutz eine weitere Seite (`SCAN-BLOCKED`) oder drosselt der Zielhost (`SCAN-THROTTLED`), nennt der
-  Bericht die Prüfungen, denen dadurch Beobachtungen fehlen: für eine gesperrte Seite die Prüfungen, die Seiten ihrer
-  Art lesen (etwa LEGAL-01, PRIV-01 und PRIV-02 die Datenschutzerklärung), in Phase A zusätzlich TLS-01, das die Links
+- Sperrt Bot-Schutz eine weitere Seite (`SCAN-BLOCKED`) oder drosselt der Zielhost (`SCAN-THROTTLED`), nennt der Bericht
+  die Prüfungen, denen dadurch Beobachtungen fehlen: für eine gesperrte Seite die Prüfungen, die Seiten ihrer Art lesen
+  (etwa LEGAL-01, LEGAL-02, PRIV-01 und PRIV-02 die Datenschutzerklärung), in Phase A zusätzlich TLS-01, das die Links
   jeder Seite liest, und beim Impressum MAIL-01 bis MAIL-03, die die E-Mail-Domains des Impressums abfragen. Liest
   Phase A eine Seite für einen Rechtstext, den ihre Art nicht nennt (eine Seite für Datenschutzerklärung und Impressum,
-  die Kontaktseite und Zwischenseiten, solange ein Rechtstext fehlt), nennt der Bericht auch dessen Prüfungen: LEGAL-01
-  und beim Impressum MAIL-01 bis MAIL-03, bei der Datenschutzerklärung PRIV-01 und PRIV-02. Drosselung in Phase A
-  betrifft neben den Browser-Prüfungen ebenso TLS-01 und MAIL-01 bis MAIL-03.
+  die Kontaktseite und Zwischenseiten, solange ein Rechtstext fehlt), nennt der Bericht auch dessen Prüfungen: LEGAL-01,
+  LEGAL-02 und beim Impressum MAIL-01 bis MAIL-03, bei der Datenschutzerklärung PRIV-01 und PRIV-02. Drosselung in
+  Phase A betrifft neben den Browser-Prüfungen ebenso TLS-01 und MAIL-01 bis MAIL-03.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
 - Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
