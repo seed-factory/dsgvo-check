@@ -10,6 +10,7 @@ import { createBrowserCollector } from '../../../src/collectors/browser/index.ts
 import type { FullReport } from '../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
+import type { ScanOptions } from '../../../src/scan-options.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';
@@ -23,9 +24,15 @@ const SCANNED: FakeZone = {
   'TXT example.test': ['v=spf1 ip4:192.0.2.0/24 -all'],
 };
 
-function scanWith(server: FixtureServer, dns: FakeDnsServer, checks: string[]): Promise<ScanResult> {
+function scanWith(
+  server: FixtureServer,
+  dns: FakeDnsServer,
+  checks: string[],
+  config: ScanOptions['config'] = {},
+): Promise<ScanResult> {
   return scan({
     url: 'https://www.example.test/',
+    config,
     network: { ...server.network(), dnsServers: [dns.server] },
     checks,
     log: silentLogger,
@@ -129,7 +136,7 @@ describe('a start page that redirects to another domain', () => {
     }
   }, 60_000);
 
-  it('with an invalid certificate on the scanned host (browser not started) the redirect target is still checked', async () => {
+  it('with an invalid certificate on the scanned host the browser starts on the redirect target, which is checked', async () => {
     const server = await startFixtureServer({
       sites: ['pipeline/mail-redirect'],
       tls: { 'www.example.test': 'self-signed' },
@@ -137,6 +144,28 @@ describe('a start page that redirects to another domain', () => {
     try {
       dns.setZone(zone);
       const result = await scanWith(server, dns, ['MAIL-01', 'MAIL-02', 'TLS-02', 'LEGAL-01']);
+
+      expect(result.snapshot?.collection.browser?.status).not.toBe('skipped');
+      expect(result.snapshot?.target.finalHost).toBe('www.example-final.test');
+      expect(dns.requests).toContain('TXT _dmarc.www.example-final.test');
+      expect(mailFindings(result.report as FullReport)).toEqual([
+        'MAIL-01.record-not-found:final:example-final.test',
+      ]);
+    } finally {
+      await server.close();
+    }
+  }, 60_000);
+
+  it('with an invalid certificate on the scanned host and the fallback off (browser not started) the redirect target is still checked', async () => {
+    const server = await startFixtureServer({
+      sites: ['pipeline/mail-redirect'],
+      tls: { 'www.example.test': 'self-signed' },
+    });
+    try {
+      dns.setZone(zone);
+      const result = await scanWith(server, dns, ['MAIL-01', 'MAIL-02', 'TLS-02', 'LEGAL-01'], {
+        scan: { tlsFallback: 'off' },
+      });
 
       expect(result.snapshot?.collection.browser).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
       expect(dns.requests).toContain('TXT _dmarc.www.example-final.test');

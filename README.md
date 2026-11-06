@@ -708,8 +708,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Adressen im Text, dann `mailto:`-Links im Inhalt der Impressumsseite; Freemail-Anbieter wie `gmx.de` nicht, Liste in
   `test/data/dns/mail-domains.yaml`). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
   die Domain betreibt. Adressen aus der Datenschutzerklärung, aus DMARC-Berichtsadressen und von anderen Seiten werden
-  nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig, Impressum nicht
-  gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in diesem Lauf nicht erhoben“).
+  nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig ohne Weiterleitung auf
+  einen anderen Host, Impressum nicht gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in
+  diesem Lauf nicht erhoben“).
   Adressen in der Form `name(at)domain.de` oder `name [at] domain.de` werden wie andere Adressen bis auf die Domain
   maskiert.
 - **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain

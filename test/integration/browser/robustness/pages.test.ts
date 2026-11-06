@@ -309,12 +309,12 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
     );
   });
 
-  it('a challenge on the privacy page: affects LEGAL-01 and PRIV-01', async () => {
+  it('a challenge on the privacy page: affects LEGAL-01, PRIV-01 and PRIV-02', async () => {
     const run = await collect(server, { url: 'https://challenge.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://challenge.example.test/datenschutz/',
