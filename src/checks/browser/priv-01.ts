@@ -1,12 +1,14 @@
 /**
  * PRIV-01 (P0): a loaded catalog service is looked up in the Datenschutzerklärung by levels named > company > domain >
- * category. Negations are not parsed, so `not-named` is capped at `medium`. A missing policy is LEGAL-01's finding.
+ * category. The further privacy notices of the site that phase A read beside the policy are searched with it: a
+ * mention in any of them counts. Negations are not parsed, so `not-named` is capped at `medium`. A missing policy is
+ * LEGAL-01's finding.
  */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type { DocumentRecord, RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ServiceInfo, ServiceObservation } from '../../derive/types.ts';
-import { normalizeText, type PolicyPart, type PolicyText, policyDocuments, policyText } from './documents.ts';
+import { normalizeText, type PolicyText, policyDocuments, policyText } from './documents.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields } from './services.ts';
@@ -63,40 +65,34 @@ function companyNames(info: ServiceInfo): string | null {
   return names.join(', ') || info.companyAliases?.[0] || null;
 }
 
-/** What was read of the document(s): the counters of the snapshot manifest, no text. */
-function readManifest(html: readonly DocumentRecord[], partCount: number) {
-  const sum = (count: (d: DocumentRecord) => number) => html.reduce((n, d) => n + count(d), 0);
+/** What was read of one document: the counters of its snapshot manifest, no text. */
+function readManifest(d: DocumentRecord) {
   return {
-    partCount,
-    textLength: sum((d) => d.manifest.textLength),
-    expandablesFound: sum((d) => d.manifest.expandablesFound),
-    expandablesOpened: sum((d) => d.manifest.expandablesOpened),
-    framesIncluded: sum((d) => d.manifest.framesIncluded),
+    partCount: d.parts.length,
+    textLength: d.manifest.textLength,
+    expandablesFound: d.manifest.expandablesFound,
+    expandablesOpened: d.manifest.expandablesOpened,
+    framesIncluded: d.manifest.framesIncluded,
     // Absent in snapshots of older versions: then the evidence has no number rather than a wrong zero.
-    ...(html.some((d) => d.manifest.framesFound !== undefined)
-      ? { framesFound: sum((d) => d.manifest.framesFound ?? 0) }
-      : {}),
-    linkedPages: sum((d) => d.manifest.linkedPages),
-    truncated: html.some((d) => d.errors.includes('truncated')),
+    ...(d.manifest.framesFound !== undefined ? { framesFound: d.manifest.framesFound } : {}),
+    linkedPages: d.manifest.linkedPages,
+    truncated: d.errors.includes('truncated'),
   };
 }
 
-function policyEvidence(
-  main: DocumentRecord,
-  html: readonly DocumentRecord[],
-  parts: PolicyPart[],
-): EvidenceInput {
+/** One document evidence per searched document, the policy first: what was read of each and how. */
+function documentEvidence(d: DocumentRecord): EvidenceInput {
   return {
     type: 'document',
-    url: main.finalUrl || main.url,
+    url: d.finalUrl || d.url,
     kind: 'privacy',
-    lang: main.lang,
-    complete: main.complete,
-    parts: sortedUniq(parts.map((p) => p.origin)).map((origin) => ({ origin })),
-    errors: main.errors,
-    phase: main.phase,
-    ...(main.sha256 ? { sha256: main.sha256 } : {}),
-    manifest: readManifest(html, parts.length),
+    lang: d.lang,
+    complete: d.complete,
+    parts: sortedUniq(d.parts.map((p) => p.origin)).map((origin) => ({ origin })),
+    errors: d.errors,
+    phase: d.phase,
+    ...(d.sha256 ? { sha256: d.sha256 } : {}),
+    manifest: readManifest(d),
   };
 }
 
@@ -160,11 +156,13 @@ export const priv01 = defineCheck({
     const { html } = found;
     const main = html[0] as DocumentRecord;
     const text = policyText(html);
-    const documentEvidence = policyEvidence(main, html, text.parts);
+    const searched = html.map(documentEvidence);
+    const policyUrls = html.map((d) => d.finalUrl || d.url).join(', ');
 
     const limitations: string[] = [];
     const notOpened = html.some((d) => d.manifest.expandablesOpened < d.manifest.expandablesFound);
     if (notOpened) limitations.push('banner-open');
+    if (found.supplementNotEvaluated) limitations.push('supplement-not-evaluated');
 
     const records = requestIndex(browser);
     const classified = new Map(derived.requests.map((c) => [c.requestId, c] as const));
@@ -181,7 +179,7 @@ export const priv01 = defineCheck({
       const verdict = mentionVerdict(info, text);
       if (!verdict) continue;
 
-      const evidence: EvidenceInput[] = [documentEvidence, ...(verdict.textMatch ? [verdict.textMatch] : [])];
+      const evidence: EvidenceInput[] = [...searched, ...(verdict.textMatch ? [verdict.textMatch] : [])];
       const requests = svc.requestIds.flatMap((id) => {
         const r = records.get(id);
         return r ? [{ r, c: classified.get(id) }] : [];
@@ -206,6 +204,8 @@ export const priv01 = defineCheck({
           service: info.name,
           companies: companyNames(info),
           policyUrl: main.finalUrl || main.url,
+          policyUrls,
+          documentCount: html.length,
           pageCount: seen.pages.length,
           category: info.category,
           partCount: text.parts.length,
@@ -217,7 +217,7 @@ export const priv01 = defineCheck({
     }
 
     return {
-      status: notOpened ? 'partial' : 'completed',
+      status: limitations.length > 0 ? 'partial' : 'completed',
       observations,
       limitations,
       coverage: { evaluated, note: `negation-not-parsed` },

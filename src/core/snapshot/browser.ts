@@ -416,6 +416,11 @@ export interface DocumentPart {
 export interface DocumentRecord {
   id: string;
   kind: DocumentKind;
+  /**
+   * `supplement`: a further privacy notice of the site that its links name beside the policy (for course participants,
+   * applicants), read after the policy was found. Absent means `main`, as in snapshots of earlier versions.
+   */
+  role?: 'main' | 'supplement';
   url: SanitizedUrl;
   finalUrl: SanitizedUrl;
   status: number | null;
@@ -453,8 +458,13 @@ export interface DocumentsSection {
     via: 'link' | 'hop' | 'fallback';
     url: SanitizedUrl;
     status: number | null;
-    /** `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404). */
-    outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved';
+    /**
+     * `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404).
+     * `other-language`: another language version of the privacy policy, recorded without a navigation.
+     */
+    outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved' | 'other-language';
+    /** The attempt read a further privacy notice, not the policy itself; absent in snapshots of earlier versions. */
+    supplement?: boolean;
   }>;
   /**
    * Pages read for Impressum details while no Impressum was found: the contact page, intermediate pages and the start

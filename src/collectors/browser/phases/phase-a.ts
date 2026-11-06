@@ -262,7 +262,10 @@ function queueSelection(
   visited: Set<string>,
   scope: Scope,
 ): PageQueue {
-  const queue = new PageQueue(visited, c.documents, scope);
+  const queue = new PageQueue(visited, c.documents, scope, {
+    language: sel.language,
+    max: c.ctx.config.browser.maxSupplementaryPolicies,
+  });
   queue.handleLink(sel.impressum, 'link', null, start.candidates);
   queue.handleLink(sel.privacy, 'link', null, start.candidates);
   if (sel.contact) queue.items.push({ choice: sel.contact });
@@ -284,12 +287,14 @@ async function visitQueue(
     const item = queue.items.shift() as QueueItem;
     if (queueCut(c, s)) break;
 
-    // --max-pages counts every page of phase A; legal pages and legal hops are visited regardless.
+    // --max-pages counts every page of phase A except the further privacy notices; legal pages and legal hops are
+    // visited regardless.
     const budgeted = !item.docKind && !item.hop;
-    if (budgeted && s.record.pages.length >= c.ctx.options.maxPages) continue;
+    if (budgeted && s.record.pages.length - queue.supplementVisits >= c.ctx.options.maxPages) continue;
     if (visited.has(pageKey(item.choice.raw))) continue;
     visited.add(pageKey(item.choice.raw));
 
+    const visitsBefore = s.record.pages.length;
     const r = await navigate(c, s, {
       rawUrl: item.choice.raw,
       role: item.choice.role,
@@ -298,6 +303,7 @@ async function visitQueue(
       firstVisit: false,
     });
     visited.add(pageKey(r.rawFinalUrl));
+    if (item.supplement && item.docKind) queue.supplementVisits += s.record.pages.length - visitsBefore;
     c.plan.pages.push({
       url: item.choice.url,
       role: item.choice.role,
@@ -331,7 +337,10 @@ function queueCut(c: BrowserCollection, s: Session): boolean {
   return false;
 }
 
-/** Reads the page for the legal kind it was queued for; a combined legal page is read once per kind. */
+/**
+ * Reads the page for the legal kind it was queued for; a combined legal page is read once per kind. Once the policy is
+ * found, the further privacy notices its link's page names are queued; a notice itself leads to nothing further.
+ */
 async function recordQueuedDocuments(
   c: BrowserCollection,
   s: Session,
@@ -339,18 +348,22 @@ async function recordQueuedDocuments(
   item: QueueItem,
   r: VisitResult,
 ): Promise<void> {
-  if (!item.docKind) return;
   const via = item.foundVia ?? 'link';
-
-  const doc = await recordDocument(c, s, r, item.docKind, item.choice.url, via);
-  if (doc === 'found') queue.found[item.docKind] = true;
-  else if (doc === 'unconfirmed') queue.tryNextCandidate(item);
-
-  for (const kind of item.alsoKinds ?? []) {
-    const also = await recordDocument(c, s, r, kind, item.choice.url, via);
-    if (also === 'found') queue.found[kind] = true;
-    else if (also === 'unconfirmed') queue.tryNextCandidate({ ...item, docKind: kind });
+  if (item.supplement) {
+    await recordDocument(c, s, r, 'privacy', item.choice.url, via, true);
+    return;
   }
+  if (!item.docKind) return;
+
+  const read = async (kind: LegalKind, next: QueueItem) => {
+    const doc = await recordDocument(c, s, r, kind, item.choice.url, via);
+    if (doc === 'found') {
+      queue.found[kind] = true;
+      if (kind === 'privacy') queue.queueSupplements(next);
+    } else if (doc === 'unconfirmed') queue.tryNextCandidate(next);
+  };
+  await read(item.docKind, item);
+  for (const kind of item.alsoKinds ?? []) await read(kind, { ...item, docKind: kind });
 }
 
 /**

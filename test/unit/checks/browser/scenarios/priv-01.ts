@@ -1,5 +1,6 @@
+import type { DocumentRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { makeDocument } from '../../../../utils/snapshot-builder.ts';
-import { defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
+import { defaultDocuments, ORIGIN, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
 import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
 const trustindexLoaded = () =>
@@ -89,7 +90,71 @@ export const scenarios: Scenario[] = [
   },
 ];
 
+/** A notice for course participants beside the policy, as the footer of the site links it. */
+const SUPPLEMENT = `${ORIGIN}/datenschutzhinweise-kurse/`;
+const chatLoaded = (withTranslation: boolean) =>
+  phase('A', {
+    requests: [
+      req('A-1', 'https://code.tidio.co/abc.js'),
+      ...(withTranslation ? [req('A-2', 'https://cdn.weglot.com/weglot.min.js')] : []),
+    ],
+  });
+const generatorPolicy = () =>
+  privacyDoc([
+    policyPart('p1', 'Datenschutzerklärung. Verantwortlich ist die Beispiel GmbH.'),
+    policyPart(
+      'p2',
+      'Die Schriftarten sind lokal installiert. Eine Verbindung zu fremden Servern findet nicht statt.',
+    ),
+  ]);
+const courseNotice = (p: Partial<DocumentRecord> = {}) =>
+  privacyDoc(
+    [
+      {
+        id: 's1',
+        section: '3 > Kommunikation',
+        text: 'Für Rückfragen nutzen wir den Live-Chat Tidio (Tidio LLC).',
+        origin: 'visible',
+        sourceUrl: SUPPLEMENT,
+      },
+    ],
+    { id: 'doc-privacy-3', url: SUPPLEMENT, role: 'supplement', ...p },
+  );
+const withNotice = (withTranslation: boolean, documents: DocumentRecord[]) =>
+  site({
+    phases: [chatLoaded(withTranslation)],
+    documents: { documents: [defaultDocuments().documents[0]!, ...documents], attempts: [] },
+  });
+
 export const variantScenarios: Scenario[] = [
+  {
+    file: 'clean-named-in-supplement.json',
+    description:
+      'Tidio is loaded; the policy does not name it, the notice for course participants that the site links beside it does',
+    expect: { status: 'completed', variants: [] },
+    build: () => withNotice(false, [generatorPolicy(), courseNotice()]),
+  },
+  {
+    file: 'violation-named-in-no-document.json',
+    description: 'Tidio and Weglot are loaded; the further notice names Tidio, neither document names Weglot',
+    expect: { status: 'completed', variants: ['not-named'] },
+    build: () => withNotice(true, [generatorPolicy(), courseNotice()]),
+  },
+  {
+    file: 'violation-supplement-not-evaluated.json',
+    description:
+      'Tidio is loaded; the further notice that names it was cut off at the reading limit, so only the policy is searched',
+    expect: { status: 'partial', variants: ['not-named'] },
+    build: () =>
+      withNotice(false, [generatorPolicy(), courseNotice({ complete: false, errors: ['truncated'] })]),
+  },
+  {
+    file: 'inconclusive-supplement-without-policy.json',
+    description:
+      'Tidio is loaded; only a further notice was read, no privacy policy: the policy is not searched',
+    expect: { status: 'inconclusive', variants: [], reason: 'privacy-policy-not-found' },
+    build: () => withNotice(false, [courseNotice()]),
+  },
   {
     file: 'violation-category-only.json',
     description:

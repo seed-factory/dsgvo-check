@@ -185,6 +185,14 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   4×4-Hilfsframe bei −9999 px) zählen nicht. Seiten auf dem Ursprung der Startseite, auf der B und C klicken, gehen
   vor, weil ein Einwilligungs-Cookie dieses Hosts auf einem anderen Host nicht gilt. Seiten eines anderen Ursprungs
   kommen nur zum Zug, wenn keine Seite des Ursprungs übrig ist, und tragen im Plan den Grund `other-origin`.
+- Verlinkt die Seite mit dem Link auf die Datenschutzerklärung weitere Datenschutzhinweise der Website (etwa
+  „Datenschutz Kurse“ oder „Datenschutzhinweise Bewerbung“ im Seitenfuß), liest der Scanner danach bis zu einen davon
+  (`DSGVO_CHECK_BROWSER_MAX_SUPPLEMENTARY_POLICIES`, 0 bis 3), den am besten passenden Link zuerst. Zählt nur ein Link,
+  dessen Text ein Datenschutzwort ist oder damit beginnt und der nicht im Inhaltsbereich oder einer Seitenleiste
+  steht: Ein Artikel über Datenschutz ist kein Hinweis der Website. Diese Aufrufe zählen wie die Rechtstexte nicht
+  gegen `--max-pages`, halten aber die Pause zwischen Navigationen und das Zeitbudget ein. Andere Sprachversionen der
+  Datenschutzerklärung (`/en/datenschutz/` hinter „EN“) werden nur vermerkt, nicht aufgerufen; Links auf
+  Einstellungsdialoge („Datenschutz-Einstellungen“) bleiben unberührt.
 - Fehlt der Link auf das Impressum, liest der Scanner die ohnehin geöffneten Seiten mit: die Startseite, die
   Kontaktseite und Zwischenseiten wie „Über uns“. Weisen die Überschriften im Inhalt einer Kontakt- oder Zwischenseite
   sie als Impressum aus, gilt das Impressum als über diese Seite gefunden. Sonst bleibt ihr Text für LEGAL-01, das darin
@@ -585,8 +593,12 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
   die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen
   dafür nur ein Abschnitt „Impressum“ und der Seitenfuß, weil sie auch Firmenangaben von Auftragsverarbeitern nennt.
-- **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
-  ausgewertet; die Konfidenz ist daher höchstens `medium`.
+- **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames, dazu die weiteren
+  Datenschutzhinweise der Website, die Phase A gelesen hat: Eine Nennung in einem davon gilt als Nennung. Andere
+  Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
+  oder gar nicht vorliegen, ergeben die Einschränkung `supplement-not-evaluated` (Status `partial`); die
+  Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
+  höchstens `medium`.
 - **Nur wenige Seiten.** Phase A sieht die Startseite, die Rechtstexte, die Kontaktseite und so viele weitere Seiten,
   wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
   Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu

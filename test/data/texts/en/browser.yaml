@@ -351,26 +351,30 @@ messages:
   PRIV-01.not-named:
     title: "Not found in the privacy policy: {service}"
     body: >-
-      In the evaluated text of the privacy policy at {policyUrl} ({partCount, plural, one {# section} other {#
+      In the evaluated text of the privacy policy at {policyUrl}{documentCount, plural, =0 {} =1 {} other { and of the
+      site's further privacy notices (searched: {policyUrls})}} ({partCount, plural, one {# section} other {#
       sections}}; completeness per manifest: {complete, select, true {complete} other {not complete}}) no mention
-      attributable to {service} was found. The search covered the service name with known spellings, the company
-      names per service catalogue ({companies}), the service's domains and a matching category description. A
-      mention of another service of the same company does not count as a mention of {service}. The service was
-      observed on {pageCount, plural, one {# page} other {# pages}}. Negations in the text were not evaluated.
+      attributable to {service} was found. The search covered the service name with known spellings, the company names
+      per service catalogue ({companies}), the service's domains and a matching category description. A mention of
+      another service of the same company does not count as a mention of {service}. The service was observed on
+      {pageCount, plural, one {# page} other {# pages}}. Negations in the text were not evaluated.
   PRIV-01.category-only:
     title: "Only a category description found: {service}"
     body: >-
-      The privacy policy at {policyUrl} describes the category {category, select, analytics {web analytics} ads
-      {advertising} session-recording {session recording} tag-manager {tag management} cdn {content delivery network}
-      payment {payment services} consent-provider {consent management} fonts {fonts} maps {map services} video
-      {video platforms} captcha {captcha services} widget {widgets} social {social networks} reviews {review
-      platforms} chat {chat services} monitoring {error monitoring} other {{category}}}; an unambiguous reference to
-      {service} was not found. Please review manually.
+      {documentCount, plural, =0 {The privacy policy at {policyUrl}} =1 {The privacy policy at {policyUrl}} other {The
+      privacy policy and the site's further privacy notices (searched: {policyUrls})}} describe{documentCount, plural,
+      =0 {s} =1 {s} other {}} the category {category, select, analytics {web analytics} ads {advertising}
+      session-recording {session recording} tag-manager {tag management} cdn {content delivery network} payment
+      {payment services} consent-provider {consent management} fonts {fonts} maps {map services} video {video
+      platforms} captcha {captcha services} widget {widgets} social {social networks} reviews {review platforms} chat
+      {chat services} monitoring {error monitoring} other {{category}}}; an unambiguous reference to {service} was not
+      found. Please review manually.
   PRIV-01.ambiguous-match:
     title: "Mentioned only in text not displayed: {service}"
     body: >-
-      {service} was found in the privacy policy at {policyUrl} only in text not displayed on the page or not
-      attributable to a section. Please review manually.
+      {service} was found {documentCount, plural, =0 {in the privacy policy at {policyUrl}} =1 {in the privacy policy
+      at {policyUrl}} other {in the privacy policy and the site's further privacy notices (searched: {policyUrls})}}
+      only in text not displayed on the page or not attributable to a section. Please review manually.
 
 # Legal background per check; a key `<check>.<variant>` (or `.<variant group>`) replaces it for the variant whose
 # classification differs from the rest of the check.

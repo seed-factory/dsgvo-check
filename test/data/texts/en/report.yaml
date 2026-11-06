@@ -258,7 +258,8 @@ ui:
     privacy-search-incomplete {Search for the privacy policy incomplete: {detail}} impressum-target-not-evaluable
     {Link target of the legal notice not evaluable} privacy-target-not-evaluable {Link target of the privacy policy
     not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
-    privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} other {}}
+    privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further
+    privacy notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-

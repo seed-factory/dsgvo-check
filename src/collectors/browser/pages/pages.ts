@@ -93,6 +93,8 @@ export interface PageSelection {
   extras: PageChoice[];
   /** Extras the budget allowed; fewer chosen → the caller may add sitemap entries. */
   extrasWanted: number;
+  /** The language versions of the site as the start page shows them, for the legal links of later pages too. */
+  language: LanguageContext;
 }
 
 const MAX_HOP_GETS = 3;
@@ -475,7 +477,76 @@ export function selectPages(
   const need = Math.max(0, i.maxPages - fixed);
   const extras = pickExtras(i, rules, need, chosen, candidate, (l) => isLanguageAlternate(l, lang));
 
-  return { impressum, privacy, contact, hops, extras, extrasWanted: need };
+  return { impressum, privacy, contact, hops, extras, extrasWanted: need, language: lang };
+}
+
+/** Where a site links its legal notices: the page chrome, or a page without landmarks. Not an article or a box. */
+const NOTICE_REGIONS: ReadonlySet<DomRegion> = new Set(['footer', 'nav', 'header', 'other']);
+/** Labels that are a privacy label or start with a privacy key ("Datenschutz Kurse", "Datenschutzhinweise für …"). */
+const NOTICE_MAX_TIER = 1;
+
+export interface SupplementOptions {
+  /** Language versions of the site, as the start page shows them. */
+  language: LanguageContext;
+  /** Further notices to choose at most; 0 chooses none and notes no language version. */
+  max: number;
+  /** Pages the caller has read or tried already: the policy, its final URL, candidates that were not the policy. */
+  skip: (key: string) => boolean;
+}
+
+export interface SupplementSelection {
+  /** Further privacy notices of the site to read, best-ranked first. */
+  notices: PageChoice[];
+  /** Language versions of the policy among the privacy links: noted, never visited. */
+  languages: PageChoice[];
+}
+
+/**
+ * Further privacy notices among the privacy links of the page the policy was found from, in the rank of
+ * `findLegalLink`: same site, navigable, past the settings words, labelled as a notice and linked from the page chrome,
+ * so an article about data protection is no notice of the site. A page that one of its links marks as another language
+ * version is noted instead, whatever its rank.
+ */
+export function privacySupplements(
+  links: readonly CandidateLink[],
+  scope: Scope,
+  o: SupplementOptions,
+  lexicon: LegalLexicon = loadLegalLexicon(),
+): SupplementSelection {
+  const out: SupplementSelection = { notices: [], languages: [] };
+  if (o.max <= 0) return out;
+
+  const considered = links.filter((l) => !(l.region === 'banner' && !l.visible && !sameSite(l.raw, scope)));
+  const found = matchLegalLinks(
+    lexicon,
+    'privacy',
+    considered.map((l) => ({ input: inputOf(l), page: navigable(l) ? pageKey(l.raw) : '' })),
+  );
+  const matches: LegalMatch[] = [];
+  considered.forEach((l, i) => {
+    const m = found[i];
+    if (m) matches.push({ link: l, m });
+  });
+  matches.sort(rankLegal);
+
+  const alternateKeys = new Set(
+    links.filter((l) => navigable(l) && isLanguageAlternate(l, o.language)).map((l) => pageKey(l.raw)),
+  );
+  for (const x of usableLegalMatches(matches, scope)) {
+    const key = pageKey(x.link.raw);
+    if (o.skip(key)) continue;
+    if (alternateKeys.has(key)) {
+      out.languages.push(choice(x.link.raw, 'privacy', [reasonOfLegal(x), 'language-version'], 'link'));
+    } else if (
+      out.notices.length < o.max &&
+      x.m.byText &&
+      x.m.tier <= NOTICE_MAX_TIER &&
+      NOTICE_REGIONS.has(x.link.region)
+    ) {
+      out.notices.push(choice(x.link.raw, 'privacy', [reasonOfLegal(x), 'supplement'], 'link'));
+    }
+  }
+  return out;
 }
 
 /** Intermediate pages that may lead to the missing legal links, one per hop keyword up to `budget`. */

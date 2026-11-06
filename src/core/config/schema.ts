@@ -101,6 +101,12 @@ const browser = z.strictObject({
     0,
     5,
   ),
+  maxSupplementaryPolicies: int(
+    1,
+    'Further privacy notices of the site (for example for course participants or applicants) that phase A reads after the privacy policy, best-ranked link first; they do not count against --max-pages. Other language versions are recorded, not read. 0 reads only the policy.',
+    0,
+    3,
+  ),
   screenshotMaxBytes: int(
     204_800,
     `Largest banner screenshot kept. The HTML report embeds images up to ${envName('report', 'screenshotEmbedMaxBytes')}.`,

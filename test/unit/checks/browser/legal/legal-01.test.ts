@@ -4,6 +4,7 @@ import { parseConfigInput } from '../../../../../src/core/config/load.ts';
 import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { DocumentRecord, DocumentsSection } from '../../../../../src/core/snapshot/browser.ts';
 import {
   makeDocument,
   makeLink,
@@ -887,5 +888,140 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
     expect(
       variantsOf(runCheck(legal01, scenario('clean-impressum-link-and-details-on-contact.json'))),
     ).toEqual([]);
+  });
+});
+
+describe('LEGAL-01: further privacy notices beside the policy', () => {
+  const SUPPLEMENT = 'https://www.example.de/datenschutzhinweise-kurse/';
+  const COURSE = 'https://www.example.de/kurse/';
+  const toNotice = makeLink({
+    text: 'Datenschutz Kurse',
+    href: SUPPLEMENT,
+    hrefKind: 'https',
+    sameSite: true,
+  });
+  // A course page links the Impressum and the notice for course participants, not the policy itself.
+  const pages = () => [
+    page(START, 'start', 'A', {}, [...footerLinks(), toNotice]),
+    page(IMPRESSUM, 'impressum'),
+    page(PRIVACY, 'privacy'),
+    page(COURSE, 'nav', 'A', {}, [footerLinks()[0]!, toNotice]),
+  ];
+  type Attempt = DocumentsSection['attempts'][number];
+  const withNotice = (attempts: Attempt[], notices: DocumentRecord[] = []) =>
+    site({
+      phases: [phase('A', { pages: pages() })],
+      documents: {
+        documents: [...defaultDocuments().documents, ...notices],
+        attempts: [
+          { kind: 'impressum', via: 'link', url: IMPRESSUM, status: 200, outcome: 'found' },
+          { kind: 'privacy', via: 'link', url: PRIVACY, status: 200, outcome: 'found' },
+          ...attempts,
+        ],
+      },
+    });
+
+  it.each<[string, Attempt[], DocumentRecord[]]>([
+    [
+      'a notice that answered 404',
+      [
+        {
+          kind: 'privacy',
+          via: 'link',
+          url: SUPPLEMENT,
+          status: 404,
+          outcome: 'not-found',
+          supplement: true,
+        },
+      ],
+      [],
+    ],
+    [
+      'a notice whose page failed to load',
+      [{ kind: 'privacy', via: 'link', url: SUPPLEMENT, status: null, outcome: 'error', supplement: true }],
+      [],
+    ],
+    [
+      'a notice not confirmed as one',
+      [
+        {
+          kind: 'privacy',
+          via: 'link',
+          url: SUPPLEMENT,
+          status: 200,
+          outcome: 'unconfirmed',
+          supplement: true,
+        },
+      ],
+      [
+        makeDocument({
+          kind: 'privacy',
+          id: 'doc-privacy-3',
+          role: 'supplement',
+          url: SUPPLEMENT,
+          errors: ['unconfirmed'],
+        }),
+      ],
+    ],
+    [
+      'another language version that was only noted',
+      [
+        {
+          kind: 'privacy',
+          via: 'link',
+          url: 'https://www.example.de/en/datenschutz/',
+          status: null,
+          outcome: 'other-language',
+          supplement: true,
+        },
+      ],
+      [],
+    ],
+  ])('%s is no broken or missing privacy link: no finding, no limitation', (_, attempts, notices) => {
+    const r = runCheck(legal01, withNotice(attempts, notices));
+    expect(variantsByKind(r)).toEqual([]);
+    expect(r.outcome?.limitations ?? []).toEqual([]);
+    expect(r.status).toBe('completed');
+  });
+
+  it.each([
+    ['a section headed "Impressum"', 'Datenschutzhinweise > Impressum', ['Datenschutzhinweise', 'Impressum']],
+    ['the page footer', 'Kontakt', ['Datenschutzhinweise']],
+  ])(
+    'Impressum details in %s of a further notice do not stand in for the Impressum',
+    (_, section, headings) => {
+      const snap = unlinkedImpressum();
+      snap.documents?.documents.push(
+        makeDocument({
+          kind: 'privacy',
+          id: 'doc-privacy-3',
+          role: 'supplement',
+          url: SUPPLEMENT,
+          phase: 'A',
+          contentHeadings: headings,
+          parts: [
+            {
+              id: 's1',
+              section,
+              text: 'Beispiel GmbH, Musterstraße 1, 10115 Berlin. Amtsgericht Musterstadt, HRB 12345. Geschäftsführung: Erika Mustermann. USt-IdNr.: DE123456789.',
+              origin: 'visible',
+              place: section === 'Kontakt' ? 'chrome' : 'content',
+              sourceUrl: SUPPLEMENT,
+            },
+          ],
+        }),
+      );
+      const r = runCheck(legal01, snap);
+      expect(variantsByKind(r)).toEqual([['impressum', 'document-not-found']]);
+      expect(observationsOf(r)[0]?.params).toMatchObject({ inOtherDocument: false });
+    },
+  );
+
+  it('counterexample: the same 404 recorded as an attempt of the policy makes the course page miss a working link', () => {
+    const r = runCheck(
+      legal01,
+      withNotice([{ kind: 'privacy', via: 'link', url: SUPPLEMENT, status: 404, outcome: 'not-found' }]),
+    );
+    expect(variantsByKind(r)).toEqual([['privacy', 'link-missing-on-some-pages']]);
   });
 });

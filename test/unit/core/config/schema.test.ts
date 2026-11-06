@@ -40,6 +40,8 @@ describe('built-in defaults', () => {
     // A cookie that expires within a day is short-lived, like a session cookie.
     ['browser', 'persistentCookieMinDays', 1],
     ['browser', 'maxControlPages', 2],
+    // One further privacy notice per scan (a notice for course participants beside the policy).
+    ['browser', 'maxSupplementaryPolicies', 1],
     ['http', 'minIntervalMs', 500],
     ['http', 'connectTimeoutMs', 5_000],
     ['http', 'headersTimeoutMs', 10_000],
@@ -129,6 +131,7 @@ describe('field list', () => {
   const COUNTS = new Set([
     'maxPages',
     'maxControlPages',
+    'maxSupplementaryPolicies',
     'minCandidatePages',
     'maxInflight',
     'requestLimit',
@@ -201,6 +204,9 @@ describe('validation', () => {
     [{ browser: { screenshotMaxViewportShare: 0 } }],
     [{ browser: { screenshotMaxViewportShare: 1.1 } }],
     [{ browser: { navigationTimeoutMs: 1.5 } }],
+    [{ browser: { maxSupplementaryPolicies: -1 } }],
+    [{ browser: { maxSupplementaryPolicies: 4 } }],
+    [{ browser: { maxSupplementaryPolicies: 1.5 } }],
     [{ http: { maxRedirects: 21 } }],
     [{ dns: { servers: ['not a host'] } }],
     [{ dns: { queryBudget: 201 } }],
@@ -244,6 +250,19 @@ describe('validation', () => {
       env: { DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS: '4', DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS: '5' },
     });
     expect(config.legal).toEqual({ impressumMinGroups: 4, policyClaimMinContexts: 5 });
+  });
+
+  it('accepts 0 to 3 further privacy notices and reads them from their variable', () => {
+    for (const maxSupplementaryPolicies of [0, 3]) {
+      expect(
+        ConfigSchema.parse({ browser: { maxSupplementaryPolicies } }).browser.maxSupplementaryPolicies,
+      ).toBe(maxSupplementaryPolicies);
+    }
+    expect(envName('browser', 'maxSupplementaryPolicies')).toBe(
+      'DSGVO_CHECK_BROWSER_MAX_SUPPLEMENTARY_POLICIES',
+    );
+    const { config } = resolveConfig({ env: { DSGVO_CHECK_BROWSER_MAX_SUPPLEMENTARY_POLICIES: '0' } });
+    expect(config.browser.maxSupplementaryPolicies).toBe(0);
   });
 
   it('accepts DNS servers as host, host:port and bracketed IPv6', () => {

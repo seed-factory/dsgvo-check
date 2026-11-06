@@ -358,27 +358,32 @@ messages:
   PRIV-01.not-named:
     title: "Nicht gefunden in der Datenschutzerklärung: {service}"
     body: >-
-      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl} ({partCount, plural, one {# Abschnitt} other
-      {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht vollständig}})
-      wurde keine Nennung gefunden, die {service} zuzuordnen ist. Gesucht wurden der Dienstname mit bekannten
-      Schreibweisen, die Firmennamen laut Dienstekatalog ({companies}), die Domains des Dienstes und eine passende
-      Kategoriebeschreibung. Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung von
-      {service}. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im
-      Text wurden nicht ausgewertet.
+      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl}{documentCount, plural, =0 {} =1 {} other { und
+      der weiteren Datenschutzhinweise der Website (durchsucht: {policyUrls})}} ({partCount, plural, one {# Abschnitt}
+      other {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht
+      vollständig}}) wurde keine Nennung gefunden, die {service} zuzuordnen ist. Gesucht wurden der Dienstname mit
+      bekannten Schreibweisen, die Firmennamen laut Dienstekatalog ({companies}), die Domains des Dienstes und eine
+      passende Kategoriebeschreibung. Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung
+      von {service}. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen
+      im Text wurden nicht ausgewertet.
   PRIV-01.category-only:
     title: "Nur Kategoriebeschreibung gefunden: {service}"
     body: >-
-      In der Datenschutzerklärung unter {policyUrl} wurde eine Beschreibung der Kategorie {category, select,
-      analytics {Webanalyse} ads {Werbung} session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management}
-      cdn {Content Delivery Network} payment {Zahlungsdienste} consent-provider {Einwilligungsverwaltung} fonts
-      {Schriftarten} maps {Kartendienste} video {Videoplattformen} captcha {Captcha-Dienste} widget {Widgets} social
-      {soziale Netzwerke} reviews {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other
-      {{category}}} gefunden; eine eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
+      {documentCount, plural, =0 {In der Datenschutzerklärung unter {policyUrl}} =1 {In der Datenschutzerklärung unter
+      {policyUrl}} other {In der Datenschutzerklärung und den weiteren Datenschutzhinweisen der Website (durchsucht:
+      {policyUrls})}} wurde eine Beschreibung der Kategorie {category, select, analytics {Webanalyse} ads {Werbung}
+      session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management} cdn {Content Delivery Network} payment
+      {Zahlungsdienste} consent-provider {Einwilligungsverwaltung} fonts {Schriftarten} maps {Kartendienste} video
+      {Videoplattformen} captcha {Captcha-Dienste} widget {Widgets} social {soziale Netzwerke} reviews
+      {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other {{category}}} gefunden; eine
+      eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
   PRIV-01.ambiguous-match:
     title: "Nennung nur in nicht angezeigtem Text: {service}"
     body: >-
-      {service} wurde in der Datenschutzerklärung unter {policyUrl} nur in einem auf der Seite nicht angezeigten
-      oder keinem Abschnitt zuordenbaren Textteil gefunden. Bitte manuell prüfen.
+      {service} wurde {documentCount, plural, =0 {in der Datenschutzerklärung unter {policyUrl}} =1 {in der
+      Datenschutzerklärung unter {policyUrl}} other {in der Datenschutzerklärung und den weiteren Datenschutzhinweisen
+      der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
+      zuordenbaren Textteil gefunden. Bitte manuell prüfen.
 
 # Rechtlicher Hintergrund je Prüfung; ein Schlüssel `<Prüfung>.<Variante>` (oder `.<Variantengruppe>`) ersetzt ihn für
 # die Variante, deren Einordnung von der übrigen Prüfung abweicht.

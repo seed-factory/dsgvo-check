@@ -26,7 +26,7 @@ import type {
   LinkFact,
   PageVisit,
 } from '../../core/snapshot/browser.ts';
-import { judgedNotDocument, usableDocument } from './documents.ts';
+import { isSupplement, judgedNotDocument, usableDocument } from './documents.ts';
 import { pageEvidence } from './evidence.ts';
 import {
   type Block,
@@ -337,17 +337,29 @@ function hasHopCandidate(lex: LegalLexicon, evaluated: readonly PageVisit[]): bo
   );
 }
 
+/**
+ * The search for the documents themselves. A further privacy notice read beside the policy, and a language version
+ * only noted, say nothing about whether the Impressum and the policy are linked and reachable: a failed notice is no
+ * broken privacy link, and provider details in a notice do not stand in for the Impressum.
+ */
+const ownAttempt = (a: Attempt): boolean => a.supplement !== true && a.outcome !== 'other-language';
+
 function buildEnv(
   lex: LegalLexicon,
   browser: BrowserSection,
   documents: DocumentsSection,
   details: Pick<Env, 'details' | 'minGroups'>,
 ) {
+  // Every page phase A judged an error page is left out, the notices' pages included.
   const { pages, evaluated, coverage } = judgedPages(browser, documents);
   const env: Env = {
     ...details,
     lex,
-    documents,
+    documents: {
+      ...documents,
+      documents: documents.documents.filter((d) => !isSupplement(d)),
+      attempts: documents.attempts.filter(ownAttempt),
+    },
     pages,
     evaluated,
     blockedKeys: new Set(
