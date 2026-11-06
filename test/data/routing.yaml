@@ -1,6 +1,7 @@
 # Routing as data: service category → check that owns the gating finding.
 # Assess drops observations of owner checks whose category belongs to another owner.
-# Independent axes (not routed): CONSENT-02 storage, CONSENT-03 no banner, CONSENT-05 after reject, TRACK-01 inventory.
+# Independent axes (not routed): CONSENT-02 storage, CONSENT-03 no banner, CONSENT-05 after reject, TRACK-01 inventory,
+# PRIV-02 policy statement against the observation.
 version: 1
 owners:
   analytics: CONSENT-01

@@ -424,6 +424,49 @@ messages:
       der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
       zuordenbaren Textteil gefunden. Bitte manuell prüfen.
 
+  # PRIV-02
+  PRIV-02.contradiction-replicated:
+    title: "Angabe der Datenschutzerklärung und Beobachtung weichen ab: {service}"
+    body: >-
+      Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
+      {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
+      stattfindet} other {Angaben zur Einbindung von {service}}} (Wortlaut im Nachweis). {requestCount, plural, one {Beobachtet wurde # Anfrage} other {Beobachtet wurden #
+      Anfragen}} an {hosts} mit Antwort, in
+      {contextCount, plural, one {# Beobachtung} other {# Beobachtungen}} (Phase und Seite) auf {pageCount, plural, one
+      {# Seite} other {# Seiten}}{afterReject, select, true {, auch nach bestätigter Ablehnung im Einwilligungsbanner}
+      other {}}.{bannerFound, select, false { Ein Einwilligungsbanner wurde nicht gefunden.} unrecognized { Ein
+      Einwilligungsbanner wurde beobachtet, aber nicht erkannt.} other {}}
+  PRIV-02.contradiction-single:
+    title: "Angabe der Datenschutzerklärung und Beobachtung weichen ab: {service}"
+    body: >-
+      Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
+      {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
+      stattfindet} other {Angaben zur Einbindung von {service}}} (Wortlaut im Nachweis). {requestCount, plural, one {Beobachtet wurde # Anfrage} other {Beobachtet wurden #
+      Anfragen}} an {hosts} mit Antwort, in nur
+      {contextCount, plural, one {# Beobachtung} other {# Beobachtungen}} (Phase und Seite) auf {pageCount, plural, one
+      {# Seite} other {# Seiten}}{afterReject, select, true {, auch nach bestätigter Ablehnung im Einwilligungsbanner}
+      other {}}.{bannerFound, select, false { Ein Einwilligungsbanner wurde nicht gefunden.} unrecognized { Ein
+      Einwilligungsbanner wurde beobachtet, aber nicht erkannt.} other {}}
+  PRIV-02.wording-to-review:
+    title: "Angaben der Datenschutzerklärung zur manuellen Prüfung: {service}"
+    body: >-
+      Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
+      {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
+      stattfindet} other {Angaben zur Einbindung von {service}}}{basis, select, disclosure {, aber auch eine
+      Beschreibung der Verbindung zu externen Servern} other {}} (Wortlaut im Nachweis). {basis, select, disclosure
+      {{requestCount, plural, one {Beobachtet wurde # Anfrage} other {Beobachtet wurden # Anfragen}} an {hosts} mit Antwort}
+      attempt {{requestCount, plural, one {Beobachtet wurde nur # Anfrage} other {Beobachtet wurden nur # Anfragen}} an
+      {hosts} ohne Antwort} hint {Beobachtet wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) zu
+      {hosts}} other {Beobachtet wurden nur Anfragen ohne Antwort und Verbindungsvorbereitungen (preconnect/dns-prefetch)
+      zu {hosts}}} ({contextCount, plural, one {# Beobachtung} other {# Beobachtungen}} auf {pageCount, plural, one {#
+      Seite} other {# Seiten}}). Bitte manuell prüfen.
+
 # Rechtlicher Hintergrund je Prüfung; ein Schlüssel `<Prüfung>.<Variante>` (oder `.<Variantengruppe>`) ersetzt ihn für
 # die Variante, deren Einordnung von der übrigen Prüfung abweicht.
 legalNotes:
@@ -524,6 +567,13 @@ legalNotes:
       Art. 13 Abs. 1 lit. e, f DSGVO. Die Angabe von Kategorien von Empfängern kann ausreichen; ob ein Dienst
       namentlich zu nennen ist, ist umstritten.
     status: contested
+    reviewedAt: null
+    reviewBy: null
+  PRIV-02:
+    text: >-
+      Art. 5 Abs. 1 lit. a, Art. 12, Art. 13 DSGVO. Verglichen werden der Wortlaut der Datenschutzerklärung und die
+      beobachteten Anfragen; ob eine Abweichung rechtlich erheblich ist, wird nicht automatisch bewertet.
+    status: technical
     reviewedAt: null
     reviewBy: null
 
@@ -629,3 +679,9 @@ actions:
     text: "Prüfen Sie, ob die Datenschutzerklärung {service} ausreichend konkret nennt, und ergänzen Sie sonst den Namen des Dienstes und des Anbieters."
   PRIV-01.ambiguous-match:
     text: "Prüfen Sie manuell, ob die Datenschutzerklärung {service} im sichtbaren Text nennt."
+  PRIV-02.contradiction-replicated:
+    text: "Vergleichen Sie den zitierten Abschnitt der Datenschutzerklärung mit der Einbindung von {service}: {claim, select, consent-gated {Laden Sie {service} erst nach einer Einwilligung} other {Liefern Sie die Inhalte vom eigenen Server aus}} oder passen Sie die Angabe an."
+  PRIV-02.contradiction-single:
+    text: "Vergleichen Sie den zitierten Abschnitt der Datenschutzerklärung mit der Einbindung von {service}: {claim, select, consent-gated {Laden Sie {service} erst nach einer Einwilligung} other {Liefern Sie die Inhalte vom eigenen Server aus}} oder passen Sie die Angabe an."
+  PRIV-02.wording-to-review:
+    text: "Prüfen Sie, welche der zitierten Angaben zu {service} auf die Einbindung zutrifft, und passen Sie die Datenschutzerklärung oder die Einbindung an."

@@ -250,7 +250,8 @@ ui:
     the page without a request, not loaded} buttons-truncated {Not all buttons of the banner recorded} geometry-unsettled {Position and size of
     the banner not measured stably} final-host-not-probed {Final host of the redirect not probed}
     preconnect-not-observable {Connections without a request (preconnect) not observable}
-    pagehide-capture-unavailable {Requests sent when leaving a page not captured} first-layer-not-visible {First
+    embed-navigation-excluded {Requests after acceptance on pages with a map or video service in the main document
+    not counted} pagehide-capture-unavailable {Requests sent when leaving a page not captured} first-layer-not-visible {First
     layer of the banner not visible} spf-include-unresolved {SPF include not fully resolved} mx-unknown {MX record
     could not be determined} throttled {The server throttled requests} status {Start page answered with HTTP
     {detail}} document-blocked {Page blocked by bot protection: {detail}} document-unavailable {Page not
@@ -288,7 +289,9 @@ ui:
     few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
     page not evaluable} video-page-not-evaluable {page with videos not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
     banner-candidate-unrecognized {consent banner observed but not recognised}
-    banner-undetermined {whether a consent banner was shown could not be determined} no-https {no HTTPS}
+    banner-undetermined {whether a consent banner was shown could not be determined} claim-ambiguous {privacy policy
+    statement not unambiguous: with a reservation, in text not displayed, together with the external load in one
+    sentence, in a sentence on several services or in a sentence too long} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}
@@ -341,8 +344,10 @@ ui:
     {}}} state {{value, select, denied {denied} granted {granted} partial {partial} unknown {unknown} other {}}}
     matchLevel {{value, select, named {service name} company {company name} domain {domain} category {category
     description} term {dictionary term} none {no match} other {}}} negation {{value, select, none {none} negated
-    {negated} ambiguous {ambiguous} other {}}} part {{value, select, visible {visible text} expandable {expandable
-    section} frame {frame} linked {linked page} hidden-irrelevant {hidden text} other {}}} other {}}
+    {negated} ambiguous {ambiguous} other {}}} claim {{value, select, self-hosted {embedded locally} no-connection
+    {no connection to external servers} consent-gated {loaded only after consent} other {}}} part {{value, select,
+    visible {visible text} expandable {expandable section} frame {frame} linked {linked page} hidden-irrelevant
+    {hidden text} other {}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (resolved locally)} upstream { (reported by the proxy)} other {}}"
   report.evidence.firstPartyDomain: own domain
   report.evidence.cookieState: "{state, select, attempted {setting attempted} accepted {accepted by the browser} rejected {rejected by the browser} sent {sent with a request} other {{state}}}"

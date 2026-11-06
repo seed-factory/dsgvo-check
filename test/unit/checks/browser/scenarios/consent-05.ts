@@ -9,33 +9,7 @@ import {
   req,
   site,
 } from '../helpers.ts';
-import { ga, type Scenario } from './shared.ts';
-
-/** Reject confirmed by state: changed by our click (`action`), then read back after the reload. */
-const confirmedReject = () => {
-  const denied = {
-    source: 'api',
-    ready: 'ready',
-    categories: { statistics: 'denied', marketing: 'denied' },
-    decision: { responded: true, method: 'explicit' },
-  } as const;
-  return cmpWith({
-    phase: 'B',
-    facts: [cmpFacts(), cmpFacts({ moment: 'after-reload', state: [{ ...denied, origin: 'stored' }] })],
-    click: {
-      action: 'reject',
-      clicked: true,
-      button: { name: 'Ablehnen', role: 'button', kind: 'reject', kindConfidence: 'high' },
-    },
-    verify: {
-      action: 'reject',
-      verified: true,
-      method: ['api:all-denied', 'persisted-after-reload'],
-      stateAfter: [{ ...denied, origin: 'action' }],
-      persistedAfterReload: true,
-    },
-  });
-};
+import { confirmedReject, ga, type Scenario } from './shared.ts';
 
 /** Without a recognised banner nothing was clicked: a banner observed but not recognised leaves the reject open. */
 const bannerScenarios: Scenario[] = [
