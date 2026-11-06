@@ -1,28 +1,185 @@
 # Which pages of the target the browser collector visits besides the start page and the legal documents.
 pages:
-  # Navigation words of extra pages worth a look (lower case, plain substrings of the link text, then of the path slug
-  # with spaces as hyphens), in priority order; the page limit (`scan.maxPages`) is small, so the order decides.
-  extraKeywords:
-    - video
-    - über uns
-    - ueber-uns
-    - about
-    - team
-    - karriere
-    - jobs
-    - referenzen
-    - bewertungen
-    - termin
-    - blog
-    - news
-    - aktuelles
-    - newsletter
-    - shop
-    - galerie
-    - leistungen
-    - produkte
-    - angebot
-    - service
+  # Groups of navigation words of extra pages worth a look, in priority order: the page budget (`--max-pages` minus
+  # the start page, the legal documents and the contact page) is small, so the order decides. Each group gives at most
+  # one page. A word is a plain lower-case substring of the link text, then of the path slug with spaces as hyphens; a
+  # match in the text beats one in the path, then the region of the link decides. "karte" is left out on purpose
+  # (Speisekarte, the menu of a restaurant), and so is "unternehmen", which names a section rather than a page.
+  extraGroups:
+    - id: video
+      words: [video, videos, mediathek]
+    - id: location
+      words:
+        [
+          anfahrt,
+          anfahrtsplan,
+          lageplan,
+          standort,
+          standorte,
+          filiale,
+          filialen,
+          so finden sie uns,
+          wegbeschreibung,
+        ]
+    - id: history
+      words: [geschichte, historie, chronik, history]
+    - id: about
+      words: [über uns, ueber-uns, about]
+    - id: team
+      words: [team]
+    - id: jobs
+      words: [karriere, jobs]
+    - id: references
+      words: [referenzen, bewertungen]
+    - id: appointment
+      words: [termin]
+    - id: news
+      words: [blog, news, aktuelles]
+    - id: newsletter
+      words: [newsletter]
+    - id: shop
+      words: [shop]
+    - id: gallery
+      words: [galerie]
+    - id: offer
+      words: [leistungen, produkte, angebot, service]
+
+  # Language versions of the site, which are never extra pages: one language of the content is enough.
+  languages:
+    # Language codes that may open a path as its locale (`/de/`, `/en/…`). The forms with a region (`de-at`, `en_GB`)
+    # follow from the code.
+    localePrefixes:
+      [
+        de,
+        en,
+        fr,
+        es,
+        it,
+        nl,
+        pl,
+        pt,
+        cs,
+        da,
+        sv,
+        fi,
+        "no",
+        cn,
+        zh,
+        ja,
+        ru,
+        tr,
+        bg,
+        el,
+        et,
+        hr,
+        hu,
+        lt,
+        lv,
+        ro,
+        sk,
+        sl,
+        mt,
+        ga,
+        uk,
+      ]
+    # Whole labels of a language switch (lower case). A link labelled so that leads into a locale prefix or to the root
+    # is another language version; a course page "Englisch" of a language school is not. A label that is one of the
+    # codes above ("EN") counts on any path.
+    switchLabels:
+      [
+        deutsch,
+        german,
+        english,
+        englisch,
+        français,
+        francais,
+        french,
+        französisch,
+        español,
+        espanol,
+        spanish,
+        spanisch,
+        italiano,
+        italian,
+        italienisch,
+        nederlands,
+        dutch,
+        niederländisch,
+        polski,
+        polish,
+        polnisch,
+        português,
+        portugues,
+        portuguese,
+        portugiesisch,
+        čeština,
+        czech,
+        tschechisch,
+        dansk,
+        danish,
+        dänisch,
+        svenska,
+        swedish,
+        schwedisch,
+        suomi,
+        finnish,
+        finnisch,
+        norsk,
+        norwegian,
+        norwegisch,
+        中文,
+        chinese,
+        chinesisch,
+        日本語,
+        japanese,
+        japanisch,
+        русский,
+        russian,
+        russisch,
+        türkçe,
+        turkish,
+        türkisch,
+        български,
+        bulgarian,
+        bulgarisch,
+        ελληνικά,
+        greek,
+        griechisch,
+        eesti,
+        estonian,
+        estnisch,
+        hrvatski,
+        croatian,
+        kroatisch,
+        magyar,
+        hungarian,
+        ungarisch,
+        lietuvių,
+        lithuanian,
+        litauisch,
+        latviešu,
+        latvian,
+        lettisch,
+        română,
+        romana,
+        romanian,
+        rumänisch,
+        slovenčina,
+        slovak,
+        slowakisch,
+        slovenščina,
+        slovenian,
+        slowenisch,
+        malti,
+        maltese,
+        maltesisch,
+        gaeilge,
+        irish,
+        irisch,
+        українська,
+        ukrainian,
+        ukrainisch,
+      ]
 
   # Path fragments of pages that are never visited: log-in, cart and account areas, feeds. Passive scanning never logs in.
   # Regular-expression fragments, case-insensitive.

@@ -52,7 +52,7 @@ export interface ClickPlan {
 export interface BrowserPlan {
   /** Phase A selection (≤ maxPages). */
   pages: PlannedPage[];
-  /** B/C control selection: start + up to 2 pages chosen from A signals. */
+  /** B/C control selection: phase A pages chosen by their signals, click origin first (`browser.maxControlPages`). */
   controlPages: PlannedPage[];
   click: { B?: ClickPlan; C?: ClickPlan };
 }

@@ -95,6 +95,12 @@ const browser = z.strictObject({
   phaseCMinDwellMs: int(4_000, 'Phase C (accept): shortest stay on a page before it can count as quiet.', 0),
   phaseCHardCapMs: int(12_000, 'Phase C (accept): longest stay on a page; quiet not reached is recorded.', 0),
   requestLimit: int(2_000, 'Requests recorded per scan; further ones are only counted.', 100, 100_000),
+  maxControlPages: int(
+    2,
+    'Pages of phase A that phases B and C visit again after the reject or accept click (control pages); 0 visits only the start page.',
+    0,
+    5,
+  ),
   screenshotMaxBytes: int(
     204_800,
     `Largest banner screenshot kept. The HTML report embeds images up to ${envName('report', 'screenshotEmbedMaxBytes')}.`,

@@ -15,6 +15,7 @@ export interface RawLink {
   visible: boolean;
   inShadowDom: boolean;
   rel: string;
+  hreflang: string;
 }
 
 export interface RawForm {
@@ -233,6 +234,7 @@ export function domFactsInPage(arg: {
       visible: visible(el),
       inShadowDom: inShadow(el),
       rel: String(el.getAttribute('rel') || ''),
+      hreflang: String(el.getAttribute('hreflang') || ''),
     };
   };
   const readForm = (el: any): RawForm => {

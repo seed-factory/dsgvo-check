@@ -1,7 +1,7 @@
 // Browser collection: phase A (≤ maxPages, no interaction), phase B (observe the start page, reject via the adapter,
-// verify, reload, ≤ 2 control pages), phase C (accept, same control pages), each in a fresh persistent profile. Fatal
-// start-page conditions go into `fatal`. The phases live in `phase-a.ts` and `consent-phase.ts` and share the
-// `BrowserCollection` state, so its members are not private.
+// verify, reload, up to `browser.maxControlPages` control pages), phase C (accept, same control pages), each in a fresh
+// persistent profile. Fatal start-page conditions go into `fatal`. The phases live in `phase-a.ts` and
+// `consent-phase.ts` and share the `BrowserCollection` state, so its members are not private.
 import type { BrowserContext, BrowserType, Page } from 'playwright-core';
 import type { CmpAdapter, CmpFacts, CmpPhaseFacts, CmpSection } from '../../cmp/types.ts';
 import { browserUserAgent } from '../../core/runtime/user-agent.ts';

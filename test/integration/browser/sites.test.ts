@@ -141,12 +141,12 @@ site('maps', (get) => {
     });
   });
 
-  it('the page with the embed becomes a B/C control page (DOM/network signals)', () => {
+  it('the page with the embed becomes a B/C control page (DOM/network signals, a catalog embed)', () => {
     const plan = get().run.result.sections.plan;
 
     expect(plan?.controlPages[0]).toMatchObject({
       url: 'https://www.example.test/kontakt/',
-      reasons: ['iframe-signal', 'network-signal', 'role:contact'],
+      reasons: ['iframe-signal', 'network-signal', 'embed-signal', 'role:contact'],
     });
   });
 });

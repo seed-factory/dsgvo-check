@@ -5,8 +5,9 @@
 import { TOOL_NAME } from '../../../core/runtime/version.ts';
 import type { FatalSignal } from '../../../core/snapshot/collector.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
+import { loadServiceCatalog } from '../../../derive/catalog.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
-import type { AVisit, BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
+import type { BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
 import { fetchText } from '../launch/http-fetch.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import {
@@ -18,7 +19,9 @@ import {
 } from '../legal/queue.ts';
 import { checkThrottleResponses, markThrottled, navigate, throttleStatus, visit } from '../pages/navigate.ts';
 import {
+  catalogCategoryOf,
   chooseControlPages,
+  controlSignals,
   findLegalLink,
   LEGAL_KINDS,
   type LegalKind,
@@ -236,9 +239,11 @@ async function selectSubpages(
   robots: Robots | null,
   scope: Scope,
 ): Promise<PageSelection> {
+  const lang = start.visit.dom?.lang;
   const selectArgs = {
     links: start.candidates,
     ...scope,
+    ...(lang ? { startLang: lang } : {}),
     maxPages: c.ctx.options.maxPages,
     robots,
     token: TOOL_NAME,
@@ -433,18 +438,37 @@ async function probeFallbacks(
   }
 }
 
-/** Evaluable subpages of phase A, chosen by their third-party signals. */
+/**
+ * Evaluable subpages of phase A, chosen by their third-party signals. B and C click on the start page, so pages of its
+ * origin come first: a consent cookie set for that host does not reach another one.
+ */
 function chooseControl(c: BrowserCollection, s: Session): void {
+  const categoryOf = catalogCategoryOf(loadServiceCatalog());
+  const requestsOn = (pageUrl: string) =>
+    s.recorder.records.filter((r) => r.pageUrl === pageUrl).map((r) => ({ url: r.url, host: r.host }));
+  const startRequests = requestsOn(sanitizeRequestUrl(c.startRaw));
+
   c.control = chooseControlPages(
     c.aVisits
       .filter((v) => v.source !== 'start' && v.source !== 'fallback' && v.result.visit.evaluable)
-      .map((v) => ({
-        raw: v.raw,
-        url: v.result.visit.url,
-        role: v.result.visit.role,
-        order: v.result.visit.order,
-        signals: signalsOf(c, v, s),
-      })),
+      .map((v) => {
+        const visit = v.result.visit;
+        const facts = {
+          iframes: visit.dom?.iframes ?? [],
+          placeholders: visit.dom?.embedPlaceholders?.length ?? 0,
+          requests: requestsOn(visit.finalUrl),
+          startRequests,
+        };
+        return {
+          raw: v.raw,
+          url: visit.url,
+          finalUrl: visit.finalUrl,
+          role: visit.role,
+          order: visit.order,
+          signals: controlSignals(facts, c.scope.etld1, categoryOf),
+        };
+      }),
+    { max: c.ctx.config.browser.maxControlPages, clickOrigin: new URL(c.startRaw).origin },
   );
   c.plan.controlPages = c.control.map((page, i) => ({
     url: page.url,
@@ -453,34 +477,6 @@ function chooseControl(c: BrowserCollection, s: Session): void {
     reasons: page.reasons,
     source: c.aVisits.find((v) => v.raw === page.raw)?.source ?? 'link',
   }));
-}
-
-function signalsOf(c: BrowserCollection, v: AVisit, s: Session) {
-  const etld1 = c.scope.etld1;
-  const isThirdParty = (url: string | null) => {
-    if (!url) return false;
-    try {
-      return registrableDomain(new URL(url).hostname) !== etld1;
-    } catch {
-      return false;
-    }
-  };
-  const thirdPartyHostsOn = (pageUrl: string) =>
-    new Set(
-      s.recorder.records
-        .filter((r) => r.pageUrl === pageUrl && registrableDomain(r.host) !== etld1)
-        .map((r) => r.host),
-    );
-
-  const dom = v.result.visit.dom;
-  const startHosts = thirdPartyHostsOn(sanitizeRequestUrl(c.startRaw));
-  const pageHosts = thirdPartyHostsOn(v.result.visit.finalUrl);
-
-  return {
-    thirdPartyIframes: (dom?.iframes ?? []).filter((f) => f.depth === 1 && isThirdParty(f.src)).length,
-    placeholders: dom?.embedPlaceholders?.length ?? 0,
-    newThirdPartyHosts: [...pageHosts].filter((h) => !startHosts.has(h)).length,
-  };
 }
 
 async function fetchRobots(c: BrowserCollection, origin: string): Promise<Robots | null> {

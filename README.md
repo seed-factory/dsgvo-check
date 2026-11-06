@@ -160,15 +160,31 @@ Aufnahme; wann neu ausgewertet wurde, steht im ausführlichen Bericht und in `re
 
 Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeichnis.
 
-| Phase | Aktion                                                                                | Seiten                                                                      |
-| ----- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| A     | Ohne Interaktion beobachten                                                           | Startseite, Impressum, Datenschutzerklärung, Kontakt, bis zu 2 weitere      |
-| B     | „Ablehnen“ über den CMP-Adapter klicken, Zustand prüfen, Startseite neu laden, prüfen | Startseite und bis zu 2 Kontrollseiten                                      |
-| C     | „Alle akzeptieren“ klicken                                                            | Dieselben Kontrollseiten; entfällt, wenn Phase B keinen Adapter erkannt hat |
+| Phase | Aktion                                                                                | Seiten                                                                                    |
+| ----- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| A     | Ohne Interaktion beobachten                                                           | Startseite, Impressum, Datenschutzerklärung, Kontakt und weitere Seiten bis `--max-pages` |
+| B     | „Ablehnen“ über den CMP-Adapter klicken, Zustand prüfen, Startseite neu laden, prüfen | Startseite und bis zu 2 Kontrollseiten (`DSGVO_CHECK_BROWSER_MAX_CONTROL_PAGES`, 0 bis 5) |
+| C     | „Alle akzeptieren“ klicken                                                            | Dieselben Kontrollseiten; entfällt, wenn Phase B keinen Adapter erkannt hat               |
 
-- Die weiteren Seiten in Phase A kommen aus Links oder der Sitemap. `--max-pages` begrenzt die Seitenzahl (Standard 6);
-  Impressum und Datenschutzerklärung werden unabhängig davon besucht. Fehlt der Link, probiert der Scanner
-  `/impressum` und `/datenschutz`.
+- `--max-pages` begrenzt die Seitenzahl in Phase A (Standard 6). Die weiteren Seiten bekommen, was nach Startseite,
+  Impressum, Datenschutzerklärung, Kontakt- und Zwischenseiten übrig bleibt, beim Standard also 2. Impressum und
+  Datenschutzerklärung werden unabhängig davon besucht. Fehlt der Link, probiert der Scanner `/impressum` und
+  `/datenschutz`; diese Aufrufe zählen dann an Stelle der verlinkten Seite.
+- Die weiteren Seiten kommen aus den Links der Startseite: zuerst je Gruppe von Stichwörtern höchstens eine Seite, in
+  dieser Reihenfolge: Video, Anfahrt und Standort, Geschichte, Über uns, Team, Karriere, Referenzen, Termin, Blog und
+  News, Newsletter, Shop, Galerie, Leistungen und Produkte (Liste: `test/data/browser/pages.yaml`). Zwei Seiten
+  desselben Bereichs (`/unternehmen/geschichte`, `/unternehmen/team`) dürfen aus verschiedenen Gruppen kommen. Reicht
+  das nicht, folgen Links der Navigation und Einträge der Sitemap, je URL-Bereich eine Seite.
+- Andere Sprachversionen der Website sind nie weitere Seiten: ein anderes Sprachpräfix als das der Startseite (`/en/`
+  neben `/de/`), ein Sprachumschalter („EN“, „English“, eine Flagge ohne Text auf `/en/`), ein `hreflang` einer
+  anderen Sprache. Das Sprachpräfix der Startseite selbst zählt nicht als Bereich: Auf einer Startseite `/de/` bleiben
+  `/de/kontakt/anfahrt/` und `/de/unternehmen/geschichte/` wählbar.
+- Kontrollseiten sind Seiten aus Phase A mit eingebetteten Inhalten: iframes und Platzhalter von Drittanbietern, neue
+  Hosts gegenüber der Startseite. Karten, Videos (auch Vorschaubilder), Schriften und Widgets aus dem Dienstekatalog
+  zählen mehr als unbekannte Hosts. iframes von Einwilligungsanbietern und iframes ganz außerhalb der Seite (etwa ein
+  4×4-Hilfsframe bei −9999 px) zählen nicht. Seiten auf dem Ursprung der Startseite, auf der B und C klicken, gehen
+  vor, weil ein Einwilligungs-Cookie dieses Hosts auf einem anderen Host nicht gilt. Seiten eines anderen Ursprungs
+  kommen nur zum Zug, wenn keine Seite des Ursprungs übrig ist, und tragen im Plan den Grund `other-origin`.
 - Fehlt der Link auf das Impressum, liest der Scanner die ohnehin geöffneten Seiten mit: die Startseite, die
   Kontaktseite und Zwischenseiten wie „Über uns“. Weisen die Überschriften im Inhalt einer Kontakt- oder Zwischenseite
   sie als Impressum aus, gilt das Impressum als über diese Seite gefunden. Sonst bleibt ihr Text für LEGAL-01, das darin
@@ -571,6 +587,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   dafür nur ein Abschnitt „Impressum“ und der Seitenfuß, weil sie auch Firmenangaben von Auftragsverarbeitern nennt.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
+- **Nur wenige Seiten.** Phase A sieht die Startseite, die Rechtstexte, die Kontaktseite und so viele weitere Seiten,
+  wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
+  Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu
+  Geschichte), daher kann auf Portalen auch ein Artikel als weitere Seite gewählt werden.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das

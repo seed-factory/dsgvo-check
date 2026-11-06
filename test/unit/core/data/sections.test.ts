@@ -79,9 +79,18 @@ describe('a broken data file is reported with its directory and key', () => {
   });
 
   it('an unknown field, a typo is not silently ignored', () => {
-    const root = dataDirCopy('browser', 'pages.yaml', (t) => t.replace('extraKeywords:', 'extraKeyword:'));
+    const root = dataDirCopy('browser', 'pages.yaml', (t) => t.replace('extraGroups:', 'extraGroup:'));
     expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(DataError);
     expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(/pages\./);
+  });
+
+  it('a locale prefix that is no language code', () => {
+    const root = dataDirCopy('browser', 'pages.yaml', (t) =>
+      t.replace(/(localePrefixes:\s*\[\s*)de,/, '$1de-de,'),
+    );
+    expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(
+      /test\/data\/browser: pages\.languages\.localePrefixes\.0: /,
+    );
   });
 
   it('a name that must be lower case', () => {

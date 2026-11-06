@@ -39,6 +39,7 @@ describe('built-in defaults', () => {
     ['browser', 'storageReadTimeoutMs', 1_000],
     // A cookie that expires within a day is short-lived, like a session cookie.
     ['browser', 'persistentCookieMinDays', 1],
+    ['browser', 'maxControlPages', 2],
     ['http', 'minIntervalMs', 500],
     ['http', 'connectTimeoutMs', 5_000],
     ['http', 'headersTimeoutMs', 10_000],
@@ -127,6 +128,7 @@ describe('field list', () => {
   // A bare number in a variable must never leave the unit open.
   const COUNTS = new Set([
     'maxPages',
+    'maxControlPages',
     'minCandidatePages',
     'maxInflight',
     'requestLimit',

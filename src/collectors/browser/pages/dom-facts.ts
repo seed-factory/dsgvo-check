@@ -112,6 +112,12 @@ function actionSchemeOf(action: string): FormFact['actionScheme'] {
   return 'other';
 }
 
+/** A BCP 47 tag (`de`, `en-GB`, `x-default`) in lower case; anything else is not a language and is dropped. */
+function languageTag(value: string): string | null {
+  const tag = value.trim().toLowerCase();
+  return /^(?:[a-z]{2,3}(?:-[a-z0-9]{1,8})*|x-default)$/.test(tag) ? tag : null;
+}
+
 function mapLinks(
   raw: RawDomFacts,
   target: { etld1: string | null; host: string },
@@ -123,6 +129,7 @@ function mapLinks(
     // Free text is redacted here, before anything is stored or hashed: addresses, mailto:, URLs with a query.
     const text = redactFreeText(l.text);
     const name = redactFreeText(l.name);
+    const hreflang = languageTag(l.hreflang);
     candidates.push({
       raw: l.href,
       hrefKind: kind,
@@ -131,6 +138,7 @@ function mapLinks(
       region: l.region,
       visible: l.visible,
       order,
+      ...(hreflang ? { hreflang } : {}),
     });
 
     const sameSite = navigable ? sameSiteAs(l.href, target.etld1, target.host) : undefined;

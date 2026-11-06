@@ -3,6 +3,7 @@
 
 import {
   type DomRegion,
+  type IframeFact,
   isHttpHref,
   type LinkFact,
   type PageRole,
@@ -10,6 +11,7 @@ import {
 } from '../../../core/snapshot/browser.ts';
 import type { SanitizedUrl } from '../../../core/snapshot/common.ts';
 import { isHttpUrl, parseUrl as parse, registrableDomain } from '../../../core/url/url.ts';
+import type { ServiceCatalog } from '../../../derive/catalog.ts';
 import {
   type LegalKind,
   type LegalLexicon,
@@ -24,7 +26,7 @@ import {
 } from '../legal/lexicon.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
-import { loadPageRules, type PageRules } from '../rules.ts';
+import { type LanguageRules, loadPageRules, type PageRules } from '../rules.ts';
 import { type Robots, robotsAllows } from './robots.ts';
 
 export type { LegalKind } from '../legal/lexicon.ts';
@@ -41,6 +43,8 @@ export interface CandidateLink {
   region: DomRegion;
   visible: boolean;
   order: number;
+  /** `hreflang` of the link, lower case; in memory only. */
+  hreflang?: string;
 }
 
 export interface PageChoice {
@@ -72,6 +76,8 @@ export interface Scope {
 
 export interface SelectInput extends Scope {
   links: readonly CandidateLink[];
+  /** `lang` of the start page's document, which tells the language of a link's `hreflang` apart. */
+  startLang?: string;
   maxPages: number;
   robots: Robots | null;
   token: string;
@@ -89,7 +95,6 @@ export interface PageSelection {
   extrasWanted: number;
 }
 
-const MAX_EXTRAS = 2;
 const MAX_HOP_GETS = 3;
 const MAX_ALTERNATIVES = 2;
 
@@ -97,6 +102,8 @@ const MAX_ALTERNATIVES = 2;
 const SIGNAL_SCORE = 3;
 const MAX_NETWORK_SCORE = 3;
 const CONTACT_ROLE_SCORE = 2;
+/** Content of a catalog embed service ranks above an unknown host: it is what a site may keep loading after a reject. */
+const EMBED_SCORE = 3;
 
 const REGION_RANK: Record<DomRegion, number> = {
   footer: 0,
@@ -112,9 +119,108 @@ function lower(s: string): string {
   return s.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function template(raw: string): string {
+function pathSegments(raw: string): string[] {
   const u = parse(raw);
-  return u ? (u.pathname.split('/').filter(Boolean)[0] ?? '').toLowerCase() : '';
+  if (!u) return [];
+  return u.pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment).toLowerCase();
+      } catch {
+        return segment.toLowerCase();
+      }
+    });
+}
+
+/** A listed language code with an optional region in BCP 47 form (`de`, `de-at`, `en_GB`), normalized; else null. */
+function localeOf(segment: string | undefined, rules: LanguageRules): string | null {
+  if (segment === undefined) return null;
+  const m = /^([a-z]{2,3})(?:[-_]([a-z]{2}))?$/.exec(segment.toLowerCase());
+  if (!m || !rules.localePrefixes.has(m[1] as string)) return null;
+  return m[2] ? `${m[1]}-${m[2]}` : (m[1] as string);
+}
+
+const languageOf = (tag: string): string => tag.toLowerCase().split(/[-_]/)[0] ?? '';
+
+/** The start page of a scan, for telling the language versions of the site apart from its sections. */
+export interface LanguageStart {
+  raw: string;
+  /** `lang` of the start page's document. */
+  lang?: string;
+}
+
+export interface LanguageContext {
+  rules: LanguageRules;
+  /** Locale of the start page's first path segment (`de`, `de-at`), or null when its path has none. */
+  startLocale: string | null;
+  /** Language of the start page: its `lang`, else that of its locale prefix. */
+  startLanguage: string | null;
+  /** Locale prefixes the start page's own language switch leads to. */
+  alternatePrefixes: ReadonlySet<string>;
+}
+
+export type AlternateCandidate = Pick<CandidateLink, 'raw' | 'text'> &
+  Partial<Pick<CandidateLink, 'accessibleName' | 'hreflang'>>;
+
+const labelsOf = (l: AlternateCandidate): string[] =>
+  [l.text, l.accessibleName ?? ''].map(lower).filter((x) => x !== '');
+
+export function languageContext(
+  start: LanguageStart,
+  links: readonly AlternateCandidate[],
+  rules: LanguageRules = loadPageRules().languages,
+): LanguageContext {
+  const startLocale = localeOf(pathSegments(start.raw)[0], rules);
+  const startLanguage = start.lang
+    ? languageOf(start.lang) || null
+    : startLocale
+      ? languageOf(startLocale)
+      : null;
+  const base: LanguageContext = { rules, startLocale, startLanguage, alternatePrefixes: new Set() };
+
+  // A start page without a locale prefix may still switch to `/en/…`: the sections behind that switch are the other
+  // language as well, even where their own label does not say so.
+  const prefixes = new Set<string>();
+  for (const l of links) {
+    const locale = localeOf(pathSegments(l.raw)[0], rules);
+    if (locale !== null && locale !== startLocale && isLanguageAlternate(l, base)) prefixes.add(locale);
+  }
+  return { ...base, alternatePrefixes: prefixes };
+}
+
+/**
+ * Another language version of the site: a link whose `hreflang` names another language than the start page (the same
+ * language still leaves the prefix to decide: `/de-at/` beside `/de/`); a locale prefix other than the start page's or
+ * one its language switch leads to; a bare locale root (`/en/`) without visible
+ * text, such as a flag whose name is a sentence ("Switch to English"); a link labelled with a language code ("EN");
+ * or one labelled with a language name ("English") that leads into a locale prefix or to the root. "IT-Service" on
+ * `/it/` of a site without locale prefixes stays a section, and so does a course page "Englisch" of a language school.
+ */
+export function isLanguageAlternate(l: AlternateCandidate, ctx: LanguageContext): boolean {
+  const hreflang = l.hreflang && l.hreflang !== 'x-default' ? languageOf(l.hreflang) : null;
+  if (hreflang && ctx.startLanguage !== null && hreflang !== ctx.startLanguage) return true;
+
+  const segments = pathSegments(l.raw);
+  const locale = localeOf(segments[0], ctx.rules);
+  if (locale !== null) {
+    if (ctx.startLocale !== null && locale !== ctx.startLocale) return true;
+    if (ctx.alternatePrefixes.has(locale)) return true;
+    if (segments.length === 1 && lower(l.text) === '') return true;
+  }
+
+  const labels = labelsOf(l);
+  if (labels.some((label) => localeOf(label, ctx.rules) !== null)) return true;
+  const named = labels.some((label) => ctx.rules.switchLabels.has(label));
+  return named && (locale !== null || segments.length === 0);
+}
+
+/** URL template of a page: its first path segment, after the locale prefix on a site whose start page has one. */
+function templateOf(raw: string, lang: LanguageContext): string {
+  const segments = pathSegments(raw);
+  const skip = lang.startLocale !== null && localeOf(segments[0], lang.rules) !== null ? 1 : 0;
+  return segments[skip] ?? '';
 }
 
 function stripWww(h: string): string {
@@ -315,15 +421,16 @@ function reasonOfNav(x: NavPick): string {
   return x.m.byText ? `${x.link.region}-link:${x.m.keyword}` : `href:${x.m.keyword}`;
 }
 
-/** Pages and URL templates (first path segment) already chosen: no page twice, one page per template. */
+/** Pages and URL templates already chosen: no page twice; the fallbacks without a keyword take one page per template. */
 interface Chosen {
   used: Set<string>;
   templates: Set<string>;
+  template: (raw: string) => string;
 }
 
 function take(chosen: Chosen, raw: string): void {
   chosen.used.add(pageKey(raw));
-  chosen.templates.add(template(raw));
+  chosen.templates.add(chosen.template(raw));
 }
 
 export function selectPages(
@@ -331,7 +438,17 @@ export function selectPages(
   lexicon: LegalLexicon = loadLegalLexicon(),
   rules: PageRules = loadPageRules(),
 ): PageSelection {
-  const chosen: Chosen = { used: new Set([pageKey(i.startRaw)]), templates: new Set([template(i.startRaw)]) };
+  const lang = languageContext(
+    { raw: i.startRaw, ...(i.startLang ? { lang: i.startLang } : {}) },
+    i.links.filter((l) => navigable(l) && inScope(l.raw, i)),
+    rules.languages,
+  );
+  const template = (raw: string) => templateOf(raw, lang);
+  const chosen: Chosen = {
+    used: new Set([pageKey(i.startRaw)]),
+    templates: new Set([template(i.startRaw)]),
+    template,
+  };
   const candidate = (l: CandidateLink) =>
     navigable(l) &&
     inScope(l.raw, i) &&
@@ -351,10 +468,12 @@ export function selectPages(
   const legalMissing = [impressum, privacy].some((r) => r.status === 'none' || r.status === 'unresolved');
   const hops = legalMissing ? pickHops(i, lexicon, MAX_HOP_GETS - (contact ? 1 : 0), chosen, candidate) : [];
 
-  const fixed =
-    1 + [impressum, privacy].filter((r) => r.status === 'page').length + (contact ? 1 : 0) + hops.length;
-  const need = Math.max(0, Math.min(MAX_EXTRAS, i.maxPages - fixed));
-  const extras = pickExtras(i, rules, need, chosen, candidate);
+  // The extras get what --max-pages leaves after the pages every scan visits: the start, contact and hop pages, and per
+  // legal kind its linked page or, without one, the probe of its conventional path. A PDF link is read without a visit.
+  const legalVisits = [impressum, privacy].filter((r) => r.status !== 'pdf').length;
+  const fixed = 1 + legalVisits + (contact ? 1 : 0) + hops.length;
+  const need = Math.max(0, i.maxPages - fixed);
+  const extras = pickExtras(i, rules, need, chosen, candidate, (l) => isLanguageAlternate(l, lang));
 
   return { impressum, privacy, contact, hops, extras, extrasWanted: need };
 }
@@ -378,68 +497,156 @@ function pickHops(
   return hops;
 }
 
-/** Up to `need` extra pages: keyword links first, then navigation links, then sitemap entries. */
+/**
+ * Up to `need` extra pages: one page per keyword group first, then navigation links, then sitemap entries. Language
+ * versions of the site are never extras.
+ */
 function pickExtras(
   i: SelectInput,
   rules: PageRules,
   need: number,
   chosen: Chosen,
   candidate: (l: CandidateLink) => boolean,
+  alternate: (l: AlternateCandidate) => boolean,
 ): PageChoice[] {
+  // A page is a language version wherever one of its links says so: its sitemap entry and its other links may carry
+  // no `hreflang` or label of their own.
+  const alternateKeys = new Set(
+    i.links.filter((l) => navigable(l) && alternate(l)).map((l) => pageKey(l.raw)),
+  );
+  const isAlternate = (l: AlternateCandidate) => alternateKeys.has(pageKey(l.raw)) || alternate(l);
+
   const extras: PageChoice[] = [];
   const allowed = (raw: string): boolean | undefined => {
     if (!i.robots) return undefined;
     const u = parse(raw);
     return u ? robotsAllows(i.robots, `${u.pathname}${u.search}`, i.token) : false;
   };
-  const tryExtra = (raw: string, reasons: string[], source: PlannedPage['source']) => {
-    if (extras.length >= need) return;
-    if (chosen.templates.has(template(raw)) || chosen.used.has(pageKey(raw))) return;
+  const tryExtra = (
+    raw: string,
+    reasons: string[],
+    source: PlannedPage['source'],
+    perTemplate: boolean,
+  ): boolean => {
+    if (extras.length >= need || chosen.used.has(pageKey(raw))) return false;
+    if (perTemplate && chosen.templates.has(chosen.template(raw))) return false;
     const robotsAllowed = allowed(raw);
-    if (robotsAllowed === false) return;
+    if (robotsAllowed === false) return false;
     extras.push(choice(raw, source === 'sitemap' ? 'other' : 'nav', reasons, source, robotsAllowed));
     take(chosen, raw);
+    return true;
   };
 
-  for (const k of rules.extraKeywords) {
+  // A group names a kind of page, not a section: `/unternehmen/geschichte` and `/unternehmen/team` are both worth a
+  // visit, `/blog/a` and `/news/b` are one kind.
+  for (const group of rules.extraGroups) {
     if (extras.length >= need) break;
     const ms: Match[] = [];
     for (const l of i.links) {
-      if (!candidate(l)) continue;
-      const m = matchKeyword(l, [k]);
+      if (!candidate(l) || isAlternate(l)) continue;
+      const m = matchKeyword(l, group.words);
       if (m) ms.push({ link: l, ...m });
     }
-    for (const m of ms.sort(rank)) tryExtra(m.link.raw, [`keyword:${k}`], 'link');
+    for (const m of ms.sort(rank)) if (tryExtra(m.link.raw, [`keyword:${m.keyword}`], 'link', false)) break;
   }
 
   const navLinks = i.links
-    .filter((l) => (l.region === 'nav' || l.region === 'header') && candidate(l))
+    .filter((l) => (l.region === 'nav' || l.region === 'header') && candidate(l) && !isAlternate(l))
     .sort((a, b) => a.order - b.order);
-  for (const l of navLinks) tryExtra(l.raw, ['nav-link'], 'link');
+  for (const l of navLinks) tryExtra(l.raw, ['nav-link'], 'link', true);
 
   for (const loc of i.sitemapLocs) {
     if (
       inScope(loc, i) &&
       !isStart(loc, i) &&
       !rules.file.test(parse(loc)?.pathname ?? '') &&
-      !excluded(loc, rules)
+      !excluded(loc, rules) &&
+      !isAlternate({ raw: loc, text: '' })
     ) {
-      tryExtra(loc, ['sitemap'], 'sitemap');
+      tryExtra(loc, ['sitemap'], 'sitemap', true);
     }
   }
   return extras;
 }
 
+export interface ControlSignals {
+  thirdPartyIframes: number;
+  placeholders: number;
+  newThirdPartyHosts: number;
+  /** Catalog embed categories (maps, video, fonts, widget) among the counted frames and new hosts. */
+  embeds: number;
+}
+
 export interface ControlCandidate {
   raw: string;
   url: SanitizedUrl;
+  /** The page as phase A showed it, after redirects: its origin is compared with that of the click page. */
+  finalUrl?: SanitizedUrl;
   role: PageRole;
   order: number;
-  signals: { thirdPartyIframes: number; placeholders: number; newThirdPartyHosts: number };
+  signals: ControlSignals;
 }
 
 export interface ControlChoice extends ControlCandidate {
   reasons: string[];
+}
+
+/** What phase A saw on a page and on the start page, for the control-page signals. */
+export interface ControlFacts {
+  iframes: ReadonlyArray<Pick<IframeFact, 'src' | 'box' | 'depth'>>;
+  placeholders: number;
+  requests: ReadonlyArray<{ url: string; host: string }>;
+  startRequests: ReadonlyArray<{ url: string; host: string }>;
+}
+
+/** Catalog category of a request URL, or null for an unknown host. */
+export type CategoryOf = (url: string) => string | null;
+
+export function catalogCategoryOf(catalog: Pick<ServiceCatalog, 'matchUrl'>): CategoryOf {
+  return (url) => {
+    const u = parse(url);
+    return u ? (catalog.matchUrl(u)?.service.category ?? null) : null;
+  };
+}
+
+/** Embedded content a site may keep loading after a reject: a page with it is worth a revisit. */
+const EMBED_CATEGORIES: ReadonlySet<string> = new Set(['maps', 'video', 'fonts', 'widget']);
+/** A CMP's frames and hosts are on every page of the site and say nothing about one of them. */
+const CONSENT_PROVIDER = 'consent-provider';
+
+/** A box entirely above or left of the document is a hidden helper frame (a CMP's 4x4 frame at -9999 px). */
+function offPage(box: IframeFact['box']): boolean {
+  return box != null && (box.y + box.height <= 0 || box.x + box.width <= 0);
+}
+
+/** Control-page signals of one phase-A page: third-party frames, placeholders, hosts new against the start page. */
+export function controlSignals(
+  f: ControlFacts,
+  etld1: string | null,
+  categoryOf: CategoryOf,
+): ControlSignals {
+  const thirdParty = (host: string) => registrableDomain(host) !== etld1;
+  const frames = f.iframes.filter((frame) => {
+    if (frame.depth !== 1 || !frame.src || offPage(frame.box)) return false;
+    const host = parse(frame.src)?.hostname;
+    return host !== undefined && thirdParty(host) && categoryOf(frame.src) !== CONSENT_PROVIDER;
+  });
+  const startHosts = new Set(f.startRequests.map((r) => r.host));
+  const fresh = f.requests.filter(
+    (r) => thirdParty(r.host) && !startHosts.has(r.host) && categoryOf(r.url) !== CONSENT_PROVIDER,
+  );
+
+  const embeds = new Set<string>();
+  for (const url of [...frames.map((frame) => frame.src as string), ...fresh.map((r) => r.url)]) {
+    const category = categoryOf(url);
+    if (category !== null && EMBED_CATEGORIES.has(category)) embeds.add(category);
+  }
+  return {
+    thirdPartyIframes: frames.length,
+    placeholders: f.placeholders,
+    newThirdPartyHosts: new Set(fresh.map((r) => r.host)).size,
+    embeds: embeds.size,
+  };
 }
 
 /** Score and reasons of a phase-A page as a control page for the B/C replication. */
@@ -458,6 +665,10 @@ function scoreControlCandidate(c: ControlCandidate): { score: number; reasons: s
     score += Math.min(MAX_NETWORK_SCORE, c.signals.newThirdPartyHosts);
     reasons.push('network-signal');
   }
+  if (c.signals.embeds > 0) {
+    score += EMBED_SCORE;
+    reasons.push('embed-signal');
+  }
   if (c.role === 'contact') {
     score += CONTACT_ROLE_SCORE;
     reasons.push('role:contact');
@@ -465,18 +676,37 @@ function scoreControlCandidate(c: ControlCandidate): { score: number; reasons: s
   return { score, reasons };
 }
 
-/** Up to `max` pages of phase A (not the start page) chosen by network and DOM signals; ties by A order. */
-export function chooseControlPages(candidates: readonly ControlCandidate[], max = 2): ControlChoice[] {
-  const scored = candidates.map((c) => ({ ...c, ...scoreControlCandidate(c) }));
+export interface ControlOptions {
+  max?: number;
+  /** Origin of the page B and C click on (the start page): a consent cookie of that host reaches only its pages. */
+  clickOrigin?: string | null;
+}
+
+/**
+ * Up to `max` pages of phase A (not the start page) chosen by network and DOM signals; ties by A order. Pages on the
+ * click origin come first; a page of another origin is taken only when none of the click origin is left, and is
+ * marked `other-origin`.
+ */
+export function chooseControlPages(
+  candidates: readonly ControlCandidate[],
+  { max = 2, clickOrigin = null }: ControlOptions = {},
+): ControlChoice[] {
+  const onClickOrigin = (c: ControlCandidate) =>
+    clickOrigin === null || parse(c.finalUrl ?? c.raw)?.origin === clickOrigin;
+  const scored = candidates.map((c) => ({ ...c, ...scoreControlCandidate(c), sameOrigin: onClickOrigin(c) }));
   const legal = (r: PageRole) => r === 'impressum' || r === 'privacy';
   scored.sort((a, b) => {
+    if (a.sameOrigin !== b.sameOrigin) return a.sameOrigin ? -1 : 1;
     if (a.score !== b.score) return b.score - a.score;
     if (legal(a.role) !== legal(b.role)) return legal(a.role) ? 1 : -1;
     return a.order - b.order;
   });
 
-  return scored.slice(0, max).map(({ score: _score, ...rest }) => ({
+  return scored.slice(0, Math.max(0, max)).map(({ score: _score, sameOrigin, ...rest }) => ({
     ...rest,
-    reasons: rest.reasons.length > 0 ? rest.reasons : ['replication'],
+    reasons: [
+      ...(rest.reasons.length > 0 ? rest.reasons : ['replication']),
+      ...(sameOrigin ? [] : ['other-origin']),
+    ],
   }));
 }
