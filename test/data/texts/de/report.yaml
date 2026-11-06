@@ -73,7 +73,9 @@ ui:
     select, true {: {reasons}} other {}}. Die gezeigten Befunde „{titles}“ gelten dennoch.
   report.overview.pagesEvaluated: "{reason} ({evaluated} von {observed} Seiten ausgewertet)"
   report.overview.banner: >-
-    {state, select, recognized {Das Einwilligungsbanner wurde erkannt.} notRecognized {Das Einwilligungsbanner wurde
+    {state, select, recognized {Das Einwilligungsbanner wurde erkannt.} firstLayerAmbiguous {Das Einwilligungsbanner
+    wurde erkannt, seine erste Ebene aber nicht eindeutig eingeordnet; davon abhängige Prüfungen sind nicht
+    abschließend ausgewertet und sollten manuell geprüft werden.} notRecognized {Das Einwilligungsbanner wurde
     nicht erkannt; davon abhängige Prüfungen sind nicht abschließend ausgewertet und sollten manuell geprüft werden.}
     notFound {Auf den geprüften Seiten wurde kein Einwilligungsbanner gefunden; Ablehnung und Zustimmung wurden daher
     nicht geprüft.} notVisible {Ein Einwilligungsbanner ist im Seitenaufbau vorhanden, wurde während des Scans aber
@@ -127,15 +129,15 @@ ui:
   # `outcome` of the banner click of the phase: `not-clicked` (a further visit without that click), `unverified`, or
   # empty when the click took place or the report predates the click outcome.
   report.phase: >-
-    {phase, select, A {A (vor einer Interaktion)} B {B ({outcome, select, not-clicked {erneuter Besuch, keine
-    Ablehnung ausgelöst} unverified {nach Ablehnung, vom Banner nicht bestätigt} other {nach Ablehnung}})} C {C
-    ({outcome, select, not-clicked {erneuter Besuch, keine Annahme ausgelöst} unverified {nach Zustimmung, vom Banner
-    nicht bestätigt} other {nach Zustimmung}})} http {HTTP-Abruf} dns {DNS-Abfrage} tls {TLS-Verbindung} other
-    {{phase}}}
+    {phase, select, A {A (vor einer Interaktion)} B {B ({outcome, select, before-click {erster Bildschirm, vor dem
+    Ablehnen} not-clicked {erneuter Besuch, keine Ablehnung ausgelöst} unverified {nach Ablehnung, vom Banner nicht
+    bestätigt} other {nach Ablehnung}})} C {C ({outcome, select, before-click {erster Bildschirm, vor dem Annehmen}
+    not-clicked {erneuter Besuch, keine Annahme ausgelöst} unverified {nach Zustimmung, vom Banner nicht bestätigt}
+    other {nach Zustimmung}})} http {HTTP-Abruf} dns {DNS-Abfrage} tls {TLS-Verbindung} other {{phase}}}
   report.phaseShort: >-
-    {phase, select, B {{outcome, select, not-clicked {B (ohne Ablehnung)} unverified {B (Ablehnung nicht bestätigt)}
-    other {B}}} C {{outcome, select, not-clicked {C (ohne Annahme)} unverified {C (Annahme nicht bestätigt)} other
-    {C}}} other {{phase}}}
+    {phase, select, B {{outcome, select, before-click {B (vor dem Klick)} not-clicked {B (ohne Ablehnung)} unverified
+    {B (Ablehnung nicht bestätigt)} other {B}}} C {{outcome, select, before-click {C (vor dem Klick)} not-clicked {C
+    (ohne Annahme)} unverified {C (Annahme nicht bestätigt)} other {C}}} other {{phase}}}
   report.finding.trigger: Auslöser
   report.finding.replicated: Erneut beobachtet
   report.finding.provider: Anbieter
@@ -315,7 +317,7 @@ ui:
     section {Abschnitt} quote {Zitat} matchLevel {Treffer} negation {Verneinung} status {HTTP-Status} role {Rolle}
     evaluable {Auswertbar} reason {Grund} startUrl {Start-URL} hops {Schritte} outcome {Ergebnis} href {Ziel} text
     {Linktext} target {Linkziel} method {Methode} resourceType {Ressource} result {Antwort} delivery {Zustellung}
-    provenance {Herkunft der Antwort} features {Merkmale} other {{key}}}
+    provenance {Herkunft der Antwort} features {Merkmale} candidate {Bannerähnlicher Kasten} other {{key}}}
   report.evidence.fetch: >-
     {method} · {resourceType, select, document {Dokument} stylesheet {Stylesheet} script {Skript} font {Schrift}
     image {Bild} xhr {XHR} fetch {Fetch} ping {Ping} media {Medien} websocket {WebSocket} manifest {Manifest} other
@@ -329,6 +331,10 @@ ui:
     Dienstekatalog)} user-supplied {Nutzer- oder Klickkennung} per-load {nur für diesen Seitenaufruf belegt} none
     {keine erkannt} other {{kind}}}{hasParam, select, true { – {param}} other {}}
   report.evidence.button: "„{name}“ · {kind, select, accept {Zustimmen} reject {Ablehnen} settings {Einstellungen} save {Auswahl speichern} close {Schließen} later {Später} hide {Ausblenden} link {Link} other {sonstige Schaltfläche}} · {visible, select, true {{actionable, select, true {auf dem ersten Bildschirm sichtbar und bedienbar} other {auf dem ersten Bildschirm sichtbar, nicht bedienbar}}} other {nicht auf dem ersten Bildschirm}}{hasContrast, select, true { · Kontrast {contrast, number}} other {}}"
+  # A banner-like box the heuristic did not take as a banner: why not, and its features; `controls` lists the
+  # `report.evidence.controlKind` words.
+  report.evidence.candidate: "nicht als Banner gewertet: {reason, select, page-section {in Kopf- oder Fußzeile ohne Zustimmen oder Ablehnen} keywords {ein Einwilligungswort ohne Bannernamen und ohne Zustimmen oder Ablehnen} no-control {keine Schaltfläche aus der Wortliste} other {{reason}}} · Einwilligungswörter: {keywordHits} · Schaltflächen: {hasControls, select, true {{controls}} other {keine}} · {cookieWording, select, true {nennt Cookies} other {nennt keine Cookies}}{fixed, select, true { · fest positioniert} other {}}{dialog, select, true { · Dialog} other {}}{named, select, true { · Bannername} other {}}"
+  report.evidence.controlKind: "{kind, select, accept {Zustimmen} reject {Ablehnen} settings {Einstellungen} save {Auswahl speichern} other {sonstige Schaltfläche}}"
   report.evidence.manifest: "{parts} Abschnitte · {chars, number} Zeichen · aufklappbare Abschnitte: {opened} von {found} geöffnet · Frames: {frames} · verlinkte Seiten: {linked}{truncated, select, true { · gekürzt} other {}}"
   # Coded values of evidence fields by `field`; empty for a value the texts do not know, which is then shown as it is.
   report.evidence.value: >-

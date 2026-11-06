@@ -244,7 +244,9 @@ adapters:
         - { selector: '[data-hook="consent-banner-apply-button"]', role: accept }
         - { selector: '[data-hook="consent-banner-settings-button"]', role: settings }
         - { selector: '[data-hook="consent-banner-close-button"]', role: close }
-    # The policy categories besides `essential`, which is always on.
+    # The policy categories besides `essential`, which is always on. `dataToThirdParty` is no choice of this banner:
+    # Wix keeps it on before any answer and after "Alle ablehnen" (it backs the US opt-out of selling data), so with it
+    # every reject would look ineffective and every first visit like consent without action.
     optionalGroups: [functional, analytics, advertising]
 
   # The TYPO3 extension cookieman. Its consent cookie is called `CookieConsent` like Cookiebot's, so no cookie is a

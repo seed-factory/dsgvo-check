@@ -18,6 +18,7 @@ import {
   hasPhaseA,
   noPhaseAReason,
   phaseRecord,
+  requestCapBeforePhaseC,
   requestIndex,
   startPageUrl,
   throttleAware,
@@ -211,7 +212,8 @@ export const consent01 = defineCheck({
       {
         status: 'completed',
         observations,
-        limitations: browser.requestCap.truncated ? ['request-cap-truncated'] : [],
+        // Only phases A and B count here: the limit reached after the consent left them complete.
+        limitations: requestCapBeforePhaseC(browser) ? ['request-cap-truncated'] : [],
         coverage: {
           observed: a?.pages.length ?? 0,
           evaluated: a?.pages.filter((p) => p.evaluable).length ?? 0,

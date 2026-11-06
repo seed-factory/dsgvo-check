@@ -8,7 +8,8 @@ import type {
 } from '../../../../../src/cmp/types.ts';
 import { parseConfigInput } from '../../../../../src/core/config/load.ts';
 import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
-import { loadDataDir } from '../../../../../src/core/data/load.ts';
+import { loadDataDir, loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { SanitizedUrl } from '../../../../../src/core/snapshot/common.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
@@ -151,6 +152,21 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
+  });
+
+  it('a banner an adapter recognised with high confidence whose first layer the classifier cannot read says so', () => {
+    const r = runCheck(
+      createConsent04(fixed('banner-not-recognized')),
+      site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) }),
+    );
+    const [o] = observationsOf(r);
+    expect(o?.params).toMatchObject({ cmp: 'cookiebot', bannerRecognized: true });
+    const text = renderMessage(loadTexts('de'), 'CONSENT-04.banner-not-recognized', o?.params as never);
+    expect(text.title).toBe('Erste Banner-Ebene nicht eindeutig');
+    expect(text.body).toMatch(/^Das Einwilligungsbanner \(cookiebot\) wurde erkannt/);
+    expect(renderMessage(loadTexts('en'), 'CONSENT-04.banner-not-recognized', o?.params as never).title).toBe(
+      'First banner layer ambiguous',
+    );
   });
 
   describe('only own adapters with high recognition give a verdict', () => {

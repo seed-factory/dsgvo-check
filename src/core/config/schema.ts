@@ -193,7 +193,7 @@ const cmp = z.strictObject({
   ),
   minCandidatePages: int(
     2,
-    'Pages of phase A on which a banner-like box the heuristic did not take (or, in older snapshots, the same banner link) must show, when not on the start page, before CONSENT-03 stops concluding that there is no banner.',
+    'Pages of phase A on which a banner the heuristic took, a banner-like box it did not take (or, in older snapshots, the same banner link) must show, when not on the start page, before CONSENT-03 stops concluding that there is no banner.',
     1,
     50,
   ),

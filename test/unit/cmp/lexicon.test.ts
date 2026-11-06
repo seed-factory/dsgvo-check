@@ -100,6 +100,8 @@ describe('classifyLabel: lexicon de/en', () => {
     ['Akzeptieren', 'accept', 'high'],
     ['Einverstanden', 'accept', 'high'],
     ['Accept all cookies', 'accept', 'high'],
+    ['Ich akzeptiere', 'accept', 'high'],
+    ['Ich akzeptiere alle', 'accept', 'medium'],
     ['Einstellungen', 'settings', 'high'],
     ['Mehr Optionen', 'settings', 'high'],
     ['Individuelle Einstellungen', 'settings', 'high'],
@@ -196,6 +198,23 @@ describe('classifyLabel: lexicon de/en', () => {
       confidence: 'medium',
     });
   });
+
+  it.each([
+    ['Ablehnen und Fenster schließen', 'reject', 'medium'],
+    ['Ablehnen und Banner schließen', 'reject', 'medium'],
+    ['Alle ablehnen und Dialog schließen', 'reject', 'medium'],
+    ['Deny and close banner', 'reject', 'medium'],
+    ['Akzeptieren und Fenster schließen', 'accept', 'medium'],
+    ['Chiudi senza accettare', 'reject', 'high'],
+    ['Disagree and close', 'reject', 'high'],
+    ['Disagree', 'reject', 'high'],
+    // Counterexamples: no decision beside the close phrase, or two of them.
+    ['Fenster schließen', 'close', 'high'],
+    ['Einstellungen und Banner schließen', 'close', 'medium'],
+    ['Akzeptieren oder ablehnen und Fenster schließen', null, 'low'],
+  ])('a decision beside a longer close phrase is the decision: %s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
 });
 
 // "save the selection" phrased with accept/allow verbs is a save button, not "accept all".
@@ -265,6 +284,17 @@ describe('classifyLabel: further languages', () => {
     ['Samþykkja allt', 'accept'],
     ['Odrzuć wszystkie', 'reject'],
     ['Zaakceptuj wszystkie', 'accept'],
+    // Continue without consent, the reject of Real Cookie Banner.
+    ['Continuer sans consentement', 'reject'],
+    ['Continuar sin consentimiento', 'reject'],
+    ['Continua senza consenso', 'reject'],
+    ['Continuar sem consentimento', 'reject'],
+    ['Doorgaan zonder toestemming', 'reject'],
+    ['Fortsæt uden samtykke', 'reject'],
+    ['Fortsett uten samtykke', 'reject'],
+    ['Fortsätt utan samtycke', 'reject'],
+    ['Jatka ilman suostumusta', 'reject'],
+    ['Kontynuuj bez zgody', 'reject'],
   ];
   it.each(cases)('%s → %s', (label, kind) => {
     expect(classifyLabel(label, lexicon).kind).toBe(kind);
@@ -297,6 +327,11 @@ describe('classifyLabel: labels a click could turn into consent or a purchase', 
     ['Ich stimme nicht zu', 'reject', 'high'],
     ['Ich bin nicht einverstanden', 'reject', 'high'],
     ['Cookies nicht akzeptieren', 'reject', 'medium'],
+    ['Keine Cookies akzeptieren', 'reject', 'high'],
+    ['Keine Cookies zulassen', 'reject', 'high'],
+    ['Keine Cookies erlauben', 'reject', 'high'],
+    ['Accept no cookies', 'reject', 'high'],
+    ['No cookies', 'reject', 'high'],
     // A negation before the matched phrase, or a restriction outside it, leaves the meaning open: no decision.
     ['Nicht alle akzeptieren', null, 'low'],
     ['Weiter ohne Akzeptieren', null, 'low'],
@@ -310,7 +345,16 @@ describe('classifyLabel: labels a click could turn into consent or a purchase', 
     ['I do not want to accept', null, 'low'],
     ['Ne pas accepter', null, 'low'],
     ['No aceptar', null, 'low'],
-    // A negation of a cookie category, or one after the decision phrase, does not negate the decision.
+    // After an accept phrase, a negation that starts no cookie category negates the consent: no decision.
+    ['Ich akzeptiere keine Cookies', null, 'low'],
+    ['Ich akzeptiere keine optionalen Cookies', null, 'low'],
+    ['Ich akzeptiere keine Tracking-Cookies', null, 'low'],
+    ['Ich akzeptiere die Cookies nicht', null, 'low'],
+    ['Accept no tracking cookies', null, 'low'],
+    // Counterexamples: a negation in a clause of its own after the accept phrase does not negate it.
+    ['Akzeptieren und nicht mehr anzeigen', 'accept', 'medium'],
+    ["Accept and don't show again", 'accept', 'medium'],
+    // A negation of a cookie category, or one after a reject phrase, does not negate the decision.
     ['Nicht notwendige Cookies ablehnen', 'reject', 'high'],
     ['Nicht essenzielle Cookies ablehnen', 'reject', 'high'],
     ['Reject non-essential cookies', 'reject', 'high'],
@@ -362,6 +406,10 @@ describe('classifyLabel: labels a click could turn into consent or a purchase', 
       kind: 'accept',
       by: 'restriction',
     });
+    expect(classifyLabel('Ich akzeptiere keine Cookies', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'negation',
+    });
     expect(classifyLabel('Alle akzeptieren', lexicon).qualified).toBeUndefined();
     expect(classifyLabel('Abonnieren', lexicon).qualified).toBeUndefined();
   });
@@ -391,6 +439,409 @@ describe('classifyLabel: labels a click could turn into consent or a purchase', 
   });
 });
 
+// "nicht notwendige" is one adjective (the optional cookies): a phrase that ends on its negation or starts on its
+// necessity word reads only half of it.
+describe('classifyLabel: a negated cookie category is read as a whole', () => {
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    // Consent to the optional cookies, although a reject phrase ends with the negation.
+    ['Ich akzeptiere nicht notwendige Cookies', 'accept', 'medium'],
+    ['Ich akzeptiere nicht erforderliche Cookies', 'accept', 'medium'],
+    ['Ich akzeptiere nicht essenzielle Cookies', 'accept', 'medium'],
+    ['Ich akzeptiere nicht technisch notwendige Cookies', 'accept', 'medium'],
+    // Consent to the optional cookies, although a reject phrase starts with the necessity word.
+    ['Nicht notwendige Cookies akzeptieren', 'accept', 'medium'],
+    ['Nicht erforderliche Cookies erlauben', 'accept', 'medium'],
+    ['Nicht technisch notwendige Cookies zulassen', 'accept', 'medium'],
+    ['Niet-noodzakelijke cookies accepteren', 'accept', 'medium'],
+    ['Mit nicht notwendigen Cookies einverstanden', 'accept', 'medium'],
+    ['Ich stimme nicht notwendigen Cookies zu', null, 'low'],
+    ['Acceptera icke-nödvändiga cookies', 'accept', 'medium'],
+    ['Godkänn icke nödvändiga kakor', 'accept', 'medium'],
+    ['Godkänn ej nödvändiga cookies', 'accept', 'medium'],
+    ['Akceptuj pliki cookie inne niż niezbędne', 'accept', 'medium'],
+    // Counterexamples: the negation belongs to the decision, a negated category after the phrase stands on its own.
+    ['Ich akzeptiere nicht', 'reject', 'high'],
+    ['Do not accept non-essential cookies', 'reject', 'medium'],
+    ["Don't accept non-essential cookies", 'reject', 'medium'],
+    ['I do not accept non-essential cookies', 'reject', 'medium'],
+    ['Nicht notwendige Cookies nicht akzeptieren', 'reject', 'medium'],
+    ['Nicht notwendige Cookies ablehnen', 'reject', 'high'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+
+  it('a reject phrase that ends with a negation is no reject before a necessity word, whatever the vendor role', () => {
+    const negations = (lexicon.negations ?? []).map(labelTokens);
+    const endsWithNegation = (tokens: string[]) =>
+      negations.some(
+        (n) => n.length <= tokens.length && n.every((t, j) => tokens[tokens.length - n.length + j] === t),
+      );
+    const phrases = lexicon.reject.filter((p) => endsWithNegation(labelTokens(p)));
+    expect(phrases.length).toBeGreaterThan(0);
+    for (const phrase of phrases) {
+      for (const category of [
+        'notwendige Cookies',
+        'erforderliche Cookies',
+        'essenzielle Cookies',
+        'technisch notwendige Cookies',
+      ]) {
+        const name = `${phrase} ${category}`;
+        expect(classifyLabel(name, lexicon).kind, name).not.toBe('reject');
+        for (const vendorRole of ['accept', 'reject'] as const) {
+          expect(
+            classifyButton({ name, role: 'button', vendorRole }, lexicon).kind,
+            `${name} (${vendorRole})`,
+          ).not.toBe('reject');
+        }
+      }
+    }
+  });
+
+  it('names a reject phrase that only matched half of a negated category when no other phrase decides', () => {
+    const name = 'Ich akzeptiere nicht notwendige Cookies';
+    const lone = {
+      ...lexicon,
+      version: 'test',
+      accept: lexicon.accept.filter((p) => p !== 'ich akzeptiere'),
+    };
+    expect(classifyLabel(name, lone)).toEqual({
+      kind: null,
+      confidence: 'low',
+      phrase: null,
+      qualified: { kind: 'reject', by: 'category' },
+    });
+    expect(classifyButton({ name, role: 'button', vendorRole: 'reject' }, lone)).toEqual({
+      kind: 'other',
+      kindConfidence: 'low',
+    });
+  });
+});
+
+// Punctuation ends a clause: a negation in a clause of its own neither negates the decision of the next one ("No,
+// reject all") nor its object ("Akzeptieren, nicht mehr anzeigen"), and a phrase does not reach across it.
+describe('classifyLabel: punctuation ends a clause', () => {
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    // An answer before the decision.
+    ['No, reject all', 'reject', 'medium'],
+    ['No thanks, reject all', 'reject', 'medium'],
+    ['No, I disagree', 'reject', 'medium'],
+    ['Non, tout refuser', 'reject', 'medium'],
+    ['No, rifiuta tutti', 'reject', 'medium'],
+    ['Nie, odrzuć wszystkie', 'reject', 'medium'],
+    ['Não, rejeitar todos', 'reject', 'medium'],
+    ['Kein Tracking – Ablehnen', 'reject', 'medium'],
+    ['Ohne Tracking: alle ablehnen', 'reject', 'medium'],
+    ['Kein Tracking, nur notwendige Cookies', 'reject', 'medium'],
+    ['No, necessary cookies only', 'reject', 'medium'],
+    // A clause of its own after the consent.
+    ['Ich akzeptiere – nicht mehr anzeigen', 'accept', 'medium'],
+    ['Ich akzeptiere, nicht mehr fragen', 'accept', 'medium'],
+    ['Ich akzeptiere. Nicht erneut fragen', 'accept', 'medium'],
+    ['Ich akzeptiere (nicht empfohlen)', 'accept', 'medium'],
+    ['Akzeptieren & nicht mehr anzeigen', 'accept', 'medium'],
+    ['Akzeptieren, nicht mehr anzeigen', 'accept', 'medium'],
+    ['Alle akzeptieren – nicht mehr fragen', 'accept', 'medium'],
+    ['Alle akzeptieren - nicht mehr anzeigen', 'accept', 'medium'],
+    ['OK, nicht mehr anzeigen', 'accept', 'medium'],
+    ["Accept all & don't ask again", 'accept', 'medium'],
+    ["Accept, don't show again", 'accept', 'medium'],
+    // Counterexamples: the negation stands in the clause of the phrase, or the label is the phrase.
+    ['No, I do not agree', 'reject', 'medium'],
+    ["No, I don't accept", 'reject', 'medium'],
+    ['Ich akzeptiere nicht, danke', 'reject', 'medium'],
+    ['Ich akzeptiere die Cookies nicht.', null, 'low'],
+    ['Nicht alle akzeptieren!', null, 'low'],
+    ['OK, verstanden', 'accept', 'high'],
+    ['Ei, kiitos', 'reject', 'high'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+
+  it('the vendor role decides a label whose decision a clause of its own does not qualify', () => {
+    const vendor = (name: string, vendorRole: ButtonKind) =>
+      classifyButton({ name, role: 'button', vendorRole }, lexicon);
+    expect(vendor('No, reject all', 'reject')).toEqual({ kind: 'reject', kindConfidence: 'high' });
+    expect(vendor('No, necessary cookies only', 'reject')).toEqual({
+      kind: 'reject',
+      kindConfidence: 'high',
+    });
+    expect(vendor('Ich akzeptiere – nicht mehr anzeigen', 'accept')).toEqual({
+      kind: 'accept',
+      kindConfidence: 'high',
+    });
+    expect(vendor('Akzeptieren & nicht mehr anzeigen', 'accept')).toEqual({
+      kind: 'accept',
+      kindConfidence: 'high',
+    });
+  });
+});
+
+// A bracketed insertion ends the clause for phrases, but not the negation of the consent it interrupts or opens: "Nicht
+// (alle Cookies) akzeptieren" is "Nicht alle Cookies akzeptieren".
+describe('classifyLabel: a negation reaches a consent across a bracketed insertion', () => {
+  const negated = [
+    'Nicht (alle Cookies) akzeptieren',
+    'Nicht [alle Cookies] akzeptieren',
+    'Nicht (alle (auch Statistik)) akzeptieren',
+    'Keine (optionalen) Cookies akzeptieren',
+    'Ich möchte keine (optionalen) Cookies akzeptieren',
+    'I do not (want to) accept',
+    'Nicht (allen) zustimmen',
+    'Do not (accept all cookies)',
+    "Don't (accept all)",
+    // A negation after the consent reaches it across an insertion as well: at the end of its clause, or before a word
+    // for all cookies in the insertion it opens or after it.
+    'Ich akzeptiere (die Cookies) nicht',
+    'Ich akzeptiere optionale Cookies (z. B. Statistik) nicht',
+    'Ich akzeptiere nicht (alle Cookies)',
+    'Ich akzeptiere nicht (leider) alle Cookies',
+  ];
+  it.each(negated)('%s → no decision, a negated accept; the vendor role decides only as reject', (name) => {
+    expect(classifyLabel(name, lexicon)).toMatchObject({
+      kind: null,
+      confidence: 'low',
+      qualified: { kind: 'accept', by: 'negation' },
+    });
+    const vendor = (vendorRole: ButtonKind) => classifyButton({ name, role: 'button', vendorRole }, lexicon);
+    expect(vendor('reject')).toEqual({ kind: 'reject', kindConfidence: 'medium' });
+    expect(vendor('accept')).toEqual({ kind: 'other', kindConfidence: 'low' });
+  });
+
+  // A negation directly before an insertion reaches the reject phrase directly after it.
+  it.each(['Nicht (alle Cookies) ablehnen', 'Nicht [alle] ablehnen', 'Keine (optionalen) Cookies ablehnen'])(
+    '%s → no decision, a negated reject; no vendor role makes it a decision',
+    (name) => {
+      expect(classifyLabel(name, lexicon)).toMatchObject({
+        kind: null,
+        confidence: 'low',
+        qualified: { kind: 'reject', by: 'negation' },
+      });
+      const vendor = (vendorRole: ButtonKind) =>
+        classifyButton({ name, role: 'button', vendorRole }, lexicon);
+      expect(vendor('reject')).toEqual({ kind: 'other', kindConfidence: 'low' });
+      expect(vendor('accept')).toEqual({ kind: 'other', kindConfidence: 'low' });
+    },
+  );
+
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    // Counterexamples: a negation inside the insertion, or after it, or in a clause of its own, does not negate.
+    ['Alle akzeptieren (nicht empfohlen)', 'accept', 'medium'],
+    ['OK (nicht empfohlen)', 'accept', 'medium'],
+    ['Alle akzeptieren (empfohlen) Nicht mehr anzeigen', 'accept', 'medium'],
+    ['Ich akzeptiere (empfohlen) nicht mehr fragen', 'accept', 'medium'],
+    ['Ich akzeptiere (die Cookies) nicht mehr fragen', 'accept', 'medium'],
+    ['Akzeptieren (alle Cookies), nicht mehr anzeigen', 'accept', 'medium'],
+    ['Nicht jetzt (alle akzeptieren)', 'accept', 'medium'],
+    ['Kein Problem (alle akzeptieren)', 'accept', 'medium'],
+    ['Nein, (alle) akzeptieren', 'accept', 'medium'],
+    ['(Empfohlen) Alle akzeptieren', 'accept', 'medium'],
+    // Counterexamples: an insertion beside an unnegated consent.
+    ['Alle akzeptieren (empfohlen)', 'accept', 'medium'],
+    ['Akzeptieren (empfohlen)', 'accept', 'medium'],
+    ['Akzeptieren (alle Cookies) und weiter', 'accept', 'medium'],
+    ['Alle akzeptieren (Statistik und Marketing)', 'accept', 'medium'],
+    // Counterexamples: a reject stays a reject around an insertion.
+    ['Kein Tracking (nur notwendige Cookies)', 'reject', 'medium'],
+    ['Nicht zustimmen (nur notwendige)', 'reject', 'medium'],
+    ['Nicht einverstanden (nur notwendige Cookies)', 'reject', 'medium'],
+    ['No (reject all)', 'reject', 'medium'],
+    ['Nein danke (alle ablehnen)', 'reject', 'medium'],
+    ['Kein Tracking (Statistik) – alle ablehnen', 'reject', 'medium'],
+    ['Ohne Tracking (empfohlen): alle ablehnen', 'reject', 'medium'],
+    ['Kein Tracking (empfohlen) alle ablehnen', 'reject', 'medium'],
+    ['Nicht (technisch) notwendige Cookies ablehnen', 'reject', 'medium'],
+    ['Ich akzeptiere nicht (empfohlen)', 'reject', 'medium'],
+    ['I do not accept (cookies from all partners)', 'reject', 'medium'],
+    ['Optionale Cookies (Statistik, Marketing) ablehnen', 'reject', 'medium'],
+    ['Nicht (akzeptieren)', 'reject', 'high'],
+    ['Ablehnen)', 'reject', 'high'],
+    ['Ablehnen (nicht empfohlen', 'reject', 'medium'],
+    // Counterexample: without a decision phrase the label stays no decision.
+    ['Nicht (mehr) anzeigen', null, 'low'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+});
+
+// "Not all" is consent to part of the cookies, however the negation is placed.
+describe('classifyLabel: a negated consent to all cookies is no decision', () => {
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    ['Ich akzeptiere nicht alle Cookies', null, 'low'],
+    ['Do not accept all', null, 'low'],
+    ['Do not accept all cookies', null, 'low'],
+    ["I don't accept all cookies", null, 'low'],
+    ["I don't agree to all", null, 'low'],
+    ['Nie zgadzam się na wszystkie', null, 'low'],
+    // Counterexamples: the negation refuses the cookies, "all" only stresses it.
+    ['Accept no cookies at all', 'reject', 'medium'],
+    ['No cookies at all', 'reject', 'medium'],
+    ['I do not accept cookies from all partners', 'reject', 'medium'],
+    ['I do not accept non-essential cookies', 'reject', 'medium'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+
+  it('reads like "Nicht alle akzeptieren": a negated accept, the vendor role decides only as reject or settings', () => {
+    for (const name of [
+      'Ich akzeptiere nicht alle Cookies',
+      'Do not accept all',
+      'Nicht alle Cookies akzeptieren',
+    ]) {
+      expect(classifyLabel(name, lexicon).qualified, name).toEqual({ kind: 'accept', by: 'negation' });
+      const vendor = (vendorRole: ButtonKind) =>
+        classifyButton({ name, role: 'button', vendorRole }, lexicon);
+      expect(vendor('reject'), name).toEqual({ kind: 'reject', kindConfidence: 'medium' });
+      expect(vendor('settings'), name).toEqual({ kind: 'settings', kindConfidence: 'medium' });
+      expect(vendor('accept'), name).toEqual({ kind: 'other', kindConfidence: 'low' });
+    }
+  });
+});
+
+// Consent to the necessary cookies alone refuses all others, also without "nur" or "only".
+describe('classifyLabel: an accept of the necessary cookies only', () => {
+  const cases: Array<[label: string, kind: string | null, confidence: string]> = [
+    ['Notwendige Cookies akzeptieren', 'reject', 'high'],
+    ['Notwendige Cookies erlauben', 'reject', 'high'],
+    ['Notwendige Cookies zulassen', 'reject', 'high'],
+    ['Erforderliche Cookies akzeptieren', 'reject', 'high'],
+    ['Erforderliche Cookies erlauben', 'reject', 'high'],
+    ['Erforderliche Cookies zulassen', 'reject', 'high'],
+    ['Essenzielle Cookies akzeptieren', 'reject', 'high'],
+    ['Essentielle Cookies erlauben', 'reject', 'high'],
+    ['Technisch notwendige Cookies akzeptieren', 'reject', 'high'],
+    ['Technisch erforderliche Cookies zulassen', 'reject', 'high'],
+    ['Accept necessary', 'reject', 'high'],
+    ['Accept necessary cookies', 'reject', 'high'],
+    ['Accept required', 'reject', 'high'],
+    ['Accept required cookies', 'reject', 'high'],
+    ['Accept essential cookies', 'reject', 'high'],
+    ['Allow necessary cookies', 'reject', 'high'],
+    ['Allow required cookies', 'reject', 'high'],
+    ['Allow essential cookies', 'reject', 'high'],
+    ['Use necessary cookies', 'reject', 'high'],
+    // Without a phrase of its own, a necessity word outside the accept phrase still makes it no accept.
+    ['Accept strictly necessary cookies', null, 'low'],
+    ['Alle notwendigen Cookies akzeptieren', null, 'low'],
+    ['Accept all necessary cookies', null, 'low'],
+    ['Accepter les cookies nécessaires', null, 'low'],
+    ['Aceptar cookies necesarias', null, 'low'],
+    ['Accetta i cookie necessari', null, 'low'],
+    ['Noodzakelijke cookies accepteren', null, 'low'],
+    ['Technische Cookies akzeptieren', null, 'low'],
+    ['Ich akzeptiere technische Cookies', null, 'low'],
+    ['Notwendiges akzeptieren', null, 'low'],
+    ['Erforderliches akzeptieren', null, 'low'],
+    ['Nötige Cookies akzeptieren', null, 'low'],
+    ['Accept essentials', null, 'low'],
+    ['Accept technical cookies', null, 'low'],
+    ['Accetta i cookie tecnici', null, 'low'],
+    ['Aceptar cookies técnicas', null, 'low'],
+    ['Aceitar cookies técnicos', null, 'low'],
+    ['Accepter les cookies techniques', null, 'low'],
+    // Beside other wording such a phrase does not decide, and the accept phrase stays restricted to the necessary
+    // cookies: a further category is consent to more than them, a further verb is not read.
+    ['Accept necessary and analytics cookies', null, 'low'],
+    ['Accept essential and marketing cookies', null, 'low'],
+    ['Accept required and optional cookies', null, 'low'],
+    ['Accept necessary + statistics', null, 'low'],
+    ['Statistik und notwendige Cookies akzeptieren', null, 'low'],
+    ['Accept necessary cookies and continue', null, 'low'],
+    ['Notwendige Cookies akzeptieren und schließen', null, 'low'],
+    // A further category in a clause of its own is consent to more than the necessary cookies as well.
+    ['Accept necessary & analytics cookies', null, 'low'],
+    ['Accept necessary, analytics and marketing cookies', null, 'low'],
+    ['Accept necessary cookies, analytics cookies', null, 'low'],
+    ['Notwendige Cookies akzeptieren / Statistik', null, 'low'],
+    ['Statistik, notwendige Cookies akzeptieren', null, 'low'],
+    ['Accept necessary (and analytics) cookies', null, 'low'],
+    ['Accept necessary cookies (incl. analytics)', null, 'low'],
+    ['Notwendige Cookies akzeptieren (inkl. Statistik)', null, 'low'],
+    ['Notwendige Cookies akzeptieren (und Statistik)', null, 'low'],
+    ['Notwendige Cookies akzeptieren – Statistik erlauben', null, 'low'],
+    // A word that only recommends counts, other wording around it is not read.
+    ['Notwendige Cookies akzeptieren (nicht empfohlen)', null, 'low'],
+    // Beside cookie and necessity words and a recommendation only, the phrase decides.
+    ['Accept essential cookies (strictly necessary)', 'reject', 'medium'],
+    ['Unbedingt erforderliche Cookies akzeptieren', 'reject', 'medium'],
+    ['Mit notwendigen Cookies fortfahren (empfohlen)', 'reject', 'medium'],
+    ['Mit notwendigen Cookies fortfahren, empfohlen', 'reject', 'medium'],
+    ['Notwendige Cookies akzeptieren (empfohlen)', 'reject', 'medium'],
+    ['Essenzielle Cookies akzeptieren (Empfehlung)', 'reject', 'medium'],
+    ['Accept necessary cookies (recommended)', 'reject', 'medium'],
+    ['Nur notwendige Cookies (empfohlen)', 'reject', 'medium'],
+    ['Mit notwendigen Cookies fortfahren (empfohlene Einstellung)', 'reject', 'medium'],
+    ['Mit notwendigen Cookies fortfahren (sehr empfohlen)', 'reject', 'medium'],
+    ['Mit notwendigen Cookies fortfahren (von uns empfohlen)', 'reject', 'medium'],
+    ['Notwendige Cookies akzeptieren (empfohlene)', 'reject', 'medium'],
+    ['Essenzielle Cookies akzeptieren (unsere Empfehlung)', 'reject', 'medium'],
+    ['Erforderliche Cookies zulassen (Standard)', 'reject', 'medium'],
+    ['Accept necessary cookies (highly recommended)', 'reject', 'medium'],
+    ['Allow essential cookies (our recommendation)', 'reject', 'medium'],
+    ['Use necessary cookies (default)', 'reject', 'medium'],
+    // A tie with an accept phrase that the label restricts: the reject phrase decides.
+    ['Ich akzeptiere nur notwendige', 'reject', 'medium'],
+    ['Ich akzeptiere nur essenzielle', 'reject', 'medium'],
+    // The negated consent decides, not the necessary cookies it names.
+    ['Do not accept necessary cookies', 'reject', 'medium'],
+    // Counterexamples: all cookies, or the optional ones.
+    ['Alle akzeptieren', 'accept', 'high'],
+    ['Alle Cookies akzeptieren', 'accept', 'high'],
+    ['Accept all cookies', 'accept', 'high'],
+    ['Allow all', 'accept', 'high'],
+    ['Accept non-essential cookies', 'accept', 'medium'],
+    ['Aceptar cookies no necesarias', 'accept', 'medium'],
+    ['Alle Cookies akzeptieren, auch technisch notwendige', 'accept', 'medium'],
+    ['Accept all cookies, including strictly necessary', 'accept', 'medium'],
+  ];
+  it.each(cases)('%s → %s (%s)', (label, kind, confidence) => {
+    expect(classifyLabel(label, lexicon)).toMatchObject({ kind, confidence });
+  });
+
+  it('names the necessity word as the restriction of the accept', () => {
+    expect(classifyLabel('Accept strictly necessary cookies', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'restriction',
+    });
+    expect(classifyLabel('Alle notwendigen Cookies akzeptieren', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'restriction',
+    });
+    expect(classifyLabel('Notwendige Cookies akzeptieren und schließen', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'restriction',
+    });
+    expect(classifyLabel('Accept necessary and analytics cookies', lexicon).qualified).toEqual({
+      kind: 'accept',
+      by: 'restriction',
+    });
+    expect(classifyLabel('Akzeptieren oder ablehnen', lexicon).qualified).toBeUndefined();
+  });
+
+  it('a reject phrase that names the necessary cookies without a restriction decides only beside cookie and necessity words', () => {
+    const words = (list: string[] | undefined) => new Set((list ?? []).flatMap(labelTokens));
+    const necessity = words(lexicon.necessity);
+    const unrestricted = words([...(lexicon.negations ?? []), ...(lexicon.restrictions ?? [])]);
+    const phrases = lexicon.reject.filter((p) => {
+      const tokens = labelTokens(p);
+      return tokens.some((t) => necessity.has(t)) && !tokens.some((t) => unrestricted.has(t));
+    });
+    expect(phrases.length).toBeGreaterThan(0);
+    for (const phrase of phrases) {
+      expect(classifyLabel(phrase, lexicon).kind, phrase).toBe('reject');
+      for (const name of [`Statistik und ${phrase}`, `${phrase} and analytics`]) {
+        expect(classifyLabel(name, lexicon).kind, name).toBeNull();
+        expect(classifyButton({ name, role: 'button', vendorRole: 'accept' }, lexicon).kind, name).not.toBe(
+          'accept',
+        );
+      }
+    }
+  });
+});
+
 describe('classifyButton: the vendor role cannot turn a qualified label into a decision', () => {
   const cases: Array<
     [name: string, role: string, vendorRole: ButtonKind | null, kind: ButtonKind, confidence: string]
@@ -408,6 +859,25 @@ describe('classifyButton: the vendor role cannot turn a qualified label into a d
     ['Reject non-essential cookies', 'button', 'reject', 'reject', 'high'],
     ['Alle nicht notwendigen Cookies ablehnen', 'button', 'reject', 'reject', 'high'],
     ['Rechazar cookies no necesarias', 'button', 'reject', 'reject', 'high'],
+    // An accept restricted to the necessary cookies is the vendor's reject, never its accept.
+    ['Accept strictly necessary cookies', 'button', 'reject', 'reject', 'medium'],
+    ['Accept strictly necessary cookies', 'button', 'accept', 'other', 'low'],
+    ['Notwendige Cookies akzeptieren und schließen', 'button', 'reject', 'reject', 'medium'],
+    ['Notwendige Cookies akzeptieren und schließen', 'button', 'accept', 'other', 'low'],
+    ['Accept necessary and analytics cookies', 'button', 'reject', 'reject', 'medium'],
+    ['Accept necessary and analytics cookies', 'button', 'accept', 'other', 'low'],
+    ['Accept necessary cookies (incl. analytics)', 'button', 'reject', 'reject', 'medium'],
+    ['Accept necessary cookies (incl. analytics)', 'button', 'accept', 'other', 'low'],
+    ['Accept necessary & analytics cookies', 'button', 'accept', 'other', 'low'],
+    ['Technische Cookies akzeptieren', 'button', 'reject', 'reject', 'medium'],
+    ['Accetta i cookie tecnici', 'button', 'reject', 'reject', 'medium'],
+    ['Accept essentials', 'button', 'accept', 'other', 'low'],
+    // A consent negated after its phrase is the vendor's reject, never its accept.
+    ['Ich akzeptiere keine Cookies', 'button', 'reject', 'reject', 'medium'],
+    ['Ich akzeptiere keine Cookies', 'button', 'accept', 'other', 'low'],
+    // Consent to the optional cookies stays an accept on the vendor's reject markup.
+    ['Ich akzeptiere nicht notwendige Cookies', 'button', 'accept', 'accept', 'high'],
+    ['Ich akzeptiere nicht notwendige Cookies', 'button', 'reject', 'accept', 'low'],
     // Counterexample: an unqualified label with the vendor role.
     ['Weiter', 'button', 'reject', 'reject', 'medium'],
   ];
@@ -419,7 +889,14 @@ describe('classifyButton: the vendor role cannot turn a qualified label into a d
 describe('lexicon qualifiers', () => {
   it('lists negations, category words, restrictions and payment wording, none of them a decision phrase', () => {
     const decisions = new Set([...lexicon.accept, ...lexicon.reject].map((p) => labelTokens(p).join(' ')));
-    for (const key of ['negations', 'necessity', 'restrictions', 'paid'] as const) {
+    for (const key of [
+      'negations',
+      'necessity',
+      'restrictions',
+      'paid',
+      'allWords',
+      'neutralWords',
+    ] as const) {
       const list = lexicon[key] ?? [];
       expect(list.length, key).toBeGreaterThan(0);
       for (const word of list)
@@ -427,9 +904,34 @@ describe('lexicon qualifiers', () => {
     }
   });
 
+  it('no accept phrase names a necessity word: consent to the necessary cookies alone is a reject phrase', () => {
+    const necessity = new Set((lexicon.necessity ?? []).map((w) => labelTokens(w).join(' ')));
+    for (const phrase of lexicon.accept) {
+      for (const token of labelTokens(phrase)) expect(necessity.has(token), phrase).toBe(false);
+    }
+  });
+
   it('a lexicon without them is malformed', () => {
     const { paid: _paid, ...withoutPaid } = lexicon;
     expect(() => lexiconFromData(withoutPaid)).toThrow(/lexicon: paid/);
+  });
+
+  it('without neutral words a recommendation beside a reject phrase that names the necessary cookies leaves no decision', () => {
+    const { neutralWords: _neutralWords, ...rest } = lexicon;
+    const withoutNeutralWords = lexiconFromData({ ...rest, version: 'test' });
+    expect(
+      classifyLabel('Mit notwendigen Cookies fortfahren (empfohlen)', withoutNeutralWords).kind,
+    ).toBeNull();
+    expect(classifyLabel('Mit notwendigen Cookies fortfahren', withoutNeutralWords).kind).toBe('reject');
+  });
+
+  it('without words for all cookies every necessity word beside an accept phrase restricts it', () => {
+    const { allWords: _allWords, ...rest } = lexicon;
+    const withoutAllWords = lexiconFromData({ ...rest, version: 'test' });
+    expect(
+      classifyLabel('Alle Cookies akzeptieren, auch technisch notwendige', withoutAllWords).kind,
+    ).toBeNull();
+    expect(classifyLabel('Alle Cookies akzeptieren', withoutAllWords).kind).toBe('accept');
   });
 });
 

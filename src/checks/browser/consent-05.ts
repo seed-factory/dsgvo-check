@@ -237,7 +237,7 @@ function rejectBasis(
   if (signal) return { outcome: signal };
   // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
   // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
-  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp)) {
+  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp, browser, minCandidatePages)) {
     const outcome: CheckOutcome = unrecognizedBanner(cmp, browser, minCandidatePages)
       ? { status: 'inconclusive', reason: 'banner-not-recognized', observations: [] }
       : bannerUndetermined(cmp, browser, minCandidatePages)

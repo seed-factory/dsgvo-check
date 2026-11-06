@@ -331,6 +331,267 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
   });
 
+  describe('what the visitor sees decides, not the markup around it', () => {
+    it('counterexample: a discount dialog with one keyword ("Datenschutz") and "Mehr Informationen" → no banner, the candidate is kept', async () => {
+      const facts = await measure('one-keyword-newsletter-dialog.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toMatchObject({
+        reason: 'keywords',
+        controls: ['settings', 'other'],
+        cookieWording: false,
+        dialog: true,
+      });
+    });
+
+    it('a dialog with the cookie keyword and only a close button is found', async () => {
+      const facts = await measure('one-keyword-cookie-dialog-close.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.signals).toEqual(
+        expect.arrayContaining(['heuristic:dialog', 'heuristic:keywords:1']),
+      );
+    });
+
+    it.each(['aside', 'complementary', 'banner', 'dialog-in-nav'])(
+      'a fixed cookie bar with reject and accept as landmark (%s) is found',
+      async (as) => {
+        const facts = await measure(`banner-in-landmark.html?as=${as}`);
+
+        expect(facts.detection.method).toBe('heuristic');
+        expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+      },
+    );
+
+    it('counterexample: a fixed aside with privacy links only is page chrome, no banner and no candidate', async () => {
+      const facts = await measure('banner-in-landmark.html?as=links-in-aside');
+
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toBeNull();
+    });
+
+    it('a one-line bar floating above the bottom edge, after more elements than the scan reads in document order, is found', async () => {
+      const facts = await measure('floating-banner-after-long-body.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+    });
+
+    it.each([
+      ['a collapsed box', 'collapsed'],
+      ['a closed <details>', 'details'],
+      ['a shift out of the clipping banner', 'translated'],
+    ])(
+      'a banner whose hidden second layer (%s) holds more text than a banner shows is found',
+      async (_name, list) => {
+        const facts = await measure(`banner-with-vendor-list.html?list=${list}`);
+
+        expect(facts.detection.method).toBe('heuristic');
+        expect(facts.detection.signals).toContain('heuristic:keywords:2');
+      },
+    );
+
+    it('a control whose aria-label is a text blob counts by its visible label', async () => {
+      const facts = await measure('long-aria-label.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+    });
+
+    it('control: a fixed bar with the cookie keyword, accept and reject, shown, is found', async () => {
+      const facts = await measure('hidden-banner.html?hide=none');
+
+      expect(facts.detection.method).toBe('heuristic');
+    });
+
+    it.each([
+      ['clipped away', 'clip-path'],
+      ['behind the opaque page', 'behind'],
+      ['a 1 px dialog clipped for screen readers', 'sr-only-dialog'],
+    ])('counterexample: the same bar %s is no banner', async (_name, hide) => {
+      const facts = await measure(`hidden-banner.html?hide=${hide}`);
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+    });
+
+    it('counterexample: a notice that no cookies are used, with "OK", is no banner and names no cookies', async () => {
+      const facts = await measure('no-cookies-notice.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerCandidate).toMatchObject({ reason: 'keywords', cookieWording: false });
+    });
+  });
+
+  describe('a dismissed candidate inside a child frame', () => {
+    const frameBar = {
+      reason: 'keywords',
+      keywordHits: 1,
+      controls: ['settings'],
+      cookieWording: true,
+      fixed: true,
+      dialog: false,
+      named: false,
+    };
+
+    it.each([
+      ['a 200 px iframe at the bottom', ''],
+      ['an iframe inside that iframe', '?nested=1'],
+      ['an iframe above the first screen whose lower part with the bar reaches it', '?frame=partly-above'],
+      ['a 200 px strip at the top with an iframe filling it', '?frame=top-strip&nested=1'],
+      ['an iframe twice the size of the screen, scaled to half, its bar at the bottom', '?frame=scaled-half'],
+      ['an iframe twice the size of the screen, zoomed to half, its bar at the bottom', '?frame=zoomed-half'],
+      [
+        'an iframe filling an iframe twice the size of the screen, scaled to half',
+        '?frame=scaled-half&nested=1',
+      ],
+    ])(
+      '%s with a one-keyword cookie bar and a settings button → no banner, the candidate of the frame is kept',
+      async (_name, query) => {
+        const facts = await measure(`frame-one-keyword.html${query}`);
+
+        expect(facts.detection.method).toBe('none');
+        expect(facts.firstLayer.bannerPresent).toBe(false);
+        expect(facts.firstLayer.consentFrameUnresolved ?? false).toBe(false);
+        expect(facts.firstLayer.bannerCandidate).toEqual(frameBar);
+      },
+    );
+
+    it('the frame candidate most like a banner outranks a notice of the main page without a lexicon control', async () => {
+      const facts = await measure('frame-one-keyword-and-page-notice.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerCandidate).toEqual(frameBar);
+    });
+
+    it.each([
+      ['with display: none', 'display-none'],
+      ['with visibility: hidden', 'visibility-hidden'],
+      ['with opacity: 0', 'opacity-zero'],
+      ['of zero size', 'zero-size'],
+      ['below the first screen', 'below-first-screen'],
+      ['with visibility: hidden around a nested iframe with the bar', 'visibility-hidden&nested=1'],
+      ['reaching the first screen only with its top, the bar at its bottom below the screen', 'partly-below'],
+      [
+        'as a 200 px strip at the top around a taller inner iframe whose bar lies below the strip',
+        'top-strip&nested=tall',
+      ],
+      [
+        'as high as the screen and scaled to twice its size, so its bar lies below the screen',
+        'scaled-double',
+      ],
+      [
+        'as high as the screen and scaled to twice its size around an iframe filling it, its bar below the screen',
+        'scaled-double&nested=1',
+      ],
+    ])('counterexample: the same iframe %s → the heuristic saw no candidate', async (_name, query) => {
+      const facts = await measure(`frame-one-keyword.html?frame=${query}`);
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toBeNull();
+    });
+
+    it.each([
+      ['at the bottom', ''],
+      ['above the first screen with its lower part and the bar reaching it', '&frame=partly-above'],
+      ['as a 200 px strip at the top filled by an inner iframe', '&frame=top-strip&nested=1'],
+      ['twice the size of the screen and scaled to half', '&frame=scaled-half'],
+      ['twice the size of the screen and zoomed to half', '&frame=zoomed-half'],
+      [
+        'twice the size of the screen and scaled to half, the bar in an iframe filling it',
+        '&frame=scaled-half&nested=1',
+      ],
+      [
+        'twice the size of the screen and zoomed to half, the bar in an iframe filling it',
+        '&frame=zoomed-half&nested=1',
+      ],
+    ])(
+      'the iframe with an accept button instead, %s, is found as a banner in a frame',
+      async (_name, query) => {
+        const facts = await measure(`frame-one-keyword.html?bar=accept${query}`);
+
+        expect(facts.detection.method).toBe('heuristic');
+        expect(facts.detection.signals).toContain('heuristic:frame');
+      },
+    );
+
+    it.each([
+      ['scaled to half', 'scaled-half'],
+      ['zoomed to half', 'zoomed-half'],
+      ['scaled to half, in an iframe filling it', 'scaled-half&nested=1'],
+      ['zoomed to half, in an iframe filling it', 'zoomed-half&nested=1'],
+    ])(
+      'the accept button of the iframe %s is reported where the main page shows it, at half its size',
+      async (_name, frame) => {
+        const unscaled = (await measure('frame-one-keyword.html?bar=accept')).firstLayer.buttons[0]?.box;
+        const facts = await measure(`frame-one-keyword.html?bar=accept&frame=${frame}`);
+        const box = facts.firstLayer.buttons[0]?.box;
+
+        if (!box || !unscaled) throw new Error('the accept button has no box');
+        expect(box.y).toBeGreaterThan(facts.viewport.height / 2);
+        expect(box.y + box.height).toBeLessThanOrEqual(facts.viewport.height);
+        expect(box.x).toBeCloseTo(unscaled.x / 2, -1);
+        expect(box.width).toBeCloseTo(unscaled.width / 2, -1);
+        expect(box.height).toBeCloseTo(unscaled.height / 2, -1);
+      },
+    );
+
+    it('the accept button of an iframe filling a bordered and padded iframe is reported where the main page shows it', async () => {
+      const outer = (await measure('frame-one-keyword.html?bar=accept&frame=bordered')).firstLayer.buttons[0]
+        ?.box;
+      const facts = await measure('frame-one-keyword.html?bar=accept&frame=bordered&nested=1');
+      const box = facts.firstLayer.buttons[0]?.box;
+
+      if (!box || !outer) throw new Error('the accept button has no box');
+      // The bar of the outer iframe and that of the iframe filling it show at the same place, inside border and padding.
+      expect(outer.x).toBeGreaterThanOrEqual(30);
+      expect(box).toEqual(outer);
+    });
+
+    it.each([
+      ['with visibility: hidden', 'visibility-hidden'],
+      ['with opacity: 0', 'opacity-zero'],
+      ['below the first screen', 'below-first-screen'],
+      ['with visibility: hidden around a nested iframe with the bar', 'visibility-hidden&nested=1'],
+      ['reaching the first screen only with its top, the bar at its bottom below the screen', 'partly-below'],
+      [
+        'as a 200 px strip at the top around a taller inner iframe whose bar lies below the strip',
+        'top-strip&nested=tall',
+      ],
+      ['as high as the screen and scaled to twice its size, the bar below the screen', 'scaled-double'],
+      [
+        'as high as the screen and scaled to twice its size around an iframe filling it, the bar below the screen',
+        'scaled-double&nested=1',
+      ],
+    ])('counterexample: the iframe with an accept button %s is no banner', async (_name, query) => {
+      const facts = await measure(`frame-one-keyword.html?bar=accept&frame=${query}`);
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+    });
+
+    it('counterexample: an embedded newsletter form with two keywords and a submit button is no banner', async () => {
+      const facts = await measure('frame-newsletter-form.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+    });
+
+    it('counterexample: a video player iframe with a "Datenschutz" link and player settings but no cookie wording → a candidate that is not banner-like', async () => {
+      const facts = await measure('frame-video-player.html');
+
+      expect(facts.detection.method).toBe('none');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toEqual({
+        ...frameBar,
+        controls: ['settings', 'other'],
+        cookieWording: false,
+      });
+    });
+  });
+
   describe('a medium adapter signal does not hide a visible generic banner', () => {
     it('stored-consent signal of an adapter (one signal kind) next to a visible fixed banner → heuristic facts, adapter kept as hint', async () => {
       const { page } = await env.open('https://www.generic.test/medium-storage.html');

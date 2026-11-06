@@ -9,16 +9,20 @@ import { describe, expect, it } from 'vitest';
 import { consent03 } from '../../../../../src/checks/browser/consent-03.ts';
 import { consent04 } from '../../../../../src/checks/browser/consent-04.ts';
 import { consent05 } from '../../../../../src/checks/browser/consent-05.ts';
-import type { BannerCandidateFact, CmpSection } from '../../../../../src/cmp/types.ts';
+import type { BannerCandidateFact, CmpFacts, CmpSection } from '../../../../../src/cmp/types.ts';
 import { defaultConfig } from '../../../../../src/core/config/schema.ts';
 import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import type { PageVisit } from '../../../../../src/core/snapshot/browser.ts';
-import { runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
+import { makeCmpFacts, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
   bannerCandidate,
   bannerLink,
   CONTACT,
   candidateCmp,
+  cmpFacts,
+  cmpWith,
   IMPRESSUM,
   noBannerCmp,
   PRIVACY,
@@ -60,6 +64,22 @@ const OBSERVED: Array<[string, Case]> = [
     'a banner-named candidate whose only control is a close button',
     { cmp: candidate({ reason: 'no-control', controls: ['other'], named: true }) },
   ],
+  [
+    'a fixed box with cookie wording and two keywords whose buttons the lexicon cannot read (no role, a long name)',
+    { cmp: candidate({ reason: 'no-control', keywordHits: 2, controls: [] }) },
+  ],
+  [
+    'a dialog with cookie wording and two keywords whose only control is unknown',
+    {
+      cmp: candidate({
+        reason: 'no-control',
+        keywordHits: 2,
+        controls: ['other'],
+        fixed: false,
+        dialog: true,
+      }),
+    },
+  ],
 ];
 
 /** Older snapshots without the candidate fact, where a banner can neither be confirmed nor ruled out. */
@@ -100,6 +120,14 @@ const NOT_OBSERVED: Array<[string, Case]> = [
     { cmp: candidate({ reason: 'keywords', controls: ['settings', 'other'], cookieWording: false }) },
   ],
   ['a candidate on one subpage only (table of contents of the policy)', { cmp: candidate({}, [PRIVACY]) }],
+  [
+    'a fixed box with two keywords but without cookie wording and without a control the lexicon knows (newsletter)',
+    { cmp: candidate({ reason: 'no-control', keywordHits: 2, controls: ['other'], cookieWording: false }) },
+  ],
+  [
+    'a static notice with cookie wording and two keywords but without a control the lexicon knows',
+    { cmp: candidate({ reason: 'no-control', keywordHits: 2, controls: [], fixed: false }) },
+  ],
   [
     'the candidate fact is recorded (none seen), so banner links do not count',
     {
@@ -181,6 +209,26 @@ describe('a banner observed but not recognised', () => {
       });
     });
 
+    it('the info names the features of the candidate as its evidence, not the buttons of a banner that was not read', () => {
+      const [o] = observationsOf(runCheck(consent04, snapshot({ cmp: candidate() })));
+      const cmpEvidence = o?.evidence.filter((e) => e.type === 'cmp') ?? [];
+      expect(cmpEvidence).toHaveLength(1);
+      expect(cmpEvidence[0]).toMatchObject({ candidate: bannerCandidate(), cmpId: null });
+      expect(cmpEvidence[0]).not.toHaveProperty('buttons');
+      expect(cmpEvidence[0]).not.toHaveProperty('blocking');
+      expect(o?.classification?.source).toBe('heuristic');
+
+      for (const lang of ['de', 'en'] as const) {
+        const body = renderMessage(
+          loadTexts(lang),
+          'CONSENT-04.banner-not-recognized',
+          o?.params as never,
+        ).body;
+        expect(body).not.toMatch(/gemessenen Fakten|measured facts/);
+        expect(body).toMatch(/bannerähnlich|banner-like/);
+      }
+    });
+
     it.each(UNDETERMINED)('an older snapshot, %s: inconclusive without a finding', (_name, c) => {
       const r = runCheck(consent04, snapshot(c));
       expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-undetermined' });
@@ -207,5 +255,108 @@ describe('a banner observed but not recognised', () => {
         reason: 'banner-undetermined',
       });
     });
+  });
+});
+
+/** Phase A facts on every page: a banner the heuristic took on `found`, nothing banner-like on the others. */
+function heuristicCmp(
+  found: readonly string[],
+  firstLayer: Partial<CmpFacts['firstLayer']> = {},
+): CmpSection {
+  return cmpWith({
+    phase: 'A',
+    facts: [START, IMPRESSUM, PRIVACY, CONTACT].map((pageUrl) =>
+      found.includes(pageUrl)
+        ? makeCmpFacts({
+            phase: 'A',
+            pageUrl,
+            moment: 'first-screen',
+            detection: {
+              cmpId: null,
+              method: 'heuristic',
+              version: null,
+              versionSupported: null,
+              recognitionConfidence: 'medium',
+              signals: ['heuristic:fixed', 'heuristic:keywords:3', 'heuristic:controls:4'],
+            },
+            firstLayer: {
+              bannerPresent: true,
+              bannerVisible: true,
+              buttons: [],
+              purAbo: false,
+              closeMeansAccept: null,
+              ...firstLayer,
+            },
+          })
+        : makeCmpFacts({
+            phase: 'A',
+            pageUrl,
+            moment: 'first-screen',
+            firstLayer: {
+              bannerPresent: false,
+              bannerVisible: false,
+              buttons: [],
+              purAbo: false,
+              closeMeansAccept: null,
+              bannerCandidate: null,
+            },
+          }),
+    ),
+  });
+}
+
+// A banner shows on every page of phase A until it is answered: what the heuristic took on one subpage only (a sticky
+// table of contents of the policy, an embedded policy) is part of that page, like a dismissed candidate there.
+describe('a banner the heuristic took', () => {
+  const PART_OF_A_PAGE: Array<[string, CmpSection]> = [
+    ['on one subpage only', heuristicCmp([PRIVACY])],
+    [
+      'as an unresolved consent iframe on one subpage only',
+      heuristicCmp([PRIVACY], { consentFrameUnresolved: true }),
+    ],
+  ];
+  const BANNER: Array<[string, CmpSection]> = [
+    ['on the start page', heuristicCmp([START])],
+    ['on two subpages', heuristicCmp([IMPRESSUM, CONTACT])],
+  ];
+
+  it.each(PART_OF_A_PAGE)(
+    '%s: CONSENT-03 keeps the no-banner finding, CONSENT-04 and -05 see no banner',
+    (_n, cmp) => {
+      expect(variantsOf(runCheck(consent03, snapshot({ cmp })))).toEqual(['no-banner-consent-services']);
+      expect(runCheck(consent04, snapshot({ cmp }))).toMatchObject({
+        status: 'not_applicable',
+        reason: 'no-banner',
+      });
+      expect(runCheck(consent05, snapshot({ cmp }))).toMatchObject({
+        status: 'not_applicable',
+        reason: 'no-banner',
+      });
+    },
+  );
+
+  it.each(BANNER)(
+    '%s: a banner, CONSENT-03 without a finding, CONSENT-04 "Banner nicht erkannt"',
+    (_n, cmp) => {
+      const r = runCheck(consent03, snapshot({ cmp }));
+      expect(r).toMatchObject({ status: 'completed' });
+      expect(variantsOf(r)).toEqual([]);
+      expect(variantsOf(runCheck(consent04, snapshot({ cmp })))).toEqual(['banner-not-recognized']);
+    },
+  );
+
+  it('an unresolved consent iframe on the start page limits the conclusion', () => {
+    const cmp = heuristicCmp([START], { consentFrameUnresolved: true });
+    expect(runCheck(consent03, snapshot({ cmp }))).toMatchObject({
+      status: 'inconclusive',
+      reason: 'consent-frame-unresolved',
+    });
+  });
+
+  it('counterexample: a CMP an adapter recognised on one subpage only is a banner', () => {
+    const cmp = cmpWith({ phase: 'A', facts: [cmpFacts({ phase: 'A', pageUrl: CONTACT })] });
+    const r = runCheck(consent03, snapshot({ cmp }));
+    expect(r).toMatchObject({ status: 'completed' });
+    expect(variantsOf(r)).toEqual([]);
   });
 });

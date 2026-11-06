@@ -210,10 +210,15 @@ messages:
     title: "Pay-or-consent model detected"
     body: "A model of consent or a paid subscription ({cmp}) was detected. Please review manually."
   CONSENT-04.banner-not-recognized:
-    title: "Banner not recognised"
+    title: "{bannerRecognized, select, true {First banner layer ambiguous} other {Banner not recognised}}"
     body: >-
-      Banner not recognised. The design and function of the options were not fully evaluated; the measured facts
-      are listed in the evidence for manual review.
+      {bannerRecognized, select, true {The consent banner ({cmp}) was recognised, but its first layer could not be
+      classified unambiguously. The design and function of the options were not fully evaluated; the measured facts
+      are listed in the evidence for manual review.} other {{reasons, select, banner-candidate {A banner-like box was
+      observed but not recognised as a consent banner; its options were not evaluated. Its features (buttons, cookie
+      wording, position) are listed in the evidence; please review manually.} other {Banner not recognised. The
+      design and function of the options were not fully evaluated; the measured facts are listed in the evidence for
+      manual review.}}}}
   CONSENT-04.cmp-not-supported:
     title: "CMP {cmp} detected, not supported"
     body: "CMP {cmp} detected, not supported. The design and function of the options were not evaluated."

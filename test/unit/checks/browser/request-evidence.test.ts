@@ -94,6 +94,20 @@ describe('requestEvidence (5.3)', () => {
     expect(() => EvidenceSchema.parse({ id: 'ev-1', ...ev })).not.toThrow();
   });
 
+  it('marks what phase B or C recorded before its click: the first screen, before the reject or the accept', () => {
+    const before = { ...ga4Hit, afterClick: false, actionId: undefined };
+    expect(requestEvidence(before, null)).toMatchObject({ phase: 'B', beforeClick: true });
+    expect(requestEvidence(ga4Hit, null)).not.toHaveProperty('beforeClick');
+    expect(requestEvidence({ ...before, phase: 'A' }, null)).not.toHaveProperty('beforeClick');
+    expect(cookieEvidence(makeCookie({ name: '_ga', phase: 'C', afterClick: false }))).toMatchObject({
+      beforeClick: true,
+    });
+    expect(storageEvidence(makeStorage({ key: 'k', phase: 'B', afterClick: true }))).not.toHaveProperty(
+      'beforeClick',
+    );
+    expect(EvidenceSchema.safeParse({ id: 'ev-1', ...requestEvidence(before, null) }).success).toBe(true);
+  });
+
   it('a record from an older snapshot: delivery/result from the legacy state, parser version 1', () => {
     const old = makeRequest({
       url: 'https://cdn.example.net/lib.js',

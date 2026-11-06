@@ -232,6 +232,15 @@ describe('disclaimer paragraphs: each condition in both states', () => {
     expect(paragraphs.at(-1)).toBe(para('disclaimer.usage'));
   });
 
+  it('a banner an adapter recognised, whose first layer could not be read, is attributed: no such paragraph', () => {
+    const r = report((x) => {
+      const f = x.findings.find((y) => y.variant === 'banner-not-recognized');
+      if (f) f.params = { ...f.params, cmp: 'cookieman', bannerRecognized: true };
+    });
+
+    expect(disclaimerParagraphs(r, ctx().texts)).not.toContain(para('disclaimer.bannerNotRecognized'));
+  });
+
   it('an unsupported CMP version counts as a banner that was not recognised', () => {
     const r = report((x) => {
       const f = x.findings.find((y) => y.variant === 'banner-not-recognized');

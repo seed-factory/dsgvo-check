@@ -14,7 +14,10 @@ interface WixRead {
   categories: Record<string, boolean | null>;
 }
 
-/** In-page, self-contained; `optionalGroups` are the policy categories besides `essential`. */
+/**
+ * In-page, self-contained; `optionalGroups` are the policy categories besides `essential` and `dataToThirdParty`, which
+ * stays on whatever the visitor answers in the banner (see adapters.yaml).
+ */
 function readWix(optionalGroups: string[]): WixRead {
   interface Manager {
     getCurrentConsentPolicy?: () => { defaultPolicy?: unknown; policy?: Record<string, unknown> } | null;

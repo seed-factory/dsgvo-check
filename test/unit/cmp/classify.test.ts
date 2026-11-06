@@ -312,6 +312,119 @@ describe('classifyFirstLayer: variants', () => {
     },
   );
 
+  it.each([undefined, 'accept', 'reject'] as const)(
+    'consent to the optional cookies ("Ich akzeptiere nicht notwendige Cookies", vendor role %s) is never the reject target',
+    (vendorRole) => {
+      const consent = btn('Ich akzeptiere nicht notwendige Cookies', vendorRole ? { vendorRole } : {});
+
+      const withReject = classifyFirstLayer(facts([consent, btn('Alle ablehnen')], { blocking }), lexicon);
+      expect(withReject.buttons?.[0]?.kind).toBe('accept');
+      expect(withReject.variant).toBe('ok');
+      expect(withReject.targets?.reject?.name).toBe('Alle ablehnen');
+
+      const withoutReject = classifyFirstLayer(facts([consent, btn('Einstellungen')], { blocking }), lexicon);
+      expect(withoutReject.variant).toBe('blocking-no-reject');
+      expect(withoutReject.targets?.reject).toBeNull();
+      expect(withoutReject.targets?.accept?.name).toBe('Ich akzeptiere nicht notwendige Cookies');
+    },
+  );
+
+  it.each([
+    ['Accept necessary', 'Accept all'],
+    ['Erforderliche Cookies erlauben', 'Alle akzeptieren'],
+    ['Keine Cookies akzeptieren', 'Alle akzeptieren'],
+    ['Mit notwendigen Cookies fortfahren (empfohlen)', 'Alle akzeptieren'],
+    ['Accept necessary cookies (recommended)', 'Accept all'],
+    ['Mit notwendigen Cookies fortfahren (empfohlene Einstellung)', 'Alle akzeptieren'],
+  ])('a refusal worded as consent ("%s") is the reject target next to "%s"', (refusal, acceptAll) => {
+    const r = classifyFirstLayer(facts([btn(refusal), btn(acceptAll)], { blocking }), lexicon);
+    expect(r.variant).toBe('ok');
+    expect(r.targets?.reject?.name).toBe(refusal);
+    expect(r.targets?.accept?.name).toBe(acceptAll);
+  });
+
+  it.each([
+    ['restricted to the necessary cookies', 'Accept strictly necessary cookies'],
+    ['to the necessary cookies and another category', 'Accept necessary and analytics cookies'],
+    ['negated after its phrase', 'Ich akzeptiere keine Cookies'],
+    [
+      'to the necessary cookies and another category in brackets',
+      'Accept necessary cookies (incl. analytics)',
+    ],
+    ['to not all cookies, these in brackets', 'Ich akzeptiere nicht (alle Cookies)'],
+    ['as a reject negated across brackets', 'Nicht (alle Cookies) ablehnen'],
+  ])('a consent %s ("%s") beside an accept leaves the first layer without a verdict', (_case, label) => {
+    const r = classifyFirstLayer(facts([btn(label), btn('Accept all')], { blocking }), lexicon);
+    expect(r.variant).toBe('banner-not-recognized');
+    expect(r.reasons).toContain('ambiguous-first-layer:blocking-no-reject');
+    expect(r.targets?.reject).toBeNull();
+    expect(r.targets?.accept?.name).toBe('Accept all');
+  });
+
+  it.each([
+    ['an answer before the decision', 'No, reject all', 'Yes, accept all'],
+    ['a longer close phrase', 'Ablehnen und Fenster schließen', 'Alle zulassen'],
+    ['a synonym of the necessary cookies', 'Technische Cookies akzeptieren', 'Alle zulassen'],
+  ])('the vendor reject with %s ("%s") is the reject target', (_case, refusal, acceptAll) => {
+    const r = classifyFirstLayer(
+      facts([btn(refusal, { vendorRole: 'reject' }), btn(acceptAll, { vendorRole: 'accept' })], { blocking }),
+      lexicon,
+    );
+    expect(r.variant).toBe('ok');
+    expect(r.targets?.reject?.name).toBe(refusal);
+    expect(r.targets?.accept?.name).toBe(acceptAll);
+  });
+
+  it.each(['Ich akzeptiere – nicht mehr anzeigen', 'Akzeptieren & nicht mehr anzeigen'])(
+    'a consent with a clause of its own ("%s") stays the accept target: no reject is reported missing',
+    (consent) => {
+      const r = classifyFirstLayer(
+        facts([btn(consent, { vendorRole: 'accept' }), btn('Einstellungen', { vendorRole: 'settings' })], {
+          blocking,
+        }),
+        lexicon,
+      );
+      expect(r.variant).toBe('blocking-no-reject');
+      expect(r.targets?.reject).toBeNull();
+      expect(r.targets?.accept?.name).toBe(consent);
+    },
+  );
+
+  it.each([
+    ['Nicht (alle Cookies) akzeptieren', 'Einstellungen', null],
+    ['Nicht (alle Cookies) akzeptieren', 'Alle akzeptieren', 'Alle akzeptieren'],
+    ['Do not (accept all cookies)', 'Settings', null],
+    ['Do not (accept all cookies)', 'Accept all', 'Accept all'],
+    ['Ich akzeptiere (die Cookies) nicht', 'Einstellungen', null],
+    ['Ich akzeptiere (die Cookies) nicht', 'Alle akzeptieren', 'Alle akzeptieren'],
+  ])(
+    'the vendor reject negated across a bracketed insertion ("%s", beside "%s") is the reject target, never the accept',
+    (refusal, other, accept) => {
+      const r = classifyFirstLayer(
+        facts([btn(refusal, { vendorRole: 'reject' }), btn(other)], { blocking }),
+        lexicon,
+      );
+      expect(r.variant).toBe('ok');
+      expect(r.targets?.reject?.name).toBe(refusal);
+      expect(r.targets?.accept?.name ?? null).toBe(accept);
+    },
+  );
+
+  it('a settings button that refuses not all cookies ("Ich akzeptiere nicht alle Cookies") is no reject target', () => {
+    const r = classifyFirstLayer(
+      facts(
+        [
+          btn('Alle akzeptieren', { vendorRole: 'accept' }),
+          btn('Ich akzeptiere nicht alle Cookies', { vendorRole: 'settings' }),
+        ],
+        { blocking },
+      ),
+      lexicon,
+    );
+    expect(r.variant).toBe('blocking-no-reject');
+    expect(r.targets?.reject).toBeNull();
+  });
+
   it('counterexample: a reject that negates the decision ("Nicht ablehnen") is no reject target', () => {
     const r = classifyFirstLayer(
       facts([btn('Nicht ablehnen', { vendorRole: 'reject' }), btn('Alle akzeptieren')], { blocking }),

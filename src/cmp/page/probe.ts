@@ -160,38 +160,79 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const MAX_TEXT_DEPTH = 40;
   const NON_CONTENT_TAGS = ['script', 'style', 'noscript', 'template'];
 
+  /** The element hides what overflows its box; the root and the body pass their overflow on to the viewport. */
+  const clipsOverflow = (el: DElement, s: DStyle): boolean =>
+    !['html', 'body'].includes(el.tagName.toLowerCase()) &&
+    [s.overflow, s.overflowY].some((v) => /\b(hidden|clip)\b/.test(v ?? ''));
+
+  const intersect = (a: Box, b: Box): Box => {
+    const x = Math.max(a.x, b.x);
+    const y = Math.max(a.y, b.y);
+    return {
+      x,
+      y,
+      width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+      height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y),
+    };
+  };
+
+  /**
+   * Whether an element in a box that clips its overflow lies wholly outside that box (or the box has no area): it is
+   * not shown. A fixed element escapes the clip, a box-less one (`display: contents`) is judged by its children.
+   */
+  const clippedAway = (el: DElement, s: DStyle, clip: Box | null): boolean => {
+    if (!clip || s.position === 'fixed' || s.display === 'contents') return false;
+    if (clip.width <= 0 || clip.height <= 0) return true;
+    const r = rectOf(el);
+    const shown = intersect(r, clip);
+    return r.width > 0 && r.height > 0 && shown.width * shown.height === 0;
+  };
+
   /**
    * `all`: every text node; `visible`: what is shown on screen, also under `aria-hidden` (a description hidden from
-   * screen readers is still read by the visitor); `accessible`: what assistive technology reads.
+   * screen readers is still read by the visitor), without content folded in a closed `<details>` or clipped away by a
+   * box that hides its overflow (a collapsed vendor list); `accessible`: what assistive technology reads.
    */
   type TextMode = 'all' | 'visible' | 'accessible';
-  const textOf = (node: DNode, mode: TextMode, depth = 0): string => {
+  const textOf = (node: DNode, mode: TextMode, depth = 0, outerClip: Box | null = null): string => {
     if (depth > MAX_TEXT_DEPTH) return '';
 
+    // The element whose text is read may clip its own overflow.
+    const clip =
+      outerClip ??
+      (mode === 'visible' && depth === 0 && isElement(node) && clipsOverflow(node, style(node))
+        ? rectOf(node)
+        : null);
+    const folded =
+      mode !== 'all' && isElement(node) && node.tagName.toLowerCase() === 'details' && !node.open;
     let out = '';
     const kids = node.childNodes;
     for (let i = 0; i < kids.length; i++) {
       const child = kids[i] as DNode;
       if (child.nodeType === 3) {
-        out += child.textContent ?? '';
+        if (!folded) out += child.textContent ?? '';
         continue;
       }
       if (!isElement(child)) continue;
 
       const tag = child.tagName.toLowerCase();
-      if (NON_CONTENT_TAGS.includes(tag)) continue;
+      if (NON_CONTENT_TAGS.includes(tag) || (folded && tag !== 'summary')) continue;
 
       const s = style(child);
       if (mode === 'accessible' && child.getAttribute('aria-hidden') === 'true') continue;
       if (mode !== 'all' && (s.display === 'none' || s.visibility === 'hidden')) continue;
+      if (mode === 'visible' && clippedAway(child, s, clip)) continue;
       if (tag === 'img') {
         out += ` ${child.getAttribute('alt') ?? ''} `;
         continue;
       }
 
+      let childClip = s.position === 'fixed' ? null : clip;
+      if (mode === 'visible' && clipsOverflow(child, s))
+        childClip = childClip ? intersect(childClip, rectOf(child)) : rectOf(child);
       const inner =
-        textOf(child, mode, depth + 1) +
-        (child.shadowRoot ? ` ${textOf(child.shadowRoot, mode, depth + 1)}` : '');
+        textOf(child, mode, depth + 1, childClip) +
+        (child.shadowRoot ? ` ${textOf(child.shadowRoot, mode, depth + 1, childClip)}` : '');
       out += s.display.startsWith('inline') ? inner : ` ${inner} `;
     }
     return out;
@@ -285,12 +326,16 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const MAX_NAME_TOKENS = 12;
 
   const nameTokenCache = new Map<DElement, string[]>();
-  /** Tokens of the accessible name; empty for a text blob. */
+  /**
+   * Tokens of the accessible name; for a text blob those of the visible label (an `aria-label` that describes the
+   * button at length over "Alle akzeptieren"), empty when that is a text blob too.
+   */
   const nameTokens = (el: DElement): string[] => {
     let tokens = nameTokenCache.get(el);
     if (!tokens) {
       const all = tokensOf(accName(el));
-      tokens = all.length > MAX_NAME_TOKENS ? [] : all;
+      const shown = all.length > MAX_NAME_TOKENS ? tokensOf(clean(textOf(el, 'visible'))) : all;
+      tokens = shown.length > MAX_NAME_TOKENS ? [] : shown;
       nameTokenCache.set(el, tokens);
     }
     return tokens;
@@ -556,13 +601,27 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const cookieKeywordRes = (args.cookieKeywords ?? []).map((k) => {
     try {
-      return new RegExp(k, 'iu');
+      return new RegExp(k, 'giu');
     } catch {
       return null;
     }
   });
-  /** The text names cookies themselves, not only privacy or tracking. */
-  const hasCookieWording = (text: string): boolean => cookieKeywordRes.some((re) => re?.test(text) === true);
+  const negationTokens = (args.negations ?? []).map((n) => n.split(' ')).filter((n) => n.length > 0);
+  /** Characters before a cookie word read for a negation in front of it. */
+  const NEGATION_LOOKBACK = 40;
+  /** The text right before `at` ends with a negation ("keine Cookies", "no cookies"). */
+  const negatedAt = (text: string, at: number): boolean => {
+    const before = tokensOf(text.slice(Math.max(0, at - NEGATION_LOOKBACK), at));
+    return negationTokens.some(
+      (n) => n.length <= before.length && n.every((t, j) => before[before.length - n.length + j] === t),
+    );
+  };
+  /**
+   * The text names cookies themselves, not only privacy or tracking, at least once without a negation in front: "Wir
+   * verwenden keine Cookies" tells that none are used.
+   */
+  const hasCookieWording = (text: string): boolean =>
+    cookieKeywordRes.some((re) => !!re && [...text.matchAll(re)].some((m) => !negatedAt(text, m.index ?? 0)));
 
   const isPurAbo = (text: string): boolean =>
     args.purAbo.some((p) => {
@@ -659,10 +718,31 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     signals: string[];
   }
 
-  type Rejected = NonNullable<ProbeResult['rejectedCandidate']>;
+  type Rejected = NonNullable<ProbeResult['rejectedCandidate']>['fact'];
 
+  /** A banner shows on at least this share of the first screen, a dialog too (a 1 px dialog is screen-reader text). */
   const MIN_FLOATING_AREA_RATIO = 0.02;
   const MAX_STATIC_AREA_RATIO = 0.4;
+  /** Hit points per side over the part of a candidate in the first screen. */
+  const CANDIDATE_HIT_STEPS = 3;
+
+  /**
+   * A hit test on a grid over the part of the box in the first screen finds the element or one inside it: a box clipped
+   * away (`clip`, `clip-path`) or covered by the opaque page is not shown. A box that takes no pointer events cannot
+   * be hit tested and counts as shown.
+   */
+  const hitAnywhere = (el: DElement, box: Box): boolean => {
+    if (style(el).pointerEvents === 'none') return true;
+    const shown = intersect(box, { x: 0, y: 0, width: vw, height: vh });
+    for (let i = 0; i < CANDIDATE_HIT_STEPS; i++) {
+      for (let j = 0; j < CANDIDATE_HIT_STEPS; j++) {
+        const x = shown.x + ((i + 0.5) * shown.width) / CANDIDATE_HIT_STEPS;
+        const y = shown.y + ((j + 0.5) * shown.height) / CANDIDATE_HIT_STEPS;
+        if (composedContains(el, deepElementFromPoint(x, y))) return true;
+      }
+    }
+    return false;
+  };
   /** A candidate whose text fills this cap is a page-sized container, not a banner. */
   const CANDIDATE_TEXT_CAP = 8000;
   const STATIC_NOTICE_MAX_TEXT = 1500;
@@ -699,18 +779,21 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     if (!shape) return null;
     const { dialogish, fixed, staticCandidate, label } = shape;
 
-    // Page chrome is no banner; one inside a header/footer needs an accept/reject control (checked below).
+    // Page chrome (a navigation landmark around the element, the element a header or footer, or a box inside one) needs
+    // an accept or reject control (checked below): a sidebar or a menu drawer with privacy links is chrome, a cookie bar
+    // marked up as <aside> or role="banner" is not.
     const chrome = pageChromeOf(el);
-    if (chrome === 'navigation' || (chrome === 'section' && !dialogish)) return null;
+    const isChrome = chrome === 'navigation' || (chrome === 'section' && !dialogish);
     const inSection = chrome === 'inside-section' && !dialogish;
 
     if (!isRendered(el)) return null;
     const box = rectOf(el);
     const areaRatio = visibleArea(box) / Math.max(1, vw * vh);
-    if (areaRatio === 0 || (!dialogish && areaRatio < MIN_FLOATING_AREA_RATIO)) return null;
+    if (areaRatio < MIN_FLOATING_AREA_RATIO) return null;
     // A static notice must be a compact block that lies completely in the first screen.
     if (staticCandidate && (areaRatio > MAX_STATIC_AREA_RATIO || box.y < -1 || box.y + box.height > vh + 1))
       return null;
+    if (!hitAnywhere(el, box)) return null;
 
     const rawText = clean(textOf(el, 'visible'), CANDIDATE_TEXT_CAP);
     if (rawText.length >= CANDIDATE_TEXT_CAP) return null;
@@ -736,17 +819,18 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     });
     const hasControl = (test: (c: DElement) => boolean) => hasControlOutsideNavigation(el, controlEls, test);
 
-    // Inside a header/footer the control must be an accept or reject: a footer strip with settings links is chrome,
-    // whatever its wording.
+    // In the page chrome the control must be an accept or reject: a footer strip with settings links is chrome,
+    // whatever its wording. A landmark itself is no candidate either, one inside a header or footer is kept.
+    if (isChrome && !hasControl(isChoiceControl)) return null;
     if (inSection && !hasControl(isChoiceControl)) return reject('page-section');
-    // A box that is no dialog needs two keywords, or one with the name of a banner, an explicit accept or reject, or
-    // cookie wording and an acknowledgement ("Diese Website verwendet Cookies. [OK]").
+    // One keyword is enough with the name of a banner, an explicit accept or reject, or cookie wording: in a dialog
+    // alone, in a box with an acknowledgement ("Diese Website verwendet Cookies. [OK]"). A newsletter, login or age
+    // dialog with a "Datenschutz" link is none.
     if (
-      !dialogish &&
       hits.length < 2 &&
       !named &&
       !hasControl(isExplicitChoiceControl) &&
-      !(cookieWording && hasControl(isUnpaidChoiceControl))
+      !(cookieWording && (dialogish || hasControl(isUnpaidChoiceControl)))
     )
       return reject('keywords');
     // A non-modal candidate must offer a choice: a control that the lexicon knows (navigation links do not count).
@@ -780,14 +864,18 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     (r.cookieWording ? 5 : 0) +
     Math.min(r.keywordHits, 4);
 
-  /** In a child frame the frame body itself may be the banner: wording of two keywords and one control. */
+  /**
+   * In a child frame the frame body itself may be the banner: wording of two keywords and a control the lexicon knows
+   * (an embedded form with a privacy notice and "Absenden" is none).
+   */
   const frameBodyCandidate = (): Candidate | null => {
     const body = frameBody();
     if (!body) return null;
 
     const hits = frameBodyHits(body);
-    const controls = deepWithin(body, INTERACTIVE).filter(isRendered).length;
-    if (hits.length < 2 || controls === 0) return null;
+    const controlEls = deepWithin(body, INTERACTIVE).filter(isRendered);
+    const controls = controlEls.length;
+    if (hits.length < 2 || !hasControlOutsideNavigation(body, controlEls, isLexiconControl)) return null;
 
     return {
       el: body,
@@ -803,6 +891,11 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   /** Safety cap against huge pages. */
   const MAX_SCANNED_ELEMENTS = 6000;
+  /**
+   * Past the cap, the last elements of the document are scanned too: a banner is often appended at the end of a long
+   * body, and one that floats between the points of the hit grid is found there.
+   */
+  const MAX_TAIL_ELEMENTS = 1500;
   const allElements = (): DElement[] => {
     const all: DElement[] = [];
     for (const root of [doc as DQueryRoot, ...shadowRoots]) {
@@ -810,6 +903,9 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       for (let i = 0; i < list.length && all.length < MAX_SCANNED_ELEMENTS; i++)
         all.push(list[i] as DElement);
     }
+    const list = doc.querySelectorAll('*');
+    for (let i = Math.max(MAX_SCANNED_ELEMENTS, list.length - MAX_TAIL_ELEMENTS); i < list.length; i++)
+      all.push(list[i] as DElement);
     return all;
   };
 
@@ -850,9 +946,9 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
    * The best candidate: higher score wins, the larger area breaks ties. Without one, the dismissed candidate most like
    * a banner is kept as a diagnostic.
    */
-  const findByHeuristic = (): { hit: ContainerHit | null; rejected: Rejected | null } => {
+  const findByHeuristic = (): { hit: ContainerHit | null; rejected: ProbeResult['rejectedCandidate'] } => {
     let best: Candidate | null = null;
-    let rejected: Rejected | null = null;
+    let rejected: ProbeResult['rejectedCandidate'] = null;
     const seen = new Set<DElement>();
     for (const el of [...priorityElements(), ...allElements()]) {
       if (seen.has(el)) continue;
@@ -861,7 +957,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       const found = heuristicCandidate(el);
       if (!found) continue;
       if ('rejected' in found) {
-        if (!rejected || rejectedRank(found.rejected) > rejectedRank(rejected)) rejected = found.rejected;
+        const rank = rejectedRank(found.rejected);
+        if (!rejected || rank > rejected.rank) rejected = { fact: found.rejected, rank, box: rectOf(el) };
         continue;
       }
       const { candidate } = found;
@@ -881,7 +978,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
   };
 
-  const findContainer = (): { hit: ContainerHit | null; rejected: Rejected | null } => {
+  const findContainer = (): { hit: ContainerHit | null; rejected: ProbeResult['rejectedCandidate'] } => {
     if (args.containerEl) {
       return {
         hit: { el: args.containerEl as DElement, count: 1, selector: null, heuristic: null },

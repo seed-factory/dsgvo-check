@@ -590,3 +590,60 @@ describe('CONSENT-01 texts name what was counted', () => {
     );
   });
 });
+
+// The browser's request limit counts every phase; CONSENT-01 reads phases A and B, so only a limit reached before phase C
+// limits it. Phase C starts only while the limit is not reached, so only a phase C that started rules that out.
+describe('CONSENT-01 and the request limit', () => {
+  type PhaseSpec = Partial<Parameters<typeof phase>[1]>;
+  const clicked: PhaseSpec = { click: click('reject') };
+  // Without an adapter banner phase B clicks nothing and phase C is skipped without starting.
+  const unrecognized: PhaseSpec = { status: 'partial', reason: 'cmp-not-recognized' };
+  const capped = (c: PhaseSpec | null, b: PhaseSpec, truncated: boolean) => {
+    const s = site({
+      phases: [
+        phase('A', { requests: [req('A-1', `${START}app.js`)] }),
+        phase('B', { ...b, requests: [req('B-1', `${START}app.js`, { phase: 'B' })] }),
+        ...(c ? [phase('C', { ...(c.status === 'skipped' ? {} : { click: click('accept') }), ...c })] : []),
+      ],
+    });
+    if (s.browser) s.browser.requestCap = { limit: 3, issued: truncated ? 9 : 2, truncated };
+    return s;
+  };
+  const limitations = (c: PhaseSpec | null, b: PhaseSpec = clicked, truncated = true) =>
+    runCheck(consent01, capped(c, b, truncated)).outcome?.limitations ?? [];
+
+  it.each([
+    ['the limit was reached in phase C', { status: 'partial', reason: 'request-cap' }, clicked],
+    ['phase C ran to the end', { status: 'completed' }, clicked],
+    ['phase C found no accept button', { status: 'partial', reason: 'no-accept-button' }, clicked],
+    ['phase C ran out of time after it started', { status: 'partial', reason: 'timeout' }, clicked],
+    ['phase C failed after it started', { status: 'failed', reason: 'exception' }, clicked],
+    [
+      'phase C started and recognized no banner',
+      { status: 'partial', reason: 'cmp-not-recognized' },
+      clicked,
+    ],
+  ] as const)('phase C started (%s): the limit does not limit CONSENT-01', (_name, c, b) => {
+    expect(limitations(c, b)).toEqual([]);
+  });
+
+  it.each([
+    ['phase C did not start because of it', { status: 'skipped', reason: 'request-cap' }, clicked],
+    ['phase C did not start for lack of time', { status: 'skipped', reason: 'time-budget' }, clicked],
+    ['the scan ran out of time before phase C', { status: 'skipped', reason: 'timeout' }, clicked],
+    ['phase C did not start after a 429', { status: 'skipped', reason: 'throttled' }, clicked],
+    [
+      'phase B recognized no banner, so phase C did not start',
+      { status: 'skipped', reason: 'cmp-not-recognized' },
+      unrecognized,
+    ],
+    ['phase C was not run', null, clicked],
+  ] as const)('the limit may have cut phase A or B (%s): CONSENT-01 is limited', (_name, c, b) => {
+    expect(limitations(c, b)).toEqual(['request-cap-truncated']);
+  });
+
+  it('counterexample: below the limit no phase C record limits CONSENT-01', () => {
+    expect(limitations({ status: 'skipped', reason: 'cmp-not-recognized' }, unrecognized, false)).toEqual([]);
+    expect(limitations(null, clicked, false)).toEqual([]);
+  });
+});

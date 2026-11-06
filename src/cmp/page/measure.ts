@@ -61,7 +61,10 @@ function probePhrases(list: readonly string[] | undefined): string[] {
 }
 
 /** The lexicon classes that make a control a banner control, and the paid wording that unmakes a choice. */
-const phrasesCache = new WeakMap<CmpLexicon, { kinds: KindPhrases; paid: string[]; acknowledge: string[] }>();
+const phrasesCache = new WeakMap<
+  CmpLexicon,
+  { kinds: KindPhrases; paid: string[]; acknowledge: string[]; negations: string[] }
+>();
 
 function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
   let phrases = phrasesCache.get(lexicon);
@@ -75,6 +78,7 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
       },
       paid: probePhrases(lexicon.paid),
       acknowledge: probePhrases(lexicon.acknowledgements),
+      negations: probePhrases(lexicon.negations),
     };
     phrasesCache.set(lexicon, phrases);
   }
@@ -94,6 +98,7 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
     paidPhrases: phrases.paid,
     acknowledgePhrases: phrases.acknowledge,
     cookieKeywords: lexicon.cookieKeywords ?? [],
+    negations: phrases.negations,
     bannerContainerNames: probeData.bannerContainerNames,
     ...p,
   };
@@ -109,16 +114,39 @@ function absoluteHref(href: string | null, base: string): string | null {
   return absolute ? sanitizeUrl(absolute.toString()) : null;
 }
 
-function shift(box: Box | null, offset: { x: number; y: number } | null): Box | null {
-  if (!box || !offset) return box;
-  return { ...box, x: Math.round(box.x + offset.x), y: Math.round(box.y + offset.y) };
+/**
+ * How the main page shows the viewport of a child frame: where the content box of its iframe starts in the main viewport,
+ * and the scale of a CSS transform or zoom on the iframe or around it.
+ */
+export interface FrameMapping {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
 }
 
-export function toButton(
-  b: RawButton,
-  lexicon: CmpLexicon,
-  offset: { x: number; y: number } | null = null,
-): CmpButton {
+/** A box in the viewport of a child frame, in main-page coordinates. */
+function mapBox(box: Box, map: FrameMapping): Box {
+  return {
+    x: map.x + box.x * map.scaleX,
+    y: map.y + box.y * map.scaleY,
+    width: box.width * map.scaleX,
+    height: box.height * map.scaleY,
+  };
+}
+
+function shift(box: Box | null, map: FrameMapping | null): Box | null {
+  if (!box || !map) return box;
+  const shown = mapBox(box, map);
+  return {
+    x: Math.round(shown.x),
+    y: Math.round(shown.y),
+    width: Math.round(shown.width),
+    height: Math.round(shown.height),
+  };
+}
+
+export function toButton(b: RawButton, lexicon: CmpLexicon, frame: FrameMapping | null = null): CmpButton {
   const vendorRole = (b.vendorRole as ButtonKind | null) ?? null;
   const { kind, kindConfidence } = classifyButton({ name: b.name, role: b.role, vendorRole }, lexicon);
 
@@ -129,7 +157,7 @@ export function toButton(
     kind,
     kindConfidence,
     layer: b.rendered ? 1 : 2,
-    box: shift(b.box, offset),
+    box: shift(b.box, frame),
     visibleAtFirstScreen: b.visibleInViewport,
     actionableAtFirstScreen: b.actionable,
     contrast: b.contrast,
@@ -156,7 +184,8 @@ export function toMeasured(
   lexicon: CmpLexicon,
   pageUrl: string,
   opts: {
-    offset?: { x: number; y: number } | null;
+    /** The frame of a banner inside an iframe: its button boxes are given in main-page coordinates. */
+    frame?: FrameMapping | null;
     blockingFrom?: ProbeResult;
     closeMeansAccept?: boolean | null;
     legal?: LegalLexicon;
@@ -176,7 +205,7 @@ export function toMeasured(
   const firstLayer: CmpFirstLayer = {
     bannerPresent: raw.found,
     bannerVisible: raw.found && raw.visible && outer.visible,
-    buttons: raw.buttons.map((b) => toButton(b, lexicon, opts.offset ?? null)),
+    buttons: raw.buttons.map((b) => toButton(b, lexicon, opts.frame ?? null)),
     purAbo: raw.purAbo,
     closeMeansAccept: opts.closeMeansAccept ?? null,
     coversFooter: coveredFooterLinks.length > 0,
@@ -228,43 +257,208 @@ export async function measureBanner(
 interface HeuristicHit {
   frame: Frame;
   raw: ProbeResult;
-  frameEl: ElementHandle | null;
-  offset: { x: number; y: number } | null;
+  /** The iframe element of the main page that holds the frame of the hit, itself or around it; null on the main page. */
+  mainFrameEl: ElementHandle | null;
+  mapping: FrameMapping | null;
 }
 
-/** The iframe element of a child frame and its box in the main viewport; null when it is not rendered. */
-async function frameGeometry(frame: Frame): Promise<{ frameEl: ElementHandle; box: Box } | null> {
-  const frameEl = await frame.frameElement().catch(() => null);
-  const box = frameEl ? await frameEl.boundingBox().catch(() => null) : null;
-  if (!frameEl || !box || box.width < 1 || box.height < 1) return null;
-  return { frameEl, box };
+interface FrameGeometry {
+  frameEl: ElementHandle;
+  /** The iframe element of the main page that holds the frame: `frameEl` itself, or the outermost iframe around it. */
+  mainFrameEl: ElementHandle;
+  /** Box of the iframe element in the main viewport, as shown (transforms and zoom applied). */
+  box: Box;
+  mapping: FrameMapping;
+  /**
+   * The boxes of the iframe and of every iframe around it, overlapped, in main-page coordinates: a frame shows nothing
+   * outside them. Null when they do not overlap.
+   */
+  clip: Box | null;
 }
 
-/** The main frame or a rendered child frame with the highest heuristic score; the main frame wins ties. */
+/** What `iframeLayout` reads of an iframe element in its document. */
+interface IFrameElement {
+  offsetWidth: number;
+  offsetHeight: number;
+  clientLeft: number;
+  clientTop: number;
+  getClientRects(): { length: number };
+  getBoundingClientRect(): Box;
+}
+
+interface IFrameStyle {
+  paddingLeft: string;
+  paddingTop: string;
+}
+
+/**
+ * An iframe element as the document that holds it shows it: its box in that document's viewport, its layout size, and
+ * where its content box starts in its layout box (border and padding).
+ */
+interface IFrameLayout {
+  box: Box;
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+}
+
+/** The layout of an iframe element in its document; null when it is not rendered or cannot be read. */
+async function iframeLayout(frameEl: ElementHandle): Promise<IFrameLayout | null> {
+  return frameEl
+    .evaluate((el) => {
+      // In-page, and the project compiles without lib.dom.
+      const w = globalThis as unknown as { getComputedStyle(e: unknown): IFrameStyle };
+      const iframe = el as unknown as IFrameElement;
+      if (iframe.getClientRects().length === 0) return null;
+      const rect = iframe.getBoundingClientRect();
+      const style = w.getComputedStyle(el);
+      return {
+        box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        width: iframe.offsetWidth,
+        height: iframe.offsetHeight,
+        left: iframe.clientLeft + (Number.parseFloat(style.paddingLeft) || 0),
+        top: iframe.clientTop + (Number.parseFloat(style.paddingTop) || 0),
+      };
+    })
+    .catch(() => null);
+}
+
+/**
+ * Scale of a shown size against the layout size of the element; 1 within a pixel, since the layout size is whole
+ * pixels and the shown size is not.
+ */
+function scaleOf(shown: number, layout: number): number {
+  return layout > 0 && Math.abs(shown - layout) > 1 ? shown / layout : 1;
+}
+
+const MAIN_VIEWPORT: FrameMapping = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
+
+/**
+ * How the main page shows the viewport of a child frame, from the mapping of the frame around it: the iframe's box
+ * against its layout size gives the scale of every transform and zoom on it and around it in that frame, its border
+ * and padding the origin of the content box.
+ */
+function childMapping(outer: FrameMapping, layout: IFrameLayout): FrameMapping {
+  const scaleX = scaleOf(layout.box.width, layout.width);
+  const scaleY = scaleOf(layout.box.height, layout.height);
+  return {
+    x: outer.x + (layout.box.x + layout.left * scaleX) * outer.scaleX,
+    y: outer.y + (layout.box.y + layout.top * scaleY) * outer.scaleY,
+    scaleX: outer.scaleX * scaleX,
+    scaleY: outer.scaleY * scaleY,
+  };
+}
+
+/**
+ * The iframe element of a child frame, its box in the main viewport, its mapping and its clip; null when it or an iframe
+ * around it is not rendered. Each iframe is measured in the document that holds it and mapped through the frames around
+ * it: for a frame of another process Playwright adds only the position of its iframe to a box, not the iframe's border,
+ * padding or scale.
+ */
+async function frameGeometry(frame: Frame): Promise<FrameGeometry | null> {
+  const chain: Frame[] = [];
+  for (let f: Frame | null = frame; f?.parentFrame(); f = f.parentFrame()) chain.unshift(f);
+  let geometry: FrameGeometry | null = null;
+  for (const f of chain) {
+    const frameEl = await f.frameElement().catch(() => null);
+    const layout = frameEl ? await iframeLayout(frameEl) : null;
+    if (!frameEl || !layout) return null;
+    const outer: FrameMapping = geometry?.mapping ?? MAIN_VIEWPORT;
+    const box = mapBox(layout.box, outer);
+    if (box.width < 1 || box.height < 1) return null;
+    const clip: Box | null = geometry ? geometry.clip && overlap(geometry.clip, box) : box;
+    const mainFrameEl: ElementHandle = geometry?.mainFrameEl ?? frameEl;
+    geometry = { frameEl, mainFrameEl, box, mapping: childMapping(outer, layout), clip };
+  }
+  return geometry;
+}
+
+/** A child frame with its heuristic probe (null when it failed) and the geometry of its iframe element. */
+interface ChildFrameProbe {
+  frame: Frame;
+  raw: ProbeResult | null;
+  geometry: FrameGeometry | null;
+}
+
+/** Runs the heuristic once in every child frame: the hit, the unresolved consent frame and the candidate share it. */
+async function probeChildFrames(page: Page, lexicon: CmpLexicon): Promise<ChildFrameProbe[]> {
+  const main = page.mainFrame();
+  const out: ChildFrameProbe[] = [];
+  for (const frame of page.frames()) {
+    if (frame === main) continue;
+    const raw = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
+      () => null,
+    );
+    out.push({ frame, raw, geometry: await frameGeometry(frame) });
+  }
+  return out;
+}
+
+/**
+ * The main frame or a child frame with the highest heuristic score; the main frame wins ties. A frame's hit counts only
+ * when the main page shows part of the hit at the first screen and its iframe is rendered all the way up to the main
+ * page.
+ */
 async function bestHeuristicHit(
   page: Page,
   lexicon: CmpLexicon,
   mainRaw: ProbeResult | null,
+  frames: readonly ChildFrameProbe[],
 ): Promise<HeuristicHit | null> {
   const main = page.mainFrame();
   let best: HeuristicHit | null = null;
-  if (mainRaw?.found && mainRaw.heuristic) best = { frame: main, raw: mainRaw, frameEl: null, offset: null };
+  if (mainRaw?.found && mainRaw.heuristic)
+    best = { frame: main, raw: mainRaw, mainFrameEl: null, mapping: null };
 
-  for (const frame of page.frames()) {
-    if (frame === main) continue;
-
-    const raw = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
-      () => null,
-    );
-    if (!raw?.found || !raw.heuristic) continue;
-
-    const geometry = await frameGeometry(frame);
-    if (!geometry) continue;
-    if (!best || raw.heuristic.score > (best.raw.heuristic?.score ?? 0)) {
-      best = { frame, raw, frameEl: geometry.frameEl, offset: { x: geometry.box.x, y: geometry.box.y } };
-    }
+  const vp = mainRaw?.viewport ?? page.viewportSize();
+  for (const { frame, raw, geometry } of frames) {
+    if (!raw?.found || !raw.heuristic || !geometry || !vp) continue;
+    if (best && raw.heuristic.score <= (best.raw.heuristic?.score ?? 0)) continue;
+    // Without a box of its own (a frame body whose content is all fixed) the hit is as large as the frame's viewport.
+    const own = raw.containerBox ?? { x: 0, y: 0, width: raw.viewport.width, height: raw.viewport.height };
+    if (!shownInMainViewport(mapBox(own, geometry.mapping), geometry.clip, vp)) continue;
+    if (!(await frameRendered(frame, lexicon))) continue;
+    best = { frame, raw, mainFrameEl: geometry.mainFrameEl, mapping: geometry.mapping };
   }
   return best;
+}
+
+/**
+ * The iframe element of the frame, and that of every frame around it, is rendered in its parent document as the probe
+ * judges an element there (size, `visibility`, `display`, opacity of the ancestors).
+ */
+async function frameRendered(frame: Frame, lexicon: CmpLexicon): Promise<boolean> {
+  for (let f = frame, parent = f.parentFrame(); parent; f = parent, parent = f.parentFrame()) {
+    const frameEl = await f.frameElement().catch(() => null);
+    if (!frameEl) return false;
+    const outer = await runProbe(parent, probeArgs(lexicon, { mode: 'banner', containerEl: frameEl })).catch(
+      () => null,
+    );
+    if (!outer?.visible) return false;
+  }
+  return true;
+}
+
+/**
+ * The dismissed candidate most like a banner, of the main page or of a child frame; the main page wins ties. The frame
+ * probe sees only its own viewport, so a frame's candidate counts only when the main page shows part of it at the first
+ * screen and its iframe is rendered all the way up to the main page.
+ */
+async function bestRejectedCandidate(
+  lexicon: CmpLexicon,
+  mainRaw: ProbeResult,
+  frames: readonly ChildFrameProbe[],
+): Promise<BannerCandidateFact | null> {
+  let best = mainRaw.rejectedCandidate;
+  for (const { frame, raw, geometry } of frames) {
+    const candidate = raw?.rejectedCandidate;
+    if (!candidate || !geometry || (best && candidate.rank <= best.rank)) continue;
+    if (!shownInMainViewport(mapBox(candidate.box, geometry.mapping), geometry.clip, mainRaw.viewport))
+      continue;
+    if (await frameRendered(frame, lexicon)) best = candidate;
+  }
+  return best?.fact ?? null;
 }
 
 function heuristicDetection(
@@ -278,16 +472,16 @@ function heuristicDetection(
     versionSupported: null,
     // A heuristic is never `high`: it only feeds `banner-not-recognized`.
     recognitionConfidence: heuristic.score >= 5 ? 'medium' : 'low',
-    signals: [...heuristic.signals, ...(best.frameEl ? ['heuristic:frame'] : [])],
-    ...(best.frameEl ? { frameUrl: sanitizeUrl(best.frame.url()) } : {}),
+    signals: [...heuristic.signals, ...(best.mainFrameEl ? ['heuristic:frame'] : [])],
+    ...(best.mainFrameEl ? { frameUrl: sanitizeUrl(best.frame.url()) } : {}),
   };
 }
 
 export interface HeuristicOutcome {
   hit: { measured: Measured; detection: CmpDetection } | null;
   /**
-   * Without a hit: the best banner-shaped element the heuristic dismissed on the main page, null when it saw none.
-   * Absent when the probe of the main page failed.
+   * Without a hit: the best banner-shaped element the heuristic dismissed on the main page or in a child frame shown at
+   * the first screen, null when it saw none. Absent when the probe of the main page failed.
    */
   candidate?: BannerCandidateFact | null;
 }
@@ -303,25 +497,44 @@ export async function measureHeuristic(
 export async function probeHeuristic(page: Page, lexicon: CmpLexicon): Promise<HeuristicOutcome> {
   const main = page.mainFrame();
   const mainRaw = await runProbe(main, probeArgs(lexicon, { mode: 'heuristic' })).catch(() => null);
+  const frames = await probeChildFrames(page, lexicon);
 
-  const best = await bestHeuristicHit(page, lexicon, mainRaw);
+  const best = await bestHeuristicHit(page, lexicon, mainRaw, frames);
   if (!best?.raw.heuristic) {
-    const frame = await unresolvedConsentFrame(page, lexicon, mainRaw);
+    const frame = await unresolvedConsentFrame(page, lexicon, mainRaw, frames);
     if (frame || !mainRaw) return { hit: frame };
-    return { hit: null, candidate: mainRaw.rejectedCandidate ?? null };
+    return { hit: null, candidate: await bestRejectedCandidate(lexicon, mainRaw, frames) };
   }
 
-  // Blocking is measured on the main page, with the iframe element as the banner container.
+  // Blocking is measured on the main page, with its iframe element that holds the banner as the container.
   let blockingFrom: ProbeResult | undefined;
-  if (best.frameEl) {
+  if (best.mainFrameEl) {
     blockingFrom = await runProbe(
       main,
-      probeArgs(lexicon, { mode: 'banner', containerEl: best.frameEl }),
+      probeArgs(lexicon, { mode: 'banner', containerEl: best.mainFrameEl }),
     ).catch(() => undefined);
   }
 
-  const measured = toMeasured(best.raw, lexicon, best.frame.url(), { offset: best.offset, blockingFrom });
+  const measured = toMeasured(best.raw, lexicon, best.frame.url(), { frame: best.mapping, blockingFrom });
   return { hit: { measured, detection: heuristicDetection(best, best.raw.heuristic) } };
+}
+
+/** The overlap of two boxes; null when they do not overlap. */
+function overlap(a: Box, b: Box): Box | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const width = Math.min(a.x + a.width, b.x + b.width) - x;
+  const height = Math.min(a.y + a.height, b.y + b.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+/**
+ * The part of `box` (in main-page coordinates) of the content of a child frame that the main viewport shows: cut to the
+ * clip of the frame, its iframe and every iframe around it, and to the viewport. Null when nothing of it is shown.
+ */
+function shownInMainViewport(box: Box, clip: Box | null, vp: Viewport): Box | null {
+  const shown = clip && overlap(box, clip);
+  return shown && overlap(shown, { x: 0, y: 0, width: vp.width, height: vp.height });
 }
 
 /** Share of the viewport that the box covers; 0 when it lies outside. */
@@ -410,28 +623,25 @@ async function unresolvedConsentFrame(
   page: Page,
   lexicon: CmpLexicon,
   mainRaw: ProbeResult | null,
+  frames: readonly ChildFrameProbe[],
 ): Promise<{ measured: Measured; detection: CmpDetection } | null> {
   const main = page.mainFrame();
   const vp = mainRaw?.viewport ?? page.viewportSize() ?? { width: 0, height: 0 };
   if (vp.width < 1 || vp.height < 1) return null;
 
   const hint = keywordHint(lexicon);
-  for (const frame of page.frames()) {
-    if (frame === main) continue;
-
-    const geometry = await frameGeometry(frame);
+  for (const { frame, raw: inner, geometry } of frames) {
     if (!geometry) continue;
     const { frameEl, box } = geometry;
-    if (viewportShare(box, vp) < FRAME_CANDIDATE_MIN_SHARE) continue;
+    // A nested iframe shows only what the iframes around it show.
+    const shown = shownInMainViewport(box, geometry.clip, vp);
+    if (!shown || viewportShare(shown, vp) < FRAME_CANDIDATE_MIN_SHARE) continue;
     if (!(await frameEl.isVisible().catch(() => false))) continue;
 
     const attrs = await Promise.all(
       FRAME_HINT_ATTRIBUTES.map((a) => frameEl.getAttribute(a).catch(() => null)),
     );
     const byAttribute = attrs.some((a) => hint(a));
-    const inner = await runProbe(frame, probeArgs(lexicon, { mode: 'heuristic', frameMode: true })).catch(
-      () => null,
-    );
     const hits = inner?.keywordHits.length ?? 0;
     // The body wording alone needs two keywords: one "Privacy" link in a large booking frame is no consent dialog.
     if (!byAttribute && hits < MIN_BODY_KEYWORDS) continue;

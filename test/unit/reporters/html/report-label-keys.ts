@@ -154,6 +154,23 @@ export function usedReportLabelKeys(): string[] {
   replay.findings[0]!.evidenceIds = replay.evidence.map((e) => e.id);
   capture(replay);
 
+  // A banner-like box the heuristic did not take, cited by its features.
+  const candidate = sampleFullReport();
+  const cmp = candidate.evidence.find((e) => e.type === 'cmp')!;
+  Object.assign(cmp, {
+    candidate: {
+      reason: 'no-control',
+      keywordHits: 2,
+      controls: ['settings', 'other'],
+      cookieWording: true,
+      fixed: true,
+      dialog: false,
+      named: false,
+    },
+  });
+  candidate.findings[0]!.evidenceIds = [cmp.id];
+  capture(candidate);
+
   // More differing values in one item than it names.
   const grouped = sampleFullReport();
   grouped.findings = ['a', 'b', 'c', 'd', 'e', 'f'].map((name, n) => ({

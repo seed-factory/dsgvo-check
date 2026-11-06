@@ -209,10 +209,15 @@ messages:
     title: "Pur-Abo-Modell erkannt"
     body: "Ein Modell aus Zustimmung oder kostenpflichtigem Abonnement ({cmp}) wurde erkannt. Bitte manuell prüfen."
   CONSENT-04.banner-not-recognized:
-    title: "Banner nicht erkannt"
+    title: "{bannerRecognized, select, true {Erste Banner-Ebene nicht eindeutig} other {Banner nicht erkannt}}"
     body: >-
-      Banner nicht erkannt. Die Gestaltung und Funktion der Optionen wurden nicht abschließend ausgewertet; die
-      gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.
+      {bannerRecognized, select, true {Das Einwilligungsbanner ({cmp}) wurde erkannt, seine erste Ebene aber nicht
+      eindeutig eingeordnet. Die Gestaltung und Funktion der Optionen wurden nicht abschließend ausgewertet; die
+      gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.} other {{reasons, select, banner-candidate {Ein
+      bannerähnlicher Kasten wurde beobachtet, aber nicht als Einwilligungsbanner erkannt; die Optionen wurden nicht
+      ausgewertet. Seine Merkmale (Schaltflächen, Cookie-Wortlaut, Lage) stehen in den Belegen; bitte manuell
+      prüfen.} other {Banner nicht erkannt. Die Gestaltung und Funktion der Optionen wurden nicht abschließend
+      ausgewertet; die gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.}}}}
   CONSENT-04.cmp-not-supported:
     title: "CMP {cmp} erkannt, nicht unterstützt"
     body: "CMP {cmp} erkannt, nicht unterstützt. Die Gestaltung und Funktion der Optionen wurden nicht ausgewertet."

@@ -689,6 +689,28 @@ describe('the overview: checks without a result', () => {
     });
   });
 
+  it('a banner an adapter recognised whose first layer could not be read is named recognised, its checks stay open', () => {
+    const ambiguous = finding(1, {
+      checkId: 'CONSENT-04',
+      variant: 'banner-not-recognized',
+      messageId: 'CONSENT-04.banner-not-recognized',
+      severity: 'info',
+      params: {
+        cmp: 'cookieman',
+        reasons: 'ambiguous-first-layer:blocking-no-reject',
+        bannerRecognized: true,
+      },
+      text: undefined,
+    });
+    const sentences = overview([check('CONSENT-04', 'inconclusive', 'banner-not-recognized')], [ambiguous]);
+
+    expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+    expect(sentences.join(' ')).toMatch(
+      /Das Einwilligungsbanner wurde erkannt, seine erste Ebene aber nicht eindeutig eingeordnet; .* manuell geprüft/,
+    );
+    expect(sentences.join(' ')).not.toMatch(/wurde nicht erkannt/);
+  });
+
   it('lets the banner sentence explain the reject that could not be clicked; with a recognised banner it is named', () => {
     const missing = overview([
       check('CONSENT-04', 'not_applicable', 'no-banner'),

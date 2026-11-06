@@ -1,10 +1,27 @@
 /** Wix adapter against the own simulator of the site banner (policy read from `consentPolicyManager`). */
+import type { Page } from 'playwright-core';
 import { expect, it } from 'vitest';
 import { detectCmp, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
 import { classifyFirstLayer } from '../../../utils/classify.ts';
 import { CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized, requestsSince } from '../helpers.ts';
 
 const TRACKER = 'stats.wix.test';
+
+/** The platform's own policy, booleans only: whether it is the default and its `dataToThirdParty` flag. */
+function platformPolicy(page: Page): Promise<{ defaultPolicy: boolean; dataToThirdParty: boolean }> {
+  return page.evaluate(() => {
+    interface Policy {
+      defaultPolicy: boolean;
+      policy: Record<string, boolean>;
+    }
+    const w = globalThis as unknown as { consentPolicyManager: { getCurrentConsentPolicy(): Policy } };
+    const current = w.consentPolicyManager.getCurrentConsentPolicy();
+    return {
+      defaultPolicy: current.defaultPolicy,
+      dataToThirdParty: current.policy.dataToThirdParty === true,
+    };
+  });
+}
 
 describeCmpScenarios(
   {
@@ -17,11 +34,13 @@ describeCmpScenarios(
     acceptName: /^Zustimmen$/,
   },
   (env) => {
-    it('the default policy before any answer, the declined policy after the reject and the reload', async () => {
+    it('dataToThirdParty stays on before any answer and after the reject: the default grants no category, the reject is confirmed as all denied after the reload', async () => {
       const since = Date.now();
       const { page } = await env.open('https://www.wix.test/');
       const adapter = await recognized(page, 'wix');
       await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      expect(await platformPolicy(page)).toEqual({ defaultPolicy: true, dataToThirdParty: true });
+      // No granted category in the default state, so nothing for consent-without-action.
       expect(await adapter.state(page)).toEqual([
         {
           source: 'api',
@@ -33,8 +52,11 @@ describeCmpScenarios(
       ]);
 
       expect((await decideAndAct(page, adapter, 'reject')).click.clicked).toBe(true);
-      await page.reload({ waitUntil: 'load' });
+      const verify = await adapter.verify(page, 'reject');
 
+      expect(verify).toMatchObject({ verified: true, persistedAfterReload: true });
+      expect(verify.method).toContain('api:all-denied');
+      expect(await platformPolicy(page)).toEqual({ defaultPolicy: false, dataToThirdParty: true });
       expect(await adapter.state(page)).toEqual([
         {
           source: 'api',

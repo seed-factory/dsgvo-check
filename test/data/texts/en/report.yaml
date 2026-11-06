@@ -71,7 +71,9 @@ ui:
     {reasons}} other {}}. The findings shown, "{titles}", still apply.
   report.overview.pagesEvaluated: "{reason} ({evaluated} of {observed} pages evaluated)"
   report.overview.banner: >-
-    {state, select, recognized {The consent banner was recognised.} notRecognized {The consent banner was not
+    {state, select, recognized {The consent banner was recognised.} firstLayerAmbiguous {The consent banner was
+    recognised, but its first layer could not be classified unambiguously; checks that depend on it are not
+    conclusively evaluated and should be checked manually.} notRecognized {The consent banner was not
     recognised; checks that depend on it are not conclusively evaluated and should be checked manually.} notFound {No
     consent banner was found on the pages checked; rejection and acceptance were therefore not checked.} notVisible {A
     consent banner is present in the page, but was not shown visibly during the scan; checks that depend on it are not
@@ -123,14 +125,15 @@ ui:
   # `outcome` of the banner click of the phase: `not-clicked` (a further visit without that click), `unverified`, or
   # empty when the click took place or the report predates the click outcome.
   report.phase: >-
-    {phase, select, A {A (before any interaction)} B {B ({outcome, select, not-clicked {repeat visit, no rejection
-    made} unverified {after rejection, not confirmed by the banner} other {after rejection}})} C {C ({outcome, select,
-    not-clicked {repeat visit, no acceptance made} unverified {after acceptance, not confirmed by the banner} other
-    {after acceptance}})} http {HTTP fetch} dns {DNS query} tls {TLS connection} other {{phase}}}
+    {phase, select, A {A (before any interaction)} B {B ({outcome, select, before-click {first screen, before the
+    rejection} not-clicked {repeat visit, no rejection made} unverified {after rejection, not confirmed by the banner}
+    other {after rejection}})} C {C ({outcome, select, before-click {first screen, before the acceptance} not-clicked
+    {repeat visit, no acceptance made} unverified {after acceptance, not confirmed by the banner} other {after
+    acceptance}})} http {HTTP fetch} dns {DNS query} tls {TLS connection} other {{phase}}}
   report.phaseShort: >-
-    {phase, select, B {{outcome, select, not-clicked {B (no rejection)} unverified {B (rejection not confirmed)}
-    other {B}}} C {{outcome, select, not-clicked {C (no acceptance)} unverified {C (acceptance not confirmed)} other
-    {C}}} other {{phase}}}
+    {phase, select, B {{outcome, select, before-click {B (before the click)} not-clicked {B (no rejection)} unverified
+    {B (rejection not confirmed)} other {B}}} C {{outcome, select, before-click {C (before the click)} not-clicked {C
+    (no acceptance)} unverified {C (acceptance not confirmed)} other {C}}} other {{phase}}}
   report.finding.trigger: Trigger
   report.finding.replicated: Observed again
   report.finding.provider: Provider
@@ -305,7 +308,7 @@ ui:
     {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} status {HTTP status} role
     {Role} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome} href {Target}
     text {Link text} target {Link target} method {Method} resourceType {Resource} result {Response} delivery
-    {Delivery} provenance {Source of the response} features {Features} other {{key}}}
+    {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other {{key}}}
   report.evidence.fetch: >-
     {method} · {resourceType, select, document {document} stylesheet {stylesheet} script {script} font {font} image
     {image} xhr {XHR} fetch {fetch} ping {ping} media {media} websocket {WebSocket} manifest {manifest} other
@@ -319,6 +322,10 @@ ui:
     catalogue)} user-supplied {user or click identifier} per-load {only shown for this page load} none {none
     detected} other {{kind}}}{hasParam, select, true { – {param}} other {}}
   report.evidence.button: "“{name}” · {kind, select, accept {accept} reject {reject} settings {settings} save {save choice} close {close} later {later} hide {hide} link {link} other {other button}} · {visible, select, true {{actionable, select, true {visible and usable on the first screen} other {visible on the first screen, not usable}}} other {not on the first screen}}{hasContrast, select, true { · contrast {contrast, number}} other {}}"
+  # A banner-like box the heuristic did not take as a banner: why not, and its features; `controls` lists the
+  # `report.evidence.controlKind` words.
+  report.evidence.candidate: "not counted as a banner: {reason, select, page-section {in a header or footer without accept or reject} keywords {one consent word without a banner name and without accept or reject} no-control {no button from the word list} other {{reason}}} · consent words: {keywordHits} · buttons: {hasControls, select, true {{controls}} other {none}} · {cookieWording, select, true {names cookies} other {names no cookies}}{fixed, select, true { · fixed position} other {}}{dialog, select, true { · dialog} other {}}{named, select, true { · banner name} other {}}"
+  report.evidence.controlKind: "{kind, select, accept {accept} reject {reject} settings {settings} save {save choice} other {other button}}"
   report.evidence.manifest: "{parts} parts · {chars, number} characters · expandable sections: {opened} of {found} opened · frames: {frames} · linked pages: {linked}{truncated, select, true { · truncated} other {}}"
   # Coded values of evidence fields by `field`; empty for a value the texts do not know, which is then shown as it is.
   report.evidence.value: >-

@@ -173,11 +173,21 @@ function stateEvidence(s: ConsentStateFact, f: Pick<CmpFacts, 'phase' | 'pageUrl
   };
 }
 
+/** The banner screenshot of phase B is taken on the first screen, before the reject is clicked. */
 function screenshotEvidence(browser: BrowserSection, f: CmpFacts): EvidenceInput[] {
   const shot = f.screenshotId ? browser.screenshots.find((s) => s.id === f.screenshotId) : undefined;
-  return shot
-    ? [{ type: 'screenshot', path: shot.path, sha256: shot.sha256, kind: shot.kind, phase: shot.phase }]
-    : [];
+  if (!shot) return [];
+  const beforeClick = shot.phase !== 'A' ? { beforeClick: true } : {};
+  return [
+    {
+      type: 'screenshot',
+      path: shot.path,
+      sha256: shot.sha256,
+      kind: shot.kind,
+      phase: shot.phase,
+      ...beforeClick,
+    },
+  ];
 }
 
 /** Classifier reasons that say the measurement was incomplete: reported as limitations of the check. */
@@ -259,7 +269,11 @@ function judgeFirstLayer(
   const v = cls.variant as string;
   if (v === 'banner-not-recognized' || v === 'cmp-not-supported') {
     verdict.inconclusiveReason = v;
-    observations.push(base(v, 'high', factsEvidence, { reasons: cls.reasons.join(',') || null }));
+    // The adapter recognised the banner; only its first layer could not be read without ambiguity.
+    const recognized = v === 'banner-not-recognized' ? { bannerRecognized: true } : {};
+    observations.push(
+      base(v, 'high', factsEvidence, { reasons: cls.reasons.join(',') || null, ...recognized }),
+    );
     for (const r of cls.reasons) if (MEASUREMENT_LIMITATIONS.includes(r)) limitations.push(r);
   } else if (v !== 'ok') {
     if ((CONSENT04_VARIANTS as readonly string[]).includes(v)) {
@@ -314,27 +328,39 @@ function judgeRejectClick(
 const MAX_CANDIDATE_PAGE_EVIDENCE = 4;
 
 /**
+ * The banner-like box the heuristic did not take, as evidence: its features, without buttons and blocking, which were
+ * not read from a box that is no banner.
+ */
+function candidateEvidence(f: CmpFacts): EvidenceInput {
+  const c = f.firstLayer.bannerCandidate;
+  return {
+    type: 'cmp',
+    cmpId: null,
+    recognitionConfidence: f.detection.recognitionConfidence,
+    phase: f.phase,
+    page: f.pageUrl,
+    ...(c ? { candidate: { ...c, controls: [...c.controls] } } : {}),
+  };
+}
+
+/**
  * A banner observed but not recognised, on which CONSENT-03 stays inconclusive too: info "Banner nicht erkannt", as for a
  * banner the heuristic found. The candidate the heuristic kept is a fair sign, a banner link alone a weak one.
  */
-function unrecognizedOutcome(
-  u: UnrecognizedBanner,
-  cmp: CmpSection,
-  browser: BrowserSection,
-  plan: ScanPlan,
-): CheckOutcome {
+function unrecognizedOutcome(u: UnrecognizedBanner, cmp: CmpSection, browser: BrowserSection): CheckOutcome {
   const start = startPageUrl(browser);
   const primary =
     u.facts.find((f) => f.pageUrl === start) ?? u.facts[0] ?? (primaryFacts(cmp, start) as CmpFacts);
   const pages = (phaseRecord(browser, 'A')?.pages ?? []).filter((p) => u.pages.includes(p.finalUrl || p.url));
   const evidence = [
-    cmpEvidence(primary, plan.browser),
+    candidateEvidence(primary),
     ...pages.slice(0, MAX_CANDIDATE_PAGE_EVIDENCE).map(pageEvidence),
   ];
   const observation: Observation = {
     ...makeBase(primary)('banner-not-recognized', 'medium', evidence, { reasons: 'banner-candidate' }),
     phases: [...new Set(u.facts.map((f) => f.phase))].sort() as Phase[],
     pages: u.pages,
+    classification: { source: 'heuristic', datasetVersion: null },
   };
   return { status: 'inconclusive', reason: 'banner-not-recognized', observations: [observation] };
 }
@@ -372,9 +398,9 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       if (facts.length === 0) return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [] };
       const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
       if (signal) return signal;
-      if (!bannerFound(cmp)) {
+      if (!bannerFound(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
         const unrecognized = unrecognizedBanner(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
-        if (unrecognized) return unrecognizedOutcome(unrecognized, cmp, browser, plan);
+        if (unrecognized) return unrecognizedOutcome(unrecognized, cmp, browser);
         if (bannerUndetermined(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
           return { status: 'inconclusive', reason: 'banner-undetermined', observations: [] };
         }

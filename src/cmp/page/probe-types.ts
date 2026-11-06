@@ -34,6 +34,8 @@ export interface ProbeArgs {
   acknowledgePhrases?: string[];
   /** Keywords (regex sources) that name cookies themselves; one of them with any accept makes a one-keyword banner. */
   cookieKeywords?: string[];
+  /** Negations as token sequences: a cookie keyword right after one names no cookies in use ("keine Cookies"). */
+  negations?: string[];
   /** id/class names of a banner container (regex sources, case-insensitive): with one, a single keyword is enough. */
   bannerContainerNames?: string[];
   /** Explicit container (an iframe element handle when the banner lives in a child frame). */
@@ -88,6 +90,10 @@ export interface ProbeResult {
   /** Links under the banner or its overlay at the first screen (hit test); which are legal is decided on the Node side. */
   coveredLinks: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
   heuristic: { score: number; signals: string[] } | null;
-  /** Heuristic mode: the best banner-shaped element it dismissed when it took none (features only). */
-  rejectedCandidate: BannerCandidateFact | null;
+  /**
+   * Heuristic mode: the best banner-shaped element it dismissed when it took none (features only), with its rank among
+   * the dismissed candidates (higher is more like a banner), so the Node side compares the candidates of several frames,
+   * and its box in this frame's viewport, so the Node side checks that the main page shows it.
+   */
+  rejectedCandidate: { fact: BannerCandidateFact; rank: number; box: Box } | null;
 }

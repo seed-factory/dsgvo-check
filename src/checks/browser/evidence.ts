@@ -70,6 +70,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
     resourceType: r.resourceType,
     phase: r.phase,
     page: r.pageUrl,
+    ...beforeClick(r),
     ...(r.atMs !== undefined ? { tMs: r.atMs } : {}),
     ...(r.navigationId ? { navigationId: r.navigationId } : {}),
     ...(r.actionId ? { actionId: r.actionId } : {}),
@@ -107,6 +108,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
 const OCCURRENCE_FIELDS: ReadonlySet<string> = new Set([
   'page',
   'phase',
+  'beforeClick',
   'tMs',
   'navigationId',
   'frameId',
@@ -143,9 +145,17 @@ export function distinctRequestEvidence(
   return out;
 }
 
+/** Phases B and C start with a visit before their click: what they record then is no observation after it. */
+function beforeClick(x: Pick<CookieRecord, 'phase' | 'afterClick'>): { beforeClick?: true } {
+  return x.phase !== 'A' && !x.afterClick ? { beforeClick: true } : {};
+}
+
 /** Time scale and ids of a cookie/storage record (the legacy relative `tMs` is not exported). */
-function observationIds(x: Pick<CookieRecord, 'atMs' | 'navigationId' | 'actionId'>) {
+function observationIds(
+  x: Pick<CookieRecord, 'phase' | 'afterClick' | 'atMs' | 'navigationId' | 'actionId'>,
+) {
   return {
+    ...beforeClick(x),
     ...(x.atMs !== undefined ? { tMs: x.atMs } : {}),
     ...(x.navigationId ? { navigationId: x.navigationId } : {}),
     ...(x.actionId ? { actionId: x.actionId } : {}),

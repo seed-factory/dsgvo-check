@@ -196,10 +196,14 @@ function serviceViews(rows: readonly Finding[], tools: FrontPageTools): ServiceV
     .slice(0, MAX_ROWS);
 }
 
-export type BannerState = 'recognized' | 'notRecognized' | 'notFound' | 'notVisible';
+export type BannerState = 'recognized' | 'firstLayerAmbiguous' | 'notRecognized' | 'notFound' | 'notVisible';
 
 /** CONSENT-04 variants of a banner that no adapter or heuristic could attribute. */
 const NOT_RECOGNIZED: ReadonlySet<string> = new Set(['banner-not-recognized', 'cmp-not-supported']);
+
+/** A CONSENT-04 finding of a banner its adapter recognised, whose first layer the classifier could not read. */
+export const firstLayerAmbiguous = (f: Finding): boolean =>
+  f.checkId === 'CONSENT-04' && f.variant === 'banner-not-recognized' && f.params.bannerRecognized === true;
 
 /** CONSENT-03 saw something that looks like a banner but was not recognised, so it did not conclude "no banner". */
 const CANDIDATE_REASON = 'banner-candidate-unrecognized';
@@ -212,14 +216,18 @@ const BANNER_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Banner state when the report knows it: not recognized (a finding or CONSENT-03 says so), else from the outcome of
- * CONSENT-04.
+ * Banner state when the report knows it: not recognized (a finding or CONSENT-03 says so), recognized with a first
+ * layer that could not be read, else from the outcome of CONSENT-04.
  */
 export function bannerState(report: Report): BannerState | null {
+  const findings = (report.findings ?? []).filter(
+    (f) => f.checkId === 'CONSENT-04' && NOT_RECOGNIZED.has(f.variant),
+  );
   const notRecognized =
-    (report.findings ?? []).some((f) => f.checkId === 'CONSENT-04' && NOT_RECOGNIZED.has(f.variant)) ||
+    findings.some((f) => !firstLayerAmbiguous(f)) ||
     (report.checks ?? []).some((c) => c.id === 'CONSENT-03' && c.reason === CANDIDATE_REASON);
   if (notRecognized) return 'notRecognized';
+  if (findings.length > 0) return 'firstLayerAmbiguous';
 
   const check = (report.checks ?? []).find((c) => c.id === 'CONSENT-04');
   if (check?.status === 'completed') return 'recognized';
@@ -404,8 +412,9 @@ function overviewSentences(
   const banner = bannerState(report);
   const open = openChecks(report);
   const partly = partlySentence(report, titles, tools);
-  // A banner that was not recognised was not clicked: the reject and the accept stay open whatever the checks say.
-  const bannerOpen = banner === 'notRecognized';
+  // A banner that was not recognised, or whose first layer could not be read, was not clicked as such: the reject and
+  // the accept stay open whatever the checks say.
+  const bannerOpen = banner === 'notRecognized' || banner === 'firstLayerAmbiguous';
   const state =
     status === 'partial'
       ? 'partial'

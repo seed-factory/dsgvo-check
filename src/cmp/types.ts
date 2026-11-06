@@ -165,13 +165,16 @@ export type CandidateControlKind = 'accept' | 'reject' | 'settings' | 'save' | '
 export interface BannerCandidateFact {
   /**
    * `page-section`: inside a header or footer without accept or reject; `keywords`: one consent keyword, no banner
-   * name, no accept or reject, or only an acknowledgement without cookie wording; `no-control`: no control the lexicon
-   * knows.
+   * name, no accept or reject, and no cookie wording (in a box: none with an acknowledgement); `no-control`: no
+   * control the lexicon knows.
    */
   reason: 'keywords' | 'no-control' | 'page-section';
   keywordHits: number;
   controls: CandidateControlKind[];
-  /** A keyword hit names cookies themselves (`cookieKeywords`), not privacy or tracking in general. */
+  /**
+   * A keyword hit names cookies themselves (`cookieKeywords`), not privacy or tracking in general, at least once without
+   * a negation in front ("Wir verwenden keine Cookies" names none).
+   */
   cookieWording: boolean;
   fixed: boolean;
   dialog: boolean;
@@ -271,6 +274,13 @@ export interface CmpLexicon {
   restrictions?: string[];
   /** Subscription and payment wording: a label with it is never a reject or accept. */
   paid?: string[];
+  /** Words for all cookies: with one, a necessity word beside an accept phrase does not make it necessary-only. */
+  allWords?: string[];
+  /**
+   * Words that only recommend a button or call it the default ("empfohlen", "Standard"): beside a necessary-only reject
+   * phrase they name no category.
+   */
+  neutralWords?: string[];
   /** Case-insensitive regex sources for the pay-or-OK model in the banner text. */
   purAbo?: string[];
   /** Accept phrases that only acknowledge a notice ("OK", "Verstanden"): no consent choice next to one generic keyword. */

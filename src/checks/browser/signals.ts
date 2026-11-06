@@ -20,34 +20,51 @@ export function allCmpFacts(cmp: CmpSection): CmpFacts[] {
   return cmp.phases.flatMap((p) => p.facts);
 }
 
-/** A consent banner was found on some page: a recognised CMP or a banner candidate in the DOM, visible or not. */
-export function bannerFound(cmp: CmpSection): boolean {
-  return allCmpFacts(cmp).some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent);
+/**
+ * The facts when they lie on the start page or on at least `minPages` pages (`cmp.minCandidatePages` of the settings),
+ * else none: a banner shows on every page of phase A until it is answered, on one subpage only it is part of that page.
+ */
+function onBannerPages(facts: CmpFacts[], start: string | null, minPages: number): CmpFacts[] {
+  const pages = new Set(facts.map((f) => f.pageUrl));
+  return (start !== null && pages.has(start)) || pages.size >= minPages ? facts : [];
+}
+
+/**
+ * Facts that found a consent banner, visible or not: a CMP an adapter recognised on any page, a banner the heuristic
+ * took (or a consent iframe it could not read) by the page rule of `onBannerPages`.
+ */
+export function bannerFacts(cmp: CmpSection, browser: BrowserSection, minPages: number): CmpFacts[] {
+  const found = allCmpFacts(cmp).filter((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent);
+  if (found.some((f) => f.detection.method !== 'heuristic')) return found;
+  return onBannerPages(found, startPageUrl(browser), minPages);
+}
+
+/** A consent banner was found (`bannerFacts`). */
+export function bannerFound(cmp: CmpSection, browser: BrowserSection, minPages: number): boolean {
+  return bannerFacts(cmp, browser, minPages).length > 0;
 }
 
 /**
  * A dismissed candidate that looks like a banner: not header or footer chrome, and a banner name, an accept or reject,
- * or cookie wording with a settings or save control. A settings phrase such as "Details" or "Mehr Informationen" next
- * to privacy wording alone is a chat widget or a newsletter box; with only other controls a sticky menu.
+ * cookie wording with a settings or save control, or cookie wording and two keywords in a fixed box or a dialog whose
+ * controls the lexicon cannot read (buttons without a role, names that are text blobs). A settings phrase such as
+ * "Details" or "Mehr Informationen" next to privacy wording alone is a chat widget or a newsletter box; with only other
+ * controls a sticky menu.
  */
 const bannerLike = (c: BannerCandidateFact): boolean =>
   c.reason !== 'page-section' &&
   (c.named ||
     c.controls.includes('accept') ||
     c.controls.includes('reject') ||
-    (c.cookieWording && c.controls.some((k) => k !== 'other')));
+    (c.cookieWording && c.controls.some((k) => k !== 'other')) ||
+    (c.cookieWording && c.keywordHits >= 2 && (c.fixed || c.dialog)));
 
-/**
- * Facts with a banner-like candidate of the heuristic, on the start page or on at least `minPages` pages
- * (`cmp.minCandidatePages` of the settings): a banner shows on every page of phase A until it is answered, on one
- * subpage only it is part of that page.
- */
+/** Facts with a banner-like candidate of the heuristic, by the page rule of `onBannerPages`. */
 function candidateFacts(cmp: CmpSection, start: string | null, minPages: number): CmpFacts[] {
   const facts = allCmpFacts(cmp).filter(
     (f) => f.firstLayer.bannerCandidate && bannerLike(f.firstLayer.bannerCandidate),
   );
-  const pages = new Set(facts.map((f) => f.pageUrl));
-  return (start !== null && pages.has(start)) || pages.size >= minPages ? facts : [];
+  return onBannerPages(facts, start, minPages);
 }
 
 /**
@@ -84,7 +101,7 @@ export function unrecognizedBanner(
   minPages: number,
 ): UnrecognizedBanner | null {
   const all = allCmpFacts(cmp);
-  if (all.length === 0 || bannerFound(cmp)) return null;
+  if (all.length === 0 || bannerFound(cmp, browser, minPages)) return null;
 
   const facts = candidateFacts(cmp, startPageUrl(browser), minPages);
   return facts.length > 0 ? { facts, pages: sortedUniq(facts.map((f) => f.pageUrl)) } : null;
@@ -97,7 +114,7 @@ export function unrecognizedBanner(
  */
 export function bannerUndetermined(cmp: CmpSection, browser: BrowserSection, minPages: number): boolean {
   const all = allCmpFacts(cmp);
-  if (all.length === 0 || bannerFound(cmp)) return false;
+  if (all.length === 0 || bannerFound(cmp, browser, minPages)) return false;
   if (all.some((f) => f.firstLayer.bannerCandidate !== undefined)) return false;
   return bannerLinkPages(browser, minPages).length > 0;
 }
@@ -116,7 +133,7 @@ export type BannerState = boolean | 'not-observed' | 'unrecognized' | 'undetermi
  */
 export function bannerState(cmp: CmpSection, browser: BrowserSection, minPages: number): BannerState {
   if (allCmpFacts(cmp).length === 0) return 'not-observed';
-  if (bannerFound(cmp)) return true;
+  if (bannerFound(cmp, browser, minPages)) return true;
   if (unrecognizedBanner(cmp, browser, minPages)) return 'unrecognized';
   return bannerUndetermined(cmp, browser, minPages) ? 'undetermined' : false;
 }

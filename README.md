@@ -183,19 +183,30 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
 - CONSENT-04 bewertet oberhalb von `info` nur bei Erkennung mit hoher Konfidenz.
 - Ein anderes Banner wird nur heuristisch erkannt: CONSENT-04 meldet `info` „Banner nicht erkannt“ (Status
   `inconclusive`), der Scanner klickt nicht.
-- Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort, wertet ihn aber nicht als Banner, und
-  hat er einen Bannernamen, eine Ablehnen- oder Annehmen-Schaltfläche oder das Wort „Cookie“ und eine
-  Einstellungsschaltfläche, schließt CONSENT-03 nicht auf „kein Einwilligungsbanner“: Die Prüfung bleibt
-  `inconclusive`, CONSENT-04 meldet `info` „Banner nicht erkannt“, und die Befundtexte nennen das Banner „beobachtet,
-  aber nicht erkannt“. Ein bloßes „OK“ oder „Verstanden“ unter einem Versand- oder Datenschutzhinweis ist keine solche
-  Schaltfläche.
+- Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort (auf der Seite oder in einem iframe, das
+  auf dem ersten Bildschirm sichtbar ist), wertet ihn aber nicht als Banner, und hat er einen Bannernamen, eine
+  Ablehnen- oder Annehmen-Schaltfläche, das Wort „Cookie“ und eine Einstellungsschaltfläche oder, als fester Kasten
+  oder Dialog, das Wort „Cookie“ und ein weiteres Einwilligungswort neben Schaltflächen, die das Lexikon nicht lesen
+  kann, schließt CONSENT-03 nicht auf „kein Einwilligungsbanner“: Die Prüfung bleibt `inconclusive`, CONSENT-04 meldet
+  `info` „Banner nicht erkannt“, und die Befundtexte nennen das Banner „beobachtet, aber nicht erkannt“. Ein bloßes „OK“
+  oder „Verstanden“ unter einem Versand- oder Datenschutzhinweis ist keine solche Schaltfläche.
+- Ein Banner zeigt sich auf jeder Seite, bis der Besucher antwortet: Was die Heuristik nur auf einer Unterseite findet
+  (ein festes Inhaltsverzeichnis der Datenschutzerklärung, eine eingebettete Datenschutzerklärung), gehört zu dieser
+  Seite und ist kein Banner; es zählt auf der Startseite oder auf mindestens zwei Seiten
+  (`DSGVO_CHECK_CMP_MIN_CANDIDATE_PAGES`). Was der Besucher nicht sieht (verdeckt, abgeschnitten, durchsichtig oder in
+  einem verborgenen iframe), zählt ebenso wenig.
 - In Snapshots ohne diese Angabe der Heuristik zeigt derselbe Link eines Containers mit Bannernamen auf zwei Seiten nur,
   dass das Vorhandensein eines Banners nicht feststellbar ist: CONSENT-03 bis CONSENT-05 bleiben `inconclusive`, ohne
   Befund.
 - Schaltflächen mit Abo- oder Zahlungswörtern („abonnieren“, „Pur-Abo“, „bezahlen“) klickt der Scanner nie als
-  Ablehnen oder Annehmen. Verneinte oder eingeschränkte Zustimmungen („Nicht alle akzeptieren“, „Nur Statistik
-  akzeptieren“) klickt er nie als Annehmen, als Ablehnen nur, wenn das Markup des Anbieters sie als Ablehnen-Schaltfläche
-  ausweist. Eine Verneinung der Cookie-Art („Nicht notwendige Cookies ablehnen“) bleibt ein Ablehnen.
+  Ablehnen oder Annehmen. Verneinte oder eingeschränkte Zustimmungen („Nicht alle akzeptieren“, „Ich akzeptiere keine
+  Cookies“, „Nur Statistik akzeptieren“) klickt er nie als Annehmen, als Ablehnen nur, wenn das Markup des Anbieters
+  sie als Ablehnen-Schaltfläche ausweist. Eine Verneinung der Cookie-Art („Nicht notwendige Cookies ablehnen“) bleibt
+  ein Ablehnen, eine Zustimmung zu den nicht notwendigen Cookies („Ich akzeptiere nicht notwendige Cookies“) ist nie
+  ein Ablehnen. Eine Zustimmung nur zu den notwendigen Cookies, auch ohne „nur“ („Erforderliche Cookies erlauben“,
+  „Accept necessary“), ist nie ein Annehmen; die Formulierungen aus dem Lexikon sind ein Ablehnen, wenn daneben nur
+  Cookie-, Notwendigkeits- und Hinweiswörter wie „empfohlen“ stehen („Accept necessary and analytics cookies“ ist weder
+  Ablehnen noch Annehmen).
 - Bei Shopware zeigt die Seite nur, dass der Besucher geantwortet hat, nicht welche Cookies er erlaubt hat: Ablehnen
   und Annehmen werden geklickt, gelten aber als nicht bestätigt. Shopware und Wix gelten nur mit ihrem Banner (oder dem
   Banner-Skript von Wix) als erkannt, nicht allein durch die Kennungen der Plattform.

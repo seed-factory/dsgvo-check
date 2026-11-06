@@ -241,6 +241,56 @@ describe('HTML report: sections and content', () => {
     expect(all).toContain('sourceUrl');
   });
 
+  it('renders a banner-like box the heuristic did not take by its features, without buttons or blocking', () => {
+    const r = sampleFullReport();
+    const cmp = r.evidence.find((e) => e.type === 'cmp') as CmpEvidence;
+    const { buttons: _b, blocking: _bl, click: _c, viewport: _v, version: _ve, ...rest } = cmp;
+    const candidate: CmpEvidence = {
+      ...rest,
+      candidate: {
+        reason: 'keywords',
+        keywordHits: 1,
+        controls: ['settings', 'other'],
+        cookieWording: true,
+        fixed: true,
+        dialog: false,
+        named: false,
+      },
+    };
+    r.evidence = r.evidence.map((e) => (e.id === cmp.id ? candidate : e));
+    r.findings[0]!.evidenceIds = [cmp.id];
+
+    const html = renderHtml(r, ctx());
+    expect(html).toContain('Bannerähnlicher Kasten');
+    expect(html).toContain(
+      'nicht als Banner gewertet: ein Einwilligungswort ohne Bannernamen und ohne Zustimmen oder Ablehnen · Einwilligungswörter: 1 · Schaltflächen: Einstellungen, sonstige Schaltfläche · nennt Cookies · fest positioniert',
+    );
+    expect(html).not.toContain('>Blockierung<');
+    expect(renderHtml(r, ctx('en'))).toContain('Banner-like box');
+  });
+
+  it('names what phase B recorded before its click as such, in the evidence and in the phases of the finding', () => {
+    const r = sampleFullReport();
+    r.scan.coverage.consentActions = [{ action: 'reject', clicked: true, verified: false }];
+    const request = r.evidence.find((e) => e.id === 'ev-request')!;
+    Object.assign(request, { phase: 'B', beforeClick: true });
+    const shot = r.evidence.find((e) => e.id === 'ev-screenshot')!;
+    Object.assign(shot, { phase: 'B', beforeClick: true });
+    r.findings[0]!.evidenceIds = ['ev-request'];
+    r.findings[1]!.evidenceIds = ['ev-screenshot'];
+
+    const html = renderHtml(r, ctx());
+    expect(html).toContain('A (vor einer Interaktion), B (erster Bildschirm, vor dem Ablehnen)');
+    expect(html).toContain('>B (erster Bildschirm, vor dem Ablehnen)<');
+    expect(html).not.toContain('nach Ablehnung, vom Banner nicht bestätigt');
+
+    // Counterexample: what B recorded after the click keeps the outcome of the click.
+    delete (request as { beforeClick?: boolean }).beforeClick;
+    expect(renderHtml(r, ctx())).toContain(
+      'A (vor einer Interaktion), B (nach Ablehnung, vom Banner nicht bestätigt)',
+    );
+  });
+
   it('never renders crmCode or other T[0-9]_ strings, even from external data', () => {
     const r = sampleFullReport();
     (r.evidence[1] as { name: string }).name = 'T1_TRACKING_COOKIE';
