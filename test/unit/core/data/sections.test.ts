@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import { claimsSection } from '../../../../src/checks/browser/policy-claims.ts';
 import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
 import { browserSections } from '../../../../src/collectors/browser/rules.ts';
 import { httpSections } from '../../../../src/collectors/http/rules.ts';
@@ -18,7 +19,7 @@ const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own:
   { dir: 'cmp', sections: cmpSections, own: ['lexicon'] },
   { dir: 'browser', sections: browserSections, own: [] },
   { dir: 'http', sections: httpSections, own: [] },
-  { dir: 'legal', sections: [], own: ['legal'] },
+  { dir: 'legal', sections: [claimsSection], own: ['legal'] },
 ];
 
 /** Directories whose files have dedicated loaders and tests (ruleset, texts, services, routing, report template). */
@@ -90,6 +91,22 @@ describe('a broken data file is reported with its directory and key', () => {
     expect(() => loadSection(byKey('browser', 'identifiers'), root)).toThrow(
       /identifiers\.params\.\d+: must be lower case/,
     );
+  });
+
+  it('a statement pattern that is no lower-case phrase names the kind, the language and the place', () => {
+    const root = dataDirCopy('legal', 'claims.yaml', (t) =>
+      t.replace('- [lokal installiert]', '- [Lokal-installiert]'),
+    );
+    expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(
+      /test\/data\/legal: claims\.kinds\.self-hosted\.de\.patterns\.0\.0: lower-case words/,
+    );
+  });
+
+  it('a category the catalog does not know is named with its key', () => {
+    const root = dataDirCopy('legal', 'claims.yaml', (t) =>
+      t.replace('  topics:\n    fonts:', '  topics:\n    schriften:'),
+    );
+    expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(/test\/data\/legal: claims\.topics/);
   });
 
   it('a missing section names the key it expected', () => {

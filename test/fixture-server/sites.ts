@@ -98,6 +98,25 @@ export const SITES: Record<string, SiteConfig> = {
       },
     },
   },
+  // The policy states the Google Fonts are local; every page loads them from Google (PRIV-02).
+  'browser/fonts-claim': {
+    hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
+    fileHeaders: {
+      'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+    },
+  },
+  // The same statement is true: the site serves its own font; only the Google Maps frame loads Google Fonts.
+  'browser/fonts-local': {
+    hosts: { 'www.example.test': 'www', 'www.google.com': 'google', 'fonts.googleapis.com': 'fonts' },
+    fileHeaders: {
+      'google/maps/embed': html,
+      'fonts/css': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+    },
+  },
   'browser/ga4': {
     hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
     routes: [gaCollect],

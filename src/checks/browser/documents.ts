@@ -1,8 +1,11 @@
 /**
- * Whether a legal document the collector fetched can be relied on as that document (LEGAL-01, PRIV-01), and the
- * privacy policy the policy checks read: its HTML documents and their text, normalised for word search.
+ * Whether a legal document the collector fetched can be relied on as that document (LEGAL-01, PRIV-01, PRIV-02), and
+ * the privacy policy the policy checks read: its HTML documents, their text normalised for word search, and the
+ * evidence of what was read.
  */
+import type { EvidenceInput } from '../../core/api.ts';
 import type { DocumentPart, DocumentRecord, DocumentsSection } from '../../core/snapshot/browser.ts';
+import { sortedUniq } from './lists.ts';
 
 /** Errors by which the collector marks a fetched page as not being the legal document. */
 const NOT_A_DOCUMENT: ReadonlySet<string> = new Set(['soft-404', 'keyword-missing', 'unconfirmed']);
@@ -90,5 +93,43 @@ export function policyText(html: readonly DocumentRecord[]): PolicyText {
     visibleParts,
     visible: normalizeText(visibleParts.map((p) => p.text).join(' \n ')),
     hidden: normalizeText(hiddenParts.map((p) => p.text).join(' \n ')),
+  };
+}
+
+/** What was read of the document(s): the counters of the snapshot manifest, no text. */
+function readManifest(html: readonly DocumentRecord[], partCount: number) {
+  const sum = (count: (d: DocumentRecord) => number) => html.reduce((n, d) => n + count(d), 0);
+  return {
+    partCount,
+    textLength: sum((d) => d.manifest.textLength),
+    expandablesFound: sum((d) => d.manifest.expandablesFound),
+    expandablesOpened: sum((d) => d.manifest.expandablesOpened),
+    framesIncluded: sum((d) => d.manifest.framesIncluded),
+    // Absent in snapshots of older versions: then the evidence has no number rather than a wrong zero.
+    ...(html.some((d) => d.manifest.framesFound !== undefined)
+      ? { framesFound: sum((d) => d.manifest.framesFound ?? 0) }
+      : {}),
+    linkedPages: sum((d) => d.manifest.linkedPages),
+    truncated: html.some((d) => d.errors.includes('truncated')),
+  };
+}
+
+/** `document` evidence of the policy: where it was read, its parts by origin and the counters of what was read. */
+export function policyEvidence(
+  main: DocumentRecord,
+  html: readonly DocumentRecord[],
+  parts: PolicyPart[],
+): EvidenceInput {
+  return {
+    type: 'document',
+    url: main.finalUrl || main.url,
+    kind: 'privacy',
+    lang: main.lang,
+    complete: main.complete,
+    parts: sortedUniq(parts.map((p) => p.origin)).map((origin) => ({ origin })),
+    errors: main.errors,
+    phase: main.phase,
+    ...(main.sha256 ? { sha256: main.sha256 } : {}),
+    manifest: readManifest(html, parts.length),
   };
 }

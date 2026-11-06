@@ -6,7 +6,7 @@
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
 import type { DocumentRecord, RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ServiceInfo, ServiceObservation } from '../../derive/types.ts';
-import { normalizeText, type PolicyPart, type PolicyText, policyDocuments, policyText } from './documents.ts';
+import { normalizeText, type PolicyText, policyDocuments, policyEvidence, policyText } from './documents.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields } from './services.ts';
@@ -61,43 +61,6 @@ type Variant = 'not-named' | 'category-only' | 'ambiguous-match';
 function companyNames(info: ServiceInfo): string | null {
   const names = sortedUniq([info.provider?.name, info.parent?.name].filter((n): n is string => !!n));
   return names.join(', ') || info.companyAliases?.[0] || null;
-}
-
-/** What was read of the document(s): the counters of the snapshot manifest, no text. */
-function readManifest(html: readonly DocumentRecord[], partCount: number) {
-  const sum = (count: (d: DocumentRecord) => number) => html.reduce((n, d) => n + count(d), 0);
-  return {
-    partCount,
-    textLength: sum((d) => d.manifest.textLength),
-    expandablesFound: sum((d) => d.manifest.expandablesFound),
-    expandablesOpened: sum((d) => d.manifest.expandablesOpened),
-    framesIncluded: sum((d) => d.manifest.framesIncluded),
-    // Absent in snapshots of older versions: then the evidence has no number rather than a wrong zero.
-    ...(html.some((d) => d.manifest.framesFound !== undefined)
-      ? { framesFound: sum((d) => d.manifest.framesFound ?? 0) }
-      : {}),
-    linkedPages: sum((d) => d.manifest.linkedPages),
-    truncated: html.some((d) => d.errors.includes('truncated')),
-  };
-}
-
-function policyEvidence(
-  main: DocumentRecord,
-  html: readonly DocumentRecord[],
-  parts: PolicyPart[],
-): EvidenceInput {
-  return {
-    type: 'document',
-    url: main.finalUrl || main.url,
-    kind: 'privacy',
-    lang: main.lang,
-    complete: main.complete,
-    parts: sortedUniq(parts.map((p) => p.origin)).map((origin) => ({ origin })),
-    errors: main.errors,
-    phase: main.phase,
-    ...(main.sha256 ? { sha256: main.sha256 } : {}),
-    manifest: readManifest(html, parts.length),
-  };
 }
 
 /**

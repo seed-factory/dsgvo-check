@@ -5,8 +5,8 @@
 # crm: code from specs/dsgvo-check_katalog-proverok.md or explicit null, JSON report only. null: "Banner nicht
 # erkannt" / "CMP nicht unterstützt" and info variants that only record a weaker technical signal the catalog
 # finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect only, unresolved link,
-# category-only or ambiguous text, non-identifier storage, consent cookie UID, CONNECT only, Pur-Abo). These stay
-# null until the customer maps them.
+# category-only or ambiguous text, a policy statement next to its own counterpart, non-identifier storage, consent
+# cookie UID, CONNECT only, Pur-Abo). These stay null until the customer maps them.
 # The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   CONSENT-01:
@@ -82,3 +82,10 @@ checks:
       not-named: { severity: warning, crm: T3_LEGAL_DOCS_MISMATCH }
       category-only: { severity: info, crm: null }
       ambiguous-match: { severity: info, crm: null }
+  PRIV-02:
+    gating: true
+    variants:
+      contradiction-replicated: { severity: critical, crm: T1_MISLEADING_CLAIM }
+      contradiction-single: { severity: warning, crm: T1_MISLEADING_CLAIM }
+      # The policy also describes the connection, or only failed requests and connection hints were observed.
+      wording-to-review: { severity: info, crm: null }

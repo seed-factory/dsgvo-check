@@ -252,7 +252,8 @@ ui:
     contact-page-not-evaluable {Kontaktseite nicht auswertbar} buttons-truncated {Nicht alle Schaltflächen des
     Banners erfasst} geometry-unsettled {Lage und Größe des Banners nicht stabil gemessen} final-host-not-probed
     {Zielhost der Umleitung nicht geprüft} preconnect-not-observable {Verbindungen ohne Anfrage (preconnect) nicht
-    beobachtbar} pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite nicht erfasst}
+    beobachtbar} embed-navigation-excluded {Anfragen nach Zustimmung auf Seiten mit einem Karten- oder Videodienst im
+    Hauptdokument nicht gewertet} pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite nicht erfasst}
     first-layer-not-visible {Erste Ebene des Banners nicht sichtbar} spf-include-unresolved {SPF-include nicht
     vollständig aufgelöst} mx-unknown {MX-Eintrag nicht feststellbar} throttled {Der Server hat Anfragen gedrosselt}
     status {Startseite antwortete mit HTTP {detail}} document-blocked {Seite durch Bot-Schutz blockiert: {detail}}
@@ -290,7 +291,9 @@ ui:
     auswertbare Seiten} legal-targets-not-evaluable {Linkziele nicht auswertbar} contact-page-not-evaluable
     {Kontaktseite nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
     banner-candidate-unrecognized {Einwilligungsbanner beobachtet, aber nicht erkannt}
-    banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde}
+    banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde} claim-ambiguous {Angabe der
+    Datenschutzerklärung nicht eindeutig: unter Vorbehalt, in nicht angezeigtem Text, zusammen mit dem externen
+    Abruf im selben Satz, in einem Satz zu mehreren Diensten oder in einem zu langen Satz}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
     eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation
@@ -346,8 +349,10 @@ ui:
     partial {teilweise} unknown {unbekannt} other {}}} matchLevel {{value, select, named {Dienstname} company
     {Firmenname} domain {Domain} category {Kategoriebeschreibung} term {Begriff aus der Wortliste} none {kein
     Treffer} other {}}} negation {{value, select, none {keine} negated {verneint} ambiguous {nicht eindeutig} other
-    {}}} part {{value, select, visible {sichtbarer Text} expandable {aufklappbarer Abschnitt} frame {Frame} linked
-    {verlinkte Seite} hidden-irrelevant {ausgeblendeter Text} other {}}} other {}}
+    {}}} claim {{value, select, self-hosted {lokal eingebunden} no-connection {keine Verbindung zu externen Servern}
+    consent-gated {erst nach Einwilligung geladen} other {}}} part {{value, select, visible {sichtbarer Text}
+    expandable {aufklappbarer Abschnitt} frame {Frame} linked {verlinkte Seite} hidden-irrelevant {ausgeblendeter
+    Text} other {}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (lokal aufgelöst)} upstream { (vom Proxy gemeldet)} other {}}"
   report.evidence.firstPartyDomain: eigene Domain
   report.evidence.cookieState: "{state, select, attempted {Setzen versucht} accepted {vom Browser angenommen} rejected {vom Browser abgelehnt} sent {mit einer Anfrage gesendet} other {{state}}}"

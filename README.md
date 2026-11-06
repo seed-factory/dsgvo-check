@@ -65,6 +65,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                         |
 | LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt       |
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
+| PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen       |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
 | TLS-01     | Umleitung von http auf https                                                              |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
@@ -93,6 +94,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `EMBED-02`   | —                                          | `maps-loaded`                                                                                | —                                                                                                                                |
 | `LEGAL-01`   | `document-not-found`, `links-broken`       | `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner`       | `unresolved`                                                                                                                     |
 | `PRIV-01`    | —                                          | `not-named`                                                                                  | `category-only`, `ambiguous-match`                                                                                               |
+| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                       | `wording-to-review`                                                                                                              |
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                          | `weak-option`, `legacy-pct`                                                                                                      |
 | `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement` | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
 | `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                         | `header-missing`                                                                                                                 |
@@ -108,25 +110,24 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt die geplanten Varianten je Schweregrad.
 
-| ID                    | Thema                                                | `critical`                      | `warning`                                                                    | `info`                                                           | Ohne Befund (`reason`)   |
-| --------------------- | ---------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
-| `PRIV-02`             | Datenschutzerklärung im Abgleich mit der Beobachtung | `contradiction-replicated`      | `contradiction-single`                                                       | `wording-to-review`                                              | `claim-ambiguous`        |
-| `EMBED-03`            | Videos und Vorschaubilder                            | —                               | `video-loaded`                                                               | —                                                                | —                        |
-| `EMBED-04`            | CAPTCHA                                              | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                              | —                        |
-| `EMBED-05`            | Widgets                                              | —                               | `widget-loaded`                                                              | —                                                                | —                        |
-| `CONSENT-06`          | Consent Mode                                         | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                                | `not-observable`         |
-| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken           | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                                | `source-unavailable`     |
-| `MAIL-03`             | DKIM                                                 | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                                            | —                        |
-| `TLS-03`              | Mixed Content                                        | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                                          | —                        |
-| `TLS-04`              | TLS 1.0/1.1                                          | —                               | `legacy-protocol-accepted`                                                   | —                                                                | `handshake-inconclusive` |
-| `DNS-01`              | CAA und DNSSEC                                       | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                               | —                        |
-| `HDR-02`              | Cookie-Attribute und Versionsangaben                 | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`, `version-header` | —                        |
-| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben                        | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                               | —                        |
-| `FILE-01`⁴            | Dienstdateien                                        | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                                     | —                        |
-| `SEC-01`              | `security.txt`                                       | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete`              | —                        |
-| `LEGAL-02`            | Veraltete Bezeichnungen                              | —                               | —                                                                            | `outdated-reference`                                             | —                        |
-| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale                  | —                               | —                                                                            | `axe-rule-observed`                                              | —                        |
-| `PERF-01`⁵            | Performance im Labor                                 | —                               | —                                                                            | `lab-metrics`                                                    | —                        |
+| ID                    | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                                           | Ohne Befund (`reason`)   |
+| --------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
+| `EMBED-03`            | Videos und Vorschaubilder                  | —                               | `video-loaded`                                                               | —                                                                | —                        |
+| `EMBED-04`            | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                              | —                        |
+| `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                                | —                        |
+| `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                                | `not-observable`         |
+| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                                | `source-unavailable`     |
+| `MAIL-03`             | DKIM                                       | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                                            | —                        |
+| `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                                          | —                        |
+| `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                                | `handshake-inconclusive` |
+| `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                               | —                        |
+| `HDR-02`              | Cookie-Attribute und Versionsangaben       | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`, `version-header` | —                        |
+| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                               | —                        |
+| `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                                     | —                        |
+| `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete`              | —                        |
+| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                             | —                        |
+| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                              | —                        |
+| `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                                    | —                        |
 
 ³ Die Stufen gelten bei exakt bestimmter Version; bei einem Versionsbereich liegt jede Variante eine Stufe niedriger.  
 ⁴ Nur auf ausdrücklichen Wunsch (Opt-in); der Prototyp sendet solche Anfragen nicht.  
@@ -556,12 +557,24 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **Nur die 15 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **Nur die 16 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
+- **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
+  [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
+  lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder
+  unter einer Überschrift mit dem Dienst steht. Angaben mit Vorbehalt („sofern“, „kann“), in nicht angezeigtem Text,
+  zusammen mit dem externen Abruf im selben Satz, in Sätzen zu mehreren Diensten oder in Sätzen über 200 Zeichen
+  werden nicht gewertet (`claim-ambiguous`); eine Verneinung vor der Angabe („nicht lokal“, „not installed locally“)
+  hebt sie auf. Abweichung in mindestens zwei Beobachtungen (Phase und Seite,
+  `DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS`) ist `critical`, in einer `warning`. Beschreibt dasselbe Dokument
+  auch den Abruf von einer Quelle außerhalb der Website („von Google“, „Drittanbieter“) oder wurden nur Abrufe ohne
+  Antwort und Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte
+  lädt, gehören zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im
+  Hauptdokument nicht. Ohne Befund ist die Datenschutzerklärung nicht als zutreffend bestätigt.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
