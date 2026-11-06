@@ -1071,7 +1071,7 @@ describe('the full report in words', () => {
     'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
     'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',
     'pdf-not-evaluated unsupported-format language-unsupported document-incomplete no-evaluable-pages',
-    'insufficient-pages contact-page-not-evaluable',
+    'insufficient-pages contact-page-not-evaluable claim-ambiguous',
     // http and dns checks
     'blocked start-page-unavailable start-page-status tls-invalid no-https handshake-inconclusive undecided',
     'ip-target no-registrable-domain multiple-records',

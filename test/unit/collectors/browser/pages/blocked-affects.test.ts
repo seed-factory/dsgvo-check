@@ -16,7 +16,7 @@ describe('blockedAffects', () => {
   it.each<[string, Partial<VisitSpec>, string[]]>([
     ['impressum', { role: 'impressum' }, ['LEGAL-01']],
     ['legal hop', { role: 'legal-hop' }, ['LEGAL-01']],
-    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'PRIV-01']],
+    ['privacy', { role: 'privacy' }, ['LEGAL-01', 'PRIV-01', 'PRIV-02']],
     ['contact', { role: 'contact' }, ['EMBED-02']],
     ['start page of phase A', { role: 'start', phase: 'A' }, []],
     ['start page of phase B', { role: 'start', phase: 'B' }, ['CONSENT-04', 'CONSENT-05']],
@@ -27,7 +27,7 @@ describe('blockedAffects', () => {
     [
       'fallback probe of the privacy path',
       { role: 'fallback', rawUrl: 'https://www.example.test/datenschutz' },
-      ['LEGAL-01', 'PRIV-01'],
+      ['LEGAL-01', 'PRIV-01', 'PRIV-02'],
     ],
     [
       'fallback probe of the impressum path',
@@ -41,6 +41,6 @@ describe('blockedAffects', () => {
 
   it('returns a fresh list, so callers cannot change the table', () => {
     blockedAffects(spec({ role: 'privacy' })).push('X');
-    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual(['LEGAL-01', 'PRIV-01']);
+    expect(blockedAffects(spec({ role: 'privacy' }))).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
   });
 });

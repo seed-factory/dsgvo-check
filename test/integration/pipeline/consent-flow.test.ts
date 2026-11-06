@@ -26,6 +26,7 @@ const BROWSER_CHECKS = [
   'EMBED-02',
   'LEGAL-01',
   'PRIV-01',
+  'PRIV-02',
 ];
 /** Value parts of the `_ga` cookie / `cid` set by the fake gtag (must never reach a report). */
 const GA_CLIENT_ID = '987654321';

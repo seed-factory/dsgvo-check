@@ -414,6 +414,48 @@ messages:
       at {policyUrl}} other {in the privacy policy and the site's further privacy notices (searched: {policyUrls})}}
       only in text not displayed on the page or not attributable to a section. Please review manually.
 
+  # PRIV-02
+  PRIV-02.contradiction-replicated:
+    title: "Privacy policy statement differs from the observation: {service}"
+    body: >-
+      The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
+      from the site's own server} no-connection {the statement that no connection to servers of {company} takes
+      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
+      other {statements on how {service} is embedded}} (wording in the evidence). Observed: {requestCount, plural, one {# request} other {# requests}} to {hosts} with a
+      response, in
+      {contextCount, plural, one {# observation} other {# observations}} (phase and page) on {pageCount, plural, one {#
+      page} other {# pages}}{afterReject, select, true {, also after a confirmed rejection in the consent banner}
+      other {}}.{bannerFound, select, false { No consent banner was found.} unrecognized { A consent banner was
+      observed but not recognised.} other {}}
+  PRIV-02.contradiction-single:
+    title: "Privacy policy statement differs from the observation: {service}"
+    body: >-
+      The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
+      from the site's own server} no-connection {the statement that no connection to servers of {company} takes
+      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
+      other {statements on how {service} is embedded}} (wording in the evidence). Observed: {requestCount, plural, one {# request} other {# requests}} to {hosts} with a
+      response, in only
+      {contextCount, plural, one {# observation} other {# observations}} (phase and page) on {pageCount, plural, one {#
+      page} other {# pages}}{afterReject, select, true {, also after a confirmed rejection in the consent banner}
+      other {}}.{bannerFound, select, false { No consent banner was found.} unrecognized { A consent banner was
+      observed but not recognised.} other {}}
+  PRIV-02.wording-to-review:
+    title: "Privacy policy statements for manual review: {service}"
+    body: >-
+      The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
+      from the site's own server} no-connection {the statement that no connection to servers of {company} takes
+      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
+      other {statements on how {service} is embedded}}{basis, select, disclosure {, but also a description of
+      the connection to external servers} other {}} (wording in the evidence). {basis, select, disclosure {Observed:
+      {requestCount, plural, one {# request} other {# requests}} to {hosts} with a response} attempt {Observed only:
+      {requestCount, plural, one {# request} other {# requests}} to {hosts} without a response} hint {Observed only: a
+      connection hint (preconnect/dns-prefetch) to {hosts}} other {Observed only: requests without a response and
+      connection hints (preconnect/dns-prefetch) to {hosts}}} ({contextCount, plural, one {# observation} other {#
+      observations}} on {pageCount, plural, one {# page} other {# pages}}). Please review manually.
+
 # Legal background per check; a key `<check>.<variant>` (or `.<variant group>`) replaces it for the variant whose
 # classification differs from the rest of the check.
 legalNotes:
@@ -514,6 +556,13 @@ legalNotes:
       Art. 13(1)(e), (f) GDPR. Naming categories of recipients may be sufficient; whether each service must be named
       is contested.
     status: contested
+    reviewedAt: null
+    reviewBy: null
+  PRIV-02:
+    text: >-
+      Art. 5(1)(a), Art. 12, Art. 13 GDPR. The wording of the privacy policy is compared with the observed requests;
+      whether a difference is legally relevant is not assessed automatically.
+    status: technical
     reviewedAt: null
     reviewBy: null
 
@@ -619,3 +668,9 @@ actions:
     text: "Check whether the privacy policy names {service} specifically enough, and otherwise add the names of the service and the provider."
   PRIV-01.ambiguous-match:
     text: "Check manually whether the privacy policy names {service} in its visible text."
+  PRIV-02.contradiction-replicated:
+    text: "Compare the quoted section of the privacy policy with how {service} is embedded: {claim, select, consent-gated {load {service} only after consent} other {serve the content from your own server}} or adjust the statement."
+  PRIV-02.contradiction-single:
+    text: "Compare the quoted section of the privacy policy with how {service} is embedded: {claim, select, consent-gated {load {service} only after consent} other {serve the content from your own server}} or adjust the statement."
+  PRIV-02.wording-to-review:
+    text: "Check which of the quoted statements on {service} matches how it is embedded, and adjust the privacy policy or the embedding."

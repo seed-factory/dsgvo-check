@@ -32,6 +32,7 @@ const BROWSER_CHECKS = [
   'EMBED-03',
   'LEGAL-01',
   'PRIV-01',
+  'PRIV-02',
   'TRACK-01',
 ];
 
@@ -44,7 +45,7 @@ const THROTTLE_RESPONSES = 3;
 const CHECKS_READING_ROLE: ReadonlyMap<PageRole, readonly string[]> = new Map([
   ['impressum', ['LEGAL-01']],
   ['legal-hop', ['LEGAL-01']],
-  ['privacy', ['LEGAL-01', 'PRIV-01']],
+  ['privacy', ['LEGAL-01', 'PRIV-01', 'PRIV-02']],
   ['contact', ['EMBED-02']],
 ]);
 const CHECKS_READING_START_BC: readonly string[] = ['CONSENT-04', 'CONSENT-05'];

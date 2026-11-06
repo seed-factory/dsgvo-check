@@ -15,6 +15,7 @@ import * as embed02 from './embed-02.ts';
 import * as embed03 from './embed-03.ts';
 import * as legal01 from './legal-01.ts';
 import * as priv01 from './priv-01.ts';
+import * as priv02 from './priv-02.ts';
 import type { Scenario } from './shared.ts';
 import * as track01 from './track-01.ts';
 
@@ -32,6 +33,7 @@ export const SCENARIOS: Record<string, Scenario[]> = {
   'EMBED-03': embed03.scenarios,
   'LEGAL-01': legal01.scenarios,
   'PRIV-01': priv01.scenarios,
+  'PRIV-02': priv02.scenarios,
 };
 
 export const VARIANT_SCENARIOS: Record<string, Scenario[]> = {
@@ -43,6 +45,7 @@ export const VARIANT_SCENARIOS: Record<string, Scenario[]> = {
   'EMBED-01': embed01.variantScenarios,
   'LEGAL-01': legal01.variantScenarios,
   'PRIV-01': priv01.variantScenarios,
+  'PRIV-02': priv02.variantScenarios,
 };
 
 /** The fixture of a scenario as the loader reads it (a JSON round trip, so it holds only what a file could). */
