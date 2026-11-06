@@ -1,5 +1,7 @@
 # Fonts, maps, video and captcha embeds. Format: see _catalog.yaml.
-# Integration types (EMBED-02): iframe, js-api, static, tiles.
+# Integration types: maps (EMBED-02) iframe, js-api, static, tiles; video (EMBED-03) iframe, js-api, thumbnail and
+# other. A video image is a thumbnail only by a `thumbnail` signature: a player's beacon image is none. Player scripts
+# and styles are `other`, no use of the player API by the site.
 services:
   # fonts (EMBED-01)
   - id: google-fonts
@@ -286,11 +288,24 @@ services:
         stage: loaded
         integration: js-api
       - id: thumbnail
-        hosts: [ytimg.com]
-        path: "^/vi(_webp)?/"
+        hosts: [ytimg.com, img.youtube.com]
+        path: "^/(vi|vi_webp|an_webp)/"
         kind: image
         stage: loaded
         integration: thumbnail
+      # Title and thumbnail address of a video, fetched by a page that shows a preview.
+      - id: oembed
+        hosts: [youtube.com]
+        path: "^/oembed"
+        kind: resource
+        stage: loaded
+        integration: thumbnail
+      - id: player-assets
+        hosts: [youtube.com]
+        path: "^/s/player/"
+        kind: resource
+        stage: loaded
+        integration: other
     cookies:
       [
         VISITOR_INFO1_LIVE@youtube.com,
@@ -321,6 +336,12 @@ services:
         kind: embed
         stage: loaded
         integration: iframe
+      - id: player-assets
+        hosts: [youtube-nocookie.com]
+        path: "^/s/player/"
+        kind: resource
+        stage: loaded
+        integration: other
     otherCookies: [LAST_RESULT_ENTRY_KEY@youtube-nocookie.com, TESTCOOKIESENABLED@youtube-nocookie.com]
     otherStorageKeys: [ytidb::LAST_RESULT_ENTRY_KEY@youtube-nocookie.com, YtIdbMeta@youtube-nocookie.com]
     aliasesDe: [YouTube, youtube-nocookie]
@@ -346,6 +367,24 @@ services:
         kind: library
         stage: loaded
         integration: js-api
+      - id: thumbnail
+        hosts: [i.vimeocdn.com]
+        path: "^/video/"
+        kind: image
+        stage: loaded
+        integration: thumbnail
+      - id: oembed
+        hosts: [vimeo.com]
+        path: "^/api/oembed"
+        kind: resource
+        stage: loaded
+        integration: thumbnail
+      - id: player-assets
+        hosts: [f.vimeocdn.com]
+        path: "^/"
+        kind: resource
+        stage: loaded
+        integration: other
     cookies: [vuid@vimeo.com]
     aliasesDe: [Vimeo]
     aliasesEn: [Vimeo]

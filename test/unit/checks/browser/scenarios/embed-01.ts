@@ -1,5 +1,5 @@
 import { makeDom } from '../../../../utils/snapshot-builder.ts';
-import { defaultPages, footerLinks, page, phase, req, START, site } from '../helpers.ts';
+import { click, defaultPages, footerLinks, page, phase, rejectCmp, req, START, site } from '../helpers.ts';
 import type { Scenario } from './shared.ts';
 
 export const scenarios: Scenario[] = [
@@ -22,6 +22,31 @@ export const scenarios: Scenario[] = [
           }),
         ],
       }),
+  },
+  {
+    file: 'violation-fonts-after-reject.json',
+    description:
+      'Google Fonts before any interaction and again on the start page after the reject, which the CMP state confirms',
+    expect: { status: 'completed', variants: ['fonts-loaded'] },
+    build: () => {
+      const css = (id: string, p = {}) =>
+        req(id, 'https://fonts.googleapis.com/css2?family=Roboto&display=swap', {
+          resourceType: 'stylesheet',
+          ...p,
+        });
+      return site({
+        phases: [
+          phase('A', { requests: [css('A-1')] }),
+          phase('B', {
+            click: click('reject'),
+            reloaded: true,
+            pages: [page(START, 'start', 'B'), page(START, 'start', 'B', { reload: true })],
+            requests: [css('B-1', { phase: 'B', afterClick: true })],
+          }),
+        ],
+        cmp: rejectCmp({ confirmed: true }),
+      });
+    },
   },
   {
     file: 'clean-self-hosted.json',

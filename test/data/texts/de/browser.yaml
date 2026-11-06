@@ -267,17 +267,23 @@ messages:
 
   # EMBED-01
   EMBED-01.fonts-loaded:
-    title: "Externe Schriftarten geladen: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {Externe Schriftarten geladen, auch nach {rejectConfirmed, select, true
+      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externe Schriftarten nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externe Schriftarten geladen:
+      {service}}}
     body: >-
       {fontService, select, true {Schriftdateien oder Stylesheets von {service} wurden von einem externen Server
-      geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {afterReject,
-      select, true
-      {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor
-      einer Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner
-      gefunden}
+      geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {moment, select,
+      before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}
+      after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
+      (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
       unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}} ({pageCount, plural, one {#
-      Seite} other {# Seiten}}).
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
+      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).
   EMBED-01.preconnect-only:
     title: >-
       {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
@@ -289,18 +295,51 @@ messages:
 
   # EMBED-02
   EMBED-02.maps-loaded:
-    title: "Externer Kartendienst geladen: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {Externer Kartendienst geladen, auch nach {rejectConfirmed, select, true
+      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externer Kartendienst nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externer Kartendienst geladen:
+      {service}}}
     body: >-
       Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte
       (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
-      geladen, Zeitpunkt: {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
-      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
-      jeder Interaktion, kein Einwilligungsbanner gefunden}
+      geladen, Zeitpunkt: {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner
+      und erneut nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
+      (Ablehnung nicht bestätigt)}}} after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other
+      {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer
+      Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer
+      Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
       unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht
-      ausgewertet}}}} ({pageCount, plural, one {# Seite} other {# Seiten}}).{frameResourceCount, plural, =0 {} one {
-      Dazu zählt # Anfrage des Kartenrahmens an Schriftdienste oder Hilfshosts.} other { Dazu zählen # Anfragen des
-      Kartenrahmens an Schriftdienste oder Hilfshosts.}}
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
+      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
+      plural, =0 {} one { Der Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfrage).} other { Der
+      Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfragen).}}{frameHelperCount, plural, =0 {} one {
+      Der Kartenrahmen stellte außerdem # Anfrage an Hilfshosts.} other { Der Kartenrahmen stellte außerdem #
+      Anfragen an Hilfshosts.}}
+
+  # EMBED-03
+  EMBED-03.video-loaded:
+    title: >-
+      {moment, select, before-and-after-reject {Externer Videodienst geladen, auch nach {rejectConfirmed, select, true
+      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externer Videodienst nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externer Videodienst geladen:
+      {service}}}
+    body: >-
+      Ein externer Videodienst von {service} wurde als {integrationType, select, iframe {eingebetteter Player
+      (iframe)} js-api {Player-API} thumbnail {Vorschaubild ohne Player} other {Videoinhalt}} geladen, Zeitpunkt:
+      {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach
+      {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“ (Ablehnung nicht
+      bestätigt)}}} after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf
+      „Ablehnen“ (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
+      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
+      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
+      plural, =0 {} one { Der Videoplayer lud dabei Schriften von {frameFontServices} (# Anfrage).} other { Der
+      Videoplayer lud dabei Schriften von {frameFontServices} (# Anfragen).}}{frameHelperCount, plural, =0 {} one {
+      Der Videoplayer stellte außerdem # Anfrage an Hilfshosts.} other { Der Videoplayer stellte außerdem #
+      Anfragen an Hilfshosts.}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:
@@ -465,6 +504,14 @@ legalNotes:
     status: contested
     reviewedAt: null
     reviewBy: null
+  EMBED-03:
+    text: >-
+      § 25 TDDDG bei Speicherung auf dem Endgerät; Art. 6 DSGVO; DSK Orientierungshilfe Digitale Dienste. Für
+      Vorschaubilder ohne Player und für den erweiterten Datenschutzmodus (youtube-nocookie.com) ist die Einordnung
+      umstritten.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
   LEGAL-01:
     text: >-
       § 5 DDG; Art. 13 DSGVO; BGH I ZR 228/03 (Erreichbarkeit über zwei Klicks, auch über „Kontakt“). § 18 MStV
@@ -560,6 +607,8 @@ actions:
       und Schriftabrufe zu {service} und entfernen Sie sie, wenn Sie die Schriften nicht von dort laden.}}
   EMBED-02.maps-loaded:
     text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
+  EMBED-03.video-loaded:
+    text: "{integrationType, select, thumbnail {Liefern Sie Vorschaubilder von {service} vom eigenen Server aus oder laden Sie sie erst nach einer Einwilligung.} other {Laden Sie den Player von {service} erst nach einem Klick der Besucher oder nach einer Einwilligung.}}"
   LEGAL-01.document-not-found:
     text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} gut sichtbar im Seitenfuß jeder Seite{inOtherDocument, select, true {, als eigene Seite oder direkt auf den Abschnitt „{otherHeading}“ der Datenschutzerklärung ({otherDocument})} other {}}."
   LEGAL-01.provider-details-without-link:

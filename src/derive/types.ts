@@ -113,7 +113,7 @@ export interface ClassifiedRequest {
   signatureId?: string;
   kind?: RequestKind;
   stage?: TrackingStage;
-  /** Map/video integration type (`iframe`, `js-api`, `static`, `tiles`). */
+  /** Map/video integration type (maps `iframe`, `js-api`, `static`, `tiles`; video `iframe`, `js-api`, `thumbnail`, `other`). */
   integration?: string;
   /** A persistent identifier is evidenced: from collector facts extracted before redaction, never a query key. */
   identifier?: boolean;
@@ -204,6 +204,16 @@ export interface ClassifiedHint {
   category: ServiceCategory;
 }
 
+/** An iframe of a visited page by its `src`, so a check can tell an embed that never loaded from one that did. */
+export interface ClassifiedFrame {
+  phase: BrowserPhase;
+  pageUrl: SanitizedUrl;
+  src: SanitizedUrl;
+  thirdParty: boolean;
+  serviceId: string | null;
+  category: ServiceCategory;
+}
+
 /**
  * The names by which a policy may mention a catalog service: its name, its aliases and its companies. Every service of
  * the catalog whose mention in a policy matters, observed or not, so a check can tell which service a sentence is about
@@ -261,6 +271,8 @@ export interface DerivedSection {
   serviceNames?: ServiceName[];
   /** Connection/preload hints (EMBED-01 "preconnect only"). */
   hints?: ClassifiedHint[];
+  /** Iframes of visited pages with an http(s) `src` (EMBED-03: a video frame that loaded nothing). */
+  frames?: ClassifiedFrame[];
   /** Registrable domains treated as first party (final host and input host). */
   firstPartyEtld1s?: string[];
   /** Version of the cookie/storage allowlist. */

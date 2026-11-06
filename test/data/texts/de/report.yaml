@@ -250,7 +250,8 @@ ui:
     lexicon-unavailable {Wortliste für Schaltflächen des Banners nicht verfügbar} lexicon-changed-since-scan
     {Wortliste für Schaltflächen des Banners seit dem Scan geändert} request-cap-truncated {Anfragen über der
     Erfassungsgrenze nicht aufgezeichnet} csp-truncated {Content-Security-Policy nur gekürzt erfasst}
-    contact-page-not-evaluable {Kontaktseite nicht auswertbar} buttons-truncated {Nicht alle Schaltflächen des
+    contact-page-not-evaluable {Kontaktseite nicht auswertbar} video-page-not-evaluable {Seite mit Videos nicht
+    auswertbar} video-embed-not-loaded {Videorahmen auf der Seite ohne Anfrage, nicht geladen} buttons-truncated {Nicht alle Schaltflächen des
     Banners erfasst} geometry-unsettled {Lage und Größe des Banners nicht stabil gemessen} final-host-not-probed
     {Zielhost der Umleitung nicht geprüft} preconnect-not-observable {Verbindungen ohne Anfrage (preconnect) nicht
     beobachtbar} pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite nicht erfasst}
@@ -293,7 +294,7 @@ ui:
     unsupported-format {Format nicht unterstützt} language-unsupported {Sprache nicht unterstützt} document-incomplete
     {Dokument nicht vollständig gelesen} no-evaluable-pages {keine auswertbare Seite} insufficient-pages {zu wenige
     auswertbare Seiten} legal-targets-not-evaluable {Linkziele nicht auswertbar} contact-page-not-evaluable
-    {Kontaktseite nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
+    {Kontaktseite nicht auswertbar} video-page-not-evaluable {Seite mit Videos nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
     banner-candidate-unrecognized {Einwilligungsbanner beobachtet, aber nicht erkannt}
     banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht

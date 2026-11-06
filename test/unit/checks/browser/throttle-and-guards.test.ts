@@ -7,6 +7,7 @@ import { consent01 } from '../../../../src/checks/browser/consent-01.ts';
 import { consent02 } from '../../../../src/checks/browser/consent-02.ts';
 import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
+import { embed03 } from '../../../../src/checks/browser/embed-03.ts';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
 import { track01 } from '../../../../src/checks/browser/track-01.ts';
@@ -19,6 +20,7 @@ const THROTTLE_CHECKS: Array<[string, AnyCheck]> = [
   ['CONSENT-02', consent02],
   ['EMBED-01', embed01],
   ['EMBED-02', embed02],
+  ['EMBED-03', embed03],
   ['TRACK-01', track01],
 ];
 

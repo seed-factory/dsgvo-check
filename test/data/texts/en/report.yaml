@@ -246,7 +246,8 @@ ui:
     lexicon-unavailable {Word list for banner buttons not available} lexicon-changed-since-scan {Word list for banner
     buttons changed since the scan} request-cap-truncated {Requests beyond the recording limit not recorded}
     csp-truncated {Content-Security-Policy recorded only in part} contact-page-not-evaluable {Contact page not
-    evaluable} buttons-truncated {Not all buttons of the banner recorded} geometry-unsettled {Position and size of
+    evaluable} video-page-not-evaluable {Page with videos not evaluable} video-embed-not-loaded {Video frame on
+    the page without a request, not loaded} buttons-truncated {Not all buttons of the banner recorded} geometry-unsettled {Position and size of
     the banner not measured stably} final-host-not-probed {Final host of the redirect not probed}
     preconnect-not-observable {Connections without a request (preconnect) not observable}
     pagehide-capture-unavailable {Requests sent when leaving a page not captured} first-layer-not-visible {First
@@ -285,7 +286,7 @@ ui:
     evaluated} unsupported-format {format not supported} language-unsupported {language not supported}
     document-incomplete {document not read completely} no-evaluable-pages {no evaluable page} insufficient-pages {too
     few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
-    page not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
+    page not evaluable} video-page-not-evaluable {page with videos not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
     banner-candidate-unrecognized {consent banner observed but not recognised}
     banner-undetermined {whether a consent banner was shown could not be determined} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS

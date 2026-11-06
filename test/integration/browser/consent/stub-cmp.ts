@@ -31,15 +31,19 @@ async function present(page: Page): Promise<boolean> {
   return page.evaluate(() => Boolean(document.querySelector('#stub-cmp') && window.StubCmp));
 }
 
+/** A decision read back from the cookie at page load is `stored`, as real adapters report it after the reload. */
 async function state(page: Page): Promise<ConsentStateFact[]> {
-  const s: string = await page.evaluate(() => (window.StubCmp ? window.StubCmp.state() : 'unknown'));
+  const { s, stored } = await page.evaluate(() => ({
+    s: window.StubCmp ? window.StubCmp.state() : 'unknown',
+    stored: Boolean(window.StubCmp?.stored),
+  }));
   const analytics = s === 'granted' ? 'granted' : s === 'denied' ? 'denied' : 'unknown';
   return [
     {
       source: 'api',
       ready: 'ready',
       categories: { analytics },
-      origin: s === 'unknown' ? 'default' : 'action',
+      origin: s === 'unknown' ? 'default' : stored ? 'stored' : 'action',
     },
   ];
 }

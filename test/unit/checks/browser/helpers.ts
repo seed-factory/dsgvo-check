@@ -2,7 +2,13 @@
  * Scenario builders for browser-check tests: a "site" is https://www.example.de/ with phase A pages
  * start/impressum/datenschutz/kontakt linking both legal documents in the footer, and no CMP unless given.
  */
-import type { BannerCandidateFact, CmpFacts, CmpPhaseFacts, CmpSection } from '../../../../src/cmp/types.ts';
+import type {
+  BannerCandidateFact,
+  CmpFacts,
+  CmpPhaseFacts,
+  CmpSection,
+  ConsentStateFact,
+} from '../../../../src/cmp/types.ts';
 import type {
   BrowserPlan,
   CookieRecord,
@@ -162,6 +168,60 @@ export function noBannerCmp(phases: Array<'A' | 'B'> = ['A']): CmpSection {
 
 export function cmpWith(...phases: CmpPhaseFacts[]): CmpSection {
   return { phases };
+}
+
+/** The CMP state after a reject: every optional category denied, an explicit answer. */
+const deniedState = (origin: ConsentStateFact['origin']): ConsentStateFact => ({
+  source: 'api',
+  ready: 'ready',
+  categories: { statistics: 'denied', marketing: 'denied' },
+  origin,
+  decision: { responded: true, method: 'explicit' },
+});
+
+/**
+ * Phase B CMP facts of a reject click on the start page. `confirmed`: the state our click set and the state read back
+ * after the reload confirm it, as an adapter records them; otherwise the banner closed but the state did not confirm
+ * the reject (as with Shopware). `pages` adds the facts of a control page after the reload: `in-effect` with the
+ * banner hidden and the reject stored, `banner-again` with the banner shown again (consent cookie of another host).
+ */
+export function rejectCmp(o: {
+  confirmed: boolean;
+  pages?: Record<string, 'in-effect' | 'banner-again'>;
+}): CmpSection {
+  const afterReload = cmpFacts({ moment: 'after-reload', state: o.confirmed ? [deniedState('stored')] : [] });
+  const control = Object.entries(o.pages ?? {}).map(([pageUrl, effect]) =>
+    cmpFacts({
+      pageUrl,
+      moment: 'control-page',
+      state: effect === 'in-effect' ? [deniedState('stored')] : [],
+      firstLayer: {
+        bannerPresent: true,
+        bannerVisible: effect === 'banner-again',
+        buttons: [],
+        purAbo: false,
+        closeMeansAccept: null,
+      },
+    }),
+  );
+  return cmpWith({
+    phase: 'B',
+    facts: [cmpFacts(), afterReload, ...control],
+    click: {
+      action: 'reject',
+      clicked: true,
+      button: { name: 'Ablehnen', role: 'button', kind: 'reject', kindConfidence: 'high' },
+    },
+    verify: o.confirmed
+      ? {
+          action: 'reject',
+          verified: true,
+          method: ['api:all-denied', 'persisted-after-reload'],
+          stateAfter: [deniedState('action')],
+          persistedAfterReload: true,
+        }
+      : { action: 'reject', verified: false, method: [], stateAfter: [], persistedAfterReload: null },
+  });
 }
 
 /** A banner-shaped box the generic heuristic dismissed: one consent keyword and a settings button, no banner name. */

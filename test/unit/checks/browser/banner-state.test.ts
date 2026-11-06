@@ -10,6 +10,7 @@ import { consent02 } from '../../../../src/checks/browser/consent-02.ts';
 import { consent03 } from '../../../../src/checks/browser/consent-03.ts';
 import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
+import { embed03 } from '../../../../src/checks/browser/embed-03.ts';
 import type { CmpSection } from '../../../../src/cmp/types.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../src/core/data/messages.ts';
@@ -49,6 +50,11 @@ const CASES: Array<[string, AnyCheck, Partial<PhaseRecord>]> = [
     {
       requests: [req('a', 'https://www.google.com/maps/embed?pb=[redacted]', { resourceType: 'document' })],
     },
+  ],
+  [
+    'EMBED-03',
+    embed03,
+    { requests: [req('a', 'https://i.ytimg.com/vi/abc123/hqdefault.jpg', { resourceType: 'image' })] },
   ],
 ];
 

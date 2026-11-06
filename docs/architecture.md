@@ -155,15 +155,20 @@ dsgvo-check/
 
 | Модуль | Что даёт | Кто пользуется |
 |---|---|---|
-| [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05 |
+| [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05, EMBED-01, EMBED-02, EMBED-03 |
 | [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung (сначала политика, затем читаемые дополнительные уведомления) или причина, почему её нельзя прочитать; `isSupplement`; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
 | [impressum-details.ts](../src/checks/browser/impressum-details.ts) | блоки документа — раздел с подразделами внутри одного места (`content` или `chrome`) и одного фрейма, без скрытого текста; сколько видов данных Impressum в каждом | LEGAL-01 |
 | [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз; повтор после показа ниже первого экрана — тот же запрос); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
+| [reject-moment.ts](../src/checks/browser/reject-moment.ts) | `loadMoment` — когда загружено: до взаимодействия, после отказа или в оба момента (`moment`), подтверждён ли отказ состоянием CMP на странице с загрузкой после него (`rejectConfirmed`), на скольких страницах отказ действовал (`afterRejectPageCount`); `rejectProof` и `momentEvidence` — запросы по моментам и две улики `consent-state`, как у CONSENT-05 | EMBED-01, EMBED-02, EMBED-03 |
+| [embed-frame.ts](../src/checks/browser/embed-frame.ts) | что загрузил кадр карты или видеоплеера помимо самой вставки: `frameParams` — шрифты с их сервисами (`frameFontServices`, `frameFontRequestCount`) и хосты-помощники; `embedEvidence` — улики по моментам, в которых всегда есть один запрос шрифта кадра | EMBED-02, EMBED-03 |
 
-`derive` добавляет для проверок два факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
+`derive` добавляет для проверок три факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
 
-- `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет.
+- `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет; EMBED-02 и EMBED-03 по ним называют шрифты кадра карты или плеера (`frameFontServices`, `frameFontRequestCount`), отдельной находки EMBED-01 для них нет.
 - `DerivedSection.serviceNames` — имя, псевдонимы, компании и категория каждого сервиса каталога с `policyRelevance` `required` или `optional`, замеченного или нет: по ним проверка понимает, о каком сервисе предложение политики.
+- `DerivedSection.frames` — iframe каждой посещённой страницы по его `src` с сервисом и категорией каталога: EMBED-03 по ним видит видеокадр в DOM, который за визит ничего не загрузил (ленивый кадр ниже первого экрана), и пишет ограничение `video-embed-not-loaded` вместо молчаливого «чисто».
+
+EMBED-03 относит запрос к вставке по `frameServiceId`, когда кадр принадлежит видеосервису: хосты YouTube внутри плеера youtube-nocookie.com дают одну находку youtube-nocookie, а превью на самой странице остаётся YouTube. Страница запроса из кадра — страница документа этого кадра: поздний beacon плеера записан уже со следующей страницей.
 
 ## Юридические документы в снимке
 

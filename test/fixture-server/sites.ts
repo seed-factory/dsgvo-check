@@ -14,13 +14,31 @@ export interface SiteConfig {
 
 const html = { 'content-type': 'text/html; charset=utf-8' };
 const gaCollect: RouteSpec = { host: 'www.google-analytics.com', path: '/g/collect', status: 204 };
+/** Google Fonts stylesheet and font file under the docroots `fonts` and `gstatic`, readable cross-origin. */
+const fontFiles: Record<string, Record<string, string>> = {
+  'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+  'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+    'content-type': 'font/woff2',
+    'access-control-allow-origin': '*',
+  },
+};
 
 export const SITES: Record<string, SiteConfig> = {
   'browser/clean': { hosts: { 'www.example.test': 'www' } },
   'browser/cmp-stub': {
-    hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    hosts: {
+      'www.example.test': 'www',
+      'www.googletagmanager.com': 'gtm',
+      'www.google.com': 'google',
+      'fonts.googleapis.com': 'fonts',
+      'fonts.gstatic.com': 'gstatic',
+    },
     routes: [gaCollect],
-    fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
+    fileHeaders: {
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+      'google/maps/embed': html,
+      ...fontFiles,
+    },
   },
   // The start page is on the apex host, the contact page with a map on www.
   'browser/control-origin': {
@@ -95,13 +113,7 @@ export const SITES: Record<string, SiteConfig> = {
   },
   'browser/fonts': {
     hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
-    fileHeaders: {
-      'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
-      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
-        'content-type': 'font/woff2',
-        'access-control-allow-origin': '*',
-      },
-    },
+    fileHeaders: fontFiles,
   },
   'browser/ga4': {
     hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
@@ -197,6 +209,15 @@ export const SITES: Record<string, SiteConfig> = {
         body: 'busy',
       },
     ],
+  },
+  'browser/video': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.youtube-nocookie.com': 'nocookie',
+      'i.ytimg.com': 'ytimg',
+    },
+    routes: [{ host: 'www.youtube-nocookie.com', path: '/youtubei/v1/log_event', status: 204 }],
+    fileHeaders: { 'nocookie/embed/fixture-a': html, 'nocookie/embed/fixture-b': html },
   },
   'cmp/borlabs': { hosts: { 'www.borlabs.test': 'www' } },
   'cmp/ccm19': { hosts: { 'www.ccm19.test': 'www', 'cloud.ccm19.de': 'ccm' } },

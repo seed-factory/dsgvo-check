@@ -1,10 +1,13 @@
 /** derive: party, first-party proxies, identifiers, Consent Mode, stages, cookie/storage classification. */
 import { describe, expect, it } from 'vitest';
+import type { IframeFact } from '../../../src/core/snapshot/browser.ts';
 import { parseCatalog, ServiceCatalog } from '../../../src/derive/catalog.ts';
 import { decodeConsentMode, derive, loadServiceCatalog, timingOf } from '../../../src/derive/index.ts';
 import {
   makeBrowser,
   makeCookie,
+  makeDom,
+  makePage,
   makePhase,
   makeRequest,
   makeSnapshot,
@@ -489,6 +492,33 @@ describe('derive: requests', () => {
     expect(d.requests[1]).toMatchObject({ integration: 'tiles', timing: 'after-reject' });
   });
 
+  it('a video image is a thumbnail only by its catalog signature; a player beacon image is other', () => {
+    const d = derive(
+      snap([
+        makePhase('A', {
+          requests: [
+            req('https://i1.ytimg.com/vi/abc/hqdefault.jpg', { id: 'yt', resourceType: 'image' }),
+            req('https://img.youtube.com/vi/abc/0.jpg', { id: 'img', resourceType: 'image' }),
+            req('https://i.vimeocdn.com/video/123456789-abc_640', { id: 'vimeo', resourceType: 'image' }),
+            req('https://www.youtube-nocookie.com/generate_204?abc', { id: 'beacon', resourceType: 'image' }),
+            req('https://www.youtube.com/s/player/abc/player_ias.vflset/de_DE/base.js', {
+              id: 'player',
+              resourceType: 'script',
+            }),
+          ],
+        }),
+      ]),
+    );
+    const integration = (id: string) => d.requests.find((r) => r.requestId === id)?.integration;
+    expect(['yt', 'img', 'vimeo', 'beacon', 'player'].map(integration)).toEqual([
+      'thumbnail',
+      'thumbnail',
+      'thumbnail',
+      'other',
+      'other',
+    ]);
+  });
+
   it('skips non-http requests', () => {
     const d = derive(
       snap([makePhase('A', { requests: [req('https://x.de/a', { id: 'a', url: 'data:image/png' })] })]),
@@ -735,6 +765,102 @@ describe('derive: requests of embedded frames', () => {
     expect(d.requests.map((r) => [r.requestId, r.serviceId, r.source, r.frameServiceId])).toEqual([
       ['font', 'google-fonts', 'catalog', undefined],
       ['unknown', null, 'none', undefined],
+    ]);
+  });
+
+  it.each([
+    [
+      'its first document is a redirect of the site to the player',
+      [
+        req('https://www.example.de/player', {
+          id: 'hop',
+          resourceType: 'document',
+          isNavigation: true,
+          ...inFrame('A-f9', 'https://www.example.de/player'),
+          status: 302,
+        }),
+      ],
+    ],
+    [
+      'its first request was made before the frame had an address',
+      [req('https://cdn.other-site.de/boot.js', { id: 'hop', isMainFrame: false, frameId: 'A-f9' })],
+    ],
+  ])('a frame takes the service of its document when %s', (_case, before) => {
+    const frame = inFrame('A-f9', 'https://www.youtube-nocookie.com/embed/abc');
+    const d = derive(
+      snap([
+        makePhase('A', {
+          requests: [
+            ...before,
+            req('https://www.youtube-nocookie.com/embed/abc', {
+              id: 'doc',
+              resourceType: 'document',
+              isNavigation: true,
+              ...frame,
+            }),
+            req('https://i.ytimg.com/vi/abc/hqdefault.jpg', { id: 'thumb', resourceType: 'image', ...frame }),
+            req('https://helper.video-cdn.example/b', { id: 'xhr', resourceType: 'xhr', ...frame }),
+          ],
+        }),
+      ]),
+    );
+    const row = (id: string) => {
+      const r = d.requests.find((x) => x.requestId === id);
+      return [r?.serviceId, r?.source, r?.frameServiceId];
+    };
+    expect(['doc', 'thumb', 'xhr'].map(row)).toEqual([
+      ['youtube-nocookie', 'catalog', 'youtube-nocookie'],
+      ['youtube', 'catalog', 'youtube-nocookie'],
+      ['youtube-nocookie', 'embed-frame', 'youtube-nocookie'],
+    ]);
+  });
+});
+
+describe('derive: iframes of visited pages', () => {
+  it('classifies the src of every frame of a page by the catalog, the site itself as first party', () => {
+    const iframe = (src: string | null, p: Partial<IframeFact> = {}): IframeFact => ({
+      src,
+      srcdoc: false,
+      visible: true,
+      depth: 1,
+      ...p,
+    });
+    const d = derive(
+      snap([
+        makePhase('A', {
+          pages: [
+            makePage({
+              url: 'https://www.example.de/videos',
+              dom: makeDom({
+                iframes: [
+                  iframe('https://www.youtube-nocookie.com/embed/abc', { loading: 'lazy' }),
+                  iframe('https://www.example.de/widget.html'),
+                  iframe(null, { srcdoc: true }),
+                  iframe('about:blank'),
+                ],
+              }),
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(d.frames).toEqual([
+      {
+        phase: 'A',
+        pageUrl: 'https://www.example.de/videos',
+        src: 'https://www.youtube-nocookie.com/embed/abc',
+        thirdParty: true,
+        serviceId: 'youtube-nocookie',
+        category: 'video',
+      },
+      {
+        phase: 'A',
+        pageUrl: 'https://www.example.de/videos',
+        src: 'https://www.example.de/widget.html',
+        thirdParty: false,
+        serviceId: null,
+        category: 'unknown',
+      },
     ]);
   });
 });

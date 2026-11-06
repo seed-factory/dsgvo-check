@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Player</title>
+</head>
+<body style="margin:0">
+  <!-- Hand-written stand-in for a privacy-enhanced player: its cache entries, a thumbnail and a log beacon. -->
+  <img src="https://i.ytimg.com/vi/fixture-b/hqdefault.jpg" alt="" width="320" height="180">
+  <script>
+    localStorage.setItem('ytidb::LAST_RESULT_ENTRY_KEY', 'SECRET_PLAYER_VALUE_7');
+    var open = indexedDB.open('YtIdbMeta', 1);
+    open.onupgradeneeded = function () { open.result.createObjectStore('databases'); };
+    open.onsuccess = function () {
+      var tx = open.result.transaction('databases', 'readwrite');
+      tx.objectStore('databases').put('SECRET_PLAYER_VALUE_8', 'key');
+    };
+    navigator.sendBeacon('/youtubei/v1/log_event?alt=json', '{}');
+  </script>
+</body>
+</html>

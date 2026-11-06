@@ -1,15 +1,40 @@
 /**
  * Phases B and C with a stub CMP on the fixture site (observe, screenshot, reject, verify, reload, control pages,
- * accept), plus one test with the real CMP subsystem (`src/cmp/index.ts`) on a site without banner.
+ * accept), plus one test with the real CMP subsystem (`src/cmp/index.ts`) on a site without banner. The Kontakt page
+ * embeds a map frame that loads Google Fonts and is not blocked by the banner, so it loads again after the reject.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
 import { sha256Hex } from '../../../../src/collectors/browser/util.ts';
+import { loadTexts } from '../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../src/core/data/messages.ts';
+import type { RequestRecord } from '../../../../src/core/snapshot/browser.ts';
+import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { makeSnapshot, observationsOf, runCheck, withDerived } from '../../../utils/snapshot-builder.ts';
 import { type CollectRun, collect, TEST_SANDBOX } from '../helpers.ts';
 import { stubCmpApi } from './stub-cmp.ts';
+
+const KONTAKT = 'https://www.example.test/kontakt/';
+/** The tracking the stub banner loads after an accept; the map frame and its fonts are on other Google hosts. */
+const tracking = (r: RequestRecord) => /google-analytics|googletagmanager/.test(r.host);
+
+/** The collected sections as a snapshot with `derived`, to run a check over a real collection. */
+function snapshotOf(run: CollectRun): Snapshot {
+  const s = run.result.sections;
+  return withDerived(
+    makeSnapshot({
+      target: run.ctx.target,
+      ...(s.browser ? { browser: s.browser } : {}),
+      ...(s.documents ? { documents: s.documents } : {}),
+      cmp: s.cmp ?? { phases: [] },
+      plan: { browser: s.plan ?? null, probes: [] },
+    }),
+  );
+}
 
 describe('phases B and C with a recognized CMP (stub adapter)', () => {
   let server: FixtureServer;
@@ -117,10 +142,57 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
   it('B: nothing is tracked after the reject; requests before the click are timed from the navigation', () => {
     const b = phase('B');
 
-    expect(b?.requests.filter((r) => r.host.includes('google')).map((r) => r.host)).toEqual([]);
+    expect(b?.requests.filter(tracking).map((r) => r.host)).toEqual([]);
     const after = b?.requests.filter((r) => r.afterClick) ?? [];
     expect(after.length).toBeGreaterThan(0);
     expect(b?.requests.filter((r) => !r.afterClick && r.tRef !== 'navigation').map((r) => r.id)).toEqual([]);
+  });
+
+  it('B: the map frame of the control page Kontakt and its fonts are recorded after the click', () => {
+    const mapDocuments = (p: 'A' | 'B') =>
+      (phase(p)?.requests ?? [])
+        .filter((r) => r.url.startsWith('https://www.google.com/maps/embed') && r.resourceType === 'document')
+        .map((r) => [r.pageUrl, r.isMainFrame, r.afterClick]);
+    expect(mapDocuments('A')).toEqual([[KONTAKT, false, false]]);
+    expect(mapDocuments('B')).toEqual([[KONTAKT, false, true]]);
+
+    const frameFonts = (phase('B')?.requests ?? []).filter((r) => r.host === 'fonts.googleapis.com');
+    expect(frameFonts.length).toBeGreaterThan(0);
+    expect(frameFonts.every((r) => !r.isMainFrame && r.afterClick && r.pageUrl === KONTAKT)).toBe(true);
+  });
+
+  it('EMBED-02 over the collection: the map with its Google Fonts before the interaction and after the confirmed reject', () => {
+    const snapshot = snapshotOf(run);
+    const mapB = (snapshot.derived?.requests ?? []).filter(
+      (c) => c.serviceId === 'google-maps' && c.phase === 'B',
+    );
+    expect(mapB.length).toBeGreaterThan(0);
+    expect(new Set(mapB.map((c) => c.timing))).toEqual(new Set(['after-reject']));
+    expect(mapB.some((c) => c.source === 'embed-frame' && c.resourceServiceId === 'google-fonts')).toBe(true);
+
+    const observations = observationsOf(runCheck(embed02, snapshot));
+    expect(observations).toHaveLength(1);
+    const [o] = observations;
+    expect(o).toMatchObject({
+      subject: 'google-maps',
+      phases: ['A', 'B'],
+      pages: [KONTAKT],
+      params: {
+        moment: 'before-and-after-reject',
+        rejectConfirmed: true,
+        afterRejectPageCount: 1,
+        frameFontServices: 'Google Fonts',
+      },
+    });
+    expect(o?.evidence.some((e) => e.type === 'request' && e.phase === 'B' && !e.beforeClick)).toBe(true);
+    expect(o?.evidence.filter((e) => e.type === 'consent-state')).toHaveLength(2);
+
+    const de = renderMessage(loadTexts('de'), 'EMBED-02.maps-loaded', o!.params);
+    expect(de.title).toBe('Externer Kartendienst geladen, auch nach bestätigter Ablehnung: Google Maps');
+    expect(de.body).toContain(
+      'vor einer Interaktion mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung',
+    );
+    expect(de.body).toContain('Der Kartenrahmen lud dabei Schriften von Google Fonts');
   });
 
   it('B: banner screenshot of the first screen only (≤ 200 KB, ≤ 50 % viewport)', () => {
@@ -204,7 +276,7 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     const a = phase('A');
     const cmpA = run.result.sections.cmp?.phases.find((p) => p.phase === 'A');
 
-    expect(a?.requests.filter((r) => r.host.includes('google')).map((r) => r.host)).toEqual([]);
+    expect(a?.requests.filter(tracking).map((r) => r.host)).toEqual([]);
     // The fixture shows the banner on the start page and on Kontakt only.
     expect(cmpA?.facts.map((f) => [f.pageUrl, f.firstLayer.bannerPresent])).toEqual([
       ['https://www.example.test/', true],

@@ -18,6 +18,7 @@ import { loadServiceCatalog, type RequestMatch, type ServiceCatalog, type Servic
 import type {
   ClassificationSource,
   ClassifiedCookie,
+  ClassifiedFrame,
   ClassifiedHint,
   ClassifiedRequest,
   ClassifiedStorage,
@@ -97,9 +98,13 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   const cookies: ClassifiedCookie[] = [];
   const storage: ClassifiedStorage[] = [];
   const hints: ClassifiedHint[] = [];
+  const frames: ClassifiedFrame[] = [];
   const stored: StoredEntry[] = [];
   for (const phase of snapshot.browser?.phases ?? []) {
-    for (const page of phase.pages) hints.push(...classifyHints(catalog, scope, phase, page));
+    for (const page of phase.pages) {
+      hints.push(...classifyHints(catalog, scope, phase, page));
+      frames.push(...classifyFrames(catalog, scope, phase, page));
+    }
     const embeds = embedFrames(catalog, scope, phase.requests);
     for (const r of phase.requests) {
       const c = classifyRequest(catalog, scope, phase, r, embeds);
@@ -140,6 +145,7 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
     catalog: info,
     serviceNames: serviceNames(catalog),
     hints,
+    frames,
     firstPartyEtld1s: [...scope.etld1s].sort(),
     allowlistVersion: catalog.allowlistVersion,
   };
@@ -243,7 +249,8 @@ const INTEGRATION_BY_KIND: ReadonlyMap<RequestKind, string> = new Map([
 
 export function integrationFromKind(category: ServiceCategory, kind: RequestKind): string | undefined {
   if (category !== 'maps' && category !== 'video') return undefined;
-  if (kind === 'image') return category === 'video' ? 'thumbnail' : 'static';
+  // A video image is a thumbnail only by its catalog signature: a player's beacon image (`generate_204`) is none.
+  if (kind === 'image') return category === 'maps' ? 'static' : 'other';
   return INTEGRATION_BY_KIND.get(kind) ?? 'other';
 }
 
@@ -350,13 +357,37 @@ interface EmbedFrame {
   etld1: string | null;
 }
 
+/** A response that only points elsewhere: the frame's document is where the redirect leads. */
+function redirectHop(r: RequestRecord): boolean {
+  const status = r.status ?? (r.result?.kind === 'response' ? r.result.status : undefined);
+  return status !== undefined && status >= 300 && status < 400;
+}
+
+/**
+ * Address of each subframe's document: its first document request that is no redirect hop, else the first address
+ * any of its requests carried. A frame of the site that redirects to a player, or a request made before the frame
+ * had an address, would otherwise decide the frame by an address that is not its document.
+ */
+function frameDocuments(requests: readonly RequestRecord[]): Map<string, string> {
+  const doc = new Map<string, string>();
+  const first = new Map<string, string>();
+  for (const r of requests) {
+    if (r.isMainFrame || !r.frameId || !r.frameUrl) continue;
+    if (!first.has(r.frameId)) first.set(r.frameId, r.frameUrl);
+    if (!doc.has(r.frameId) && r.resourceType === 'document' && !redirectHop(r))
+      doc.set(r.frameId, r.frameUrl);
+  }
+  for (const [id, url] of first) if (!doc.has(id)) doc.set(id, url);
+  return doc;
+}
+
 /**
  * Embedded service per third-party frame of a phase (by `frameId`): the service of the frame's document, or, for the
  * frame of a site builder or of an unknown host, the first embedded service loaded in it (a builder's map frame that
  * loads Google Maps). A site builder is a host of no catalog service or a CDN of the catalog (Wix serves its pages
  * from one). The frame of any other known service (payment, ads, consent) takes no embed from what it loads, so its
- * own helper hosts and fonts are not attributed to that embed. Frames of the site itself and frames without a
- * document URL get none.
+ * own helper hosts and fonts are not attributed to that embed. Frames of the site itself and frames without any
+ * address get none.
  */
 function embedFrames(
   catalog: ServiceCatalog,
@@ -366,6 +397,7 @@ function embedFrames(
   const embedded = (service: ServiceEntry | undefined): ServiceEntry | null =>
     service && EMBED_CATEGORIES.has(service.category) ? service : null;
 
+  const documents = frameDocuments(requests);
   const frames = new Map<
     string,
     { thirdParty: boolean; etld1: string | null; own: ServiceEntry | null; builder: boolean }
@@ -375,7 +407,8 @@ function embedFrames(
     if (r.isMainFrame || !r.frameId) continue;
     let frame = frames.get(r.frameId);
     if (!frame) {
-      const url = r.frameUrl ? parseHttpUrl(r.frameUrl) : null;
+      const address = documents.get(r.frameId);
+      const url = address ? parseHttpUrl(address) : null;
       const service = url ? catalog.matchUrl(url)?.service : undefined;
       frame = {
         thirdParty: url !== null && !scope.has(url.hostname),
@@ -560,6 +593,29 @@ function classifyHints(
         category: m?.service.category ?? 'unknown',
       });
     }
+  }
+  return out;
+}
+
+function classifyFrames(
+  catalog: ServiceCatalog,
+  scope: FirstPartyScope,
+  phase: PhaseRecord,
+  page: PageVisit,
+): ClassifiedFrame[] {
+  const out: ClassifiedFrame[] = [];
+  for (const f of page.dom?.iframes ?? []) {
+    const url = f.src ? parseHttpUrl(f.src) : null;
+    if (!url || !f.src) continue;
+    const m = catalog.matchUrl(url);
+    out.push({
+      phase: phase.phase,
+      pageUrl: page.finalUrl || page.url,
+      src: f.src,
+      thirdParty: !scope.has(url.hostname),
+      serviceId: m?.service.id ?? null,
+      category: m?.service.category ?? 'unknown',
+    });
   }
   return out;
 }

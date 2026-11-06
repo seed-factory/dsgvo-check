@@ -8,7 +8,11 @@
     document.head.appendChild(s);
   }
   function hide() { document.getElementById('stub-cmp').style.display = 'none'; }
-  window.StubCmp = { state: function () { return has('granted') ? 'granted' : has('denied') ? 'denied' : 'unknown'; } };
+  // `stored`: the page read the decision from the cookie when it loaded, as after a reload or on a control page.
+  window.StubCmp = {
+    state: function () { return has('granted') ? 'granted' : has('denied') ? 'denied' : 'unknown'; },
+    stored: has('granted') || has('denied')
+  };
   if (has('granted')) { hide(); loadGa(); return; }
   if (has('denied')) { hide(); return; }
   document.getElementById('stub-accept').addEventListener('click', function () {
