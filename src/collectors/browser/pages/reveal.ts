@@ -48,6 +48,16 @@ export function revealPlan(f: RawScrollFacts, viewport: Viewport, maxHeightPx: n
   };
 }
 
+/**
+ * The document measured during the stay is taller than the viewport it was shown in: it grew with the viewport (a
+ * section sized in viewport units, `height: 100vh`, or content that loaded below), so what lay below the first screen
+ * kept its distance to the bottom and its lower part stayed below, as on a page taller than the cap. Null when the
+ * height could not be read again.
+ */
+export function grewBelowViewport(viewportHeightPx: number, heightDuringPx: number | null): boolean {
+  return heightDuringPx !== null && Math.ceil(heightDuringPx) > viewportHeightPx;
+}
+
 export interface RevealInput {
   page: Page;
   recorder: NetworkRecorder;
@@ -133,13 +143,23 @@ export async function revealBelowFold(i: RevealInput): Promise<RevealResult> {
     { minDwellMs: 0, hardCapMs: i.dwellMs, quietWindowMs: i.quietWindowMs, maxInflight: i.maxInflight },
     i.signal,
   );
+  // Measured again before the restore: a page sized by the viewport shrinks back with it.
+  const heightDuringPx = await withTimeout(
+    i.page.evaluate(scrollFactsInPage),
+    i.callTimeoutMs,
+    'document height',
+  ).then(
+    (f) => f.heightPx,
+    () => null,
+  );
+  const capped = plan.capped || grewBelowViewport(plan.viewportHeightPx, heightDuringPx);
   const restoreError = await restore(i);
   return {
     facts: {
       outcome: 'revealed',
       documentHeightPx: plan.documentHeightPx,
       viewportHeightPx: plan.viewportHeightPx,
-      ...(plan.capped ? { capped: true as const } : {}),
+      ...(capped ? { capped: true as const } : {}),
       quietReached: quiet.quietReached,
       dwellMs: quiet.dwellMs,
     },

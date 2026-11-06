@@ -145,6 +145,8 @@ describe('isDkimCandidate: which TXT answers at a selector name are kept', () =>
     ['  v=dkim1;p=abc', true],
     // Another DKIM version is a key record the parser cannot read, not an absent key.
     ['v=DKIM2; p=abc', true],
+    ['v=DKIM1.0; k=rsa; p=abc', true],
+    ['v="DKIM1"; p=abc', true],
     ['google-site-verification=abc123', false],
     ['site-verification=abc123', false],
     ['v=spf1 include:_spf.provider.example -all', false],

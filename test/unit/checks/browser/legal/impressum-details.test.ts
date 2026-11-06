@@ -38,7 +38,7 @@ describe('kinds of provider details in a text', () => {
     ],
     [
       'all five kinds',
-      'Angaben gemäß § 5 DDG. Inhaber: Max Muster. Steuernummer 12/345. VR 1234. § 18 MStV',
+      'Angaben gemäß § 5 DDG. Inhaber: Max Muster. Steuernummer 12/345. Vereinsregister VR 1234. § 18 MStV',
       5,
     ],
     [
@@ -55,6 +55,10 @@ describe('kinds of provider details in a text', () => {
     ['a word that ends with a phrase', 'Unser Steuerberater berät gern'],
     ['an address and a phone number', 'Musterstraße 1, 10115 Berlin, Telefon 030 123456'],
     ['a paragraph sign of another law', 'gemäß § 15 TMG und Art. 6 DSGVO'],
+    [
+      'a compound with a register abbreviation',
+      'Unser Sponsor: VR-Bank Neckar, dazu VR-Brillen zum Ausprobieren',
+    ],
   ])('counterexample: %s is no provider detail', (_name, text) => {
     expect(kinds(text)).toBe(0);
   });
@@ -143,6 +147,28 @@ describe('blocks of a document', () => {
       ['Team', 1],
       ['Buchhaltung', 1],
     ]);
+  });
+
+  it('a heading that does not sum holds only its own text, not that of its subsections', () => {
+    const specs: Spec[] = [
+      { section: 'Kontakt', text: 'Kontakt Steuernummer auf Anfrage' },
+      { section: 'Kontakt > Anfahrt', text: 'Neben dem Amtsgericht' },
+      { section: 'Kontakt > Team', text: 'Inhaber Max Muster' },
+      { section: 'Kontakt > Impressum', text: 'Impressum' },
+      { section: 'Kontakt > Impressum > Register', text: 'Amtsgericht Musterstadt, HRB 12345' },
+      { section: 'Kontakt > Impressum > Vertretung', text: 'Geschäftsführung: Erika Mustermann' },
+    ];
+    const summed = blocksOf(doc(specs), m, (h) => h === 'Impressum');
+
+    expect(summed.map((b) => [b.path, b.kinds])).toEqual([
+      ['Kontakt', 1],
+      ['Kontakt > Anfahrt', 1],
+      ['Kontakt > Team', 1],
+      ['Kontakt > Impressum', 2],
+      ['Kontakt > Impressum > Register', 1],
+      ['Kontakt > Impressum > Vertretung', 1],
+    ]);
+    expect(blocks(specs).find((b) => b.path === 'Kontakt')?.kinds).toBe(3);
   });
 
   it('counterexample: content and page chrome under one heading are two blocks', () => {

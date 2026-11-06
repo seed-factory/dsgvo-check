@@ -82,9 +82,15 @@ function under(part: readonly string[], path: readonly string[]): boolean {
 /**
  * Every block of the document with the number of kinds of details it holds. Only the text of the parts counts, hidden
  * text left out: the reader puts the visible text of a heading into the part it opens, while the heading path keeps
- * the whole text of the heading element, hidden words included.
+ * the whole text of the heading element, hidden words included. `sums` says whether the section of a heading holds the
+ * details of its subsections too; a section whose heading does not sum holds only the text under that heading itself,
+ * so the heading of a whole page does not add up the details of its unrelated sections.
  */
-export function blocksOf(doc: DocumentRecord, m: DetailsMatcher): Block[] {
+export function blocksOf(
+  doc: DocumentRecord,
+  m: DetailsMatcher,
+  sums: (heading: string) => boolean = () => true,
+): Block[] {
   const parts = doc.parts.filter((p) => p.origin !== 'hidden-irrelevant');
   const heads = parts.map(headingsOf);
   // The kinds in each part, computed once for all blocks.
@@ -101,8 +107,10 @@ export function blocksOf(doc: DocumentRecord, m: DetailsMatcher): Block[] {
       // A block starts where the run under its heading starts, not in the middle of it.
       if (i > 0 && under(heads[i - 1] as string[], path) && sameRun(i - 1, i)) continue;
 
+      const nested = depth === 0 || sums(path[depth - 1] as string);
       const kinds = new Set<number>();
       for (let j = i; j < parts.length && under(heads[j] as string[], path) && sameRun(i, j); j++) {
+        if (!nested && (heads[j] as string[]).length !== depth) continue;
         for (const k of textKinds[j] as Set<number>) kinds.add(k);
       }
       blocks.push({

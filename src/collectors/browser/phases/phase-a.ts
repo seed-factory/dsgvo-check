@@ -407,7 +407,7 @@ async function lookForLegalLinks(
   for (const kind of LEGAL_KINDS) {
     if (queue.found[kind] || queue.pending(kind)) continue;
 
-    const lr = findLegalLink(r.candidates, kind, scope);
+    const lr = findLegalLink(r.candidates, kind, scope, undefined, queue.alternate);
     if (lr.status === 'page' || lr.status === 'pdf') {
       queue.handleLink(lr, 'hop', item.choice.role, r.candidates);
     } else if (

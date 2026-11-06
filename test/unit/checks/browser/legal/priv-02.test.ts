@@ -41,10 +41,12 @@ import {
   click,
   cmpFacts,
   cmpWith,
+  consentPages,
   IMPRESSUM,
   PRIVACY,
   phase,
   privacyDoc,
+  rejectCmp,
   req,
   START,
   site,
@@ -384,6 +386,115 @@ describe('statements of the policy', () => {
       text: 'Ihr Browser lädt die Schriften nicht von Servern von Google.',
       expected: [],
     },
+    ...[
+      'Cookies werden erst gesetzt, wenn Sie zustimmen.',
+      'Personalisierte Werbung wird erst angezeigt, wenn Sie eingewilligt haben.',
+      'Die Analyse Ihres Nutzerverhaltens erfolgt erst nach einem Klick auf das Video.',
+      'YouTube-Videos werden erst nach einem Klick abgespielt.',
+      'Die Wiedergabe startet erst, wenn Sie auf das Video klicken.',
+      'YouTube-Videos starten erst, sobald Sie auf Play klicken.',
+      'YouTube videos only start playing after you click on them.',
+      'Cookies are only set once you consent.',
+    ].map((text) => ({
+      name: `consent or a click without a word of loading is no consent statement: ${text}`,
+      text,
+      section: 'Datenschutzerklärung > YouTube',
+      expected: [],
+    })),
+    {
+      name: 'cookies of a map service set after consent are no consent statement about the map',
+      text: 'Google Maps speichert Cookies erst, wenn Sie einwilligen.',
+      section: 'Datenschutzerklärung > Google Maps',
+      expected: [],
+    },
+    {
+      name: 'a click before the connection is a consent statement',
+      text: 'Erst wenn Sie auf das Video klicken, wird eine Verbindung zu den Servern von YouTube hergestellt.',
+      section: 'Datenschutzerklärung > YouTube',
+      expected: ['consent-gated youtube,youtube-nocookie sentence'],
+    },
+    {
+      name: 'a click before the load is a consent statement',
+      text: 'Das Video wird erst nach einem Klick geladen.',
+      section: 'Datenschutzerklärung > YouTube',
+      expected: ['consent-gated youtube,youtube-nocookie heading'],
+    },
+    {
+      name: 'consent before the load is a consent statement (en)',
+      text: 'The videos are loaded only once you consent.',
+      section: 'Privacy Policy > YouTube',
+      expected: ['consent-gated youtube,youtube-nocookie heading'],
+    },
+    {
+      name: '"vorher keine Verbindung" of a two-click text holds until consent only: ambiguous as an unconditional one',
+      text: 'Die Karte wird erst nach Ihrer Zustimmung geladen. Vorher wird keine Verbindung zu Google hergestellt.',
+      section: 'Datenschutzerklärung > Google Maps',
+      expected: ['consent-gated google-maps heading', 'no-connection google-maps heading [hedge]'],
+    },
+    {
+      name: 'loading from the servers of the company is a disclosure',
+      text: 'Google Fonts sind lokal installiert. Wir laden Google Fonts von Google-Servern.',
+      expected: [
+        'self-hosted google-fonts sentence',
+        'disclosure self-hosted google-fonts',
+        'disclosure no-connection google-fonts',
+      ],
+    },
+    {
+      name: 'one font local and further ones from the service: the statement covers some fonts only',
+      text: 'Die Schriftart Open Sans ist lokal eingebunden, weitere Schriften laden wir über Google Fonts.',
+      expected: ['self-hosted google-fonts sentence [hedge]'],
+    },
+    {
+      name: 'a limit leaves the disclosure in the same sentence one',
+      text: 'Ihr Browser lädt nicht nur die Schriftarten von Google, sondern auch weitere Inhalte.',
+      expected: ['disclosure self-hosted google-fonts', 'disclosure no-connection google-fonts'],
+    },
+    ...[
+      'Die Google Fonts werden nicht auf dem eigenen Webserver lokal installiert.',
+      'Es ist nicht so, dass die Google Fonts lokal installiert sind.',
+    ].map((text) => ({ name: `a negation further before the local words: ${text}`, text, expected: [] })),
+    ...[
+      'Google Fonts sind nur auf einigen Seiten lokal eingebunden.',
+      'Die Google Fonts sind lokal installiert, außer auf der Kontaktseite.',
+      'Die Google Fonts sind mit Ausnahme der Kartenansicht lokal installiert.',
+      'Die Google Fonts waren früher lokal installiert. Heute werden sie von Google geladen.',
+      'Wir prüfen derzeit, ob die Google Fonts künftig lokal installiert werden.',
+    ].map((text) => ({
+      name: `a statement limited to some pages or another time: ${text}`,
+      text,
+      expected: ['self-hosted google-fonts sentence [hedge]'],
+    })),
+    {
+      name: 'a reversal a contrast word separates from the statement turns around something else',
+      text: 'Die Google Fonts werden nicht auf dem Server von Google, sondern lokal installiert.',
+      expected: ['self-hosted google-fonts sentence'],
+    },
+    {
+      name: 'a reversal after the statement turns around something else',
+      text: 'Bei Google Fonts werden keine Daten an Google übertragen, alle Anfragen gehen an uns.',
+      expected: ['no-connection google-fonts sentence'],
+    },
+    {
+      name: 'the own server of a statement is no outside source, even with the company named as provider',
+      text: 'Die von Google bereitgestellten Schriften werden ausschließlich von unserem eigenen Server geladen.',
+      expected: ['self-hosted google-fonts heading'],
+    },
+    {
+      name: 'no data "an uns" is no statement about a connection to the service',
+      text: 'Beim Laden von Google Fonts werden keine personenbezogenen Daten an uns übertragen.',
+      expected: [],
+    },
+    {
+      name: 'what the provider says is no statement of the site',
+      text: 'Laut Google werden bei der Nutzung von Google Fonts keine personenbezogenen Daten übertragen.',
+      expected: ['no-connection google-fonts sentence [hedge]'],
+    },
+    {
+      name: 'no data of a kind is no statement that there is no connection',
+      text: 'Es werden keine Daten an Google übertragen, die eine Identifizierung ermöglichen.',
+      expected: ['no-connection google-fonts heading [hedge]'],
+    },
   ])('$name', ({ text, section, origin, observed, expected }) => {
     expect(read(text, section, { origin, observed })).toEqual(expected);
   });
@@ -457,6 +568,56 @@ describe('PRIV-02 levels', () => {
     };
     expect(variantsOf(runCheck(priv02, snap, ctx))).toEqual(['contradiction-single']);
   });
+
+  it.each<[string, string, string[] | 'claim-ambiguous']>([
+    [
+      'a local statement next to a load from the servers of the company',
+      'Google Fonts sind lokal installiert. Wir laden Google Fonts von Google-Servern.',
+      ['wording-to-review'],
+    ],
+    [
+      'a local house font next to Google Fonts from the servers of Google',
+      'Unsere Hausschrift ist lokal installiert. Für Überschriften verwenden wir Google Fonts, die von Google-Servern geladen werden.',
+      ['wording-to-review'],
+    ],
+    [
+      'one font local, further ones from Google Fonts',
+      'Die Schriftart Open Sans ist lokal eingebunden, weitere Schriften laden wir über Google Fonts.',
+      'claim-ambiguous',
+    ],
+    [
+      'some fonts local, others from the servers of Google',
+      'Einige Schriftarten sind lokal eingebunden. Andere Schriftarten werden über Google Fonts von Servern der Google LLC geladen.',
+      'claim-ambiguous',
+    ],
+    [
+      'local on some pages only',
+      'Google Fonts sind nur auf einigen Seiten lokal eingebunden.',
+      'claim-ambiguous',
+    ],
+    [
+      'no data "an uns"',
+      'Beim Laden von Google Fonts werden keine personenbezogenen Daten an uns übertragen.',
+      [],
+    ],
+  ])(
+    'a document that also describes the load or limits its statement is no contradiction: %s',
+    (_, text, expected) => {
+      const r = runCheck(
+        priv02,
+        site({
+          phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
+          documents: policyWith(fontsPart(text)),
+        }),
+      );
+      if (expected === 'claim-ambiguous') {
+        expect(r).toMatchObject({ status: 'inconclusive', reason: 'claim-ambiguous' });
+      } else {
+        expect(r.status).toBe('completed');
+        expect(variantsOf(r)).toEqual(expected);
+      }
+    },
+  );
 
   it.each<[string, string[]]>([
     ['violation-local-fonts-claim-single.json', ['contradiction-single']],
@@ -704,6 +865,163 @@ describe('PRIV-02 moments that contradict a statement', () => {
       ['youtube-nocookie', 'contradiction-single'],
     ]);
   });
+
+  const YOUTUBE = 'https://www.youtube-nocookie.com/embed/abc';
+  const MAP_FRAME = 'https://www.google.com/maps/embed?pb=[redacted]';
+  const frameDocument = (id: string, url: string, p: Partial<ReturnType<typeof req>> = {}) =>
+    req(id, url, {
+      isMainFrame: false,
+      frameId: `frame-${id}`,
+      frameUrl: url,
+      resourceType: 'document',
+      isNavigation: true,
+      ...p,
+    });
+  const videoPolicy = (text: string) =>
+    policyWith(fontsPart(text, { id: 'p-video', section: 'Datenschutzerklärung > YouTube' }));
+
+  it('a sentence about cookies set after consent says nothing about when the player loads', () => {
+    const phases = [
+      phase('A', { requests: [frameDocument('A-1', YOUTUBE)] }),
+      phase('B', { pages: consentPages('B', []), requests: [frameDocument('B-1', YOUTUBE, { phase: 'B' })] }),
+    ];
+    const cookies = runCheck(
+      priv02,
+      site({
+        phases,
+        documents: videoPolicy(
+          'Wir binden Videos von YouTube im erweiterten Datenschutzmodus ein. Cookies werden erst gesetzt, wenn Sie zustimmen.',
+        ),
+      }),
+    );
+    expect(cookies.status).toBe('completed');
+    expect(variantsOf(cookies)).toEqual([]);
+    const loading = runCheck(
+      priv02,
+      site({ phases, documents: videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.') }),
+    );
+    expect(variantsOf(loading)).toEqual(['contradiction-replicated']);
+  });
+
+  it.each<[string, string, string]>([
+    [
+      'Datenschutzerklärung > Plugins und Tools > Google Maps',
+      'Die Karte wird erst nach Ihrer Zustimmung geladen. Vorher wird keine Verbindung zu Google hergestellt.',
+      MAP_FRAME,
+    ],
+    [
+      'Datenschutzerklärung > Plugins und Tools > Google Maps',
+      'Zwei-Klick-Lösung. Beim Laden der Seite findet keine Verbindung zu Google statt.',
+      MAP_FRAME,
+    ],
+    [
+      'Datenschutzerklärung > YouTube',
+      'Beim Aufruf der Seite wird keine Verbindung zu den YouTube-Servern aufgebaut.',
+      YOUTUBE,
+    ],
+  ])(
+    'a map or video loaded only after the accept does not contradict "no connection" of a two-click text: %s',
+    (section, text, url) => {
+      const documents = policyWith(fontsPart(text, { section }));
+      const afterAccept = (id: string, pageUrl: string) =>
+        frameDocument(id, url, { phase: 'C', afterClick: true, tRef: 'click', pageUrl });
+      const r = runCheck(
+        priv02,
+        site({
+          phases: [phase('A'), acceptOn(afterAccept('C-1', START), afterAccept('C-2', CONTACT))],
+          documents,
+        }),
+      );
+      expect(r.status).toBe('completed');
+      expect(variantsOf(r)).toEqual([]);
+      // The same embed before any interaction contradicts the statement.
+      const before = runCheck(
+        priv02,
+        site({
+          phases: [phase('A', { requests: [frameDocument('A-1', url, { pageUrl: CONTACT })] })],
+          documents,
+        }),
+      );
+      expect(variantsOf(before)).toEqual(['contradiction-single']);
+    },
+  );
+
+  it("a player's late beacon recorded with the next page counts for the page of the player", () => {
+    const r = runCheck(
+      priv02,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              frameDocument('A-1', YOUTUBE, { pageUrl: START, frameId: 'y1' }),
+              req('A-2', 'https://www.youtube-nocookie.com/generate_204?x=[redacted]', {
+                pageUrl: CONTACT,
+                isMainFrame: false,
+                frameId: 'y1',
+                frameUrl: YOUTUBE,
+                resourceType: 'image',
+              }),
+            ],
+          }),
+        ],
+        documents: videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.'),
+      }),
+    );
+    expect(observationsOf(r)).toMatchObject([
+      {
+        variant: 'contradiction-single',
+        pages: [START],
+        params: { contextCount: 1, pageCount: 1, requestCount: 2 },
+      },
+    ]);
+  });
+
+  it.each<['in-effect' | 'banner-again', boolean, number]>([
+    ['in-effect', true, 2],
+    ['banner-again', false, 0],
+  ])(
+    'loads after a confirmed reject on control pages where it is %s: afterReject %s, %i reject proofs',
+    (effect, afterRejectParam, proofs) => {
+      const SHOP_A = `${START}shop/a`;
+      const SHOP_B = `${START}shop/b`;
+      const r = runCheck(
+        priv02,
+        site({
+          phases: [
+            phase('A'),
+            phase('B', {
+              click: click('reject'),
+              reloaded: true,
+              pages: consentPages('B', [SHOP_A, SHOP_B]),
+              requests: [
+                bAfterClick('B-1', FONTS_CSS, { pageUrl: SHOP_A }),
+                bAfterClick('B-2', FONTS_CSS, { pageUrl: SHOP_B }),
+              ],
+            }),
+          ],
+          cmp: rejectCmp({ confirmed: true, pages: { [SHOP_A]: effect, [SHOP_B]: effect } }),
+          documents: policyWith(fontsPart('Google Fonts werden erst nach Ihrer Einwilligung geladen.')),
+        }),
+      );
+      const [o, ...rest] = observationsOf(r);
+      expect(rest).toEqual([]);
+      expect(o).toMatchObject({
+        variant: 'contradiction-replicated',
+        params: { claim: 'consent-gated', afterReject: afterRejectParam },
+      });
+      expect(o!.evidence.filter((e) => e.type === 'consent-state')).toHaveLength(proofs);
+      for (const lang of ['de', 'en'] as const) {
+        const body = formatMessage(
+          loadTexts(lang).messages['PRIV-02.contradiction-replicated']!.body,
+          o!.params,
+          lang,
+        );
+        expect(/bestätigter Ablehnung|confirmed rejection/.test(body), `${lang}: ${body}`).toBe(
+          afterRejectParam,
+        );
+      }
+    },
+  );
 
   it('bot and geo signals of phase A or B make the check inconclusive', () => {
     const geo = cmpWith({

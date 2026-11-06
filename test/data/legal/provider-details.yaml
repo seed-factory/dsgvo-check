@@ -10,7 +10,7 @@
 # Schema: src/collectors/browser/legal/sections.ts. Every kind has phrases per language.
 providerDetails:
   groups:
-    # Register entry: register, court and number.
+    # Register entry: register, court and number. "VR" alone is no phrase: "VR-Bank" and "VR-Brille" are its words too.
     register:
       de:
         [
@@ -22,7 +22,6 @@ providerDetails:
           Genossenschaftsregister,
           HRB,
           HRA,
-          VR,
           Amtsgericht,
         ]
       en:

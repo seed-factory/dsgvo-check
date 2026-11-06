@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { tls01 } from '../../../../src/checks/http/tls-01.ts';
-import { loadRuleset } from '../../../../src/core/data/load.ts';
+import { loadRuleset, loadTexts } from '../../../../src/core/data/load.ts';
+import { formatMessage } from '../../../../src/core/data/messages.ts';
 import type { LinkFact, PageVisit, PhaseRecord } from '../../../../src/core/snapshot/browser.ts';
 import type {
   DocumentResponse,
@@ -512,6 +513,31 @@ describe('TLS-01 same-site links to http', () => {
     expect(variantsOf(r)).toEqual(['internal-http-link', 'no-redirect']);
   });
 
+  it.each<[string, Partial<HttpHop>, string, string]>([
+    ['a stub of at most 1 KiB', { bodyBytes: 300 }, 'medium', 'unknown'],
+    ['a stub cut at the read limit', { bodyBytes: 300, bodyTruncated: true }, 'high', 'served'],
+    ['a page of content', { bodyBytes: 50_000 }, 'high', 'served'],
+  ])(
+    'a link to a host whose http root answers 200 with %s: internal-http-link of its confidence and state',
+    (_n, hop, confidence, httpState) => {
+      const root = chain('http://www.example.test/', [{ status: 200, bodyKind: 'html', ...hop }]);
+      const r = runCheck(
+        tls01,
+        linkSnapshot(
+          [root, wwwServed()[1]!],
+          phaseA(visit(SITE, [link('http://www.example.test/impressum')])),
+        ),
+      );
+      expect(linkObservations(r)).toEqual([
+        expect.objectContaining({
+          variant: 'internal-http-link',
+          confidence,
+          params: expect.objectContaining({ httpState }),
+        }),
+      ]);
+    },
+  );
+
   it('a link to a host that redirects to https without HSTS → internal-http-link-upgraded', () => {
     const r = runCheck(
       tls01,
@@ -525,7 +551,11 @@ describe('TLS-01 same-site links to http', () => {
         variant: 'internal-http-link-upgraded',
         confidence: 'high',
         subject: 'http-link:www',
-        params: expect.objectContaining({ host: 'www.example.test', location: 'https://www.example.test/' }),
+        params: expect.objectContaining({
+          host: 'www.example.test',
+          location: 'https://www.example.test/',
+          hstsHost: 'www.example.test',
+        }),
       }),
     ]);
     expect(linkObservations(r)[0]?.evidence.map((e) => e.type)).toEqual(['redirect-chain', 'link']);
@@ -544,6 +574,17 @@ describe('TLS-01 same-site links to http', () => {
       expect(linkObservations(r).map((o) => o.variant)).toEqual(['internal-http-link-upgraded']);
     },
   );
+
+  it('counterexample: HSTS repeating a directive the browser ignores (preload) is in force: no link finding', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwUpgraded([{ name: 'strict-transport-security', value: 'max-age=31536000; preload; preload' }]),
+        phaseA(visit(SITE, [link('http://www.example.test/produkte')])),
+      ),
+    );
+    expect(linkObservations(r)).toEqual([]);
+  });
 
   it('HSTS of the linked host outside the redirect the link takes protects nothing: still upgraded', () => {
     const toApex = chain(
@@ -568,9 +609,23 @@ describe('TLS-01 same-site links to http', () => {
     expect(linkObservations(r)).toEqual([
       expect.objectContaining({
         variant: 'internal-http-link-upgraded',
-        params: expect.objectContaining({ location: 'https://example.test/' }),
+        params: expect.objectContaining({ location: 'https://example.test/', hstsHost: 'example.test' }),
       }),
     ]);
+    // The text names the host whose https answer was on the way, not the linked one that sent HSTS elsewhere.
+    const params = linkObservations(r)[0]!.params;
+    for (const [lang, wrong] of [
+      ['de', 'https-Antworten von www.example.test'],
+      ['en', 'https responses of www.example.test'],
+    ] as const) {
+      const t = loadTexts(lang);
+      const body = formatMessage(t.messages['TLS-01.internal-http-link-upgraded']!.body, params, lang);
+      const action = formatMessage(t.actions['TLS-01.internal-http-link-upgraded']!, params, lang);
+      expect(body).toContain('example.test');
+      expect(body).not.toContain(wrong);
+      expect(action).toContain('example.test');
+      expect(action).not.toContain('www.example.test');
+    }
   });
 
   it('a probe cut on an https redirect back to http is no upgrade → internal-http-link, medium (unknown)', () => {

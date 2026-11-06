@@ -116,7 +116,8 @@ messages:
       steht im Bereich des Einwilligungsbanners} other {}}} other {}}. Ein Klick darauf fordert die Seite zunächst
       über unverschlüsseltes http an; {host} leitet dann auf {location} um. Ein wirksamer
       Strict-Transport-Security-Header (HSTS), mit dem Browser spätere Aufrufe gleich über https senden, wurde in den
-      https-Antworten von {host} nicht gefunden. Empfehlung: den Link auf https umstellen.
+      https-Antworten von {hstsHost} auf dem Weg der Umleitung nicht gefunden. Empfehlung: den Link auf https
+      umstellen.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Zertifikat von {host} nicht gültig"
@@ -235,7 +236,7 @@ actions:
   TLS-01.internal-http-link:
     text: "Stellen Sie Links auf eigene Seiten auf https oder relative Adressen um und leiten Sie http dauerhaft auf https um."
   TLS-01.internal-http-link-upgraded:
-    text: "Stellen Sie die Links auf https um und senden Sie auf dem verlinkten Host den Header Strict-Transport-Security."
+    text: "Stellen Sie die Links auf https um und senden Sie auf {hstsHost} den Header Strict-Transport-Security."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Erneuern Sie das Zertifikat und prüfen Sie, ob die automatische Verlängerung

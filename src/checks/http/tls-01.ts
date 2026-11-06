@@ -22,12 +22,17 @@ import type {
   HttpTwin,
   RedirectChain,
 } from '../../core/snapshot/http.ts';
-import { BLOCKED_DOCUMENT, browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
+import {
+  BLOCKED_DOCUMENT,
+  browserAcceptsTls,
+  isHttpStub,
+  isRedirect,
+  isSuccess,
+  startFinalHost,
+} from './shared.ts';
 import { evaluateHttpLinks } from './tls-01-links.ts';
 
 const ID = 'TLS-01';
-/** A page of at most this size is a stub (parking page, redirect stub), not content served over http. */
-const STUB_BYTES = 1024;
 const HOST_VARIANTS: readonly HostVariant[] = ['target', 'www', 'apex'];
 
 /** A closed port or an unknown host serves nothing over http: there is nothing to evaluate. */
@@ -228,8 +233,7 @@ function judgeChainEndingOnHttp(
     );
     return { ...noVerdict(), observations, forms };
   }
-  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES)
-    return { ...noVerdict(), observations, forms };
+  if (isHttpStub(last)) return { ...noVerdict(), observations, forms };
 
   const state = httpsStateOfHost(https, hops);
   if (state === 'unknown')

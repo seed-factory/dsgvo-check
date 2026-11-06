@@ -154,8 +154,9 @@ export function parseDkimTags(raw: string): ReadonlyMap<string, string> | null {
  */
 export function isDkimCandidate(txt: string): boolean {
   const first = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=([^;]*)/.exec(txt);
-  // Any DKIM version stays: one the parser cannot read is an unreadable key, never an absent one.
-  if (first && (first[1] as string).toLowerCase() === 'v') return /^\s*dkim\d*\s*$/i.test(first[2] as string);
+  // Any DKIM version stays ("DKIM1.0", a quoted "DKIM1"): one the parser cannot read is an unreadable key, never an
+  // absent one.
+  if (first && (first[1] as string).toLowerCase() === 'v') return /^\s*"?\s*dkim/i.test(first[2] as string);
   return /(?:^|;)\s*p\s*=/i.test(txt);
 }
 

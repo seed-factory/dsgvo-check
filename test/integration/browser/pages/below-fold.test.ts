@@ -71,6 +71,7 @@ describe('content below the first screen', () => {
     );
     expect(page?.afterReveal).toBeUndefined();
     expect(visit(run, 'A', KONTAKT)?.reveal).toMatchObject({ outcome: 'revealed', quietReached: true });
+    expect(visit(run, 'A', KONTAKT)?.reveal?.capped).toBeUndefined();
   });
 
   it('derive keeps the font with the map and names its own service', () => {
@@ -165,6 +166,41 @@ describe('content below the first screen', () => {
 
   it('touches only declared hosts', () => {
     expect(server.unexpected).toEqual([]);
+  });
+});
+
+describe('a page with a section as tall as the viewport above its content', () => {
+  let server: FixtureServer;
+  let site: SiteDir;
+  let run: CollectRun;
+
+  beforeAll(async () => {
+    // The hero grows with the enlarged viewport, so the lazy frame keeps its distance below it and never loads.
+    site = writeSite({
+      'index.html': html(`
+        <section style="height:100vh">Willkommen</section>
+        <div style="height:4000px">Inhalt</div>
+        <iframe loading="lazy" src="/karte/" width="600" height="400" title="Karte"></iframe>
+        <footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutzerklärung</a></footer>`),
+      'karte/index.html': html('<p>Karte</p>'),
+      'impressum/index.html': html('<h1>Impressum</h1>'),
+      'datenschutz/index.html': html('<h1>Datenschutzerklärung</h1>'),
+    });
+    server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
+    run = await collect(server);
+  });
+
+  afterAll(async () => {
+    await server?.close();
+    site?.cleanup();
+  });
+
+  it('is recorded as not shown to its end, like a page taller than the cap', () => {
+    const a = run.result.sections.browser?.phases.find((p) => p.phase === 'A');
+    const start = a?.pages.find((p) => p.finalUrl === START);
+    expect(start?.reveal).toMatchObject({ outcome: 'revealed', capped: true });
+    expect(start?.reveal?.viewportHeightPx).toBeLessThan(10_000);
+    expect(server.requests.map((r) => r.path)).not.toContain('/karte/');
   });
 });
 

@@ -686,6 +686,25 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
     expect(impressum(r)?.params).toMatchObject({ detailsPlace: 'privacy-section', groupCount: 3 });
   });
 
+  it('a section "Impressum" on the contact page counts its subsections together, the page heading does not', () => {
+    const r = runCheck(
+      legal01,
+      unlinkedImpressum({
+        candidates: [
+          candidate(CONTACT, [
+            { section: 'Kontakt', text: 'Schreiben Sie uns.' },
+            { section: 'Kontakt > Impressum > Registereintrag', text: KINDS[0]! },
+            { section: 'Kontakt > Impressum > Vertretung', text: KINDS[1]! },
+            { section: 'Kontakt > Impressum > Umsatzsteuer', text: KINDS[2]! },
+          ]),
+        ],
+      }),
+    );
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
+    expect(impressum(r)?.params).toMatchObject({ detailsHeading: 'Impressum', groupCount: 3 });
+  });
+
   it('a section "Impressum" whose details sit in its subsections counts them together', () => {
     const r = runCheck(
       legal01,
@@ -738,6 +757,31 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
             { section: 'Anfahrt', text: 'Gegenüber dem Amtsgericht.' },
             { section: 'Team', text: 'Inhaber Max Muster begrüßt Sie.' },
             { section: 'Buchhaltung', text: 'Rechnungen mit Steuernummer.' },
+          ]),
+        ],
+      }),
+    ],
+    [
+      'one kind of details in each of three unrelated sections under the heading of the page',
+      unlinkedImpressum({
+        candidates: [
+          candidate(CONTACT, [
+            { section: 'Kontakt > Anfahrt', text: 'Gegenüber dem Amtsgericht.' },
+            { section: 'Kontakt > Team', text: 'Inhaber Max Muster begrüßt Sie.' },
+            { section: 'Kontakt > Buchhaltung', text: 'Rechnungen mit Steuernummer.' },
+          ]),
+        ],
+      }),
+    ],
+    [
+      'a sponsor named "VR-Bank" next to an owner and a tax number',
+      unlinkedImpressum({
+        candidates: [
+          candidate(START, [
+            {
+              section: 'Startseite',
+              text: 'Unser Sponsor: VR-Bank Neckar. Inhaber Max Muster. Wir kümmern uns um Ihre Steuernummer.',
+            },
           ]),
         ],
       }),

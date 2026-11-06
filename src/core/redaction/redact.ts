@@ -3,7 +3,15 @@
  * titles, legal-document parts, DNS TXT. Pure and idempotent. Domains and service names stay; phone numbers are untouched.
  */
 
-import { decodeLenient, maskEmails, maskEmailsInUrl, QUOTED_LOCAL, REDACTED } from '../url/email.ts';
+import {
+  decodeLenient,
+  maskEmails,
+  maskEmailsInUrl,
+  maskObfuscatedEmails,
+  OBFUSCATED_ADDRESS,
+  QUOTED_LOCAL,
+  REDACTED,
+} from '../url/email.ts';
 import { maskMailto, QUERY_ALLOWLIST, sanitizeUrl } from '../url/url.ts';
 
 export { maskEmails, maskMailto };
@@ -16,10 +24,12 @@ const mailtoChar = String.raw`(?:(?!https?:\/\/)[^\s<>";])`;
 
 /**
  * An http(s) URL or a `mailto:` value (the address may follow whitespace). Tokens end at whitespace, `<`, `>` and `"`;
- * `mailto:` also at `;` (DMARC tags) and in front of a URL. An apostrophe does not end a token: it is legal in URLs.
+ * `mailto:` also at `;` (DMARC tags) and in front of a URL. An apostrophe does not end a token: it is legal in URLs. An
+ * address in the `(at)` form holds blanks, so it is a value of its own: cut at the first blank, its local part would
+ * stay apart from its domain.
  */
 const URL_TOKEN = String.raw`https?:\/\/${urlChar}+${quotedTail(urlChar)}`;
-const MAILTO_TOKEN = String.raw`mailto:\s*(?:${QUOTED_LOCAL}@${mailtoChar}+|${mailtoChar}+)${quotedTail(mailtoChar)}`;
+const MAILTO_TOKEN = String.raw`mailto:\s*(?:${OBFUSCATED_ADDRESS}${mailtoChar}*|${QUOTED_LOCAL}@${mailtoChar}+|${mailtoChar}+)${quotedTail(mailtoChar)}`;
 const TOKEN_RE = new RegExp(`${URL_TOKEN}|${MAILTO_TOKEN}`, 'giu');
 
 const OPENERS: Readonly<Record<string, string>> = { ')': '(', ']': '[', '}': '{' };
@@ -84,7 +94,9 @@ function hasAddress(body: string): boolean {
 function redactToken(token: string, allowlist: ReadonlySet<string>): string {
   const mail = /^mailto:(\s*)([\s\S]*)$/i.exec(token);
   if (mail) {
-    const [, space = '', body = ''] = mail;
+    const [, space = '', value = ''] = mail;
+    // the `(at)` form becomes `[redacted]@domain` first, so the value reads as the address it is
+    const body = maskObfuscatedEmails(value);
 
     // after whitespace only a token with an address counts ("mailto: Kontakt aufnehmen" is prose); the prose stays but
     // any token inside it is redacted. The body is shorter than the token, so the recursion ends.

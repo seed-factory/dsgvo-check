@@ -174,8 +174,9 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
 | C     | „Alle akzeptieren“ klicken                                                            | Dieselben Kontrollseiten; entfällt, wenn Phase B keinen Adapter erkannt hat               |
 
 - `--max-pages` begrenzt die Seitenzahl in Phase A (Standard 6). Die weiteren Seiten bekommen, was nach Startseite,
-  Impressum, Datenschutzerklärung, Kontakt- und Zwischenseiten übrig bleibt, beim Standard also 2. Impressum und
-  Datenschutzerklärung werden unabhängig davon besucht. Fehlt der Link, probiert der Scanner `/impressum` und
+  Impressum, Datenschutzerklärung, Kontakt- und Zwischenseiten übrig bleibt, beim Standard also 2; eine gemeinsame
+  Seite für Impressum und Datenschutzerklärung zählt dabei einmal. Impressum und Datenschutzerklärung werden unabhängig
+  davon besucht. Fehlt der Link, probiert der Scanner `/impressum` und
   `/datenschutz`; diese Aufrufe zählen dann an Stelle der verlinkten Seite.
 - Die weiteren Seiten kommen aus den Links der Startseite: zuerst je Gruppe von Stichwörtern höchstens eine Seite, in
   dieser Reihenfolge: Video, Anfahrt und Standort, Geschichte, Über uns, Team, Karriere, Referenzen, Termin, Blog und
@@ -185,7 +186,9 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
 - Andere Sprachversionen der Website sind nie weitere Seiten: ein anderes Sprachpräfix als das der Startseite (`/en/`
   neben `/de/`), ein Sprachumschalter („EN“, „English“, eine Flagge ohne Text auf `/en/`), ein `hreflang` einer
   anderen Sprache. Das Sprachpräfix der Startseite selbst zählt nicht als Bereich: Auf einer Startseite `/de/` bleiben
-  `/de/kontakt/anfahrt/` und `/de/unternehmen/geschichte/` wählbar.
+  `/de/kontakt/anfahrt/` und `/de/unternehmen/geschichte/` wählbar, ebenso auf einer Startseite ohne Präfix mit
+  `lang="de"`, deren Umschalter „DE“ nach `/de/` führt. Unter den Links auf Impressum und Datenschutzerklärung geht die
+  Sprache der Startseite vor; eine andere Sprachversion wird nur gewählt, wenn die Website keine andere verlinkt.
 - Kontrollseiten sind Seiten aus Phase A mit eingebetteten Inhalten: iframes und Platzhalter von Drittanbietern, neue
   Hosts gegenüber der Startseite. Karten, Videos (auch Vorschaubilder), Schriften und Widgets aus dem Dienstekatalog
   zählen mehr als unbekannte Hosts. iframes von Einwilligungsanbietern und iframes ganz außerhalb der Seite (etwa ein
@@ -198,7 +201,8 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   dessen Text ein Datenschutzwort ist oder damit beginnt und der nicht im Inhaltsbereich oder einer Seitenleiste
   steht: Ein Artikel über Datenschutz ist kein Hinweis der Website. Diese Aufrufe zählen wie die Rechtstexte nicht
   gegen `--max-pages`, halten aber die Pause zwischen Navigationen und das Zeitbudget ein. Andere Sprachversionen der
-  Datenschutzerklärung (`/en/datenschutz/` hinter „EN“) werden nur vermerkt, nicht aufgerufen; Links auf
+  Datenschutzerklärung (`/en/datenschutz/` hinter „EN“) werden nur vermerkt, nicht aufgerufen, auch wenn die Seite der
+  eigenen Sprache nicht als Datenschutzerklärung bestätigt wurde; Links auf
   Einstellungsdialoge („Datenschutz-Einstellungen“) bleiben unberührt.
 - Fehlt der Link auf das Impressum, liest der Scanner die ohnehin geöffneten Seiten mit: die Startseite, die
   Kontaktseite und Zwischenseiten wie „Über uns“. Weisen die Überschriften im Inhalt einer Kontakt- oder Zwischenseite
@@ -688,6 +692,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
   die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen
   dafür nur ein Abschnitt „Impressum“ und der Seitenfuß, weil sie auch Firmenangaben von Auftragsverarbeitern nennt.
+  Auf Kontakt-, Zwischen- und Startseite zählt ein Abschnitt seine Unterabschnitte nur mit, wenn er „Impressum“ heißt:
+  Angaben in getrennten Abschnitten unter der Überschrift der Seite („Kontakt“ über „Anfahrt“, „Team“) zählen nicht
+  zusammen.
 - **LEGAL-02** sucht nur die Bezeichnungen aus dem Wörterbuch
   [test/data/legal/outdated-references.yaml](test/data/legal/outdated-references.yaml): TMG, RStV, TTDSG, EU-US
   Privacy Shield, Safe Harbor, Richtlinie 95/46/EG und ausdrücklich „BDSG a. F.“ (das BDSG selbst gilt weiter und
@@ -726,18 +733,25 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
   [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
   lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder
-  unter einer Überschrift mit dem Dienst steht. Angaben mit Vorbehalt („sofern“, „kann“), in nicht angezeigtem Text,
-  zusammen mit dem externen Abruf im selben Satz, in Sätzen zu mehreren Diensten oder in Sätzen über 200 Zeichen
-  werden nicht gewertet (`claim-ambiguous`); eine Verneinung vor der Angabe („nicht lokal“, „not installed locally“)
-  hebt sie auf. Abweichung in mindestens zwei Beobachtungen (Phase und Seite,
-  `DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS`) ist `critical`, in einer `warning`. Beschreibt dasselbe Dokument
-  auch den Abruf von einer Quelle außerhalb der Website („von Google“, „Drittanbieter“) oder wurden nur Abrufe ohne
-  Antwort und Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte
-  lädt, gehören zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im
-  Hauptdokument nicht. Weitere Datenschutzhinweise der Website liest PRIV-02 nicht, nur die Datenschutzerklärung.
+  unter einer Überschrift mit dem Dienst steht; „erst nach Einwilligung“ nur mit einem Wort des Ladens oder der
+  Verbindung („Cookies werden erst gesetzt, wenn Sie zustimmen“ ist keine solche Angabe). Angaben mit Vorbehalt
+  („sofern“, „kann“), nur für einen Teil („einige“, „außer“) oder eine andere Zeit („früher“, „künftig“), in nicht
+  angezeigtem Text, zusammen mit dem externen Abruf im selben Satz, in Sätzen zu mehreren Diensten oder in Sätzen über
+  200 Zeichen werden nicht gewertet (`claim-ambiguous`); eine Verneinung vor der Angabe („nicht lokal“, „not installed
+  locally“) hebt sie auf. Abweichung in mindestens zwei Beobachtungen (Phase und Seite,
+  `DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS`; eine Anfrage im Frame zählt für die Seite seines Dokuments) ist
+  `critical`, in einer `warning`. Beschreibt dasselbe Dokument auch den Abruf von einer Quelle außerhalb der Website
+  („von Google“, „von Google-Servern geladen“, „Drittanbieter“) oder wurden nur Abrufe ohne Antwort und
+  Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte lädt, gehören
+  zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im Hauptdokument nicht.
+  „Keine Verbindung“ zu einer Karte oder einem Video gilt nur bis zur Einwilligung, denn ohne Verbindung zeigt die
+  Einbettung nichts. „Auch nach bestätigter Ablehnung“ steht nur für Anfragen auf Seiten, auf denen die Ablehnung laut
+  den Fakten der CMP gilt. Weitere Datenschutzhinweise der Website liest PRIV-02 nicht, nur die Datenschutzerklärung.
   Ohne Befund ist die Datenschutzerklärung nicht als zutreffend bestätigt.
 - **Unterhalb des ersten Bildschirms** zeigt der Scanner eine Seite nur bis 10 000 Pixel Höhe: Was darunter liegt,
-  bleibt ungesehen, und EMBED-01, EMBED-02 und EMBED-03 nennen die Einschränkung `reveal-height-capped`. Inhalte, die
+  bleibt ungesehen, und EMBED-01, EMBED-02 und EMBED-03 nennen die Einschränkung `reveal-height-capped`. Dasselbe gilt
+  für eine Seite, die mit dem größeren Fenster mitwächst (ein Abschnitt in Fensterhöhe, `100vh`), denn ihr unterer Teil
+  bleibt dabei unter dem Fenster. Inhalte, die
   erst auf ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit
   `DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS=0` bleibt es beim ersten Bildschirm; der Bericht nennt dann die
   Beobachtungslücke `below-fold-not-revealed`.
@@ -748,14 +762,15 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen.
 - **E-Mail-Domains (MAIL-01 bis MAIL-03):** Geprüft werden die gescannte Domain, nach einer Weiterleitung der Startseite
   auf eine andere Domain auch deren Domain, und die Domains von bis zu 2 E-Mail-Adressen aus dem Impressum (zuerst
-  Adressen im Text, dann `mailto:`-Links im Inhalt der Impressumsseite; Freemail-Anbieter wie `gmx.de` nicht, Liste in
-  `test/data/dns/mail-domains.yaml`). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
+  Adressen im Text, dann `mailto:`-Links, beides im Inhalt der Impressumsseite, nicht im Seitenfuß oder in der
+  Navigation; Freemail-Anbieter wie `gmx.de` nicht, Liste in `test/data/dns/mail-domains.yaml`; ein Host `www.` ist
+  keine E-Mail-Domain). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
   die Domain betreibt. Adressen aus der Datenschutzerklärung, aus DMARC-Berichtsadressen und von anderen Seiten werden
   nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig ohne Weiterleitung auf
   einen anderen Host, Impressum nicht gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in
   diesem Lauf nicht erhoben“).
-  Adressen in der Form `name(at)domain.de` oder `name [at] domain.de` werden wie andere Adressen bis auf die Domain
-  maskiert.
+  Adressen in der Form `name(at)domain.de` oder `name [at] domain.de`, auch hinter `mailto:`, werden wie andere
+  Adressen bis auf die Domain maskiert; „(AT) www.example.at“ ist keine Adresse.
 - **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain
   zuerst die Selektoren aus `DSGVO_CHECK_DNS_DKIM_SELECTORS` (`selector` für jede Domain oder `domain/selector`), dann
   die festen Selektoren eines erkannten Anbieters (Microsoft 365: `selector1`, `selector2`, erkannt nur an MX-Eintrag
@@ -795,7 +810,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
   `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
   (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,
-  für andere Hosts bleibt die Konfidenz `medium`. Ohne Browser (`--checks TLS-01`) bewertet TLS-01 nur die
+  für andere Hosts bleibt die Konfidenz `medium`, ebenso, wenn die Startseite unter `http://` nur eine Seite bis 1 KiB
+  liefert. Gesucht wird HSTS in den https-Antworten auf dem Weg der Umleitung, die auch auf einen anderen Host führen
+  kann; der Befund nennt diesen Host. Ohne Browser (`--checks TLS-01`) bewertet TLS-01 nur die
   http-Adressen; lief der Browser nicht, nennt die Prüfung die Einschränkung.
 - **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
   auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die

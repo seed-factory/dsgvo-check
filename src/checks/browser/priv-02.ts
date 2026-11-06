@@ -26,9 +26,10 @@ import {
   type ServiceVocabulary,
   serviceVocabulary,
 } from './policy-claims.ts';
+import { type RejectFacts, rejectFacts } from './reject-moment.ts';
 import { serviceFields, serviceName } from './services.ts';
-import { bannerState, confirmedReject, consentSignals, signalOutcome, stateEvidence } from './signals.ts';
-import { hasPhaseA, noPhaseAReason, phaseRecord, requestIndex, throttleAware } from './snapshot.ts';
+import { bannerState, consentSignals, signalOutcome } from './signals.ts';
+import { hasPhaseA, noPhaseAReason, pageIndex, requestIndex, throttleAware } from './snapshot.ts';
 
 const ID = 'PRIV-02';
 
@@ -41,8 +42,11 @@ const KIND_ORDER = ['self-hosted', 'no-connection', 'consent-gated'];
 /** Quotes per finding: the statements first, then the disclosures of a template that describes both variants. */
 const MAX_CLAIM_QUOTES = 4;
 const MAX_DISCLOSURE_QUOTES = 2;
-/** A map or video service in the main frame loads its own fonts (Maps JavaScript API): its navigation is left out. */
-const EMBED_NAVIGATION_CATEGORIES: ReadonlySet<ServiceCategory> = new Set(['maps', 'video']);
+/**
+ * A map or video service in the main frame loads its own fonts (Maps JavaScript API): its navigation is left out. Such
+ * an embed shows nothing without its connection, so a statement that there is none holds until consent at most.
+ */
+const EMBED_CATEGORIES: ReadonlySet<ServiceCategory> = new Set(['maps', 'video']);
 
 interface Item {
   r: RequestRecord;
@@ -64,8 +68,11 @@ interface Basis {
   embedNavigations: ReadonlySet<string>;
 }
 
+/** The page of a request, a subframe's by its frame's document (`pageIndex`). */
+type PageOf = (r: RequestRecord) => string;
+
 const navigationOf = (r: RequestRecord) => `${r.phase}\n${r.navigationId ?? r.pageUrl}`;
-const contextOf = (r: RequestRecord) => `${r.phase}\n${r.pageUrl}`;
+const contextOf = (r: RequestRecord, pageOf: PageOf) => `${r.phase}\n${pageOf(r)}`;
 
 /**
  * Requests of a service the site itself made: not a resource of another service's embed frame (a map frame's fonts
@@ -103,7 +110,7 @@ function embedNavigations(derived: DerivedSection, records: Map<string, RequestR
   for (const c of derived.requests) {
     const r = records.get(c.requestId);
     if (!r?.isMainFrame || !c.serviceId || c.source === 'embed-frame') continue;
-    if (EMBED_NAVIGATION_CATEGORIES.has(c.category)) out.add(navigationOf(r));
+    if (EMBED_CATEGORIES.has(c.category)) out.add(navigationOf(r));
   }
   return out;
 }
@@ -142,19 +149,35 @@ interface Held {
   excluded: number;
 }
 
-function holdAgainst(claim: PolicyClaim, use: Use | undefined, basis: Basis): Held {
+/**
+ * The scope a statement is held to for a service. "Keine Verbindung" about a map or a video is the two-click text of a
+ * consent solution ("Vorher wird keine Verbindung zu Google hergestellt"): the embed cannot show without the connection,
+ * so the statement holds until consent, and a load after the accept does not contradict it.
+ */
+function scopeFor(claim: PolicyClaim, category: ServiceCategory | undefined): ClaimScope {
+  if (claim.kind === 'no-connection' && category && EMBED_CATEGORIES.has(category)) return 'until-consent';
+  return claim.scope;
+}
+
+function holdAgainst(
+  claim: PolicyClaim,
+  category: ServiceCategory | undefined,
+  use: Use | undefined,
+  basis: Basis,
+): Held {
+  const scope = scopeFor(claim, category);
   const delivered: Item[] = [];
   let excluded = 0;
   for (const item of use?.delivered ?? []) {
-    const k = counted(item, claim.scope, basis);
+    const k = counted(item, scope, basis);
     if (k === 'yes') delivered.push(item);
     else if (k === 'excluded') excluded++;
   }
   return {
     claim,
     delivered,
-    attempted: (use?.attempted ?? []).filter((i) => counted(i, claim.scope, basis) === 'yes'),
-    hints: (use?.hints ?? []).filter((h) => hintCounted(h, claim.scope, basis)),
+    attempted: (use?.attempted ?? []).filter((i) => counted(i, scope, basis) === 'yes'),
+    hints: (use?.hints ?? []).filter((h) => hintCounted(h, scope, basis)),
     excluded,
   };
 }
@@ -184,11 +207,12 @@ function verdictOf(
   held: readonly Held[],
   disclosed: (claim: PolicyClaim) => boolean,
   minContexts: number,
+  pageOf: PageOf,
 ): Verdict | null {
   const clear = held.filter((h) => h.delivered.length > 0 && !disclosed(h.claim));
   if (clear.length > 0) {
     const items = union(clear.flatMap((h) => h.delivered));
-    const contexts = new Set(items.map((i) => contextOf(i.r))).size;
+    const contexts = new Set(items.map((i) => contextOf(i.r, pageOf))).size;
     const variant = contexts >= minContexts ? 'contradiction-replicated' : 'contradiction-single';
     return { variant, basis: 'request', held: clear, items, hints: [] };
   }
@@ -250,7 +274,8 @@ interface RunContext {
   documents: ReadonlyMap<string, DocumentRecord>;
   documentEvidence: EvidenceInput;
   policyUrl: string;
-  rejectEvidence: EvidenceInput[];
+  reject: RejectFacts;
+  pageOf: PageOf;
   minCandidatePages: number;
 }
 
@@ -279,8 +304,10 @@ function observationOf(
   const kinds = sortedUniq(verdict.held.map((h) => h.claim.kind)).sort(
     (a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b),
   );
+  // After a confirmed reject only where it is in effect: a control page that shows the banner again had no answer.
   const afterReject =
-    run.rejectEvidence.length > 0 && verdict.items.some((i) => i.c.timing === 'after-reject');
+    run.reject.proof.length > 0 &&
+    verdict.items.some((i) => i.c.timing === 'after-reject' && run.reject.inEffect(run.pageOf(i.r)));
 
   const evidence: EvidenceInput[] = [run.documentEvidence];
   const quoted = new Set<string>();
@@ -306,7 +333,7 @@ function observationOf(
       evidence.push(quoteEvidence(d.part, sentence, 'named'));
     }
   }
-  if (afterReject) evidence.push(...run.rejectEvidence);
+  if (afterReject) evidence.push(...run.reject.proof);
   evidence.push(
     ...requestEvidencePerContext(interleavedByMoment(verdict.items), MAX_EVIDENCE - evidence.length),
   );
@@ -315,11 +342,11 @@ function observationOf(
   }
 
   const pages = sortedUniq([
-    ...verdict.items.map((i) => i.r.pageUrl),
+    ...verdict.items.map((i) => run.pageOf(i.r)),
     ...verdict.hints.map((h) => h.pageUrl),
   ]);
   const contexts = new Set([
-    ...verdict.items.map((i) => contextOf(i.r)),
+    ...verdict.items.map((i) => contextOf(i.r, run.pageOf)),
     ...verdict.hints.map((h) => `${h.phase}\n${h.pageUrl}`),
   ]);
   const hosts = sortedUniq([...verdict.items.map((i) => i.c.host), ...verdict.hints.map((h) => h.host)]);
@@ -391,16 +418,9 @@ export const priv02 = defineCheck({
     );
 
     const records = requestIndex(browser);
-    const confirmed = confirmedReject(cmp.phases.find((p) => p.phase === 'B'));
-    const phaseB = phaseRecord(browser, 'B');
-    const rejectEvidence = confirmed
-      ? [
-          stateEvidence(confirmed.action, phaseB?.click?.pageUrl ?? null),
-          stateEvidence(confirmed.stored, phaseB?.pages.find((p) => p.reload)?.finalUrl ?? null),
-        ]
-      : [];
+    const reject = rejectFacts(browser, cmp);
     const basis: Basis = {
-      confirmedReject: confirmed !== null,
+      confirmedReject: reject.proof.length > 0,
       embedNavigations: embedNavigations(derived, records),
     };
     const run: RunContext = {
@@ -412,7 +432,8 @@ export const priv02 = defineCheck({
       documents: new Map(html.map((d) => [d.id, d])),
       documentEvidence: policyEvidence(main, html, text.parts),
       policyUrl: main.finalUrl || main.url,
-      rejectEvidence,
+      reject,
+      pageOf: pageIndex(browser),
       minCandidatePages: ctx.thresholds.cmp.minCandidatePages,
     };
 
@@ -422,7 +443,8 @@ export const priv02 = defineCheck({
     let excluded = 0;
     for (const claim of read.claims) {
       for (const serviceId of claim.serviceIds) {
-        const held = holdAgainst(claim, uses.get(serviceId), basis);
+        const category = derived.catalog[serviceId]?.category ?? vocab.byId.get(serviceId)?.category;
+        const held = holdAgainst(claim, category, uses.get(serviceId), basis);
         const target = claim.ambiguous ? ambiguousByService : byService;
         target.set(serviceId, [...(target.get(serviceId) ?? []), held]);
         if (!claim.ambiguous) excluded += held.excluded;
@@ -440,12 +462,17 @@ export const priv02 = defineCheck({
             d.part.documentId === claim.part.documentId &&
             d.serviceIds.includes(serviceId),
         );
-      const verdict = verdictOf(byService.get(serviceId) ?? [], disclosed, minContexts);
+      const verdict = verdictOf(byService.get(serviceId) ?? [], disclosed, minContexts, run.pageOf);
       if (verdict) {
         observations.push(observationOf(serviceId, verdict, read.disclosures, run));
         continue;
       }
-      const ambiguous = verdictOf(ambiguousByService.get(serviceId) ?? [], disclosed, minContexts);
+      const ambiguous = verdictOf(
+        ambiguousByService.get(serviceId) ?? [],
+        disclosed,
+        minContexts,
+        run.pageOf,
+      );
       if (ambiguous) ambiguousOnly = true;
     }
 

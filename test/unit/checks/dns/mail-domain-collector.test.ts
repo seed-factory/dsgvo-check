@@ -97,10 +97,17 @@ describe('selectMailTargets: contact domains from the Impressum only', () => {
     ]);
   });
 
-  it('an address written as name(at)domain in the Impressum → a target, after the redaction masked it', () => {
-    const plan = select(snapshotWith({ impressum: [part('Kontakt: kontakt (at) example-mail.de')] }));
-    expect(domainsOf(plan)).toEqual(['example-mail.de:contact']);
-  });
+  it.each([
+    'Kontakt: kontakt (at) example-mail.de',
+    'E-Mail: mailto: kontakt (at) example-mail.de',
+    'mailto:kontakt [at] example-mail.de',
+  ])(
+    'an address written as name(at)domain in the Impressum → a target, after the redaction masked it: %j',
+    (text) => {
+      const plan = select(snapshotWith({ impressum: [part(text)] }));
+      expect(domainsOf(plan)).toEqual(['example-mail.de:contact']);
+    },
+  );
 
   it.each([
     [
@@ -113,8 +120,43 @@ describe('selectMailTargets: contact domains from the Impressum only', () => {
       { impressum: [], links: [mailtoLink('mailto:[redacted]@agency.example', { region: 'footer' })] },
     ],
     ['on the scanned domain', { impressum: [part('info@example.de')] }],
+    [
+      'in the footer text of the Impressum page (agency credit)',
+      {
+        impressum: [
+          part('Musterfirma, info@example.de'),
+          { ...part('Webdesign: Agentur XY, kontakt@agentur-xy.test'), place: 'chrome' as const },
+        ],
+      },
+    ],
+    [
+      'that is a country code before the website ("Wien (AT) www.example.at")',
+      { impressum: [part('Musterfirma GmbH, 1010 Wien (AT) www.example-mail.at')] },
+    ],
+    ['on a www host', { impressum: [part('info@www.example-mail.de')] }],
   ] as const)('an address %s → no target', (_label, o) => {
     expect(select(snapshotWith(o)).targets).toEqual([]);
+  });
+
+  it.each([
+    'gmx.com',
+    'gmx.eu',
+    'mail.de',
+    'email.de',
+    'online.de',
+    'kabelmail.de',
+    'vodafonemail.de',
+    'magenta.de',
+    'protonmail.com',
+    'protonmail.ch',
+    'proton.me',
+    'pm.me',
+    'msn.com',
+    'ymail.com',
+    'yahoo.co.uk',
+  ])('an Impressum address at the free-mail provider %s is recorded as skipped', (d) => {
+    const plan = select(snapshotWith({ impressum: [part(`E-Mail: firma@${d}`)] }));
+    expect(domainsOf(plan)).toEqual([`${d}:contact:free-mail`]);
   });
 
   it('a free-mail domain is recorded as skipped (no query); a longer name that ends like one is not free mail', () => {

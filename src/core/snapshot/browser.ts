@@ -198,7 +198,10 @@ export interface RevealFacts {
   documentHeightPx: number | null;
   /** Height the viewport was set to: the document height, at most `browser.revealMaxHeightPx`. */
   viewportHeightPx?: number;
-  /** The document was taller than the largest viewport allowed: its lower part stayed below it. */
+  /**
+   * Its lower part stayed below the viewport: the document was taller than the largest viewport allowed, or it grew
+   * with the enlarged viewport (a section sized in viewport units) or with what loaded.
+   */
   capped?: true;
   /** Quiet window reached before the end of the stay. */
   quietReached?: boolean;

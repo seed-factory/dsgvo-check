@@ -42,8 +42,8 @@ const Phrase = z
     /^[a-z0-9äöüß]+\*?( [a-z0-9äöüß]+\*?)*$/,
     'lower-case words separated by one space, `*` only at the end of a word',
   );
-/** Phrases that must all occur in one sentence. */
-const Pattern = z.array(Phrase).min(1);
+/** Phrases that must all occur in one sentence; an entry that is a list holds phrases of which one must occur. */
+const Pattern = z.array(z.union([Phrase, z.array(Phrase).min(2)])).min(1);
 const PerLang = <T extends z.ZodType>(s: T) => z.object({ de: s, en: s }).strict();
 
 const KindWords = z
@@ -51,6 +51,7 @@ const KindWords = z
     patterns: z.array(Pattern).min(1),
     reversals: z.array(Phrase),
     hedges: z.array(Phrase),
+    limits: z.array(Phrase).default([]),
     disclosures: z.array(Pattern),
   })
   .strict();
@@ -93,7 +94,9 @@ interface Word {
   prefix: boolean;
 }
 type CompiledPhrase = Word[];
-type CompiledPattern = CompiledPhrase[];
+/** Phrases of which one must occur; a single phrase of the dictionary is a list of one. */
+type CompiledEntry = CompiledPhrase[];
+type CompiledPattern = CompiledEntry[];
 
 /** A pattern of a statement; `denies` when its own words hold a negation ("keine Verbindung"). */
 interface ClaimPattern {
@@ -108,6 +111,8 @@ export interface ClaimKind {
   patterns: ClaimPattern[];
   reversals: CompiledPhrase[];
   hedges: CompiledPhrase[];
+  /** Words that restrict a statement to some services, pages or another time; a disclosure stays one. */
+  limits: CompiledPhrase[];
   disclosures: CompiledPattern[];
 }
 
@@ -135,13 +140,13 @@ function compilePhrase(phrase: string): CompiledPhrase {
 }
 
 const phrases = (lists: readonly (readonly string[])[]): CompiledPhrase[] => lists.flat().map(compilePhrase);
-const patterns = (lists: readonly (readonly string[][])[]): CompiledPattern[] =>
-  lists.flat().map((p) => p.map(compilePhrase));
+const patterns = (lists: readonly (readonly (string | string[])[][])[]): CompiledPattern[] =>
+  lists.flat().map((p) => p.map((entry) => (typeof entry === 'string' ? [entry] : entry).map(compilePhrase)));
 
 export function compileClaims(data: ClaimsData): PolicyClaims {
   const negations = phrases([data.negations.de, data.negations.en]);
   const claimPattern = (p: CompiledPattern): ClaimPattern => {
-    const own = p.flatMap((phrase) => phrase.map((x) => x.w));
+    const own = p.flatMap((entry) => entry.flatMap((phrase) => phrase.map((x) => x.w)));
     return { phrases: p, denies: negations.some((n) => hasPhrase(own, n)) };
   };
   return {
@@ -165,6 +170,7 @@ export function compileClaims(data: ClaimsData): PolicyClaims {
       patterns: patterns([k.de.patterns, k.en.patterns]).map(claimPattern),
       reversals: phrases([k.de.reversals, k.en.reversals]),
       hedges: phrases([k.de.hedges, k.en.hedges]),
+      limits: phrases([k.de.limits, k.en.limits]),
       disclosures: patterns([k.de.disclosures, k.en.disclosures]),
     })),
   };
@@ -212,17 +218,23 @@ interface Span {
   to: number;
 }
 
-/** Words from the first to the end of the last phrase of a pattern found in the sentence; null when one is missing. */
+/**
+ * Words from the first to the end of the last entry of a pattern found in the sentence, each entry at the first place
+ * one of its phrases occurs; null when an entry is missing.
+ */
 function patternSpan(tokens: readonly string[], pattern: CompiledPattern): Span | null {
   let from = Number.POSITIVE_INFINITY;
   let to = -1;
-  for (const phrase of pattern) {
+  for (const entry of pattern) {
     let at = -1;
-    for (let i = 0; i + phrase.length <= tokens.length && at < 0; i++)
-      if (phraseAt(tokens, phrase, i)) at = i;
+    let length = 0;
+    for (let i = 0; i < tokens.length && at < 0; i++) {
+      const hit = entry.find((phrase) => phraseAt(tokens, phrase, i));
+      if (hit) [at, length] = [i, hit.length];
+    }
     if (at < 0) return null;
     from = Math.min(from, at);
-    to = Math.max(to, at + phrase.length);
+    to = Math.max(to, at + length);
   }
   return { from, to };
 }
@@ -241,47 +253,74 @@ const NEGATION_WINDOW_WORDS = 3;
  * the matched words always does.
  */
 function negationIn(tokens: readonly string[], from: number, to: number, span: Span, claims: PolicyClaims) {
-  const contrastIn = (a: number, b: number) => {
-    for (let j = a; j < b; j++) if (claims.negationEnds.some((e) => phraseAt(tokens, e, j))) return true;
-    return false;
-  };
   for (let i = Math.max(0, from); i < Math.min(tokens.length, to); i++) {
     if (!claims.negations.some((n) => phraseAt(tokens, n, i))) continue;
     if (claims.notNegating.some((n) => phraseAt(tokens, n, i))) continue;
-    if (i < span.from && contrastIn(i + 1, span.from)) continue;
-    if (i >= span.to && contrastIn(i + 1, tokens.length)) continue;
+    if (i < span.from && contrastIn(tokens, i + 1, span.from, claims)) continue;
+    if (i >= span.to && contrastIn(tokens, i + 1, tokens.length, claims)) continue;
     return true;
   }
   return false;
 }
 
+/** A contrast word ("sondern") among the words `a`–`b`. */
+function contrastIn(tokens: readonly string[], a: number, b: number, claims: PolicyClaims): boolean {
+  for (let j = a; j < b; j++) if (claims.negationEnds.some((e) => phraseAt(tokens, e, j))) return true;
+  return false;
+}
+
+/**
+ * A reversal of the kind before or among the matched words `span` ("nicht lokal installiert", "nicht auf dem eigenen
+ * Webserver lokal installiert"). One after them, or one a contrast word separates from them ("nicht auf dem Server von
+ * Google, sondern lokal"), turns around something else.
+ */
+function reversed(tokens: readonly string[], kind: ClaimKind, span: Span, claims: PolicyClaims): boolean {
+  return kind.reversals.some((r) => {
+    for (let i = 0; i < span.to; i++) {
+      if (phraseAt(tokens, r, i) && !contrastIn(tokens, i + r.length, span.from, claims)) return true;
+    }
+    return false;
+  });
+}
+
+interface Stated {
+  how: 'denies' | 'affirms';
+  span: Span;
+}
+
 /**
  * How the sentence states the kind: `denies` with a pattern that holds a negation itself ("keine Verbindung"),
- * `affirms` with one that does not; null when no pattern is found or a negation just before it turns it around. The
- * negation of a denying pattern is its own, so only the words before it are looked at.
+ * `affirms` with one that does not; null when no pattern is found, or a reversal or a negation just before it turns it
+ * around. The negation of a denying pattern is its own, so only the words before it are looked at.
  */
-function statement(
-  tokens: readonly string[],
-  kind: ClaimKind,
-  claims: PolicyClaims,
-): 'denies' | 'affirms' | null {
-  let out: 'denies' | 'affirms' | null = null;
+function statement(tokens: readonly string[], kind: ClaimKind, claims: PolicyClaims): Stated | null {
+  let out: Stated | null = null;
   for (const p of kind.patterns) {
     const span = patternSpan(tokens, p.phrases);
-    if (!span) continue;
+    if (!span || reversed(tokens, kind, span, claims)) continue;
     const before = span.from - NEGATION_WINDOW_WORDS;
     if (negationIn(tokens, before, p.denies ? span.from : span.to, span, claims)) continue;
-    if (p.denies) return 'denies';
-    out = 'affirms';
+    if (p.denies) return { how: 'denies', span };
+    out ??= { how: 'affirms', span };
   }
   return out;
 }
 
-/** A disclosure pattern of the kind is found without a negation next to it. */
-function discloses(tokens: readonly string[], kind: ClaimKind, claims: PolicyClaims): boolean {
+const overlaps = (a: Span, b: Span) => a.from < b.to && b.from < a.to;
+
+/**
+ * A disclosure pattern of the kind is found without a negation next to it, outside the words of a statement of the
+ * sentence: "von unserem eigenen Server geladen" names the site's own server, not an outside one.
+ */
+function discloses(
+  tokens: readonly string[],
+  kind: ClaimKind,
+  claims: PolicyClaims,
+  statements: readonly Span[],
+): boolean {
   return kind.disclosures.some((pattern) => {
     const span = patternSpan(tokens, pattern);
-    if (!span) return false;
+    if (!span || statements.some((s) => overlaps(s, span))) return false;
     const [from, to] = [span.from - NEGATION_WINDOW_WORDS, span.to + NEGATION_WINDOW_WORDS];
     return !negationIn(tokens, from, to, span, claims);
   });
@@ -573,20 +612,20 @@ export function readPolicyClaims(
       if (sentence.endsWith('?') || anyPhrase(tokens, claims.exclusions)) continue;
 
       const ms = mentions(tokens, vocab);
+      const stated = new Map(claims.kinds.map((k) => [k.id, statement(tokens, k, claims)]));
       // A sentence that denies the connection ("keine Verbindung zu Servern von Google") describes none.
-      const denied = claims.kinds.some(
-        (k) => statement(tokens, k, claims) === 'denies' && !anyPhrase(tokens, k.reversals),
-      );
+      const denied = [...stated.values()].some((s) => s?.how === 'denies');
+      const own = [...stated.values()].flatMap((s) => (s?.how === 'affirms' ? [s.span] : []));
       const describes = (serviceIds: readonly string[]) =>
         !denied &&
-        claims.kinds.some((k) => discloses(tokens, k, claims) && !hedged(tokens, k, claims)) &&
+        claims.kinds.some((k) => discloses(tokens, k, claims, own) && !hedged(tokens, k, claims)) &&
         outsideSource(tokens, ms, serviceIds, claims, vocab);
 
       let claimed = false;
       let bothVariants = false;
       for (const kind of claims.kinds) {
-        const how = statement(tokens, kind, claims);
-        if (!how || anyPhrase(tokens, kind.reversals)) continue;
+        const how = stated.get(kind.id)?.how;
+        if (!how) continue;
         const subject = subjectOf(kind, ctx, claims, vocab);
         if (!subject) continue;
         claimed = true;
@@ -595,7 +634,7 @@ export function readPolicyClaims(
         const ambiguous: Ambiguity | null =
           part.origin === 'hidden-irrelevant'
             ? 'hidden'
-            : hedged(tokens, kind, claims)
+            : hedged(tokens, kind, claims) || anyPhrase(tokens, kind.limits)
               ? 'hedge'
               : both
                 ? 'both-variants'
@@ -612,7 +651,7 @@ export function readPolicyClaims(
       // unless it also names the outside source: then it holds both variants and counts as a disclosure too.
       if ((claimed && !bothVariants) || denied || part.origin === 'hidden-irrelevant') continue;
       for (const kind of claims.kinds) {
-        if (!discloses(tokens, kind, claims) || hedged(tokens, kind, claims)) continue;
+        if (!discloses(tokens, kind, claims, own) || hedged(tokens, kind, claims)) continue;
         const subject = subjectOf(kind, ctx, claims, vocab);
         if (!subject || (subject.via !== 'sentence' && subject.via !== 'heading')) continue;
         if (outsideSource(tokens, ms, subject.serviceIds, claims, vocab)) {

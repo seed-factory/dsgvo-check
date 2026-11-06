@@ -116,8 +116,8 @@ messages:
       select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
       banner area} other {}}} other {}}. Clicking it first requests the page over unencrypted http; {host} then
       redirects to {location}. An effective Strict-Transport-Security header (HSTS), with which browsers send later
-      requests over https right away, was not found in the https responses of {host}. Recommendation: change the
-      link to https.
+      requests over https right away, was not found in the https responses of {hstsHost} on the redirect path.
+      Recommendation: change the link to https.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Certificate of {host} not valid"
@@ -234,7 +234,7 @@ actions:
   TLS-01.internal-http-link:
     text: "Change links to your own pages to https or relative addresses and redirect http permanently to https."
   TLS-01.internal-http-link-upgraded:
-    text: "Change the links to https and send the Strict-Transport-Security header on the linked host."
+    text: "Change the links to https and send the Strict-Transport-Security header on {hstsHost}."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Renew the certificate and check that automatic renewal works.} not-yet-valid

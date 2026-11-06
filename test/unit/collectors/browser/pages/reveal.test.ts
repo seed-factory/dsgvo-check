@@ -1,7 +1,7 @@
 /** How tall the viewport gets for the content below the first screen: never shrunk, capped, only for a page at the top. */
 import { describe, expect, it } from 'vitest';
 import { VIEWPORT } from '../../../../../src/collectors/browser/config.ts';
-import { revealPlan } from '../../../../../src/collectors/browser/pages/reveal.ts';
+import { grewBelowViewport, revealPlan } from '../../../../../src/collectors/browser/pages/reveal.ts';
 
 const facts = (heightPx: number, p: { scrollY?: number; locked?: boolean } = {}) => ({
   heightPx,
@@ -54,5 +54,17 @@ describe('revealPlan', () => {
       viewportHeightPx: VIEWPORT.height,
       capped: true,
     });
+  });
+});
+
+describe('grewBelowViewport', () => {
+  it.each<[string, number | null, boolean]>([
+    ['a page that grew with the enlarged viewport (a section in viewport units)', 9_620, true],
+    ['a page whose height stayed', 5_194, false],
+    ['a fractional height within the viewport', 5_193.6, false],
+    ['a page that shrank', 4_000, false],
+    ['a height that could not be read again', null, false],
+  ])('%s', (_name, heightDuringPx, grew) => {
+    expect(grewBelowViewport(5_194, heightDuringPx)).toBe(grew);
   });
 });

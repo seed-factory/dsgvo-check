@@ -472,7 +472,8 @@ messages:
     title: "Angabe der Datenschutzerklärung und Beobachtung weichen ab: {service}"
     body: >-
       Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
-      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet bzw. keine Daten
+      an sie übertragen werden}
       consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
       {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
       stattfindet} other {Angaben zur Einbindung von {service}}} (Wortlaut im Nachweis). {requestCount, plural, one {Beobachtet wurde # Anfrage} other {Beobachtet wurden #
@@ -485,7 +486,8 @@ messages:
     title: "Angabe der Datenschutzerklärung und Beobachtung weichen ab: {service}"
     body: >-
       Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
-      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet bzw. keine Daten
+      an sie übertragen werden}
       consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
       {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
       stattfindet} other {Angaben zur Einbindung von {service}}} (Wortlaut im Nachweis). {requestCount, plural, one {Beobachtet wurde # Anfrage} other {Beobachtet wurden #
@@ -498,7 +500,8 @@ messages:
     title: "Angaben der Datenschutzerklärung zur manuellen Prüfung: {service}"
     body: >-
       Die Datenschutzerklärung unter {policyUrl} enthält {claim, select, self-hosted {die Angabe, dass {service} lokal bzw. vom eigenen
-      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet}
+      Server eingebunden ist} no-connection {die Angabe, dass keine Verbindung zu Servern von {company} stattfindet bzw. keine Daten
+      an sie übertragen werden}
       consent-gated {die Angabe, dass {service} erst nach einer Einwilligung geladen wird} self-hosted+no-connection
       {die Angaben, dass {service} lokal eingebunden ist und dabei keine Verbindung zu Servern von {company}
       stattfindet} other {Angaben zur Einbindung von {service}}}{basis, select, disclosure {, aber auch eine

@@ -61,13 +61,16 @@ interface Sighting {
   source: MailDomainSource;
 }
 
-/** Addresses in the Impressum text, in document order; parts the reader marked as hidden and unrelated do not count. */
+/**
+ * Addresses in the Impressum text, in document order; parts the reader marked as hidden and unrelated do not count,
+ * nor does the page chrome (footer, navigation), where an agency credit sits, as for the mailto links.
+ */
 function textSightings(documents: DocumentsSection | undefined): Sighting[] {
   return (documents?.documents ?? [])
     .filter((d) => d.kind === 'impressum')
     .flatMap((d) =>
       d.parts
-        .filter((p) => p.origin !== 'hidden-irrelevant')
+        .filter((p) => p.origin !== 'hidden-irrelevant' && p.place !== 'chrome')
         .flatMap((p) =>
           addressDomains(p.text).map((domain) => ({
             domain,
@@ -155,8 +158,9 @@ export function selectMailTargets(snapshot: Readonly<Snapshot>, o: MailTargetOpt
   let planned = 0;
   let skipped = 0;
   for (const { domain, sources } of contactDomains(snapshot)) {
-    // The scanned domain is checked already; the final domain gains the contact role and its sources.
-    if (domain === entryDomain) continue;
+    // The scanned domain is checked already; the final domain gains the contact role and its sources. A www host is a
+    // website, not a mail domain ("1010 Wien (AT) www.example.at" read as an address).
+    if (domain === entryDomain || domain.startsWith('www.')) continue;
     if (final && domain === final.domain) {
       final.roles.push('contact');
       for (const s of sources) addSource(final, s);

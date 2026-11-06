@@ -321,17 +321,20 @@ describe('collectMailDns: DKIM selectors', () => {
     expect(runCheck(mail03, makeSnapshot({ dns: r.section })).status).toBe('error');
   });
 
-  it('keeps a record of another DKIM version, which MAIL-03 reads as unparsable, not as no key', async () => {
-    const r = await collect({
-      ...m365,
-      'TXT selector1._domainkey.example.de': [`v=DKIM2; p=${rsaKey(2048)}`],
-    }).run;
-    const q = r.section.queries.find((x) => x.qname === 'selector1._domainkey.example.de');
-    expect(q?.answers).toHaveLength(1);
-    expect(q?.filteredAnswers).toBeUndefined();
-    const check = runCheck(mail03, makeSnapshot({ dns: r.section }));
-    expect(check).toMatchObject({ status: 'inconclusive', reason: 'key-unparsable' });
-  });
+  it.each(['v=DKIM2', 'v=DKIM1.0', 'v="DKIM1"'])(
+    'keeps a record of another DKIM version (%s), which MAIL-03 reads as unparsable, not as no key',
+    async (version) => {
+      const r = await collect({
+        ...m365,
+        'TXT selector1._domainkey.example.de': [`${version}; p=${rsaKey(2048)}`],
+      }).run;
+      const q = r.section.queries.find((x) => x.qname === 'selector1._domainkey.example.de');
+      expect(q?.answers).toHaveLength(1);
+      expect(q?.filteredAnswers).toBeUndefined();
+      const check = runCheck(mail03, makeSnapshot({ dns: r.section }));
+      expect(check).toMatchObject({ status: 'inconclusive', reason: 'key-unparsable' });
+    },
+  );
 
   it('a name asked for SPF and as a selector keeps both records, so neither analysis loses its own', async () => {
     const key = dkimRecord(rsaKey(2048));

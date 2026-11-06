@@ -458,7 +458,7 @@ messages:
     body: >-
       The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
       from the site's own server} no-connection {the statement that no connection to servers of {company} takes
-      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      place or no data is transmitted to them} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
       {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
       other {statements on how {service} is embedded}} (wording in the evidence). Observed: {requestCount, plural, one {# request} other {# requests}} to {hosts} with a
       response, in
@@ -471,7 +471,7 @@ messages:
     body: >-
       The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
       from the site's own server} no-connection {the statement that no connection to servers of {company} takes
-      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      place or no data is transmitted to them} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
       {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
       other {statements on how {service} is embedded}} (wording in the evidence). Observed: {requestCount, plural, one {# request} other {# requests}} to {hosts} with a
       response, in only
@@ -484,7 +484,7 @@ messages:
     body: >-
       The privacy policy at {policyUrl} contains {claim, select, self-hosted {the statement that {service} is embedded locally or
       from the site's own server} no-connection {the statement that no connection to servers of {company} takes
-      place} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
+      place or no data is transmitted to them} consent-gated {the statement that {service} is loaded only after consent} self-hosted+no-connection
       {the statements that {service} is embedded locally and that no connection to servers of {company} takes place}
       other {statements on how {service} is embedded}}{basis, select, disclosure {, but also a description of
       the connection to external servers} other {}} (wording in the evidence). {basis, select, disclosure {Observed:
