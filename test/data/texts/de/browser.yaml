@@ -11,7 +11,9 @@ messages:
     title: "{requestCount, plural, one {Anfrage} other {Anfragen}} mit dauerhafter Kennung vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde eine abgeschlossene Anfrage an {service} ({host}) mit einer dauerhaften Kennung beobachtet
       ({identifierKind, select, stored-match {Abgleich mit einem gespeicherten Cookie oder Speichereintrag}
       sent-cookie {mit der Anfrage gesendetes Cookie, laut Dienstekatalog eine Kennung} persistent-param {Parameter
@@ -24,7 +26,9 @@ messages:
     title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne dauerhafte Kennung vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde eine Anfrage an {service} ({host}) beobachtet, für die keine dauerhafte Kennung belegt ist
       ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal Speicherung abgelehnt} other {Kennung:
       {identifierKind, select, per-load {nicht als dauerhaft belegt} other {keine erkannt}}}}; {requestCount, plural,
@@ -36,7 +40,9 @@ messages:
     title: "Eigener Endpunkt mit Tracking-Signatur vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde eine Anfrage an den eigenen Host {host} beobachtet, deren Pfad und Parameter der Signatur von {service} im
       Dienstekatalog entsprechen (z. B. serverseitiges Tagging oder Tag-Gateway). Eine serverseitige Weiterleitung ist
       passiv nicht feststellbar.
@@ -44,7 +50,9 @@ messages:
     title: "Vor einer Interaktion geladen: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde eine Bibliothek oder ein Inhalt von {service} ({host}) geladen ({pageCount, plural, one {# Seite} other {#
       Seiten}}). Ein zugehöriger Ereignisversand wurde in diesem Beleg nicht festgestellt.{embeddedCount, plural, =0
       {} one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.} other { # dieser
@@ -53,7 +61,9 @@ messages:
     title: "{requestCount, plural, one {Drittanbieter-Ressource} other {Drittanbieter-Ressourcen}} vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       {requestCount, plural, one {wurde # Anfrage} other {wurden # Anfragen}} an {service} ({hosts}) beobachtet
       (Kategorie laut Dienstekatalog: {category, select, cdn {Content Delivery Network} payment {Zahlungsdienst}
       consent-provider {Einwilligungsverwaltung} monitoring {Fehleranalyse} other {{category}}}). Die Erforderlichkeit
@@ -64,7 +74,9 @@ messages:
     title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne Dienstzuordnung vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       {requestCount, plural, one {wurde # Anfrage} other {wurden # Anfragen}} an {hostCount, plural, one {den Host
       {hosts}} other {# Hosts der Domain {service} ({hosts})}} beobachtet; {requestCount, plural, one {sie wurde}
       other {sie wurden}} keinem Dienst des Dienstekatalogs zugeordnet. Zweck und Anbieter bitte manuell zuordnen.
@@ -72,7 +84,9 @@ messages:
     title: "{requestCount, plural, one {Anfrage} other {Anfragen}} ohne belegte Antwort vor einer Interaktion: {service}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde eine Anfrage an {service} ({host}) gestartet; eine Antwort wurde nicht beobachtet (z. B. vom Browser
       blockiert oder abgebrochen). Ein beantworteter Austausch ist damit nicht belegt.{embeddedCount, plural, =0 {}
       one { # dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes {embeddedIn}.} other { # dieser
@@ -83,7 +97,9 @@ messages:
     title: "Bekannte Analyse- oder Marketing-Kennung vor einer Interaktion gespeichert: {name}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde die Speicherung von {name} ({storageKind}, {party}) beobachtet. Einordnung als Kennung der Kategorie
       Analyse/Marketing laut {dataset}. Werte wurden nicht gespeichert.
   CONSENT-02.unknown-third-party-persistent:
@@ -94,7 +110,9 @@ messages:
       vor einer Interaktion: {keys}{moreKeys, plural, =0 {} other { und # weitere}}}}
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde die dauerhafte Speicherung von {count, plural, one {# Eintrag} other {# Einträgen}} durch Drittanbieter
       beobachtet, {count, plural, one {der} other {die}} in {dataset} nicht als Analyse- oder Marketing-Kennung
       eingeordnet {count, plural, one {ist} other {sind}}.{knownCount, plural, =0 {} other { Laut Dienstekatalog einem
@@ -108,7 +126,9 @@ messages:
       plural, =0 {} other { und # weitere}}}}
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde die dauerhafte Speicherung von {count, plural, one {# Eintrag} other {# Einträgen}} der eigenen Domain
       beobachtet, {count, plural, one {der} other {die}} in {dataset} nicht als Analyse- oder Marketing-Kennung
       eingeordnet {count, plural, one {ist} other {sind}}.{knownCount, plural, =0 {} other { Laut Dienstekatalog einem
@@ -123,7 +143,9 @@ messages:
     title: "Speicherversuch vor einer Interaktion nicht übernommen: {name}"
     body: >-
       {bannerFound, select, true {Vor einer Interaktion mit dem Einwilligungsbanner} false {Vor jeder Interaktion
-      (kein Einwilligungsbanner gefunden)} other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
+      (kein Einwilligungsbanner gefunden)}
+      unrecognized {Vor jeder Interaktion (Einwilligungsbanner beobachtet, aber nicht erkannt)}
+      other {Vor jeder Interaktion (Einwilligungsbanner nicht ausgewertet)}}
       wurde ein Versuch beobachtet, {name} ({storageKind}, {party}) zu speichern; der Browser hat die Speicherung
       abgelehnt oder nicht bestätigt. Einordnung als Kennung der Kategorie Analyse/Marketing laut {dataset}.
 
@@ -187,10 +209,15 @@ messages:
     title: "Pur-Abo-Modell erkannt"
     body: "Ein Modell aus Zustimmung oder kostenpflichtigem Abonnement ({cmp}) wurde erkannt. Bitte manuell prüfen."
   CONSENT-04.banner-not-recognized:
-    title: "Banner nicht erkannt"
+    title: "{bannerRecognized, select, true {Erste Banner-Ebene nicht eindeutig} other {Banner nicht erkannt}}"
     body: >-
-      Banner nicht erkannt. Die Gestaltung und Funktion der Optionen wurden nicht abschließend ausgewertet; die
-      gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.
+      {bannerRecognized, select, true {Das Einwilligungsbanner ({cmp}) wurde erkannt, seine erste Ebene aber nicht
+      eindeutig eingeordnet. Die Gestaltung und Funktion der Optionen wurden nicht abschließend ausgewertet; die
+      gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.} other {{reasons, select, banner-candidate {Ein
+      bannerähnlicher Kasten wurde beobachtet, aber nicht als Einwilligungsbanner erkannt; die Optionen wurden nicht
+      ausgewertet. Seine Merkmale (Schaltflächen, Cookie-Wortlaut, Lage) stehen in den Belegen; bitte manuell
+      prüfen.} other {Banner nicht erkannt. Die Gestaltung und Funktion der Optionen wurden nicht abschließend
+      ausgewertet; die gemessenen Fakten stehen zur manuellen Prüfung in den Belegen.}}}}
   CONSENT-04.cmp-not-supported:
     title: "CMP {cmp} erkannt, nicht unterstützt"
     body: "CMP {cmp} erkannt, nicht unterstützt. Die Gestaltung und Funktion der Optionen wurden nicht ausgewertet."
@@ -247,7 +274,9 @@ messages:
       select, true
       {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor
       einer Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner
-      gefunden} other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}} ({pageCount, plural, one {#
+      gefunden}
+      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}} ({pageCount, plural, one {#
       Seite} other {# Seiten}}).
   EMBED-01.preconnect-only:
     title: >-
@@ -266,7 +295,9 @@ messages:
       (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
       geladen, Zeitpunkt: {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
       Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
-      jeder Interaktion, kein Einwilligungsbanner gefunden} other {vor jeder Interaktion, Einwilligungsbanner nicht
+      jeder Interaktion, kein Einwilligungsbanner gefunden}
+      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
+      other {vor jeder Interaktion, Einwilligungsbanner nicht
       ausgewertet}}}} ({pageCount, plural, one {# Seite} other {# Seiten}}).{frameResourceCount, plural, =0 {} one {
       Dazu zählt # Anfrage des Kartenrahmens an Schriftdienste oder Hilfshosts.} other { Dazu zählen # Anfragen des
       Kartenrahmens an Schriftdienste oder Hilfshosts.}}

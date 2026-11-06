@@ -163,6 +163,39 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
     expect(check(report, 'CONSENT-04')?.status).toBe('completed');
   });
 
+  it('cookie notice the heuristic dismisses (one keyword, a settings button) → no "no banner" finding, the reject stays open', async () => {
+    const { r, report, files } = await run('www.notice-shop.test');
+
+    const candidates = r.snapshot?.cmp?.phases
+      .find((p) => p.phase === 'A')
+      ?.facts.map((f) => f.firstLayer.bannerCandidate);
+    expect(candidates?.length).toBeGreaterThanOrEqual(2);
+    expect(candidates?.every((c) => c?.reason === 'keywords' && c.controls.includes('settings'))).toBe(true);
+
+    expect(check(report, 'CONSENT-03')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'banner-candidate-unrecognized',
+    });
+    expect(check(report, 'CONSENT-04')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'banner-not-recognized',
+    });
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'banner-not-recognized',
+    });
+    expect(ids(report).filter((x) => x.startsWith('CONSENT-0') && !x.startsWith('CONSENT-01'))).toEqual([
+      'CONSENT-02.tracking-identifier-stored',
+      'CONSENT-04.banner-not-recognized',
+    ]);
+    expect(report.findings.find((f) => f.checkId === 'CONSENT-04')?.severity).toBe('info');
+    expect(r.snapshot?.plan.browser?.click?.B).toMatchObject({ target: null });
+
+    expect(files).toContain('Einwilligungsbanner beobachtet, aber nicht erkannt');
+    expect(files).not.toContain('kein Einwilligungsbanner gefunden');
+    expect(files).not.toContain('Der Scan wurde vollständig durchgeführt.');
+  });
+
   it('blocking banner without reject → CONSENT-04 blocking-no-reject with banner screenshot, exit 1', async () => {
     const { r, report, outDir, files } = await run('www.blocking-shop.test');
 

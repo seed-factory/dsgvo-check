@@ -1,6 +1,9 @@
 /** Pure helpers for CMP recognition (`high` needs ≥ 2 independent signals) and consent-state verdicts. */
 import type { CmpDetection, Confidence, ConsentStateFact } from './types.ts';
 
+export const SIGNAL_KINDS = ['global', 'script', 'dom', 'stored'] as const;
+export type SignalKind = (typeof SIGNAL_KINDS)[number];
+
 /** Independent signal kinds: `global`, `script`, `dom` and stored consent (`cookie` and `storage` count as one). */
 export function signalKinds(signals: readonly string[]): Set<string> {
   const kinds = new Set<string>();
@@ -12,11 +15,41 @@ export function signalKinds(signals: readonly string[]): Set<string> {
   return kinds;
 }
 
-export function confidenceFromSignals(signals: readonly string[]): Confidence | null {
-  const n = signalKinds(signals).size;
+/**
+ * `high` for two independent kinds, `medium` for one. With `required`, nothing is recognised unless one of those kinds
+ * was found: a platform global on every page of the platform (Shopware's `salesChannelId`) is no consent tool alone.
+ */
+export function confidenceFromSignals(
+  signals: readonly string[],
+  required: readonly SignalKind[] = [],
+): Confidence | null {
+  const kinds = signalKinds(signals);
+  if (required.length > 0 && !required.some((k) => kinds.has(k))) return null;
+  const n = kinds.size;
   if (n >= 2) return 'high';
   if (n === 1) return 'medium';
   return null;
+}
+
+const CONFIDENCE_RANK = { high: 2, medium: 1, low: 0 } as const;
+
+/** Only stored consent (cookie or storage names): such a name may be shared between vendors (`CookieConsent`). */
+function storedOnly(signals: readonly string[]): boolean {
+  const kinds = signalKinds(signals);
+  return kinds.size === 1 && kinds.has('stored');
+}
+
+/**
+ * Whether detection `a` beats `b` (adapters are tried in registry order, so on a tie the earlier one stays): higher
+ * confidence wins; at the same confidence a signal of the page itself beats a consent cookie or storage name alone.
+ */
+export function outranks(
+  a: Pick<CmpDetection, 'recognitionConfidence' | 'signals'>,
+  b: Pick<CmpDetection, 'recognitionConfidence' | 'signals'>,
+): boolean {
+  const diff = CONFIDENCE_RANK[a.recognitionConfidence] - CONFIDENCE_RANK[b.recognitionConfidence];
+  if (diff !== 0) return diff > 0;
+  return storedOnly(b.signals) && !storedOnly(a.signals);
 }
 
 export const NOT_DETECTED: CmpDetection = {

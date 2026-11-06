@@ -83,11 +83,13 @@ function applicable(report: Report, texts: Texts): Array<[DisclaimerKey, Message
   const screenshots = (report.evidence ?? []).some((e) => e.type === 'screenshot');
   if (options?.screenshots === true && screenshots) out.push(['disclaimer.screenshots', {}]);
 
+  // A banner its adapter recognised, whose first layer could not be read, was attributed to a supported provider.
   if (
     (report.findings ?? []).some(
       (f) =>
         f.checkId === 'CONSENT-04' &&
-        (f.variant === 'banner-not-recognized' || f.variant === 'cmp-not-supported'),
+        (f.variant === 'cmp-not-supported' ||
+          (f.variant === 'banner-not-recognized' && f.params.bannerRecognized !== true)),
     )
   ) {
     out.push(['disclaimer.bannerNotRecognized', {}]);

@@ -28,6 +28,7 @@ import type {
   RequestKind,
   ServiceCategory,
   ServiceInfo,
+  ServiceName,
   ServiceObservation,
   TrackingStage,
 } from './types.ts';
@@ -137,6 +138,7 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
     storage,
     services,
     catalog: info,
+    serviceNames: serviceNames(catalog),
     hints,
     firstPartyEtld1s: [...scope.etld1s].sort(),
     allowlistVersion: catalog.allowlistVersion,
@@ -157,6 +159,26 @@ function serviceInfoFor(
     if (entry) info[id] = entry;
   }
   return info;
+}
+
+/** The names of every catalog service a policy is expected to mention (policy relevance other than `none`). */
+function serviceNames(catalog: ServiceCatalog): ServiceName[] {
+  const out: ServiceName[] = [];
+  for (const id of [...catalog.byId.keys()].sort()) {
+    const info = catalog.info(id);
+    if (!info || info.policyRelevance === 'none') continue;
+    const name: ServiceName = {
+      serviceId: info.serviceId,
+      name: info.name,
+      category: info.category,
+      aliases: [...new Set([...(info.aliasesDe ?? []), ...(info.aliasesEn ?? [])])],
+      companyAliases: info.companyAliases ?? [],
+    };
+    if (info.provider) name.provider = info.provider;
+    if (info.parent) name.parent = info.parent;
+    out.push(name);
+  }
+  return out;
 }
 
 export function timingOf(
@@ -395,7 +417,16 @@ function belongsToEmbed(
   return !match || match.service.category === 'fonts';
 }
 
-function withEmbed(base: ClassifiedRequest, embed: ServiceEntry, r: RequestRecord): ClassifiedRequest {
+/**
+ * The request as a resource of the embed. The catalog service of the resource itself (the fonts of a map frame) stays
+ * known as `resourceServiceId`, so a check can name it while the embed keeps the request.
+ */
+function withEmbed(
+  base: ClassifiedRequest,
+  embed: ServiceEntry,
+  r: RequestRecord,
+  match: RequestMatch | null,
+): ClassifiedRequest {
   const kind = kindFromResourceType(r.resourceType, embed.category);
   const out: ClassifiedRequest = {
     ...base,
@@ -408,6 +439,10 @@ function withEmbed(base: ClassifiedRequest, embed: ServiceEntry, r: RequestRecor
   };
   const integration = integrationFromKind(embed.category, kind);
   if (integration) out.integration = integration;
+  if (match) {
+    out.resourceServiceId = match.service.id;
+    out.resourceCategory = match.service.category;
+  }
   return out;
 }
 
@@ -450,7 +485,8 @@ function classifyRequest(
   withIdentifier(base, identifierOf(catalog, r, undefined));
 
   const frame = !r.isMainFrame && r.frameId ? embeds.get(r.frameId) : undefined;
-  if (frame && belongsToEmbed(match, frame, thirdParty, etld1)) return withEmbed(base, frame.service, r);
+  if (frame && belongsToEmbed(match, frame, thirdParty, etld1))
+    return withEmbed(base, frame.service, r, match);
 
   const out = match ? withCatalogMatch(base, match, r, catalog, thirdParty, consentMode) : base;
   if (frame) out.frameServiceId = frame.service.id;

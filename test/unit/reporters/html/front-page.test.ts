@@ -639,6 +639,78 @@ describe('the overview: checks without a result', () => {
     );
   });
 
+  describe('a banner observed but not recognised', () => {
+    const notRecognized = finding(1, {
+      checkId: 'CONSENT-04',
+      variant: 'banner-not-recognized',
+      messageId: 'CONSENT-04.banner-not-recognized',
+      severity: 'info',
+      text: undefined,
+    });
+    const candidateChecks = () => [
+      check('CONSENT-03', 'inconclusive', 'banner-candidate-unrecognized'),
+      check('CONSENT-04', 'inconclusive', 'banner-not-recognized'),
+      check('CONSENT-05', 'inconclusive', 'banner-not-recognized'),
+    ];
+
+    it('the reject and the accept stay open: the scan is not called complete, the banner sentence says why', () => {
+      const sentences = overview(candidateChecks(), [notRecognized]);
+
+      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences).toContain(
+        'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
+      );
+      expect(sentences.join(' ')).toMatch(/Das Einwilligungsbanner wurde nicht erkannt; .* manuell geprüft/);
+      expect(sentences.join(' ')).not.toMatch(/CONSENT-0[345]|kein Einwilligungsbanner gefunden/);
+    });
+
+    it('without CONSENT-04 in the report, CONSENT-03 alone still says the banner was not recognised', () => {
+      const sentences = overview([check('CONSENT-03', 'inconclusive', 'banner-candidate-unrecognized')]);
+
+      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences.join(' ')).toMatch(/Das Einwilligungsbanner wurde nicht erkannt/);
+    });
+
+    it('a banner that an older snapshot leaves undetermined keeps the checks open and is neither named nor missing', () => {
+      const sentences = overview([
+        check('CONSENT-03', 'inconclusive', 'banner-undetermined'),
+        check('CONSENT-04', 'inconclusive', 'banner-undetermined'),
+        check('CONSENT-05', 'inconclusive', 'banner-undetermined'),
+      ]);
+
+      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences.join(' ')).not.toMatch(/nicht erkannt|kein Einwilligungsbanner gefunden/);
+    });
+
+    it('a not recognised banner is never "complete", even when every check reported a result', () => {
+      const sentences = overview([check('CONSENT-04', 'completed', null)], [notRecognized]);
+
+      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+    });
+  });
+
+  it('a banner an adapter recognised whose first layer could not be read is named recognised, its checks stay open', () => {
+    const ambiguous = finding(1, {
+      checkId: 'CONSENT-04',
+      variant: 'banner-not-recognized',
+      messageId: 'CONSENT-04.banner-not-recognized',
+      severity: 'info',
+      params: {
+        cmp: 'cookieman',
+        reasons: 'ambiguous-first-layer:blocking-no-reject',
+        bannerRecognized: true,
+      },
+      text: undefined,
+    });
+    const sentences = overview([check('CONSENT-04', 'inconclusive', 'banner-not-recognized')], [ambiguous]);
+
+    expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+    expect(sentences.join(' ')).toMatch(
+      /Das Einwilligungsbanner wurde erkannt, seine erste Ebene aber nicht eindeutig eingeordnet; .* manuell geprüft/,
+    );
+    expect(sentences.join(' ')).not.toMatch(/wurde nicht erkannt/);
+  });
+
   it('lets the banner sentence explain the reject that could not be clicked; with a recognised banner it is named', () => {
     const missing = overview([
       check('CONSENT-04', 'not_applicable', 'no-banner'),
@@ -993,7 +1065,9 @@ describe('the full report in words', () => {
     'tls-blocked timeout exception invalid-observation',
     // browser checks; CONSENT-05 passes on why the visit with the reject did not start
     'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
-    'first-layer-not-visible unknown-classification consent-frame-unresolved no-pre-consent-observation',
+    'first-layer-not-visible unknown-classification consent-frame-unresolved banner-candidate-unrecognized',
+    'banner-undetermined',
+    'no-pre-consent-observation',
     'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
     'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',
     'pdf-not-evaluated unsupported-format language-unsupported document-incomplete no-evaluable-pages',

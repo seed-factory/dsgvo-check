@@ -119,3 +119,48 @@ describe('document evidence: manifest', () => {
     expect(EvidenceSchema.safeParse({ ...doc, manifest: { textLength: 'long' } }).success).toBe(false);
   });
 });
+
+describe('text-match evidence: claim and term matches', () => {
+  const match = {
+    id: 'ev-3',
+    type: 'text-match' as const,
+    documentId: 'doc-privacy-1',
+    section: 'Datenschutzerklärung > Schriftarten',
+    quote: 'Die Schriften sind lokal eingebunden.',
+    matchLevel: 'named' as const,
+    negation: 'none' as const,
+  };
+  const inReport = (ev: Record<string, unknown>) => {
+    const r = sampleFullReport();
+    (r.evidence as unknown[]).push(ev);
+    return validateReport(r);
+  };
+
+  it('keeps the kind of statement a quote makes, as a code', () => {
+    const ev = { ...match, claim: 'no-connection' };
+    expect((EvidenceSchema.parse(ev) as { claim?: string }).claim).toBe('no-connection');
+    expect(inReport(ev)).toEqual({ valid: true, errors: '' });
+  });
+
+  it('accepts a match of a dictionary term, with or without a claim', () => {
+    expect(EvidenceSchema.safeParse({ ...match, matchLevel: 'term' }).success).toBe(true);
+    expect(inReport({ ...match, matchLevel: 'term' }).valid).toBe(true);
+    expect(EvidenceSchema.safeParse({ ...match, matchLevel: 'term', claim: 'self-hosted' }).success).toBe(
+      true,
+    );
+  });
+
+  it('a text-match without claim stays valid, as in reports written before', () => {
+    expect(EvidenceSchema.safeParse(match).success).toBe(true);
+    expect(inReport(match).valid).toBe(true);
+  });
+
+  it.each([
+    ['a claim in words instead of a code', { ...match, claim: 'Die Schriften sind lokal' }],
+    ['an empty claim', { ...match, claim: '' }],
+    ['an unknown match level', { ...match, matchLevel: 'fuzzy' }],
+  ])('rejects %s', (_case, ev) => {
+    expect(EvidenceSchema.safeParse(ev).success).toBe(false);
+    expect(inReport(ev).valid).toBe(false);
+  });
+});

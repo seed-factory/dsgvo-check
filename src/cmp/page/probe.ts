@@ -159,35 +159,80 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const MAX_TEXT_DEPTH = 40;
   const NON_CONTENT_TAGS = ['script', 'style', 'noscript', 'template'];
-  const textOf = (node: DNode, includeHidden: boolean, depth = 0): string => {
+
+  /** The element hides what overflows its box; the root and the body pass their overflow on to the viewport. */
+  const clipsOverflow = (el: DElement, s: DStyle): boolean =>
+    !['html', 'body'].includes(el.tagName.toLowerCase()) &&
+    [s.overflow, s.overflowY].some((v) => /\b(hidden|clip)\b/.test(v ?? ''));
+
+  const intersect = (a: Box, b: Box): Box => {
+    const x = Math.max(a.x, b.x);
+    const y = Math.max(a.y, b.y);
+    return {
+      x,
+      y,
+      width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+      height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y),
+    };
+  };
+
+  /**
+   * Whether an element in a box that clips its overflow lies wholly outside that box (or the box has no area): it is
+   * not shown. A fixed element escapes the clip, a box-less one (`display: contents`) is judged by its children.
+   */
+  const clippedAway = (el: DElement, s: DStyle, clip: Box | null): boolean => {
+    if (!clip || s.position === 'fixed' || s.display === 'contents') return false;
+    if (clip.width <= 0 || clip.height <= 0) return true;
+    const r = rectOf(el);
+    const shown = intersect(r, clip);
+    return r.width > 0 && r.height > 0 && shown.width * shown.height === 0;
+  };
+
+  /**
+   * `all`: every text node; `visible`: what is shown on screen, also under `aria-hidden` (a description hidden from
+   * screen readers is still read by the visitor), without content folded in a closed `<details>` or clipped away by a
+   * box that hides its overflow (a collapsed vendor list); `accessible`: what assistive technology reads.
+   */
+  type TextMode = 'all' | 'visible' | 'accessible';
+  const textOf = (node: DNode, mode: TextMode, depth = 0, outerClip: Box | null = null): string => {
     if (depth > MAX_TEXT_DEPTH) return '';
 
+    // The element whose text is read may clip its own overflow.
+    const clip =
+      outerClip ??
+      (mode === 'visible' && depth === 0 && isElement(node) && clipsOverflow(node, style(node))
+        ? rectOf(node)
+        : null);
+    const folded =
+      mode !== 'all' && isElement(node) && node.tagName.toLowerCase() === 'details' && !node.open;
     let out = '';
     const kids = node.childNodes;
     for (let i = 0; i < kids.length; i++) {
       const child = kids[i] as DNode;
       if (child.nodeType === 3) {
-        out += child.textContent ?? '';
+        if (!folded) out += child.textContent ?? '';
         continue;
       }
       if (!isElement(child)) continue;
 
       const tag = child.tagName.toLowerCase();
-      if (NON_CONTENT_TAGS.includes(tag)) continue;
+      if (NON_CONTENT_TAGS.includes(tag) || (folded && tag !== 'summary')) continue;
 
       const s = style(child);
-      if (!includeHidden) {
-        if (child.getAttribute('aria-hidden') === 'true') continue;
-        if (s.display === 'none' || s.visibility === 'hidden') continue;
-      }
+      if (mode === 'accessible' && child.getAttribute('aria-hidden') === 'true') continue;
+      if (mode !== 'all' && (s.display === 'none' || s.visibility === 'hidden')) continue;
+      if (mode === 'visible' && clippedAway(child, s, clip)) continue;
       if (tag === 'img') {
         out += ` ${child.getAttribute('alt') ?? ''} `;
         continue;
       }
 
+      let childClip = s.position === 'fixed' ? null : clip;
+      if (mode === 'visible' && clipsOverflow(child, s))
+        childClip = childClip ? intersect(childClip, rectOf(child)) : rectOf(child);
       const inner =
-        textOf(child, includeHidden, depth + 1) +
-        (child.shadowRoot ? ` ${textOf(child.shadowRoot, includeHidden, depth + 1)}` : '');
+        textOf(child, mode, depth + 1, childClip) +
+        (child.shadowRoot ? ` ${textOf(child.shadowRoot, mode, depth + 1, childClip)}` : '');
       out += s.display.startsWith('inline') ? inner : ` ${inner} `;
     }
     return out;
@@ -201,7 +246,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         .split(/\s+/)
         .map((id) => (root.getElementById ? root.getElementById(id) : null) ?? doc.getElementById(id))
         .filter((e): e is DElement => !!e)
-        .map((e) => textOf(e, true));
+        .map((e) => textOf(e, 'all'));
       const t = clean(parts.join(' '));
       if (t) return t;
     }
@@ -219,7 +264,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       if (type === 'reset') return 'Reset';
     }
 
-    const t = clean(textOf(el, false));
+    const t = clean(textOf(el, 'accessible'));
     if (t) return t;
 
     return clean(el.getAttribute('title') ?? '');
@@ -252,8 +297,22 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         ? { suffix: p.slice(1), tokens: [] as string[] }
         : { suffix: null, tokens: p.split(' ') },
     );
-  const phraseMatchers = matchersOf(args.controlPhrases);
-  const choiceMatchers = matchersOf(args.choicePhrases);
+  const kindMatchers = {
+    accept: matchersOf(args.kindPhrases?.accept),
+    reject: matchersOf(args.kindPhrases?.reject),
+    settings: matchersOf(args.kindPhrases?.settings),
+    save: matchersOf(args.kindPhrases?.save),
+  };
+  const CONTROL_KINDS = ['accept', 'reject', 'settings', 'save'] as const;
+  const phraseMatchers = CONTROL_KINDS.flatMap((k) => kindMatchers[k]);
+  const choiceMatchers = [...kindMatchers.accept, ...kindMatchers.reject];
+  const paidMatchers = matchersOf(args.paidPhrases);
+  const acknowledgements = new Set(args.acknowledgePhrases ?? []);
+  /** Accept phrases that give consent: an acknowledgement ("ok", "verstanden") only confirms a notice. */
+  const consentAcceptMatchers = matchersOf(
+    (args.kindPhrases?.accept ?? []).filter((p) => !acknowledgements.has(p)),
+  );
+  const explicitChoiceMatchers = [...consentAcceptMatchers, ...kindMatchers.reject];
 
   const hasPhrase = (tokens: string[], phrase: string[]): boolean => {
     outer: for (let i = 0; i + phrase.length <= tokens.length; i++) {
@@ -265,21 +324,57 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   /** An accessible name with more tokens is a text blob, not a control label. */
   const MAX_NAME_TOKENS = 12;
-  const nameMatches = (el: DElement, matchers: ReturnType<typeof matchersOf>): boolean => {
-    const tokens = tokensOf(accName(el));
-    if (tokens.length === 0 || tokens.length > MAX_NAME_TOKENS) return false;
-    return matchers.some((m) =>
+
+  const nameTokenCache = new Map<DElement, string[]>();
+  /**
+   * Tokens of the accessible name; for a text blob those of the visible label (an `aria-label` that describes the
+   * button at length over "Alle akzeptieren"), empty when that is a text blob too.
+   */
+  const nameTokens = (el: DElement): string[] => {
+    let tokens = nameTokenCache.get(el);
+    if (!tokens) {
+      const all = tokensOf(accName(el));
+      const shown = all.length > MAX_NAME_TOKENS ? tokensOf(clean(textOf(el, 'visible'))) : all;
+      tokens = shown.length > MAX_NAME_TOKENS ? [] : shown;
+      nameTokenCache.set(el, tokens);
+    }
+    return tokens;
+  };
+
+  const tokensMatch = (tokens: string[], matchers: ReturnType<typeof matchersOf>): boolean =>
+    tokens.length > 0 &&
+    matchers.some((m) =>
       m.suffix !== null
         ? tokens.some((t) => t.endsWith(m.suffix as string))
         : m.tokens.length > 0 && hasPhrase(tokens, m.tokens),
     );
-  };
 
   /** The accessible name contains an accept/reject/settings/save phrase of the lexicon. */
-  const isLexiconControl = (el: DElement): boolean => nameMatches(el, phraseMatchers);
+  const isLexiconControl = (el: DElement): boolean => tokensMatch(nameTokens(el), phraseMatchers);
 
   /** The accessible name contains an accept or reject phrase of the lexicon (a real choice). */
-  const isChoiceControl = (el: DElement): boolean => nameMatches(el, choiceMatchers);
+  const isChoiceControl = (el: DElement): boolean => tokensMatch(nameTokens(el), choiceMatchers);
+
+  /** A choice without subscription or payment wording: "Newsletter abonnieren und akzeptieren" is no consent choice. */
+  const isUnpaidChoiceControl = (el: DElement): boolean =>
+    isChoiceControl(el) && !tokensMatch(nameTokens(el), paidMatchers);
+
+  /** An unpaid reject, or an accept that is more than an acknowledgement: "OK" under a shipping notice is no choice. */
+  const isExplicitChoiceControl = (el: DElement): boolean =>
+    tokensMatch(nameTokens(el), explicitChoiceMatchers) && !tokensMatch(nameTokens(el), paidMatchers);
+
+  /**
+   * Lexicon classes of a control in a dismissed candidate; `other` for a control without one, with subscription or
+   * payment wording, or with an acknowledgement as its only accept phrase.
+   */
+  const controlKindsOf = (el: DElement): Array<(typeof CONTROL_KINDS)[number] | 'other'> => {
+    const tokens = nameTokens(el);
+    if (tokensMatch(tokens, paidMatchers)) return ['other'];
+    const kinds = CONTROL_KINDS.filter((k) =>
+      tokensMatch(tokens, k === 'accept' ? consentAcceptMatchers : kindMatchers[k]),
+    );
+    return kinds.length > 0 ? kinds : ['other'];
+  };
 
   const inNavigation = (el: DElement, stop: DElement | null): boolean => {
     for (
@@ -504,6 +599,30 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const keywordHitsOf = (text: string): string[] =>
     args.keywords.filter((_k, i) => keywordRes[i]?.test(text) === true);
 
+  const cookieKeywordRes = (args.cookieKeywords ?? []).map((k) => {
+    try {
+      return new RegExp(k, 'giu');
+    } catch {
+      return null;
+    }
+  });
+  const negationTokens = (args.negations ?? []).map((n) => n.split(' ')).filter((n) => n.length > 0);
+  /** Characters before a cookie word read for a negation in front of it. */
+  const NEGATION_LOOKBACK = 40;
+  /** The text right before `at` ends with a negation ("keine Cookies", "no cookies"). */
+  const negatedAt = (text: string, at: number): boolean => {
+    const before = tokensOf(text.slice(Math.max(0, at - NEGATION_LOOKBACK), at));
+    return negationTokens.some(
+      (n) => n.length <= before.length && n.every((t, j) => before[before.length - n.length + j] === t),
+    );
+  };
+  /**
+   * The text names cookies themselves, not only privacy or tracking, at least once without a negation in front: "Wir
+   * verwenden keine Cookies" tells that none are used.
+   */
+  const hasCookieWording = (text: string): boolean =>
+    cookieKeywordRes.some((re) => !!re && [...text.matchAll(re)].some((m) => !negatedAt(text, m.index ?? 0)));
+
   const isPurAbo = (text: string): boolean =>
     args.purAbo.some((p) => {
       try {
@@ -519,7 +638,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const frameBody = (): DElement | null =>
     args.frameMode && doc.body && isRendered(doc.body) ? doc.body : null;
   const frameBodyHits = (body: DElement): string[] =>
-    keywordHitsOf(clean(textOf(body, false), FRAME_BODY_TEXT_CAP).toLowerCase());
+    keywordHitsOf(clean(textOf(body, 'visible'), FRAME_BODY_TEXT_CAP).toLowerCase());
 
   interface ContainerHit {
     el: DElement;
@@ -599,47 +718,123 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     signals: string[];
   }
 
+  type Rejected = NonNullable<ProbeResult['rejectedCandidate']>['fact'];
+
+  /** A banner shows on at least this share of the first screen, a dialog too (a 1 px dialog is screen-reader text). */
   const MIN_FLOATING_AREA_RATIO = 0.02;
   const MAX_STATIC_AREA_RATIO = 0.4;
+  /** Hit points per side over the part of a candidate in the first screen. */
+  const CANDIDATE_HIT_STEPS = 3;
+
+  /**
+   * A hit test on a grid over the part of the box in the first screen finds the element or one inside it: a box clipped
+   * away (`clip`, `clip-path`) or covered by the opaque page is not shown. A box that takes no pointer events cannot
+   * be hit tested and counts as shown.
+   */
+  const hitAnywhere = (el: DElement, box: Box): boolean => {
+    if (style(el).pointerEvents === 'none') return true;
+    const shown = intersect(box, { x: 0, y: 0, width: vw, height: vh });
+    for (let i = 0; i < CANDIDATE_HIT_STEPS; i++) {
+      for (let j = 0; j < CANDIDATE_HIT_STEPS; j++) {
+        const x = shown.x + ((i + 0.5) * shown.width) / CANDIDATE_HIT_STEPS;
+        const y = shown.y + ((j + 0.5) * shown.height) / CANDIDATE_HIT_STEPS;
+        if (composedContains(el, deepElementFromPoint(x, y))) return true;
+      }
+    }
+    return false;
+  };
   /** A candidate whose text fills this cap is a page-sized container, not a banner. */
   const CANDIDATE_TEXT_CAP = 8000;
   const STATIC_NOTICE_MAX_TEXT = 1500;
 
-  const heuristicCandidate = (el: DElement): Candidate | null => {
+  const containerNameRes = (args.bannerContainerNames ?? []).map((n) => {
+    try {
+      return new RegExp(n, 'iu');
+    } catch {
+      return null;
+    }
+  });
+  /** The id or class names a banner container (test/data/cmp/probe.yaml). */
+  const isNamedContainer = (el: DElement): boolean => {
+    const names = `${el.id} ${el.getAttribute('class') ?? ''}`;
+    return containerNameRes.some((re) => re?.test(names) === true);
+  };
+
+  /** Lexicon classes of the first controls outside navigation landmarks, in a fixed order. */
+  const CANDIDATE_KIND_ORDER = [...CONTROL_KINDS, 'other'] as const;
+  const candidateControls = (el: DElement, controlEls: DElement[]): Rejected['controls'] => {
+    const kinds = new Set<string>();
+    for (const c of controlEls.slice(0, MAX_CONTROLS_SCANNED)) {
+      if (!inNavigation(c, el)) for (const k of controlKindsOf(c)) kinds.add(k);
+    }
+    return CANDIDATE_KIND_ORDER.filter((k) => kinds.has(k));
+  };
+
+  /**
+   * A banner-shaped, rendered box with consent wording is taken (`candidate`) or dismissed with its features
+   * (`rejected`); null for anything else.
+   */
+  const heuristicCandidate = (el: DElement): { candidate: Candidate } | { rejected: Rejected } | null => {
     const shape = bannerShape(el);
     if (!shape) return null;
     const { dialogish, fixed, staticCandidate, label } = shape;
 
-    // Page chrome is no banner; one inside a header/footer needs an accept/reject control (checked below).
+    // Page chrome (a navigation landmark around the element, the element a header or footer, or a box inside one) needs
+    // an accept or reject control (checked below): a sidebar or a menu drawer with privacy links is chrome, a cookie bar
+    // marked up as <aside> or role="banner" is not.
     const chrome = pageChromeOf(el);
-    if (chrome === 'navigation' || (chrome === 'section' && !dialogish)) return null;
+    const isChrome = chrome === 'navigation' || (chrome === 'section' && !dialogish);
     const inSection = chrome === 'inside-section' && !dialogish;
 
     if (!isRendered(el)) return null;
     const box = rectOf(el);
     const areaRatio = visibleArea(box) / Math.max(1, vw * vh);
-    if (areaRatio === 0 || (!dialogish && areaRatio < MIN_FLOATING_AREA_RATIO)) return null;
+    if (areaRatio < MIN_FLOATING_AREA_RATIO) return null;
     // A static notice must be a compact block that lies completely in the first screen.
     if (staticCandidate && (areaRatio > MAX_STATIC_AREA_RATIO || box.y < -1 || box.y + box.height > vh + 1))
       return null;
+    if (!hitAnywhere(el, box)) return null;
 
-    const rawText = clean(textOf(el, false), CANDIDATE_TEXT_CAP);
+    const rawText = clean(textOf(el, 'visible'), CANDIDATE_TEXT_CAP);
     if (rawText.length >= CANDIDATE_TEXT_CAP) return null;
     if (staticCandidate && rawText.length > STATIC_NOTICE_MAX_TEXT) return null;
-    const hits = keywordHitsOf(`${label} ${rawText}`.toLowerCase());
-    if (hits.length === 0 || (!dialogish && hits.length < 2)) return null;
+    const wording = `${label} ${rawText}`.toLowerCase();
+    const hits = keywordHitsOf(wording);
+    if (hits.length === 0) return null;
 
     const controlEls = deepWithin(el, INTERACTIVE).filter(isRendered);
     const controls = controlEls.length;
-    // A non-modal candidate must offer a choice: a control that the lexicon knows (navigation links do not count).
+    const named = isNamedContainer(el);
+    const cookieWording = hasCookieWording(wording);
+    const reject = (reason: Rejected['reason']) => ({
+      rejected: {
+        reason,
+        keywordHits: hits.length,
+        controls: candidateControls(el, controlEls),
+        cookieWording,
+        fixed,
+        dialog: dialogish,
+        named,
+      },
+    });
+    const hasControl = (test: (c: DElement) => boolean) => hasControlOutsideNavigation(el, controlEls, test);
+
+    // In the page chrome the control must be an accept or reject: a footer strip with settings links is chrome,
+    // whatever its wording. A landmark itself is no candidate either, one inside a header or footer is kept.
+    if (isChrome && !hasControl(isChoiceControl)) return null;
+    if (inSection && !hasControl(isChoiceControl)) return reject('page-section');
+    // One keyword is enough with the name of a banner, an explicit accept or reject, or cookie wording: in a dialog
+    // alone, in a box with an acknowledgement ("Diese Website verwendet Cookies. [OK]"). A newsletter, login or age
+    // dialog with a "Datenschutz" link is none.
     if (
-      !dialogish &&
-      phraseMatchers.length > 0 &&
-      !hasControlOutsideNavigation(el, controlEls, isLexiconControl)
+      hits.length < 2 &&
+      !named &&
+      !hasControl(isExplicitChoiceControl) &&
+      !(cookieWording && (dialogish || hasControl(isUnpaidChoiceControl)))
     )
-      return null;
-    // Inside a header/footer the control must be an accept or reject: a footer strip with settings links is chrome.
-    if (inSection && !hasControlOutsideNavigation(el, controlEls, isChoiceControl)) return null;
+      return reject('keywords');
+    // A non-modal candidate must offer a choice: a control that the lexicon knows (navigation links do not count).
+    if (!dialogish && phraseMatchers.length > 0 && !hasControl(isLexiconControl)) return reject('no-control');
 
     // A dialog weighs 2, a fixed box 1, up to 4 keyword hits count, and any control adds 1.
     const score = (dialogish ? 2 : 0) + (fixed ? 1 : 0) + Math.min(hits.length, 4) + (controls > 0 ? 1 : 0);
@@ -647,20 +842,40 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       ...(dialogish ? ['heuristic:dialog'] : []),
       ...(fixed ? ['heuristic:fixed'] : []),
       ...(staticCandidate ? ['heuristic:static'] : []),
+      ...(named ? ['heuristic:named'] : []),
       `heuristic:keywords:${hits.length}`,
       ...(controls > 0 ? [`heuristic:controls:${controls}`] : []),
     ];
-    return { el, score, area: areaRatio, signals };
+    return { candidate: { el, score, area: areaRatio, signals } };
   };
 
-  /** In a child frame the frame body itself may be the banner: wording of two keywords and one control. */
+  /**
+   * Of the dismissed candidates the one most like a banner: outside the page chrome, named like a banner, with an
+   * accept or reject, with any lexicon control, with cookie wording, then by keyword hits.
+   */
+  const rejectedRank = (r: Rejected): number =>
+    (r.reason === 'page-section' ? 0 : 1000) +
+    (r.named ? 100 : 0) +
+    (r.controls.includes('accept') || r.controls.includes('reject')
+      ? 20
+      : r.controls.some((k) => k !== 'other')
+        ? 10
+        : 0) +
+    (r.cookieWording ? 5 : 0) +
+    Math.min(r.keywordHits, 4);
+
+  /**
+   * In a child frame the frame body itself may be the banner: wording of two keywords and a control the lexicon knows
+   * (an embedded form with a privacy notice and "Absenden" is none).
+   */
   const frameBodyCandidate = (): Candidate | null => {
     const body = frameBody();
     if (!body) return null;
 
     const hits = frameBodyHits(body);
-    const controls = deepWithin(body, INTERACTIVE).filter(isRendered).length;
-    if (hits.length < 2 || controls === 0) return null;
+    const controlEls = deepWithin(body, INTERACTIVE).filter(isRendered);
+    const controls = controlEls.length;
+    if (hits.length < 2 || !hasControlOutsideNavigation(body, controlEls, isLexiconControl)) return null;
 
     return {
       el: body,
@@ -676,6 +891,11 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   /** Safety cap against huge pages. */
   const MAX_SCANNED_ELEMENTS = 6000;
+  /**
+   * Past the cap, the last elements of the document are scanned too: a banner is often appended at the end of a long
+   * body, and one that floats between the points of the hit grid is found there.
+   */
+  const MAX_TAIL_ELEMENTS = 1500;
   const allElements = (): DElement[] => {
     const all: DElement[] = [];
     for (const root of [doc as DQueryRoot, ...shadowRoots]) {
@@ -683,15 +903,65 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       for (let i = 0; i < list.length && all.length < MAX_SCANNED_ELEMENTS; i++)
         all.push(list[i] as DElement);
     }
+    const list = doc.querySelectorAll('*');
+    for (let i = Math.max(MAX_SCANNED_ELEMENTS, list.length - MAX_TAIL_ELEMENTS); i < list.length; i++)
+      all.push(list[i] as DElement);
     return all;
   };
 
-  /** The best candidate: higher score wins, the larger area breaks ties. */
-  const findByHeuristic = (): ContainerHit | null => {
+  const DIALOG_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog';
+  /** Safety cap of the dialogs and fixed boxes looked at before the capped scan. */
+  const MAX_PRIORITY_ELEMENTS = 300;
+  /** Hit points per side of the viewport, edges included: a thin bar at the bottom edge is hit too. */
+  const PRIORITY_GRID_STEPS = 7;
+  const EDGE_INSET_PX = 2;
+
+  /**
+   * Dialogs and the fixed or sticky boxes at the first screen (hit test, then their ancestors). A banner is often
+   * appended at the end of a long body, past the cap of the scan in document order, so these come first.
+   */
+  const priorityElements = (): DElement[] => {
+    const out = new Set<DElement>();
+    for (const el of deepQueryAll(DIALOG_SELECTOR)) {
+      if (out.size >= MAX_PRIORITY_ELEMENTS) return [...out];
+      out.add(el);
+    }
+
+    const at = (i: number, size: number) =>
+      Math.min(size - EDGE_INSET_PX, Math.max(EDGE_INSET_PX, (i * size) / (PRIORITY_GRID_STEPS - 1)));
+    for (let i = 0; i < PRIORITY_GRID_STEPS; i++) {
+      for (let j = 0; j < PRIORITY_GRID_STEPS; j++) {
+        const hit = deepElementFromPoint(at(i, vw), at(j, vh));
+        for (let c = hit, k = 0; c && k < MAX_ANCESTOR_STEPS; k++, c = parentEl(c)) {
+          if (c === doc.body || c === doc.documentElement) break;
+          if (out.size >= MAX_PRIORITY_ELEMENTS) return [...out];
+          if (isFixedPosition(style(c))) out.add(c);
+        }
+      }
+    }
+    return [...out];
+  };
+
+  /**
+   * The best candidate: higher score wins, the larger area breaks ties. Without one, the dismissed candidate most like
+   * a banner is kept as a diagnostic.
+   */
+  const findByHeuristic = (): { hit: ContainerHit | null; rejected: ProbeResult['rejectedCandidate'] } => {
     let best: Candidate | null = null;
-    for (const el of allElements()) {
-      const candidate = heuristicCandidate(el);
-      if (!candidate) continue;
+    let rejected: ProbeResult['rejectedCandidate'] = null;
+    const seen = new Set<DElement>();
+    for (const el of [...priorityElements(), ...allElements()]) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+
+      const found = heuristicCandidate(el);
+      if (!found) continue;
+      if ('rejected' in found) {
+        const rank = rejectedRank(found.rejected);
+        if (!rejected || rank > rejected.rank) rejected = { fact: found.rejected, rank, box: rectOf(el) };
+        continue;
+      }
+      const { candidate } = found;
       if (
         !best ||
         candidate.score > best.score ||
@@ -701,15 +971,21 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     }
     best ??= frameBodyCandidate();
 
-    if (!best) return null;
-    return { el: best.el, count: 1, selector: null, heuristic: { score: best.score, signals: best.signals } };
+    if (!best) return { hit: null, rejected };
+    return {
+      hit: { el: best.el, count: 1, selector: null, heuristic: { score: best.score, signals: best.signals } },
+      rejected: null,
+    };
   };
 
-  const findContainer = (): ContainerHit | null => {
+  const findContainer = (): { hit: ContainerHit | null; rejected: ProbeResult['rejectedCandidate'] } => {
     if (args.containerEl) {
-      return { el: args.containerEl as DElement, count: 1, selector: null, heuristic: null };
+      return {
+        hit: { el: args.containerEl as DElement, count: 1, selector: null, heuristic: null },
+        rejected: null,
+      };
     }
-    return args.mode === 'banner' ? findBySelectors() : findByHeuristic();
+    return args.mode === 'banner' ? { hit: findBySelectors(), rejected: null } : findByHeuristic();
   };
 
   const describeButton = (el: DElement, vendorRole: string | null): RawButton => {
@@ -806,7 +1082,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       const cached = backdropCache.get(el);
       if (cached !== undefined) return cached;
 
-      let result = clean(textOf(el, false), BACKDROP_TEXT_SAMPLE).length < BACKDROP_MAX_TEXT;
+      let result = clean(textOf(el, 'accessible'), BACKDROP_TEXT_SAMPLE).length < BACKDROP_MAX_TEXT;
       let c: DElement | null = el;
       for (let i = 0; c && i < MAX_BANNER_ANCESTOR_STEPS && !result; i++) {
         if (ancestors.has(c)) {
@@ -995,7 +1271,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return covered;
   };
 
-  const notFoundResult = (): ProbeResult => {
+  const notFoundResult = (rejected: ProbeResult['rejectedCandidate']): ProbeResult => {
     const body = frameBody();
     return {
       found: false,
@@ -1021,17 +1297,18 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
       },
       viewport,
       heuristic: null,
+      rejectedCandidate: rejected,
     };
   };
 
   const CONTAINER_TEXT_CAP = 20000;
 
-  const container = findContainer();
-  if (!container) return notFoundResult();
+  const { hit: container, rejected } = findContainer();
+  if (!container) return notFoundResult(rejected);
 
   const root = container.el;
   const rootRendered = isRendered(root);
-  const text = clean(textOf(root, false), CONTAINER_TEXT_CAP).toLowerCase();
+  const text = clean(textOf(root, 'visible'), CONTAINER_TEXT_CAP).toLowerCase();
   const { buttons, truncated } = readButtons(root);
 
   // A `display: contents` (box-less) container still shows a banner when its controls render.
@@ -1058,5 +1335,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     viewport,
     coveredLinks,
     heuristic: container.heuristic,
+    rejectedCandidate: null,
   };
 }

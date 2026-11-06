@@ -45,6 +45,7 @@ export interface EvidenceTools {
  * service, the registrable domain of the URL). They stay in the JSON report.
  */
 const INTERNAL_FIELDS = new Set([
+  'beforeClick',
   'tMs',
   'navigationId',
   'actionId',
@@ -62,6 +63,7 @@ const INTERNAL_FIELDS = new Set([
 const OCCURRENCE_FIELDS = new Set([
   'page',
   'phase',
+  'beforeClick',
   'tMs',
   'navigationId',
   'frameId',
@@ -118,7 +120,7 @@ function plainRequest(ev: Evidence): boolean {
 function listKey(ev: Evidence): string | null {
   if (LIST_TYPES.has(ev.type)) return ev.type;
   const f = ev as Fields;
-  return plainRequest(ev) ? `request|${str(f.phase)}|${str(f.page)}` : null;
+  return plainRequest(ev) ? `request|${phaseKey(f)}|${str(f.page)}` : null;
 }
 
 /** A list field (pages, evidence values) shows at most this many entries. */
@@ -154,6 +156,13 @@ export function plainValue(value: unknown, depth = 0): string {
 }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/**
+ * The phase of an observation as `EvidenceTools.phase` names it: `B:before-click` for what phase B or C recorded before
+ * its click, the plain phase otherwise.
+ */
+const phaseKey = (f: Fields): string =>
+  f.beforeClick === true && str(f.phase) ? `${str(f.phase)}:before-click` : str(f.phase);
 
 /** One value as a list item: URLs get link styling, a phase and a yes/no read as words, objects are `key: value` code. */
 function valueItem(key: string, value: unknown, t: EvidenceTools): Item {
@@ -219,7 +228,7 @@ function requestFeatureRows(ev: Fields, t: EvidenceTools): Row[] {
 
 function requestRows(ev: Fields, t: EvidenceTools): Row[] {
   const out: Row[] = [row('url', ev.url, t), labelled('fetch', [t.item(fetchLine(ev, t), 400)], t)];
-  if (ev.phase) out.push(row('phase', ev.phase, t));
+  if (ev.phase) out.push(row('phase', phaseKey(ev), t));
   if (ev.page) out.push(row('page', ev.page, t));
   out.push(...requestFeatureRows(ev, t));
   if (ev.frameUrl) out.push(row('frameUrl', ev.frameUrl, t));
@@ -272,7 +281,7 @@ function cookieRows(ev: Fields, t: EvidenceTools): Row[] {
     out.push(labelled('setBy', [t.item(setBy, 300)], t));
   }
   if (ev.partitionKey) out.push(row('partitionKey', ev.partitionKey, t));
-  if (ev.phase) out.push(row('phase', ev.phase, t));
+  if (ev.phase) out.push(row('phase', phaseKey(ev), t));
   if (ev.page) out.push(row('page', ev.page, t));
   return out;
 }
@@ -286,6 +295,23 @@ function buttonText(b: Fields, t: EvidenceTools): string {
     actionable: b.actionableAtFirstScreen === true,
     hasContrast: typeof b.contrast === 'number',
     contrast: typeof b.contrast === 'number' ? b.contrast : 0,
+  });
+}
+
+/** A banner-like box the heuristic did not take, in one line: why not, and its features. */
+function candidateText(c: Fields, t: EvidenceTools): string {
+  const controls = Array.isArray(c.controls)
+    ? c.controls.map((k) => t.label('evidence.controlKind', { kind: str(k) }))
+    : [];
+  return t.label('evidence.candidate', {
+    reason: str(c.reason),
+    keywordHits: typeof c.keywordHits === 'number' ? c.keywordHits : 0,
+    hasControls: controls.length > 0,
+    controls: controls.join(', '),
+    cookieWording: c.cookieWording === true,
+    fixed: c.fixed === true,
+    dialog: c.dialog === true,
+    named: c.named === true,
   });
 }
 
@@ -310,7 +336,7 @@ const coded = (field: string, value: unknown, t: EvidenceTools): string =>
 /** Fields whose values are codes of a closed set, worded by `evidence.value`. */
 const CODED_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
   'consent-state': new Set(['source', 'ready', 'origin']),
-  'text-match': new Set(['matchLevel', 'negation']),
+  'text-match': new Set(['matchLevel', 'negation', 'claim']),
 };
 
 /** One field of a type without its own layout; structured values that have words of their own get them here. */
@@ -331,6 +357,9 @@ function genericRow(ev: Evidence, k: string, v: unknown, t: EvidenceTools): Row 
   if (k === 'manifest' && v && typeof v === 'object') {
     return labelled(k, [t.item(manifestText(v as Fields, t), 400)], t);
   }
+  if (k === 'candidate' && v && typeof v === 'object') {
+    return labelled(k, [t.item(candidateText(v as Fields, t), 500)], t);
+  }
   if (k === 'viewport' && v && typeof v === 'object') {
     const vp = v as Fields;
     return labelled(k, [t.item(`${vp.width ?? '–'} × ${vp.height ?? '–'}`, 40)], t);
@@ -347,7 +376,7 @@ function genericRows(ev: Evidence, t: EvidenceTools): Row[] {
   const hidden = t.hidden(ev);
   return Object.entries(ev as Fields)
     .filter(([k, v]) => !hidden.has(k) && !INTERNAL_FIELDS.has(k) && v !== undefined)
-    .map(([k, v]) => genericRow(ev, k, v, t));
+    .map(([k, v]) => genericRow(ev, k, k === 'phase' ? phaseKey(ev as Fields) : v, t));
 }
 
 function fieldRows(ev: Evidence, t: EvidenceTools): Row[] {
@@ -399,7 +428,7 @@ function mergedView(group: readonly Evidence[], t: EvidenceTools): EvidenceView 
   const view = evidenceView(group[0]!, t);
   const placeLabels = new Set(['phase', 'page'].map((key) => t.label('evidence.field', { key })));
   const shared = [...view.lead, ...view.fields].filter((r) => !placeLabels.has(r.label));
-  const phases = fieldValues(group, 'phase');
+  const phases = distinct(group.map((e) => phaseKey(e as Fields)).filter(Boolean));
   const pages = fieldValues(group, 'page');
   if (phases.length) {
     shared.push({
@@ -424,7 +453,7 @@ function listRow(ev: Evidence, t: EvidenceTools): Row {
       hasReason: Boolean(f.reason),
       reason: f.reason ? reasonText(str(f.reason), t) : '',
       hasPhase: Boolean(f.phase),
-      phase: f.phase ? t.phase(str(f.phase)) : '',
+      phase: f.phase ? t.phase(phaseKey(f)) : '',
     });
     return {
       label: t.label('pageRole', { role: str(f.role) }),
@@ -450,7 +479,7 @@ function listRow(ev: Evidence, t: EvidenceTools): Row {
 function requestListFields(group: readonly Evidence[], t: EvidenceTools): Row[] {
   const first = group[0] as Fields;
   const place: Row[] = [];
-  if (first.phase) place.push(row('phase', first.phase, t));
+  if (first.phase) place.push(row('phase', phaseKey(first), t));
   if (first.page) place.push(row('page', first.page, t));
   const lines = group.slice(0, MAX_LIST_ITEMS).map((ev) => ({
     label: t.item(fetchLine(ev as Fields, t), 200).text,

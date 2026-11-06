@@ -185,7 +185,10 @@ interface ViewText {
   label: (key: string, params?: MessageParams) => string;
   row: (key: string, value: unknown, max?: number) => Row;
   rows: (key: string, values: Item[]) => Row;
-  /** A phase with what happened in it (B after a reject, or a visit without one); `short` for table cells. */
+  /**
+   * A phase with what happened in it (B after a reject, or a visit without one); `B:before-click` names the first screen
+   * of B or C before its click; `short` for table cells.
+   */
   phase: (phase: string, short?: boolean) => string;
 }
 
@@ -219,8 +222,11 @@ function viewText(report: Report, ctx: ReporterContext): ViewText {
     label,
     row: (key, value, max = 2000) => ({ label: label(key), items: [item(value, max)] }),
     rows: (key, values) => ({ label: label(key), items: values }),
-    phase: (phase, short = false) =>
-      label(short ? 'phaseShort' : 'phase', { phase, outcome: outcomes[phase] ?? '' }),
+    phase: (key, short = false) => {
+      const [phase = key, moment] = key.split(':');
+      const outcome = moment === 'before-click' ? 'before-click' : (outcomes[phase] ?? '');
+      return label(short ? 'phaseShort' : 'phase', { phase, outcome });
+    },
   };
 }
 
@@ -324,18 +330,27 @@ const phaseList = (phases: readonly string[], v: ViewText, short = false): strin
     .map((phase) => v.phase(phase, short))
     .join(', ');
 
+/**
+ * The phases of a finding; B or C as `B:before-click` when all its evidence of that phase was recorded before the click
+ * (a finding before an interaction that phase B confirmed on its first screen).
+ */
+function findingPhases(f: Finding, evidence: ReadonlyMap<string, Evidence>): string[] {
+  const cited = f.evidenceIds.flatMap((id) => evidence.get(id) ?? []);
+  return f.phases.map((phase) => {
+    const own = cited.filter((e) => e.phase === phase);
+    return phase !== 'A' && own.length > 0 && own.every((e) => e.beforeClick === true)
+      ? `${phase}:before-click`
+      : phase;
+  });
+}
+
 /** The detail rows under a finding; optional facts of the finding add a row each. */
-function findingRows(
-  f: Finding,
-  v: ViewText,
-  ctx: ReporterContext,
-  byFingerprint: ReadonlyMap<string, Finding>,
-) {
+function findingRows(f: Finding, v: ViewText, ctx: ReporterContext, sources: FindingSources) {
   const { label, row, rows } = v;
   const out: Row[] = [row('finding.confidence', label(`confidence.${f.confidence}`))];
 
   if (f.pages.length) out.push(rows('finding.pages', f.pages.slice(0, MAX_LIST_ITEMS).map(urlItem)));
-  if (f.phases.length) out.push(row('finding.phases', phaseList(f.phases, v), 400));
+  if (f.phases.length) out.push(row('finding.phases', phaseList(findingPhases(f, sources.evidence), v), 400));
   if (f.trigger) out.push(row('finding.trigger', f.trigger, 200));
   if (typeof f.replicated === 'boolean') {
     out.push(row('finding.replicated', label(f.replicated ? 'yes' : 'no')));
@@ -364,7 +379,8 @@ function findingRows(
   });
   out.push(row('finding.classification', classification));
 
-  if (f.related.length) out.push(rows('finding.related', relatedItems(f.related, byFingerprint, v, ctx)));
+  if (f.related.length)
+    out.push(rows('finding.related', relatedItems(f.related, sources.byFingerprint, v, ctx)));
   out.push(rows('finding.fingerprint', [item(f.fingerprint, 80, true)]));
   return out;
 }
@@ -416,7 +432,7 @@ function findingView(f: Finding, v: ViewText, ctx: ReporterContext, sources: Fin
     checkId: text(f.checkId, 20),
     title: text(message.title, 300),
     body: text(message.body, 4000),
-    rows: findingRows(f, v, ctx, sources.byFingerprint),
+    rows: findingRows(f, v, ctx, sources),
     evidence: evs,
     evidenceCount: distinctIds(f.evidenceIds).length,
     evidenceSample: evidenceSample(f, sources.evidence, v),

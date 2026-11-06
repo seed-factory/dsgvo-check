@@ -76,7 +76,7 @@ export const embed02 = defineCheck({
   module: 'browser',
   requires: ['browser', 'cmp', 'derived'],
   variants: [{ variant: 'maps-loaded' }],
-  run({ browser, cmp, derived }) {
+  run({ browser, cmp, derived }, ctx) {
     const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
     if (signal) return signal;
     if (!hasPhaseA(browser)) {
@@ -85,7 +85,7 @@ export const embed02 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const banner = bannerState(cmp);
+    const banner = bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
     const observations = [...groupMapRequests(derived).entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([serviceId, reqs]) => mapsObservation(serviceId, reqs, records, derived, banner));

@@ -2,7 +2,7 @@
  * Scenario builders for browser-check tests: a "site" is https://www.example.de/ with phase A pages
  * start/impressum/datenschutz/kontakt linking both legal documents in the footer, and no CMP unless given.
  */
-import type { CmpFacts, CmpPhaseFacts, CmpSection } from '../../../../src/cmp/types.ts';
+import type { BannerCandidateFact, CmpFacts, CmpPhaseFacts, CmpSection } from '../../../../src/cmp/types.ts';
 import type {
   BrowserPlan,
   CookieRecord,
@@ -162,6 +162,61 @@ export function noBannerCmp(phases: Array<'A' | 'B'> = ['A']): CmpSection {
 
 export function cmpWith(...phases: CmpPhaseFacts[]): CmpSection {
   return { phases };
+}
+
+/** A banner-shaped box the generic heuristic dismissed: one consent keyword and a settings button, no banner name. */
+export const bannerCandidate = (p: Partial<BannerCandidateFact> = {}): BannerCandidateFact => ({
+  reason: 'keywords',
+  keywordHits: 1,
+  controls: ['settings', 'other'],
+  cookieWording: true,
+  fixed: true,
+  dialog: false,
+  named: false,
+  ...p,
+});
+
+/** Phase A facts without a banner on `pages`; the heuristic recorded `candidate` there (null: it saw none). */
+export function candidateCmp(
+  candidate: BannerCandidateFact | null,
+  pages: readonly string[] = [START, IMPRESSUM],
+): CmpSection {
+  return cmpWith({
+    phase: 'A',
+    facts: pages.map((pageUrl) =>
+      makeCmpFacts({
+        phase: 'A',
+        pageUrl,
+        moment: 'first-screen',
+        firstLayer: {
+          bannerPresent: false,
+          bannerVisible: false,
+          buttons: [],
+          purAbo: false,
+          closeMeansAccept: null,
+          bannerCandidate: candidate,
+        },
+      }),
+    ),
+  });
+}
+
+/** A visible link inside a container the DOM collector named a banner (`region: banner`). */
+export const bannerLink = (p: Partial<LinkFact> = {}): LinkFact =>
+  makeLink({
+    text: 'Mehr Informationen',
+    href: PRIVACY,
+    hrefKind: 'https',
+    region: 'banner',
+    sameSite: true,
+    ...p,
+  });
+
+/** Phase A pages; the pages named in `withLinks` also carry `links` next to the footer links. */
+export function pagesWithLinks(withLinks: Record<string, LinkFact[]>): PageVisit[] {
+  return defaultPages('A').map((p) =>
+    withLinks[p.url] ? { ...p, dom: makeDom({ links: [...footerLinks(), ...(withLinks[p.url] ?? [])] }) } : p,
+  );
 }
 
 export interface SiteSpec {

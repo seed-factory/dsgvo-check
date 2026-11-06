@@ -151,11 +151,16 @@ export const SITES: Record<string, SiteConfig> = {
   'cmp/complianz': { hosts: { 'www.complianz.test': 'www' } },
   'cmp/cookiebot': { hosts: { 'www.cookiebot.test': 'www', 'consent.cookiebot.com': 'cb' } },
   'cmp/cookiehub': { hosts: { 'www.cookiehub.test': 'www', 'cdn.cookiehub.eu': 'ch' } },
+  'cmp/cookieman': { hosts: { 'www.cookieman.test': 'www', 'stats.cookieman.test': 'stats' } },
   'cmp/generic': { hosts: { 'www.generic.test': 'www', 'consent.unknown-cmp.test': 'frame' } },
   'cmp/real-cookie-banner': { hosts: { 'www.rcb.test': 'www' } },
   'cmp/shops': { hosts: { 'www.animated-shop.test': 'animated', 'www.vendors-shop.test': 'vendors' } },
+  'cmp/shopware': { hosts: { 'www.shopware.test': 'www', 'stats.shopware.test': 'stats' } },
   'cmp/usercentrics': {
     hosts: { 'www.usercentrics.test': 'www', 'web.cmp.usercentrics.eu': 'uc3', 'app.usercentrics.eu': 'uc2' },
+  },
+  'cmp/wix': {
+    hosts: { 'www.wix.test': 'www', 'static.parastorage.com': 'parastorage', 'stats.wix.test': 'stats' },
   },
   'core/smoke': {
     hosts: { 'www.example.test': 'www', 'www.google-analytics.com': 'ga', 'fonts.googleapis.com': 'fonts' },
@@ -198,6 +203,7 @@ export const SITES: Record<string, SiteConfig> = {
       'www.leaky-shop.test': 'leaky',
       'www.blocking-shop.test': 'blocking',
       'www.late-shop.test': 'late',
+      'www.notice-shop.test': 'notice',
     },
   },
   'pipeline/passive': {

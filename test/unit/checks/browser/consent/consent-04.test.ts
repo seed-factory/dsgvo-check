@@ -8,7 +8,8 @@ import type {
 } from '../../../../../src/cmp/types.ts';
 import { parseConfigInput } from '../../../../../src/core/config/load.ts';
 import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
-import { loadDataDir } from '../../../../../src/core/data/load.ts';
+import { loadDataDir, loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { SanitizedUrl } from '../../../../../src/core/snapshot/common.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
@@ -153,6 +154,21 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
   });
 
+  it('a banner an adapter recognised with high confidence whose first layer the classifier cannot read says so', () => {
+    const r = runCheck(
+      createConsent04(fixed('banner-not-recognized')),
+      site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner()] }) }),
+    );
+    const [o] = observationsOf(r);
+    expect(o?.params).toMatchObject({ cmp: 'cookiebot', bannerRecognized: true });
+    const text = renderMessage(loadTexts('de'), 'CONSENT-04.banner-not-recognized', o?.params as never);
+    expect(text.title).toBe('Erste Banner-Ebene nicht eindeutig');
+    expect(text.body).toMatch(/^Das Einwilligungsbanner \(cookiebot\) wurde erkannt/);
+    expect(renderMessage(loadTexts('en'), 'CONSENT-04.banner-not-recognized', o?.params as never).title).toBe(
+      'First banner layer ambiguous',
+    );
+  });
+
   describe('only own adapters with high recognition give a verdict', () => {
     const det = visibleBanner().detection;
 
@@ -265,6 +281,63 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(variantsOf(r)).toEqual([]);
     expect(r.outcome?.limitations).toContain('reject-unverified');
   });
+
+  // A CMP whose state cannot list its categories (Shopware) proves no failed reject by that state alone.
+  it.each([
+    ['the answer recorded, no category listed', {}, true, [], 'reject-unverified'],
+    ['the answer recorded, every category unknown', { statistics: 'unknown' }, true, [], 'reject-unverified'],
+    ['no answer recorded after the click', {}, false, ['reject-ineffective'], null],
+    [
+      'the answer recorded, a category granted',
+      { statistics: 'granted' },
+      true,
+      ['reject-ineffective'],
+      null,
+    ],
+  ] as const)(
+    'reject clicked, state after: %s → %j',
+    (_case, categories, responded, variants, limitation) => {
+      const r = runCheck(
+        createConsent04(fixed('ok')),
+        site({
+          phases: [phase('A'), phase('B')],
+          cmp: cmpWith({
+            phase: 'B',
+            facts: [visibleBanner()],
+            click: {
+              action: 'reject',
+              clicked: true,
+              button: {
+                name: 'Nur technisch notwendige',
+                role: 'button',
+                kind: 'reject',
+                kindConfidence: 'high',
+              },
+            },
+            verify: {
+              action: 'reject',
+              verified: false,
+              method: ['ui-closed'],
+              stateAfter: [
+                {
+                  source: 'cookie',
+                  ready: 'ready',
+                  categories,
+                  origin: responded ? 'action' : 'default',
+                  decision: { responded, method: responded ? 'explicit' : 'unknown' },
+                },
+              ],
+              persistedAfterReload: false,
+              reason: 'no-categories',
+            },
+          }),
+        }),
+      );
+      expect(variantsOf(r)).toEqual(variants);
+      if (limitation) expect(r.outcome?.limitations).toContain(limitation);
+      else expect(r.outcome?.limitations ?? []).not.toContain('reject-unverified');
+    },
+  );
 
   it('granted after our own accept (phase C after the click / after a reload) is not consent-without-action', () => {
     const granted = (origin: 'stored' | 'action') => [
@@ -387,6 +460,10 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       close: [],
       later: [],
       hide: ['Verbergen'],
+      negations: ['nicht'],
+      necessity: ['notwendige'],
+      restrictions: ['nur'],
+      paid: ['abo'],
     };
     expect(lexiconFrom({ lexicon: lex })).toEqual(lex);
     expect(lexiconFrom(lex)).toEqual(lex);

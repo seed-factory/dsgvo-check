@@ -15,7 +15,15 @@ import type { DerivedSection, ServiceCategory } from '../../derive/types.ts';
 import { cookieEvidence, distinctRequestEvidence, pageEvidence, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { allCmpFacts, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import {
+  allCmpFacts,
+  bannerFacts,
+  bannerUndetermined,
+  consentSignals,
+  persistentIdentifier,
+  signalOutcome,
+  unrecognizedBanner,
+} from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-03';
@@ -139,12 +147,13 @@ export const consent03 = defineCheck({
       return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [], coverage };
 
     // A resolved candidate means a banner exists. An iframe that only looks like a consent dialog but could not be read
-    // limits the conclusion instead.
-    const resolved = facts.filter((f) => !f.firstLayer.consentFrameUnresolved);
-    if (resolved.some((f) => f.detection.method !== 'none' || f.firstLayer.bannerPresent)) {
+    // limits the conclusion instead. What the heuristic found on one subpage only is part of that page.
+    const minPages = ctx.thresholds.cmp.minCandidatePages;
+    const banners = bannerFacts(cmp, browser, minPages);
+    if (banners.some((f) => !f.firstLayer.consentFrameUnresolved)) {
       return { status: 'completed', observations: [], coverage };
     }
-    const frameUnresolved = facts.some((f) => f.firstLayer.consentFrameUnresolved === true);
+    const frameUnresolved = banners.some((f) => f.firstLayer.consentFrameUnresolved === true);
 
     const use = consentNeedingUse(browser, derived);
     if (use.tracking.length === 0 && use.trackingStorage.length === 0 && use.embedStorage.length === 0) {
@@ -158,6 +167,13 @@ export const consent03 = defineCheck({
         observations: [],
         coverage,
       };
+    }
+    // Something that looks like a banner was observed but not recognised: "no banner" would not be a fact.
+    if (unrecognizedBanner(cmp, browser, minPages)) {
+      return { status: 'inconclusive', reason: 'banner-candidate-unrecognized', observations: [], coverage };
+    }
+    if (bannerUndetermined(cmp, browser, minPages)) {
+      return { status: 'inconclusive', reason: 'banner-undetermined', observations: [], coverage };
     }
 
     const regionAsserted = environment.egress.region === 'asserted' || ctx.options.assumeRegion !== null;

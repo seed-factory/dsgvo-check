@@ -1,4 +1,7 @@
-/** CMP subsystem: the seven own adapters, a generic heuristic for unknown banners (facts only) and the pure table. */
+/**
+ * CMP subsystem: own adapters for the seven CMPs of the catalog and for the banners built into Shopware, Wix and TYPO3
+ * cookieman, a generic heuristic for unknown banners (facts only) and the pure table.
+ */
 import type { Page } from 'playwright-core';
 import { sanitizeUrl } from '../core/url/url.ts';
 import { tcfGeoSignals } from './adapters/base.ts';
@@ -7,11 +10,14 @@ import { ccm19 } from './adapters/ccm19.ts';
 import { complianz } from './adapters/complianz.ts';
 import { cookiebot } from './adapters/cookiebot.ts';
 import { cookiehub } from './adapters/cookiehub.ts';
+import { cookieman } from './adapters/cookieman.ts';
 import { realCookieBanner } from './adapters/real-cookie-banner.ts';
+import { shopware } from './adapters/shopware.ts';
 import { usercentrics } from './adapters/usercentrics.ts';
-import { NOT_DETECTED } from './detection.ts';
+import { wix } from './adapters/wix.ts';
+import { NOT_DETECTED, outranks } from './detection.ts';
 import { loadLexicon } from './lexicon-file.ts';
-import { measureHeuristic } from './page/measure.ts';
+import { measureHeuristic, probeHeuristic } from './page/measure.ts';
 import type { CmpAdapter, CmpDetection, CmpFacts, CmpFirstLayer, ExtractOptions } from './types.ts';
 
 export { clickButton as act, waitUntil } from './adapters/base.ts';
@@ -21,7 +27,7 @@ export { classifyButton, classifyLabel, lexiconFromData, normalizeLabel } from '
 export { loadLexicon } from './lexicon-file.ts';
 export type * from './types.ts';
 
-/** In catalog order, which also breaks recognition ties. */
+/** The catalog's CMPs in its order, then the shop and site systems; the order also breaks recognition ties. */
 export const adapters: readonly CmpAdapter[] = [
   borlabs,
   cookiebot,
@@ -30,9 +36,10 @@ export const adapters: readonly CmpAdapter[] = [
   ccm19,
   realCookieBanner,
   cookiehub,
+  shopware,
+  wix,
+  cookieman,
 ];
-
-const RANK = { high: 2, medium: 1, low: 0 } as const;
 
 /** How long `waitForCmp` and `waitForBanner` wait by default, and how often they look. */
 const DEFAULT_WAIT_MS = 5000;
@@ -51,15 +58,13 @@ export async function detectCmp(
   return { adapter: null, detection: await heuristicDetection(page) };
 }
 
-/** Adapters only (cheap probes); ties go to the earlier adapter. */
+/** Adapters only (cheap probes); `outranks` decides, ties go to the earlier adapter. */
 async function detectAdapter(page: Page): Promise<{ adapter: CmpAdapter; detection: CmpDetection } | null> {
   let best: { adapter: CmpAdapter; detection: CmpDetection } | null = null;
   for (const adapter of adapters) {
     const detection = await adapter.detect(page).catch(() => null);
     if (!detection) continue;
-    if (!best || RANK[detection.recognitionConfidence] > RANK[best.detection.recognitionConfidence]) {
-      best = { adapter, detection };
-    }
+    if (!best || outranks(detection, best.detection)) best = { adapter, detection };
   }
   return best;
 }
@@ -188,11 +193,14 @@ async function heuristicFacts(
 ): Promise<CmpFacts> {
   const lexicon = opts.lexicon ?? loadLexicon();
   const takenAt = (opts.now ?? (() => new Date()))().toISOString();
-  const [heuristic, geoSignals] = await Promise.all([
-    measureHeuristic(page, lexicon).catch(() => null),
+  const [outcome, geoSignals] = await Promise.all([
+    probeHeuristic(page, lexicon).catch(() => null),
     tcfGeoSignals(page),
   ]);
+  const heuristic = outcome?.hit ?? null;
   const viewport = page.viewportSize() ?? { width: 0, height: 0 };
+  // What the heuristic dismissed tells the checks that "no banner" is not a fact; unknown when it could not run.
+  const candidate = outcome && outcome.candidate !== undefined ? { bannerCandidate: outcome.candidate } : {};
 
   return {
     phase: opts.phase ?? 'B',
@@ -207,6 +215,7 @@ async function heuristicFacts(
       buttons: [],
       purAbo: false,
       closeMeansAccept: null,
+      ...candidate,
     },
     blocking: heuristic?.measured.blocking ?? {
       overlay: false,

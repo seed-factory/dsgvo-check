@@ -2,7 +2,7 @@
  * CONSENT-05: tracking after a technically confirmed reject. The reject is confirmed by CMP state only, never by
  * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`.
  */
-import type { CmpPhaseFacts, CmpSection, ConsentStateFact } from '../../cmp/types.ts';
+import type { CmpSection } from '../../cmp/types.ts';
 import {
   type CheckOutcome,
   defineCheck,
@@ -21,7 +21,17 @@ import type {
 import { cookieEvidence, distinctRequestEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
-import { allCmpFacts, bannerFound, consentSignals, persistentIdentifier, signalOutcome } from './signals.ts';
+import {
+  allCmpFacts,
+  bannerFound,
+  bannerUndetermined,
+  confirmedReject,
+  consentSignals,
+  persistentIdentifier,
+  signalOutcome,
+  stateEvidence,
+  unrecognizedBanner,
+} from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
 
 const ID = 'CONSENT-05';
@@ -50,34 +60,6 @@ interface Group {
 /** A persistent identifier as in CONSENT-01; a cookieless, per-load or anonymous hit → warning. */
 const requestVariant = (c: ClassifiedRequest): Variant =>
   persistentIdentifier(c) ? 'tracking-after-reject' : 'cookieless-ping-after-reject';
-
-const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
-
-/** The ready states proving the reject: produced by our click and read back after the reload. */
-function confirmedReject(
-  b: CmpPhaseFacts | undefined,
-): { action: ConsentStateFact; stored: ConsentStateFact } | null {
-  const v = b?.verify;
-  if (v?.action !== 'reject' || !v.verified || v.persistedAfterReload !== true) return null;
-  const ready = (s: ConsentStateFact) => s.ready === 'ready' && decisionRecorded(s);
-  const action = v.stateAfter.find((s) => ready(s) && s.origin === 'action');
-  const afterReload = (b?.facts ?? []).filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
-  const stored = [...v.stateAfter, ...afterReload].find((s) => ready(s) && s.origin === 'stored');
-  return action && stored ? { action, stored } : null;
-}
-
-function stateEvidence(s: ConsentStateFact, page: string | null): EvidenceInput {
-  return {
-    type: 'consent-state',
-    source: s.source,
-    ready: s.ready,
-    categories: s.categories,
-    origin: s.origin,
-    phase: 'B',
-    ...(page ? { page } : {}),
-    ...(s.scope ? { scope: s.scope } : {}),
-  };
-}
 
 type Groups = Map<string, Group>;
 
@@ -221,14 +203,21 @@ function groupObservations(
 function rejectBasis(
   browser: BrowserSection,
   cmp: CmpSection,
+  minCandidatePages: number,
 ):
   | { outcome: CheckOutcome }
   | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
   const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
   if (signal) return { outcome: signal };
-  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog.
-  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp)) {
-    return { outcome: { status: 'not_applicable', reason: 'no-banner', observations: [] } };
+  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
+  // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
+  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp, browser, minCandidatePages)) {
+    const outcome: CheckOutcome = unrecognizedBanner(cmp, browser, minCandidatePages)
+      ? { status: 'inconclusive', reason: 'banner-not-recognized', observations: [] }
+      : bannerUndetermined(cmp, browser, minCandidatePages)
+        ? { status: 'inconclusive', reason: 'banner-undetermined', observations: [] }
+        : { status: 'not_applicable', reason: 'no-banner', observations: [] };
+    return { outcome };
   }
 
   const phaseB = phaseRecord(browser, 'B');
@@ -261,8 +250,8 @@ export const consent05 = defineCheck({
   requires: ['browser', 'cmp', 'derived'],
   // `connect-only-after-reject` needs the proxy CONNECT log (in-process egress proxy, not in the prototype).
   variants: RANK.map((variant) => ({ variant, variantGroup: 'after-reject' })),
-  run({ browser, cmp, derived }) {
-    const basis = rejectBasis(browser, cmp);
+  run({ browser, cmp, derived }, ctx) {
+    const basis = rejectBasis(browser, cmp, ctx.thresholds.cmp.minCandidatePages);
     if ('outcome' in basis) return basis.outcome;
     const { phaseB, rejectEvidence } = basis;
 

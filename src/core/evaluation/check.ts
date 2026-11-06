@@ -85,8 +85,16 @@ export type CheckRunResult = readonly Observation[] | CheckOutcome;
 
 /** Operator settings that decide what a check reports (see `src/core/config`). */
 export interface CheckThresholds {
-  /** CONSENT-04: share of the viewport a banner covers to count as blocking. */
-  cmp: Pick<Config['cmp'], 'blockingCoveredRatio'>;
+  /**
+   * CONSENT-04: share of the viewport a banner covers to count as blocking. Browser checks: pages a banner candidate
+   * the heuristic did not take must show on.
+   */
+  cmp: Pick<Config['cmp'], 'blockingCoveredRatio' | 'minCandidatePages'>;
+  /**
+   * Policy and Impressum checks: kinds of provider details that make a block of text Impressum details, and the
+   * observations a statement of the privacy policy must differ from to count as repeated.
+   */
+  legal: Pick<Config['legal'], 'impressumMinGroups' | 'policyClaimMinContexts'>;
   /** TLS-02: certificate lifetime windows. */
   tls: Pick<
     Config['tls'],

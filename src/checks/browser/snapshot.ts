@@ -40,6 +40,18 @@ export function throttleAware(
   };
 }
 
+/**
+ * The request limit of the browser was reached, and possibly before phase C: the collector starts phase C only while
+ * the limit is not reached, so only a phase C that started shows that phases A and B recorded every request. A skipped
+ * phase C never started, whatever its reason: `cmp-not-recognized` is written after phase B, whose start page may have
+ * reached the limit.
+ */
+export function requestCapBeforePhaseC(browser: BrowserSection): boolean {
+  if (!browser.requestCap.truncated) return false;
+  const c = phaseRecord(browser, 'C');
+  return !c || c.status === 'skipped';
+}
+
 export function startPageUrl(browser: BrowserSection): string | null {
   const a = phaseRecord(browser, 'A');
   const start = a?.pages.find((p) => p.role === 'start') ?? a?.pages[0];

@@ -1,13 +1,40 @@
 # First-layer button lexicon for classifyFirstLayer.
 # Matching (src/cmp/lexicon.ts): labels are normalized (NFKC, lower case, close glyphs → "×") and tokenized on
-# letters/digits. A label equal to a phrase → confidence high; a phrase inside a longer label → medium; the longest
-# phrase wins, a tie between two kinds → unclassified, except one decision (reject/accept) tied only with
-# close/hide/later ("Ablehnen und schließen" → reject). "*suffix" matches any token ending with the suffix
-# (German compounds such as "Datenschutzeinstellungen"). close/hide/later alone are never a reject.
+# letters/digits; punctuation between words (, ; : . ! ? brackets & / dashes) ends a clause, but a bracketed insertion
+# does not end the negation of a consent it interrupts or opens ("Nicht (alle Cookies) akzeptieren", "Do not (accept
+# all)", "Ich akzeptiere (die Cookies) nicht" and "Ich akzeptiere nicht (alle Cookies)" are no accept, "Ich akzeptiere
+# (nicht empfohlen)" stays one), nor that of a reject phrase right after it by a negation right before it ("Nicht (alle
+# Cookies) ablehnen" is no reject, "No (reject all)" and "Kein Tracking (empfohlen) alle ablehnen" stay one). A label
+# equal to a phrase → confidence high; a phrase inside a longer label, within one clause → medium; the longest phrase
+# wins, a tie between two kinds → unclassified, except one decision (reject/accept) tied only with close/hide/later
+# ("Ablehnen und schließen" → reject) or with decision phrases the label qualifies ("Ich akzeptiere nur notwendige" →
+# reject: "ich akzeptiere" is restricted). close/hide/later never outscore a decision ("Ablehnen und Fenster
+# schließen" → reject), alone they are never a reject. "*suffix" matches any token ending with the suffix (German
+# compounds such as "Datenschutzeinstellungen").
 # After the German and English phrases of each class follow fr, es, it, pt, nl, da, no, sv, fi, is and pl phrases:
 # they classify the buttons of unknown banners (generic heuristic, info only). A phrase may stand in one class only.
+# negations, restrictions and paid qualify a reject or accept phrase, matched like the phrases: a reject or accept
+# with a negation before its phrase in its clause ("No, reject all" is a reject), a reject phrase with a negation and a
+# word of allWords after it ("Ich akzeptiere nicht alle Cookies", read as "Nicht alle akzeptieren"), an accept with a
+# restriction outside its phrase, and any label with payment wording are no decision (kind other), and the CMP's own
+# markup cannot make them one. A negation directly followed by a necessity word negates a cookie category, not the
+# decision ("Nicht notwendige Cookies ablehnen"). A negation after a reject phrase never negates it ("Reject
+# non-essential cookies", "Ablehnen (keine Statistik)"); after an accept phrase it does when it follows the phrase
+# directly or ends its clause ("Ich akzeptiere keine Cookies", "Ich akzeptiere die Cookies nicht"), not in a clause of
+# its own ("Akzeptieren und nicht mehr anzeigen", "Akzeptieren, nicht mehr anzeigen").
+# Such a negated category ("nicht notwendige", "non-essential") is read as a whole: a phrase that ends on its negation
+# or starts on its necessity word does not match ("Ich akzeptiere nicht notwendige Cookies" is no "ich akzeptiere
+# nicht", "Nicht notwendige Cookies akzeptieren" no "notwendige cookies akzeptieren"). An accept with a necessity word
+# outside its phrase that no negation precedes names the necessary cookies only and is no accept either ("Accept
+# strictly necessary cookies"), unless a word of allWords that quantifies no necessity word makes it all cookies
+# ("Alle Cookies akzeptieren, auch technisch notwendige"; "Alle notwendigen Cookies akzeptieren" stays no accept).
+# A reject phrase that refuses only by naming the necessary cookies, without a negation or restriction ("accept
+# necessary", "notwendige cookies akzeptieren"), counts only beside cookie, necessity, restriction and neutral words
+# (the cookieKeywords sources match cookie words; "Mit notwendigen Cookies fortfahren (empfohlen)" is a reject): "Accept
+# necessary and analytics cookies" consents to more, and "Accept necessary cookies and continue" is not read; both are
+# no decision, and the CMP's markup can make them a reject only.
 lexicon:
-  version: "2026.10.2"
+  version: "2026.11.4"
   reject:
     - ablehnen
     - alle ablehnen
@@ -19,9 +46,14 @@ lexicon:
     - cookies ablehnen
     - alle cookies ablehnen
     - optionale cookies ablehnen
+    - nicht notwendige cookies ablehnen
+    - nicht essenzielle cookies ablehnen
     - nicht zustimmen
     - nicht einverstanden
+    - ich bin nicht einverstanden
     - ich stimme nicht zu
+    - nicht akzeptieren
+    - ich akzeptiere nicht
     - ich lehne ab
     - verweigern
     - alle verweigern
@@ -38,6 +70,12 @@ lexicon:
     - nur technisch notwendige cookies
     - nur technisch notwendige cookies akzeptieren
     - nur technisch notwendige cookies zulassen
+    - nur technisch notwendige cookies erlauben
+    - nur technisch erforderliche
+    - nur technisch erforderliche cookies
+    - nur technisch erforderliche cookies akzeptieren
+    - nur technisch erforderliche cookies zulassen
+    - nur technisch erforderliche cookies erlauben
     - nur essenzielle
     - nur essenzielle cookies
     - nur essenzielle cookies akzeptieren
@@ -51,6 +89,28 @@ lexicon:
     - mit notwendigen fortfahren
     - mit notwendigen cookies fortfahren
     - nur mit notwendigen cookies fortfahren
+    # Consent to the necessary cookies alone, without "nur".
+    - notwendige cookies akzeptieren
+    - notwendige cookies erlauben
+    - notwendige cookies zulassen
+    - erforderliche cookies akzeptieren
+    - erforderliche cookies erlauben
+    - erforderliche cookies zulassen
+    - essenzielle cookies akzeptieren
+    - essenzielle cookies erlauben
+    - essenzielle cookies zulassen
+    - essentielle cookies akzeptieren
+    - essentielle cookies erlauben
+    - essentielle cookies zulassen
+    - technisch notwendige cookies akzeptieren
+    - technisch notwendige cookies erlauben
+    - technisch notwendige cookies zulassen
+    - technisch erforderliche cookies akzeptieren
+    - technisch erforderliche cookies erlauben
+    - technisch erforderliche cookies zulassen
+    - keine cookies akzeptieren
+    - keine cookies erlauben
+    - keine cookies zulassen
     - weiter ohne einwilligung
     - weiter ohne zustimmung
     - fortfahren ohne einwilligung
@@ -62,6 +122,8 @@ lexicon:
     - reject all
     - reject all cookies
     - reject cookies
+    - reject non-essential
+    - reject non-essential cookies
     - decline
     - decline all
     - decline cookies
@@ -69,6 +131,7 @@ lexicon:
     - reject and close
     - deny
     - deny all
+    - deny all cookies
     - refuse
     - refuse all
     - necessary only
@@ -82,10 +145,33 @@ lexicon:
     - accept necessary only
     - accept only essential cookies
     - use necessary cookies only
+    - accept necessary
+    - accept necessary cookies
+    - accept required
+    - accept required cookies
+    - accept essential
+    - accept essential cookies
+    - allow necessary cookies
+    - allow required cookies
+    - allow essential cookies
+    - use necessary cookies
+    - use essential cookies
+    - accept no cookies
+    - no cookies
     - continue without accepting
     - continue without consent
     - do not consent
     - i do not accept
+    - i don't accept
+    - do not accept
+    - don't accept
+    - i do not agree
+    - i don't agree
+    - do not agree
+    - don't agree
+    - i disagree
+    - disagree
+    - disagree and close
     # fr, es, it, pt, nl, da, no, sv, fi, is, pl
     - refuser
     - tout refuser
@@ -93,6 +179,8 @@ lexicon:
     - refuser les cookies
     - refuser et fermer
     - continuer sans accepter
+    - continuer sans consentement
+    - continuer sans consentir
     - rechazar
     - rechazar todo
     - rechazar todas
@@ -104,6 +192,7 @@ lexicon:
     - solo las necesarias
     - solo cookies necesarias
     - continuar sin aceptar
+    - continuar sin consentimiento
     - rifiuta
     - rifiuta tutti
     - rifiuta tutto
@@ -112,6 +201,8 @@ lexicon:
     - solo necessari
     - solo cookie necessari
     - continua senza accettare
+    - continua senza consenso
+    - chiudi senza accettare
     - rejeitar
     - rejeitar tudo
     - rejeitar todos
@@ -122,6 +213,7 @@ lexicon:
     - apenas necessários
     - somente necessários
     - apenas cookies necessários
+    - continuar sem consentimento
     - weigeren
     - alles weigeren
     - alle weigeren
@@ -130,6 +222,7 @@ lexicon:
     - alleen noodzakelijke
     - alleen noodzakelijke cookies
     - alleen functionele cookies
+    - doorgaan zonder toestemming
     - afvis
     - afvis alle
     - afvis alt
@@ -139,6 +232,7 @@ lexicon:
     - fravælg
     - fravælg alle
     - nej tak
+    - fortsæt uden samtykke
     - avvis
     - avvis alle
     - avslå
@@ -146,6 +240,7 @@ lexicon:
     - bare nødvendige
     - bare nødvendige informasjonskapsler
     - nei takk
+    - fortsett uten samtykke
     - avvisa
     - avvisa alla
     - avvisa alla cookies
@@ -156,6 +251,7 @@ lexicon:
     - neka
     - neka alla
     - bara nödvändiga
+    - fortsätt utan samtycke
     - hylkää
     - hylkää kaikki
     - hylkää evästeet
@@ -165,6 +261,7 @@ lexicon:
     - kieltäydy
     - ei kiitos
     - jatka ilman hyväksymistä
+    - jatka ilman suostumusta
     - hafna
     - hafna öllu
     - hafna öllum
@@ -179,6 +276,7 @@ lexicon:
     - tylko niezbędne pliki cookie
     - tylko wymagane
     - nie zgadzam się
+    - kontynuuj bez zgody
   accept:
     - akzeptieren
     - alle akzeptieren
@@ -195,6 +293,7 @@ lexicon:
     - ich stimme zu
     - einverstanden
     - ich bin einverstanden
+    - ich akzeptiere
     - annehmen
     - alle annehmen
     - alles annehmen
@@ -314,6 +413,14 @@ lexicon:
     - zezwól
     - zezwól na wszystkie
     - przyjmuję
+  # Accept phrases that only acknowledge a notice: next to a single generic keyword (a shipping or policy update notice
+  # with "OK") they are no consent choice for the generic heuristic. Matched as whole labels like the phrases.
+  acknowledgements:
+    - ok
+    - okay
+    - verstanden
+    - ok verstanden
+    - got it
   settings:
     - einstellungen
     - cookie einstellungen
@@ -533,6 +640,237 @@ lexicon:
     - minimieren
     - hide
     - hide banner
+  # de, en, fr, es, it, pt, nl, da, no, sv, fi, is, pl. "don't" is the token pair "don t".
+  negations:
+    - nicht
+    - kein
+    - keine
+    - keinen
+    - ohne
+    - nie
+    - niemals
+    - not
+    - "don't"
+    - "won't"
+    - dont
+    - never
+    - without
+    - ne
+    - pas
+    - sans
+    - jamais
+    - "no"
+    - sin
+    - nunca
+    - non
+    - senza
+    - mai
+    - não
+    - sem
+    - niet
+    - geen
+    - zonder
+    - nooit
+    - ikke
+    - uden
+    - uten
+    - aldrig
+    - aldri
+    - inte
+    - icke
+    - ej
+    - utan
+    - ei
+    - ilman
+    - ekki
+    - án
+    - nie
+    - inne niż
+    - bez
+  # Necessity and category words after a negation ("nicht notwendige", "non-essential", "ikke-nødvendige"), in every
+  # inflection used on banners; "optional" is no such word ("Keine optionalen Cookies akzeptieren" is no accept).
+  necessity:
+    - notwendig
+    - notwendige
+    - notwendigen
+    - notwendiger
+    - erforderlich
+    - erforderliche
+    - erforderlichen
+    - essenziell
+    - essenzielle
+    - essenziellen
+    - essentiell
+    - essentielle
+    - essentiellen
+    - technisch
+    - technische
+    - technischen
+    - notwendiges
+    - erforderliches
+    - essenzielles
+    - nötige
+    - nötigen
+    - unbedingt
+    - benötigte
+    - benötigten
+    - essential
+    - essentials
+    - necessary
+    - required
+    - strictly
+    - technical
+    - techniques
+    - técnicas
+    - técnicos
+    - tecnici
+    - tecniche
+    - essentiel
+    - essentiels
+    - essentielles
+    - nécessaire
+    - nécessaires
+    - indispensables
+    - necesarias
+    - necesarios
+    - esenciales
+    - necessari
+    - necessarie
+    - essenziali
+    - necessários
+    - necessárias
+    - essenciais
+    - noodzakelijk
+    - noodzakelijke
+    - essentieel
+    - essentiële
+    - nødvendig
+    - nødvendige
+    - nödvändig
+    - nödvändiga
+    - välttämättömät
+    - välttämättömiä
+    - nauðsynlegar
+    - niezbędne
+    - niezbędnych
+    - wymagane
+  restrictions:
+    - nur
+    - lediglich
+    - ausschließlich
+    - only
+    - solely
+    - seulement
+    - uniquement
+    - solo
+    - sólo
+    - solamente
+    - únicamente
+    - apenas
+    - somente
+    - alleen
+    - uitsluitend
+    - kun
+    - bare
+    - endast
+    - bara
+    - enbart
+    - vain
+    - ainoastaan
+    - aðeins
+    - tylko
+    - wyłącznie
+  # Words for all cookies: next to one of them a necessity word outside an accept phrase does not restrict it, unless
+  # the word quantifies the necessity word ("alle notwendigen", "all necessary"). de, en, fr, es, it, pt, nl, da, no, sv,
+  # fi, is, pl.
+  allWords:
+    - alle
+    - allen
+    - alles
+    - all
+    - every
+    - everything
+    - tout
+    - tous
+    - toutes
+    - todo
+    - todos
+    - todas
+    - tutti
+    - tutto
+    - tutte
+    - tudo
+    - alt
+    - alla
+    - allt
+    - kaikki
+    - allar
+    - öllu
+    - öllum
+    - wszystkie
+    - wszystko
+  # Words that only recommend a button or call it the default and name no cookie category: beside a reject phrase that
+  # names the necessary cookies they leave it a reject ("Mit notwendigen Cookies fortfahren (empfohlen)"). de and en,
+  # the languages of those phrases, in every inflection used on banners.
+  neutralWords:
+    - empfohlen
+    - empfohlene
+    - empfohlener
+    - empfohlenen
+    - empfohlenes
+    - empfehlung
+    - empfehlenswert
+    - sehr empfohlen
+    - von uns empfohlen
+    - unsere empfehlung
+    - empfohlene einstellung
+    - standard
+    - standardeinstellung
+    - recommended
+    - recommendation
+    - highly recommended
+    - our recommendation
+    - recommended setting
+    - recommended settings
+    - default
+  # Pay-or-OK models offer a subscription next to consent: such a button is never clicked as reject or accept.
+  # "*abo" covers compounds such as "Jahresabo"; "einkaufen" ("weiter einkaufen") is no purchase.
+  paid:
+    - abo
+    - "*abo"
+    - abos
+    - abonnieren
+    - abonniere
+    - abonnement
+    - "*abonnement"
+    - abonnent
+    - kaufen
+    - bezahlen
+    - zahlen
+    - kostenpflichtig
+    - subscribe
+    - subscription
+    - subscriber
+    - pay
+    - payment
+    - buy
+    - purchase
+    - abonner
+    - payer
+    - acheter
+    - suscribirse
+    - suscribirme
+    - suscripción
+    - pagar
+    - comprar
+    - abbonati
+    - abbonarsi
+    - abbonamento
+    - pagare
+    - acquista
+    - abonneren
+    - betalen
+    - kopen
   # Regex sources, case-insensitive, tested against the normalized banner text in the page (no text is stored).
   purAbo:
     - "\\bpur[ -]?abo"
@@ -590,3 +928,11 @@ lexicon:
     - "zgod[aęy]"
     - "prywatno"
     - "dane osobowe"
+  # The banner keywords that name cookies themselves. A box with a single keyword is a cookie notice only with one of
+  # these: datenschutz, privacy, tracking or partner also stand in newsletter, chat, shipping and policy notices.
+  cookieKeywords:
+    - "cookie"
+    - "traceur"
+    - "eväste"
+    - "informasjonskapsl"
+    - "vafrakök"

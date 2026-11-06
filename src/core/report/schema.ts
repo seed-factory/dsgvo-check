@@ -65,6 +65,10 @@ const evidenceBase = {
   id: z.string().min(1),
   phase: PhaseSchema.optional(),
   page: z.string().optional(),
+  beforeClick: z
+    .boolean()
+    .optional()
+    .meta({ description: 'Observed in phase B or C before its click: on the first screen of the visit' }),
 };
 
 /** `features.identifier.kind`: persistent kinds are stored-match, sent-cookie, persistent-param, user-supplied. */
@@ -240,6 +244,18 @@ const CmpEvidence = z.object({
     .optional(),
   viewport: z.object({ width: z.number(), height: z.number() }).optional(),
   click: z.object({ kind: z.string(), name: z.string().optional() }).nullable().optional(),
+  /** A banner-like box the heuristic did not take as a banner: why, and its features (no text, no control names). */
+  candidate: z
+    .object({
+      reason: z.string(),
+      keywordHits: z.number(),
+      controls: z.array(z.string()),
+      cookieWording: z.boolean(),
+      fixed: z.boolean(),
+      dialog: z.boolean(),
+      named: z.boolean(),
+    })
+    .optional(),
 });
 
 const ConsentStateEvidence = z.object({
@@ -284,8 +300,15 @@ const TextMatchEvidence = z.object({
   documentId: z.string(),
   section: z.string().nullable().optional(),
   quote: z.string().max(200),
-  matchLevel: z.enum(['named', 'company', 'domain', 'category', 'none']),
+  /** What matched: a name of the service, its company, domain or category, or a term of a dictionary. */
+  matchLevel: z.enum(['named', 'company', 'domain', 'category', 'term', 'none']),
   negation: z.enum(['none', 'negated', 'ambiguous']).optional(),
+  /** The kind of statement the quote makes, as a kebab-case code (e.g. `no-connection`); never words of the page. */
+  claim: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .max(40)
+    .optional(),
 });
 
 const ScreenshotEvidence = z.object({

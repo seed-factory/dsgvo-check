@@ -60,6 +60,7 @@ function probe(p: { buttons?: RawButton[]; covered?: string[] } = {}): ProbeResu
     viewport: { width: 1366, height: 768 },
     coveredLinks: (p.covered ?? []).map((l) => covered(l)),
     heuristic: null,
+    rejectedCandidate: null,
   };
 }
 

@@ -1,7 +1,7 @@
 /** Evidence builders for request, cookie, storage and page records, identical in every check that cites them. */
 import type { EvidenceInput } from '../../core/api.ts';
 import type { CookieRecord, PageVisit, RequestRecord, StorageRecord } from '../../core/snapshot/browser.ts';
-import type { ClassifiedRequest, IdentifierKind } from '../../derive/types.ts';
+import type { ClassifiedRequest, IdentifierKind, InteractionTiming } from '../../derive/types.ts';
 import { normDomain } from './snapshot.ts';
 
 /** Evidence entries per observation are capped so a busy page does not bloat the report. */
@@ -70,6 +70,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
     resourceType: r.resourceType,
     phase: r.phase,
     page: r.pageUrl,
+    ...beforeClick(r),
     ...(r.atMs !== undefined ? { tMs: r.atMs } : {}),
     ...(r.navigationId ? { navigationId: r.navigationId } : {}),
     ...(r.actionId ? { actionId: r.actionId } : {}),
@@ -107,6 +108,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
 const OCCURRENCE_FIELDS: ReadonlySet<string> = new Set([
   'page',
   'phase',
+  'beforeClick',
   'tMs',
   'navigationId',
   'frameId',
@@ -143,9 +145,82 @@ export function distinctRequestEvidence(
   return out;
 }
 
+type RequestItem = { r: RequestRecord; c: ClassifiedRequest | null | undefined };
+
+/**
+ * Places kept for requests after the reject: a repeat of a request seen before the interaction is then still shown
+ * as made again after the reject, not only by the count in the finding's params.
+ */
+const AFTER_REJECT_EVIDENCE_PLACES = 3;
+
+/** When the request was made relative to the consent click; the record decides when no classification is given. */
+function momentOf({ r, c }: RequestItem): InteractionTiming {
+  if (c?.timing) return c.timing;
+  if (r.phase === 'A' || !r.afterClick) return 'before-interaction';
+  return r.phase === 'C' ? 'after-accept' : 'after-reject';
+}
+
+/**
+ * Request evidence with every distinct request once per moment (before the interaction, after the reject, after the
+ * accept), at most `max` items in the given order. Up to `reserveAfterReject` of them are requests after the reject,
+ * so the same URLs before the interaction cannot crowd them out; places one moment leaves free go to the other.
+ */
+export function requestEvidenceByMoment(
+  items: Iterable<RequestItem>,
+  opts: { reserveAfterReject?: number; max?: number } = {},
+): EvidenceInput[] {
+  const max = opts.max ?? MAX_EVIDENCE;
+  const reserve = Math.min(opts.reserveAfterReject ?? AFTER_REJECT_EVIDENCE_PLACES, max);
+
+  const seen = new Set<string>();
+  const distinct: Array<{ ev: EvidenceInput; afterReject: boolean }> = [];
+  for (const item of items) {
+    const ev = requestEvidence(item.r, item.c);
+    const moment = momentOf(item);
+    const id = `${moment}\n${requestIdentity(ev)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    distinct.push({ ev, afterReject: moment === 'after-reject' });
+  }
+
+  const after = distinct.filter((d) => d.afterReject);
+  const other = distinct.filter((d) => !d.afterReject);
+  const afterPlaces = Math.min(after.length, Math.max(reserve, max - other.length));
+  const kept = new Set([...after.slice(0, afterPlaces), ...other.slice(0, max - afterPlaces)]);
+  return distinct.filter((d) => kept.has(d)).map((d) => d.ev);
+}
+
+/**
+ * One request evidence item per context, a (phase, page) pair: the first request of each in the given order, at most
+ * `max`. It shows where a request repeats, which the distinct requests alone do not.
+ */
+export function requestEvidencePerContext(
+  items: Iterable<RequestItem>,
+  max: number = MAX_EVIDENCE,
+): EvidenceInput[] {
+  const seen = new Set<string>();
+  const out: EvidenceInput[] = [];
+  for (const { r, c } of items) {
+    if (out.length >= max) break;
+    const context = `${r.phase}\n${r.pageUrl}`;
+    if (seen.has(context)) continue;
+    seen.add(context);
+    out.push(requestEvidence(r, c));
+  }
+  return out;
+}
+
+/** Phases B and C start with a visit before their click: what they record then is no observation after it. */
+function beforeClick(x: Pick<CookieRecord, 'phase' | 'afterClick'>): { beforeClick?: true } {
+  return x.phase !== 'A' && !x.afterClick ? { beforeClick: true } : {};
+}
+
 /** Time scale and ids of a cookie/storage record (the legacy relative `tMs` is not exported). */
-function observationIds(x: Pick<CookieRecord, 'atMs' | 'navigationId' | 'actionId'>) {
+function observationIds(
+  x: Pick<CookieRecord, 'phase' | 'afterClick' | 'atMs' | 'navigationId' | 'actionId'>,
+) {
   return {
+    ...beforeClick(x),
     ...(x.atMs !== undefined ? { tMs: x.atMs } : {}),
     ...(x.navigationId ? { navigationId: x.navigationId } : {}),
     ...(x.actionId ? { actionId: x.actionId } : {}),

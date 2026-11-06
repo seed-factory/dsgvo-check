@@ -63,7 +63,7 @@ dsgvo-check/
 │   │   ├── http/              # HDR-01, TLS-01, TLS-02
 │   │   └── index.ts           # явный реестр всех проверок
 │   ├── cmp/                   # распознавание баннера CMP и клик по выбору
-│   │   ├── adapters/          # адаптеры: Borlabs, Cookiebot, Usercentrics и др.
+│   │   ├── adapters/          # адаптеры: Borlabs, Cookiebot, Usercentrics, Shopware, Wix, cookieman и др.
 │   │   ├── page/              # код внутри страницы: замер баннера
 │   │   ├── classify.ts        # первый слой: отказ, согласие, цель клика
 │   │   └── lexicon.ts         # лексикон кнопок
@@ -135,16 +135,31 @@ dsgvo-check/
 | Канарейка | [README.md](../README.md), раздел «Canary» (правила, этика, запуск); [sites.example.yaml](../canary/sites.example.yaml), раннер [main.ts](../scripts/canary/main.ts) и соседние файлы в [scripts/canary/](../scripts/canary/); настоящий `canary/sites.yaml` и `canary/results/` лежат только локально, в `.gitignore` |
 | Запустить тесты, добавить сайт в стенд | [README.md](../README.md), раздел «Entwicklung» → «Tests»: уровни, параллельность (`DSGVO_TEST_WORKERS`), сеть в L2; сайт в стенд — [sites.ts](../test/fixture-server/sites.ts) и `test/fixture-server/sites/<модуль>/` |
 
+## Общие помощники браузерных проверок
+
+Что нужно нескольким проверкам, живёт в одном модуле `src/checks/browser/`, а не копируется: так одно и то же наблюдение везде даёт одинаковый вывод и одинаковые улики.
+
+| Модуль | Что даёт | Кто пользуется |
+|---|---|---|
+| [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05 |
+| [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung или причина, почему её нельзя прочитать; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
+| [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
+
+`derive` добавляет для проверок два факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
+
+- `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет.
+- `DerivedSection.serviceNames` — имя, псевдонимы, компании и категория каждого сервиса каталога с `policyRelevance` `required` или `optional`, замеченного или нет: по ним проверка понимает, о каком сервисе предложение политики.
+
 ## Словари и сопоставления
 
 Всё, что меняется вместе с внешним миром, лежит в YAML рядом с остальными данными, а не в константах кода: слова и фразы, имена параметров и cookies, сигнатуры бот-защиты, селекторы и признаки CMP, пути и расширения страниц.
 
 | Каталог `test/data/` | Что внутри | Кто читает |
 |---|---|---|
-| `cmp/lexicon.yaml` | подписи кнопок первого слоя, слова баннера, Pur-Abo | коллектор (`loadLexicon`), CONSENT-04 |
+| `cmp/lexicon.yaml` | подписи кнопок первого слоя; отрицания, слова необходимости, ограничения и слова подписки или оплаты, при которых подпись не отказ и не согласие; слова «все» для согласия со словом необходимости; слова рекомендации («empfohlen»), с которыми отказ «только необходимые» остаётся отказом; слова баннера, Pur-Abo | коллектор (`loadLexicon`), CONSENT-04 |
 | `cmp/adapters.yaml` | признаки, версии, селекторы баннера и кнопок, шаблон бота каждого адаптера | адаптеры (`adapterData`), CONSENT-04 (список известных CMP) |
 | `cmp/categories.yaml` | имена необходимых категорий согласия | CONSENT-04 |
-| `cmp/probe.yaml` | атрибуты для селектора кнопки | замер баннера (в страницу — аргументом) |
+| `cmp/probe.yaml` | атрибуты для селектора кнопки; имена контейнеров баннера (id и class), с которыми хватает одного слова баннера | замер баннера (в страницу — аргументом) |
 | `legal/links.yaml` | подписи, ключи и пути юридических ссылок, пробные пути | коллектор, LEGAL-01 |
 | `browser/identifiers.yaml` | имена параметров и cookies с идентификаторами, параметры Consent Mode | рекордер запросов |
 | `browser/challenges.yaml` | сигнатуры WAF и бот-защиты | `detectChallenge` |

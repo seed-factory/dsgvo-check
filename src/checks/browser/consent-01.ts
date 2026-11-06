@@ -18,6 +18,7 @@ import {
   hasPhaseA,
   noPhaseAReason,
   phaseRecord,
+  requestCapBeforePhaseC,
   requestIndex,
   startPageUrl,
   throttleAware,
@@ -199,7 +200,7 @@ export const consent01 = defineCheck({
       routing: ctx.routing,
       start: startPageUrl(browser),
       bObserved: phaseBObserved(browser),
-      banner: bannerState(cmp),
+      banner: bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages),
     };
     const observations = [...groups.values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))
@@ -211,7 +212,8 @@ export const consent01 = defineCheck({
       {
         status: 'completed',
         observations,
-        limitations: browser.requestCap.truncated ? ['request-cap-truncated'] : [],
+        // Only phases A and B count here: the limit reached after the consent left them complete.
+        limitations: requestCapBeforePhaseC(browser) ? ['request-cap-truncated'] : [],
         coverage: {
           observed: a?.pages.length ?? 0,
           evaluated: a?.pages.filter((p) => p.evaluable).length ?? 0,

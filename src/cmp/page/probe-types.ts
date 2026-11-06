@@ -1,5 +1,14 @@
 /** Arguments and raw result of `cmpPageProbe`, shared by the probe and its Node side (measure.ts). */
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
+import type { BannerCandidateFact } from '../types.ts';
+
+/** Lexicon classes whose phrases make a control a banner control (token sequences or `*suffix`). */
+export interface KindPhrases {
+  accept: string[];
+  reject: string[];
+  settings: string[];
+  save: string[];
+}
 
 export interface ProbeArgs {
   mode: 'banner' | 'heuristic';
@@ -14,10 +23,21 @@ export interface ProbeArgs {
   maxButtons: number;
   /** Attribute names a button selector may be built from, in order (test/data/cmp/probe.yaml). */
   selectorAttributes: string[];
-  /** Accept/reject/settings/save phrases (token sequences or `*suffix`); a non-modal candidate needs a control with one. */
-  controlPhrases?: string[];
-  /** Accept/reject phrases only: a candidate inside a header/footer landmark needs a control with one, else it is chrome. */
-  choicePhrases?: string[];
+  /**
+   * Phrases per lexicon class. A non-modal candidate needs a control with one of them; inside a header/footer landmark
+   * or with a single consent keyword, an accept or reject one.
+   */
+  kindPhrases?: KindPhrases;
+  /** Subscription and payment wording: a control with it offers no accept or reject (newsletter, pay-or-OK). */
+  paidPhrases?: string[];
+  /** Accept phrases that only acknowledge a notice: next to one generic keyword no choice, and no accept of a candidate. */
+  acknowledgePhrases?: string[];
+  /** Keywords (regex sources) that name cookies themselves; one of them with any accept makes a one-keyword banner. */
+  cookieKeywords?: string[];
+  /** Negations as token sequences: a cookie keyword right after one names no cookies in use ("keine Cookies"). */
+  negations?: string[];
+  /** id/class names of a banner container (regex sources, case-insensitive): with one, a single keyword is enough. */
+  bannerContainerNames?: string[];
   /** Explicit container (an iframe element handle when the banner lives in a child frame). */
   containerEl?: unknown;
 }
@@ -70,4 +90,10 @@ export interface ProbeResult {
   /** Links under the banner or its overlay at the first screen (hit test); which are legal is decided on the Node side. */
   coveredLinks: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
   heuristic: { score: number; signals: string[] } | null;
+  /**
+   * Heuristic mode: the best banner-shaped element it dismissed when it took none (features only), with its rank among
+   * the dismissed candidates (higher is more like a banner), so the Node side compares the candidates of several frames,
+   * and its box in this frame's viewport, so the Node side checks that the main page shows it.
+   */
+  rejectedCandidate: { fact: BannerCandidateFact; rank: number; box: Box } | null;
 }

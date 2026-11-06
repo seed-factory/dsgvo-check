@@ -4,14 +4,9 @@
  */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
-import type {
-  DocumentPart,
-  DocumentRecord,
-  DocumentsSection,
-  RequestRecord,
-} from '../../core/snapshot/browser.ts';
+import type { DocumentRecord, RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ServiceInfo, ServiceObservation } from '../../derive/types.ts';
-import { usableDocument } from './documents.ts';
+import { normalizeText, type PolicyPart, type PolicyText, policyDocuments, policyText } from './documents.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields } from './services.ts';
@@ -25,22 +20,6 @@ const QUOTE_LEAD_CHARS = 80;
 const QUOTE_MAX_CHARS = 200;
 
 export type MatchLevel = 'named' | 'company' | 'domain' | 'category' | 'none';
-
-/** NFKC, case, ä/ae, ß/ss, soft hyphen, diacritics; punctuation and hyphens → spaces. */
-export function normalizeText(s: string): string {
-  return ` ${s
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/­/g, '')
-    .replace(/ä/g, 'ae')
-    .replace(/ö/g, 'oe')
-    .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss')
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()} `;
-}
 
 function contains(text: string, term: string): boolean {
   const t = normalizeText(term);
@@ -73,56 +52,7 @@ function quote(text: string, term: string): string {
   return q.length > QUOTE_MAX_CHARS ? q.slice(0, QUOTE_MAX_CHARS) : q;
 }
 
-/**
- * The only thing missing is the content of expandable parts that were not opened (banner open); it is reported as
- * limitation `banner-open`. Every other error still makes the document incomplete.
- */
-function onlyUnopened(d: DocumentRecord): boolean {
-  return d.errors.length > 0 && d.errors.every((e) => e === 'expand-failed');
-}
-
-type PolicyPart = DocumentPart & { documentId: string };
-
 type Variant = 'not-named' | 'category-only' | 'ambiguous-match';
-
-/** The searchable text of the policy: normalized, split into what the page shows and what it keeps hidden. */
-interface PolicyText {
-  parts: PolicyPart[];
-  visibleParts: PolicyPart[];
-  visible: string;
-  hidden: string;
-}
-
-/** The HTML policy documents to search, or the reason the policy cannot be searched. */
-function policyDocuments(documents: DocumentsSection): { html: DocumentRecord[] } | { reason: string } {
-  // A page judged "not the document" or unconfirmed is no policy to search; LEGAL-01 reports it.
-  const policies = documents.documents.filter(
-    (d) => d.kind === 'privacy' && usableDocument(d, documents.attempts),
-  );
-  if (policies.length === 0) return { reason: 'privacy-policy-not-found' };
-
-  const html = policies.filter((d) => d.format === 'html');
-  if (html.length === 0) {
-    return { reason: policies.some((d) => d.format === 'pdf') ? 'pdf-not-evaluated' : 'unsupported-format' };
-  }
-
-  const main = html[0] as DocumentRecord;
-  if (main.lang && !/^(de|en)\b/i.test(main.lang)) return { reason: 'language-unsupported' };
-  if (html.some((d) => !d.complete && !onlyUnopened(d))) return { reason: 'document-incomplete' };
-  return { html };
-}
-
-function policyText(html: readonly DocumentRecord[]): PolicyText {
-  const parts = html.flatMap((d) => d.parts.map((p) => ({ ...p, documentId: d.id })));
-  const visibleParts = parts.filter((p) => p.origin !== 'hidden-irrelevant');
-  const hiddenParts = parts.filter((p) => p.origin === 'hidden-irrelevant');
-  return {
-    parts,
-    visibleParts,
-    visible: normalizeText(visibleParts.map((p) => p.text).join(' \n ')),
-    hidden: normalizeText(hiddenParts.map((p) => p.text).join(' \n ')),
-  };
-}
 
 /**
  * The legal names of provider and parent the text names as searched (their other spellings are searched too); a

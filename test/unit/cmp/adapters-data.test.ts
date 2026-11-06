@@ -80,6 +80,10 @@ describe('adapter data', () => {
     ['borlabs', 'optionalGroups'],
     ['ccm19', 'essentialEmbeddings'],
     ['real-cookie-banner', 'botUserAgent'],
+    ['shopware', 'answerCookie'],
+    ['wix', 'optionalGroups'],
+    ['cookieman', 'answerCookie'],
+    ['cookieman', 'groupsSource'],
   ])('%s needs "%s" for its page reader', (id, key) => {
     const broken = withAdapters((all) => delete all[id]?.[key]);
     expect(() => adaptersSection.parse(broken)).toThrow(new RegExp(`adapters\\.${id}\\.${key}: ${id} needs`));

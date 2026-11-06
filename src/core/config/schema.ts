@@ -191,6 +191,27 @@ const cmp = z.strictObject({
     `Time to wait for a CMP and its banner to appear (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
     0,
   ),
+  minCandidatePages: int(
+    2,
+    'Pages of phase A on which a banner the heuristic took, a banner-like box it did not take (or, in older snapshots, the same banner link) must show, when not on the start page, before CONSENT-03 stops concluding that there is no banner.',
+    1,
+    50,
+  ),
+});
+
+const legal = z.strictObject({
+  impressumMinGroups: int(
+    3,
+    'Kinds of provider details (register entry, VAT ID, representative, statement under § 5 DDG, person responsible for the content) one block of text must hold to count as the details of an Impressum.',
+    2,
+    5,
+  ),
+  policyClaimMinContexts: int(
+    2,
+    'Observations, as distinct pairs of page and browser phase, that must differ from a statement of the privacy policy before the difference counts as repeated.',
+    2,
+    20,
+  ),
 });
 
 const report = z.strictObject({
@@ -233,6 +254,7 @@ export const ConfigSchema = z
     tls: tls.prefault({}),
     dns: dns.prefault({}),
     cmp: cmp.prefault({}),
+    legal: legal.prefault({}),
     report: report.prefault({}),
     pdf: pdf.prefault({}),
   })
@@ -279,7 +301,7 @@ export type Config = z.output<typeof ConfigSchema>;
 /** Any subset of the settings, as callers of `scan()` pass it. */
 export type ConfigInput = z.input<typeof ConfigSchema>;
 
-export const SECTIONS = { scan, browser, http, tls, dns, cmp, report, pdf } as const;
+export const SECTIONS = { scan, browser, http, tls, dns, cmp, legal, report, pdf } as const;
 export type SectionName = keyof typeof SECTIONS;
 
 function deepFreeze<T>(value: T): T {

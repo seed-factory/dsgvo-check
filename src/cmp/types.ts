@@ -11,7 +11,10 @@ import type {
 
 export type Confidence = 'high' | 'medium' | 'low';
 
-/** The 7 supported CMPs in catalog order, plus open strings for heuristically named ones. */
+/**
+ * The CMPs with an own adapter: the seven of the catalog in its order, then the consent banners built into shop and
+ * site systems (Shopware, Wix, TYPO3 cookieman). Heuristically named ones are open strings.
+ */
 export const KNOWN_CMP_IDS = [
   'borlabs',
   'cookiebot',
@@ -20,6 +23,9 @@ export const KNOWN_CMP_IDS = [
   'ccm19',
   'real-cookie-banner',
   'cookiehub',
+  'shopware',
+  'wix',
+  'cookieman',
 ] as const;
 export type KnownCmpId = (typeof KNOWN_CMP_IDS)[number];
 
@@ -139,6 +145,41 @@ export interface CmpFirstLayer {
   consentFrameUnresolved?: boolean;
   /** Document legal links under the banner or overlay at the first screen, found by a hit test at the link centre. */
   coveredFooterLinks?: Array<{ label: string; box: Box; coveredBy: 'banner' | 'overlay' }>;
+  /**
+   * Set when the generic heuristic found no banner: its best dismissed candidate, or null when it saw none. Absent in
+   * snapshots written before this field and when the heuristic could not run on the page.
+   */
+  bannerCandidate?: BannerCandidateFact | null;
+}
+
+/**
+ * Kinds of the controls in a banner candidate: the lexicon classes of a choice, `other` for any further control. An
+ * acknowledgement alone ("OK", "Verstanden") is no accept here.
+ */
+export type CandidateControlKind = 'accept' | 'reject' | 'settings' | 'save' | 'other';
+
+/**
+ * A banner-shaped element with consent wording that the generic heuristic did not take as a banner: why, and its
+ * features. No page text and no values; never clicked.
+ */
+export interface BannerCandidateFact {
+  /**
+   * `page-section`: inside a header or footer without accept or reject; `keywords`: one consent keyword, no banner
+   * name, no accept or reject, and no cookie wording (in a box: none with an acknowledgement); `no-control`: no
+   * control the lexicon knows.
+   */
+  reason: 'keywords' | 'no-control' | 'page-section';
+  keywordHits: number;
+  controls: CandidateControlKind[];
+  /**
+   * A keyword hit names cookies themselves (`cookieKeywords`), not privacy or tracking in general, at least once without
+   * a negation in front ("Wir verwenden keine Cookies" names none).
+   */
+  cookieWording: boolean;
+  fixed: boolean;
+  dialog: boolean;
+  /** Its id or class is one of the banner container names (test/data/cmp/probe.yaml). */
+  named: boolean;
 }
 
 /** Everything the adapter extracted at one moment (first screen before click, after reload…). */
@@ -225,10 +266,29 @@ export interface CmpLexicon {
   close: string[];
   later: string[];
   hide: string[];
+  /** Words that negate a reject or accept phrase before it ("Nicht alle akzeptieren"): no decision then. */
+  negations?: string[];
+  /** Words after which a negation negates a cookie category, not the decision ("Nicht notwendige Cookies ablehnen"). */
+  necessity?: string[];
+  /** Words that restrict an accept phrase outside it ("Nur Statistik akzeptieren"): no accept then. */
+  restrictions?: string[];
+  /** Subscription and payment wording: a label with it is never a reject or accept. */
+  paid?: string[];
+  /** Words for all cookies: with one, a necessity word beside an accept phrase does not make it necessary-only. */
+  allWords?: string[];
+  /**
+   * Words that only recommend a button or call it the default ("empfohlen", "Standard"): beside a necessary-only reject
+   * phrase they name no category.
+   */
+  neutralWords?: string[];
   /** Case-insensitive regex sources for the pay-or-OK model in the banner text. */
   purAbo?: string[];
+  /** Accept phrases that only acknowledge a notice ("OK", "Verstanden"): no consent choice next to one generic keyword. */
+  acknowledgements?: string[];
   /** Case-insensitive regex sources for consent wording (generic heuristic). */
   bannerKeywords?: string[];
+  /** The banner keywords that name cookies themselves: with one, a single keyword makes a cookie notice. */
+  cookieKeywords?: string[];
 }
 
 export interface ExtractOptions {

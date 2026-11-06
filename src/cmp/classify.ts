@@ -1,5 +1,5 @@
 /** Pure table over first-screen `CmpFacts` (no page access); it also picks the only elements the collector may click. */
-import { classifyButton, isLinkRole, normalizeLabel } from './lexicon.ts';
+import { classifyButton, isLinkRole, isPaidLabel, normalizeLabel } from './lexicon.ts';
 import type {
   BlockingFacts,
   CmpButton,
@@ -173,7 +173,7 @@ export function classifyFirstLayer(
   if (early) return unrecognized(early.variant, early.reasons);
 
   // In a pay-or-OK banner the subscription button is a known control (the paid alternative), not an unknown one.
-  const subscription = fl.purAbo ? purAboMatcher(lexicon) : null;
+  const subscription = fl.purAbo ? subscriptionMatcher(lexicon) : null;
   const unclassified = first.filter((b) => b.kind === 'other' && !subscription?.(b.name));
   const relabelled = first.filter((b) => b.vendorRole === 'reject' && b.kind !== 'reject');
 
@@ -213,6 +213,12 @@ export function classifyFirstLayer(
     targets: { reject: reject.target, accept: accept.target },
     ...common,
   };
+}
+
+/** A button label that names the paid alternative: pay-or-OK wording or subscription and payment words. */
+function subscriptionMatcher(lexicon: CmpLexicon): (label: string) => boolean {
+  const purAbo = purAboMatcher(lexicon);
+  return (label) => purAbo(label) || isPaidLabel(label, lexicon);
 }
 
 function purAboMatcher(lexicon: CmpLexicon): (label: string) => boolean {

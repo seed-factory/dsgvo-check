@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { adapters } from '../../../src/cmp/index.ts';
 
 describe('CMP adapter registry', () => {
-  it('has the seven adapters in catalog order', () => {
+  it('has the seven adapters of the catalog in its order, then the banners of shop and site systems', () => {
     expect(adapters.map((a) => a.id)).toEqual([
       'borlabs',
       'cookiebot',
@@ -12,6 +12,9 @@ describe('CMP adapter registry', () => {
       'ccm19',
       'real-cookie-banner',
       'cookiehub',
+      'shopware',
+      'wix',
+      'cookieman',
     ]);
   });
 

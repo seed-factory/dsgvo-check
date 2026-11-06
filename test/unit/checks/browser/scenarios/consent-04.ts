@@ -5,7 +5,17 @@
 
 import type { CmpButton, CmpFacts } from '../../../../../src/cmp/types.ts';
 import { makeCmpFacts } from '../../../../utils/snapshot-builder.ts';
-import { click, cmpFacts, cmpWith, noBannerCmp, phase, START, site } from '../helpers.ts';
+import {
+  bannerCandidate,
+  candidateCmp,
+  click,
+  cmpFacts,
+  cmpWith,
+  noBannerCmp,
+  phase,
+  START,
+  site,
+} from '../helpers.ts';
 import type { Scenario } from './shared.ts';
 
 /** First-layer button as the adapter reports it; `kind` is left to the classifier and the lexicon. */
@@ -62,7 +72,30 @@ const firstLayerSite = (
     }),
   });
 
+/** A banner observed but not recognised gets the same info as a banner the heuristic found; header chrome does not. */
+const candidateScenarios: Scenario[] = [
+  {
+    file: 'inconclusive-banner-candidate.json',
+    description:
+      'The heuristic dismissed a fixed box with one consent keyword and a settings button on start and Impressum: info "Banner nicht erkannt"',
+    expect: {
+      status: 'inconclusive',
+      variants: ['banner-not-recognized'],
+      reason: 'banner-not-recognized',
+    },
+    build: () => site({ cmp: candidateCmp(bannerCandidate()) }),
+  },
+  {
+    file: 'clean-candidate-in-page-footer.json',
+    description:
+      'Counterexample: the dismissed candidate is a settings link strip inside the page footer: no banner, nothing to evaluate',
+    expect: { status: 'not_applicable', variants: [], reason: 'no-banner' },
+    build: () => site({ cmp: candidateCmp(bannerCandidate({ reason: 'page-section', keywordHits: 2 })) }),
+  },
+];
+
 export const scenarios: Scenario[] = [
+  ...candidateScenarios,
   {
     file: 'violation-consent-without-action.json',
     description:
