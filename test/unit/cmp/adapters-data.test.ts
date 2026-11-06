@@ -82,12 +82,41 @@ describe('adapter data', () => {
     ['ccm19', 'closedDialog'],
     ['real-cookie-banner', 'botUserAgent'],
     ['shopware', 'answerCookie'],
+    ['shopware', 'consentCookies'],
     ['wix', 'optionalGroups'],
     ['cookieman', 'answerCookie'],
     ['cookieman', 'groupsSource'],
   ])('%s needs "%s" for its page reader', (id, key) => {
     const broken = withAdapters((all) => delete all[id]?.[key]);
     expect(() => adaptersSection.parse(broken)).toThrow(new RegExp(`adapters\\.${id}\\.${key}: ${id} needs`));
+  });
+
+  // A Shopware reject is confirmed by the absence of these names, so the list holds the permission cookies of Shopware
+  // itself: never the answer cookie, which every answer sets, and no name twice.
+  it("shopware's permission cookies: Shopware's own names, distinct, without the answer cookie", () => {
+    const { consentCookies, answerCookie } = data.shopware;
+    expect(consentCookies).toEqual(
+      expect.arrayContaining([
+        'google-analytics-enabled',
+        'google-ads-enabled',
+        'wishlist-enabled',
+        'youtube-video',
+      ]),
+    );
+    expect(new Set(consentCookies).size).toBe(consentCookies?.length);
+    expect(consentCookies).not.toContain(answerCookie);
+  });
+
+  it.each([
+    ['the answer cookie among the permission cookies', ['cookie-preference'], /answer cookie/],
+    ['a name twice', ['youtube-video', 'youtube-video'], /twice/],
+    ['no cookie name', ['google analytics'], /cookie name/],
+    ['a name with a value', ['google-analytics-enabled=1'], /cookie name/],
+  ])('shopware permission cookies: %s is a data error', (_case, names, message) => {
+    const broken = withAdapters((all) => {
+      (all.shopware as Record<string, unknown>).consentCookies = names;
+    });
+    expect(() => adaptersSection.parse(broken)).toThrow(message);
   });
 
   it('a version rule names exactly one signal', () => {

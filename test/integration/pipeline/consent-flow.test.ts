@@ -1,7 +1,8 @@
 /**
  * All browser-side modules together: real browser collector and CMP subsystem, derive, browser checks, assess/gate and
- * reporters on hand-written shops with the Cookiebot and the Wix simulator. Variants: consent respected, tracker before
- * consent, blocking banner, a first layer without a reject, a reject the CMP state confirms or cannot confirm.
+ * reporters on hand-written shops with the Cookiebot, the Wix and the Shopware simulator. Variants: consent respected,
+ * tracker before consent, blocking banner, a first layer without a reject, a reject the CMP state confirms or cannot
+ * confirm.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -36,7 +37,14 @@ let server: FixtureServer;
 
 beforeAll(async () => {
   server = await startFixtureServer({
-    sites: ['pipeline/consent-shop', 'cmp/cookiebot', 'browser/ga4', 'pipeline/wix-shop', 'cmp/wix'],
+    sites: [
+      'pipeline/consent-shop',
+      'cmp/cookiebot',
+      'browser/ga4',
+      'pipeline/wix-shop',
+      'cmp/wix',
+      'pipeline/shopware-shop',
+    ],
   });
 });
 
@@ -387,5 +395,163 @@ describe('full browser pipeline on the Wix simulator', () => {
     expect(ids(report).filter((x) => x.startsWith('CONSENT-04'))).toEqual([]);
     expect(check(report, 'CONSENT-04')?.limitations).toContain('reject-unverified');
     expectBannerRecognized(scanned);
+  });
+});
+
+/** Test markers the Shopware fixtures give the permission cookies and the Google Ads cookie: no output may show them. */
+const SHOPWARE_VALUES = ['SECRET_SW_FLAG_7', 'SECRET_GCL_4711'];
+
+function expectNoShopwareValues({ r, files }: { r: ScanResult; files: string }): void {
+  const snapshot = JSON.stringify(r.snapshot);
+  for (const value of SHOPWARE_VALUES) {
+    expect(files).not.toContain(value);
+    expect(snapshot).not.toContain(value);
+  }
+}
+
+const cmpPhase = (r: ScanResult, phase: 'B' | 'C') => r.snapshot?.cmp?.phases.find((p) => p.phase === phase);
+const findingsOf = (report: FullReport, checkId: string) =>
+  report.findings
+    .filter((f) => f.checkId === checkId)
+    .map((f) => [f.serviceId ?? null, f.variant, f.severity])
+    .sort();
+
+describe('full browser pipeline on the Shopware simulator', () => {
+  describe('"Nur technisch notwendige" sets the answer cookie only, accept sets the permission cookies late', () => {
+    let scanned: Awaited<ReturnType<typeof run>>;
+
+    beforeAll(async () => {
+      scanned = await run('www.shopware-shop.test');
+    });
+
+    it('clicks reject in phase B and accept in phase C through the Shopware adapter', () => {
+      const click = scanned.r.snapshot?.plan.browser?.click;
+
+      expect(click?.B).toMatchObject({
+        action: 'reject',
+        target: { cmpId: 'shopware', name: 'Nur technisch notwendige' },
+      });
+      expect(click?.C).toMatchObject({
+        action: 'accept',
+        target: { cmpId: 'shopware', name: 'Alle Cookies akzeptieren' },
+      });
+    });
+
+    it('confirms the reject: answered by our click, no known permission cookie, the same after the reload', () => {
+      const b = cmpPhase(scanned.r, 'B');
+
+      expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
+      expect(b?.verify?.method).toContain('cookie:known-flags-absent');
+      const after = b?.verify?.stateAfter[0];
+      expect(after).toMatchObject({ source: 'cookie', ready: 'ready', origin: 'action' });
+      expect(Object.keys(after?.categories ?? {})).toContain('google-analytics-enabled');
+      expect(Object.values(after?.categories ?? {}).every((v) => v === 'denied')).toBe(true);
+      const afterReload = b?.facts.filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
+      expect(afterReload).toMatchObject([{ origin: 'stored', categories: after?.categories }]);
+    });
+
+    it('confirms the accept although the answer comes after the offcanvas fetch, so the overview has no caveat', () => {
+      const c = cmpPhase(scanned.r, 'C');
+
+      expect(c?.verify).toMatchObject({ action: 'accept', verified: true });
+      expect(c?.verify?.method).toContain('cookie:known-flags-present');
+      expect(c?.verify?.stateAfter[0]?.categories).toMatchObject({ 'google-analytics-enabled': 'granted' });
+      expect(scanned.files).not.toContain('Annahme nicht bestätigt');
+    });
+
+    it('CONSENT-03, -04 and -05 find nothing, CONSENT-05 rests on the confirmed reject; exit 0, banner recognised', () => {
+      const { r, report } = scanned;
+
+      expect(ids(report).filter((x) => /^CONSENT-0[345]\./.test(x))).toEqual([]);
+      expect(check(report, 'CONSENT-04')?.status).toBe('completed');
+      expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
+      expect(['no-reject-click', 'reject-not-confirmed', 'no-banner']).not.toContain(
+        check(report, 'CONSENT-05')?.reason,
+      );
+      expect(r.exitCode).toBe(0);
+      expectBannerRecognized(scanned);
+    });
+
+    it('no value of a permission cookie reaches the snapshot or a report', () => {
+      expectNoShopwareValues(scanned);
+    });
+  });
+
+  it('Google Analytics and Google Ads on every visit after a confirmed reject → CONSENT-05 tracking-after-reject', async () => {
+    const scanned = await run('www.shopware-leaky-shop.test');
+    const { r, report } = scanned;
+
+    expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
+    expect(findingsOf(report, 'CONSENT-05')).toEqual([
+      ['google-ads', 'tracking-after-reject', 'critical'],
+      ['google-analytics', 'tracking-after-reject', 'critical'],
+    ]);
+    const ads = report.findings.find((f) => f.checkId === 'CONSENT-05' && f.serviceId === 'google-ads');
+    expect(ads?.params).toMatchObject({ name: '_gcl_au' });
+    expect(r.exitCode).toBe(1);
+    expectNoShopwareValues(scanned);
+  });
+
+  it('a reject that closes the bar without an answer is not confirmed: CONSENT-05 reject-not-confirmed, no finding', async () => {
+    const { r, report } = await run('www.shopware-noanswer-shop.test');
+
+    expect(cmpPhase(r, 'B')?.click?.clicked).toBe(true);
+    expect(cmpPhase(r, 'B')?.verify).toMatchObject({
+      verified: false,
+      reason: 'cookie:no-response-recorded',
+    });
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
+    // The state after the click shows no answer: the reject is reported as not confirmed, a warning that does not gate.
+    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'reject-ineffective', 'warning']]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('counterexample: a reject that sets the analytics permission cookie is not confirmed; GA after it is no CONSENT-05 finding', async () => {
+    const scanned = await run('www.shopware-denyflag-shop.test');
+    const { r, report } = scanned;
+
+    expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: false, reason: 'cookie:not-all-denied' });
+    expect(cmpPhase(r, 'B')?.verify?.stateAfter[0]?.categories).toMatchObject({
+      'google-analytics-enabled': 'granted',
+    });
+    const gaAfterReject = r.snapshot?.derived?.requests.filter(
+      (c) =>
+        c.phase === 'B' &&
+        c.timing === 'after-reject' &&
+        c.serviceId === 'google-analytics' &&
+        c.kind === 'hit',
+    );
+    expect(gaAfterReject?.length ?? 0).toBeGreaterThan(0);
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
+    // The state after the click grants analytics: CONSENT-04 names the reject not confirmed.
+    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'reject-ineffective', 'warning']]);
+    expectNoShopwareValues(scanned);
+  });
+
+  // The answer is the shop's own: neither the cleared permission cookie nor the reload makes it the result of our click.
+  it('counterexample: an answer stored before the click is no confirmed reject, also not after the reload', async () => {
+    const scanned = await run('www.shopware-answered-shop.test');
+    const { r, report } = scanned;
+
+    const verify = cmpPhase(r, 'B')?.verify;
+    expect(verify).toMatchObject({ verified: false, reason: 'cookie:unchanged-after-click' });
+    expect(verify?.method).not.toContain('verified-after-reload-only');
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
+    // Granted before any choice. After the click nothing is granted, so the reject is unverified, not ineffective.
+    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'consent-without-action', 'warning']]);
+    expect(check(report, 'CONSENT-04')?.limitations).toContain('reject-unverified');
+    expectNoShopwareValues(scanned);
   });
 });

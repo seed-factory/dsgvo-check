@@ -229,6 +229,16 @@ adapters:
         - { selector: ".js-cookie-accept-all-button button", role: accept }
         - { selector: ".js-cookie-configuration-button button", role: settings }
     answerCookie: cookie-preference
+    # The permission cookies of Shopware's own optional cookies (its storefront cookie provider: statistics, marketing,
+    # comfort features). "Nur technisch notwendige" sets none of them, "Alle Cookies akzeptieren" those the installation
+    # offers. Only their names are read. Plugins add cookies of their own; a name enters here only with the plugin's
+    # documentation, never from one shop.
+    consentCookies:
+      - google-analytics-enabled
+      - google-ads-enabled
+      - wishlist-enabled
+      - youtube-video
+      - vimeo-video
 
   # The cookie banner of Wix sites. The platform exposes the visitor's policy as `consentPolicyManager`, also on a
   # site without the banner, so the banner or its script must be found as well.

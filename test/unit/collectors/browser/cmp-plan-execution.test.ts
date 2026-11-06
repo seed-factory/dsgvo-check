@@ -1,7 +1,13 @@
 /** The CMP bridge executes the click target selected by core without a second decision. */
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import type { ActOptions, ClickOutcome, ClickTarget, CmpAdapter } from '../../../../src/cmp/types.ts';
+import type {
+  ActOptions,
+  ClickOutcome,
+  ClickTarget,
+  CmpAdapter,
+  VerifyOptions,
+} from '../../../../src/cmp/types.ts';
 import { type CmpApi, CmpBridge } from '../../../../src/collectors/browser/cmp-bridge.ts';
 import type { ClickPlan } from '../../../../src/core/snapshot/browser.ts';
 import type { CollectorError } from '../../../../src/core/snapshot/common.ts';
@@ -88,5 +94,24 @@ describe('CmpBridge.act executes the plan.click target', () => {
     ]);
     // the adapter decides nothing: it is handed no facts
     expect(calls.filter((c) => !c.opts || 'facts' in c.opts)).toEqual([]);
+  });
+});
+
+describe('CmpBridge.verify', () => {
+  // The collector reloads on its own; a CMP that records the answer of a click late (Shopware's accept) is awaited
+  // no longer than the scan waits for a CMP and its banner.
+  it('reads the state without a reload, waiting at most the given time for the answer', async () => {
+    const seen: VerifyOptions[] = [];
+    const adapter = {
+      id: 'shopware',
+      verify: async (_p: Page, action: 'reject' | 'accept', opts?: VerifyOptions) => {
+        seen.push(opts ?? {});
+        return { action, verified: true, method: [], stateAfter: [], persistedAfterReload: null };
+      },
+    } as unknown as CmpAdapter;
+
+    await new CmpBridge(api, 1_000, [], 'C', DEFAULT_CLASSIFY).verify(page, adapter, 'accept', 'u', 750);
+
+    expect(seen).toEqual([{ reload: false, timeoutMs: 750 }]);
   });
 });

@@ -157,6 +157,10 @@ function markStartNotEvaluable(c: BrowserCollection, s: Session, start: VisitRes
   }
 }
 
+/** How long a phase waits for a CMP, its banner or a late answer; one CMP call never takes longer. */
+const cmpWaitMs = (c: BrowserCollection): number =>
+  Math.min(c.ctx.config.cmp.waitMs, c.timing.cmpCallTimeoutMs);
+
 /** Detects the CMP and measures the first screen; phase B also takes the banner screenshot. */
 async function observeFirstScreen(
   c: BrowserCollection,
@@ -164,11 +168,11 @@ async function observeFirstScreen(
   phase: 'B' | 'C',
   url: SanitizedUrl,
 ): Promise<{ adapter: CmpAdapter | null; first: CmpFacts | null }> {
-  const cmpWaitMs = Math.min(c.ctx.config.cmp.waitMs, c.timing.cmpCallTimeoutMs);
-  const det = await s.cmp.detect(s.page, url, cmpWaitMs);
+  const waitMs = cmpWaitMs(c);
+  const det = await s.cmp.detect(s.page, url, waitMs);
   const adapter = det?.adapter ?? null;
   // Some CMPs render the dialog after their API is ready (e.g. Borlabs 3): measure the first screen then.
-  if (adapter) await s.cmp.waitForBanner(s.page, adapter, url, cmpWaitMs);
+  if (adapter) await s.cmp.waitForBanner(s.page, adapter, url, waitMs);
 
   const first = await s.cmp.extract(s.page, adapter, 'first-screen', url);
   if (first) {
@@ -201,7 +205,7 @@ async function verifyClick(
 ): Promise<void> {
   const after = await s.cmp.extract(s.page, adapter, 'after-click', url);
   if (after) s.cmpFacts.facts.push(after);
-  const verify1 = await s.cmp.verify(s.page, adapter, action, url);
+  const verify1 = await s.cmp.verify(s.page, adapter, action, url, cmpWaitMs(c));
 
   if (phase === 'B' && c.timeLeft()) {
     const reload = await navigate(c, s, {
@@ -215,7 +219,9 @@ async function verifyClick(
     s.record.reloaded = true;
     await c.afterPage(s, reload, 'after-reload', adapter);
 
-    const verify2 = reload.error ? null : await s.cmp.verify(s.page, adapter, action, reload.visit.finalUrl);
+    const verify2 = reload.error
+      ? null
+      : await s.cmp.verify(s.page, adapter, action, reload.visit.finalUrl, cmpWaitMs(c));
     const verify = combineVerify(verify1, verify2);
     if (verify) s.cmpFacts.verify = verify;
   } else if (verify1) {

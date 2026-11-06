@@ -298,12 +298,13 @@ function judgeFirstLayer(
 }
 
 /**
- * A state that could show the reject failed: no answer recorded, or a category it lists. A CMP that records the answer
- * but cannot list its categories (Shopware) shows neither success nor failure.
+ * A state that shows the reject failed: no answer recorded, or a category granted. A state with an answer and nothing
+ * granted shows no failure, also when the reject is unconfirmed for another reason (an answer stored before the click,
+ * which the click left unchanged).
  */
 const showsRejectOutcome = (s: ConsentStateFact): boolean =>
   s.ready === 'ready' &&
-  (s.decision?.responded === false || Object.values(s.categories).some((v) => v !== 'unknown'));
+  (s.decision?.responded === false || Object.values(s.categories).some((v) => v === 'granted'));
 
 /** Our reject click ran: when the CMP state still shows a decision (or none was verified), the reject did nothing. */
 function judgeRejectClick(

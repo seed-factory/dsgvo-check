@@ -41,7 +41,7 @@ import type {
 
 const CLICK_TIMEOUT_MS = 5000;
 
-/** Default wait for the reload and the adapter's readiness in `verify`. */
+/** Default wait in `verify` for the reload, the adapter's readiness and an answer the CMP records late. */
 const VERIFY_TIMEOUT_MS = 8000;
 
 const WAIT_STEP_MS = 200;
@@ -74,7 +74,20 @@ export interface AdapterSpec {
   isReady(page: Page): Promise<boolean>;
   /** The API cannot list the installation's categories (CookieHub), so a category left `denied` by our accept click may not exist. */
   categoriesUnlisted?: boolean;
+  /**
+   * The categories are permission cookies known by name (Shopware): only an answer our click newly recorded is its
+   * result, and `verify.method` names that basis.
+   */
+  knownFlags?: boolean;
+  /**
+   * Clicks whose answer the CMP records some time after the click (Shopware's "accept all" first fetches the
+   * installation's cookie list): `verify` waits for an answer up to its `timeoutMs` before it reads the state.
+   */
+  delayedAnswer?: ReadonlyArray<'reject' | 'accept'>;
 }
+
+const answered = (states: readonly ConsentStateFact[]): boolean =>
+  states.some((s) => s.ready === 'ready' && s.decision?.responded === true);
 
 function detectArgsOf(d: AdapterData['detect']): DetectArgs {
   return {
@@ -301,14 +314,23 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
 
       // `action` only in the document of our click and only for an answer the click produced; after any
       // reload (ours or the collector's) the adapter's own origin (`stored`) stays.
-      const now = await adapter.state(page);
       const click = await clickInThisDocument(page);
-      const stateNow = originAfterClick(now, click?.before ?? null, click !== null);
+      if (click !== null && spec.delayedAnswer?.includes(action)) {
+        await waitUntil(async () => answered(await adapter.state(page)), timeoutMs);
+      }
+      const now = await adapter.state(page);
+      const stateNow = originAfterClick(now, click?.before ?? null, click !== null, {
+        newAnswerOnly: spec.knownFlags === true,
+      });
       const ignoreCategories =
         action === 'accept' && spec.categoriesUnlisted === true && click !== null
           ? unchangedDeniedAfterAccept(click.before, now)
           : [];
-      const verdict = stateVerdict(stateNow, action, { requireAction: click !== null, ignoreCategories });
+      const verdict = stateVerdict(stateNow, action, {
+        requireAction: click !== null,
+        ignoreCategories,
+        knownFlags: spec.knownFlags === true,
+      });
 
       const methods = [...verdict.methods];
       const bannerOpen = await safe(

@@ -201,6 +201,22 @@ describe('stateVerdict', () => {
     expect(stateVerdict([st({ categories: {} })], 'reject').reason).toBe('no-categories');
     expect(stateVerdict([], 'reject').reason).toBe('state-unavailable');
   });
+
+  // Shopware lists its permission cookies only after an answer: without one, the missing answer is the reason.
+  it('no categories and no answer recorded → no response recorded, not merely no categories', () => {
+    const unanswered = st({
+      source: 'cookie',
+      origin: 'default',
+      categories: {},
+      decision: { responded: false, method: 'unknown' },
+    });
+    expect(stateVerdict([unanswered], 'reject')).toMatchObject({
+      ok: false,
+      reason: 'cookie:no-response-recorded',
+    });
+    const unknown = { ...unanswered, decision: { responded: 'unknown', method: 'unknown' } } as const;
+    expect(stateVerdict([unknown], 'reject').reason).toBe('no-categories');
+  });
 });
 
 // CookieHub cannot list the categories of an installation; a category that stays denied after "accept all"
@@ -250,6 +266,60 @@ describe('stateVerdict: categories the CMP does not offer', () => {
     expect(unchangedDeniedAfterAccept([allDenied], [allDenied])).toEqual([]);
     expect(unchangedDeniedAfterAccept(null, [afterAccept])).toEqual([]);
   });
+
+  // Shopware lists its permission cookies only once the visitor answered: before the click nothing was granted.
+  it('unchangedDeniedAfterAccept: a category a state without an answer did not list counts as denied before', () => {
+    const unanswered = st({
+      source: 'cookie',
+      origin: 'default',
+      decision: { responded: false, method: 'unknown' },
+      categories: {},
+    });
+    const accepted = st({
+      source: 'cookie',
+      categories: { 'google-analytics-enabled': 'granted', 'youtube-video': 'denied' },
+    });
+    expect(unchangedDeniedAfterAccept([unanswered], [accepted])).toEqual(['youtube-video']);
+  });
+
+  it.each([
+    ['an answer was already recorded', { responded: true, method: 'explicit' }],
+    ['the answer was unknown', { responded: 'unknown', method: 'unknown' }],
+  ] as const)(
+    'counterexample: an unlisted category is not taken as denied before when %s',
+    (_c, decision) => {
+      const before = st({ source: 'cookie', origin: 'stored', decision, categories: {} });
+      const accepted = st({
+        source: 'cookie',
+        categories: { 'google-analytics-enabled': 'granted', 'youtube-video': 'denied' },
+      });
+      expect(unchangedDeniedAfterAccept([before], [accepted])).toEqual([]);
+    },
+  );
+});
+
+// Shopware's state lists the permission cookies the adapter knows by name, not every cookie of the installation.
+describe('stateVerdict: categories that are known names only', () => {
+  const named = (categories: ConsentStateFact['categories']) => st({ source: 'cookie', categories });
+
+  it.each([
+    ['reject', 'denied', 'cookie:known-flags-absent'],
+    ['accept', 'granted', 'cookie:known-flags-present'],
+  ] as const)('a confirmed %s names its basis, not every category', (action, state, method) => {
+    const r = stateVerdict([named({ a: state, b: state })], action, { knownFlags: true });
+    expect(r.ok).toBe(true);
+    expect(r.methods[0]).toBe(method);
+    expect(r.methods).not.toContain(`cookie:all-${state}`);
+  });
+
+  it('a failed verdict keeps its reason', () => {
+    const r = stateVerdict([named({ a: 'denied', b: 'granted' })], 'reject', { knownFlags: true });
+    expect(r).toMatchObject({ ok: false, reason: 'cookie:not-all-denied' });
+  });
+
+  it('counterexample: without the option the method stays all-denied', () => {
+    expect(stateVerdict([named({ a: 'denied' })], 'reject').methods[0]).toBe('cookie:all-denied');
+  });
 });
 
 describe('originAfterClick (`action` only for an answer the click produced)', () => {
@@ -279,6 +349,22 @@ describe('originAfterClick (`action` only for an answer the click produced)', ()
     expect(originAfterClick([postClick()], [answered], true)[0]?.origin).toBe('stored');
     const changed = postClick({ categories: { statistics: 'granted', marketing: 'granted' } });
     expect(originAfterClick([changed], [answered], true)[0]?.origin).toBe('action');
+  });
+
+  // Shopware's categories are known names only: under an answer from before the click, a changed list proves too little.
+  it('newAnswerOnly: an answer recorded before the click stays the CMP own, even with changed categories', () => {
+    const answered = preClick({
+      source: 'cookie',
+      origin: 'stored',
+      decision: { responded: true, method: 'explicit' },
+      categories: { 'google-analytics-enabled': 'granted' },
+    });
+    const rejected = postClick({ source: 'cookie', categories: { 'google-analytics-enabled': 'denied' } });
+
+    expect(originAfterClick([rejected], [answered], true)[0]?.origin).toBe('action');
+    expect(originAfterClick([rejected], [answered], true, { newAnswerOnly: true })[0]?.origin).toBe('stored');
+    const fresh = preClick({ source: 'cookie', categories: {} });
+    expect(originAfterClick([rejected], [fresh], true, { newAnswerOnly: true })[0]?.origin).toBe('action');
   });
 
   it('another document (after any reload) or the special branch keep their origin', () => {

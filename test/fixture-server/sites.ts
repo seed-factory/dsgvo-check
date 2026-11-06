@@ -13,7 +13,23 @@ export interface SiteConfig {
 }
 
 const html = { 'content-type': 'text/html; charset=utf-8' };
+const js = { 'content-type': 'application/javascript; charset=utf-8' };
 const gaCollect: RouteSpec = { host: 'www.google-analytics.com', path: '/g/collect', status: 204 };
+
+/** How long the Shopware simulator's offcanvas takes to answer, so its "accept all" records the answer this late. */
+export const SHOPWARE_ACCEPT_DELAY_MS = 1_500;
+
+/** A storefront host with the Shopware simulator of cmp/shopware: its script and its slow offcanvas, as its own files. */
+const shopwareStorefront = (host: string): RouteSpec[] => [
+  { host, path: '/js/cookie-permission.js', headers: js, file: 'cmp/shopware/www/js/cookie-permission.js' },
+  {
+    host,
+    path: '/cookie/offcanvas',
+    headers: html,
+    file: 'cmp/shopware/www/cookie/offcanvas',
+    delayMs: SHOPWARE_ACCEPT_DELAY_MS,
+  },
+];
 
 export const SITES: Record<string, SiteConfig> = {
   'browser/clean': { hosts: { 'www.example.test': 'www' } },
@@ -155,7 +171,10 @@ export const SITES: Record<string, SiteConfig> = {
   'cmp/generic': { hosts: { 'www.generic.test': 'www', 'consent.unknown-cmp.test': 'frame' } },
   'cmp/real-cookie-banner': { hosts: { 'www.rcb.test': 'www' } },
   'cmp/shops': { hosts: { 'www.animated-shop.test': 'animated', 'www.vendors-shop.test': 'vendors' } },
-  'cmp/shopware': { hosts: { 'www.shopware.test': 'www', 'stats.shopware.test': 'stats' } },
+  'cmp/shopware': {
+    hosts: { 'www.shopware.test': 'www', 'stats.shopware.test': 'stats' },
+    routes: shopwareStorefront('www.shopware.test').filter((r) => r.path === '/cookie/offcanvas'),
+  },
   'cmp/usercentrics': {
     hosts: { 'www.usercentrics.test': 'www', 'web.cmp.usercentrics.eu': 'uc3', 'app.usercentrics.eu': 'uc2' },
   },
@@ -205,6 +224,24 @@ export const SITES: Record<string, SiteConfig> = {
       'www.late-shop.test': 'late',
       'www.notice-shop.test': 'notice',
     },
+  },
+  // Small Shopware storefronts on the cookie bar simulator of cmp/shopware; the leaky one also sends Google Ads hits.
+  'pipeline/shopware-shop': {
+    hosts: {
+      'www.shopware-shop.test': 'ok',
+      'www.shopware-leaky-shop.test': 'leaky',
+      'www.shopware-noanswer-shop.test': 'no-answer',
+      'www.shopware-denyflag-shop.test': 'deny-flag',
+      'www.shopware-answered-shop.test': 'answered',
+    },
+    routes: [
+      ...shopwareStorefront('www.shopware-shop.test'),
+      ...shopwareStorefront('www.shopware-leaky-shop.test'),
+      ...shopwareStorefront('www.shopware-noanswer-shop.test'),
+      ...shopwareStorefront('www.shopware-denyflag-shop.test'),
+      ...shopwareStorefront('www.shopware-answered-shop.test'),
+      { host: 'www.googleadservices.com', path: '^/pagead/', pathRegex: true, status: 204 },
+    ],
   },
   // A small Wix site on the Wix banner simulator of cmp/wix, which serves its script and tracker.
   'pipeline/wix-shop': {

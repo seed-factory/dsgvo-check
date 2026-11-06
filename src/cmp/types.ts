@@ -332,7 +332,7 @@ export type ActOptions = {
 export interface VerifyOptions {
   /** Reload the page and read the state again (default true). */
   reload?: boolean;
-  /** Max wait for the CMP after reload (default 8000 ms). */
+  /** Max wait for the CMP after reload, and for an answer the CMP records late (default 8000 ms). */
   timeoutMs?: number;
 }
 

@@ -211,9 +211,23 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
   „Accept necessary“), ist nie ein Annehmen; die Formulierungen aus dem Lexikon sind ein Ablehnen, wenn daneben nur
   Cookie-, Notwendigkeits- und Hinweiswörter wie „empfohlen“ stehen („Accept necessary and analytics cookies“ ist weder
   Ablehnen noch Annehmen).
-- Bei Shopware zeigt die Seite nur, dass der Besucher geantwortet hat, nicht welche Cookies er erlaubt hat: Ablehnen
-  und Annehmen werden geklickt, gelten aber als nicht bestätigt. Shopware und Wix gelten nur mit ihrem Banner (oder dem
-  Banner-Skript von Wix) als erkannt, nicht allein durch die Kennungen der Plattform.
+- Shopware vermerkt die Antwort im Cookie `cookie-preference` und die Erlaubnis jedes optionalen Cookies in einem
+  eigenen Berechtigungs-Cookie. Gelesen werden nur die Namen der Berechtigungs-Cookies von Shopware selbst
+  (`google-analytics-enabled`, `google-ads-enabled`, `wishlist-enabled`, `youtube-video`, `vimeo-video`; `consentCookies`
+  in `test/data/cmp/adapters.yaml`), nie Werte. Ein Ablehnen gilt als bestätigt, wenn erst der Klick `cookie-preference`
+  gesetzt hat, keines dieser Cookies vorhanden ist und beides nach dem Neuladen so bleibt (`cookie:known-flags-absent`).
+  Berechtigungs-Cookies von Plugins kennt der Scanner nicht; die Bestätigung schließt sie nicht aus. Ein Annehmen gilt
+  als bestätigt, wenn der Klick mindestens eines dieser Cookies gesetzt hat; die übrigen bietet die Installation
+  womöglich nicht an. Da Shopware beim Annehmen zuerst die Cookie-Liste des Shops lädt, wartet der Scanner auf die
+  Antwort bis zu `DSGVO_CHECK_CMP_WAIT_MS`. Setzt das Ablehnen eines der Berechtigungs-Cookies oder keine Antwort, gilt
+  es als nicht bestätigt: CONSENT-05 bleibt `inconclusive` ohne Befund, CONSENT-04 meldet „Ablehnung nicht bestätigt“
+  (`warning`).
+- Einen Zustand, den der Klick unverändert ließ (eine schon vorher gespeicherte Antwort), liest das Neuladen nur noch
+  einmal: Er bestätigt das Ablehnen bei keinem Banner. „Ablehnung nicht bestätigt“ meldet CONSENT-04 nur, wenn der
+  Zustand nach dem Klick keine Antwort zeigt oder eine Kategorie erlaubt; sonst bleibt es bei der Einschränkung
+  `reject-unverified` ohne Befund.
+- Shopware und Wix gelten nur mit ihrem Banner (oder dem Banner-Skript von Wix) als erkannt, nicht allein durch die
+  Kennungen der Plattform.
 - CCM19 legt seinen Dialog verborgen und mit deaktivierten Bedienelementen in die Seite und öffnet ihn später. Ist er
   auf dem ersten Bildschirm der Phasen B und C nach der Wartezeit auf das Banner (`DSGVO_CHECK_CMP_WAIT_MS`) noch so
   und keine Antwort gespeichert, klickt der Scanner nichts: CONSENT-04 und CONSENT-05 bleiben `inconclusive`
@@ -576,7 +590,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
   als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
-  verborgen.
+  verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
+  Plugins bleiben unberücksichtigt.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.

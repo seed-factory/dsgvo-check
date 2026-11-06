@@ -77,6 +77,26 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(variantsOf(runCheck(consent05, scenario('clean-confirmed-reject.json')))).toEqual([]);
   });
 
+  it('a Shopware reject confirmed from the cookie source: Google Ads with its cookie, GA4 cookieless, the state as proof', () => {
+    const r = runCheck(consent05, scenario('violation-shopware-known-flags-absent.json'));
+
+    expect(observationsOf(r).map((o) => [o.subject, o.variant, o.params.kind, o.params.name])).toEqual([
+      ['google-ads', 'tracking-after-reject', 'both', '_gcl_au'],
+      ['google-analytics', 'cookieless-ping-after-reject', 'request', null],
+    ]);
+    const proof = observationsOf(r)[0]?.evidence.filter((e) => e.type === 'consent-state');
+    expect(proof).toMatchObject([
+      { source: 'cookie', origin: 'action', categories: { 'google-ads-enabled': 'denied' } },
+      { source: 'cookie', origin: 'stored', categories: { 'google-ads-enabled': 'denied' } },
+    ]);
+  });
+
+  it('counterexample: a Shopware reject that left a known permission cookie set is not confirmed, no finding', () => {
+    const r = runCheck(consent05, scenario('inconclusive-shopware-known-flag-set-by-reject.json'));
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
+    expect(observationsOf(r)).toEqual([]);
+  });
+
   it('inconclusive: reject not confirmed by CMP state', () => {
     expect(runCheck(consent05, scenario('inconclusive-reject-not-confirmed.json'))).toMatchObject({
       status: 'inconclusive',

@@ -9,6 +9,8 @@ import { KNOWN_CMP_IDS, type KnownCmpId } from './types.ts';
 
 const Selector = z.string().min(1);
 const Names = z.array(z.string().min(1)).default([]);
+/** A cookie name as RFC 6265 allows it (a token): no `=`, no blank, no separator. */
+const CookieName = z.string().regex(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/, 'not a cookie name');
 
 const DetectSchema = z.strictObject({
   globals: Names,
@@ -45,27 +47,41 @@ const BannerSchema = z.strictObject({
     .default([]),
 });
 
-const AdapterSchema = z.strictObject({
-  name: z.string().min(1),
-  supportedMajors: z.array(z.number().int().nonnegative()).optional(),
-  detect: DetectSchema,
-  version: z
-    .strictObject({
-      fromScriptUrl: z.boolean().default(false),
-      rules: z.array(VersionRuleSchema).default([]),
-    })
-    .default({ fromScriptUrl: false, rules: [] }),
-  banner: BannerSchema,
-  optionalGroups: Names,
-  botUserAgent: RegexSource.optional(),
-  essentialEmbeddings: z.array(RegexSource).default([]),
-  answerCookie: z.string().min(1).optional(),
-  groupsSource: z
-    .strictObject({ selector: Selector, attribute: z.string().regex(/^[a-z][a-z0-9-]*$/) })
-    .optional(),
-  /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
-  closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
-});
+const AdapterSchema = z
+  .strictObject({
+    name: z.string().min(1),
+    supportedMajors: z.array(z.number().int().nonnegative()).optional(),
+    detect: DetectSchema,
+    version: z
+      .strictObject({
+        fromScriptUrl: z.boolean().default(false),
+        rules: z.array(VersionRuleSchema).default([]),
+      })
+      .default({ fromScriptUrl: false, rules: [] }),
+    banner: BannerSchema,
+    optionalGroups: Names,
+    botUserAgent: RegexSource.optional(),
+    essentialEmbeddings: z.array(RegexSource).default([]),
+    answerCookie: z.string().min(1).optional(),
+    /**
+     * The permission cookies of the vendor itself, one per optional cookie (Shopware): their presence after an answer is
+     * that cookie's consent. Only listed names are read, so an unlisted one can neither confirm nor contradict an answer.
+     */
+    consentCookies: z
+      .array(CookieName)
+      .refine((names) => new Set(names).size === names.length, 'a permission cookie is listed twice')
+      .optional(),
+    groupsSource: z
+      .strictObject({ selector: Selector, attribute: z.string().regex(/^[a-z][a-z0-9-]*$/) })
+      .optional(),
+    /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
+    closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
+  })
+  .refine((a) => !a.answerCookie || !a.consentCookies?.includes(a.answerCookie), {
+    // Every answer sets the answer cookie, so as a permission cookie it would make every reject look like a consent.
+    message: 'the answer cookie is no permission cookie',
+    path: ['consentCookies'],
+  });
 
 export type AdapterData = z.infer<typeof AdapterSchema>;
 export type VersionRule = z.infer<typeof VersionRuleSchema>;
@@ -75,6 +91,7 @@ export type ReaderInput =
   | 'optionalGroups'
   | 'essentialEmbeddings'
   | 'answerCookie'
+  | 'consentCookies'
   | 'groupsSource'
   | 'closedDialog';
 
@@ -83,7 +100,7 @@ const READER_INPUTS: Partial<Record<KnownCmpId, readonly ReaderInput[]>> = {
   borlabs: ['botUserAgent', 'optionalGroups'],
   ccm19: ['essentialEmbeddings', 'closedDialog'],
   'real-cookie-banner': ['botUserAgent'],
-  shopware: ['answerCookie'],
+  shopware: ['answerCookie', 'consentCookies'],
   wix: ['optionalGroups'],
   cookieman: ['answerCookie', 'groupsSource'],
 };

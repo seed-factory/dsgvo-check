@@ -486,6 +486,16 @@ describe('verification of the reject before and after the reload', () => {
     });
   });
 
+  // The state was there before our click: read again after the reload it still proves nothing about the click.
+  it('a state our click left unchanged is not confirmed by the reload', () => {
+    const unchanged = { ...v(false, []), reason: 'cookie:unchanged-after-click' };
+
+    const out = combineVerify(unchanged, v(true, ['cookie:known-flags-absent']));
+
+    expect(out).toMatchObject({ verified: false, reason: 'cookie:unchanged-after-click' });
+    expect(out?.method).not.toContain('verified-after-reload-only');
+  });
+
   it('no reload result → persistence unknown; nothing at all → undefined', () => {
     expect(combineVerify(v(false, []), null)).toMatchObject({ verified: false, persistedAfterReload: null });
     expect(combineVerify(null, null)).toBeUndefined();

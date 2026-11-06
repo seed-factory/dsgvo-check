@@ -4,6 +4,7 @@ import {
   click,
   cmpFacts,
   cmpWith,
+  cookie,
   noBannerCmp,
   phase,
   req,
@@ -37,6 +38,97 @@ const confirmedReject = () => {
     },
   });
 };
+
+/** Shopware's permission cookies, named by the adapter: none present after "Nur technisch notwendige". */
+const SHOPWARE_DENIED = {
+  'google-analytics-enabled': 'denied',
+  'google-ads-enabled': 'denied',
+  'wishlist-enabled': 'denied',
+  'youtube-video': 'denied',
+  'vimeo-video': 'denied',
+} as const;
+
+/**
+ * A Shopware reject read from the cookie source: our click set the answer cookie, no permission cookie the adapter knows
+ * is present, and the same holds after the reload. With one of them present the reject is not confirmed.
+ */
+const shopwareReject = (categories: Record<string, 'denied' | 'granted'> = SHOPWARE_DENIED) => {
+  const answered = {
+    source: 'cookie',
+    ready: 'ready',
+    categories,
+    decision: { responded: true, method: 'explicit' },
+  } as const;
+  const confirmed = Object.values(categories).every((v) => v === 'denied');
+  return cmpWith({
+    phase: 'B',
+    facts: [cmpFacts(), cmpFacts({ moment: 'after-reload', state: [{ ...answered, origin: 'stored' }] })],
+    click: {
+      action: 'reject',
+      clicked: true,
+      button: { name: 'Nur technisch notwendige', role: 'button', kind: 'reject', kindConfidence: 'high' },
+    },
+    verify: {
+      action: 'reject',
+      verified: confirmed,
+      method: confirmed ? ['cookie:known-flags-absent', 'decision:responded', 'origin:action'] : [],
+      stateAfter: [{ ...answered, origin: 'action' }],
+      persistedAfterReload: confirmed,
+      ...(confirmed ? {} : { reason: 'cookie:not-all-denied' }),
+    },
+  });
+};
+
+/** After the Shopware reject: a Google Ads conversion hit with `auid` and the conversion linker cookie, a GA4 ping. */
+const shopwareAfterReject = () =>
+  phase('B', {
+    click: { ...click('reject'), cmpId: 'shopware', name: 'Nur technisch notwendige' },
+    reloaded: true,
+    requests: [
+      req(
+        'B-1',
+        'https://www.googleadservices.com/pagead/conversion/123456789/?auid=[redacted]&en=page_view',
+        {
+          phase: 'B',
+          afterClick: true,
+          tRef: 'click',
+          tStartMs: 2_500,
+          resourceType: 'image',
+          identifierPresent: true,
+          identifierNames: ['auid'],
+        },
+      ),
+      req('B-2', 'https://region1.google-analytics.com/g/collect?v=2&tid=G-TEST1&gcs=G100&en=page_view', {
+        phase: 'B',
+        afterClick: true,
+        tRef: 'click',
+        tStartMs: 2_600,
+        resourceType: 'ping',
+      }),
+    ],
+    cookies: [cookie('_gcl_au', { phase: 'B', afterClick: true })],
+  });
+
+const shopwareScenarios: Scenario[] = [
+  {
+    file: 'violation-shopware-known-flags-absent.json',
+    description:
+      'Shopware reject confirmed by its answer cookie and the absence of every known permission cookie; afterwards Google Ads with the conversion linker cookie and a cookieless GA4 ping',
+    expect: { status: 'completed', variants: ['cookieless-ping-after-reject', 'tracking-after-reject'] },
+    build: () => site({ phases: [phase('A'), shopwareAfterReject()], cmp: shopwareReject() }),
+  },
+  {
+    file: 'inconclusive-shopware-known-flag-set-by-reject.json',
+    description:
+      'Counterexample: the Shopware reject set the analytics permission cookie, so it is not confirmed and the same traffic gives no finding',
+    expect: { status: 'inconclusive', variants: [], reason: 'reject-not-confirmed' },
+    build: () =>
+      site({
+        phases: [phase('A'), shopwareAfterReject()],
+        cmp: shopwareReject({ ...SHOPWARE_DENIED, 'google-analytics-enabled': 'granted' }),
+      }),
+  },
+];
 
 /** Without a recognised banner nothing was clicked: a banner observed but not recognised leaves the reject open. */
 const bannerScenarios: Scenario[] = [
@@ -76,6 +168,7 @@ const bannerScenarios: Scenario[] = [
 
 export const scenarios: Scenario[] = [
   ...bannerScenarios,
+  ...shopwareScenarios,
   {
     file: 'violation-tracking-after-reject.json',
     description:

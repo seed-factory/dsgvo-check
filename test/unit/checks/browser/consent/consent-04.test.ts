@@ -282,10 +282,18 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r.outcome?.limitations).toContain('reject-unverified');
   });
 
-  // A CMP whose state cannot list its categories (Shopware) proves no failed reject by that state alone.
+  // Only a missing answer or a granted category shows a failed reject. A state that lists nothing, nothing known or
+  // nothing but denied categories (an answer stored before the click, which the click left unchanged) proves no failure.
   it.each([
     ['the answer recorded, no category listed', {}, true, [], 'reject-unverified'],
     ['the answer recorded, every category unknown', { statistics: 'unknown' }, true, [], 'reject-unverified'],
+    [
+      'the answer recorded, every category denied',
+      { statistics: 'denied', marketing: 'denied' },
+      true,
+      [],
+      'reject-unverified',
+    ],
     ['no answer recorded after the click', {}, false, ['reject-ineffective'], null],
     [
       'the answer recorded, a category granted',

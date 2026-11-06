@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Start – Beispiel Werkzeughandel</title>
+  <script>
+    window.salesChannelId = '7e6d5c4b3a2918f7e6d5c4b3a2918f70';
+    window.router = { 'frontend.cookie.offcanvas': '/cookie/offcanvas' };
+  </script>
+  <script src="/js/cookie-permission.js" data-sim-tracker="https://www.googletagmanager.com/gtag/js?id=G-TEST123"></script>
+  <!-- Hand-written fixture: the (fake) Google tag and a Google Ads conversion hit on every visit, whatever the
+       answer in the cookie bar. -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST123"></script>
+  <script>
+    document.cookie = '_gcl_au=1.1.SECRET_GCL_4711.1700000000; path=/; max-age=7776000; SameSite=Lax';
+    new Image().src = 'https://www.googleadservices.com/pagead/conversion/123456789/?auid=SECRET_GCL_4711&en=page_view';
+  </script>
+  <style>
+    body{font-family:sans-serif;margin:0} main{padding:24px}
+    .cookie-permission-container{display:none;position:fixed;left:0;right:0;bottom:0;z-index:1100;background:#fff;color:#222;box-shadow:0 -2px 8px rgba(0,0,0,.2);padding:12px 24px;font-size:14px}
+    .cookie-permission-container .btn{margin:4px;padding:8px 14px;border:0;background:#0042a0;color:#fff;font-size:14px}
+  </style>
+</head>
+<body>
+  <nav><a href="/">Start</a> · <a href="/kontakt/">Kontakt</a></nav>
+  <main>
+    <h1>Willkommen im Beispiel Werkzeughandel</h1>
+    <p>Werkzeug und Zubehör für Werkstatt und Garten.</p>
+    <p style="height:1600px"></p>
+  </main>
+  <footer>
+    <a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutzerklärung</a> · <a href="/kontakt/">Kontakt</a>
+  </footer>
+  <div class="cookie-permission-container" data-cookie-permission="true">
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col cookie-permission-content">
+          Wir verwenden Cookies, damit der Shop funktioniert, und mit Ihrer Erlaubnis für Statistiken.
+          <a data-ajax-modal="true" data-url="/datenschutz/" href="/datenschutz/" title="Mehr Informationen">Mehr Informationen</a>
+        </div>
+        <div class="col-12 col-md-auto d-flex justify-content-center flex-wrap cookie-permission-actions">
+          <span class="cookie-permission-button js-cookie-permission-button">
+            <button type="submit" class="btn btn-primary">Nur technisch notwendige</button>
+          </span>
+          <span class="js-cookie-configuration-button">
+            <button type="submit" class="btn btn-primary">Konfigurieren</button>
+          </span>
+          <span class="js-cookie-accept-all-button">
+            <button type="submit" class="btn btn-primary">Alle Cookies akzeptieren</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
