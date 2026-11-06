@@ -12,7 +12,7 @@ GitHub Action und im GitLab CI und lässt die Pipeline fehlschlagen, sobald ein 
 
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
-> **Status: Prototyp 0.1.0.** 16 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
+> **Status: Prototyp 0.1.0.** 19 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
 > PDF auf Wunsch. Der Prototyp prüft die Architektur an echten Websites und ist kein Release 1.0. Die Texte im Bericht
 > sind Entwürfe („Textentwurf“). Noch nicht veröffentlicht (kein npm-Paket). Lücken: siehe [Grenzen](#grenzen).
 
@@ -40,7 +40,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 ## Funktionen
 
 - **Drei Browser-Phasen** mit frischem Profil: vor jeder Interaktion, nach „Ablehnen“, nach „Alle akzeptieren“.
-- **16 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
+- **19 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
   TLS und E-Mail.
 - **Zehn CMP-Adapter** (Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub und die
   Banner von Shopware, Wix und TYPO3-cookieman).
@@ -648,7 +648,7 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **Nur die 16 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **Nur die 19 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
