@@ -150,6 +150,12 @@ export interface CmpFirstLayer {
    * snapshots written before this field and when the heuristic could not run on the page.
    */
   bannerCandidate?: BannerCandidateFact | null;
+  /**
+   * The CMP's dialog is in the page but was not opened for this browser: on the first screen of a consent phase, after
+   * the wait for the banner, it is still hidden with every control disabled and no answer is stored. Nothing is said
+   * about what visitors see. Only adapters that can read their dialog's lifecycle set it (CCM19).
+   */
+  dialogNotOpened?: boolean;
 }
 
 /**
@@ -326,7 +332,7 @@ export type ActOptions = {
 export interface VerifyOptions {
   /** Reload the page and read the state again (default true). */
   reload?: boolean;
-  /** Max wait for the CMP after reload (default 8000 ms). */
+  /** Max wait for the CMP after reload, and for an answer the CMP records late (default 8000 ms). */
   timeoutMs?: number;
 }
 

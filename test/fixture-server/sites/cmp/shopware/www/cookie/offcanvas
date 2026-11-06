@@ -1,0 +1,20 @@
+<!-- Own minimal simulator of the Shopware cookie offcanvas (no vendor code): the cookies of this installation, one
+     data-cookie each. The required group comes without a value for the timezone; "sim-plugin-enabled" stands for the
+     permission cookie of a plugin, which no adapter list names. -->
+<div class="offcanvas-cookie">
+  <div class="offcanvas-cookie-group">
+    <input type="checkbox" data-cookie-required="true" checked disabled>
+    <label>Technisch erforderlich</label>
+    <input type="hidden" data-cookie="cookie-preference" data-cookie-value="1" data-cookie-expiration="30">
+    <input type="hidden" data-cookie="timezone">
+  </div>
+  <div class="offcanvas-cookie-group">
+    <label>Statistik</label>
+    <input type="checkbox" data-cookie="google-analytics-enabled" data-cookie-value="SECRET_SW_FLAG_7" data-cookie-expiration="30">
+  </div>
+  <div class="offcanvas-cookie-group">
+    <label>Komfortfunktionen</label>
+    <input type="checkbox" data-cookie="youtube-video" data-cookie-value="SECRET_SW_FLAG_7" data-cookie-expiration="30">
+    <input type="checkbox" data-cookie="sim-plugin-enabled" data-cookie-value="SECRET_SW_FLAG_7" data-cookie-expiration="30">
+  </div>
+</div>

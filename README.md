@@ -83,25 +83,25 @@ Die Meldungs-ID eines Befunds ist `<Prüfung>.<Variante>`. Die Schweregrade sind
 mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 <!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
-| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                                           |
-| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                                                  |
-| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                                         |
-| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                                                |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
-| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                                                      |
-| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                                              |
-| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                                                |
-| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                                                |
-| `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                                                |
-| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                                                     |
-| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                                               |
-| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                                              |
-| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                                                      |
-| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
-| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                                                 |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                                              | `redirect-chain-detail`                                                                                                          |
-| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                                                 |
+| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                  |
+| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                         |
+| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                |
+| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                       |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`, `nonblocking-no-reject`                        | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
+| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                             |
+| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                     |
+| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                       |
+| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                       |
+| `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                       |
+| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
+| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                      |
+| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
+| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
+| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
+| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                                              | `redirect-chain-detail`                                                                                 |
+| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                        |
 <!-- registry:end -->
 
 ² Fest vorgegeben (`locked`): wird nicht angehoben und zählt nicht für `--fail-on`; die Prüfung bleibt `inconclusive`.
@@ -212,6 +212,12 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Seite) und danach auf den Kontrollseiten. Seiten, die ins Fenster passen, sich nicht scrollen lassen (etwa unter
   einem blockierenden Banner) oder selbst nach unten gescrollt haben, bleiben, wie sie sind. Anfragen danach tragen in
   `report.json` `afterReveal: true`.
+- Ob die Ablehnung oder Zustimmung auf einer Kontrollseite gilt, liest der Scanner dort am Banner ab. Zeigt es sich
+  erneut oder liegt ihm keine Antwort vor (etwa weil das Cookie der Antwort nur für den Host der Startseite gilt und die
+  Kontrollseite auf `www` liegt), zählen CONSENT-05 und TRACK-01 die Seite nicht als Seite nach Ablehnung bzw.
+  Zustimmung: Was sie sendet oder speichert, gilt nicht als Befund nach der Ablehnung, die Seite nicht als ausgewertet
+  (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
+  Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
@@ -222,6 +228,10 @@ Eigene Adapter gibt es für Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, 
 für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookieman. Geklickt wird nur über sie.
 
 - CONSENT-04 bewertet oberhalb von `info` nur bei Erkennung mit hoher Konfidenz.
+- Fehlt auf der ersten Ebene eines erkannten Banners die Ablehnung, meldet CONSENT-04 `warning`, wenn das Banner die
+  Seite nicht blockiert (`nonblocking-no-reject`, etwa nur „Cookie-Einstellungen“ und „Zustimmen“), und `critical`,
+  wenn es sie blockiert und „Zustimmen“ anbietet (`blocking-no-reject`). Eine Schließen-Schaltfläche (×) zählt nie als
+  Ablehnen: Der Scanner klickt im Besuch mit Ablehnung dann nichts, und CONSENT-05 bleibt `inconclusive`.
 - Ein anderes Banner wird nur heuristisch erkannt: CONSENT-04 meldet `info` „Banner nicht erkannt“ (Status
   `inconclusive`), der Scanner klickt nicht.
 - Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort (auf der Seite oder in einem iframe, das
@@ -248,9 +258,34 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
   „Accept necessary“), ist nie ein Annehmen; die Formulierungen aus dem Lexikon sind ein Ablehnen, wenn daneben nur
   Cookie-, Notwendigkeits- und Hinweiswörter wie „empfohlen“ stehen („Accept necessary and analytics cookies“ ist weder
   Ablehnen noch Annehmen).
-- Bei Shopware zeigt die Seite nur, dass der Besucher geantwortet hat, nicht welche Cookies er erlaubt hat: Ablehnen
-  und Annehmen werden geklickt, gelten aber als nicht bestätigt. Shopware und Wix gelten nur mit ihrem Banner (oder dem
-  Banner-Skript von Wix) als erkannt, nicht allein durch die Kennungen der Plattform.
+- Shopware vermerkt die Antwort im Cookie `cookie-preference` und die Erlaubnis jedes optionalen Cookies in einem
+  eigenen Berechtigungs-Cookie. Gelesen werden nur die Namen der Berechtigungs-Cookies von Shopware selbst
+  (`google-analytics-enabled`, `google-ads-enabled`, `wishlist-enabled`, `youtube-video`, `vimeo-video`; `consentCookies`
+  in `test/data/cmp/adapters.yaml`), nie Werte. Ein Ablehnen gilt als bestätigt, wenn erst der Klick `cookie-preference`
+  gesetzt hat, keines dieser Cookies vorhanden ist und beides nach dem Neuladen so bleibt (`cookie:known-flags-absent`).
+  Berechtigungs-Cookies von Plugins kennt der Scanner nicht; die Bestätigung schließt sie nicht aus. Ein Annehmen gilt
+  als bestätigt, wenn der Klick mindestens eines dieser Cookies gesetzt hat; die übrigen bietet die Installation
+  womöglich nicht an. Da Shopware beim Annehmen zuerst die Cookie-Liste des Shops lädt, wartet der Scanner auf die
+  Antwort bis zu `DSGVO_CHECK_CMP_WAIT_MS`. Setzt das Ablehnen eines der Berechtigungs-Cookies oder keine Antwort, gilt
+  es als nicht bestätigt: CONSENT-05 bleibt `inconclusive` ohne Befund, CONSENT-04 meldet „Ablehnung nicht bestätigt“
+  (`warning`).
+- Einen Zustand, den der Klick unverändert ließ (eine schon vorher gespeicherte Antwort), liest das Neuladen nur noch
+  einmal: Er bestätigt das Ablehnen bei keinem Banner. „Ablehnung nicht bestätigt“ meldet CONSENT-04 nur, wenn der
+  Zustand nach dem Klick keine Antwort zeigt oder eine Kategorie erlaubt; sonst bleibt es bei der Einschränkung
+  `reject-unverified` ohne Befund.
+- Shopware und Wix gelten nur mit ihrem Banner (oder dem Banner-Skript von Wix) als erkannt, nicht allein durch die
+  Kennungen der Plattform.
+- CCM19 legt seinen Dialog verborgen und mit deaktivierten Bedienelementen in die Seite und öffnet ihn später. Ist er
+  auf dem ersten Bildschirm der Phasen B und C nach der Wartezeit auf das Banner (`DSGVO_CHECK_CMP_WAIT_MS`) noch so
+  und keine Antwort gespeichert, klickt der Scanner nichts: CONSENT-04 und CONSENT-05 bleiben `inconclusive`
+  („Einwilligungsbanner dem Scanner nicht geöffnet“), ohne Befund, ebenso CONSENT-03, wenn vor einer Interaktion
+  einwilligungsbedürftige Dienste geladen wurden. Über das, was Besucher sehen, sagt der Bericht dann nichts.
+- Findet der erste passende Container-Selektor eines Adapters nur verborgene Elemente, zählt ein späterer, wenn sein
+  Element eine sichtbare Schaltfläche oder einen sichtbaren Link zeigt: Eine verborgene Vorlage verdeckt so nicht den
+  offenen Dialog, und ein Rahmen, von dem bei geschlossenem Banner nur der eigene Kasten zu sehen ist, gilt nicht als
+  Banner.
+- Hat der Scanner im Besuch mit Zustimmung angenommen, obwohl sich der Dialog im Besuch mit Ablehnung nicht öffnete,
+  nennt die Übersicht nur die Ablehnung als nicht geprüft.
 - Verhält sich ein Banner wie gegenüber einem Bot oder meldet es einen Standort außerhalb des EWR, werden die
   betroffenen Prüfungen `inconclusive`, nicht zu Befunden.
 
@@ -600,7 +635,11 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Nur die 16 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
-  `info`.
+  `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
+  als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
+  verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
+  Plugins bleiben unberücksichtigt. Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
   die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen

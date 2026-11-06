@@ -6,7 +6,19 @@ import type { RequestRecord } from '../../../../../src/core/snapshot/browser.ts'
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from '../helpers.ts';
-import { CONTACT, click, cmpFacts, cmpWith, phase, req, START, site } from '../helpers.ts';
+import {
+  CONTACT,
+  click,
+  cmpFacts,
+  cmpWith,
+  consentPages,
+  controlPageFacts,
+  phase,
+  req,
+  SHOP_HOST,
+  START,
+  site,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-01']!.find((s) => s.file === file)!.build();
@@ -645,5 +657,49 @@ describe('CONSENT-01 and the request limit', () => {
   it('counterexample: below the limit no phase C record limits CONSENT-01', () => {
     expect(limitations({ status: 'skipped', reason: 'cmp-not-recognized' }, unrecognized, false)).toEqual([]);
     expect(limitations(null, clicked, false)).toEqual([]);
+  });
+});
+
+describe('CONSENT-01 and control pages where the decision of the click is not in effect', () => {
+  const OTHER = `${SHOP_HOST}/kontakt`;
+  const gaHit = (id: string, ph: 'B' | 'C', pageUrl: string) =>
+    req(id, 'https://region1.google-analytics.com/g/collect?v=2&tid=G-1&cid=[redacted]&en=page_view', {
+      phase: ph,
+      afterClick: true,
+      resourceType: 'ping',
+      identifierPresent: true,
+      identifierNames: ['cid'],
+      pageUrl,
+    });
+
+  it.each<[string, boolean]>([
+    ['the banner shows again on the control page', false],
+    ['counterexample: the control page reads the stored decision back', true],
+  ])('%s: a hit there after the click is no request before the interaction', (_case, inEffect) => {
+    const r = run(
+      [
+        phase('A', { requests: [req('A-1', `${START}app.js`)] }),
+        phase('B', {
+          click: click('reject'),
+          reloaded: true,
+          pages: consentPages('B', [OTHER]),
+          requests: [gaHit('B-1', 'B', OTHER)],
+        }),
+        phase('C', {
+          click: click('accept'),
+          pages: consentPages('C', [OTHER]),
+          requests: [gaHit('C-1', 'C', OTHER)],
+        }),
+      ],
+      {
+        cmp: cmpWith(
+          { phase: 'B', facts: [cmpFacts(), controlPageFacts(OTHER, 'B', inEffect)] },
+          { phase: 'C', facts: [cmpFacts({ phase: 'C' }), controlPageFacts(OTHER, 'C', inEffect)] },
+        ),
+      },
+    );
+    // CONSENT-01 rests on phase A and on phase B before the click; the visits after a click are no context of it.
+    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+    expect(observationsOf(r)).toEqual([]);
   });
 });

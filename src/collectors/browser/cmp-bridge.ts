@@ -80,10 +80,12 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
 }
 
 // `v1` right after the click, `v2` after the collector's reload. A CMP that updates asynchronously may confirm the
-// reject only after the reload: it then counts as verified, marked `verified-after-reload-only` in `method`.
+// reject only after the reload: it then counts as verified, marked `verified-after-reload-only` in `method`. A state
+// our click left unchanged was there before it, so the reload only reads it again and confirms nothing.
 export function combineVerify(v1: VerifyResult | null, v2: VerifyResult | null): VerifyResult | undefined {
   const persistedAfterReload = v2 ? v2.verified : null;
-  if (v1?.verified || (v1 && !v2?.verified)) return { ...v1, persistedAfterReload };
+  const unchangedByClick = v1?.reason?.endsWith(':unchanged-after-click') === true;
+  if (v1?.verified || (v1 && (unchangedByClick || !v2?.verified))) return { ...v1, persistedAfterReload };
   if (v2?.verified) {
     return {
       ...v2,
@@ -183,13 +185,17 @@ export class CmpBridge {
     });
   }
 
-  /** State check without reload: the collector performs and records the reload itself. */
+  /**
+   * State check without reload: the collector performs and records the reload itself. `waitMs` bounds the wait for an
+   * answer the CMP records late (Shopware's accept).
+   */
   verify(
     page: Page,
     adapter: CmpAdapter,
     action: 'reject' | 'accept',
     url: string,
+    waitMs: number,
   ): Promise<VerifyResult | null> {
-    return this.call('verify', url, () => adapter.verify(page, action, { reload: false }));
+    return this.call('verify', url, () => adapter.verify(page, action, { reload: false, timeoutMs: waitMs }));
   }
 }

@@ -54,6 +54,8 @@ export interface RouteSpec {
   status?: number;
   headers?: Record<string, string | string[]>;
   body?: string;
+  /** A file under SITES_DIR as the body, e.g. a simulator script that several fixture hosts serve as their own. */
+  file?: string;
   /** Delay before responding (ms), e.g. delayed tags. */
   delayMs?: number;
 }
@@ -167,6 +169,8 @@ function collectDeclarations(opts: FixtureServerOptions): Declarations {
     for (const [host, dir] of Object.entries(config.hosts))
       docroots.set(host.toLowerCase(), path.join(root, dir));
     for (const [host, kind] of Object.entries(config.tls ?? {})) tlsKinds.set(host.toLowerCase(), kind);
+    // A route to a missing file fails here, not as a 500 in the middle of a scan.
+    for (const r of config.routes ?? []) if (r.file !== undefined) statSync(path.join(SITES_DIR, r.file));
     routes.push(...(config.routes ?? []));
   }
 
@@ -200,8 +204,9 @@ function routeMatches(r: RouteSpec, { req, scheme, host, url }: Incoming): boole
 
 async function respondWithRoute(r: RouteSpec, res: ServerResponse): Promise<void> {
   if (r.delayMs) await new Promise((resolve) => setTimeout(resolve, r.delayMs));
+  const body = r.file !== undefined ? readFileSync(path.join(SITES_DIR, r.file)) : (r.body ?? '');
   res.writeHead(r.status ?? 200, r.headers ?? {});
-  res.end(r.body ?? '');
+  res.end(body);
 }
 
 function serveStatic(root: string, pathname: string, res: ServerResponse): void {

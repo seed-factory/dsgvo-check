@@ -212,7 +212,7 @@ const cmp = z.strictObject({
   ),
   waitMs: int(
     5_000,
-    `Time to wait for a CMP and its banner to appear (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
+    `Time to wait for a CMP and its banner to appear, and for an answer a CMP records some time after the click (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
     0,
   ),
   minCandidatePages: int(

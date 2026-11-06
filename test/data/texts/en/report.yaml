@@ -77,7 +77,10 @@ ui:
     recognised; checks that depend on it are not conclusively evaluated and should be checked manually.} notFound {No
     consent banner was found on the pages checked; rejection and acceptance were therefore not checked.} notVisible {A
     consent banner is present in the page, but was not shown visibly during the scan; checks that depend on it are not
-    conclusively evaluated and should be checked manually.} other {}}
+    conclusively evaluated and should be checked manually.} dialogNotOpened {{accepted, select, true {A consent banner
+    is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled);
+    rejection was therefore not checked.} other {A consent banner is present in the page source but was not opened
+    for the scanner (controls disabled); rejection and acceptance were therefore not checked.}}} other {}}
   report.overview.region: >-
     The region from which the scan ran is not known. Websites can show consent banners and services differently
     depending on the visitor's region; the consent findings apply to this measurement environment and may differ for
@@ -251,7 +254,10 @@ ui:
     the banner not measured stably} final-host-not-probed {Final host of the redirect not probed}
     preconnect-not-observable {Connections without a request (preconnect) not observable}
     embed-navigation-excluded {Requests after acceptance on pages with a map or video service in the main document
-    not counted} pagehide-capture-unavailable {Requests sent when leaving a page not captured} first-layer-not-visible {First
+    not counted} pagehide-capture-unavailable {Requests sent when leaving a page not captured} reject-not-in-effect
+    {Pages after the rejection not evaluated where the consent banner showed again or no answer was stored}
+    accept-not-in-effect {Pages after the acceptance not evaluated where the consent banner showed again or no
+    answer was stored} first-layer-not-visible {First
     layer of the banner not visible} spf-include-unresolved {SPF include not fully resolved} mx-unknown {MX record
     could not be determined} throttled {The server throttled requests} status {Start page answered with HTTP
     {detail}} document-blocked {Page blocked by bot protection: {detail}} document-unavailable {Page not
@@ -291,7 +297,8 @@ ui:
     banner-candidate-unrecognized {consent banner observed but not recognised}
     banner-undetermined {whether a consent banner was shown could not be determined} claim-ambiguous {privacy policy
     statement not unambiguous: with a reservation, in text not displayed, together with the external load in one
-    sentence, in a sentence on several services or in a sentence too long} no-https {no HTTPS}
+    sentence, in a sentence on several services or in a sentence too long} cmp-dialog-not-opened {consent banner not
+    opened for the scanner} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}

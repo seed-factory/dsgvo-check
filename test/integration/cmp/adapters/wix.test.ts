@@ -2,7 +2,7 @@
 import type { Page } from 'playwright-core';
 import { expect, it } from 'vitest';
 import { detectCmp, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
-import { classifyFirstLayer } from '../../../utils/classify.ts';
+import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized, requestsSince } from '../helpers.ts';
 
 const TRACKER = 'stats.wix.test';
@@ -105,6 +105,40 @@ describeCmpScenarios(
       const facts = await adapter.extract(page, 'after-click');
 
       expect(JSON.stringify(facts)).not.toMatch(/consent-policy|"ess"|"dt3"|dataToThirdParty/);
+    });
+
+    it('counterexample: a first layer with "Zustimmen" and × alone has no reject; the × is never clicked as one', async () => {
+      const { page } = await env.open('https://www.wix.test/close-only.html');
+      const adapter = await recognized(page, 'wix');
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+
+      expect(facts.firstLayer.buttons.map((b) => [b.name, b.kind])).toEqual([
+        ['Zur Datenschutzerklärung', 'link'],
+        ['Zustimmen', 'accept'],
+        ['Schließen', 'close'],
+      ]);
+      const cls = classifyFirstLayer(facts, loadLexicon());
+      expect(cls.variant).toBe('nonblocking-no-reject');
+      expect(cls.targets?.reject).toBeNull();
+      const click = await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY });
+      expect(click.clicked).toBe(false);
+      expect(await waitForBanner(page, adapter, { timeoutMs: 100 })).toBe(true);
+    });
+
+    it('a policy API that throws: Wix is still recognised, the clicked reject is not confirmed and no state is called ready', async () => {
+      const { page } = await env.open('https://www.wix.test/policy-throws.html');
+      const adapter = await recognized(page, 'wix');
+      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      expect(await adapter.ready?.(page)).toBe(false);
+
+      expect((await decideAndAct(page, adapter, 'reject')).click.clicked).toBe(true);
+      const verify = await adapter.verify(page, 'reject', { timeoutMs: 1_000 });
+
+      expect(verify).toMatchObject({ verified: false, reason: 'state-unavailable' });
+      expect(verify.persistedAfterReload).not.toBe(true);
+      expect(verify.stateAfter.filter((st) => st.ready === 'ready')).toEqual([]);
     });
 
     it('the description under aria-hidden, the policy link, settings as span[role=button] and × are measured', async () => {

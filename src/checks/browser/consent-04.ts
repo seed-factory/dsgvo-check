@@ -30,6 +30,7 @@ import {
   bannerFound,
   bannerUndetermined,
   consentSignals,
+  dialogNotOpenedOutcome,
   signalOutcome,
   type UnrecognizedBanner,
   unrecognizedBanner,
@@ -297,12 +298,13 @@ function judgeFirstLayer(
 }
 
 /**
- * A state that could show the reject failed: no answer recorded, or a category it lists. A CMP that records the answer
- * but cannot list its categories (Shopware) shows neither success nor failure.
+ * A state that shows the reject failed: no answer recorded, or a category granted. A state with an answer and nothing
+ * granted shows no failure, also when the reject is unconfirmed for another reason (an answer stored before the click,
+ * which the click left unchanged).
  */
 const showsRejectOutcome = (s: ConsentStateFact): boolean =>
   s.ready === 'ready' &&
-  (s.decision?.responded === false || Object.values(s.categories).some((v) => v !== 'unknown'));
+  (s.decision?.responded === false || Object.values(s.categories).some((v) => v === 'granted'));
 
 /** Our reject click ran: when the CMP state still shows a decision (or none was verified), the reject did nothing. */
 function judgeRejectClick(
@@ -398,6 +400,9 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       if (facts.length === 0) return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [] };
       const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
       if (signal) return signal;
+      // Not "not shown visibly": the first layer was never offered to the scanner, so it is neither judged nor reported.
+      const notOpened = dialogNotOpenedOutcome(cmp);
+      if (notOpened) return notOpened;
       if (!bannerFound(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
         const unrecognized = unrecognizedBanner(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
         if (unrecognized) return unrecognizedOutcome(unrecognized, cmp, browser);

@@ -104,11 +104,6 @@ export interface CmpScenario {
   version?: string | null;
   rejectName: RegExp;
   acceptName: RegExp;
-  /**
-   * `answer-only`: the CMP state records that the visitor answered but lists no categories (Shopware), so the click
-   * closes the banner and verify stays unconfirmed. Default `categories`: verified by the categories of the state.
-   */
-  stateProves?: 'categories' | 'answer-only';
 }
 
 /** Verified by the categories of the state, right after the click and again after the reload. */
@@ -117,15 +112,6 @@ function expectVerifiedByState(verify: VerifyResult): void {
   expect(verify.verified).toBe(true);
   expect(verify.persistedAfterReload).toBe(true);
   expect(verify.method).toContain('persisted-after-reload');
-}
-
-/** The answer is recorded before and after the reload, the categories are not: nothing is confirmed. */
-function expectAnswerOnly(verify: VerifyResult): void {
-  expect(verify.verified).toBe(false);
-  expect(verify.reason).toBe('no-categories');
-  expect(verify.persistedAfterReload).toBe(false);
-  expect(verify.stateAfter.length).toBeGreaterThan(0);
-  expect(verify.stateAfter.filter((st) => st.decision?.responded !== true)).toEqual([]);
 }
 
 /** The first layer without reject: the table names the variant and no reject is clicked. */
@@ -155,7 +141,6 @@ export function describeCmpScenarios(
   describe(`${s.id} (simulator)`, () => {
     const env = useCmpServer([s.site]);
     const lexicon = loadLexicon();
-    const expectVerified = s.stateProves === 'answer-only' ? expectAnswerOnly : expectVerifiedByState;
 
     /** Opens `url`, waits until the CMP is recognized; the banner itself is not awaited yet. */
     async function openRecognized(url: string) {
@@ -179,6 +164,7 @@ export function describeCmpScenarios(
       if (s.version !== undefined) expect(facts.detection.version).toBe(s.version);
       expect(facts.detection.versionSupported).not.toBe(false);
       expect(facts.firstLayer.bannerVisible).toBe(true);
+      expect(facts.firstLayer.dialogNotOpened).toBeUndefined();
       const reject = facts.firstLayer.buttons.find((b) => b.kind === 'reject' && b.layer === 1);
       const accept = facts.firstLayer.buttons.find((b) => b.kind === 'accept' && b.layer === 1);
       expect(reject?.name).toMatch(s.rejectName);
@@ -207,7 +193,7 @@ export function describeCmpScenarios(
       expect(click.clicked).toBe(true);
       expect(click.button?.kind).toBe('reject');
       const verify = await adapter.verify(page, 'reject');
-      expectVerified(verify);
+      expectVerifiedByState(verify);
       expect(verify.method).toContain('ui-closed');
       expect(verify.stateAfter.map((st) => st.origin)).toContain('action');
       expect(verify.stateAfter.map((st) => st.origin)).toContain('stored');
@@ -250,7 +236,7 @@ export function describeCmpScenarios(
 
       expect(click.clicked).toBe(true);
       expect(click.button?.name).toMatch(s.acceptName);
-      expectVerified(await adapter.verify(page, 'accept'));
+      expectVerifiedByState(await adapter.verify(page, 'accept'));
     });
 
     // The adapter executes the target core chose and decides nothing itself.

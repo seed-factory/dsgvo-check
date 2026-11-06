@@ -8,8 +8,8 @@ import type {
   ConsentStateFact,
   GeoSignal,
 } from '../../cmp/types.ts';
-import type { BrowserPhase, CheckOutcome, EvidenceInput } from '../../core/api.ts';
-import type { BrowserSection } from '../../core/snapshot/browser.ts';
+import type { BrowserPhase, CheckOutcome, EvidenceInput, Phase } from '../../core/api.ts';
+import type { BrowserSection, PageVisit } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import { sortedUniq } from './lists.ts';
 import { phaseRecord, startPageUrl } from './snapshot.ts';
@@ -188,6 +188,24 @@ export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome 
   return null;
 }
 
+/**
+ * The CMP's dialog was in the page but not opened for the scanner: the first screen of phase B, measured after the
+ * wait for the banner, says so (`dialogNotOpened`) and nothing was clicked. Facts of phase A are taken without that
+ * wait and do not count. Neither the reject nor what a visitor sees is known then.
+ */
+function dialogNotOpened(cmp: CmpSection): boolean {
+  const b = cmp.phases.find((p) => p.phase === 'B');
+  if (!b || b.click?.clicked) return false;
+  return b.facts.some((f) => f.moment === 'first-screen' && f.firstLayer.dialogNotOpened === true);
+}
+
+/** `dialogNotOpened` as the outcome of a consent check: inconclusive, with no observation. */
+export function dialogNotOpenedOutcome(cmp: CmpSection): CheckOutcome | null {
+  return dialogNotOpened(cmp)
+    ? { status: 'inconclusive', reason: 'cmp-dialog-not-opened', observations: [] }
+    : null;
+}
+
 const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
 
 /**
@@ -243,4 +261,47 @@ export function decisionInEffect(pageFacts: readonly CmpFacts[], phase: BrowserP
   if (!latest) return true;
   if (latest.firstLayer.bannerVisible) return false;
   return !latest.state.some((s) => s.decision?.responded === false);
+}
+
+/** A control page of a consent phase: neither its start page nor the reload of it. */
+const controlVisit = (p: PageVisit) => !p.reload && (p.role !== 'start' || p.order > 0);
+
+/**
+ * The control pages of a consent phase where the decision of its click is not in effect (`decisionInEffect`), by final
+ * URL, sorted. The start page is never among them: in phase B its reload proves the reject itself (`confirmedReject`),
+ * and in phase C its banner may still be closing when the facts after the click are read.
+ */
+export function pagesWithoutDecision(browser: BrowserSection, cmp: CmpSection, phase: 'B' | 'C'): string[] {
+  const pages = phaseRecord(browser, phase)?.pages ?? [];
+  const url = (p: PageVisit) => p.finalUrl || p.url;
+  const start = new Set(pages.filter((p) => !controlVisit(p)).map(url));
+  const facts = cmp.phases.find((p) => p.phase === phase)?.facts ?? [];
+  return sortedUniq(pages.filter(controlVisit).map(url)).filter(
+    (u) =>
+      !start.has(u) &&
+      !decisionInEffect(
+        facts.filter((f) => f.pageUrl === u),
+        phase,
+      ),
+  );
+}
+
+/** Limitation of a check that leaves out the pages of `pagesWithoutDecision`, by the phase whose click they lack. */
+export const DECISION_NOT_IN_EFFECT = { B: 'reject-not-in-effect', C: 'accept-not-in-effect' } as const;
+
+/**
+ * The pages of phases B and C without the decision of their click: `excludes` tells whether a request, cookie or
+ * storage entry of a phase was recorded on one of them, `limitations` names the phases with such pages.
+ */
+export function withoutDecision(browser: BrowserSection, cmp: CmpSection) {
+  const pages = {
+    B: new Set(pagesWithoutDecision(browser, cmp, 'B')),
+    C: new Set(pagesWithoutDecision(browser, cmp, 'C')),
+  };
+  return {
+    excludes: (phase: Phase, pageUrl: string): boolean =>
+      (phase === 'B' || phase === 'C') && pages[phase].has(pageUrl),
+    limitations: (phases: readonly ('B' | 'C')[]): string[] =>
+      sortedUniq(phases.filter((p) => pages[p].size > 0).map((p) => DECISION_NOT_IN_EFFECT[p])),
+  };
 }

@@ -161,11 +161,17 @@ adapters:
       vendorRoles:
         - { selector: ".ccm--decline-cookies", role: reject }
         - { selector: '[data-full-consent="true"]', role: accept }
-        - { selector: ".ccm--ctrl-init", role: settings }
+        # The button that opens the control panel; every control of the widget, the language select too, has
+        # `.ccm--ctrl-init`.
+        - { selector: '[data-ccm-modal="ccm-control-panel"]', role: settings }
         - { selector: '.ccm--save-settings:not([data-full-consent="true"])', role: save }
         - { selector: ".ccm-modal--close", role: close }
     # Embedding names that are not optional (regex fragments, case-insensitive); the rest counts for "granted".
     essentialEmbeddings: [ccm19, "essen[tz]i", notwendig, technisch, necessary]
+    # CCM19 renders its widget into the page hidden, with these controls disabled, and opens it by showing it and
+    # enabling them. Still so after the wait for the banner and with no answer stored: the dialog was not opened for
+    # this browser.
+    closedDialog: { container: "#ccm-widget", controls: "button.ccm--ctrl-init" }
 
   real-cookie-banner:
     name: Real Cookie Banner
@@ -223,6 +229,16 @@ adapters:
         - { selector: ".js-cookie-accept-all-button button", role: accept }
         - { selector: ".js-cookie-configuration-button button", role: settings }
     answerCookie: cookie-preference
+    # The permission cookies of Shopware's own optional cookies (its storefront cookie provider: statistics, marketing,
+    # comfort features). "Nur technisch notwendige" sets none of them, "Alle Cookies akzeptieren" those the installation
+    # offers. Only their names are read. Plugins add cookies of their own; a name enters here only with the plugin's
+    # documentation, never from one shop.
+    consentCookies:
+      - google-analytics-enabled
+      - google-ads-enabled
+      - wishlist-enabled
+      - youtube-video
+      - vimeo-video
 
   # The cookie banner of Wix sites. The platform exposes the visitor's policy as `consentPolicyManager`, also on a
   # site without the banner, so the banner or its script must be found as well.
