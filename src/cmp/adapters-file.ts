@@ -13,6 +13,7 @@ export const adapterData = (id: KnownCmpId): AdapterData => loadAdapterData()[id
 export function readerInput(id: KnownCmpId, key: 'botUserAgent' | 'answerCookie'): string;
 export function readerInput(id: KnownCmpId, key: 'optionalGroups' | 'essentialEmbeddings'): string[];
 export function readerInput(id: KnownCmpId, key: 'groupsSource'): NonNullable<AdapterData['groupsSource']>;
+export function readerInput(id: KnownCmpId, key: 'closedDialog'): NonNullable<AdapterData['closedDialog']>;
 export function readerInput(id: KnownCmpId, key: ReaderInput) {
   return adapterData(id)[key];
 }

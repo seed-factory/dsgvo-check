@@ -20,6 +20,7 @@ import {
   bannerFacts,
   bannerUndetermined,
   consentSignals,
+  dialogNotOpenedOutcome,
   persistentIdentifier,
   signalOutcome,
   unrecognizedBanner,
@@ -150,7 +151,10 @@ export const consent03 = defineCheck({
     // limits the conclusion instead. What the heuristic found on one subpage only is part of that page.
     const minPages = ctx.thresholds.cmp.minCandidatePages;
     const banners = bannerFacts(cmp, browser, minPages);
-    if (banners.some((f) => !f.firstLayer.consentFrameUnresolved)) {
+    // A CMP whose dialog was not opened for the scanner is in the page, but whether it showed before the services
+    // loaded is not known.
+    const notOpened = dialogNotOpenedOutcome(cmp);
+    if (!notOpened && banners.some((f) => !f.firstLayer.consentFrameUnresolved)) {
       return { status: 'completed', observations: [], coverage };
     }
     const frameUnresolved = banners.some((f) => f.firstLayer.consentFrameUnresolved === true);
@@ -159,6 +163,7 @@ export const consent03 = defineCheck({
     if (use.tracking.length === 0 && use.trackingStorage.length === 0 && use.embedStorage.length === 0) {
       return { status: 'completed', observations: [], coverage };
     }
+    if (notOpened) return { ...notOpened, coverage };
     if (frameUnresolved) {
       return {
         status: 'inconclusive',

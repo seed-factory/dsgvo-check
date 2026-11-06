@@ -631,12 +631,93 @@ describe('the overview: checks without a result', () => {
       /nicht sichtbar angezeigt/,
     ],
     ['recognized', check('CONSENT-04', 'completed', null), /^Das Einwilligungsbanner wurde erkannt\.$/],
+    [
+      'dialogNotOpened',
+      check('CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'),
+      /im Seitenquelltext vorhanden, wurde dem Scanner aber nicht geöffnet \(Bedienelemente deaktiviert\)/,
+    ],
   ])('describes the banner state %s', (_state, consent04, sentence) => {
     const sentences = overview([consent04, check('CONSENT-05', 'inconclusive', 'no-reject-click')]);
     expect(sentences.some((s) => sentence.test(s))).toBe(true);
     expect(sentences).toContain(
       'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
     );
+  });
+
+  describe('a consent dialog the CMP did not open for the scanner', () => {
+    const unopenedChecks = () => [
+      check('CONSENT-03', 'inconclusive', 'cmp-dialog-not-opened'),
+      check('CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'),
+      check('CONSENT-05', 'inconclusive', 'cmp-dialog-not-opened'),
+    ];
+
+    it.each([
+      [
+        'de',
+        'Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem Scanner aber nicht geöffnet (Bedienelemente deaktiviert); Ablehnung und Zustimmung wurden daher nicht geprüft.',
+      ],
+      [
+        'en',
+        'A consent banner is present in the page source but was not opened for the scanner (controls disabled); rejection and acceptance were therefore not checked.',
+      ],
+    ] as const)(
+      'has its own banner sentence, never the one about a banner not shown visibly (%s)',
+      (lang, text) => {
+        const sentences = overview(unopenedChecks(), [], lang);
+
+        expect(sentences).toContain(text);
+        expect(sentences.join(' ')).not.toMatch(/nicht sichtbar angezeigt|not shown visibly/);
+        // The banner sentence explains the open checks; they are not listed again under "no conclusive result".
+        expect(sentences.join(' ')).not.toMatch(/CONSENT-0[345]/);
+        expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      },
+    );
+
+    it('says nothing about what visitors see', () => {
+      const sentence = overview(unopenedChecks()).find((s) => s.includes('Seitenquelltext')) ?? '';
+      expect(sentence).not.toMatch(/Besucher|angezeigt|sichtbar/);
+    });
+
+    it.each([
+      [
+        'de',
+        'Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem Scanner beim Besuch mit Ablehnung aber nicht geöffnet (Bedienelemente deaktiviert); die Ablehnung wurde daher nicht geprüft.',
+        /Zustimmung wurden daher nicht geprüft/,
+      ],
+      [
+        'en',
+        'A consent banner is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled); rejection was therefore not checked.',
+        /acceptance were therefore not checked/,
+      ],
+    ] as const)(
+      'when the dialog opened in the visit with consent and our accept was clicked, only the reject is open (%s)',
+      (lang, text, denied) => {
+        const r = reportWith([]);
+        r.checks = unopenedChecks();
+        r.scan.coverage.consentActions = [
+          { action: 'reject', clicked: false, verified: null },
+          { action: 'accept', clicked: true, verified: true },
+        ];
+
+        const sentences = buildReportView(r, ctx('brief', lang)).overview;
+
+        expect(sentences).toContain(text);
+        expect(sentences.join(' ')).not.toMatch(denied);
+      },
+    );
+
+    it('an accept that was not clicked keeps both open', () => {
+      const r = reportWith([]);
+      r.checks = unopenedChecks();
+      r.scan.coverage.consentActions = [
+        { action: 'reject', clicked: false, verified: null },
+        { action: 'accept', clicked: false, verified: null },
+      ];
+
+      expect(buildReportView(r, ctx('brief')).overview.join(' ')).toMatch(
+        /Ablehnung und Zustimmung wurden daher nicht geprüft/,
+      );
+    });
   });
 
   describe('a banner observed but not recognised', () => {
@@ -1066,7 +1147,7 @@ describe('the full report in words', () => {
     // browser checks; CONSENT-05 passes on why the visit with the reject did not start
     'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
     'first-layer-not-visible unknown-classification consent-frame-unresolved banner-candidate-unrecognized',
-    'banner-undetermined',
+    'banner-undetermined cmp-dialog-not-opened',
     'no-pre-consent-observation',
     'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
     'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',

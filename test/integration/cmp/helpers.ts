@@ -179,6 +179,7 @@ export function describeCmpScenarios(
       if (s.version !== undefined) expect(facts.detection.version).toBe(s.version);
       expect(facts.detection.versionSupported).not.toBe(false);
       expect(facts.firstLayer.bannerVisible).toBe(true);
+      expect(facts.firstLayer.dialogNotOpened).toBeUndefined();
       const reject = facts.firstLayer.buttons.find((b) => b.kind === 'reject' && b.layer === 1);
       const accept = facts.firstLayer.buttons.find((b) => b.kind === 'accept' && b.layer === 1);
       expect(reject?.name).toMatch(s.rejectName);

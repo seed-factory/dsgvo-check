@@ -66,6 +66,11 @@ export interface AdapterSpec {
   readGeo?(page: Page): Promise<GeoSignal[]>;
   readBot?(page: Page): Promise<BotSignal[]>;
   readConfig?(page: Page): Promise<AdapterConfig>;
+  /**
+   * The CMP's dialog is in the page but closed in the way of a dialog the CMP has not opened yet, with no answer stored.
+   * Read for the first screen only; `waitForBanner` decides whether the wait for it had run out.
+   */
+  readDialogNotOpened?(page: Page): Promise<boolean>;
   isReady(page: Page): Promise<boolean>;
   /** The API cannot list the installation's categories (CookieHub), so a category left `denied` by our accept click may not exist. */
   categoriesUnlisted?: boolean;
@@ -250,6 +255,13 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         adapter.botSignals(page),
       ]);
       const measured = await measureBanner(page, data().banner, lexicon, cfg.closeMeansAccept);
+      // Read after the measurement: a dialog that opened in between is visible to it, so it is not called unopened.
+      const layer = measured.firstLayer;
+      const notOpened =
+        moment === 'first-screen' &&
+        layer.bannerPresent &&
+        !layer.bannerVisible &&
+        (await safe(spec.readDialogNotOpened?.(page), false));
       return {
         phase: opts.phase ?? 'B',
         pageUrl: sanitizeUrl(page.url()),
@@ -257,7 +269,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         takenAt,
         viewport: measured.viewport,
         detection,
-        firstLayer: measured.firstLayer,
+        firstLayer: notOpened ? { ...layer, dialogNotOpened: true } : layer,
         blocking: measured.blocking,
         state,
         geoSignals,

@@ -196,7 +196,13 @@ function serviceViews(rows: readonly Finding[], tools: FrontPageTools): ServiceV
     .slice(0, MAX_ROWS);
 }
 
-export type BannerState = 'recognized' | 'firstLayerAmbiguous' | 'notRecognized' | 'notFound' | 'notVisible';
+export type BannerState =
+  | 'recognized'
+  | 'firstLayerAmbiguous'
+  | 'notRecognized'
+  | 'notFound'
+  | 'notVisible'
+  | 'dialogNotOpened';
 
 /** CONSENT-04 variants of a banner that no adapter or heuristic could attribute. */
 const NOT_RECOGNIZED: ReadonlySet<string> = new Set(['banner-not-recognized', 'cmp-not-supported']);
@@ -208,11 +214,15 @@ export const firstLayerAmbiguous = (f: Finding): boolean =>
 /** CONSENT-03 saw something that looks like a banner but was not recognised, so it did not conclude "no banner". */
 const CANDIDATE_REASON = 'banner-candidate-unrecognized';
 
+/** The CMP's dialog was in the page but not opened for the scanner; nothing is known about what visitors see. */
+const NOT_OPENED_REASON = 'cmp-dialog-not-opened';
+
 /** Reasons of an inconclusive check that the banner sentence already explains. */
 const BANNER_REASONS: ReadonlySet<string> = new Set([
   ...NOT_RECOGNIZED,
   'first-layer-not-visible',
   CANDIDATE_REASON,
+  NOT_OPENED_REASON,
 ]);
 
 /**
@@ -230,10 +240,22 @@ export function bannerState(report: Report): BannerState | null {
   if (findings.length > 0) return 'firstLayerAmbiguous';
 
   const check = (report.checks ?? []).find((c) => c.id === 'CONSENT-04');
+  if (check?.status === 'inconclusive' && check.reason === NOT_OPENED_REASON) return 'dialogNotOpened';
   if (check?.status === 'completed') return 'recognized';
   if (check?.status === 'not_applicable' && check.reason === 'no-banner') return 'notFound';
   if (check?.status === 'inconclusive' && check.reason === 'first-layer-not-visible') return 'notVisible';
   return null;
+}
+
+/**
+ * The banner sentence: a dialog that stayed closed in the visit with the reject may have opened in the visit with
+ * consent, where our accept was clicked; then only the reject is open.
+ */
+function bannerSentence(report: Report, banner: BannerState, tools: FrontPageTools): string {
+  const accepted = (report.scan.coverage?.consentActions ?? []).some(
+    (a) => a.action === 'accept' && a.clicked,
+  );
+  return tools.label('overview.banner', { state: banner, accepted });
 }
 
 type CheckEntry = NonNullable<Report['checks']>[number];
@@ -425,7 +447,7 @@ function overviewSentences(
           : 'complete';
   sentences.push(tools.label('overview.scan', { state }), ...openSentences(open, banner, tools), ...partly);
 
-  if (banner) sentences.push(tools.label('overview.banner', { state: banner }));
+  if (banner) sentences.push(bannerSentence(report, banner, tools));
 
   const consentFindings = (report.findings ?? []).some((f) => f.checkId.startsWith('CONSENT-'));
   if (report.scan.environment?.egress.region === 'unknown' && consentFindings) {
@@ -452,7 +474,7 @@ function serviceNotes(report: Report, rows: readonly Finding[], tools: FrontPage
     banner,
     tools,
   );
-  if (banner && banner !== 'recognized') notes.push(tools.label('overview.banner', { state: banner }));
+  if (banner && banner !== 'recognized') notes.push(bannerSentence(report, banner, tools));
   if (phaseCState(report) === 'unverified') notes.push(tools.label('services.acceptUnverified'));
 
   const stages = rows.flatMap((f) => [

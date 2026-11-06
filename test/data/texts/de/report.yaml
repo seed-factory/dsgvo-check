@@ -80,7 +80,11 @@ ui:
     notFound {Auf den geprüften Seiten wurde kein Einwilligungsbanner gefunden; Ablehnung und Zustimmung wurden daher
     nicht geprüft.} notVisible {Ein Einwilligungsbanner ist im Seitenaufbau vorhanden, wurde während des Scans aber
     nicht sichtbar angezeigt; davon abhängige Prüfungen sind nicht abschließend ausgewertet und sollten manuell
-    geprüft werden.} other {}}
+    geprüft werden.} dialogNotOpened {{accepted, select, true {Ein Einwilligungsbanner ist im Seitenquelltext
+    vorhanden, wurde dem Scanner beim Besuch mit Ablehnung aber nicht geöffnet (Bedienelemente deaktiviert); die
+    Ablehnung wurde daher nicht geprüft.} other {Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem
+    Scanner aber nicht geöffnet (Bedienelemente deaktiviert); Ablehnung und Zustimmung wurden daher nicht geprüft.}}}
+    other {}}
   report.overview.region: >-
     Die Region, aus der der Scan lief, ist nicht bekannt. Websites können Einwilligungsbanner und Dienste je nach
     Region des Besuchers unterschiedlich ausspielen; die Befunde zur Einwilligung gelten für diese Messumgebung und
@@ -291,6 +295,7 @@ ui:
     {Kontaktseite nicht auswertbar} consent-frame-unresolved {Frame des Einwilligungsbanners nicht zugeordnet}
     banner-candidate-unrecognized {Einwilligungsbanner beobachtet, aber nicht erkannt}
     banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde}
+    cmp-dialog-not-opened {Einwilligungsbanner dem Scanner nicht geöffnet}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
     eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation

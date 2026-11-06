@@ -14,6 +14,7 @@ import {
   req,
   START,
   site,
+  unopenedDialogCmp,
 } from '../helpers.ts';
 import { ga, type Scenario } from './shared.ts';
 
@@ -89,6 +90,43 @@ const candidateScenarios: Scenario[] = [
   },
 ];
 
+/**
+ * A CMP whose dialog stayed closed for the scanner: whether a banner was shown before the services loaded is not known,
+ * so no conclusion either way; without anything that needs consent there is nothing to conclude about.
+ */
+const unopenedDialogScenarios: Scenario[] = [
+  {
+    file: 'inconclusive-cmp-dialog-not-opened.json',
+    description:
+      'CCM19 recognised, its dialog in the page but not opened for the scanner; GA hit with identifier before any interaction',
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-dialog-not-opened' },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] }), phase('B')],
+        cmp: unopenedDialogCmp(),
+      }),
+  },
+  {
+    file: 'clean-dialog-not-opened-fonts-only.json',
+    description:
+      'Counterexample: the same closed CCM19 dialog, but only Google Fonts and a CDN library loaded: nothing needs consent',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('A-1', 'https://fonts.googleapis.com/css2?family=Roboto', { resourceType: 'stylesheet' }),
+              req('A-2', 'https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js'),
+            ],
+          }),
+          phase('B'),
+        ],
+        cmp: unopenedDialogCmp(),
+      }),
+  },
+];
+
 export const scenarios: Scenario[] = [
   {
     file: 'violation-no-banner-ga-region-asserted.json',
@@ -139,6 +177,7 @@ export const scenarios: Scenario[] = [
       }),
   },
   ...candidateScenarios,
+  ...unopenedDialogScenarios,
 ];
 
 export const variantScenarios: Scenario[] = [

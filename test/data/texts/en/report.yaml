@@ -77,7 +77,10 @@ ui:
     recognised; checks that depend on it are not conclusively evaluated and should be checked manually.} notFound {No
     consent banner was found on the pages checked; rejection and acceptance were therefore not checked.} notVisible {A
     consent banner is present in the page, but was not shown visibly during the scan; checks that depend on it are not
-    conclusively evaluated and should be checked manually.} other {}}
+    conclusively evaluated and should be checked manually.} dialogNotOpened {{accepted, select, true {A consent banner
+    is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled);
+    rejection was therefore not checked.} other {A consent banner is present in the page source but was not opened
+    for the scanner (controls disabled); rejection and acceptance were therefore not checked.}}} other {}}
   report.overview.region: >-
     The region from which the scan ran is not known. Websites can show consent banners and services differently
     depending on the visitor's region; the consent findings apply to this measurement environment and may differ for
@@ -283,7 +286,8 @@ ui:
     few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
     page not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
     banner-candidate-unrecognized {consent banner observed but not recognised}
-    banner-undetermined {whether a consent banner was shown could not be determined} no-https {no HTTPS}
+    banner-undetermined {whether a consent banner was shown could not be determined}
+    cmp-dialog-not-opened {consent banner not opened for the scanner} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}

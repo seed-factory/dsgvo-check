@@ -8,6 +8,7 @@ import {
   phase,
   req,
   site,
+  unopenedDialogCmp,
 } from '../helpers.ts';
 import { ga, type Scenario } from './shared.ts';
 
@@ -58,6 +59,17 @@ const bannerScenarios: Scenario[] = [
       site({
         phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
         cmp: noBannerCmp(['A', 'B']),
+      }),
+  },
+  {
+    file: 'inconclusive-cmp-dialog-not-opened.json',
+    description:
+      'CCM19 recognised, its dialog in the page but not opened for the scanner: no reject was clicked, the reason says why',
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-dialog-not-opened' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
+        cmp: unopenedDialogCmp(),
       }),
   },
 ];

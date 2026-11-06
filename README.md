@@ -210,6 +210,17 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
 - Bei Shopware zeigt die Seite nur, dass der Besucher geantwortet hat, nicht welche Cookies er erlaubt hat: Ablehnen
   und Annehmen werden geklickt, gelten aber als nicht bestätigt. Shopware und Wix gelten nur mit ihrem Banner (oder dem
   Banner-Skript von Wix) als erkannt, nicht allein durch die Kennungen der Plattform.
+- CCM19 legt seinen Dialog verborgen und mit deaktivierten Bedienelementen in die Seite und öffnet ihn später. Ist er
+  auf dem ersten Bildschirm der Phasen B und C nach der Wartezeit auf das Banner (`DSGVO_CHECK_CMP_WAIT_MS`) noch so
+  und keine Antwort gespeichert, klickt der Scanner nichts: CONSENT-04 und CONSENT-05 bleiben `inconclusive`
+  („Einwilligungsbanner dem Scanner nicht geöffnet“), ohne Befund, ebenso CONSENT-03, wenn vor einer Interaktion
+  einwilligungsbedürftige Dienste geladen wurden. Über das, was Besucher sehen, sagt der Bericht dann nichts.
+- Findet der erste passende Container-Selektor eines Adapters nur verborgene Elemente, zählt ein späterer, wenn sein
+  Element eine sichtbare Schaltfläche oder einen sichtbaren Link zeigt: Eine verborgene Vorlage verdeckt so nicht den
+  offenen Dialog, und ein Rahmen, von dem bei geschlossenem Banner nur der eigene Kasten zu sehen ist, gilt nicht als
+  Banner.
+- Hat der Scanner im Besuch mit Zustimmung angenommen, obwohl sich der Dialog im Besuch mit Ablehnung nicht öffnete,
+  nennt die Übersicht nur die Ablehnung als nicht geprüft.
 - Verhält sich ein Banner wie gegenüber einem Bot oder meldet es einen Standort außerhalb des EWR, werden die
   betroffenen Prüfungen `inconclusive`, nicht zu Befunden.
 
@@ -559,7 +570,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Nur die 15 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
-  `info`.
+  `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
+  als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
+  verborgen.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.

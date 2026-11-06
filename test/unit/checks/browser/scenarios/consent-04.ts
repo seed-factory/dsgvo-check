@@ -15,6 +15,8 @@ import {
   phase,
   START,
   site,
+  unopenedDialogCmp,
+  unopenedDialogFacts,
 } from '../helpers.ts';
 import type { Scenario } from './shared.ts';
 
@@ -94,8 +96,63 @@ const candidateScenarios: Scenario[] = [
   },
 ];
 
+/**
+ * A CCM19 dialog that stayed closed for the scanner: the scan says so without implying what visitors see, and clicks
+ * nothing; a hidden dialog with a stored answer and a bot signal are not that case.
+ */
+const unopenedDialogScenarios: Scenario[] = [
+  {
+    file: 'inconclusive-cmp-dialog-not-opened.json',
+    description:
+      'CCM19 recognised; its dialog is in the page, hidden with disabled controls and no answer stored, also after the wait in phase B: nothing clicked, no finding',
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-dialog-not-opened' },
+    build: () => site({ phases: [phase('A'), phase('B')], cmp: unopenedDialogCmp() }),
+  },
+  {
+    file: 'inconclusive-hidden-dialog-answered.json',
+    description:
+      'Counterexample: the same hidden dialog with an answer stored is not "not opened"; the first layer stays not visible',
+    expect: { status: 'inconclusive', variants: [], reason: 'first-layer-not-visible' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B')],
+        cmp: cmpWith({
+          phase: 'B',
+          facts: [
+            unopenedDialogFacts(
+              {
+                state: [
+                  {
+                    source: 'api',
+                    ready: 'ready',
+                    categories: { embeddings: 'denied' },
+                    origin: 'stored',
+                    decision: { responded: true, method: 'explicit' },
+                  },
+                ],
+              },
+              false,
+            ),
+          ],
+        }),
+      }),
+  },
+  {
+    file: 'inconclusive-dialog-not-opened-bot-signal.json',
+    description:
+      'Counterexample: the adapter reports a bot branch next to the closed dialog: the bot signal decides (bot-mode)',
+    expect: { status: 'inconclusive', variants: [], reason: 'bot-mode' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B')],
+        cmp: unopenedDialogCmp({ botSignals: [{ cmpId: 'ccm19', signal: 'ccm19:bot-branch' }] }),
+      }),
+  },
+];
+
 export const scenarios: Scenario[] = [
   ...candidateScenarios,
+  ...unopenedDialogScenarios,
   {
     file: 'violation-consent-without-action.json',
     description:

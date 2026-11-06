@@ -161,11 +161,17 @@ adapters:
       vendorRoles:
         - { selector: ".ccm--decline-cookies", role: reject }
         - { selector: '[data-full-consent="true"]', role: accept }
-        - { selector: ".ccm--ctrl-init", role: settings }
+        # The button that opens the control panel; every control of the widget, the language select too, has
+        # `.ccm--ctrl-init`.
+        - { selector: '[data-ccm-modal="ccm-control-panel"]', role: settings }
         - { selector: '.ccm--save-settings:not([data-full-consent="true"])', role: save }
         - { selector: ".ccm-modal--close", role: close }
     # Embedding names that are not optional (regex fragments, case-insensitive); the rest counts for "granted".
     essentialEmbeddings: [ccm19, "essen[tz]i", notwendig, technisch, necessary]
+    # CCM19 renders its widget into the page hidden, with these controls disabled, and opens it by showing it and
+    # enabling them. Still so after the wait for the banner and with no answer stored: the dialog was not opened for
+    # this browser.
+    closedDialog: { container: "#ccm-widget", controls: "button.ccm--ctrl-init" }
 
   real-cookie-banner:
     name: Real Cookie Banner

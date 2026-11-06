@@ -188,6 +188,24 @@ export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome 
   return null;
 }
 
+/**
+ * The CMP's dialog was in the page but not opened for the scanner: the first screen of phase B, measured after the
+ * wait for the banner, says so (`dialogNotOpened`) and nothing was clicked. Facts of phase A are taken without that
+ * wait and do not count. Neither the reject nor what a visitor sees is known then.
+ */
+function dialogNotOpened(cmp: CmpSection): boolean {
+  const b = cmp.phases.find((p) => p.phase === 'B');
+  if (!b || b.click?.clicked) return false;
+  return b.facts.some((f) => f.moment === 'first-screen' && f.firstLayer.dialogNotOpened === true);
+}
+
+/** `dialogNotOpened` as the outcome of a consent check: inconclusive, with no observation. */
+export function dialogNotOpenedOutcome(cmp: CmpSection): CheckOutcome | null {
+  return dialogNotOpened(cmp)
+    ? { status: 'inconclusive', reason: 'cmp-dialog-not-opened', observations: [] }
+    : null;
+}
+
 const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
 
 /**

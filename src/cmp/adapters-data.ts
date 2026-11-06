@@ -63,6 +63,8 @@ const AdapterSchema = z.strictObject({
   groupsSource: z
     .strictObject({ selector: Selector, attribute: z.string().regex(/^[a-z][a-z0-9-]*$/) })
     .optional(),
+  /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
+  closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
 });
 
 export type AdapterData = z.infer<typeof AdapterSchema>;
@@ -73,12 +75,13 @@ export type ReaderInput =
   | 'optionalGroups'
   | 'essentialEmbeddings'
   | 'answerCookie'
-  | 'groupsSource';
+  | 'groupsSource'
+  | 'closedDialog';
 
 /** The page readers of these adapters cannot work without the input (an empty bot pattern would match every browser). */
 const READER_INPUTS: Partial<Record<KnownCmpId, readonly ReaderInput[]>> = {
   borlabs: ['botUserAgent', 'optionalGroups'],
-  ccm19: ['essentialEmbeddings'],
+  ccm19: ['essentialEmbeddings', 'closedDialog'],
   'real-cookie-banner': ['botUserAgent'],
   shopware: ['answerCookie'],
   wix: ['optionalGroups'],

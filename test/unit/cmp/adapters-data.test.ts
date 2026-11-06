@@ -79,6 +79,7 @@ describe('adapter data', () => {
     ['borlabs', 'botUserAgent'],
     ['borlabs', 'optionalGroups'],
     ['ccm19', 'essentialEmbeddings'],
+    ['ccm19', 'closedDialog'],
     ['real-cookie-banner', 'botUserAgent'],
     ['shopware', 'answerCookie'],
     ['wix', 'optionalGroups'],

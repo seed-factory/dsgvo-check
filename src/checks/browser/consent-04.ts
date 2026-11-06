@@ -30,6 +30,7 @@ import {
   bannerFound,
   bannerUndetermined,
   consentSignals,
+  dialogNotOpenedOutcome,
   signalOutcome,
   type UnrecognizedBanner,
   unrecognizedBanner,
@@ -398,6 +399,9 @@ export function createConsent04(classify: FirstLayerClassifier = classifyFirstLa
       if (facts.length === 0) return { status: 'inconclusive', reason: 'cmp-not-observed', observations: [] };
       const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
       if (signal) return signal;
+      // Not "not shown visibly": the first layer was never offered to the scanner, so it is neither judged nor reported.
+      const notOpened = dialogNotOpenedOutcome(cmp);
+      if (notOpened) return notOpened;
       if (!bannerFound(cmp, browser, ctx.thresholds.cmp.minCandidatePages)) {
         const unrecognized = unrecognizedBanner(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
         if (unrecognized) return unrecognizedOutcome(unrecognized, cmp, browser);

@@ -27,6 +27,7 @@ import {
   bannerUndetermined,
   confirmedReject,
   consentSignals,
+  dialogNotOpenedOutcome,
   persistentIdentifier,
   signalOutcome,
   stateEvidence,
@@ -209,6 +210,8 @@ function rejectBasis(
   | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
   const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
   if (signal) return { outcome: signal };
+  const notOpened = dialogNotOpenedOutcome(cmp);
+  if (notOpened) return { outcome: notOpened };
   // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
   // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
   if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp, browser, minCandidatePages)) {
