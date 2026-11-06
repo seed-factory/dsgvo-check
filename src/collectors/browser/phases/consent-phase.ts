@@ -1,9 +1,11 @@
 // Phases B and C on the start page: observe, first screen (+ banner screenshot in B), click reject (B) or accept (C)
 // via the CMP adapter, verify, reload and verify again (B), then the control pages. The content below the first screen
-// is shown only after the click and its facts: the click needs the first layer as the visitor sees it.
+// is shown only after the click and its facts: the click needs the first layer as the visitor sees it. A first layer
+// without any reject is rejected in B through the settings layer when the adapter describes one: the click moment is
+// then the save, so what loads between opening the settings and saving them counts as before the reject.
 import type { Page } from 'playwright-core';
 import type { ClickOutcome, CmpAdapter, CmpButton, CmpFacts } from '../../../cmp/types.ts';
-import type { ClickPlan, ClickRecord, PageRole } from '../../../core/snapshot/browser.ts';
+import type { ClickPlan, ClickPlanTarget, ClickRecord, PageRole } from '../../../core/snapshot/browser.ts';
 import type { SanitizedUrl } from '../../../core/snapshot/common.ts';
 import { combineVerify } from '../cmp-bridge.ts';
 import type { BrowserCollection, Session } from '../collector.ts';
@@ -19,6 +21,14 @@ const PRESS_READ_TIMEOUT_MS = 2_000;
 /** Exception texts of a failed banner screenshot are cut here. */
 const SCREENSHOT_ERROR_MAX_CHARS = 200;
 
+const planTarget = (b: CmpButton, cmpId: string): ClickPlanTarget => ({
+  cmpId,
+  name: b.name,
+  role: b.role,
+  ...(b.selector ? { selector: b.selector } : {}),
+  kindConfidence: b.kindConfidence,
+});
+
 /** The `classifyFirstLayer` decision when available, else the unique actionable button. */
 async function clickTarget(
   s: Session,
@@ -27,13 +37,7 @@ async function clickTarget(
   cmpId: string,
   pageUrl: SanitizedUrl,
 ): Promise<ClickPlan['target']> {
-  const asTarget = (b: CmpButton): NonNullable<ClickPlan['target']> => ({
-    cmpId,
-    name: b.name,
-    role: b.role,
-    ...(b.selector ? { selector: b.selector } : {}),
-    kindConfidence: b.kindConfidence,
-  });
+  const asTarget = (b: CmpButton) => planTarget(b, cmpId);
 
   if (!facts) return null;
   const decided = await s.cmp.targets(facts, pageUrl);
@@ -104,13 +108,18 @@ async function consentPhase(c: BrowserCollection, phase: 'B' | 'C'): Promise<voi
     if (phase === 'B') c.cmpRecognized = true;
 
     const target = await clickTarget(s, first, action, adapter.id, url);
-    c.plan.click[phase] = {
+    const plan: ClickPlan = {
       phase,
       action,
       target,
       ...(target ? {} : { reason: `no-unambiguous-${action}-at-first-layer` }),
     };
-    const clicked = await act(c, s, adapter, action, target, url);
+    c.plan.click[phase] = plan;
+    const viaSettings =
+      !target && phase === 'B' ? await rejectViaSettings(c, s, adapter, first, plan, url) : null;
+    const clicked = viaSettings
+      ? await act(c, s, adapter, action, viaSettings, url, 'settings')
+      : await act(c, s, adapter, action, target, url);
     if (!clicked) return;
 
     const reload = await verifyClick(c, s, phase, adapter, action, url);
@@ -157,6 +166,44 @@ function markStartNotEvaluable(c: BrowserCollection, s: Session, start: VisitRes
     s.record.status = 'failed';
     s.record.reason = start.visit.notEvaluableReason ?? 'start-page-not-evaluable';
   }
+}
+
+/**
+ * Phase B whose first layer offers no reject: when the adapter describes a settings layer, opens it through the settings
+ * control core chose and returns the save control core chose there, both recorded in `plan.settings`. Null when nothing
+ * is to be pressed: the first layer does not qualify, the layer did not show, a group is already on (switches are never
+ * toggled), or the save control is not unambiguous.
+ */
+async function rejectViaSettings(
+  c: BrowserCollection,
+  s: Session,
+  adapter: CmpAdapter,
+  first: CmpFacts | null,
+  plan: ClickPlan,
+  url: SanitizedUrl,
+): Promise<ClickPlanTarget | null> {
+  if (!first || !adapter.rejectsViaSettings) return null;
+  const opener = await s.cmp.settingsOpener(first, url);
+  if (!opener) return null;
+
+  const open = opener.target ? planTarget(opener.target, adapter.id) : null;
+  if (!open) {
+    plan.settings = { open, save: null, reason: opener.reason ?? 'settings-control-not-found' };
+    return null;
+  }
+  const layer = await s.cmp.openSettings(s.page, adapter, open, url, cmpWaitMs(c));
+  if (layer) s.cmpFacts.settings = layer;
+  const choice = layer ? await s.cmp.settingsSave(layer, url) : null;
+  const save = choice?.target ? planTarget(choice.target, adapter.id) : null;
+  plan.settings = {
+    open,
+    save,
+    // Without a choice the layer did not show, or core could not be asked about it.
+    ...(save
+      ? {}
+      : { reason: choice?.reason ?? (layer?.opened ? 'settings-save-not-found' : 'settings-not-opened') }),
+  };
+  return save;
 }
 
 /** How long a phase waits for a CMP, its banner or a late answer; one CMP call never takes longer. */
@@ -236,7 +283,8 @@ async function verifyClick(
 }
 
 // Clicks via the adapter, then observes with `tRef: click`; false when nothing was clicked. The click moment is the
-// first trusted press after the adapter was called: it still locates and waits for the button first.
+// first trusted press after the adapter was called: it still locates and waits for the button first. `path` marks the
+// save control of the settings layer, pressed as the reject.
 async function act(
   c: BrowserCollection,
   s: Session,
@@ -244,6 +292,7 @@ async function act(
   action: 'reject' | 'accept',
   target: ClickPlan['target'],
   pageUrl: SanitizedUrl,
+  path?: 'settings',
 ): Promise<boolean> {
   // Snapshot right before the click so pre-click cookies are not attributed to it.
   s.recorder.correlate(await s.jar.snapshot(s.browser.context, s.page, c.moment(s, pageUrl)));
@@ -255,7 +304,10 @@ async function act(
   // Without an observed press (e.g. the page navigated away on the click) the adapter call is the bound.
   const clickedAt = pressedAt ?? armedAt;
 
-  s.cmpFacts.click = outcome ?? { action, clicked: false, button: null, error: 'cmp-call-failed' };
+  s.cmpFacts.click = {
+    ...(outcome ?? { action, clicked: false, button: null, error: 'cmp-call-failed' }),
+    ...(path ? { path } : {}),
+  };
   s.record.click = clickRecord(adapter.id, action, outcome, pageUrl, clickedAt, pressedAt);
   if (!clicked) {
     s.record.status = 'partial';

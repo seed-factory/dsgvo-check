@@ -566,6 +566,10 @@ export const CoverageSchema = z.object({
         action: z.enum(['reject', 'accept']),
         clicked: z.boolean(),
         verified: z.boolean().nullable(),
+        path: z.enum(['settings']).optional().meta({
+          description:
+            'settings: the reject was the save control of the settings layer, as the first layer offers no reject. Absent: a first-layer control.',
+        }),
       }),
     )
     .optional()

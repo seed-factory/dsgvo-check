@@ -33,20 +33,29 @@ export interface PlannedPage {
   robotsAllowed?: boolean;
 }
 
+/** An element core chose to press. */
+export interface ClickPlanTarget {
+  cmpId: string | null;
+  name: string;
+  role?: string;
+  /** Internal locator; never shown to users. */
+  selector?: string;
+  kindConfidence: 'high' | 'medium' | 'low';
+}
+
 /** Decision about which first-layer button to press (`plan.click`). */
 export interface ClickPlan {
   phase: 'B' | 'C';
   action: 'reject' | 'accept';
   /** null when no unambiguous element was found (then nothing is clicked). */
-  target: {
-    cmpId: string | null;
-    name: string;
-    role?: string;
-    /** Internal locator; never shown to users. */
-    selector?: string;
-    kindConfidence: 'high' | 'medium' | 'low';
-  } | null;
+  target: ClickPlanTarget | null;
   reason?: string;
+  /**
+   * Phase B when the first layer offers no reject and the adapter describes a settings layer: the settings control
+   * opened and the save control pressed as the reject there; `reason` (e.g. `preselected-groups`) when none was pressed.
+   * `target` and `reason` above stay those of the first layer.
+   */
+  settings?: { open: ClickPlanTarget | null; save: ClickPlanTarget | null; reason?: string };
 }
 
 export interface BrowserPlan {

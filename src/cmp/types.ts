@@ -211,6 +211,55 @@ export interface ClickOutcome {
   clicked: boolean;
   button: Pick<CmpButton, 'name' | 'role' | 'kind' | 'kindConfidence'> | null;
   error?: string;
+  /** `settings`: the save control of the settings layer, pressed as the reject of phase B; absent: a first-layer control. */
+  path?: 'settings';
+}
+
+/** A switch of a consent group in the settings layer: on (null when unreadable) and whether the visitor can change it. */
+export interface SettingsGroupFact {
+  checked: boolean | null;
+  disabled: boolean;
+}
+
+/**
+ * The settings layer that the first layer's settings control opened in phase B. Read only when the first layer offers
+ * no reject and the adapter's data describes the layer (`settingsLayer` in adapters.yaml); nothing in it is toggled.
+ */
+export interface SettingsLayerFacts {
+  takenAt: IsoTimestamp;
+  /** The layer showed within the wait after the click on the settings control. */
+  opened: boolean;
+  /** Why the settings control was not clicked, e.g. `target-not-found`. */
+  error?: string;
+  /** Controls inside the layer, measured like those of the first layer once it showed. */
+  buttons: CmpButton[];
+  /** Exactly one container of the layer matched. */
+  containerUnambiguous: boolean;
+  buttonsTruncated: boolean;
+  /** The group switches inside the layer, in DOM order. */
+  groups: SettingsGroupFact[];
+  /**
+   * Locked switches that are on and that the vendor shows for its essential processing (adapters.yaml
+   * `settingsLayer.essentialGroups`): a locked switch says nothing about its purpose, so a further one counts as a
+   * pre-checked optional group.
+   */
+  essentialGroups: number;
+}
+
+/** Why phase B did not press the save control of the settings layer as its reject. */
+export type SettingsRejectReason =
+  | 'settings-control-not-found'
+  | 'settings-not-opened'
+  | 'settings-layer-ambiguous'
+  | 'settings-groups-unreadable'
+  | 'preselected-groups'
+  | 'settings-save-not-found';
+
+/** Core's choice of a control for the reject through the settings layer (src/cmp/settings-layer.ts). */
+export interface SettingsChoice {
+  /** The one control to click; null with `reason` when there is none. */
+  target: CmpButton | null;
+  reason?: SettingsRejectReason;
 }
 
 /** Verification of reject/accept by CMP state, independent of network and UI. */
@@ -228,6 +277,8 @@ export interface CmpPhaseFacts {
   facts: CmpFacts[];
   click?: ClickOutcome;
   verify?: VerifyResult;
+  /** Phase B only: the settings layer opened because the first layer offers no reject. */
+  settings?: SettingsLayerFacts;
 }
 
 export interface CmpSection {
@@ -358,6 +409,13 @@ export interface CmpAdapter {
   /** Clicks `opts.target`, or the reject target classified from `opts.facts`. */
   reject(page: Page, opts?: ActOptions): Promise<ClickOutcome>;
   accept(page: Page, opts?: ActOptions): Promise<ClickOutcome>;
+  /** The adapter's data describes a settings layer that phase B may reject through (`settingsLayer`). */
+  readonly rejectsViaSettings?: boolean;
+  /**
+   * Clicks `opener`, the settings control core chose on the first layer, waits up to `timeoutMs` for the settings layer
+   * and reads it. Toggles nothing and saves nothing; the save is a separate `act` on core's choice.
+   */
+  openSettings?(page: Page, opener: ClickTarget, opts?: { timeoutMs?: number }): Promise<SettingsLayerFacts>;
   /**
    * Reads the state after the action, then (default) reloads and reads it again. In the document of our click only
    * a state the click produced verifies.

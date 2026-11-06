@@ -1,6 +1,6 @@
 /** Arguments and raw result of `cmpPageProbe`, shared by the probe and its Node side (measure.ts). */
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
-import type { BannerCandidateFact } from '../types.ts';
+import type { BannerCandidateFact, SettingsGroupFact } from '../types.ts';
 
 /** Lexicon classes whose phrases make a control a banner control (token sequences or `*suffix`). */
 export interface KindPhrases {
@@ -40,6 +40,11 @@ export interface ProbeArgs {
   bannerContainerNames?: string[];
   /** Explicit container (an iframe element handle when the banner lives in a child frame). */
   containerEl?: unknown;
+  /**
+   * The group switches of a settings layer: when given, they are read inside the same container whose controls the probe
+   * measures, so the switches and the save control always come from one layer.
+   */
+  switches?: string;
 }
 
 export interface RawButton {
@@ -96,4 +101,6 @@ export interface ProbeResult {
    * and its box in this frame's viewport, so the Node side checks that the main page shows it.
    */
   rejectedCandidate: { fact: BannerCandidateFact; rank: number; box: Box } | null;
+  /** The switches `switches` names inside the container, in DOM order; absent without that argument. */
+  switches?: SettingsGroupFact[];
 }

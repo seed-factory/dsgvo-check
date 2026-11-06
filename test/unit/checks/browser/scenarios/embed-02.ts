@@ -1,5 +1,18 @@
 import { makeDom, makeLink } from '../../../../utils/snapshot-builder.ts';
-import { CONTACT, click, defaultPages, page, phase, rejectCmp, req, START, site } from '../helpers.ts';
+import {
+  CONTACT,
+  click,
+  defaultPages,
+  page,
+  phase,
+  rejectCmp,
+  req,
+  START,
+  settingsClick,
+  settingsRejectCmp,
+  settingsRejectPlan,
+  site,
+} from '../helpers.ts';
 import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
 export const scenarios: Scenario[] = [
@@ -58,6 +71,40 @@ export const scenarios: Scenario[] = [
           }),
         ],
         cmp: rejectCmp({ confirmed: true, pages: { [CONTACT]: 'in-effect' } }),
+      });
+    },
+  },
+  {
+    file: 'violation-maps-after-settings-reject.json',
+    description:
+      'No reject on the first layer; the reject was saved in the settings layer and confirmed, and Kontakt still embeds Google Maps before any interaction and as a control page after it',
+    expect: { status: 'completed', variants: ['maps-loaded'] },
+    build: () => {
+      const map = (id: string, p = {}) =>
+        req(id, 'https://www.google.com/maps/embed?pb=[redacted]', {
+          pageUrl: CONTACT,
+          resourceType: 'document',
+          isNavigation: true,
+          isMainFrame: false,
+          frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
+          ...p,
+        });
+      return site({
+        phases: [
+          phase('A', { requests: [map('A-1')] }),
+          phase('B', {
+            click: settingsClick(),
+            reloaded: true,
+            pages: [
+              page(START, 'start', 'B'),
+              page(START, 'start', 'B', { reload: true }),
+              page(CONTACT, 'contact', 'B'),
+            ],
+            requests: [map('B-1', { phase: 'B', afterClick: true })],
+          }),
+        ],
+        cmp: settingsRejectCmp(),
+        plan: settingsRejectPlan(),
       });
     },
   },

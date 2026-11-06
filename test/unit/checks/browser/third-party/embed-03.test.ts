@@ -29,6 +29,7 @@ import {
   req,
   type SiteSpec,
   START,
+  settingsRejectCmp,
   site,
 } from '../helpers.ts';
 import { HISTORY, inPlayer, THUMBNAIL, VIDEOS, videoPages } from '../scenarios/embed-03.ts';
@@ -482,6 +483,31 @@ const MOMENT_CASES: Array<[string, PhaseRecord[], CmpSection, Record<string, unk
     { moment: 'before-and-after-reject', rejectConfirmed: false, afterRejectPageCount: 0, afterReject: true },
   ],
 ];
+
+describe('EMBED-03 names where the reject was pressed', () => {
+  const both = [historyA([image('a', THUMBNAIL)]), rejectPhase([THUMB_B('b')])];
+  it.each([
+    [
+      'the save of the settings layer',
+      both,
+      settingsRejectCmp(),
+      'settings',
+      'auch nach bestätigter Ablehnung über die Einstellungen: YouTube',
+    ],
+    ['a first-layer reject', both, confirmed, 'first-layer', 'auch nach bestätigter Ablehnung: YouTube'],
+    [
+      'counterexample: no load after the reject',
+      [historyA([image('a', THUMBNAIL)])],
+      settingsRejectCmp(),
+      null,
+      'Externer Videodienst geladen: YouTube',
+    ],
+  ])('%s', (_name, phases, cmp, rejectPath, title) => {
+    const [o] = observations(phases, { cmp });
+    expect(o?.params).toMatchObject({ rejectPath });
+    expect(renderMessage(loadTexts('de'), 'EMBED-03.video-loaded', o!.params).title).toContain(title);
+  });
+});
 
 describe('EMBED-03 states whether the video loaded before the interaction, after the reject, or both', () => {
   it.each(MOMENT_CASES)('%s', (_name, phases, cmp, want) => {

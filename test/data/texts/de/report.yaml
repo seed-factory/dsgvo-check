@@ -236,7 +236,7 @@ ui:
   report.coverage.duration: Dauer
   report.coverage.consentActions: "Klicks im Einwilligungsbanner: {actions}"
   report.coverage.consentActionsNoBanner: "Klicks im Einwilligungsbanner: keine, da kein Einwilligungsbanner gefunden wurde"
-  report.coverage.consentAction: "{action, select, reject {Ablehnen} other {Annehmen}} {clicked, select, true {ausgelöst{verified, select, true { und bestätigt} false {, nicht bestätigt} other {}}} other {nicht ausgelöst}}"
+  report.coverage.consentAction: "{action, select, reject {Ablehnen{path, select, settings { über die Einstellungen} other {}}} other {Annehmen}} {clicked, select, true {ausgelöst{verified, select, true { und bestätigt} false {, nicht bestätigt} other {}}} other {nicht ausgelöst}}"
   report.coverage.browserRequests: "Browser-Anfragen: {issued} von höchstens {limit}{truncated, select, true { (Liste gekürzt)} other {}}"
   report.coverage.checks: Prüfungen
   report.coverage.check: Prüfung
@@ -271,6 +271,15 @@ ui:
     reject-not-in-effect {Seiten nach der Ablehnung nicht ausgewertet, auf denen das Einwilligungsbanner erneut
     angezeigt wurde oder keine Antwort gespeichert war} accept-not-in-effect {Seiten nach der Zustimmung nicht
     ausgewertet, auf denen das Einwilligungsbanner erneut angezeigt wurde oder keine Antwort gespeichert war}
+    settings-control-not-found {Ablehnung über die Einstellungen nicht versucht: keine eindeutige Schaltfläche für
+    die Einstellungen auf der ersten Ebene} settings-not-opened {Ablehnung über die Einstellungen nicht ausgelöst:
+    Einstellungen nach dem Klick nicht angezeigt} settings-layer-ambiguous {Ablehnung über die Einstellungen nicht
+    ausgelöst: Einstellungen nicht eindeutig gemessen} settings-groups-unreadable {Ablehnung über die Einstellungen
+    nicht ausgelöst: Schalter der Kategorien nicht lesbar} preselected-groups {Ablehnung über die Einstellungen nicht
+    ausgelöst: optionale Kategorien dort bereits eingeschaltet, Schalter werden nicht umgestellt}
+    settings-save-not-found {Ablehnung über die Einstellungen nicht ausgelöst: keine eindeutige Schaltfläche zum
+    Speichern} settings-save-failed {Ablehnung über die Einstellungen nicht ausgelöst: Klick auf die Schaltfläche zum
+    Speichern fehlgeschlagen}
     first-layer-not-visible {Erste Ebene des Banners nicht sichtbar} spf-include-unresolved {SPF-include nicht
     vollständig aufgelöst} mx-unknown {MX-Eintrag nicht feststellbar} throttled {Der Server hat Anfragen gedrosselt}
     status {Startseite antwortete mit HTTP {detail}} document-blocked {Seite durch Bot-Schutz blockiert: {detail}}

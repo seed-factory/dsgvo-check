@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { consent05 } from '../../../../../src/checks/browser/consent-05.ts';
 import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpPhaseFacts } from '../../../../../src/cmp/types.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
   CONTACT,
@@ -16,6 +18,8 @@ import {
   req,
   SHOP_HOST,
   START,
+  settingsRejectCmp,
+  settingsRejectPlan,
   site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -462,5 +466,118 @@ describe('CONSENT-05 on the control pages after the reject', () => {
       ],
     });
     expect(r.outcome?.coverage).toEqual({ observed: 3, evaluated: 1 });
+  });
+});
+
+describe('CONSENT-05 after a reject saved in the settings layer of a first layer without reject', () => {
+  const settingsScenario = (file: string) => runCheck(consent05, scenario(file));
+  const title = (lang: 'de' | 'en', params: Record<string, unknown>) =>
+    renderMessage(loadTexts(lang), 'CONSENT-05.tracking-after-reject', params as never).title;
+
+  it('tracking after the confirmed save is tracking-after-reject that names the settings path', () => {
+    const [o] = observationsOf(settingsScenario('violation-tracking-after-settings-reject.json'));
+    expect(o).toMatchObject({
+      variant: 'tracking-after-reject',
+      params: { kind: 'request', rejectPath: 'settings' },
+    });
+    expect(o?.evidence.filter((e) => e.type === 'consent-state').map((e) => e.origin)).toEqual([
+      'action',
+      'stored',
+    ]);
+    expect(title('de', o!.params)).toBe(
+      'Anfragen mit dauerhafter Kennung nach bestätigter Ablehnung über die Einstellungen: Google Analytics',
+    );
+    expect(title('en', o!.params)).toBe(
+      'Requests with a persistent identifier after a confirmed rejection via the settings: Google Analytics',
+    );
+    expect(renderMessage(loadTexts('de'), 'CONSENT-05.tracking-after-reject', o!.params).body).toContain(
+      'Die erste Ebene des Einwilligungsbanners bot keine Ablehnung; abgelehnt wurde in den Einstellungen',
+    );
+  });
+
+  it('counterexample: a first-layer reject names its own path and keeps the earlier wording', () => {
+    const [o] = observationsOf(runB([gaAfter('B-1')]));
+    expect(o?.params.rejectPath).toBe('first-layer');
+    expect(title('de', o!.params)).toBe(
+      'Anfragen mit dauerhafter Kennung nach bestätigter Ablehnung: Google Analytics',
+    );
+    expect(renderMessage(loadTexts('de'), 'CONSENT-05.tracking-after-reject', o!.params).body).not.toContain(
+      'Einstellungen',
+    );
+  });
+
+  it('a save the platform policy left at its default is no confirmed reject: reject-not-confirmed', () => {
+    expect(settingsScenario('inconclusive-settings-reject-not-confirmed.json')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+  });
+
+  it.each([
+    'preselected-groups',
+    'settings-groups-unreadable',
+    'settings-not-opened',
+    'settings-layer-ambiguous',
+    'settings-save-not-found',
+    'settings-control-not-found',
+  ])('nothing saved (%s): no reject click, the reason is a limitation with words', (reason) => {
+    const r = runCheck(
+      consent05,
+      site({
+        phases: [phase('A'), phase('B', { requests: [gaAfter('B-1', { afterClick: false })] })],
+        cmp: settingsRejectCmp({ pressed: false }),
+        plan: settingsRejectPlan(reason),
+      }),
+    );
+    expect(r).toMatchObject({
+      status: 'inconclusive',
+      reason: 'no-reject-click',
+      outcome: { limitations: [reason] },
+    });
+    expect(observationsOf(r)).toEqual([]);
+    for (const lang of ['de', 'en'] as const) {
+      const text = formatMessage(loadTexts(lang).ui['report.checkLimitation']!.text, { code: reason }, lang);
+      expect(text, `${lang}: ${reason}`).not.toBe('');
+    }
+  });
+
+  it('a save core chose whose click did not go through: no reject click, settings-save-failed with words', () => {
+    const failed = settingsRejectCmp({ pressed: false });
+    failed.phases[0]!.click = {
+      action: 'reject',
+      clicked: false,
+      button: { name: 'Speichern', role: 'button', kind: 'reject', kindConfidence: 'high' },
+      error: 'target-not-found',
+      path: 'settings',
+    };
+    const r = runCheck(
+      consent05,
+      site({ phases: [phase('A'), phase('B')], cmp: failed, plan: settingsRejectPlan() }),
+    );
+    expect(r).toMatchObject({
+      status: 'inconclusive',
+      reason: 'no-reject-click',
+      outcome: { limitations: ['settings-save-failed'] },
+    });
+    for (const lang of ['de', 'en'] as const) {
+      const ui = loadTexts(lang).ui['report.checkLimitation']!.text;
+      expect(formatMessage(ui, { code: 'settings-save-failed' }, lang)).not.toBe('');
+    }
+  });
+
+  it('counterexample: a first layer without reject and no settings layer tried keeps the bare no-reject-click', () => {
+    const r = runCheck(
+      consent05,
+      site({
+        phases: [phase('A'), phase('B')],
+        cmp: cmpWith({
+          phase: 'B',
+          facts: [cmpFacts()],
+          click: { action: 'reject', clicked: false, button: null },
+        }),
+      }),
+    );
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-reject-click' });
+    expect(r.outcome?.limitations ?? []).toEqual([]);
   });
 });

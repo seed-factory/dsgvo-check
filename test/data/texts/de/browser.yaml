@@ -225,30 +225,43 @@ messages:
   # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
-      {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung gespeichert: {service}}
-      request {Anfragen mit dauerhafter Kennung nach bestätigter Ablehnung: {service}} both {Kennungen nach
-      bestätigter Ablehnung gesendet und gespeichert: {service}} other {Kennungen nach bestätigter Ablehnung
-      gesendet oder gespeichert: {service}}}
+      {kind, select, storage {Analyse- oder Marketing-Kennung nach bestätigter Ablehnung{rejectPath, select, settings
+      { über die Einstellungen} other {}} gespeichert: {service}} request {Anfragen mit dauerhafter Kennung nach
+      bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}: {service}} both
+      {Kennungen nach bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}} gesendet
+      und gespeichert: {service}} other {Kennungen nach bestätigter Ablehnung{rejectPath, select, settings { über die
+      Einstellungen} other {}} gesendet oder gespeichert: {service}}}
     body: >-
-      {kind, select, storage {Nach bestätigter Ablehnung wurde eine neue Speicherung von {name} ({service})
-      beobachtet; der Browser hat den Eintrag nach dem Klick angenommen. Werte wurden nicht gespeichert.} other {Nach
-      bestätigter Ablehnung und erneutem Laden wurde eine neue, nach dem Klick gestartete Anfrage an {service}
-      ({host}) mit einer dauerhaften Kennung beobachtet ({pageCount, plural, one {# Seite} other {#
+      {kind, select, storage {Nach bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other
+      {}} wurde eine neue Speicherung von {name} ({service}) beobachtet; der Browser hat den Eintrag nach dem Klick
+      angenommen. Werte wurden nicht gespeichert.} other {Nach bestätigter Ablehnung{rejectPath, select, settings {
+      über die Einstellungen} other {}} und erneutem Laden wurde eine neue, nach dem Klick gestartete Anfrage an
+      {service} ({host}) mit einer dauerhaften Kennung beobachtet ({pageCount, plural, one {# Seite} other {#
       Seiten}}).{kind, select, both { Außerdem wurde nach dem Klick die Speicherung von {name} beobachtet; Werte
       wurden nicht gespeichert.} other {}} Anfragen des Einwilligungsbanners zur Aktualisierung des Status sind
-      ausgenommen.}}
+      ausgenommen.}}{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
   CONSENT-05.cookieless-ping-after-reject:
-    title: "Anfragen ohne dauerhafte Kennung nach Ablehnung: {service}"
+    title: >-
+      Anfragen ohne dauerhafte Kennung nach Ablehnung{rejectPath, select, settings { über die Einstellungen} other
+      {}}: {service}
     body: >-
-      Nach bestätigter Ablehnung wurde eine nach dem Klick gestartete Anfrage an {service} ({host}) ohne belegte
-      dauerhafte Kennung beobachtet ({consentModeDenied, select, true {laut übermitteltem Consent-Mode-Signal
-      Speicherung abgelehnt} other {Kennung nicht als dauerhaft belegt}}; {pageCount, plural, one {# Seite} other
-      {# Seiten}}).
+      Nach bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}} wurde eine nach dem
+      Klick gestartete Anfrage an {service} ({host}) ohne belegte dauerhafte Kennung beobachtet ({consentModeDenied,
+      select, true {laut übermitteltem Consent-Mode-Signal Speicherung abgelehnt} other {Kennung nicht als dauerhaft
+      belegt}}; {pageCount, plural, one {# Seite} other {# Seiten}}).{rejectPath, select, settings { Die erste Ebene
+      des Einwilligungsbanners bot keine Ablehnung; abgelehnt wurde in den Einstellungen, in denen alle optionalen
+      Kategorien bereits ausgeschaltet waren.} other {}}
   CONSENT-05.connect-only-after-reject:
-    title: "Nur Verbindungsaufbau nach Ablehnung: {host}"
+    title: >-
+      Nur Verbindungsaufbau nach Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}: {host}
     body: >-
-      Nach bestätigter Ablehnung wurde ein Verbindungsaufbau zu {host} ({service}) protokolliert; ein konkreter
-      Ereignisversand wurde daraus nicht festgestellt.
+      Nach bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}} wurde ein
+      Verbindungsaufbau zu {host} ({service}) protokolliert; ein konkreter Ereignisversand wurde daraus nicht
+      festgestellt.{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
 
   # TRACK-01
   TRACK-01.service-inventory:
@@ -269,21 +282,27 @@ messages:
   EMBED-01.fonts-loaded:
     title: >-
       {moment, select, before-and-after-reject {Externe Schriftarten geladen, auch nach {rejectConfirmed, select, true
-      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externe Schriftarten nach {rejectConfirmed,
-      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externe Schriftarten geladen:
-      {service}}}
+      {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other {}}:
+      {service}} after-reject {Externe Schriftarten nach {rejectConfirmed, select, true {bestätigter Ablehnung} other
+      {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other {}} geladen: {service}} other {Externe
+      Schriftarten geladen: {service}}}
     body: >-
       {fontService, select, true {Schriftdateien oder Stylesheets von {service} wurden von einem externen Server
       geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {moment, select,
       before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach {rejectConfirmed,
-      select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}
-      after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
-      (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer Interaktion mit dem
-      Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem
-      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
-      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
-      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).
+      select, true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other
+      {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick
+      auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} after-reject {nach {rejectConfirmed, select, true {bestätigter
+      Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other {{rejectPath, select, settings
+      {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick auf „Ablehnen“ (Ablehnung nicht
+      bestätigt)}}}}} other {{afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
+      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
+      jeder Interaktion, kein Einwilligungsbanner gefunden} unrecognized {vor jeder Interaktion, Einwilligungsbanner
+      beobachtet, aber nicht erkannt} other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}}
+      ({pageCount, plural, one {# Seite} other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach
+      der Ablehnung}}).{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
   EMBED-01.preconnect-only:
     title: >-
       {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
@@ -296,50 +315,62 @@ messages:
   # EMBED-02
   EMBED-02.maps-loaded:
     title: >-
-      {moment, select, before-and-after-reject {Externer Kartendienst geladen, auch nach {rejectConfirmed, select, true
-      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externer Kartendienst nach {rejectConfirmed,
-      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externer Kartendienst geladen:
-      {service}}}
+      {moment, select, before-and-after-reject {Externer Kartendienst geladen, auch nach {rejectConfirmed, select,
+      true {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other
+      {}}: {service}} after-reject {Externer Kartendienst nach {rejectConfirmed, select, true {bestätigter Ablehnung}
+      other {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other {}} geladen: {service}} other
+      {Externer Kartendienst geladen: {service}}}
     body: >-
-      Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte
-      (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
-      geladen, Zeitpunkt: {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner
-      und erneut nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
-      (Ablehnung nicht bestätigt)}}} after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other
-      {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer
+      Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte (iframe)}
+      js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}} geladen,
+      Zeitpunkt: {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und
+      erneut nach {rejectConfirmed, select, true {bestätigter Ablehnung{rejectPath, select, settings { über die
+      Einstellungen} other {}}} other {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht
+      bestätigt)} other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} after-reject {nach
+      {rejectConfirmed, select, true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen}
+      other {}}} other {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)}
+      other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} other {{afterReject, select, true {vor einer
       Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer
       Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
-      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
-      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
+      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt} other {vor jeder
+      Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite} other {#
+      Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
       plural, =0 {} one { Der Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfrage).} other { Der
       Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfragen).}}{frameHelperCount, plural, =0 {} one {
-      Der Kartenrahmen stellte außerdem # Anfrage an Hilfshosts.} other { Der Kartenrahmen stellte außerdem #
-      Anfragen an Hilfshosts.}}
+      Der Kartenrahmen stellte außerdem # Anfrage an Hilfshosts.} other { Der Kartenrahmen stellte außerdem # Anfragen
+      an Hilfshosts.}}{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
 
   # EMBED-03
   EMBED-03.video-loaded:
     title: >-
       {moment, select, before-and-after-reject {Externer Videodienst geladen, auch nach {rejectConfirmed, select, true
-      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externer Videodienst nach {rejectConfirmed,
-      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externer Videodienst geladen:
-      {service}}}
+      {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other {}}:
+      {service}} after-reject {Externer Videodienst nach {rejectConfirmed, select, true {bestätigter Ablehnung} other
+      {Ablehnung}}{rejectPath, select, settings { über die Einstellungen} other {}} geladen: {service}} other
+      {Externer Videodienst geladen: {service}}}
     body: >-
       Ein externer Videodienst von {service} wurde als {integrationType, select, iframe {eingebetteter Player
       (iframe)} js-api {Player-API} thumbnail {Vorschaubild ohne Player} other {Videoinhalt}} geladen, Zeitpunkt:
       {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach
-      {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“ (Ablehnung nicht
-      bestätigt)}}} after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf
-      „Ablehnen“ (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer Interaktion mit dem
+      {rejectConfirmed, select, true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen}
+      other {}}} other {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)}
+      other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} after-reject {nach {rejectConfirmed, select,
+      true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other
+      {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick
+      auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} other {{afterReject, select, true {vor einer Interaktion mit dem
       Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem
-      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
-      unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
-      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
+      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden} unrecognized {vor jeder
+      Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt} other {vor jeder Interaktion,
+      Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite} other {#
+      Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
       plural, =0 {} one { Der Videoplayer lud dabei Schriften von {frameFontServices} (# Anfrage).} other { Der
       Videoplayer lud dabei Schriften von {frameFontServices} (# Anfragen).}}{frameHelperCount, plural, =0 {} one {
-      Der Videoplayer stellte außerdem # Anfrage an Hilfshosts.} other { Der Videoplayer stellte außerdem #
-      Anfragen an Hilfshosts.}}
+      Der Videoplayer stellte außerdem # Anfrage an Hilfshosts.} other { Der Videoplayer stellte außerdem # Anfragen
+      an Hilfshosts.}}{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:

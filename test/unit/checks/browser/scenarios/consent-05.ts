@@ -14,6 +14,9 @@ import {
   phase,
   req,
   SHOP_HOST,
+  settingsClick,
+  settingsRejectCmp,
+  settingsRejectPlan,
   site,
   unopenedDialogCmp,
 } from '../helpers.ts';
@@ -106,6 +109,70 @@ const shopwareScenarios: Scenario[] = [
       site({
         phases: [phase('A'), shopwareAfterReject()],
         cmp: shopwareReject({ ...SHOPWARE_DENIED, 'google-analytics-enabled': 'granted' }),
+      }),
+  },
+];
+
+/**
+ * A Wix-like bar with only "Cookie-Einstellungen" and "Zustimmen": phase B rejects with the save control of the
+ * settings layer, where every optional group was already off. GA4 sends a page_view with identifier after the save.
+ */
+const afterSettingsSave = (hits: boolean) =>
+  phase('B', {
+    click: settingsClick(),
+    reloaded: true,
+    requests: hits
+      ? [ga.hit('B-1', { phase: 'B', afterClick: true, tRef: 'click', tStartMs: 2_500 })]
+      : [ga.hit('B-1', { phase: 'B', afterClick: false, tStartMs: 800 })],
+  });
+
+const settingsScenarios: Scenario[] = [
+  {
+    file: 'violation-tracking-after-settings-reject.json',
+    description:
+      'No reject on the first layer; the reject was saved in the settings layer with every optional group off and confirmed by the platform policy; afterwards a GA4 page_view with identifier',
+    expect: { status: 'completed', variants: ['tracking-after-reject'] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterSettingsSave(true)],
+        cmp: settingsRejectCmp(),
+        plan: settingsRejectPlan(),
+      }),
+  },
+  {
+    file: 'clean-settings-reject.json',
+    description:
+      'Reject saved in the settings layer and confirmed; GA4 sent its page_view only before the save, while the settings were open',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterSettingsSave(false)],
+        cmp: settingsRejectCmp(),
+        plan: settingsRejectPlan(),
+      }),
+  },
+  {
+    file: 'inconclusive-settings-reject-not-confirmed.json',
+    description:
+      'The save in the settings layer left the platform policy at its default: reject not confirmed, the GA4 page_view after it is no finding',
+    expect: { status: 'inconclusive', variants: [], reason: 'reject-not-confirmed' },
+    build: () =>
+      site({
+        phases: [phase('A'), afterSettingsSave(true)],
+        cmp: settingsRejectCmp({ confirmed: false }),
+        plan: settingsRejectPlan(),
+      }),
+  },
+  {
+    file: 'inconclusive-settings-preselected-groups.json',
+    description:
+      'Counterexample: an optional group in the settings layer was already on, so nothing was saved (switches are never toggled): no reject click, the reason names the pre-checked group',
+    expect: { status: 'inconclusive', variants: [], reason: 'no-reject-click' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
+        cmp: settingsRejectCmp({ pressed: false }),
+        plan: settingsRejectPlan('preselected-groups'),
       }),
   },
 ];
@@ -228,6 +295,7 @@ const bannerScenarios: Scenario[] = [
 export const scenarios: Scenario[] = [
   ...bannerScenarios,
   ...shopwareScenarios,
+  ...settingsScenarios,
   ...controlPageScenarios,
   {
     file: 'violation-tracking-after-reject.json',

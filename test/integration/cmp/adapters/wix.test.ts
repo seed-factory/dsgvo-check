@@ -1,7 +1,18 @@
-/** Wix adapter against the own simulator of the site banner (policy read from `consentPolicyManager`). */
+/**
+ * Wix adapter against the own simulator of the site banner (policy read from `consentPolicyManager`), including the
+ * reject through the settings layer of a first layer without one.
+ */
 import type { Page } from 'playwright-core';
-import { expect, it } from 'vitest';
-import { detectCmp, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { describe, expect, it } from 'vitest';
+import {
+  chooseSettingsOpener,
+  chooseSettingsSave,
+  detectCmp,
+  extract,
+  loadLexicon,
+  waitForBanner,
+} from '../../../../src/cmp/index.ts';
+import type { ClickTarget, CmpAdapter, CmpButton } from '../../../../src/cmp/types.ts';
 import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized, requestsSince } from '../helpers.ts';
 
@@ -22,6 +33,24 @@ function platformPolicy(page: Page): Promise<{ defaultPolicy: boolean; dataToThi
     };
   });
 }
+
+/** The click target of a control core chose. */
+const asTarget = (b: CmpButton): ClickTarget => ({
+  name: b.name,
+  role: b.role,
+  ...(b.selector ? { selector: b.selector } : {}),
+  kindConfidence: b.kindConfidence,
+  kind: b.kind,
+});
+
+/** Whether the simulated analytics switch is on: the layer is read, never changed. */
+const analyticsSwitchOn = (page: Page): Promise<boolean | null> =>
+  page.evaluate(() => {
+    const doc = (
+      globalThis as unknown as { document: { querySelector(s: string): { checked: boolean } | null } }
+    ).document;
+    return doc.querySelector('[data-sim-group="anl"]')?.checked ?? null;
+  });
 
 describeCmpScenarios(
   {
@@ -139,6 +168,127 @@ describeCmpScenarios(
       expect(verify).toMatchObject({ verified: false, reason: 'state-unavailable' });
       expect(verify.persistedAfterReload).not.toBe(true);
       expect(verify.stateAfter.filter((st) => st.ready === 'ready')).toEqual([]);
+    });
+
+    describe('the reject through the settings layer of a first layer without one', () => {
+      /** The first screen of `url`, the opener core chose on it and, when there is one, the layer it opened. */
+      async function settingsOf(url: string) {
+        const { page } = await env.open(url);
+        const adapter: CmpAdapter = await recognized(page, 'wix');
+        expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+        const first = await extract(page, adapter, 'first-screen', { phase: 'B' });
+        const opener = chooseSettingsOpener(first, loadLexicon(), DEFAULT_CLASSIFY);
+        const layer = opener?.target
+          ? await adapter.openSettings?.(page, asTarget(opener.target), { timeoutMs: CMP_WAIT_MS })
+          : undefined;
+        return { page, adapter, first, opener, layer };
+      }
+
+      it('"Cookie-Einstellungen" opens the layer with every optional group off; its save is a reject the policy confirms after the reload', async () => {
+        const since = Date.now();
+        const { page, adapter, opener, layer } = await settingsOf('https://www.wix.test/no-decline.html');
+
+        expect(adapter.rejectsViaSettings).toBe(true);
+        expect(opener?.target?.name).toBe('Cookie-Einstellungen');
+        expect(layer).toMatchObject({
+          opened: true,
+          containerUnambiguous: true,
+          groups: [
+            { checked: true, disabled: true },
+            { checked: false, disabled: false },
+            { checked: false, disabled: false },
+            { checked: false, disabled: false },
+          ],
+        });
+        expect(layer?.buttons.map((b) => [b.name, b.vendorRole])).toEqual([['Speichern', 'save']]);
+        const save = chooseSettingsSave(layer!, loadLexicon());
+        expect(save.target?.name).toBe('Speichern');
+        // Opening the settings records no answer: the policy is still the default before the save.
+        expect((await adapter.state(page))[0]).toMatchObject({
+          origin: 'default',
+          decision: { responded: false },
+        });
+
+        expect((await adapter.act!(page, 'reject', asTarget(save.target!))).clicked).toBe(true);
+        const verify = await adapter.verify(page, 'reject');
+
+        expect(verify).toMatchObject({ verified: true, persistedAfterReload: true });
+        expect(verify.method).toContain('api:all-denied');
+        expect(requestsSince(env.server, TRACKER, since)).toBe(0);
+      });
+
+      it('counterexample: an optional group already on → nothing is saved (preselected-groups) and the switch stays on', async () => {
+        const { page, adapter, layer } = await settingsOf('https://www.wix.test/no-decline-preselected.html');
+
+        expect(layer?.groups.filter((g) => g.checked && !g.disabled)).toHaveLength(1);
+        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
+          target: null,
+          reason: 'preselected-groups',
+        });
+        expect(await analyticsSwitchOn(page)).toBe(true);
+        expect((await adapter.state(page))[0]).toMatchObject({
+          origin: 'default',
+          decision: { responded: false },
+        });
+      });
+
+      it('counterexample: a hidden copy of the layer with every switch off comes first; the shown layer has analytics on → nothing is saved', async () => {
+        const { layer } = await settingsOf('https://www.wix.test/no-decline-hidden-copy.html');
+
+        expect(layer).toMatchObject({ opened: true, containerUnambiguous: true });
+        expect(layer?.groups.filter((g) => g.checked && !g.disabled)).toHaveLength(1);
+        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
+          target: null,
+          reason: 'preselected-groups',
+        });
+      });
+
+      it('counterexample: analytics on and locked like the essential switch → nothing is saved', async () => {
+        const { layer } = await settingsOf('https://www.wix.test/no-decline-locked-on.html');
+
+        expect(layer?.groups.filter((g) => g.checked && g.disabled)).toHaveLength(2);
+        expect(layer?.essentialGroups).toBe(1);
+        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
+          target: null,
+          reason: 'preselected-groups',
+        });
+      });
+
+      it('counterexample: two save controls in the layer → no save control is chosen', async () => {
+        const { layer } = await settingsOf('https://www.wix.test/no-decline-two-saves.html');
+
+        expect(layer?.buttons.filter((b) => b.vendorRole === 'save')).toHaveLength(2);
+        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
+          target: null,
+          reason: 'settings-save-not-found',
+        });
+      });
+
+      it('counterexample: a settings control of the page outside the banner is never the opener', async () => {
+        const { first, opener, layer } = await settingsOf('https://www.wix.test/settings-outside.html');
+
+        expect(first.firstLayer.buttons.map((b) => b.name)).not.toContain('Cookie-Einstellungen');
+        expect(opener).toEqual({ target: null, reason: 'settings-control-not-found' });
+        expect(layer).toBeUndefined();
+      });
+
+      it('counterexample: a first layer with "Alle ablehnen" never opens the settings', async () => {
+        const { opener, layer } = await settingsOf('https://www.wix.test/');
+
+        expect(opener).toBeNull();
+        expect(layer).toBeUndefined();
+      });
+
+      it('a save that stores no answer leaves the policy at its default: the reject is not confirmed', async () => {
+        const { page, adapter, layer } = await settingsOf('https://www.wix.test/no-decline-unsaved.html');
+        const save = chooseSettingsSave(layer!, loadLexicon());
+        expect((await adapter.act!(page, 'reject', asTarget(save.target!))).clicked).toBe(true);
+
+        const verify = await adapter.verify(page, 'reject', { timeoutMs: 1_000 });
+
+        expect(verify.verified).toBe(false);
+        expect(verify.persistedAfterReload).not.toBe(true);
+      });
     });
 
     it('the description under aria-hidden, the policy link, settings as span[role=button] and × are measured', async () => {

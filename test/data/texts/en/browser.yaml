@@ -226,29 +226,39 @@ messages:
   # CONSENT-05
   CONSENT-05.tracking-after-reject:
     title: >-
-      {kind, select, storage {Analytics or marketing identifier stored after a confirmed rejection: {service}} request
-      {Requests with a persistent identifier after a confirmed rejection: {service}} both {Identifiers sent and stored
-      after a confirmed rejection: {service}} other {Identifiers sent or stored after a confirmed rejection:
-      {service}}}
+      {kind, select, storage {Analytics or marketing identifier stored after a confirmed rejection{rejectPath, select,
+      settings { via the settings} other {}}: {service}} request {Requests with a persistent identifier after a
+      confirmed rejection{rejectPath, select, settings { via the settings} other {}}: {service}} both {Identifiers
+      sent and stored after a confirmed rejection{rejectPath, select, settings { via the settings} other {}}:
+      {service}} other {Identifiers sent or stored after a confirmed rejection{rejectPath, select, settings { via the
+      settings} other {}}: {service}}}
     body: >-
-      {kind, select, storage {After a confirmed rejection, new storage of {name} ({service}) was observed; the
-      browser accepted the entry after the click. Values were not stored.} other {After a confirmed rejection and a
+      {kind, select, storage {After a confirmed rejection{rejectPath, select, settings { via the settings} other {}},
+      new storage of {name} ({service}) was observed; the browser accepted the entry after the click. Values were not
+      stored.} other {After a confirmed rejection{rejectPath, select, settings { via the settings} other {}} and a
       reload, a new request to {service} ({host}) started after the click and carrying a persistent identifier was
       observed ({pageCount, plural, one {# page} other {# pages}}).{kind, select, both { Storage of {name} after the
-      click was observed as well; values were not stored.} other {}} Requests of the consent banner updating its
-      state are excluded.}}
+      click was observed as well; values were not stored.} other {}} Requests of the consent banner updating its state
+      are excluded.}}{rejectPath, select, settings { The first layer of the consent banner offered no rejection; the
+      rejection was saved in the settings, where every optional category was already switched off.} other {}}
   CONSENT-05.cookieless-ping-after-reject:
-    title: "Requests without a persistent identifier after rejection: {service}"
+    title: >-
+      Requests without a persistent identifier after rejection{rejectPath, select, settings { via the settings} other
+      {}}: {service}
     body: >-
-      After a confirmed rejection, a request to {service} ({host}) started after the click was observed without an
-      evidenced persistent identifier ({consentModeDenied, select, true {storage denied per the transmitted Consent
-      Mode signal} other {identifier not evidenced as persistent}}; {pageCount, plural, one {# page} other
-      {# pages}}).
+      After a confirmed rejection{rejectPath, select, settings { via the settings} other {}}, a request to {service}
+      ({host}) started after the click was observed without an evidenced persistent identifier ({consentModeDenied,
+      select, true {storage denied per the transmitted Consent Mode signal} other {identifier not evidenced as
+      persistent}}; {pageCount, plural, one {# page} other {# pages}}).{rejectPath, select, settings { The first layer
+      of the consent banner offered no rejection; the rejection was saved in the settings, where every optional
+      category was already switched off.} other {}}
   CONSENT-05.connect-only-after-reject:
-    title: "Only a connection after rejection: {host}"
+    title: "Only a connection after rejection{rejectPath, select, settings { via the settings} other {}}: {host}"
     body: >-
-      After a confirmed rejection, a connection to {host} ({service}) was logged; no specific event was established
-      from it.
+      After a confirmed rejection{rejectPath, select, settings { via the settings} other {}}, a connection to {host}
+      ({service}) was logged; no specific event was established from it.{rejectPath, select, settings { The first
+      layer of the consent banner offered no rejection; the rejection was saved in the settings, where every optional
+      category was already switched off.} other {}}
 
   # TRACK-01
   TRACK-01.service-inventory:
@@ -267,19 +277,26 @@ messages:
   EMBED-01.fonts-loaded:
     title: >-
       {moment, select, before-and-after-reject {External fonts loaded, also after {rejectConfirmed, select, true
-      {confirmed rejection} other {rejection}}: {service}} after-reject {External fonts loaded after {rejectConfirmed,
-      select, true {confirmed rejection} other {rejection}}: {service}} other {External fonts loaded: {service}}}
+      {confirmed rejection} other {rejection}}{rejectPath, select, settings { via the settings} other {}}: {service}}
+      after-reject {External fonts loaded after {rejectConfirmed, select, true {confirmed rejection} other
+      {rejection}}{rejectPath, select, settings { via the settings} other {}}: {service}} other {External fonts
+      loaded: {service}}}
     body: >-
       {fontService, select, true {Font files or stylesheets of {service} were loaded from an external server} other
-      {Font files were loaded from the third-party server {service}}}, timing: {moment, select, before-and-after-reject
-      {before any interaction with the consent banner and again after {rejectConfirmed, select, true {confirmed
-      rejection} other {the click on "Reject" (rejection not confirmed)}}} after-reject {after {rejectConfirmed,
-      select, true {confirmed rejection} other {the click on "Reject" (rejection not confirmed)}}} other {{afterReject,
-      select, true {before any interaction with the consent banner or after rejection} other {{bannerFound, select,
-      true {before any interaction with the consent banner} false {before any interaction, no consent banner found}
-      unrecognized {before any interaction, consent banner observed but not recognised}
-      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
-      pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).
+      {Font files were loaded from the third-party server {service}}}, timing: {moment, select,
+      before-and-after-reject {before any interaction with the consent banner and again after {rejectConfirmed,
+      select, true {confirmed rejection{rejectPath, select, settings { via the settings} other {}}} other
+      {{rejectPath, select, settings {saving the settings (rejection not confirmed)} other {the click on "Reject"
+      (rejection not confirmed)}}}}} after-reject {after {rejectConfirmed, select, true {confirmed
+      rejection{rejectPath, select, settings { via the settings} other {}}} other {{rejectPath, select, settings
+      {saving the settings (rejection not confirmed)} other {the click on "Reject" (rejection not confirmed)}}}}}
+      other {{afterReject, select, true {before any interaction with the consent banner or after rejection} other
+      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
+      consent banner found} unrecognized {before any interaction, consent banner observed but not recognised} other
+      {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).{rejectPath, select,
+      settings { The first layer of the consent banner offered no rejection; the rejection was saved in the settings,
+      where every optional category was already switched off.} other {}}
   EMBED-01.preconnect-only:
     title: >-
       {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
@@ -292,48 +309,57 @@ messages:
   EMBED-02.maps-loaded:
     title: >-
       {moment, select, before-and-after-reject {External map service loaded, also after {rejectConfirmed, select, true
-      {confirmed rejection} other {rejection}}: {service}} after-reject {External map service loaded after
-      {rejectConfirmed, select, true {confirmed rejection} other {rejection}}: {service}} other {External map service
+      {confirmed rejection} other {rejection}}{rejectPath, select, settings { via the settings} other {}}: {service}}
+      after-reject {External map service loaded after {rejectConfirmed, select, true {confirmed rejection} other
+      {rejection}}{rejectPath, select, settings { via the settings} other {}}: {service}} other {External map service
       loaded: {service}}}
     body: >-
       An external map service of {service} was loaded as {integrationType, select, iframe {embedded map (iframe)}
       js-api {JavaScript API} static {static map image} tiles {map tiles} other {map content}}, timing: {moment,
       select, before-and-after-reject {before any interaction with the consent banner and again after
-      {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection not confirmed)}}}
-      after-reject {after {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection
-      not confirmed)}}} other {{afterReject, select, true {before any interaction with the consent banner or after
-      rejection} other {{bannerFound, select, true {before any interaction with the consent banner} false {before any
-      interaction, no consent banner found}
-      unrecognized {before any interaction, consent banner observed but not recognised}
-      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      {rejectConfirmed, select, true {confirmed rejection{rejectPath, select, settings { via the settings} other {}}}
+      other {{rejectPath, select, settings {saving the settings (rejection not confirmed)} other {the click on
+      "Reject" (rejection not confirmed)}}}}} after-reject {after {rejectConfirmed, select, true {confirmed
+      rejection{rejectPath, select, settings { via the settings} other {}}} other {{rejectPath, select, settings
+      {saving the settings (rejection not confirmed)} other {the click on "Reject" (rejection not confirmed)}}}}}
+      other {{afterReject, select, true {before any interaction with the consent banner or after rejection} other
+      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
+      consent banner found} unrecognized {before any interaction, consent banner observed but not recognised} other
+      {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
       pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).{frameFontRequestCount,
       plural, =0 {} one { The map frame also loaded fonts from {frameFontServices} (# request).} other { The map frame
       also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one { The map frame
-      also made # request to helper hosts.} other { The map frame also made # requests to helper hosts.}}
+      also made # request to helper hosts.} other { The map frame also made # requests to helper hosts.}}{rejectPath,
+      select, settings { The first layer of the consent banner offered no rejection; the rejection was saved in the
+      settings, where every optional category was already switched off.} other {}}
 
   # EMBED-03
   EMBED-03.video-loaded:
     title: >-
       {moment, select, before-and-after-reject {External video service loaded, also after {rejectConfirmed, select,
-      true {confirmed rejection} other {rejection}}: {service}} after-reject {External video service loaded after
-      {rejectConfirmed, select, true {confirmed rejection} other {rejection}}: {service}} other {External video
-      service loaded: {service}}}
+      true {confirmed rejection} other {rejection}}{rejectPath, select, settings { via the settings} other {}}:
+      {service}} after-reject {External video service loaded after {rejectConfirmed, select, true {confirmed
+      rejection} other {rejection}}{rejectPath, select, settings { via the settings} other {}}: {service}} other
+      {External video service loaded: {service}}}
     body: >-
       An external video service of {service} was loaded as {integrationType, select, iframe {an embedded player
-      (iframe)} js-api {the player API} thumbnail {a thumbnail image without a player} other {video content}},
-      timing: {moment, select, before-and-after-reject {before any interaction with the consent banner and again
-      after {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection not
-      confirmed)}}} after-reject {after {rejectConfirmed, select, true {confirmed rejection} other {the click on
-      "Reject" (rejection not confirmed)}}} other {{afterReject, select, true {before any interaction with the
-      consent banner or after rejection} other {{bannerFound, select, true {before any interaction with the consent
-      banner} false {before any interaction, no consent banner found}
-      unrecognized {before any interaction, consent banner observed but not recognised}
-      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      (iframe)} js-api {the player API} thumbnail {a thumbnail image without a player} other {video content}}, timing:
+      {moment, select, before-and-after-reject {before any interaction with the consent banner and again after
+      {rejectConfirmed, select, true {confirmed rejection{rejectPath, select, settings { via the settings} other {}}}
+      other {{rejectPath, select, settings {saving the settings (rejection not confirmed)} other {the click on
+      "Reject" (rejection not confirmed)}}}}} after-reject {after {rejectConfirmed, select, true {confirmed
+      rejection{rejectPath, select, settings { via the settings} other {}}} other {{rejectPath, select, settings
+      {saving the settings (rejection not confirmed)} other {the click on "Reject" (rejection not confirmed)}}}}}
+      other {{afterReject, select, true {before any interaction with the consent banner or after rejection} other
+      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
+      consent banner found} unrecognized {before any interaction, consent banner observed but not recognised} other
+      {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
       pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).{frameFontRequestCount,
-      plural, =0 {} one { The video player also loaded fonts from {frameFontServices} (# request).} other { The
-      video player also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one {
-      The video player also made # request to helper hosts.} other { The video player also made # requests to
-      helper hosts.}}
+      plural, =0 {} one { The video player also loaded fonts from {frameFontServices} (# request).} other { The video
+      player also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one { The
+      video player also made # request to helper hosts.} other { The video player also made # requests to helper
+      hosts.}}{rejectPath, select, settings { The first layer of the consent banner offered no rejection; the
+      rejection was saved in the settings, where every optional category was already switched off.} other {}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:

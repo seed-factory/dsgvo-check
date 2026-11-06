@@ -7,7 +7,18 @@ import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import type { PageVisit, PhaseRecord, RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { CONTACT, click, page, phase, rejectCmp, req, START, site } from '../helpers.ts';
+import {
+  CONTACT,
+  click,
+  page,
+  phase,
+  rejectCmp,
+  req,
+  START,
+  settingsRejectCmp,
+  settingsRejectPlan,
+  site,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-02']!.find((s) => s.file === file)!.build();
@@ -304,6 +315,82 @@ describe('EMBED-02 states whether the map loaded before the interaction, after t
         'Zeitpunkt: vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung',
       ),
     });
+  });
+});
+
+describe('EMBED-02 names a reject saved in the settings layer of a first layer without reject', () => {
+  const both = [phase('A', { requests: [tile('a')] }), rejectPhase([tile('b', AFTER_CLICK)])];
+  const observe = (phases: PhaseRecord[], cmp: CmpSection) =>
+    observationsOf(runCheck(embed02, site({ phases, cmp, plan: settingsRejectPlan() })));
+  const render = (lang: 'de' | 'en', cmp: CmpSection) =>
+    renderMessage(loadTexts(lang), 'EMBED-02.maps-loaded', observe(both, cmp)[0]!.params);
+
+  it.each([
+    [
+      'a confirmed save in the settings layer',
+      settingsRejectCmp(),
+      { rejectConfirmed: true, rejectPath: 'settings' },
+    ],
+    [
+      'a save the platform policy did not record',
+      settingsRejectCmp({ confirmed: false }),
+      { rejectConfirmed: false, rejectPath: 'settings' },
+    ],
+    ['a first-layer reject', confirmed, { rejectConfirmed: true, rejectPath: 'first-layer' }],
+  ])('%s: the params name where the reject was pressed', (_name, cmp, want) => {
+    expect(observe(both, cmp)).toMatchObject([
+      { params: { moment: 'before-and-after-reject', afterRejectPageCount: 1, ...want } },
+    ]);
+  });
+
+  it('counterexample: loads before the interaction only name no reject path', () => {
+    expect(observe([phase('A', { requests: [tile('a')] })], settingsRejectCmp())[0]?.params).toMatchObject({
+      moment: 'before-interaction',
+      rejectPath: null,
+    });
+  });
+
+  it('the map after the confirmed save: "auch nach bestätigter Ablehnung über die Einstellungen", and why', () => {
+    expect(render('de', settingsRejectCmp())).toMatchObject({
+      title:
+        'Externer Kartendienst geladen, auch nach bestätigter Ablehnung über die Einstellungen: Google Maps',
+      body:
+        'Ein externer Kartendienst von Google Maps wurde als Kartenkacheln geladen, Zeitpunkt: vor einer Interaktion ' +
+        'mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung über die Einstellungen (1 Seite, davon 1 ' +
+        'nach der Ablehnung). Die erste Ebene des Einwilligungsbanners bot keine Ablehnung; abgelehnt wurde in den ' +
+        'Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.',
+    });
+    expect(render('en', settingsRejectCmp())).toMatchObject({
+      title: 'External map service loaded, also after confirmed rejection via the settings: Google Maps',
+      body:
+        'An external map service of Google Maps was loaded as map tiles, timing: before any interaction with the ' +
+        'consent banner and again after confirmed rejection via the settings (1 page, 1 of them after the ' +
+        'rejection). The first layer of the consent banner offered no rejection; the rejection was saved in the ' +
+        'settings, where every optional category was already switched off.',
+    });
+  });
+
+  it('a save that was not confirmed: "auch nach Ablehnung über die Einstellungen", named as the save of the settings', () => {
+    const cmp = settingsRejectCmp({ confirmed: false });
+    expect(render('de', cmp).title).toBe(
+      'Externer Kartendienst geladen, auch nach Ablehnung über die Einstellungen: Google Maps',
+    );
+    expect(render('de', cmp).body).toContain(
+      'und erneut nach dem Speichern der Einstellungen (Ablehnung nicht bestätigt)',
+    );
+    expect(render('en', cmp).title).toBe(
+      'External map service loaded, also after rejection via the settings: Google Maps',
+    );
+    expect(render('en', cmp).body).toContain('and again after saving the settings (rejection not confirmed)');
+  });
+
+  it('the scenario fixture: one maps-loaded finding with the reject proof of the settings save', () => {
+    const [o] = observationsOf(runCheck(embed02, scenario('violation-maps-after-settings-reject.json')));
+    expect(o?.params).toMatchObject({ rejectPath: 'settings', rejectConfirmed: true });
+    expect(o?.evidence.filter((e) => e.type === 'consent-state').map((e) => e.origin)).toEqual([
+      'action',
+      'stored',
+    ]);
   });
 });
 
