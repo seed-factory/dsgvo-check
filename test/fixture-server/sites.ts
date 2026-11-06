@@ -365,6 +365,22 @@ export const SITES: Record<string, SiteConfig> = {
       file: 'cmp/cookieman/www/js/cookieman.js',
     })),
   },
+  // An Impressum whose addresses are on another mail domain: one only as a mailto recipient, one in the text, one on
+  // a free-mail provider; the privacy policy names a processor's address.
+  'pipeline/mail-contact': { hosts: { 'www.example.test': 'www' } },
+  // The start page moves to another domain; www.example.test has no docroot of its own.
+  'pipeline/mail-redirect': {
+    hosts: { 'www.example-final.test': 'final' },
+    routes: [
+      {
+        host: 'www.example.test',
+        path: '.*',
+        pathRegex: true,
+        status: 301,
+        headers: { location: 'https://www.example-final.test/' },
+      },
+    ],
+  },
   'pipeline/passive': {
     hosts: { 'www.example.test': 'www', 'example.test': 'www' },
     routes: [

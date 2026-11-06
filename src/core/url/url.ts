@@ -7,6 +7,7 @@ import {
   decodeLenient,
   maskAddressPiece,
   maskEmailsInUrl,
+  mayHoldAddress,
   REDACTED,
   safeDecode,
 } from './email.ts';
@@ -189,7 +190,7 @@ function maskSegmentOnce(segment: string, writeBack: (decoded: string) => string
     // a round that decodes nothing shows nothing new
     if (round > 1 && next === decoded) break;
     decoded = next;
-    if (decoded.includes('@')) {
+    if (mayHoldAddress(decoded)) {
       const masked = maskEmailsInSegment(decoded);
       if (masked !== decoded) return writeBack(masked);
     }
@@ -244,8 +245,8 @@ function redactPathSegment(segment: string, url: URL, allowlist: ReadonlySet<str
 /** Redacts identifiers and addresses in a path made of segments; opaque paths (`foo:…`, `sms:…`) go through `redactOpaquePath`. */
 function redactPath(u: URL, allowlist: ReadonlySet<string>): void {
   const path = u.pathname;
-  // `%` for encoded `@` (also encoded twice or three times) and `=`
-  if (!path.startsWith('/') || !/[=@%]/.test(path)) return;
+  // `%` for encoded `@` (also encoded twice or three times) and `=`; `(at)` for an address written around harvesters
+  if (!path.startsWith('/') || !(/[=@%]/.test(path) || mayHoldAddress(path))) return;
 
   const next = path
     .split('/')

@@ -1,5 +1,5 @@
 /**
- * Every YAML file of the data directories that hold lists and vocabularies (cmp, browser, http, legal) belongs to a
+ * Every YAML file of the data directories that hold lists and vocabularies (cmp, browser, http, dns, legal) belongs to a
  * schema, and a bad file stops with a message that names the directory and the key.
  */
 import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -11,6 +11,7 @@ import { claimsSection } from '../../../../src/checks/browser/policy-claims.ts';
 import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
 import { legalSections } from '../../../../src/collectors/browser/legal/sections.ts';
 import { browserSections } from '../../../../src/collectors/browser/rules.ts';
+import { dnsSections } from '../../../../src/collectors/dns/rules.ts';
 import { httpSections } from '../../../../src/collectors/http/rules.ts';
 import { DataError, DEFAULT_DATA_DIR, loadDataDir, loadSection } from '../../../../src/core/data/load.ts';
 import type { DataSection } from '../../../../src/core/data/parse.ts';
@@ -20,6 +21,7 @@ const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own:
   { dir: 'cmp', sections: cmpSections, own: ['lexicon'] },
   { dir: 'browser', sections: browserSections, own: [] },
   { dir: 'http', sections: httpSections, own: [] },
+  { dir: 'dns', sections: dnsSections, own: [] },
   { dir: 'legal', sections: [...legalSections, claimsSection], own: ['legal'] },
 ];
 
@@ -133,6 +135,34 @@ describe('a broken data file is reported with its directory and key', () => {
       t.replace('  topics:\n    fonts:', '  topics:\n    schriften:'),
     );
     expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(/test\/data\/legal: claims\.topics/);
+  });
+
+  it('a free-mail entry that is no domain name (a URL or an address) is refused', () => {
+    const root = dataDirCopy('dns', 'mail-domains.yaml', (t) =>
+      t.replace('    - gmx.de\n', '    - mail@gmx.de\n'),
+    );
+    expect(() => loadSection(byKey('dns', 'mailDomains'), root)).toThrow(
+      /test\/data\/dns: mailDomains\.freeMail\.\d+: must be a domain name/,
+    );
+  });
+
+  it.each([
+    [
+      'a selector that is a full DNS name',
+      'selectors: [selector1, selector2]',
+      'selectors: [selector1._domainkey.x]',
+      /dkim\.providers\.0\.selectors\.0: must be a DKIM selector/,
+    ],
+    [
+      'a second provider with the same id',
+      'id: google-workspace',
+      'id: microsoft-365',
+      /dkim\.providers: provider ids must be unique/,
+    ],
+    ['a provider without the fixed flag', '      fixed: false\n', '', /dkim\.providers\.1\.fixed/],
+  ])('DKIM data: %s is refused', (_label, from, to, message) => {
+    const root = dataDirCopy('dns', 'dkim.yaml', (t) => t.replace(from, to));
+    expect(() => loadSection(byKey('dns', 'dkim'), root)).toThrow(message);
   });
 
   it('a missing section names the key it expected', () => {

@@ -3,9 +3,10 @@ import type { CheckThresholds } from '../evaluation/check.ts';
 import type { Config } from './schema.ts';
 
 export function checkThresholds(config: Config): CheckThresholds {
-  const { cmp, legal, tls } = config;
+  const { cmp, dns, legal, tls } = config;
   return {
     cmp: { blockingCoveredRatio: cmp.blockingCoveredRatio, minCandidatePages: cmp.minCandidatePages },
+    dns: { dkimMinRsaBits: dns.dkimMinRsaBits },
     legal: {
       impressumMinGroups: legal.impressumMinGroups,
       policyClaimMinContexts: legal.policyClaimMinContexts,

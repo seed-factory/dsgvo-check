@@ -136,6 +136,7 @@ describe('scan — settings', () => {
         }),
         config: {
           cmp: { blockingCoveredRatio: 0.6 },
+          dns: { dkimMinRsaBits: 2048 },
           legal: { impressumMinGroups: 4 },
           tls: { expiringDays: 7, approachingDays: 20 },
         },
@@ -144,6 +145,7 @@ describe('scan — settings', () => {
 
     expect(seen).toEqual({
       cmp: { blockingCoveredRatio: 0.6, minCandidatePages: 2 },
+      dns: { dkimMinRsaBits: 2048 },
       legal: { impressumMinGroups: 4, policyClaimMinContexts: 2 },
       tls: {
         shortLivedDays: 10,

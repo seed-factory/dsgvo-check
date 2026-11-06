@@ -72,8 +72,9 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                              |
 | TLS-01     | Umleitung von http auf https; Links der Seiten auf http-Adressen der eigenen Website      |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
-| MAIL-01    | DMARC-Eintrag und Richtlinie                                                              |
-| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC                                    |
+| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum     |
+| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                   |
+| MAIL-03    | DKIM-Schlüssel auf den geprüften Selektoren und ihre RSA-Länge, je E-Mail-Domain          |
 
 Jede Prüfung kann mehrere Varianten melden. Die Tabelle darunter wird aus `test/data/ruleset` erzeugt und zeigt, welche
 Variante mit welchem Standard-Schweregrad gemeldet wird.
@@ -101,6 +102,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
 | `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
+| `MAIL-03`    | —                                          | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                   |
 | `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
 | `HDR-02`     | —                                          | —                                                                                                                       | `version-header`                                                                                        |
 | `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                  |
@@ -121,7 +123,6 @@ Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt
 | `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                   | —                        |
 | `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                   | `not-observable`         |
 | `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                   | `source-unavailable`     |
-| `MAIL-03`             | DKIM                                       | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                               | —                        |
 | `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                             | —                        |
 | `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                   | `handshake-inconclusive` |
 | `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                  | —                        |
@@ -410,8 +411,8 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 Der Scanner läuft ohne jede Konfiguration: Jeder Wert hat einen Standard. Schwellen, Zeitlimits und Grenzen lassen
 sich zusätzlich über Umgebungsvariablen der Form `DSGVO_CHECK_<ABSCHNITT>_<NAME>` setzen, etwa
 `DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS`, `DSGVO_CHECK_HTTP_MAX_REDIRECTS` oder `DSGVO_CHECK_TLS_EXPIRING_DAYS`. Die
-Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel). Eine Datei `.env` ist
-nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
+Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel, `_BITS` Bit). Eine
+Datei `.env` ist nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
 
 - **Vorrang:** Flag, Umgebungsvariable, `.env`, Standardwert. Eine bereits gesetzte Umgebungsvariable wird von `.env`
   nicht überschrieben.
@@ -620,8 +621,10 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
     Website, für die Sicherheits-Header und Versionsangaben).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
-- **DNS:** MX-, SPF- und DMARC-Abfragen (höchstens 60 Abfragen) beim Resolver des prüfenden Rechners, nicht bei der
-  Website.
+- **DNS:** MX-, SPF-, DMARC- und DKIM-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website: für die
+  gescannte Domain höchstens 60 Abfragen; nach dem Browser je höchstens 30 weitere für die Domain, auf die die
+  Startseite weiterleitet, und für bis zu 2 E-Mail-Domains aus dem Impressum. DKIM: je E-Mail-Domain höchstens 8
+  Selektoren (`<selector>._domainkey.<domain>`), nach den übrigen Abfragen und innerhalb desselben Budgets.
 
 Nicht gesendet werden Anfragen auf offene Dateien oder Admin-Oberflächen, Logins und Formulare. Der Scanner versucht
 nie, Bot-Schutz, CAPTCHAs oder Geo-Sperren zu umgehen: Eine blockierte Website wird als blockiert vermerkt und nicht
@@ -699,7 +702,28 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
   Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu
   Geschichte), daher kann auf Portalen auch ein Artikel als weitere Seite gewählt werden.
-- **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen.
+- **E-Mail-Domains (MAIL-01 bis MAIL-03):** Geprüft werden die gescannte Domain, nach einer Weiterleitung der Startseite
+  auf eine andere Domain auch deren Domain, und die Domains von bis zu 2 E-Mail-Adressen aus dem Impressum (zuerst
+  Adressen im Text, dann `mailto:`-Links im Inhalt der Impressumsseite; Freemail-Anbieter wie `gmx.de` nicht, Liste in
+  `test/data/dns/mail-domains.yaml`). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
+  die Domain betreibt. Adressen aus der Datenschutzerklärung, aus DMARC-Berichtsadressen und von anderen Seiten werden
+  nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig, Impressum nicht
+  gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in diesem Lauf nicht erhoben“).
+  Adressen in der Form `name(at)domain.de` oder `name [at] domain.de` werden wie andere Adressen bis auf die Domain
+  maskiert.
+- **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain
+  zuerst die Selektoren aus `DSGVO_CHECK_DNS_DKIM_SELECTORS` (`selector` für jede Domain oder `domain/selector`), dann
+  die festen Selektoren eines erkannten Anbieters (Microsoft 365: `selector1`, `selector2`, erkannt nur an MX-Eintrag
+  und SPF-include zusammen), dann übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
+  `DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS` (8). Ohne Schlüssel unter den angegebenen oder festen Selektoren meldet der
+  Scanner `given-selector-missing` (`warning`), sonst nur `selectors-not-found` (`info`): Ein Schlüssel unter einem
+  anderen Namen bleibt unsichtbar. Ein veröffentlichter Schlüssel belegt nicht, dass E-Mails signiert werden.
+  RSA-Schlüssel unter `DSGVO_CHECK_DNS_DKIM_MIN_RSA_BITS` (1024, nach RFC 8301; anhebbar) ergeben `key-too-short`;
+  Ed25519 hat keine RSA-Länge. Domains mit Null-MX oder ganz ohne MX- und SPF-Eintrag werden nicht abgefragt.
+  Fehlgeschlagene Abfragen, ein aufgebrauchtes Budget, nicht lesbare oder widerrufene Schlüssel (leeres `p=`) und
+  erwartete Selektoren über der Grenze ergeben keinen Befund. Zeitüberschreitungen bei DKIM-Abfragen halten die
+  Abfragen der nächsten Domain nicht an.
 - **Versionsangaben (HDR-02)** stammen nur aus den Headern `Server`, `X-Powered-By`, `X-Generator`,
   `X-Redirect-By`, `X-AspNet-Version` und `X-AspNetMvc-Version` von Startseite, Impressum und Datenschutzerklärung
   und nur in der Form `Produkt/Version`. Nicht gespeichert werden Kommentare in Klammern, Text in Anführungszeichen

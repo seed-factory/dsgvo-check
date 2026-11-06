@@ -505,6 +505,39 @@ describe('non-ASCII characters in the local part', () => {
   });
 });
 
+describe('addresses written with (at) or [at]', () => {
+  it.each([
+    [`Kontakt: ${MARK}(at)${D}`, `Kontakt: ${REDACTED}@${D}`],
+    [`E-Mail: ${MARK} (at) Example-Mail.Invalid.`, `E-Mail: ${REDACTED}@example-mail.invalid.`],
+    [`${MARK}[at]${D}, ${MARK}2 [ at ] ${D}`, `${REDACTED}@${D}, ${REDACTED}@${D}`],
+    [`${MARK}(AT)${D}`, `${REDACTED}@${D}`],
+    [`${MARK}\u00a0(at)\u00a0${D}`, `${REDACTED}@${D}`],
+  ])('%j → %j: the domain stays, nothing of the local part', (input, want) => {
+    const once = expectStable(input);
+    expect(once).toBe(want);
+    expect(once).not.toContain(MARK);
+  });
+
+  it.each([
+    [`https://${D}/${MARK}(at)mail.example`, `https://${D}/${REDACTED}@mail.example`],
+    [`https://${D}/c/${MARK}%28at%29mail.example`, `https://${D}/c/${REDACTED}@mail.example`],
+    [`https://${D}/${MARK}[at]mail.example?x=1`, `https://${D}/${REDACTED}@mail.example?x=${REDACTED}`],
+    [`https://${D}/${MARK}%C2%A0(at)%C2%A0mail.example`, `https://${D}/${REDACTED}@mail.example`],
+  ])('in a URL path, also percent-encoded: %j → %j', (input, want) => {
+    expect(expectStableUrl(input)).toBe(want);
+    expect(redactText(`Link: ${input}`)).toBe(`Link: ${want}`);
+  });
+
+  it.each([
+    'Wir treffen uns at noon at the office.',
+    'Preis (at) Kasse',
+    'meet [at] noon',
+    'Angaben (at) www',
+  ])('prose without a domain after the marker stays: %j', (input) => {
+    expect(redactText(input)).toBe(input);
+  });
+});
+
 describe('long inputs: the scan stays linear (about 100 000 to 400 000 characters)', () => {
   // The code is synchronous: a quadratic tail cannot be interrupted by the timeout of the scan.
   const budgetMs = 2_000;
@@ -544,6 +577,10 @@ describe('long inputs: the scan stays linear (about 100 000 to 400 000 character
     ['a query of allowlisted values with "@"', `https://${D}/p?${'hl=a@b.test&'.repeat(n / 11)}`],
     ['a query of keys with "@"', `https://${D}/p?${'a@b.test=1&'.repeat(n / 10)}`],
     ['a long value that is encoded twice', `https://${D}/p?hl=${'%2540'.repeat(n / 5)}`],
+    ['many "(at)" markers', 'a(at)'.repeat(n / 5)],
+    ['a run of local-part characters before "(at)"', `${'a'.repeat(4 * n)}(at)x.test`],
+    ['"[at]" markers with blanks and short domains', 'a [at] b.'.repeat(n / 9)],
+    ['"(at)" markers between Unicode blanks', 'a\u00a0(at)\u2003'.repeat(n / 8)],
   ];
 
   it.each(inputs)('redactText: %s', (_name, input) => {

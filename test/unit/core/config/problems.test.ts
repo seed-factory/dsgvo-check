@@ -28,6 +28,7 @@ const CASES: ReadonlyArray<[string, () => unknown]> = [
   ['unknown-keys', () => parseConfigInput({ browser: { unknown: 1 } })],
   ['proxy-scheme', () => parseConfigInput({ scan: { proxy: 'socks5://p' } })],
   ['dns-server', () => parseConfigInput({ dns: { servers: ['a b'] } })],
+  ['dkim-selector', () => parseConfigInput({ dns: { dkimSelectors: ['example.de/'] } })],
   ['dwell-order', () => parseConfigInput({ browser: { phaseAMinDwellMs: 30_000 } })],
   ['tls-days-order', () => parseConfigInput({ tls: { expiringDays: 31 } })],
   ['tls-share-order', () => parseConfigInput({ tls: { expiringLifetimeShare: 0.6 } })],

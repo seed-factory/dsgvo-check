@@ -2,7 +2,8 @@
 # JSON report only). T3 codes stay at warning or below (test). MAIL-02 follows the DMARC matrix of BSI TR-03182.
 # Variants that describe missing or weak spoofing protection map to the catalog code; hygiene hints (deprecated
 # ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings stay null until the customer
-# maps them.
+# maps them. MAIL-03 selectors-not-found keeps the catalog code: the catalog row describes exactly that case
+# ("not found on any of the common selectors").
 # The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   MAIL-01:
@@ -22,3 +23,9 @@ checks:
       softfail-without-enforcement: { severity: warning, crm: T3_MAIL_UNPROTECTED }
       softfail-with-enforcement: { severity: info, crm: null }
       ptr-mechanism: { severity: info, crm: null }
+  MAIL-03:
+    gating: true
+    variants:
+      key-too-short: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      given-selector-missing: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      selectors-not-found: { severity: info, crm: T3_MAIL_UNPROTECTED }

@@ -1,0 +1,26 @@
+# DKIM selectors MAIL-03 queries per checked mail domain (`<selector>._domainkey.<domain>`), after the ones the
+# operator sets in DSGVO_CHECK_DNS_DKIM_SELECTORS and up to DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS in all.
+#
+# providers: a provider counts as recognised only when an MX host lies under one of `mx` AND the SPF tree includes
+# one of `spfIncludes`; an MX alone may only receive, an include alone may only send. `fixed: true` means the provider
+# always signs with these selectors, so a domain without a key there gets the warning given-selector-missing. With
+# `fixed: false` the customer can change the selector and the names are probes only. Add a provider only with its
+# vendor documentation at hand.
+# - Microsoft 365 signs with selector1 and selector2 (CNAME records to the tenant's onmicrosoft.com domain).
+# - Google Workspace offers the prefix "google" as preset; the admin can choose another one.
+#
+# commonSelectors: names many mail servers and hosting panels use; probes only. Selectors are freely chosen, so a key
+# under another name stays invisible to these lookups.
+dkim:
+  providers:
+    - id: microsoft-365
+      mx: [mail.protection.outlook.com]
+      spfIncludes: [spf.protection.outlook.com]
+      selectors: [selector1, selector2]
+      fixed: true
+    - id: google-workspace
+      mx: [aspmx.l.google.com, smtp.google.com]
+      spfIncludes: [_spf.google.com]
+      selectors: [google]
+      fixed: false
+  commonSelectors: [default, dkim, mail, s1, s2, k1, key1]

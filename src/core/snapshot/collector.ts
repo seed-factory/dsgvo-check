@@ -58,7 +58,7 @@ export interface CollectorContext {
   /** Milliseconds since `scan.startedAt` on a monotonic clock, the one time scale for all phases. Collectors run without the orchestrator start their own. */
   clock?: () => number;
   log: Logger;
-  /** Sections collected earlier in this scan (http/tls/dns run before the browser). Read-only. */
+  /** Sections collected earlier in this scan (http/tls/dns run before the browser, the DNS follow-up after it). Read-only. */
   snapshot: Readonly<Snapshot>;
 }
 
@@ -103,6 +103,8 @@ export interface Collectors {
   http: HttpCollector;
   tls: TlsCollector;
   dns: DnsCollector;
+  /** Second DNS stage after the browser: extends `ctx.snapshot.dns` with the further mail domains. */
+  dnsFollowUp: DnsCollector;
 }
 
 export function skipped<S>(reason: string, sections: S): CollectorResult<S> {

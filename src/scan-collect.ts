@@ -340,6 +340,11 @@ export async function collect(
     const code = state.noHandover.has('browser') ? 'browser-no-handover' : 'scan-timeout';
     state.fatal = { reason: 'timeout', code, params: { seconds } };
   }
+
+  // The final host and the Impressum are known only now; also with the browser skipped (the HTTP final URL).
+  if (snapshot.dns && !state.fatal) {
+    await runDnsFollowUp(snapshot, collectors.dnsFollowUp, ctx(), state, log, grace);
+  }
   return state;
 }
 
@@ -467,6 +472,44 @@ async function runBrowserCollector(
   if (s.cmp) snapshot.cmp = s.cmp;
   if (s.plan) snapshot.plan.browser = s.plan;
   if (s.finalUrl) setFinalUrl(snapshot, s.finalUrl);
+}
+
+/**
+ * Runs the DNS stage of the further mail domains and replaces the DNS section with its extended copy. It is not a
+ * collector of its own in `collection`: a failure leaves the scanned domain's section as it was and is noted in it,
+ * so MAIL-* say that the further domains are unknown instead of silently checking fewer.
+ */
+async function runDnsFollowUp(
+  snapshot: Snapshot,
+  collector: Collectors['dnsFollowUp'],
+  ctx: CollectorContext,
+  state: CollectState,
+  log: Logger,
+  graceMs: number,
+): Promise<void> {
+  const t0 = performance.now();
+  const failed = (code: string, message: string) => {
+    log.warn(`DNS follow-up: ${message}`);
+    if (!snapshot.dns) return;
+    snapshot.dns.mailDomainStage = {
+      contacts: 'not-collected',
+      durationMs: Math.round(performance.now() - t0),
+      error: { code, message },
+    };
+  };
+  try {
+    const pending = collector(ctx);
+    const res = await untilDeadline(pending, ctx.signal);
+    // After the deadline the stage stops at its next query; what it handed over within the grace period is kept, and
+    // the scan reports the timeout like one in any other collector.
+    if (res.timedOut) state.timedOut = true;
+    const value = res.timedOut ? await withinGrace(pending, graceMs) : res.value;
+    if (!value) return failed('timeout', 'no result within the grace period after the global timeout');
+    if (value.diagnostics) snapshot.diagnostics.push(...value.diagnostics);
+    if (value.sections.dns) snapshot.dns = value.sections.dns;
+  } catch (err) {
+    failed('collector-exception', errorMessage(err));
+  }
 }
 
 function setFinalUrl(snapshot: Snapshot, raw: string): void {

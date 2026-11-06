@@ -1138,6 +1138,48 @@ describe('the action list: params of grouped findings', () => {
   });
 });
 
+describe('the action list: mail findings of several domains', () => {
+  const mail = (n: number, domain: string, scope: string, variant = 'record-not-found') =>
+    finding(300 + n, {
+      checkId: 'MAIL-01',
+      variant,
+      messageId: `MAIL-01.${variant}`,
+      severity: 'warning',
+      subject: scope === 'site' ? 'dmarc' : `dmarc@contact:${domain}`,
+      pages: [],
+      params: { domain, mailDomain: domain, scope, inherited: 'none' },
+      text: undefined,
+    });
+  const withDnsChecks = (r: FullReport) => {
+    r.checks = [{ ...r.checks[0]!, id: 'MAIL-01', module: 'dns' }];
+    return r;
+  };
+
+  it('a missing DMARC record on the scanned domain and on an Impressum domain → two items, each naming its domain', () => {
+    const r = withDnsChecks(
+      reportWith([mail(1, 'example.de', 'site'), mail(2, 'example-mail.de', 'contact')]),
+    );
+    const actions = buildReportView(r, ctx()).actions;
+
+    expect(actions).toHaveLength(2);
+    expect(actions.map((a) => a.covers)).toEqual(['1 Befund', '1 Befund']);
+    expect(actions[0]!.action).toContain('für example.de');
+    expect(actions[0]!.action).not.toContain('example-mail.de');
+    expect(actions[1]!.title).toContain('example-mail.de');
+    expect(actions[1]!.action).toContain('für example-mail.de');
+  });
+
+  it('the same record found again under another scope stays one item', () => {
+    const r = withDnsChecks(
+      reportWith([
+        mail(1, 'example.de', 'site', 'policy-none'),
+        mail(2, 'example.de', 'contact', 'policy-none'),
+      ]),
+    );
+    expect(buildReportView(r, ctx()).actions).toHaveLength(1);
+  });
+});
+
 describe('the evidence of a finding', () => {
   const base = () => sampleFullReport();
   function withEvidence(items: Evidence[], params: Finding['params'] = {}): FullReport {

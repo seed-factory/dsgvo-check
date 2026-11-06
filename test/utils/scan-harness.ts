@@ -73,6 +73,7 @@ export function fakeCollectors(over: Partial<Collectors> = {}): Collectors {
     http: async () => ok({}),
     tls: async () => ok({}),
     dns: async () => ok({}),
+    dnsFollowUp: async () => ok({}),
     ...over,
   };
 }

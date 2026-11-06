@@ -1,6 +1,8 @@
 /**
  * Fake authoritative DNS (dns2, UDP on 127.0.0.1:<random>). Zone keys are `"<TYPE> <name>"`; values are TXT strings
  * (an array of chunks = one multi-string record), MX `"<prio> <exchange>"`, A, an rcode or `DROP` (never answer).
+ * `"CNAME <name>": ["<target>"]` answers any type at `<name>` as a recursive resolver does: the CNAME followed by the
+ * target's records, NXDOMAIN when the target does not exist (a dangling CNAME).
  */
 import dns2 from 'dns2';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
@@ -18,7 +20,7 @@ export type FakeZone = Record<string, FakeZoneValue>;
 export interface FakeDnsServer {
   port: number;
   server: string;
-  /** Every question received, as `"<TYPE> <name>"`. */
+  /** Every question received over UDP or TCP, as `"<TYPE> <name>"`; a truncated answer's TCP retry counts again. */
   requests: string[];
   setZone(zone: FakeZone): void;
   close(): Promise<void>;
@@ -27,6 +29,7 @@ export interface FakeDnsServer {
 const TYPE_NAMES: Record<number, string> = {
   [Packet.TYPE.A]: 'A',
   [Packet.TYPE.AAAA]: 'AAAA',
+  [Packet.TYPE.CNAME]: 'CNAME',
   [Packet.TYPE.MX]: 'MX',
   [Packet.TYPE.TXT]: 'TXT',
 };
@@ -38,10 +41,16 @@ function addAnswers(
   question: dns2.Packet.Question,
   type: string,
   values: ReadonlyArray<string | readonly string[]>,
+  owner?: string,
 ) {
   const answer = (record: Partial<dns2.Packet.Resource>) =>
     response.answers.push(
-      Packet.createResourceFromQuestion(question, { class: Packet.CLASS.IN, ttl: 300, ...record }),
+      Packet.createResourceFromQuestion(question, {
+        class: Packet.CLASS.IN,
+        ttl: 300,
+        ...(owner ? { name: owner } : {}),
+        ...record,
+      }),
     );
 
   for (const v of values) {
@@ -56,10 +65,34 @@ function addAnswers(
   }
 }
 
+/** A UDP and a TCP server on one random loopback port: a response over 512 bytes is truncated and asked again over TCP. */
+async function listenUdpAndTcp(
+  handle: dns2.DnsHandler,
+): Promise<{ port: number; close: () => Promise<void> }> {
+  for (let attempt = 0; ; attempt++) {
+    const udp = dns2.createUDPServer(handle);
+    await udp.listen(0, '127.0.0.1');
+    const port = udp.address()?.port;
+    if (!port) throw new Error('fake DNS did not bind');
+    const tcp = dns2.createTCPServer(handle);
+    const bound = await new Promise<boolean>((resolve) => {
+      tcp.once('error', () => resolve(false));
+      tcp.listen(port, '127.0.0.1', () => resolve(true));
+    });
+    const closeUdp = () => new Promise<void>((resolve) => udp.close(() => resolve()));
+    if (bound) {
+      const closeTcp = () => new Promise<void>((resolve) => tcp.close(() => resolve()));
+      return { port, close: async () => void (await Promise.all([closeUdp(), closeTcp()])) };
+    }
+    await closeUdp();
+    if (attempt >= 4) throw new Error('fake DNS found no port free for both UDP and TCP');
+  }
+}
+
 export async function startFakeDns(initial: FakeZone): Promise<FakeDnsServer> {
   let zone = initial;
   const requests: string[] = [];
-  const server = dns2.createUDPServer((request, send) => {
+  const server = await listenUdpAndTcp((request, send) => {
     const response = Packet.createResponseFromRequest(request);
     const question = request.questions[0];
     if (!question) return void send(response);
@@ -69,6 +102,24 @@ export async function startFakeDns(initial: FakeZone): Promise<FakeDnsServer> {
     const key = `${type} ${name}`;
     requests.push(key);
     const value = zone[key];
+    const cname = zone[`CNAME ${name}`];
+
+    if (!value && Array.isArray(cname) && type !== 'CNAME') {
+      const target = String(cname[0]);
+      response.answers.push(
+        Packet.createResourceFromQuestion(question, {
+          class: Packet.CLASS.IN,
+          ttl: 300,
+          type: Packet.TYPE.CNAME,
+          domain: target,
+        }),
+      );
+      const targetValue = zone[`${type} ${target}`];
+      if (Array.isArray(targetValue)) addAnswers(response, question, type, targetValue, target);
+      else if (!Object.keys(zone).some((k) => k.split(' ')[1] === target))
+        response.header.rcode = RCODES.NXDOMAIN;
+      return void send(response);
+    }
 
     if (value === 'DROP') return;
     if (typeof value === 'string') {
@@ -85,19 +136,16 @@ export async function startFakeDns(initial: FakeZone): Promise<FakeDnsServer> {
     addAnswers(response, question, type, value);
     void send(response);
   });
-  await server.listen(0, '127.0.0.1');
-  const address = server.address();
-  if (!address) throw new Error('fake DNS did not bind');
 
   return {
-    port: address.port,
-    server: `127.0.0.1:${address.port}`,
+    port: server.port,
+    server: `127.0.0.1:${server.port}`,
     requests,
     setZone(z) {
       zone = z;
       requests.length = 0;
     },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: server.close,
   };
 }
 

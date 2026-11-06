@@ -133,23 +133,31 @@ function byImportance(a: Item, b: Item): number {
   );
 }
 
-/** Findings that share a message form one item: they are counted, not repeated. */
+/**
+ * Findings that share a message form one item: they are counted, not repeated. A DNS record is fixed per domain, so
+ * the mail findings of different domains stay separate items, each naming its own domain.
+ */
 function actionItems(report: Report): Item[] {
-  const byMessage = new Map<string, Finding[]>();
+  const moduleOf = new Map((report.checks ?? []).map((c) => [c.id, c.module ?? '']));
+  const itemKey = (f: Finding) =>
+    moduleOf.get(f.checkId) === 'dns' && typeof f.params.domain === 'string'
+      ? `${f.messageId}\u0000${f.params.domain}`
+      : f.messageId;
+
+  const byKey = new Map<string, Finding[]>();
   for (const f of report.findings ?? []) {
     // The services table lists the inventory; an active suppression means the finding was reviewed and set aside.
     if (f.messageId === INVENTORY_MESSAGE || (f.suppression && !f.suppression.expired)) continue;
-    byMessage.set(f.messageId, [...(byMessage.get(f.messageId) ?? []), f]);
+    byKey.set(itemKey(f), [...(byKey.get(itemKey(f)) ?? []), f]);
   }
 
-  const moduleOf = new Map((report.checks ?? []).map((c) => [c.id, c.module ?? '']));
   const rank = (checkId: string) => {
     const index = MODULE_ORDER.indexOf(moduleOf.get(checkId) ?? '');
     return index === -1 ? MODULE_ORDER.length : index;
   };
-  return [...byMessage.entries()]
-    .map(([messageId, findings]) => ({
-      messageId,
+  return [...byKey.values()]
+    .map((findings) => ({
+      messageId: findings[0]!.messageId,
       findings,
       severity: highestSeverity(findings),
       module: rank(findings[0]!.checkId),

@@ -4,109 +4,193 @@
 draft: true
 messages:
   MAIL-01.record-not-found:
-    title: "No DMARC record found"
+    title: >-
+      No DMARC record found{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final { (domain
+      after the redirect: {mailDomain})} other {}}
     body: >-
-      No DMARC record was found for {domain} (queried: _dmarc at the scanned host and along the DNS Tree Walk
-      of RFC 9989).{inherited, select, psd { Only a policy of the parent public suffix domain was observed.}
-      other {}} Without a DMARC policy of its own, receivers cannot reject forged sender addresses of this
-      domain based on a published policy. Guidance (BSI TR-03182): publish a DMARC record with p=quarantine
-      or p=reject and an rua address.
+      No DMARC record was found for {domain} (queried: _dmarc {scope, select, contact {at {mailDomain}} final {at
+      {mailDomain}} other {at the scanned host}} and along the DNS Tree Walk of RFC 9989).{inherited, select, psd {
+      Only a policy of the parent public suffix domain was observed.} other {}} Without a DMARC policy of its own,
+      receivers cannot reject forged sender addresses of this domain based on a published policy. Guidance (BSI
+      TR-03182): publish a DMARC record with p=quarantine or p=reject and an rua address.{scope, select, contact { The
+      domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page redirects to
+      the domain {mailDomain}.} other {}}
   MAIL-01.policy-none:
-    title: "DMARC in monitoring mode (p=none)"
+    title: >-
+      DMARC in monitoring mode (p=none){scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
     body: >-
       {noRua, select, yes {The DMARC record of {domain} contains p=none and no rua tag. It requests no aggregate
-      reports, and receivers are not asked to reject or quarantine forged messages. Guidance (BSI TR-03182): add
-      an rua address, review the reports and then move to p=quarantine or p=reject.} other {The DMARC record of
-      {domain} contains p=none. It only requests reports; receivers are not asked to reject or quarantine forged
-      messages. Guidance (BSI TR-03182): after reviewing the reports, move to p=quarantine or p=reject.}}
+      reports, and receivers are not asked to reject or quarantine forged messages. Guidance (BSI TR-03182): add an
+      rua address, review the reports and then move to p=quarantine or p=reject.} other {The DMARC record of {domain}
+      contains p=none. It only requests reports; receivers are not asked to reject or quarantine forged messages.
+      Guidance (BSI TR-03182): after reviewing the reports, move to p=quarantine or p=reject.}}{scope, select, contact
+      { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page
+      redirects to the domain {mailDomain}.} other {}}
   MAIL-01.record-invalid:
-    title: "DMARC record cannot be evaluated"
+    title: >-
+      DMARC record cannot be evaluated{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
     body: >-
       A DMARC record was observed for {domain} that receivers cannot evaluate as intended ({reason, select,
-      multiple-records {several DMARC records at the same name} version-not-first {v=DMARC1 is not the first
-      tag} p-missing {the p tag is missing} p-invalid {invalid value for p} other {syntax error}}). Receivers
-      ignore such records or treat them like p=none.
+      multiple-records {several DMARC records at the same name} version-not-first {v=DMARC1 is not the first tag}
+      p-missing {the p tag is missing} p-invalid {invalid value for p} other {syntax error}}). Receivers ignore such
+      records or treat them like p=none.{scope, select, contact { The domain {mailDomain} comes from an e-mail address
+      observed in the Impressum.} final { The start page redirects to the domain {mailDomain}.} other {}}
   MAIL-01.weak-option:
     title: >-
-      {kind, select, null-mx {DMARC without p=reject on a domain that receives no email} other {{count, plural,
-      one {DMARC option} other {DMARC options}} with limited effect}}
+      {kind, select, null-mx {DMARC without p=reject on a domain that receives no email} other {{count, plural, one
+      {DMARC option} other {DMARC options}} with limited effect}}{scope, select, contact { (e-mail domain from the
+      Impressum: {mailDomain})} final { (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      {kind, select, null-mx {{domain} publishes a Null MX record (RFC 7505) and therefore accepts no email.
-      {policy, select, missing {No DMARC record of its own was found.} none {The DMARC record contains
-      p=none.} quarantine {The DMARC record contains p=quarantine.} other {The DMARC record cannot be
-      evaluated.}} For domains without email traffic DMARC with p=reject is recommended (M3AAWG) so that
-      messages with a forged sender are rejected.} other {The DMARC record of {domain} contains {count, plural,
-      one {one option} other {# options}} with limited effect:{spNone, select, yes { sp=none – no enforcement
-      is requested for senders under subdomains despite p={policy}.} other {}}{testing, select, yes { t=y –
-      test mode of RFC 9989, receivers apply p={policy} only in a weakened form.} other {}}{noRua, select, yes
-      { no rua tag – without aggregate reports (RFC 9990) it is not visible which servers send email on behalf
-      of the domain.} other {}}}}
+      {kind, select, null-mx {{domain} publishes a Null MX record (RFC 7505) and therefore accepts no email. {policy,
+      select, missing {No DMARC record of its own was found.} none {The DMARC record contains p=none.} quarantine {The
+      DMARC record contains p=quarantine.} other {The DMARC record cannot be evaluated.}} For domains without email
+      traffic DMARC with p=reject is recommended (M3AAWG) so that messages with a forged sender are rejected.} other
+      {The DMARC record of {domain} contains {count, plural, one {one option} other {# options}} with limited
+      effect:{spNone, select, yes { sp=none – no enforcement is requested for senders under subdomains despite
+      p={policy}.} other {}}{testing, select, yes { t=y – test mode of RFC 9989, receivers apply p={policy} only in a
+      weakened form.} other {}}{noRua, select, yes { no rua tag – without aggregate reports (RFC 9990) it is not
+      visible which servers send email on behalf of the domain.} other {}}}}{scope, select, contact { The domain
+      {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page redirects to the
+      domain {mailDomain}.} other {}}
   MAIL-01.legacy-pct:
-    title: "DMARC record with the legacy tag pct={pct}"
+    title: >-
+      DMARC record with the legacy tag pct={pct}{scope, select, contact { (e-mail domain from the Impressum:
+      {mailDomain})} final { (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The DMARC record of {domain} contains the tag pct={pct}. It comes from RFC 7489 and was removed in RFC
-      9989; the policy was evaluated per RFC 9989. Receivers that still evaluate the tag apply p={policy} to
-      {pct} % of messages only.
+      The DMARC record of {domain} contains the tag pct={pct}. It comes from RFC 7489 and was removed in RFC 9989; the
+      policy was evaluated per RFC 9989. Receivers that still evaluate the tag apply p={policy} to {pct} % of messages
+      only.{scope, select, contact { The domain {mailDomain} comes from an e-mail address observed in the Impressum.}
+      final { The start page redirects to the domain {mailDomain}.} other {}}
   MAIL-02.record-not-found:
-    title: "No SPF record found"
+    title: >-
+      No SPF record found{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final { (domain
+      after the redirect: {mailDomain})} other {}}
     body: >-
-      No TXT record with v=spf1 was found for {domain}. Receivers cannot check which servers may send email on
-      behalf of the domain.{nullMx, select, yes { The domain publishes a Null MX record (RFC 7505); for domains
-      that send no email v=spf1 -all is recommended (M3AAWG).} other {}} Guidance (BSI TR-03182): publish an
-      SPF record listing the sending servers in use and ending with -all (or ~all with enforced DMARC).
+      No TXT record with v=spf1 was found for {domain}. Receivers cannot check which servers may send email on behalf
+      of the domain.{nullMx, select, yes { The domain publishes a Null MX record (RFC 7505); for domains that send no
+      email v=spf1 -all is recommended (M3AAWG).} other {}} Guidance (BSI TR-03182): publish an SPF record listing the
+      sending servers in use and ending with -all (or ~all with enforced DMARC).{scope, select, contact { The domain
+      {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page redirects to the
+      domain {mailDomain}.} other {}}
   MAIL-02.permissive-qualifier:
-    title: "SPF does not exclude unlisted servers"
+    title: >-
+      SPF does not exclude unlisted servers{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The SPF record of {domain} {qualifier, select, +all {ends with +all. Every server is authorised as a
-      sender for the domain, so SPF offers no protection against forged senders.} ?all {ends with ?all.
+      The SPF record of {domain} {qualifier, select, +all {ends with +all. Every server is authorised as a sender for
+      the domain, so SPF offers no protection against forged senders.} ?all {ends with ?all. Unlisted servers get the
+      result neutral; receivers get no statement that such servers are not authorised.} other {has no all mechanism.
       Unlisted servers get the result neutral; receivers get no statement that such servers are not
-      authorised.} other {has no all mechanism. Unlisted servers get the result neutral; receivers get no
-      statement that such servers are not authorised.}}{nullMx, select, yes { The domain publishes a Null MX
-      record (RFC 7505); for domains that send no email v=spf1 -all is recommended (M3AAWG).} other {}}
+      authorised.}}{nullMx, select, yes { The domain publishes a Null MX record (RFC 7505); for domains that send no
+      email v=spf1 -all is recommended (M3AAWG).} other {}}{scope, select, contact { The domain {mailDomain} comes
+      from an e-mail address observed in the Impressum.} final { The start page redirects to the domain {mailDomain}.}
+      other {}}
   MAIL-02.record-invalid:
-    title: "SPF record cannot be evaluated"
+    title: >-
+      SPF record cannot be evaluated{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final
+      { (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The static evaluation of the SPF record of {domain} found {reason, select, multiple-records {{count} TXT
-      records with v=spf1} syntax {a syntax error in the record} too-many-lookups {that more than 10 DNS
-      lookups through include, a, mx, ptr, exists and redirect are needed} void-lookups {more than 2 DNS
-      lookups without a result} loop {a loop through include or redirect} include-no-record {that a name
-      referenced by include has no SPF record} redirect-no-record {that the redirect target has no SPF record}
-      include-multiple-records {that a name referenced by include has several SPF records}
-      redirect-multiple-records {that the redirect target has several SPF records} other {an error in the
-      record}}. Under RFC 7208 this is a permanent error (permerror); receivers then do not evaluate SPF. DNS
-      lookups counted until evaluation stopped: {lookups}.
+      The static evaluation of the SPF record of {domain} found {reason, select, multiple-records {{count} TXT records
+      with v=spf1} syntax {a syntax error in the record} too-many-lookups {that more than 10 DNS lookups through
+      include, a, mx, ptr, exists and redirect are needed} void-lookups {more than 2 DNS lookups without a result}
+      loop {a loop through include or redirect} include-no-record {that a name referenced by include has no SPF
+      record} redirect-no-record {that the redirect target has no SPF record} include-multiple-records {that a name
+      referenced by include has several SPF records} redirect-multiple-records {that the redirect target has several
+      SPF records} other {an error in the record}}. Under RFC 7208 this is a permanent error (permerror); receivers
+      then do not evaluate SPF. DNS lookups counted until evaluation stopped: {lookups}.{scope, select, contact { The
+      domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page redirects to
+      the domain {mailDomain}.} other {}}
   MAIL-02.softfail-without-enforcement:
-    title: "SPF ~all without enforced DMARC"
+    title: >-
+      SPF ~all without enforced DMARC{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final
+      { (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The SPF record of {domain} ends with ~all (softfail). No applicable DMARC policy with p=quarantine or
-      p=reject was found on the evaluated lookup path ({dmarcPolicy, select, none {the DMARC record contains
-      p=none} invalid {the DMARC record cannot be evaluated} other {no DMARC record was found}}). Without DMARC
-      enforcement, unauthorised senders are usually only marked, not rejected. Guidance (BSI TR-03182):
-      publish DMARC with p=quarantine or p=reject, or end SPF with -all.
+      The SPF record of {domain} ends with ~all (softfail). No applicable DMARC policy with p=quarantine or p=reject
+      was found on the evaluated lookup path ({dmarcPolicy, select, none {the DMARC record contains p=none} invalid
+      {the DMARC record cannot be evaluated} other {no DMARC record was found}}). Without DMARC enforcement,
+      unauthorised senders are usually only marked, not rejected. Guidance (BSI TR-03182): publish DMARC with
+      p=quarantine or p=reject, or end SPF with -all.{scope, select, contact { The domain {mailDomain} comes from an
+      e-mail address observed in the Impressum.} final { The start page redirects to the domain {mailDomain}.} other
+      {}}
   MAIL-02.softfail-with-enforcement:
-    title: "SPF ~all with enforced DMARC"
+    title: >-
+      SPF ~all with enforced DMARC{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final {
+      (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The SPF record of {domain} ends with ~all (softfail). DMARC is published with p={dmarcPolicy} and decides
-      how unauthorised senders are handled; BSI TR-03182 accepts this combination. For information.
+      The SPF record of {domain} ends with ~all (softfail). DMARC is published with p={dmarcPolicy} and decides how
+      unauthorised senders are handled; BSI TR-03182 accepts this combination. For information.{scope, select, contact
+      { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The start page
+      redirects to the domain {mailDomain}.} other {}}
   MAIL-02.ptr-mechanism:
-    title: "SPF uses the ptr mechanism"
+    title: >-
+      SPF uses the ptr mechanism{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})} final {
+      (domain after the redirect: {mailDomain})} other {}}
     body: >-
-      The SPF record of {domain} contains ptr. RFC 7208 discourages it (slow and unreliable); some receivers
-      do not evaluate ptr.
+      The SPF record of {domain} contains ptr. RFC 7208 discourages it (slow and unreliable); some receivers do not
+      evaluate ptr.{scope, select, contact { The domain {mailDomain} comes from an e-mail address observed in the
+      Impressum.} final { The start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.key-too-short:
+    title: >-
+      DKIM key of {bits} bits on the selector {selector}{scope, select, contact { (e-mail domain from the Impressum:
+      {mailDomain})} final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      {selector}._domainkey.{domain} publishes an RSA key of {bits} bits. {belowRfc, select, yes {Under RFC 8301,
+      receivers do not accept signatures made with RSA keys below 1024 bits; messages signed with it count as
+      unsigned.} other {RFC 8301 requires at least 1024 bits and recommends 2048 bits; this scan is set to a minimum
+      of {minBits} bits.}} The shorter the key, the less effort it takes to compute the private key from the public
+      one and to create signatures for the domain. Guidance (RFC 8301): use RSA keys of at least 2048 bits.{scope,
+      select, contact { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The
+      start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.given-selector-missing:
+    title: >-
+      No DKIM key on the expected selectors{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      No DKIM key was found for {domain} on {provider, select, operator {the selectors given in the settings}
+      microsoft-365 {the selectors Microsoft 365 signs with (recognised by the MX record and the SPF include)} other
+      {the selectors the recognised mail provider signs with}} ({selectors}), and none of the {count} selectors
+      checked showed a key. Without a published key, receivers cannot verify DKIM signatures of this domain, and DMARC
+      can only rely on SPF. Selectors are chosen freely: a key under another name is not visible to these lookups.
+      Guidance (BSI TR-03182): enable DKIM signing at the mail provider and publish the public key in DNS.{scope,
+      select, contact { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The
+      start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.selectors-not-found:
+    title: >-
+      No DKIM key on the selectors checked{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      No published DKIM key was found for {domain} on {count, plural, one {the selector checked} other {the #
+      selectors checked}} ({selectors}). Selectors are chosen freely; a key under another selector is not visible to
+      these lookups.{provider, select, google-workspace { Google Workspace suggests the selector “google”, but the
+      prefix can be changed.} other {}} If the selector in use is known, it can be given for further scans in
+      DSGVO_CHECK_DNS_DKIM_SELECTORS. Conversely, a published key does not show that e-mails are signed. For
+      information.{scope, select, contact { The domain {mailDomain} comes from an e-mail address observed in the
+      Impressum.} final { The start page redirects to the domain {mailDomain}.} other {}}
 legalNotes:
   MAIL-01:
     text: >-
-      Technical standard, not a legal norm in itself: DMARC per RFC 9989 and BSI TR-03108-1 and TR-03182.
-      Indirect reference: Art. 32 GDPR (appropriate technical measures for the security of processing); whether
-      a specific measure is required depends on the individual case.
+      Technical standard, not a legal norm in itself: DMARC per RFC 9989 and BSI TR-03108-1 and TR-03182. Indirect
+      reference: Art. 32 GDPR (appropriate technical measures for the security of processing); whether a specific
+      measure is required depends on the individual case.
     status: technical
     reviewedAt: null
     reviewBy: null
   MAIL-02:
     text: >-
-      Technical standard, not a legal norm in itself: SPF per RFC 7208, assessed together with DMARC per BSI
-      TR-03182. Indirect reference: Art. 32 GDPR; whether a specific measure is required depends on the
-      individual case. The SPF record says nothing about actual email sending.
+      Technical standard, not a legal norm in itself: SPF per RFC 7208, assessed together with DMARC per BSI TR-03182.
+      Indirect reference: Art. 32 GDPR; whether a specific measure is required depends on the individual case. The SPF
+      record says nothing about actual email sending.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  MAIL-03:
+    text: >-
+      Technical standard, not a legal norm in itself: DKIM per RFC 6376, key lengths per RFC 8301, assessed together
+      with DMARC per BSI TR-03182. Indirect reference: Art. 32 GDPR; whether a specific measure is required depends on
+      the individual case. Selectors are chosen freely: a key not found does not show that none is published, and a
+      published key does not show that e-mails are signed.
     status: technical
     reviewedAt: null
     reviewBy: null
@@ -118,37 +202,53 @@ actions:
   # One staged path in every DMARC text: reports (rua) first, then their review, then p=quarantine or p=reject.
   MAIL-01.record-not-found:
     text: >-
-      Publish a DMARC record with an rua address for reports with your DNS or mail provider (initially with p=none
-      while you review them), review the reports and then move the policy to p=quarantine or p=reject.
+      Publish a DMARC record for {domain} with an rua address for reports with the DNS or mail provider of the domain
+      (initially with p=none while you review them), review the reports and then move the policy to p=quarantine or
+      p=reject.
   MAIL-01.policy-none:
     text: >-
-      {noRua, select, yes {Add an rua address for reports to the DMARC record, review the reports and then move
-      the policy to p=quarantine or p=reject.} other {Review the DMARC reports and then move the policy to
-      p=quarantine or p=reject.}}
+      {noRua, select, yes {Add an rua address for reports to the DMARC record of {domain}, review the reports and then
+      move the policy to p=quarantine or p=reject.} other {Review the DMARC reports of {domain} and then move the
+      policy to p=quarantine or p=reject.}}
   MAIL-01.record-invalid:
-    text: "Fix the DMARC record so that exactly one valid record is published under _dmarc."
+    text: "Fix the DMARC record of {domain} so that exactly one valid record is published under _dmarc."
   MAIL-01.weak-option:
     text: >-
       {kind, select, null-mx {{policy, select, missing {Publish a DMARC record with p=reject for the domain, which
-      receives no email.} other {Change the DMARC record of the domain, which receives no email, to p=reject.}}}
-      other {Adjust the DMARC record with your DNS provider.{noRua, select, yes { Add an rua address so that
+      receives no email.} other {Change the DMARC record of the domain, which receives no email, to p=reject.}}} other
+      {Adjust the DMARC record of {domain} with the DNS provider.{noRua, select, yes { Add an rua address so that
       aggregate reports arrive, and review them.} other {}}{spNone, select, yes { Remove sp=none or set sp to
       quarantine or reject.} other {}}{testing, select, yes { Remove t=y once testing is complete.} other {}}}}
   MAIL-01.legacy-pct:
-    text: "Remove the outdated pct tag from the DMARC record if it is no longer needed."
+    text: "Remove the outdated pct tag from the DMARC record of {domain} if it is no longer needed."
   MAIL-02.record-not-found:
-    text: "Publish an SPF record that lists the servers allowed to send email for your domain."
+    text: "Publish an SPF record for {domain} that lists the servers allowed to send email for the domain."
   MAIL-02.permissive-qualifier:
-    text: "Change the end of the SPF record to -all or ~all so that servers not listed are not treated as senders."
+    text: >-
+      Change the end of the SPF record of {domain} to -all or ~all so that servers not listed are not treated as
+      senders.
   MAIL-02.record-invalid:
-    text: "Fix the SPF record so that exactly one valid record starting with v=spf1 is published."
+    text: "Fix the SPF record of {domain} so that exactly one valid record starting with v=spf1 is published."
   MAIL-02.softfail-without-enforcement:
     text: >-
-      {dmarcPolicy, select, none {After reviewing the reports, move the DMARC policy to p=quarantine or p=reject,
-      or end SPF with -all.} invalid {Fix the DMARC record and set p=quarantine or p=reject, or end SPF with -all.}
-      other {Set up DMARC step by step (review the reports, then p=quarantine or p=reject), or end SPF with
+      For {domain}: {dmarcPolicy, select, none {After reviewing the reports, move the DMARC policy to p=quarantine or
+      p=reject, or end SPF with -all.} invalid {Fix the DMARC record and set p=quarantine or p=reject, or end SPF with
+      -all.} other {Set up DMARC step by step (review the reports, then p=quarantine or p=reject), or end SPF with
       -all.}}
   MAIL-02.softfail-with-enforcement:
     text: "No action is needed as long as DMARC stays active with quarantine or reject."
   MAIL-02.ptr-mechanism:
-    text: "Replace ptr in the SPF record with specific ip4, ip6 or include entries."
+    text: "Replace ptr in the SPF record of {domain} with specific ip4, ip6 or include entries."
+  MAIL-03.key-too-short:
+    text: >-
+      Generate a new RSA key of at least 2048 bits for {domain}, publish it under a new selector and switch signing to
+      it; then withdraw the key on {selector} with an empty p=.
+  MAIL-03.given-selector-missing:
+    text: >-
+      Enable DKIM signing for {domain} at the mail provider and publish the DNS records it shows for
+      {selectors}{provider, select, microsoft-365 { (for Microsoft 365, two CNAME records pointing to the keys of the
+      tenant)} other {}}.
+  MAIL-03.selectors-not-found:
+    text: >-
+      Check with the mail provider of {domain} whether DKIM signing is active and the public key is in DNS; give the
+      selector in use for further scans in DSGVO_CHECK_DNS_DKIM_SELECTORS.

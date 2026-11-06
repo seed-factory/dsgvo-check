@@ -172,6 +172,7 @@ ui:
   config.problem.unknown-keys: "unknown keys: {keys}"
   config.problem.proxy-scheme: "only http:// proxies (HTTP CONNECT) are supported"
   config.problem.dns-server: "expected host, host:port or [ipv6]:port"
+  config.problem.dkim-selector: "expected a DKIM selector or domain/selector, e.g. selector1 or example.de/selector1"
   config.problem.dwell-order: "must not be below {other} ({value})"
   config.problem.tls-days-order: "must not exceed {other} ({value})"
   config.problem.tls-share-order: "must not exceed {other} ({value})"
