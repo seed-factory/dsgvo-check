@@ -66,7 +66,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt       |
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
-| TLS-01     | Umleitung von http auf https                                                              |
+| TLS-01     | Umleitung von http auf https; Links der Seiten auf http-Adressen der eigenen Website      |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
 | MAIL-01    | DMARC-Eintrag und Richtlinie                                                              |
 | MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC                                    |
@@ -96,7 +96,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                          | `weak-option`, `legacy-pct`                                                                                                      |
 | `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement` | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
 | `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                         | `header-missing`                                                                                                                 |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                   | `redirect-chain-detail`                                                                                                          |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                             | `redirect-chain-detail`, `internal-http-link-upgraded`                                                                           |
 | `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                   | `certificate-expiry-approaching`                                                                                                 |
 <!-- registry:end -->
 
@@ -572,6 +572,11 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
+  `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
+  (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,
+  für andere Hosts bleibt die Konfidenz `medium`. Ohne Browser (`--checks TLS-01`) bewertet TLS-01 nur die
+  http-Adressen; lief der Browser nicht, nennt die Prüfung die Einschränkung.
 - **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
   auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die
   Seite selbst aus, leitet es auf HTTPS desselben Hosts weiter oder nennt die Ziel-URL einen Port oder eine IP-Adresse,

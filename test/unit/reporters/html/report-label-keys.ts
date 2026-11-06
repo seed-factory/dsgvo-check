@@ -6,6 +6,7 @@ import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
 import {
   CheckStatusSchema,
   ConfidenceSchema,
+  type FullReport,
   type Report,
   ScanStatusSchema,
   SeveritySchema,
@@ -111,6 +112,16 @@ export function usedReportLabelKeys(): string[] {
     full.findings[0]!.replicated = active === true;
     capture(full);
   }
+
+  // Two links of one finding form a list whose lines name their part of the page and their visibility.
+  const links = sampleFullReport();
+  const link = links.evidence.find((e) => e.id === 'ev-link')!;
+  links.evidence = [
+    { ...link, region: 'nav', visible: true },
+    { ...link, id: 'ev-link-hidden', region: 'banner', visible: false },
+  ] as FullReport['evidence'];
+  links.findings[0]!.evidenceIds = links.evidence.map((e) => e.id);
+  capture(links);
 
   // Front page: a recognized banner, every timing state of an observed service and repeated requests.
   const front = sampleFullReport();

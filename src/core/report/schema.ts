@@ -346,6 +346,11 @@ const LinkEvidence = z.object({
   text: z.string(),
   target: z.string().optional(),
   status: z.number().int().nullable().optional(),
+  region: z
+    .enum(['header', 'nav', 'main', 'footer', 'banner', 'aside', 'other'])
+    .optional()
+    .meta({ description: 'Part of the page the link sits in; `banner` is a consent banner container' }),
+  visible: z.boolean().optional().meta({ description: 'The link was visible when the page was read' }),
 });
 
 export const KNOWN_EVIDENCE_TYPES = [

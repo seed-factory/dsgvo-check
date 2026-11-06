@@ -36,6 +36,12 @@ export class CheckRegistry {
       if (!SNAPSHOT_SECTION_KEYS.includes(key))
         throw new RegistryError(`${check.id}: unknown section "${key}"`);
     }
+    for (const key of check.optional ?? []) {
+      if (!SNAPSHOT_SECTION_KEYS.includes(key))
+        throw new RegistryError(`${check.id}: unknown optional section "${key}"`);
+      if (check.requires.includes(key))
+        throw new RegistryError(`${check.id}: section "${key}" is both required and optional`);
+    }
 
     this.#checks.set(check.id, check);
   }

@@ -81,6 +81,29 @@ messages:
       {host} selbst wird dabei übersprungen.} other {Die erste Umleitung von {url} führt auf {location}; https wird
       erst danach erreicht.}} Für die HSTS-Preload-Liste wird eine direkte Umleitung auf https desselben Hosts
       erwartet.
+  # Same-site links of the pages whose href asks for http://; `httpState` is what the http probe of the linked host saw.
+  TLS-01.internal-http-link:
+    title: "Link auf eine http-Adresse der eigenen Website"
+    body: >-
+      {count, plural, one {Auf {page} verweist} other {Auf # Seiten verweist}} ein Link{hasText, select, yes {
+      („{text}“)} other {}} auf {href}{links, plural, one {} other { (insgesamt # Links auf http-Adressen von
+      {host})}}{visible, select, no {; der Link war beim Lesen der Seite nicht sichtbar{region, select, banner {, er
+      steht im Bereich des Einwilligungsbanners} other {}}} other {}}. Ein Klick darauf fordert die Seite über
+      unverschlüsseltes http an. {httpState, select, served {{host} liefert unter http:// eine Seite aus und leitet
+      nicht per HTTP-Statuscode auf https um.} unknown {Ob {host} unter http:// auf https umleitet, ließ sich beim
+      Scan nicht feststellen.} other {Ob {host} unter http:// auf https umleitet, wurde nicht geprüft: Der Scan fragt
+      nur die angegebene Adresse, www und die Domain selbst ab.}} Empfehlung: den Link auf https umstellen{httpState,
+      select, served { und http dauerhaft auf https umleiten} other {}}.
+  TLS-01.internal-http-link-upgraded:
+    title: "Link auf eine http-Adresse, die auf https umleitet"
+    body: >-
+      {count, plural, one {Auf {page} verweist} other {Auf # Seiten verweist}} ein Link{hasText, select, yes {
+      („{text}“)} other {}} auf {href}{links, plural, one {} other { (insgesamt # Links auf http-Adressen von
+      {host})}}{visible, select, no {; der Link war beim Lesen der Seite nicht sichtbar{region, select, banner {, er
+      steht im Bereich des Einwilligungsbanners} other {}}} other {}}. Ein Klick darauf fordert die Seite zunächst
+      über unverschlüsseltes http an; {host} leitet dann auf {location} um. Ein wirksamer
+      Strict-Transport-Security-Header (HSTS), mit dem Browser spätere Aufrufe gleich über https senden, wurde in den
+      https-Antworten von {host} nicht gefunden. Empfehlung: den Link auf https umstellen.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Zertifikat von {host} nicht gültig"
@@ -183,6 +206,10 @@ actions:
       http-first-hop {Leiten Sie http im ersten Schritt direkt auf https desselben Hosts um, ohne Zwischenschritt
       über http.} other {Leiten Sie http im ersten Schritt auf https desselben Hosts um; weitere Umleitungen erst
       danach.}}
+  TLS-01.internal-http-link:
+    text: "Stellen Sie Links auf eigene Seiten auf https oder relative Adressen um und leiten Sie http dauerhaft auf https um."
+  TLS-01.internal-http-link-upgraded:
+    text: "Stellen Sie die Links auf https um und senden Sie auf dem verlinkten Host den Header Strict-Transport-Security."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Erneuern Sie das Zertifikat und prüfen Sie, ob die automatische Verlängerung

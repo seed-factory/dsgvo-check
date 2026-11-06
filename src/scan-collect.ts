@@ -28,7 +28,7 @@ import {
 import { bareHost, sanitizeUrl } from './core/url/url.ts';
 import type { ResolvedScanOptions } from './scan-options.ts';
 
-/** Collectors needed by the given checks (`derived` implies `browser`). */
+/** Collectors needed by the given checks (`derived` implies `browser`); optional sections start none. */
 export function requiredCollectors(checks: readonly AnyCheck[]): Set<CollectorName> {
   const out = new Set<CollectorName>();
   for (const c of checks) {

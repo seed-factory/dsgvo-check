@@ -271,7 +271,8 @@ ui:
     Datenschutzerklärung unvollständig: {detail}} impressum-target-not-evaluable {Linkziel des Impressums nicht
     auswertbar} privacy-target-not-evaluable {Linkziel der Datenschutzerklärung nicht auswertbar}
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
-    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} other {}}
+    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} page-links-not-observed {Links
+    der Seiten nicht beobachtet, weil der Browser nicht lief oder keine Seite auswertbar war} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -326,7 +327,7 @@ ui:
     {Abschnitte} complete {Vollständig} errors {Fehler} sha256 {SHA-256} manifest {Leseumfang} documentId {Dokument}
     section {Abschnitt} quote {Zitat} matchLevel {Treffer} negation {Verneinung} claim {Angabe} status {HTTP-Status}
     role {Rolle} evaluable {Auswertbar} reason {Grund} startUrl {Start-URL} hops {Schritte} outcome {Ergebnis} href
-    {Ziel} text {Linktext} target {Linkziel} method {Methode} resourceType {Ressource} result {Antwort} delivery
+    {Ziel} text {Linktext} target {Linkziel} region {Bereich der Seite} visible {Sichtbar} method {Methode} resourceType {Ressource} result {Antwort} delivery
     {Zustellung} provenance {Herkunft der Antwort} features {Merkmale} candidate {Bannerähnlicher Kasten} other
     {{key}}}
   report.evidence.fetch: >-
@@ -357,13 +358,16 @@ ui:
     {Firmenname} domain {Domain} category {Kategoriebeschreibung} term {Begriff aus der Wortliste} none {kein
     Treffer} other {}}} negation {{value, select, none {keine} negated {verneint} ambiguous {nicht eindeutig} other
     {}}} part {{value, select, visible {sichtbarer Text} expandable {aufklappbarer Abschnitt} frame {Frame} linked
-    {verlinkte Seite} hidden-irrelevant {ausgeblendeter Text} other {}}} other {}}
+    {verlinkte Seite} hidden-irrelevant {ausgeblendeter Text} other {}}} region {{value, select, header {Kopfbereich}
+    nav {Navigation} main {Hauptinhalt} footer {Fußzeile} banner {Bereich des Einwilligungsbanners} aside
+    {Seitenleiste} other {anderer Bereich}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (lokal aufgelöst)} upstream { (vom Proxy gemeldet)} other {}}"
   report.evidence.firstPartyDomain: eigene Domain
   report.evidence.cookieState: "{state, select, attempted {Setzen versucht} accepted {vom Browser angenommen} rejected {vom Browser abgelehnt} sent {mit einer Anfrage gesendet} other {{state}}}"
   report.evidence.lifetime: "{kind, select, session {Sitzung} other {dauerhaft{hasDays, select, true {, {days, number} Tage} other {}}}}"
   report.evidence.setBy: "{setter, select, http-response {HTTP-Antwort} script {Skript} other {unbekannt}}{hasHost, select, true { von {host}} other {}}"
   report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {ohne Status}}{evaluable, select, true { · auswertbar} false { · nicht auswertbar{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · Phase {phase}} other {}}"
+  report.evidence.linkVisibility: "{visible, select, true {sichtbar} other {nicht sichtbar}}"
   report.evidence.headerLine: "{present, select, true {vorhanden{hasValue, select, true {: {value}} other {}}} other {nicht vorhanden}}"
   # The notice section in groups, each paragraph under a label: `key` is the paragraph key without `disclaimer.`
   # (`nature` for the base text), plus `rechtsstand` and `draft`.

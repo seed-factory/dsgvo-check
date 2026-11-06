@@ -23,6 +23,7 @@ flowchart LR
 - Коллекторы — единственное место с I/O: значений cookies, Web Storage и TC-String нет ни в снимке, ни в отчёте, ни в логах (правило 2 [AGENTS.md](../AGENTS.md)).
 - `derive`, проверки, `assess` и `gate` — чистые функции; проверки импортируют только [api.ts](../src/core/api.ts), это проверяет [import-graph.test.ts](../test/unit/core/import-graph.test.ts).
 - Уровни, `gating` и `crmCode` — данные в `test/data/ruleset`.
+- Проверка получает секции из `requires` (нет секции — `skipped` или `error`) и, если они есть в снимке, секции из `optional`. Коллекторы выбираются только по `requires` ([scan-collect.ts](../src/scan-collect.ts), `requiredCollectors`): TLS-01 читает ссылки фазы A из `browser`, но `--checks TLS-01` браузер не запускает. `slice.unavailable` называет опциональные секции, которые скан собирался получить и не получил (коллектор пропущен, упал или срезан таймаутом); секция коллектора со статусом `not-run` просто отсутствует.
 
 Браузерный коллектор проходит три фазы, каждую в свежем профиле Chromium: cookies и хранилище предыдущей фазы не переносятся.
 

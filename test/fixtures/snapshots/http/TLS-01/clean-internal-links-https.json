@@ -1,0 +1,243 @@
+{
+  "$description": "All links of the site use https; a protocol-relative //www.example.test/ link resolves to https on the https page; an external http link is not the site's own",
+  "$expect": {
+    "status": "completed",
+    "variants": []
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      {
+        "id": "chain-www-http",
+        "hostVariant": "target",
+        "host": "www.example.test",
+        "scheme": "http",
+        "hops": [
+          {
+            "status": 301,
+            "headers": [],
+            "setCookieNames": [],
+            "durationMs": 20,
+            "requestedAt": "2026-10-30T12:00:00.000Z",
+            "url": "http://www.example.test/",
+            "location": "https://www.example.test/"
+          },
+          {
+            "status": 200,
+            "headers": [
+              {
+                "name": "strict-transport-security",
+                "value": "max-age=31536000"
+              }
+            ],
+            "setCookieNames": [],
+            "durationMs": 20,
+            "requestedAt": "2026-10-30T12:00:00.000Z",
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "final": {
+          "status": 200,
+          "headers": [
+            {
+              "name": "strict-transport-security",
+              "value": "max-age=31536000"
+            }
+          ],
+          "setCookieNames": [],
+          "durationMs": 20,
+          "requestedAt": "2026-10-30T12:00:00.000Z",
+          "url": "https://www.example.test/",
+          "bodyBytes": 20000,
+          "bodyKind": "html",
+          "tlsAuthorized": true,
+          "tlsAuthorizationError": null,
+          "tlsProtocol": "TLSv1.3"
+        },
+        "outcome": "ok",
+        "startUrl": "http://www.example.test/"
+      },
+      {
+        "id": "chain-www-https",
+        "hostVariant": "target",
+        "host": "www.example.test",
+        "scheme": "https",
+        "hops": [
+          {
+            "status": 200,
+            "headers": [
+              {
+                "name": "strict-transport-security",
+                "value": "max-age=31536000"
+              }
+            ],
+            "setCookieNames": [],
+            "durationMs": 20,
+            "requestedAt": "2026-10-30T12:00:00.000Z",
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "final": {
+          "status": 200,
+          "headers": [
+            {
+              "name": "strict-transport-security",
+              "value": "max-age=31536000"
+            }
+          ],
+          "setCookieNames": [],
+          "durationMs": 20,
+          "requestedAt": "2026-10-30T12:00:00.000Z",
+          "url": "https://www.example.test/",
+          "bodyBytes": 20000,
+          "bodyKind": "html",
+          "tlsAuthorized": true,
+          "tlsAuthorizationError": null,
+          "tlsProtocol": "TLSv1.3"
+        },
+        "outcome": "ok",
+        "startUrl": "https://www.example.test/"
+      },
+      {
+        "id": "chain-apex-http",
+        "hostVariant": "apex",
+        "host": "example.test",
+        "scheme": "http",
+        "hops": [],
+        "final": null,
+        "outcome": "connection-refused",
+        "startUrl": "http://example.test/",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED"
+        }
+      }
+    ],
+    "documents": [],
+    "requestsIssued": 3,
+    "throttled": false,
+    "errors": []
+  },
+  "browser": {
+    "engine": {
+      "name": "chromium",
+      "channel": "chromium",
+      "version": "156.0.8078.4",
+      "headless": "new",
+      "userAgent": "Mozilla/5.0 Chrome/156.0.0.0 Safari/537.36 dsgvo-check/test",
+      "sandbox": true,
+      "disabledFeatures": []
+    },
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "locale": "de-DE",
+    "timezoneId": "Europe/Berlin",
+    "phases": [
+      {
+        "phase": "A",
+        "status": "completed",
+        "startedAt": "2026-10-30T12:00:00.000Z",
+        "durationMs": 1000,
+        "profile": "persistent-tmp",
+        "pages": [
+          {
+            "finalUrl": "https://www.example.test/",
+            "role": "start",
+            "order": 0,
+            "phase": "A",
+            "firstVisit": true,
+            "navigation": {
+              "status": 200,
+              "ok": true,
+              "redirectChain": [],
+              "startedAt": "2026-10-30T12:00:00.000Z",
+              "quietReached": true,
+              "dwellMs": 6000
+            },
+            "responseHeaders": [
+              {
+                "name": "content-type",
+                "value": "text/html; charset=utf-8"
+              }
+            ],
+            "setCookieNames": [],
+            "challenge": {
+              "detected": false,
+              "signals": []
+            },
+            "evaluable": true,
+            "dom": {
+              "links": [
+                {
+                  "href": "https://www.example.test/",
+                  "hrefKind": "https",
+                  "region": "nav",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Start",
+                  "sameSite": true
+                },
+                {
+                  "href": "https://www.example.test/",
+                  "hrefKind": "https",
+                  "region": "header",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Logo",
+                  "sameSite": true
+                },
+                {
+                  "href": "http://other.test/",
+                  "hrefKind": "http",
+                  "region": "footer",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Partner",
+                  "sameSite": false
+                }
+              ],
+              "forms": [],
+              "iframes": [],
+              "linkRels": [],
+              "scripts": []
+            },
+            "url": "https://www.example.test/"
+          }
+        ],
+        "requests": [],
+        "cookies": [],
+        "storage": [],
+        "errors": []
+      }
+    ],
+    "requestCap": {
+      "limit": 2000,
+      "issued": 0,
+      "truncated": false
+    },
+    "screenshots": [],
+    "knownGaps": [],
+    "errors": []
+  }
+}

@@ -1065,6 +1065,36 @@ describe('the evidence of a finding', () => {
     );
     expect(html).toContain('Belege (4)');
   });
+
+  it('names where on the page each listed link sits and whether it was visible', () => {
+    const link = base().evidence.find((e) => e.id === 'ev-link')!;
+    const links = [
+      {
+        ...link,
+        id: 'ev-l1',
+        href: 'http://work.example.de/',
+        text: 'Startseite',
+        region: 'nav',
+        visible: true,
+      },
+      { ...link, id: 'ev-l2', text: 'Impressum', region: 'banner', visible: false },
+    ] as Evidence[];
+    const html = renderHtml(withEvidence(links), ctx());
+
+    expect(html).toContain('<span class="ev-type">Links</span>');
+    expect(html).toContain('HTTP 200 · Navigation · sichtbar');
+    expect(html).toContain('HTTP 200 · Bereich des Einwilligungsbanners · nicht sichtbar');
+    // a link without these facts keeps its line as before
+    const plain = renderHtml(
+      withEvidence([
+        { ...link, id: 'ev-l3' },
+        { ...link, id: 'ev-l4' },
+      ] as Evidence[]),
+      ctx(),
+    );
+    expect(plain).toContain('<div>HTTP 200</div>');
+    expect(renderHtml(withEvidence(links), ctx('full', 'en'))).toContain('consent banner area · not visible');
+  });
 });
 
 describe('the full report in words', () => {

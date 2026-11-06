@@ -82,6 +82,29 @@ messages:
       {reason, select, other-host {The first redirect of {url} leads to {location} (another host); https on {host}
       itself is skipped.} other {The first redirect of {url} leads to {location}; https is only reached
       afterwards.}} The HSTS preload list expects a direct redirect to https on the same host.
+  # Same-site links of the pages whose href asks for http://; `httpState` is what the http probe of the linked host saw.
+  TLS-01.internal-http-link:
+    title: "Link to an http address of the site itself"
+    body: >-
+      {count, plural, one {On {page}, a link} other {On # pages, a link}}{hasText, select, yes { (“{text}”)} other
+      {}} points to {href}{links, plural, one {} other { (# links to http addresses of {host} in total)}}{visible,
+      select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
+      banner area} other {}}} other {}}. Clicking it requests the page over unencrypted http. {httpState, select,
+      served {{host} serves a page at http:// and does not redirect to https with an HTTP status code.} unknown
+      {Whether {host} redirects http:// to https could not be determined during the scan.} other {Whether {host}
+      redirects http:// to https was not checked: the scan only queries the given address, www and the domain
+      itself.}} Recommendation: change the link to https{httpState, select, served { and redirect http permanently
+      to https} other {}}.
+  TLS-01.internal-http-link-upgraded:
+    title: "Link to an http address that redirects to https"
+    body: >-
+      {count, plural, one {On {page}, a link} other {On # pages, a link}}{hasText, select, yes { (“{text}”)} other
+      {}} points to {href}{links, plural, one {} other { (# links to http addresses of {host} in total)}}{visible,
+      select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
+      banner area} other {}}} other {}}. Clicking it first requests the page over unencrypted http; {host} then
+      redirects to {location}. An effective Strict-Transport-Security header (HSTS), with which browsers send later
+      requests over https right away, was not found in the https responses of {host}. Recommendation: change the
+      link to https.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Certificate of {host} not valid"
@@ -182,6 +205,10 @@ actions:
       https on the same host (with a valid certificate) and only from there to the other host.} http-first-hop
       {Redirect http directly to https on the same host in the first step, without an intermediate http step.}
       other {Redirect http to https on the same host in the first step; any further redirects only after that.}}
+  TLS-01.internal-http-link:
+    text: "Change links to your own pages to https or relative addresses and redirect http permanently to https."
+  TLS-01.internal-http-link-upgraded:
+    text: "Change the links to https and send the Strict-Transport-Security header on the linked host."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Renew the certificate and check that automatic renewal works.} not-yet-valid

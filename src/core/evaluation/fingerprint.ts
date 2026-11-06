@@ -63,6 +63,13 @@ export const subjects = {
   consentUi(): string {
     return 'consent-ui';
   },
+  /**
+   * TLS-01 links to http: the linked host as its labels below the registrable domain (`www`, `work`, `@` for the
+   * registrable domain itself), so the fingerprint does not name the site.
+   */
+  httpLink(label: string): string {
+    return `http-link:${label.toLowerCase()}`;
+  },
   /** TLS-01 (`http-entry:<role>`) and TLS-02 (`certificate:<role>`), role relative to the final host. */
   tlsEndpoint(kind: 'http-entry' | 'certificate', role: TlsHostRole): string {
     return `${kind}:${role}`;

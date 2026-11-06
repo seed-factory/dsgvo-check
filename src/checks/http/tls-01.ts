@@ -1,6 +1,7 @@
 /**
  * TLS-01: does `http://` of the host, www and apex lead to https? A closed port is not "serving content", a stub of
- * ≤ 1 KiB gives no finding, a timeout is inconclusive. Prototype gap: http links to own subdomains are not evaluated.
+ * ≤ 1 KiB gives no finding, a timeout is inconclusive. When the browser ran, same-site links of phase A that ask for
+ * `http://` are reported per linked host (tls-01-links.ts); without the browser the http entries are evaluated alone.
  */
 
 import {
@@ -13,6 +14,7 @@ import {
 } from '../../core/api.ts';
 import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot/http.ts';
 import { browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
+import { evaluateHttpLinks } from './tls-01-links.ts';
 
 const ID = 'TLS-01';
 /** A page of at most this size is a stub (parking page, redirect stub), not content served over http. */
@@ -229,7 +231,7 @@ function withoutRepeatedForms(observations: readonly Observation[]): Observation
 }
 
 /** Standard-port probe of a host variant (chains of an explicit target port only load the start page). */
-function chainFor(slice: SnapshotSlice<'http'>, hv: HostVariant, scheme: 'http' | 'https') {
+function chainFor(slice: Pick<SnapshotSlice<'http'>, 'http'>, hv: HostVariant, scheme: 'http' | 'https') {
   return slice.http.chains.find((c) => c.hostVariant === hv && c.scheme === scheme && c.port === undefined);
 }
 
@@ -237,12 +239,17 @@ export const tls01 = defineCheck({
   id: ID,
   module: 'http',
   requires: ['http'],
+  // The links come from the browser when the scan runs it; TLS-01 alone does not start it.
+  optional: ['browser'],
   variants: [
     { variant: 'https-unavailable', variantGroup: 'http-redirect' },
     { variant: 'no-redirect', variantGroup: 'http-redirect' },
     { variant: 'client-side-redirect-only', variantGroup: 'http-redirect' },
     { variant: 'form-on-http-page' },
     { variant: 'redirect-chain-detail' },
+    // A host's state may change between scans; its link keeps one fingerprint.
+    { variant: 'internal-http-link', variantGroup: 'http-link' },
+    { variant: 'internal-http-link-upgraded', variantGroup: 'http-link' },
   ],
   run(slice) {
     if (!chainFor(slice, 'target', 'http')) throw new Error('http section has no http chain for the target');
@@ -275,6 +282,14 @@ export const tls01 = defineCheck({
     if (!finalHostProbed) limitations.push('final-host-not-probed');
     if (slice.http.throttled) limitations.push('throttled');
     const observations = withoutRepeatedForms(found);
+
+    if (slice.browser) {
+      const links = evaluateHttpLinks(slice.http, slice.browser);
+      observations.push(...links.observations);
+      if (links.notObserved) limitations.push('page-links-not-observed');
+    } else if (slice.unavailable.includes('browser')) {
+      limitations.push('page-links-not-observed');
+    }
 
     if (targetUndecided) {
       return {

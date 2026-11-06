@@ -337,6 +337,7 @@ const coded = (field: string, value: unknown, t: EvidenceTools): string =>
 const CODED_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
   'consent-state': new Set(['source', 'ready', 'origin']),
   'text-match': new Set(['matchLevel', 'negation', 'claim']),
+  link: new Set(['region']),
 };
 
 /** One field of a type without its own layout; structured values that have words of their own get them here. */
@@ -468,10 +469,15 @@ function listRow(ev: Evidence, t: EvidenceTools): Row {
     });
     return { label: t.item(f.name, 80).text, items: [t.item(line, 1000), t.urlItem(f.url)] };
   }
-  const status = typeof f.status === 'number' ? ` · HTTP ${f.status}` : '';
+  const where = [
+    str(f.target),
+    typeof f.status === 'number' ? `HTTP ${f.status}` : '',
+    typeof f.region === 'string' ? coded('region', f.region, t) : '',
+    typeof f.visible === 'boolean' ? t.label('evidence.linkVisibility', { visible: f.visible }) : '',
+  ].filter(Boolean);
   return {
     label: t.item(f.text || '–', 80).text,
-    items: [t.urlItem(f.href), t.item(`${str(f.target)}${status}`)],
+    items: [t.urlItem(f.href), t.item(where.join(' · '))],
   };
 }
 
