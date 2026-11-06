@@ -46,6 +46,22 @@ describe('policyDocuments', () => {
     expect(policyDocuments(section([impressum, policy(), second]))).toEqual({ html: [policy(), second] });
   });
 
+  it('a further notice of the site comes after the policy, whatever the order of the records', () => {
+    const notice = policy({ id: 'doc-privacy-2', url: `${POLICY}-kurse`, role: 'supplement' });
+    expect(policyDocuments(section([notice, policy()]))).toEqual({ html: [policy(), notice] });
+  });
+
+  it('a further notice with unopened expandable parts is searched like the policy, without a limitation', () => {
+    const notice = policy({
+      id: 'doc-privacy-2',
+      url: `${POLICY}-kurse`,
+      role: 'supplement',
+      complete: false,
+      errors: ['expand-failed'],
+    });
+    expect(policyDocuments(section([policy(), notice]))).toEqual({ html: [policy(), notice] });
+  });
+
   it('an unopened expandable part (banner open) does not make the policy unreadable', () => {
     const doc = policy({ complete: false, errors: ['expand-failed'] });
     expect(policyDocuments(section([doc]))).toEqual({ html: [doc] });

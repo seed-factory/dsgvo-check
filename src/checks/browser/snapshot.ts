@@ -41,6 +41,16 @@ export function throttleAware(
 }
 
 /**
+ * A page of `phases` was taller than the largest viewport the collector may set to show what lies below the first
+ * screen: embeds further down may not have loaded.
+ */
+export function revealCapped(browser: BrowserSection, phases: readonly BrowserPhase[]): boolean {
+  return browser.phases.some(
+    (p) => phases.includes(p.phase) && p.pages.some((v) => v.reveal?.capped === true),
+  );
+}
+
+/**
  * The request limit of the browser was reached, and possibly before phase C: the collector starts phase C only while
  * the limit is not reached, so only a phase C that started shows that phases A and B recorded every request. A skipped
  * phase C never started, whatever its reason: `cmp-not-recognized` is written after phase B, whose start page may have

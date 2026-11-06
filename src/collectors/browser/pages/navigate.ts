@@ -29,6 +29,7 @@ const BROWSER_CHECKS = [
   'CONSENT-05',
   'EMBED-01',
   'EMBED-02',
+  'EMBED-03',
   'LEGAL-01',
   'PRIV-01',
   'TRACK-01',

@@ -10,9 +10,22 @@ import type {
   DocumentsSection,
 } from '../../../../../src/core/snapshot/browser.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
-import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { click, cookie, defaultDocuments, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
+import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
+import {
+  click,
+  cookie,
+  defaultDocuments,
+  ORIGIN,
+  PRIVACY,
+  page,
+  phase,
+  privacyDoc,
+  req,
+  START as START_URL,
+  site,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
+import { ga } from '../scenarios/shared.ts';
 
 const scenario = (file: string) => SCENARIOS['PRIV-01']!.find((s) => s.file === file)!.build();
 const part = (text: string, origin: DocumentPart['origin'] = 'visible', section?: string): DocumentPart => ({
@@ -406,4 +419,374 @@ describe('PRIV-01 where the service was seen', () => {
     expect(o!.evidence.map((e) => e.type)).toEqual(['document', 'request', 'cookie']);
     expect(o!.evidence.at(-1)).toMatchObject({ name: 'IDE', setterHost: 'googleads.g.doubleclick.net' });
   });
+});
+
+describe('PRIV-01 further privacy notices of the site', () => {
+  const SUPPLEMENT = `${ORIGIN}/datenschutzhinweise-kurse/`;
+  const inSupplement = (
+    text: string,
+    origin: DocumentPart['origin'] = 'visible',
+    section = '3 > Kommunikation',
+  ) => ({
+    id: `s-${text.length}-${origin}`,
+    section,
+    text,
+    origin,
+    sourceUrl: SUPPLEMENT,
+  });
+  const supplement = (parts: DocumentPart[], p: Partial<DocumentRecord> = {}) =>
+    privacyDoc(parts, { id: 'doc-privacy-3', url: SUPPLEMENT, role: 'supplement', ...p });
+  // A generator template without any chat or translation service.
+  const MAIN = [
+    part('Datenschutzerklärung. Verantwortlich ist die Beispiel GmbH.', 'visible', '1 > Verantwortlicher'),
+    part(
+      'Die Schriftarten sind lokal installiert. Eine Verbindung zu fremden Servern findet dabei nicht statt.',
+      'visible',
+      '5 > Plugins und Tools > Schriftarten',
+    ),
+  ];
+  const chatAndTranslation = (p: Parameters<typeof phase>[1] = {}) =>
+    phase('A', {
+      requests: [req('t', 'https://code.tidio.co/abc.js'), req('w', 'https://cdn.weglot.com/weglot.min.js')],
+      ...p,
+    });
+  const withNotices = (
+    notices: DocumentRecord[],
+    attempts: DocumentsSection['attempts'] = [],
+    o: { main?: DocumentRecord | null; phases?: ReturnType<typeof phase>[] } = {},
+  ) =>
+    site({
+      phases: o.phases ?? [chatAndTranslation()],
+      documents: {
+        documents: [
+          defaultDocuments().documents[0]!,
+          ...(o.main === null ? [] : [o.main ?? privacyDoc(MAIN)]),
+          ...notices,
+        ],
+        attempts,
+      },
+    });
+  const found = (r: ReturnType<typeof runCheck>) =>
+    observationsOf(r)
+      .map((o) => [o.subject, o.variant])
+      .sort();
+  const NAMED = inSupplement('Für Rückfragen nutzen wir den Live-Chat Tidio (Tidio LLC).');
+
+  it('a service named only in the further notice counts as named; a service named nowhere stays not-named', () => {
+    const r = runCheck(priv01, withNotices([supplement([NAMED])]));
+    expect(r.status).toBe('completed');
+    expect(found(r)).toEqual([['weglot', 'not-named']]);
+    const [o] = observationsOf(r);
+    expect(o!.params).toMatchObject({
+      policyUrl: PRIVACY,
+      policyUrls: `${PRIVACY}, ${SUPPLEMENT}`,
+      documentCount: 2,
+      partCount: 3,
+    });
+    // Each searched document has its own document evidence, the policy first, each with its own manifest.
+    const docs = o!.evidence.filter((e) => e.type === 'document');
+    expect(docs.map((e) => (e as { url: string }).url)).toEqual([PRIVACY, SUPPLEMENT]);
+    expect(docs.map((e) => (e as { manifest: { partCount: number } }).manifest.partCount)).toEqual([2, 1]);
+  });
+
+  it('counterexample: without the further notice both services are not-named', () => {
+    expect(found(runCheck(priv01, withNotices([])))).toEqual([
+      ['tidio', 'not-named'],
+      ['weglot', 'not-named'],
+    ]);
+  });
+
+  it.each(['Tidio', 'Tidio Chat', 'Tidio-Chat', 'Tidio LLC', 'tidio.com', 'Live-Chat von Tidio'])(
+    'the spelling "%s" in the further notice counts as named',
+    (spelling) => {
+      const r = runCheck(
+        priv01,
+        withNotices([supplement([inSupplement(`Wir nutzen ${spelling} für Anfragen.`)])]),
+      );
+      expect(found(r).filter(([s]) => s === 'tidio')).toEqual([]);
+    },
+  );
+
+  it('only a category word in the further notice gives category-only, quoted from that notice', () => {
+    const r = runCheck(
+      priv01,
+      withNotices([supplement([inSupplement('Für Anfragen nutzen wir ein Chat-Widget auf der Website.')])]),
+    );
+    const tidio = observationsOf(r).find((o) => o.subject === 'tidio');
+    expect(tidio?.variant).toBe('category-only');
+    expect(tidio?.evidence.find((e) => e.type === 'text-match')).toMatchObject({
+      documentId: 'doc-privacy-3',
+    });
+  });
+
+  it('the name only in a hidden part of the further notice gives ambiguous-match', () => {
+    const r = runCheck(
+      priv01,
+      withNotices([
+        supplement([inSupplement('Kursanmeldung.'), inSupplement('Tidio Vorlage', 'hidden-irrelevant')]),
+      ]),
+    );
+    expect(observationsOf(r).find((o) => o.subject === 'tidio')?.variant).toBe('ambiguous-match');
+  });
+
+  it('a frame title on the page is no policy text: the service stays not-named', () => {
+    const frame = {
+      src: 'https://code.tidio.co/widget',
+      srcdoc: false,
+      title: 'Tidio Chat code',
+      visible: false,
+      box: { x: 0, y: 0, width: 0, height: 0 },
+      depth: 1,
+    };
+    const start = page(START_URL, 'start', 'A', { dom: makeDom({ iframes: [frame] }) });
+    const r = runCheck(priv01, withNotices([], [], { phases: [chatAndTranslation({ pages: [start] })] }));
+    expect(found(r)).toContainEqual(['tidio', 'not-named']);
+  });
+
+  interface UnreadCase {
+    name: string;
+    notices: DocumentRecord[];
+    attempts?: DocumentsSection['attempts'];
+  }
+  it.each<UnreadCase>([
+    {
+      name: 'a truncated notice',
+      notices: [supplement([NAMED], { complete: false, errors: ['truncated'] })],
+    },
+    {
+      name: 'a PDF notice',
+      notices: [
+        supplement([], {
+          url: `${ORIGIN}/kurse.pdf`,
+          format: 'pdf',
+          status: null,
+          complete: false,
+          errors: ['pdf-not-evaluated'],
+        }),
+      ],
+    },
+    { name: 'a notice in another language', notices: [supplement([NAMED], { lang: 'fr' })] },
+    {
+      name: 'another language version of the policy',
+      notices: [],
+      attempts: [
+        {
+          kind: 'privacy',
+          via: 'link',
+          url: `${ORIGIN}/en/datenschutz/`,
+          status: null,
+          outcome: 'other-language',
+          supplement: true,
+        },
+      ],
+    },
+    {
+      name: 'a notice whose page failed to load',
+      notices: [],
+      attempts: [
+        { kind: 'privacy', via: 'link', url: SUPPLEMENT, status: null, outcome: 'error', supplement: true },
+      ],
+    },
+  ])(
+    '$name: partial with supplement-not-evaluated, the policy is still evaluated',
+    ({ notices, attempts }) => {
+      const r = runCheck(priv01, withNotices(notices, attempts));
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual(['supplement-not-evaluated']);
+      // The unread notice is not searched: Tidio stays not-named beside Weglot.
+      expect(found(r)).toEqual([
+        ['tidio', 'not-named'],
+        ['weglot', 'not-named'],
+      ]);
+      expect(observationsOf(r)[0]!.params).toMatchObject({ documentCount: 1, policyUrls: PRIVACY });
+    },
+  );
+
+  it.each<UnreadCase>([
+    { name: 'a page not confirmed as a notice', notices: [supplement([NAMED], { errors: ['unconfirmed'] })] },
+    { name: 'an error page', notices: [supplement([NAMED], { errors: ['soft-404'] })] },
+    {
+      name: 'a link that answered 404',
+      notices: [],
+      attempts: [
+        {
+          kind: 'privacy',
+          via: 'link',
+          url: SUPPLEMENT,
+          status: 404,
+          outcome: 'not-found',
+          supplement: true,
+        },
+      ],
+    },
+  ])('$name is no notice: completed without a limitation', ({ notices, attempts }) => {
+    const r = runCheck(priv01, withNotices(notices, attempts));
+    expect(r.status).toBe('completed');
+    expect(r.outcome?.limitations ?? []).toEqual([]);
+    expect(found(r)).toEqual([
+      ['tidio', 'not-named'],
+      ['weglot', 'not-named'],
+    ]);
+  });
+
+  it('a notice whose redacted URL equals that of the policy does not take the policy with it', () => {
+    // Both pages differ only in a query value, which the snapshot keeps as `[redacted]`.
+    const shared = `${ORIGIN}/index.php?page=[redacted]`;
+    const r = runCheck(
+      priv01,
+      withNotices(
+        [supplement([NAMED], { url: shared, finalUrl: shared, errors: ['unconfirmed'] })],
+        [
+          { kind: 'privacy', via: 'link', url: shared, status: 200, outcome: 'found' },
+          {
+            kind: 'privacy',
+            via: 'link',
+            url: shared,
+            status: 200,
+            outcome: 'unconfirmed',
+            supplement: true,
+          },
+        ],
+        { main: privacyDoc(MAIN, { url: shared, finalUrl: shared }) },
+      ),
+    );
+    expect(r).toMatchObject({ status: 'completed', reason: null });
+    expect(found(r)).toEqual([
+      ['tidio', 'not-named'],
+      ['weglot', 'not-named'],
+    ]);
+  });
+
+  it.each([
+    ['an unconfirmed notice', supplement([NAMED], { errors: ['unconfirmed'] })],
+    ['a readable notice', supplement([NAMED])],
+  ])('%s without a policy is no policy: inconclusive privacy-policy-not-found', (_, notice) => {
+    const r = runCheck(priv01, withNotices([notice], [], { main: null }));
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  it('a truncated policy still makes the check inconclusive, whatever the notices', () => {
+    const r = runCheck(
+      priv01,
+      withNotices([supplement([NAMED])], [], {
+        main: privacyDoc(MAIN, { complete: false, errors: ['truncated'] }),
+      }),
+    );
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'document-incomplete' });
+  });
+
+  it('a snapshot of an earlier version without roles: every privacy document is a policy, as before', () => {
+    const second = privacyDoc([NAMED], { id: 'doc-privacy-3', url: SUPPLEMENT });
+    expect(found(runCheck(priv01, withNotices([second])))).toEqual([['weglot', 'not-named']]);
+    const truncated = privacyDoc([NAMED], {
+      id: 'doc-privacy-3',
+      url: SUPPLEMENT,
+      complete: false,
+      errors: ['truncated'],
+    });
+    expect(runCheck(priv01, withNotices([truncated]))).toMatchObject({
+      status: 'inconclusive',
+      reason: 'document-incomplete',
+    });
+  });
+
+  it.each(['de', 'en'] as const)('the %s texts name the policy and the further notice', (lang) => {
+    const [o] = observationsOf(runCheck(priv01, withNotices([supplement([NAMED])])));
+    const body = renderMessage(loadTexts(lang), 'PRIV-01.not-named', o!.params).body;
+    expect(body).toContain(PRIVACY);
+    expect(body).toContain(SUPPLEMENT);
+    const single = observationsOf(runCheck(priv01, withNotices([])))[0]!;
+    expect(renderMessage(loadTexts(lang), 'PRIV-01.not-named', single.params).body).not.toContain(SUPPLEMENT);
+  });
+});
+
+describe('PRIV-01 a policy that covers Google Analytics only', () => {
+  const tags = () =>
+    phase('A', {
+      requests: [
+        req('gtm', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC'),
+        req('ads', 'https://www.googleadservices.com/pagead/conversion/123/', { resourceType: 'image' }),
+        ga.hit('ga'),
+      ],
+    });
+  // The shape of an older generator template: one service section for Google Analytics, its operator as "Google Inc.".
+  const GA_ONLY = [
+    part(
+      'Datenschutzerklärung der Beispiel GmbH.',
+      'visible',
+      'Datenschutzerklärung > 1. Begriffsbestimmungen',
+    ),
+    part('Diese Website verwendet Cookies.', 'visible', 'Datenschutzerklärung > 4. Cookies'),
+    part(
+      'Betreiber der Google-Analytics-Komponente ist die Google Inc., Mountain View, USA. Die IP-Adresse wird gekürzt.',
+      'visible',
+      'Datenschutzerklärung > 7. Einsatz von Google Analytics (mit Anonymisierung)',
+    ),
+  ];
+  const run = (extra: DocumentPart[] = [], p: Partial<DocumentRecord> = {}) =>
+    runCheck(
+      priv01,
+      site({
+        phases: [tags()],
+        documents: {
+          documents: [defaultDocuments().documents[0]!, privacyDoc([...GA_ONLY, ...extra], p)],
+          attempts: [],
+        },
+      }),
+    );
+  const verdicts = (r: ReturnType<typeof runCheck>) =>
+    observationsOf(r)
+      .map((o) => [o.subject, o.variant])
+      .sort();
+
+  it('violation: Tag Manager and Ads loaded beside Analytics → not-named for both, nothing for Analytics', () => {
+    expect(verdicts(run())).toEqual([
+      ['google-ads', 'not-named'],
+      ['google-tag-manager', 'not-named'],
+    ]);
+  });
+
+  it.each([
+    ['google-tag-manager', 'Google Tag Manager'],
+    ['google-tag-manager', 'Google-Tag-Manager'],
+    ['google-tag-manager', 'Google Tagmanager'],
+    ['google-ads', 'Google Ads'],
+    ['google-ads', 'Google AdWords'],
+    ['google-ads', 'AdWords'],
+    ['google-ads', 'Google Ads Conversion-Tracking'],
+    ['google-ads', 'Google Remarketing'],
+    ['google-ads', 'Google-Ads-Remarketing'],
+  ])('clean: %s is named by "%s" in its own section', (service, spelling) => {
+    const r = run([part(`Wir setzen ${spelling} ein.`, 'visible', `Datenschutzerklärung > 8. ${spelling}`)]);
+    expect(verdicts(r).map(([s]) => s)).not.toContain(service);
+  });
+
+  it.each([
+    ['google-tag-manager', 'Wir verwenden einen Tag Manager.'],
+    ['google-tag-manager', 'Wir verwenden einen Tagmanager.'],
+    ['google-ads', 'Wir nutzen Conversion-Tracking.'],
+    ['google-ads', 'Wir nutzen Remarketing.'],
+  ])('counterexample: a generic term is no product name → %s category-only (%s)', (service, text) => {
+    const r = run([part(text, 'visible', 'Datenschutzerklärung > 8. Werbung')]);
+    expect(observationsOf(r).find((o) => o.subject === service)?.variant).toBe('category-only');
+  });
+
+  it('counterexample: the Tag Manager named only in a hidden part → ambiguous-match', () => {
+    const r = run([part('Google Tag Manager Vorlage', 'hidden-irrelevant')]);
+    expect(observationsOf(r).find((o) => o.subject === 'google-tag-manager')?.variant).toBe(
+      'ambiguous-match',
+    );
+  });
+
+  it('inconclusive: the same policy cut off at the reading limit → document-incomplete, no not-named', () => {
+    const r = run([], { complete: false, errors: ['truncated'] });
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'document-incomplete' });
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  // Today a company name in the Analytics section counts for every service of that company ("company" level).
+  it.todo(
+    '"Anbieter ist Google Ireland Limited" only in the Analytics section leaves Tag Manager and Ads not-named',
+  );
 });

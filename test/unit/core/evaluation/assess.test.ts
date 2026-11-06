@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { LegalNote, Ruleset, Texts } from '../../../../src/core/data/load.ts';
+import { consent01 } from '../../../../src/checks/browser/consent-01.ts';
+import { consent02 } from '../../../../src/checks/browser/consent-02.ts';
+import { embed03 } from '../../../../src/checks/browser/embed-03.ts';
+import {
+  type LegalNote,
+  loadRouting,
+  loadRuleset,
+  loadTexts,
+  type Ruleset,
+  type Texts,
+} from '../../../../src/core/data/load.ts';
 import {
   type AssessInput,
   assess,
@@ -13,6 +23,17 @@ import {
 } from '../../../../src/core/evaluation/assess.ts';
 import { type AnyCheck, defineCheck, type Observation } from '../../../../src/core/evaluation/check.ts';
 import { fingerprint } from '../../../../src/core/evaluation/fingerprint.ts';
+import { runCheck } from '../../../utils/snapshot-builder.ts';
+import {
+  defaultPages,
+  ORIGIN,
+  page,
+  phase,
+  req,
+  START,
+  site,
+  storage,
+} from '../../checks/browser/helpers.ts';
 
 const ruleset: Ruleset = {
   profile: { id: 'de-2026', version: 'test', rechtsstand: '2026-10-30', draft: true },
@@ -439,6 +460,90 @@ describe('legal note of a finding', () => {
     expect(out.findings.map((f) => [f.variant, f.legalNoteId])).toEqual([
       ['hit', 'TEST-01.hit'],
       ['soft', 'TEST-01'],
+    ]);
+  });
+});
+
+describe('a youtube-nocookie player and its stored entries over the real checks, ruleset and routing', () => {
+  const VIDEOS = `${ORIGIN}/videos`;
+  const NOCOOKIE = 'https://www.youtube-nocookie.com/embed/abc123';
+  const frame = (frameId: string) =>
+    ({ isMainFrame: false, frameId, frameUrl: NOCOOKIE, pageUrl: VIDEOS }) as const;
+  /** Two player frames on the video page; one beacon of the first is recorded with the next page. */
+  const playerRequests = [
+    req('A-1', NOCOOKIE, { ...frame('A-f2'), resourceType: 'document', isNavigation: true }),
+    req('A-2', NOCOOKIE, { ...frame('A-f3'), resourceType: 'document', isNavigation: true }),
+    req('A-3', 'https://i.ytimg.com/vi/abc123/hqdefault.jpg', { ...frame('A-f2'), resourceType: 'image' }),
+    req('A-4', 'https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json', {
+      ...frame('A-f2'),
+      pageUrl: START,
+      resourceType: 'ping',
+    }),
+  ];
+  const playerStorage = [
+    storage('YtIdbMeta', {
+      storageType: 'indexedDB',
+      origin: 'https://www.youtube-nocookie.com',
+      firstParty: false,
+      pageUrl: VIDEOS,
+    }),
+    storage('ytidb::LAST_RESULT_ENTRY_KEY', {
+      storageType: 'localStorage',
+      origin: 'https://www.youtube-nocookie.com',
+      firstParty: false,
+      pageUrl: VIDEOS,
+    }),
+  ];
+  const videoSite = (p: Partial<Parameters<typeof phase>[1]>) =>
+    site({ phases: [phase('A', { pages: [...defaultPages('A'), page(VIDEOS, 'nav')], ...p })] });
+
+  function assessed(snapshot: ReturnType<typeof site>, checks: AnyCheck[] = [consent01, consent02, embed03]) {
+    return assess({
+      checks,
+      executed: new Map(checks.map((c) => [c.id, runCheck(c, snapshot)])),
+      ruleset: loadRuleset(),
+      routing: loadRouting(),
+      texts: loadTexts('de'),
+    });
+  }
+  const summary = (out: ReturnType<typeof assessed>) =>
+    out.findings.map((f) => [f.checkId, f.variant, f.serviceId]).sort();
+
+  it('one CONSENT-02 with its text unchanged and one EMBED-03 on one page, related same-service; CONSENT-01 drops the video', () => {
+    const snapshot = videoSite({ requests: playerRequests, storage: playerStorage });
+    const out = assessed(snapshot);
+    expect(summary(out)).toEqual([
+      ['CONSENT-02', 'unknown-third-party-persistent', 'youtube-nocookie'],
+      ['EMBED-03', 'video-loaded', 'youtube-nocookie'],
+    ]);
+
+    const embed = out.findings.find((f) => f.checkId === 'EMBED-03')!;
+    const stored = out.findings.find((f) => f.checkId === 'CONSENT-02')!;
+    expect(embed).toMatchObject({ severity: 'warning', crmCode: 'T1_MAPS_BEFORE_CONSENT', pages: [VIDEOS] });
+    expect(embed.params).toMatchObject({ pageCount: 1, integrationType: 'iframe', requestCount: 4 });
+    expect(embed.related).toEqual([
+      { checkId: 'CONSENT-02', fingerprint: stored.fingerprint, relation: 'same-service' },
+    ]);
+    expect(stored.related).toEqual([
+      { checkId: 'EMBED-03', fingerprint: embed.fingerprint, relation: 'same-service' },
+    ]);
+    // The stored entries are reported as before: same finding text with or without the new check.
+    const without = assessed(snapshot, [consent01, consent02]).findings.find(
+      (f) => f.checkId === 'CONSENT-02',
+    );
+    expect(stored.text).toEqual(without?.text);
+    expect(stored.params).toEqual(without?.params);
+  });
+
+  it('counterexample: the stored entries without a load give CONSENT-02 only', () => {
+    expect(summary(assessed(videoSite({ storage: playerStorage })))).toEqual([
+      ['CONSENT-02', 'unknown-third-party-persistent', 'youtube-nocookie'],
+    ]);
+  });
+
+  it('counterexample: a load without stored entries gives EMBED-03 only', () => {
+    expect(summary(assessed(videoSite({ requests: playerRequests })))).toEqual([
+      ['EMBED-03', 'video-loaded', 'youtube-nocookie'],
     ]);
   });
 });

@@ -98,6 +98,7 @@ function partsOf(raw: RawDocument, sourceUrl: string, prefix: string, frameUrl?:
         text: p.text,
         // Hidden text stays hidden-irrelevant inside a frame too; the frame itself is recorded in `frameUrl`.
         origin: p.origin === 'hidden-irrelevant' ? 'hidden-irrelevant' : frameUrl ? 'frame' : p.origin,
+        ...(p.place ? { place: p.place } : {}),
         sourceUrl,
         ...(frameUrl ? { frameUrl } : {}),
       }))

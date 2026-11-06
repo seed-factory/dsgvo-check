@@ -1,6 +1,7 @@
 /**
  * Legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them: fallback redirects to the home
- * page, policies in another language, headings of navigation or footer, empty panels, masked e-mail addresses.
+ * page, policies in another language, headings of navigation or footer, empty panels, masked e-mail addresses, and
+ * Impressum details on the contact and start pages.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
@@ -63,6 +64,24 @@ const FOOTER_PT =
   '<footer><a href="/aviso-legal/">Aviso legal</a> <a href="/privacidade/">Aviso de Privacidade</a></footer>';
 const START = (title = 'Start') =>
   html(title, `<main><h1>Start</h1><p>${LOREM.repeat(3)}</p></main>${FOOTER}`);
+
+/** Generic provider details of three kinds (register entry, management, VAT ID) and an address to be masked. */
+const DETAILS =
+  'Beispiel GmbH, Musterstraße 1, 10115 Berlin. Geschäftsführung: Erika Mustermann. Registergericht: Amtsgericht Musterstadt, HRB 12345. USt-IdNr.: DE123456789. E-Mail: info.person@example.test';
+/** A theme header whose contact link is labelled "E-mail" and leads to /kontakt/. */
+const WIDGET_NAV =
+  '<header class="site-header"><nav><a href="/">Startseite</a> <a href="/kontakt/">E-mail</a> <a href="/datenschutz/">Datenschutz</a></nav></header>';
+/** A theme footer with widget columns in an aside: "Anfahrt" and "Impressum" with the details. */
+const WIDGET_FOOTER =
+  '<footer class="site-footer"><aside class="widget-area" role="complementary">' +
+  '<section class="widget"><h2 class="widget-title">Anfahrt</h2><p>Musterstraße 1, 10115 Berlin</p></section>' +
+  `<section class="widget"><h2 class="widget-title">Impressum</h2><p>${DETAILS}</p></section>` +
+  '</aside><div class="site-info"><a href="/datenschutz/">Datenschutz</a></div></footer>';
+const widgetPage = (title: string, main: string, footer = WIDGET_FOOTER) =>
+  html(title, `${WIDGET_NAV}<main><h1>${title}</h1>${main}</main>${footer}`);
+const BROKEN_FOOTER = '<footer><a href="/impressum/">Impressum</a></footer>';
+const CONTACT_FORM =
+  '<p>Musterstraße 1, 10115 Berlin, Telefon 030 123456.</p><form><label>Nachricht <textarea name="m"></textarea></label></form>';
 
 let server: FixtureServer;
 
@@ -165,6 +184,37 @@ beforeAll(async () => {
             `<header><nav><a href="/">Start</a></nav></header><main><h1>Rechtliches</h1><h2>Datenschutzerklärung</h2><p>${LOREM.repeat(60)}</p></main><footer><h3>Service</h3></footer>`,
           ),
         ),
+      }),
+
+      // the Impressum details sit only in a footer widget on every page; no Impressum link, /impressum answers 404
+      site('footerwidget.example.test', {
+        '/': send(widgetPage('Willkommen', `<p>${LOREM.repeat(3)}</p>`)),
+        '/kontakt/': send(widgetPage('E-Mail', CONTACT_FORM)),
+        '/datenschutz/': send(widgetPage('Datenschutzerklärung', `<p>${LOREM.repeat(60)}</p>`)),
+      }),
+
+      // the Kontakt page holds the Impressum in its content, under a heading of its own
+      site('contactimpressum.example.test', {
+        '/': send(widgetPage('Willkommen', `<p>${LOREM.repeat(3)}</p>`, '')),
+        '/kontakt/': send(widgetPage('Kontakt', `${CONTACT_FORM}<h2>Impressum</h2><p>${DETAILS}</p>`, '')),
+        '/datenschutz/': send(widgetPage('Datenschutzerklärung', `<p>${LOREM.repeat(60)}</p>`, '')),
+      }),
+
+      // the footer link "Impressum" answers 404; the Kontakt page, without that link, holds an Impressum under a
+      // heading of its own
+      site('brokenlink.example.test', {
+        '/': send(widgetPage('Willkommen', `<p>${LOREM.repeat(3)}</p>`, BROKEN_FOOTER)),
+        '/kontakt/': send(widgetPage('Kontakt', `${CONTACT_FORM}<h2>Impressum</h2><p>${DETAILS}</p>`, '')),
+        '/datenschutz/': send(
+          widgetPage('Datenschutzerklärung', `<p>${LOREM.repeat(60)}</p>`, BROKEN_FOOTER),
+        ),
+      }),
+
+      // counterexample: the Kontakt page holds an address, a phone number and a form only
+      site('contactonly.example.test', {
+        '/': send(widgetPage('Willkommen', `<p>${LOREM.repeat(3)}</p>`, '')),
+        '/kontakt/': send(widgetPage('Kontakt', CONTACT_FORM, '')),
+        '/datenschutz/': send(widgetPage('Datenschutzerklärung', `<p>${LOREM.repeat(60)}</p>`, '')),
       }),
 
       // Portuguese policy and legal notice; the lang attribute is wrong ("en") on purpose
@@ -338,6 +388,83 @@ describe('the type of a fetched page is confirmed by its headings', () => {
       'impressum',
       'privacy',
     ]);
+  });
+});
+
+describe('Impressum details on pages that were open anyway', () => {
+  const candidatesOf = (run: CollectRun) => run.result.sections.documents?.candidates ?? [];
+  const visitedPaths = (run: CollectRun) =>
+    (run.result.sections.browser?.phases ?? []).flatMap((p) => p.pages).map((p) => new URL(p.url).pathname);
+
+  it('a footer widget "Impressum" without a link: the contact and start pages are kept as candidates with chrome parts', async () => {
+    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+
+    expect(plainDocuments(run, 'impressum')).toEqual([]);
+    const candidates = candidatesOf(run);
+    expect(candidates.map((d) => new URL(d.url).pathname).sort()).toEqual(['/', '/kontakt/']);
+    for (const d of candidates) {
+      const widget = d.parts.find((p) => (p.section ?? '').endsWith('Impressum'));
+      expect(widget?.place).toBe('chrome');
+      expect(d.parts.some((p) => p.place === 'content')).toBe(true);
+    }
+    // The pages were read where they were open: each one was navigated to once, nothing more was requested.
+    expect(visitedPaths(run).sort()).toEqual(['/', '/datenschutz/', '/impressum', '/kontakt/']);
+    // Candidates are no documents and no attempts.
+    expect(documentsOf(run).map((d) => d.kind)).toEqual(['privacy']);
+    expect(run.result.sections.documents?.attempts.filter((a) => a.outcome === 'found')).toEqual([
+      expect.objectContaining({ kind: 'privacy', via: 'link' }),
+    ]);
+  });
+
+  it('a footer widget "Impressum" without a link: LEGAL-01 reports the details, not the missing document', async () => {
+    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+
+    const [o] = impressumObservations(run);
+    expect(o?.variant).toBe('provider-details-without-link');
+    expect(o?.params).toMatchObject({
+      detailsPlace: 'footer',
+      hasHeading: true,
+      detailsHeading: 'Impressum',
+    });
+    expect(o?.params.groupCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('the text of a candidate is masked like a document: no local part of an e-mail address', async () => {
+    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+
+    const stored = JSON.stringify(run.result.sections.documents);
+    expect(candidatesOf(run).length).toBeGreaterThan(0);
+    expect(stored).not.toContain('info.person');
+    expect(stored).toContain('[redacted]@example.test');
+  });
+
+  it('a Kontakt page with an Impressum under a heading of its content is the Impressum, found via that page', async () => {
+    const run = await collect(server, { url: 'https://contactimpressum.example.test/' });
+
+    const impressum = documentsOf(run).find((d) => d.kind === 'impressum');
+    expect(impressum).toMatchObject({ foundVia: 'hop', errors: [] });
+    expect(new URL(impressum!.url).pathname).toBe('/kontakt/');
+    expect(run.result.sections.documents?.attempts).toContainEqual(
+      expect.objectContaining({ kind: 'impressum', via: 'hop', outcome: 'found' }),
+    );
+    // The start page was read as a candidate while no Impressum was known; once found, candidates are dropped.
+    expect(candidatesOf(run)).toEqual([]);
+    expect(impressumObservations(run).map((o) => o.variant)).toEqual(['reachable-via-intermediate']);
+  });
+
+  it('a broken Impressum link keeps links-broken: the Kontakt page with an Impressum stays a candidate', async () => {
+    const run = await collect(server, { url: 'https://brokenlink.example.test/' });
+
+    expect(documentsOf(run).filter((d) => d.kind === 'impressum')).toEqual([]);
+    expect(candidatesOf(run).map((d) => new URL(d.url).pathname)).toEqual(['/kontakt/']);
+    expect(impressumObservations(run).map((o) => o.variant)).toEqual(['links-broken']);
+  });
+
+  it('counterexample: a Kontakt page with an address, a phone number and a form keeps document-not-found', async () => {
+    const run = await collect(server, { url: 'https://contactonly.example.test/' });
+
+    expect(candidatesOf(run).map((d) => new URL(d.url).pathname)).toContain('/kontakt/');
+    expect(impressumObservations(run).map((o) => o.variant)).toEqual(['document-not-found']);
   });
 });
 

@@ -7,6 +7,9 @@ import type { DocumentPart, DocumentRecord, DocumentsSection } from '../../core/
 /** Errors by which the collector marks a fetched page as not being the legal document. */
 const NOT_A_DOCUMENT: ReadonlySet<string> = new Set(['soft-404', 'keyword-missing', 'unconfirmed']);
 
+/** A further privacy notice of the site, read beside the policy; documents of earlier snapshots are all the policy. */
+export const isSupplement = (d: DocumentRecord): boolean => d.role === 'supplement';
+
 /** The probe's page was judged an error page (`soft-404`) or not confirmed as the document. */
 export function judgedNotDocument(a: DocumentsSection['attempts'][number]): boolean {
   return a.outcome === 'soft-404' || a.outcome === 'unconfirmed';
@@ -14,12 +17,17 @@ export function judgedNotDocument(a: DocumentsSection['attempts'][number]): bool
 
 /**
  * 2xx and not judged "no document" by the collector, neither on the document nor on the attempt that fetched it.
- * A linked PDF counts even when it was not fetched (status null).
+ * A linked PDF counts even when it was not fetched (status null). Only attempts of the same role count: a further
+ * notice whose redacted URL equals that of the policy (`?page=[redacted]`) does not judge the policy, nor the reverse.
  */
 export function usableDocument(d: DocumentRecord, attempts: DocumentsSection['attempts']): boolean {
   if (d.errors.some((e) => NOT_A_DOCUMENT.has(e))) return false;
   const judgedNot = attempts.some(
-    (a) => a.kind === d.kind && judgedNotDocument(a) && (a.url === d.url || a.url === d.finalUrl),
+    (a) =>
+      a.kind === d.kind &&
+      (a.supplement === true) === isSupplement(d) &&
+      judgedNotDocument(a) &&
+      (a.url === d.url || a.url === d.finalUrl),
   );
   if (judgedNot) return false;
   if (d.status === null) return d.format === 'pdf';
@@ -60,14 +68,24 @@ export interface PolicyText {
   hidden: string;
 }
 
-/** The HTML policy documents to search (the first is the main one), or the reason the policy cannot be searched. */
+/** A text the search can rely on: HTML in German or English, read completely (unopened expandables aside). */
+const readable = (d: DocumentRecord): boolean =>
+  d.format === 'html' && !(d.lang && !/^(de|en)\b/i.test(d.lang)) && (d.complete || onlyUnopened(d));
+
+/**
+ * The HTML policy documents to search (the policy first, then the further notices that can be read), or the reason
+ * the policy cannot be searched. A further notice is never the policy, and one that cannot be read (PDF, another
+ * language, cut off, failed, or a language version that was only noted) leaves the policy searchable: it is reported
+ * as `supplementNotEvaluated`.
+ */
 export function policyDocuments(
   documents: DocumentsSection,
-): { html: DocumentRecord[] } | { reason: string } {
+): { html: DocumentRecord[]; supplementNotEvaluated?: true } | { reason: string } {
   // A page judged "not the document" or unconfirmed is no policy to search; LEGAL-01 reports it.
-  const policies = documents.documents.filter(
+  const usable = documents.documents.filter(
     (d) => d.kind === 'privacy' && usableDocument(d, documents.attempts),
   );
+  const policies = usable.filter((d) => !isSupplement(d));
   if (policies.length === 0) return { reason: 'privacy-policy-not-found' };
 
   const html = policies.filter((d) => d.format === 'html');
@@ -78,7 +96,20 @@ export function policyDocuments(
   const main = html[0] as DocumentRecord;
   if (main.lang && !/^(de|en)\b/i.test(main.lang)) return { reason: 'language-unsupported' };
   if (html.some((d) => !d.complete && !onlyUnopened(d))) return { reason: 'document-incomplete' };
-  return { html };
+
+  const notices = usable.filter(isSupplement);
+  const unread =
+    notices.some((d) => !readable(d)) ||
+    documents.attempts.some(
+      (a) =>
+        a.kind === 'privacy' &&
+        a.supplement === true &&
+        (a.outcome === 'error' || a.outcome === 'other-language'),
+    );
+  return {
+    html: [...html, ...notices.filter(readable)],
+    ...(unread ? { supplementNotEvaluated: true } : {}),
+  };
 }
 
 export function policyText(html: readonly DocumentRecord[]): PolicyText {

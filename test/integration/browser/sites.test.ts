@@ -1,9 +1,18 @@
 /**
  * Phase A on small fixture sites (clean, Google Fonts, map embed on Kontakt, no legal links), policy extraction,
- * cookies and storage without values.
+ * cookies and storage without values; phases A and B with a stub CMP on a site with video players and a thumbnail.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { consent01 } from '../../../src/checks/browser/consent-01.ts';
+import { consent02 } from '../../../src/checks/browser/consent-02.ts';
+import { embed03 } from '../../../src/checks/browser/embed-03.ts';
+import { loadRouting, loadRuleset, loadTexts } from '../../../src/core/data/load.ts';
+import { renderMessage } from '../../../src/core/data/messages.ts';
+import { assess } from '../../../src/core/evaluation/assess.ts';
+import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import { makeSnapshot, observationsOf, runCheck, withDerived } from '../../utils/snapshot-builder.ts';
+import { stubCmpApi } from './consent/stub-cmp.ts';
 import { type CollectRun, collect, persisted } from './helpers.ts';
 
 /** One phase A collection of the fixture site `browser/<name>`, shared by the tests in `fn`. */
@@ -141,12 +150,12 @@ site('maps', (get) => {
     });
   });
 
-  it('the page with the embed becomes a B/C control page (DOM/network signals)', () => {
+  it('the page with the embed becomes a B/C control page (DOM/network signals, a catalog embed)', () => {
     const plan = get().run.result.sections.plan;
 
     expect(plan?.controlPages[0]).toMatchObject({
       url: 'https://www.example.test/kontakt/',
-      reasons: ['iframe-signal', 'network-signal', 'role:contact'],
+      reasons: ['iframe-signal', 'network-signal', 'embed-signal', 'role:contact'],
     });
   });
 });
@@ -292,5 +301,119 @@ site('cookies', (get) => {
       identifierNames: ['uid'],
       setCookieNames: ['uid'],
     });
+  });
+});
+
+describe('video (stub CMP, phases A and B)', () => {
+  const ORIGIN = 'https://www.example.test';
+  const VIDEOS = `${ORIGIN}/videos/`;
+  const HISTORY = `${ORIGIN}/unternehmen/geschichte/`;
+  const THUMBNAIL = 'https://i.ytimg.com/vi/fixture/hqdefault.jpg';
+  let server: FixtureServer;
+  let run: CollectRun;
+
+  beforeAll(async () => {
+    server = await startFixtureServer({ sites: ['browser/video'] });
+    run = await collect(server, { deps: { cmp: stubCmpApi(), phases: ['A', 'B'] } });
+  });
+
+  afterAll(async () => {
+    await server?.close();
+  });
+
+  const phase = (p: 'A' | 'B') => run.result.sections.browser?.phases.find((x) => x.phase === p);
+  /** The collected sections as a snapshot with `derived`, to run the checks over a real collection. */
+  const snapshotOf = (): Snapshot => {
+    const s = run.result.sections;
+    return withDerived(
+      makeSnapshot({
+        target: run.ctx.target,
+        ...(s.browser ? { browser: s.browser } : {}),
+        ...(s.documents ? { documents: s.documents } : {}),
+        cmp: s.cmp ?? { phases: [] },
+        plan: { browser: s.plan ?? null, probes: [] },
+      }),
+    );
+  };
+
+  it('plans the video page by its keyword and the history page, and rechecks both after the reject', () => {
+    const plan = run.result.sections.plan;
+    expect(plan?.pages.find((p) => p.url === VIDEOS)?.reasons).toEqual(['keyword:video']);
+    expect(plan?.pages.find((p) => p.url === HISTORY)?.reasons).toEqual(['keyword:geschichte']);
+    expect(plan?.controlPages.map((p) => p.url).sort()).toEqual([HISTORY, VIDEOS]);
+    expect(phase('B')?.click).toMatchObject({ action: 'reject', success: true });
+  });
+
+  it('the thumbnail of the history page is a request of the page itself, before the interaction and after the reject', () => {
+    const thumbnails = (p: 'A' | 'B') =>
+      (phase(p)?.requests ?? [])
+        .filter((r) => r.url === THUMBNAIL)
+        .map((r) => [r.pageUrl, r.isMainFrame, r.afterClick, r.resourceType]);
+    expect(thumbnails('A')).toEqual([[HISTORY, true, false, 'image']]);
+    expect(thumbnails('B')).toEqual([[HISTORY, true, true, 'image']]);
+  });
+
+  it('the two player frames of the video page store names only, never values', () => {
+    const storage = (phase('A')?.storage ?? []).filter(
+      (s) => s.origin === 'https://www.youtube-nocookie.com',
+    );
+    expect([...new Set(storage.map((s) => `${s.storageType}:${s.key}`))].sort()).toEqual([
+      'indexedDB:YtIdbMeta',
+      'localStorage:ytidb::LAST_RESULT_ENTRY_KEY',
+    ]);
+    expect(persisted(run)).not.toMatch(/SECRET_PLAYER_VALUE_\d/);
+  });
+
+  it('EMBED-03 over the collection: the thumbnail as YouTube, the players as youtube-nocookie, both after the confirmed reject', () => {
+    const snapshot = snapshotOf();
+    const found = observationsOf(runCheck(embed03, snapshot));
+    expect(
+      found.map((o) => [
+        o.subject,
+        o.pages,
+        o.params.integrationType,
+        o.params.moment,
+        o.params.rejectConfirmed,
+      ]),
+    ).toEqual([
+      ['youtube', [HISTORY], 'thumbnail', 'before-and-after-reject', true],
+      ['youtube-nocookie', [VIDEOS], 'iframe', 'before-and-after-reject', true],
+    ]);
+    const [thumbnail] = found;
+    expect(
+      thumbnail?.evidence.some(
+        (e) => e.type === 'request' && e.url === THUMBNAIL && e.phase === 'B' && !e.beforeClick,
+      ),
+    ).toBe(true);
+    expect(thumbnail?.evidence.filter((e) => e.type === 'consent-state')).toHaveLength(2);
+    expect(renderMessage(loadTexts('de'), 'EMBED-03.video-loaded', thumbnail!.params).title).toBe(
+      'Externer Videodienst geladen, auch nach bestätigter Ablehnung: YouTube',
+    );
+  });
+
+  it('the report links the players to their stored entries and holds no value', () => {
+    const snapshot = snapshotOf();
+    const checks = [consent01, consent02, embed03];
+    const out = assess({
+      checks,
+      executed: new Map(checks.map((c) => [c.id, runCheck(c, snapshot)])),
+      ruleset: loadRuleset(),
+      routing: loadRouting(),
+      texts: loadTexts('de'),
+    });
+    const player = out.findings.find((f) => f.checkId === 'EMBED-03' && f.subject === 'youtube-nocookie');
+    const stored = out.findings.find((f) => f.checkId === 'CONSENT-02' && f.serviceId === 'youtube-nocookie');
+    expect(player?.related).toContainEqual(
+      expect.objectContaining({
+        checkId: 'CONSENT-02',
+        fingerprint: stored?.fingerprint,
+        relation: 'same-service',
+      }),
+    );
+    expect(JSON.stringify(out)).not.toMatch(/SECRET_PLAYER_VALUE_\d/);
+  });
+
+  it('touches only declared hosts', () => {
+    expect(server.unexpected).toEqual([]);
   });
 });

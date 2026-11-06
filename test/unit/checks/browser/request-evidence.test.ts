@@ -111,6 +111,13 @@ describe('requestEvidence (5.3)', () => {
     expect(EvidenceSchema.safeParse({ id: 'ev-1', ...requestEvidence(before, null) }).success).toBe(true);
   });
 
+  it('marks a request made after the viewport showed the content below the first screen', () => {
+    const revealed = requestEvidence({ ...ga4Hit, afterReveal: true }, classified);
+    expect(revealed).toMatchObject({ afterReveal: true, phase: 'B' });
+    expect(requestEvidence(ga4Hit, classified)).not.toHaveProperty('afterReveal');
+    expect(EvidenceSchema.safeParse({ id: 'ev-1', ...revealed }).success).toBe(true);
+  });
+
   it('a record from an older snapshot: delivery/result from the legacy state, parser version 1', () => {
     const old = makeRequest({
       url: 'https://cdn.example.net/lib.js',
@@ -223,6 +230,15 @@ describe('distinctRequestEvidence', () => {
       { r: lib('c', 'https://www.example.de/', { frameUrl: 'https://maps.example/embed' }), c: null },
     ]);
     expect(ev).toHaveLength(3);
+  });
+
+  it('a request repeated after the reveal on the same page is the same item', () => {
+    const ev = distinctRequestEvidence([
+      { r: lib('a', 'https://www.example.de/kontakt'), c: null },
+      { r: lib('b', 'https://www.example.de/kontakt', { afterReveal: true }), c: null },
+    ]);
+    expect(ev).toHaveLength(1);
+    expect(ev[0]).not.toHaveProperty('afterReveal');
   });
 
   it('stops at the cap', () => {

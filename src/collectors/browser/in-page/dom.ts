@@ -15,6 +15,7 @@ export interface RawLink {
   visible: boolean;
   inShadowDom: boolean;
   rel: string;
+  hreflang: string;
 }
 
 export interface RawForm {
@@ -233,6 +234,7 @@ export function domFactsInPage(arg: {
       visible: visible(el),
       inShadowDom: inShadow(el),
       rel: String(el.getAttribute('rel') || ''),
+      hreflang: String(el.getAttribute('hreflang') || ''),
     };
   };
   const readForm = (el: any): RawForm => {
@@ -412,4 +414,29 @@ export function bannerBoxInPage(arg: { points: Array<{ x: number; y: number }>; 
   const box = boxInViewport(candidate);
   if (!box) return { box: null, reason: 'container-off-screen' };
   return { box, reason: 'ok' };
+}
+
+export interface RawScrollFacts {
+  /** Height of the document in CSS px: the larger of the root's and the body's scroll height. */
+  heightPx: number;
+  scrollY: number;
+  /** The root does not scroll (`overflow: hidden` or `clip`, also from the body): a visitor cannot scroll down. */
+  locked: boolean;
+}
+
+/** How far the document reaches below the viewport, and whether a visitor could scroll there. */
+export function scrollFactsInPage(): RawScrollFacts {
+  const root = document.documentElement;
+  const body = document.body;
+  const overflowY = (el: any) =>
+    el ? String(window.getComputedStyle(el).overflowY || 'visible') : 'visible';
+  const clips = (value: string) => value === 'hidden' || value === 'clip';
+  const rootOverflow = overflowY(root);
+  // The body's overflow applies to the viewport only while the root's is `visible` (CSS overflow propagation).
+  const locked = clips(rootOverflow) || (rootOverflow === 'visible' && clips(overflowY(body)));
+  return {
+    heightPx: Math.max(root ? root.scrollHeight : 0, body ? body.scrollHeight : 0),
+    scrollY: Math.max(0, Number(window.scrollY) || 0),
+    locked,
+  };
 }

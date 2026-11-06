@@ -71,6 +71,7 @@ export function requestEvidence(r: RequestRecord, c: ClassifiedRequest | null | 
     phase: r.phase,
     page: r.pageUrl,
     ...beforeClick(r),
+    ...(r.afterReveal ? { afterReveal: true } : {}),
     ...(r.atMs !== undefined ? { tMs: r.atMs } : {}),
     ...(r.navigationId ? { navigationId: r.navigationId } : {}),
     ...(r.actionId ? { actionId: r.actionId } : {}),
@@ -109,6 +110,7 @@ const OCCURRENCE_FIELDS: ReadonlySet<string> = new Set([
   'page',
   'phase',
   'beforeClick',
+  'afterReveal',
   'tMs',
   'navigationId',
   'frameId',
@@ -145,7 +147,8 @@ export function distinctRequestEvidence(
   return out;
 }
 
-type RequestItem = { r: RequestRecord; c: ClassifiedRequest | null | undefined };
+/** A request record with its classification, as the evidence builders take them. */
+export type RequestItem = { r: RequestRecord; c: ClassifiedRequest | null | undefined };
 
 /**
  * Places kept for requests after the reject: a repeat of a request seen before the interaction is then still shown

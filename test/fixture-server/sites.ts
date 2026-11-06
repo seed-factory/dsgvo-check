@@ -14,13 +14,36 @@ export interface SiteConfig {
 
 const html = { 'content-type': 'text/html; charset=utf-8' };
 const gaCollect: RouteSpec = { host: 'www.google-analytics.com', path: '/g/collect', status: 204 };
+/** Google Fonts stylesheet and font file under the docroots `fonts` and `gstatic`, readable cross-origin. */
+const fontFiles: Record<string, Record<string, string>> = {
+  'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+  'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+    'content-type': 'font/woff2',
+    'access-control-allow-origin': '*',
+  },
+};
 
 export const SITES: Record<string, SiteConfig> = {
   'browser/clean': { hosts: { 'www.example.test': 'www' } },
   'browser/cmp-stub': {
-    hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    hosts: {
+      'www.example.test': 'www',
+      'www.googletagmanager.com': 'gtm',
+      'www.google.com': 'google',
+      'fonts.googleapis.com': 'fonts',
+      'fonts.gstatic.com': 'gstatic',
+    },
     routes: [gaCollect],
-    fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
+    fileHeaders: {
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+      'google/maps/embed': html,
+      ...fontFiles,
+    },
+  },
+  // The start page is on the apex host, the contact page with a map on www.
+  'browser/control-origin': {
+    hosts: { 'example.test': 'apex', 'www.example.test': 'www', 'www.google.com': 'google' },
+    fileHeaders: { 'google/maps/embed': html },
   },
   'browser/cookies': {
     hosts: { 'www.example.test': 'www' },
@@ -90,7 +113,58 @@ export const SITES: Record<string, SiteConfig> = {
   },
   'browser/fonts': {
     hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
+    fileHeaders: fontFiles,
+  },
+  'browser/ga4': {
+    hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    routes: [gaCollect],
+    fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
+  },
+  // A map far below the first screen of Kontakt whose frame loads a Google font, a page taller than the largest reveal,
+  // and a stub banner that takes scrolling as consent.
+  'browser/lazy-embed': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.google.com': 'google',
+      'fonts.gstatic.com': 'gstatic',
+      'www.googletagmanager.com': 'gtm',
+    },
+    routes: [gaCollect],
     fileHeaders: {
+      'google/maps/embed': html,
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+    },
+  },
+  'browser/maps': {
+    hosts: { 'www.example.test': 'www', 'www.google.com': 'google' },
+    fileHeaders: { 'google/maps/embed': html },
+  },
+  'browser/no-legal': { hosts: { 'www.example.test': 'www' } },
+  // A site under /de/ with language roots, a map on Kontakt, a video thumbnail on the history page, Google Fonts on
+  // every page and a stub CMP whose 4x4 helper frame sits above the page.
+  'browser/page-coverage': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.google.com': 'google',
+      'fonts.googleapis.com': 'fonts',
+      'fonts.gstatic.com': 'gstatic',
+      'consent.example.net': 'consent',
+    },
+    routes: [
+      {
+        host: 'i1.ytimg.com',
+        path: '/vi/fixture/hqdefault.jpg',
+        status: 200,
+        headers: { 'content-type': 'image/jpeg' },
+        body: '',
+      },
+    ],
+    fileHeaders: {
+      'google/maps/embed': html,
       'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
       'gstatic/s/roboto/v30/fixture-roboto.woff2': {
         'content-type': 'font/woff2',
@@ -98,16 +172,6 @@ export const SITES: Record<string, SiteConfig> = {
       },
     },
   },
-  'browser/ga4': {
-    hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
-    routes: [gaCollect],
-    fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
-  },
-  'browser/maps': {
-    hosts: { 'www.example.test': 'www', 'www.google.com': 'google' },
-    fileHeaders: { 'google/maps/embed': html },
-  },
-  'browser/no-legal': { hosts: { 'www.example.test': 'www' } },
   'browser/selection': { hosts: { 'www.example.test': 'www' } },
   'browser/ssrf': {
     hosts: {
@@ -145,6 +209,15 @@ export const SITES: Record<string, SiteConfig> = {
         body: 'busy',
       },
     ],
+  },
+  'browser/video': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.youtube-nocookie.com': 'nocookie',
+      'i.ytimg.com': 'ytimg',
+    },
+    routes: [{ host: 'www.youtube-nocookie.com', path: '/youtubei/v1/log_event', status: 204 }],
+    fileHeaders: { 'nocookie/embed/fixture-a': html, 'nocookie/embed/fixture-b': html },
   },
   'cmp/borlabs': { hosts: { 'www.borlabs.test': 'www' } },
   'cmp/ccm19': { hosts: { 'www.ccm19.test': 'www', 'cloud.ccm19.de': 'ccm' } },
