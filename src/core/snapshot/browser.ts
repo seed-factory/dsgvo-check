@@ -29,6 +29,11 @@ export interface PlannedPage {
   /** Why the page was selected, e.g. `footer-link:impressum`, `sitemap`. */
   reasons: string[];
   source: 'start' | 'link' | 'sitemap' | 'fallback' | 'config' | 'hop';
+  /**
+   * Id of the keyword group (`extraGroups` in `browser/pages.yaml`) that chose an extra page, e.g. `video`, whichever
+   * of its words matched (the word is in `reasons`). Absent for other pages and in older snapshots.
+   */
+  keywordGroup?: string;
   /** robots.txt verdict for additional pages (start and legal pages are always visited). */
   robotsAllowed?: boolean;
 }

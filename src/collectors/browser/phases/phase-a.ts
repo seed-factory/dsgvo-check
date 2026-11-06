@@ -27,6 +27,7 @@ import {
   type LegalKind,
   type PageSelection,
   pageKey,
+  plannedPage,
   type Scope,
   selectPages,
 } from '../pages/pages.ts';
@@ -321,23 +322,18 @@ async function visitQueue(
     visited.add(pageKey(item.choice.raw));
 
     const visitsBefore = s.record.pages.length;
+    const legalKinds = queue.legalKindsOf(item);
     const r = await navigate(c, s, {
       rawUrl: item.choice.raw,
       role: item.choice.role,
       order,
       phase: 'A',
       firstVisit: false,
+      ...(legalKinds.length > 0 ? { legalKinds } : {}),
     });
     visited.add(pageKey(r.rawFinalUrl));
     if (item.supplement && item.docKind) queue.supplementVisits += s.record.pages.length - visitsBefore;
-    c.plan.pages.push({
-      url: item.choice.url,
-      role: item.choice.role,
-      order,
-      reasons: item.choice.reasons,
-      source: item.choice.source,
-      ...(item.choice.robotsAllowed !== undefined ? { robotsAllowed: item.choice.robotsAllowed } : {}),
-    });
+    c.plan.pages.push(plannedPage(item.choice, order));
     order++;
     await c.afterPage(s, r, 'first-screen');
     c.aVisits.push({ raw: item.choice.raw, result: r, source: item.choice.source });

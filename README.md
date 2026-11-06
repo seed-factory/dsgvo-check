@@ -223,6 +223,14 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
   Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
+- Sperrt Bot-Schutz eine weitere Seite (`SCAN-BLOCKED`) oder drosselt der Zielhost (`SCAN-THROTTLED`), nennt der
+  Bericht die Prüfungen, denen dadurch Beobachtungen fehlen: für eine gesperrte Seite die Prüfungen, die Seiten ihrer
+  Art lesen (etwa LEGAL-01, PRIV-01 und PRIV-02 die Datenschutzerklärung), in Phase A zusätzlich TLS-01, das die Links
+  jeder Seite liest, und beim Impressum MAIL-01 bis MAIL-03, die die E-Mail-Domains des Impressums abfragen. Liest
+  Phase A eine Seite für einen Rechtstext, den ihre Art nicht nennt (eine Seite für Datenschutzerklärung und Impressum,
+  die Kontaktseite und Zwischenseiten, solange ein Rechtstext fehlt), nennt der Bericht auch dessen Prüfungen: LEGAL-01
+  und beim Impressum MAIL-01 bis MAIL-03, bei der Datenschutzerklärung PRIV-01 und PRIV-02. Drosselung in Phase A
+  betrifft neben den Browser-Prüfungen ebenso TLS-01 und MAIL-01 bis MAIL-03.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
 - Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
@@ -673,7 +681,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   (`generate_204`) nicht. Die Seite eines Player-Rahmens ist die Seite, auf der sein Dokument geladen wurde, auch wenn
   ein Beacon des Players erst beim Wechsel zur nächsten Seite gesendet wird. Was ein Player speichert, meldet
   CONSENT-02 als eigenen, verknüpften Befund. Ein Videorahmen im Seitenaufbau, der beim Besuch nichts lädt, ergibt
-  keinen Befund, sondern die Einschränkung `video-embed-not-loaded`.
+  keinen Befund, sondern die Einschränkung `video-embed-not-loaded`. Ist die Seite, die der Scanner für einen Link mit
+  einem Wort der Gruppe `video` gewählt hat („Video“, „Videos“, „Mediathek“, Liste in `test/data/browser/pages.yaml`),
+  nicht auswertbar, ergibt das ohne Video auf anderen Seiten `inconclusive` (`video-page-not-evaluable`), mit Video
+  die Einschränkung gleichen Namens.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames, dazu die weiteren
   Datenschutzhinweise der Website, die Phase A gelesen hat: Eine Nennung in einem davon gilt als Nennung. Andere
   Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
@@ -716,7 +727,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain
   zuerst die Selektoren aus `DSGVO_CHECK_DNS_DKIM_SELECTORS` (`selector` für jede Domain oder `domain/selector`), dann
   die festen Selektoren eines erkannten Anbieters (Microsoft 365: `selector1`, `selector2`, erkannt nur an MX-Eintrag
-  und SPF-include zusammen), dann übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
+  unter `mail.protection.outlook.com` oder, bei DANE mit DNSSEC, unter `mx.microsoft` und SPF-include zusammen), dann
+  übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
   `DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS` (8). Ohne Schlüssel unter den angegebenen oder festen Selektoren meldet der
   Scanner `given-selector-missing` (`warning`), sonst nur `selectors-not-found` (`info`): Ein Schlüssel unter einem
   anderen Namen bleibt unsichtbar. Ein veröffentlichter Schlüssel belegt nicht, dass E-Mails signiert werden.

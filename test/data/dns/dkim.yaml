@@ -6,7 +6,9 @@
 # always signs with these selectors, so a domain without a key there gets the warning given-selector-missing. With
 # `fixed: false` the customer can change the selector and the names are probes only. Add a provider only with its
 # vendor documentation at hand.
-# - Microsoft 365 signs with selector1 and selector2 (CNAME records to the tenant's onmicrosoft.com domain).
+# - Microsoft 365 signs with selector1 and selector2 (CNAME records to the tenant's onmicrosoft.com domain). Its MX
+#   is `<MX token>.mail.protection.outlook.com`, or `<MX token>.<subdomain>.mx.microsoft` for a domain with inbound
+#   SMTP DANE with DNSSEC (Exchange Online documentation "How SMTP DANE works").
 # - Google Workspace offers the prefix "google" as preset; the admin can choose another one.
 #
 # commonSelectors: names many mail servers and hosting panels use; probes only. Selectors are freely chosen, so a key
@@ -14,7 +16,7 @@
 dkim:
   providers:
     - id: microsoft-365
-      mx: [mail.protection.outlook.com]
+      mx: [mail.protection.outlook.com, mx.microsoft]
       spfIncludes: [spf.protection.outlook.com]
       selectors: [selector1, selector2]
       fixed: true

@@ -26,6 +26,15 @@ describe('page selection', () => {
       [4, 'https://www.example.test/team/', 'nav', 'link', ['keyword:team'], true],
       [5, 'https://www.example.test/karriere/', 'nav', 'link', ['keyword:karriere'], true],
     ]);
+    // The plan names the keyword group that chose an extra page, whichever of its words matched.
+    expect(plan?.pages.map((p) => p.keywordGroup)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'team',
+      'jobs',
+    ]);
     const visited = run.result.sections.browser?.phases[0]?.pages.map((p) => p.url);
     expect(visited).toEqual(plan?.pages.map((p) => p.url));
     expect(run.result.probes?.map((p) => [p.purpose, p.target])).toEqual([

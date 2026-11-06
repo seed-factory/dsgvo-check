@@ -12,6 +12,7 @@ import {
   type CandidateLink,
   findLegalLink,
   type LanguageContext,
+  LEGAL_KINDS,
   type LegalKind,
   type LegalLinkResult,
   type PageChoice,
@@ -135,6 +136,20 @@ export class PageQueue {
 
   pending(k: LegalKind): boolean {
     return this.items.some((q) => q.docKind === k || q.alsoKinds?.includes(k));
+  }
+
+  /**
+   * Legal documents phase A reads the page of `item` for when it visits it, as `recordQueuedDocuments` and
+   * `lookForLegalLinks` do: the kinds it is queued for (a further privacy notice is no policy), and on the contact page
+   * and intermediate pages the kinds neither found nor queued yet.
+   */
+  legalKindsOf(item: QueueItem): LegalKind[] {
+    const queued = item.docKind && !item.supplement ? [item.docKind, ...(item.alsoKinds ?? [])] : [];
+    const searched =
+      item.choice.role === 'contact' || item.hop
+        ? LEGAL_KINDS.filter((k) => !this.found[k] && !this.pending(k))
+        : [];
+    return LEGAL_KINDS.filter((k) => queued.includes(k) || searched.includes(k));
   }
 
   handleLink(
