@@ -47,6 +47,7 @@ import { uaToken } from './core/runtime/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/runtime/version.ts';
 import type { Collectors } from './core/snapshot/collector.ts';
 import {
+  type BrowserEntry,
   type DiagnosticInput,
   detectTrustStore,
   SNAPSHOT_VERSION,
@@ -57,7 +58,7 @@ import {
 import { classifyAddress, type NetworkConfig } from './core/url/net.ts';
 import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } from './core/url/url.ts';
 import { derive } from './derive/index.ts';
-import { type CollectState, collect, requiredCollectors } from './scan-collect.ts';
+import { type CollectState, collect, requiredCollectors, TLS_FALLBACK_FAILED } from './scan-collect.ts';
 import { type ResolvedScanOptions, reportOptions, resolveOptions, type ScanOptions } from './scan-options.ts';
 
 export interface ScanResult {
@@ -239,6 +240,7 @@ function scanDiagnostics(
   executed: ReadonlyMap<string, ExecutedCheck>,
   state: CollectState,
   o: ResolvedScanOptions,
+  enabled: readonly AnyCheck[],
 ): Diagnostic[] {
   const inputs: DiagnosticInput[] = [...snapshot.diagnostics];
   for (const e of executed.values()) inputs.push(...(e.outcome?.diagnostics ?? []));
@@ -248,23 +250,57 @@ function scanDiagnostics(
     inputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
   }
   if (o.sandbox === 'off') inputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
-  if (snapshot.collection.browser?.reason === 'tls-blocked')
-    inputs.push(tlsBlockedDiagnostic(snapshot, executed));
+  const browserReason = snapshot.collection.browser?.reason;
+  const entry = snapshot.plan.browserEntry;
+  if (browserReason === 'tls-blocked' || browserReason === TLS_FALLBACK_FAILED)
+    inputs.push(tlsBlockedDiagnostic(snapshot, executed, browserReason));
+  else if (entry) inputs.push(tlsFallbackDiagnostic(snapshot, entry, executed, enabled));
   if (state.fatal?.reason === 'unreachable') inputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
   if (state.fatal?.reason === 'blocked') inputs.push(blockedStartPageDiagnostic(snapshot));
 
   return mergeDiagnostics(inputs);
 }
 
-/** The browser checks did not run because the target's certificate was refused: say so instead of leaving only `skipped`. */
+/**
+ * The browser checks did not run because the target's certificate was refused: say so instead of leaving only
+ * `skipped`, with why the browser did not continue on the redirect target of the plain-http address (`fallback`).
+ */
 function tlsBlockedDiagnostic(
   snapshot: Snapshot,
   executed: ReadonlyMap<string, ExecutedCheck>,
+  reason: string,
 ): DiagnosticInput {
   const affected = [...executed.entries()]
-    .filter(([, e]) => e.status === 'skipped' && e.reason === 'tls-blocked')
+    .filter(([, e]) => e.status === 'skipped' && e.reason === reason)
     .map(([id]) => id);
-  return { code: 'SCAN-TLS-BLOCKED', affects: affected, params: { host: snapshot.target.host } };
+  const entry = snapshot.plan.browserEntry;
+  const fallback = reason === TLS_FALLBACK_FAILED ? 'blocked' : snapshot.plan.tlsFallback;
+  return {
+    code: 'SCAN-TLS-BLOCKED',
+    affects: affected,
+    params: {
+      host: snapshot.target.host,
+      ...(fallback ? { fallback } : {}),
+      ...(reason === TLS_FALLBACK_FAILED && entry ? { via: entry.via, url: entry.url } : {}),
+    },
+  };
+}
+
+/** The browser checks ran on the redirect target of a refused certificate, not on the target: the report says where. */
+function tlsFallbackDiagnostic(
+  snapshot: Snapshot,
+  entry: BrowserEntry,
+  executed: ReadonlyMap<string, ExecutedCheck>,
+  enabled: readonly AnyCheck[],
+): DiagnosticInput {
+  const affected = enabled
+    .filter((c) => requiredCollectors([c]).has('browser') && executed.get(c.id)?.status !== 'skipped')
+    .map((c) => c.id);
+  return {
+    code: 'SCAN-TLS-FALLBACK',
+    affects: affected,
+    params: { host: snapshot.target.host, via: entry.via, url: entry.url },
+  };
 }
 
 /** Bot-protection signals are listed up to a cap so that the diagnostic stays short. */
@@ -373,7 +409,7 @@ function evaluateSnapshot(
 
   return {
     assessed,
-    diagnostics: scanDiagnostics(snapshot, executed, state, o),
+    diagnostics: scanDiagnostics(snapshot, executed, state, o, enabled),
     gateChecks: toGateChecks(assessed.checks, new Set(disabled.map((c) => c.id))),
     gateFindings: toGateFindings(assessed.findings, core.ruleset),
   };

@@ -58,8 +58,8 @@ export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): 
       phaseTiming: c.timing.phases[s.phase],
       signal: c.ctx.signal,
       target: {
-        etld1: c.scope.etld1 ?? c.ctx.target.etld1,
-        host: c.scope.finalHost || c.ctx.target.host,
+        etld1: c.scope.etld1 ?? c.start.etld1,
+        host: c.scope.finalHost || c.start.host,
       },
       now: c.ctx.now,
     },
@@ -173,8 +173,8 @@ export function throttleStatus(r: VisitResult): number | null {
 
 function isTargetHost(c: BrowserCollection, host: string): boolean {
   const h = host.toLowerCase();
-  const finalHost = c.scope.finalHost || c.ctx.target.host;
-  return h === finalHost || h === c.ctx.target.host || h === `www.${finalHost}` || `www.${h}` === finalHost;
+  const finalHost = c.scope.finalHost || c.start.host;
+  return h === finalHost || h === c.start.host || h === `www.${finalHost}` || `www.${h}` === finalHost;
 }
 
 export function checkThrottleResponses(c: BrowserCollection, s: Session, url: SanitizedUrl): void {

@@ -15,6 +15,7 @@ describe('built-in defaults', () => {
     ['scan', 'proxy', null],
     ['scan', 'abortGraceMs', 10_000],
     ['scan', 'reportWriteReserveMs', 30_000],
+    ['scan', 'tlsFallback', 'http-redirect'],
     ['browser', 'sandbox', 'require'],
     ['browser', 'launchTimeoutMs', 60_000],
     ['browser', 'navigationPauseMs', 1_500],

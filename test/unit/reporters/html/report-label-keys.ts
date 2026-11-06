@@ -138,6 +138,17 @@ export function usedReportLabelKeys(): string[] {
   capture(front);
   capture(front, 'brief');
 
+  // The browser checks ran on the redirect target of a refused certificate.
+  const continued = sampleFullReport();
+  continued.scan.finalUrl = 'https://www.example.com/';
+  continued.scan.entry = {
+    reason: 'tls-invalid',
+    requested: continued.scan.target,
+    via: 'http://www.example.de/',
+    url: 'https://www.example.com/',
+  };
+  capture(continued, 'brief');
+
   // A re-evaluated snapshot, a site without a banner, and the pages and headers of one finding listed together.
   const replay = sampleFullReport();
   replay.scan.evaluatedAt = '2026-11-01T10:00:00.000Z';

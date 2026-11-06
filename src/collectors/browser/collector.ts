@@ -22,6 +22,7 @@ import type {
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
 import type { ProbeRecord } from '../../core/snapshot/http.ts';
 import type { DiagnosticInput } from '../../core/snapshot/index.ts';
+import { registrableDomain } from '../../core/url/url.ts';
 import { type CmpApi, CmpBridge } from './cmp-bridge.ts';
 import {
   BASE_KNOWN_GAPS,
@@ -113,7 +114,27 @@ export interface AVisit {
   source: PlannedPage['source'];
 }
 
-export type PhaseAOutcome = { kind: 'ok' } | { kind: 'fatal'; fatal: FatalSignal } | { kind: 'tls-blocked' };
+export type PhaseAOutcome =
+  | { kind: 'ok' }
+  | { kind: 'fatal'; fatal: FatalSignal }
+  | { kind: 'tls-blocked' }
+  | { kind: 'fallback-failed'; error: CollectorError };
+
+/** Where phase A starts: the target, or the start page the orchestrator chose (`ctx.entry`); raw URL. */
+export interface StartTarget {
+  url: string;
+  host: string;
+  etld1: string | null;
+  /** The redirect target of a refused certificate: a failing start page there ends the browser, not the scan. */
+  fallback: boolean;
+}
+
+function startTargetOf(ctx: CollectorContext): StartTarget {
+  if (!ctx.entry)
+    return { url: ctx.target.url, host: ctx.target.host, etld1: ctx.target.etld1, fallback: false };
+  const host = new URL(ctx.entry.url).hostname.toLowerCase();
+  return { url: ctx.entry.url, host, etld1: registrableDomain(host), fallback: true };
+}
 
 /** Without frames the jar reads cookies only (PDF viewer, error pages: nothing to read in-page). */
 function withoutFrames(page: Page): Page {
@@ -157,11 +178,13 @@ export class BrowserCollection {
   readonly ctx: CollectorContext;
   readonly deps: BrowserCollectorDeps;
   readonly timing: BrowserTiming;
+  readonly start: StartTarget;
   private readonly clock: ScanClock;
 
   constructor(ctx: CollectorContext, deps: BrowserCollectorDeps) {
     this.ctx = ctx;
     this.deps = deps;
+    this.start = startTargetOf(ctx);
     this.timing = deps.timing ?? browserTiming(ctx.config.browser);
     this.counter = {
       limit: deps.requestLimit ?? ctx.config.browser.requestLimit,
@@ -224,6 +247,9 @@ export class BrowserCollection {
       // A failure caused by the abort is not a fatal of the site.
       if (this.ctx.signal.aborted) return this.abortedResult();
       if (a.kind === 'tls-blocked') return { status: 'skipped', reason: 'tls-blocked', sections: {} };
+      if (a.kind === 'fallback-failed') {
+        return { status: 'skipped', reason: 'tls-fallback-failed', sections: {}, error: a.error };
+      }
       if (a.kind === 'fatal') return { ...this.result('error'), fatal: a.fatal, reason: a.fatal.code };
 
       if (this.deps.phases.includes('B')) await this.runPhase('B', () => phaseB(this));
@@ -353,7 +379,7 @@ export class BrowserCollection {
       throw new Error('aborted');
     }
 
-    const etld1 = this.scope.etld1 ?? this.ctx.target.etld1;
+    const etld1 = this.scope.etld1 ?? this.start.etld1;
     const recorder = this.attachRecorder(phase, etld1, browser.context);
     await browser.context.addInitScript(cookieHookInit);
     await browser.context.addInitScript(storageHookInit);
@@ -362,7 +388,7 @@ export class BrowserCollection {
     const guard = await this.installGuard(browser.context, recorder);
 
     const record = this.startedPhaseRecord(phase);
-    const host = this.scope.finalHost || this.ctx.target.host;
+    const host = this.scope.finalHost || this.start.host;
     const session: Session = {
       phase,
       browser,

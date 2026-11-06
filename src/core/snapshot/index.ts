@@ -126,9 +126,32 @@ function caOptions(
   return { systemFlag, openssl };
 }
 
+/**
+ * The browser's start page when it is not the target: the target's certificate was refused, and the plain-http address
+ * of the target redirects to another host over https connections whose certificates were all accepted.
+ */
+export interface BrowserEntry {
+  reason: 'tls-invalid';
+  /** The plain-http address of the target whose redirect chain was followed. */
+  via: SanitizedUrl;
+  /** Where that chain ended: phase A starts here. */
+  url: SanitizedUrl;
+}
+
+/**
+ * Why the browser did not continue on another host after the target's certificate was refused: `none` no redirect of the
+ * plain-http address to another host with a usable page, `same-host` it leads to https of the target itself, `invalid`
+ * not every certificate on the way was accepted, `off` switched off by the operator.
+ */
+export type TlsFallbackDeclined = 'none' | 'same-host' | 'invalid' | 'off';
+
 export interface ScanPlan {
   browser: BrowserPlan | null;
   probes: ProbeRecord[];
+  /** Set when the browser started on the redirect target of a refused certificate; absent when it started on the target. */
+  browserEntry?: BrowserEntry;
+  /** Set when the target's certificate was refused and the browser did not continue elsewhere. Absent in older snapshots. */
+  tlsFallback?: TlsFallbackDeclined;
 }
 
 export type CollectorName = 'browser' | 'http' | 'tls' | 'dns';

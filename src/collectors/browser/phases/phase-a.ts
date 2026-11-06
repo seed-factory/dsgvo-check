@@ -51,14 +51,17 @@ async function phaseABody(c: BrowserCollection, s: Session): Promise<PhaseAOutco
   if (c.ctx.signal.aborted) return { kind: 'ok' }; // run() reports the abort
 
   const fatal = startFatal(c, start);
-  if (fatal) {
-    if (fatal.kind === 'tls-blocked') {
+  // The redirect target of a refused certificate was only an attempt: a start page there that fails or gives nothing
+  // to evaluate skips the browser checks (`tls-fallback-failed`), as the refused certificate alone would have.
+  const outcome = c.start.fallback ? fallbackOutcome(fatal, start) : fatal;
+  if (outcome) {
+    if (outcome.kind !== 'fatal') {
       // Do not keep a phase record for a site the browser cannot open; the orchestrator skips checks.
       await s.browser.close();
       c.current = null;
       c.session = null;
     }
-    return fatal;
+    return outcome;
   }
 
   const visited = await adoptStartPage(c, s, start, startStatuses);
@@ -79,7 +82,7 @@ async function phaseABody(c: BrowserCollection, s: Session): Promise<PhaseAOutco
 
 async function visitStart(c: BrowserCollection, s: Session): Promise<{ r: VisitResult; statuses: number[] }> {
   const spec: VisitSpec = {
-    rawUrl: c.ctx.target.url,
+    rawUrl: c.start.url,
     role: 'start',
     order: 0,
     phase: 'A',
@@ -171,7 +174,7 @@ function failedStartNavigation(c: BrowserCollection, code: string): PhaseAOutcom
 
   if (code === 'ERR_BLOCKED_BY_CLIENT' && c.guard.blocked > 0) {
     // Word it by the facts: a redirect only when the refused document is on another host.
-    const redirected = [...c.guardBlockedHosts].some((h) => h !== c.ctx.target.host.toLowerCase());
+    const redirected = [...c.guardBlockedHosts].some((h) => h !== c.start.host.toLowerCase());
     const params = { redirected: redirected ? 'yes' : 'no' };
     // Refused because the name does not resolve locally: the target is unreachable, not "not public".
     if (c.guardVerdicts.every((v) => v === 'unresolved')) {
@@ -181,6 +184,28 @@ function failedStartNavigation(c: BrowserCollection, code: string): PhaseAOutcom
   }
 
   return fatalStart('unreachable', 'start-page-unreachable', { reason: code });
+}
+
+/**
+ * The start page on the redirect target as the collection records it: the code of the fatal it would have been on the
+ * target and its params, `start-page-not-evaluable` for one that is no fatal but cannot be evaluated (a 429 or 4xx
+ * page), else null.
+ */
+function fallbackOutcome(fatal: PhaseAOutcome | null, start: VisitResult): PhaseAOutcome | null {
+  const failed = (code: string, message: string): PhaseAOutcome => ({
+    kind: 'fallback-failed',
+    error: { code, message },
+  });
+  if (fatal?.kind === 'fatal') {
+    const params = Object.entries(fatal.fatal.params ?? {}).map(([k, v]) => `${k}=${v}`);
+    return failed(fatal.fatal.code, params.join('; '));
+  }
+  if (fatal)
+    return failed('start-page-tls', start.error ? navigationErrorCode(start.error) : 'certificate refused');
+  if (!start.visit.evaluable) {
+    return failed('start-page-not-evaluable', start.visit.notEvaluableReason ?? 'not evaluable');
+  }
+  return null;
 }
 
 function fatalStart(
@@ -216,7 +241,7 @@ async function adoptStartPage(
   if (throttleStatus(start) === 429) markThrottled(c, s, 'navigation', start.visit.url, startStatuses);
   checkThrottleResponses(c, s, start.visit.url);
 
-  return new Set<string>([pageKey(c.ctx.target.url), pageKey(c.startRaw)]);
+  return new Set<string>([pageKey(c.start.url), pageKey(c.startRaw)]);
 }
 
 /** Pages to visit from the start page's links; the sitemap fills up when the links give too few extras. */

@@ -58,7 +58,9 @@ ui:
   report.overview.open: >-
     {count, plural, one {One check} other {# checks}} ({checks}) {cause, select, tls-blocked {{count, plural, one
     {was} other {were}} not run: the certificate of the website was not accepted as valid, so the browser did not
-    visit the website.} geo {{count, plural, one {is} other {are}} inconclusive: the consent banner reported a
+    visit the website.} tls-fallback-failed {{count, plural, one {was} other {were}} not run: the certificate of
+    the website was not accepted as valid, and the browser did not receive an evaluable page on the target of its
+    HTTP redirect.} geo {{count, plural, one {is} other {are}} inconclusive: the consent banner reported a
     location outside the EEA and may behave differently towards visitors from the EEA.} bot {{count, plural, one {is}
     other {are}} inconclusive: the consent banner treated the scan as automated traffic.} reject {{count, plural, one
     {is} other {are}} inconclusive: the rejection in the consent banner could not be triggered or confirmed.} timeout
@@ -84,6 +86,11 @@ ui:
     visitors from the EEA.
   report.overview.redirect: >-
     The given address redirects to {host}. For a complete picture, this address should be scanned directly as well.
+  # The browser checks ran on the target of the plain-http redirect (`entryHost`) because the certificate of `host` was
+  # refused; `finalHost` is where the browser's start page ended.
+  report.overview.tlsFallback: >-
+    The certificate of the given address {host} was not accepted as valid. Its plain-http address redirects to
+    {entryHost}, whose certificate was accepted as valid; the browser checks refer to {finalHost}.
   report.actions.covers: "{findings, plural, one {# finding} other {# findings}}{pages, plural, =0 {} one {, # page} other {, # pages}}"
   # Tail of a list of differing values that names only the first ones.
   report.list.more: "{count, plural, other {and # more}}"
@@ -262,7 +269,8 @@ ui:
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
-    {code, select, tls-blocked {certificate not accepted as valid, website not visited} not-selected {not selected
+    {code, select, tls-blocked {certificate not accepted as valid, website not visited} tls-fallback-failed
+    {certificate not accepted as valid, target of the HTTP redirect not evaluable} not-selected {not selected
     (--checks)} not-required {not needed by any selected check} not-run {not run} not-collected {raw data not
     collected} collector-skipped {collection of raw data skipped} collector-error {error while collecting raw data
     ({detail})} timeout {time limit reached} time-budget {remaining scan time not sufficient} request-cap {request

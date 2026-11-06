@@ -239,7 +239,16 @@ export function bannerState(report: Report): BannerState | null {
 type CheckEntry = NonNullable<Report['checks']>[number];
 
 /** Why a check gave no conclusive result, in the groups the overview names; null for checks with a result. */
-const OPEN_CAUSES = ['tls-blocked', 'geo', 'bot', 'reject', 'timeout', 'error', 'other'] as const;
+const OPEN_CAUSES = [
+  'tls-blocked',
+  'tls-fallback-failed',
+  'geo',
+  'bot',
+  'reject',
+  'timeout',
+  'error',
+  'other',
+] as const;
 type OpenCause = (typeof OPEN_CAUSES)[number];
 
 const INCONCLUSIVE_CAUSES: Readonly<Record<string, OpenCause>> = {
@@ -264,7 +273,7 @@ function openCause(c: CheckEntry): OpenCause | 'banner' | null {
     case 'skipped':
       // Checks left out with --checks were not asked for.
       if (reason === 'not-selected') return null;
-      return reason === 'tls-blocked' ? 'tls-blocked' : 'other';
+      return reason === 'tls-blocked' || reason === 'tls-fallback-failed' ? reason : 'other';
     case 'inconclusive':
       if (BANNER_REASONS.has(reason)) return 'banner';
       return INCONCLUSIVE_CAUSES[reason] ?? 'other';
@@ -354,6 +363,20 @@ const hostOf = (url: string | null | undefined): string | null => {
   }
 };
 
+/**
+ * The browser checks ran on the redirect target of a refused certificate: the first page says so, instead of asking
+ * the reader to scan that address directly.
+ */
+function tlsFallbackSentence(report: Report, tools: FrontPageTools): string | null {
+  const entry = report.scan.status === 'failed' ? undefined : report.scan.entry;
+  const host = hostOf(entry?.requested);
+  const entryHost = hostOf(entry?.url);
+  if (!host || !entryHost) return null;
+  // The browser may have been sent on from there: the checks refer to where its start page ended.
+  const finalHost = hostOf(report.scan.finalUrl) ?? entryHost;
+  return tools.label('overview.tlsFallback', { host, entryHost, finalHost });
+}
+
 /** The start page ends up on another site: the scan covers that site only as far as the start pages go. */
 function redirectedHost(report: Report): string | null {
   const from = hostOf(report.scan.target);
@@ -395,7 +418,10 @@ function countSentences(
   return sentences;
 }
 
-/** The counts, the scan status, checks without a result, the banner, the region and a redirect to another site. */
+/**
+ * The counts, the scan status, checks without a result, the banner, the region, and a redirect to another site or the
+ * browser checks run on the redirect target of a refused certificate.
+ */
 function overviewSentences(
   report: Report,
   items: readonly Item[],
@@ -432,7 +458,9 @@ function overviewSentences(
     sentences.push(tools.label('overview.region'));
   }
 
-  const redirected = redirectedHost(report);
+  const fallback = tlsFallbackSentence(report, tools);
+  const redirected = fallback ? null : redirectedHost(report);
+  if (fallback) sentences.push(fallback);
   if (redirected) sentences.push(tools.label('overview.redirect', { host: redirected }));
   return sentences;
 }

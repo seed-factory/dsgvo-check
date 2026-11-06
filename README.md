@@ -174,6 +174,14 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
+- Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
+  unverschlüsselte Adresse (`http://`, Standardport) auf einen anderen Host weiter und wurde jedes Zertifikat auf
+  diesem Weg als gültig angenommen, laufen die Phasen A, B und C dort, mit derselben Prüfung der Zertifikate wie sonst.
+  Der Bericht nennt das (`SCAN-TLS-FALLBACK`, in `report.json` unter `scan.entry`); TLS-02 meldet das Zertifikat der
+  Ziel-URL weiterhin. Eine Weiterleitung, die über ein abgelehntes Zertifikat läuft, zählt nicht. Liefert der Browser
+  dort keine auswertbare Seite (Challenge, Fehlerstatus, Zeitlimit) oder kommt er nicht bis dorthin, entfallen die
+  Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl.
+  `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
 
 ### Banner
 
@@ -521,7 +529,8 @@ Der Scanner schickt Browser-Navigationen und die folgenden Standardanfragen, son
 will, was bei ihm angekommen ist, findet es hier vollständig.
 
 - **Browser:** Navigationen der Phasen A, B und C (siehe [Ablauf im Browser](#ablauf-im-browser)), jeweils eine nach
-  der anderen mit mindestens 1,5 s Pause.
+  der anderen mit mindestens 1,5 s Pause. Bei einem abgelehnten Zertifikat der Ziel-URL gehen sie an das Ziel ihrer
+  HTTP-Weiterleitung, nicht zusätzlich.
 - **HTTP** (höchstens 2 Anfragen pro Sekunde und Host):
   - `robots.txt` des Ursprungs der Startseite;
   - höchstens 2 Sitemap-Anfragen, nur wenn die Links der Startseite das Seitenbudget nicht füllen (die Sitemap oder ein
@@ -563,6 +572,12 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
+  auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die
+  Seite selbst aus, leitet es auf HTTPS desselben Hosts weiter oder nennt die Ziel-URL einen Port oder eine IP-Adresse,
+  entfallen sie (`SCAN-TLS-BLOCKED` nennt den Grund). Hinter `--proxy` ist das Urteil über die Zertifikate unbekannt,
+  der Browser wechselt dann nicht. Ohne TLS-02 (`--checks`) wird das Zertifikat nicht vorab geprüft: Der Browser ruft
+  die Ziel-URL auf und bricht beim Zertifikat ab, ohne Fortsetzung.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
   Ziel hinter einem `--proxy`. Den Scanner nicht in einem Netz mit sensiblen internen Diensten und nicht in Jobs mit

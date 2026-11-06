@@ -58,7 +58,9 @@ ui:
   report.overview.open: >-
     {count, plural, one {Eine Prüfung} other {# Prüfungen}} ({checks}) {cause, select, tls-blocked {{count, plural,
     one {wurde} other {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen,
-    deshalb hat der Browser die Website nicht aufgerufen.} geo {{count, plural, one {ist} other {sind}} nicht
+    deshalb hat der Browser die Website nicht aufgerufen.} tls-fallback-failed {{count, plural, one {wurde} other
+    {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und auf dem Ziel ihrer
+    HTTP-Weiterleitung hat der Browser keine auswertbare Seite erhalten.} geo {{count, plural, one {ist} other {sind}} nicht
     eindeutig: Das Einwilligungsbanner hat einen Standort außerhalb des EWR gemeldet und verhält sich gegenüber
     Besuchern aus dem EWR womöglich anders.} bot {{count, plural, one {ist} other {sind}} nicht eindeutig: Das
     Einwilligungsbanner hat den Scan als automatisierten Zugriff behandelt.} reject {{count, plural, one {ist} other
@@ -88,6 +90,12 @@ ui:
   report.overview.redirect: >-
     Die angegebene Adresse leitet auf {host} weiter. Für ein vollständiges Bild sollte auch diese Adresse direkt
     gescannt werden.
+  # The browser checks ran on the target of the plain-http redirect (`entryHost`) because the certificate of `host` was
+  # refused; `finalHost` is where the browser's start page ended.
+  report.overview.tlsFallback: >-
+    Das Zertifikat der angegebenen Adresse {host} wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse
+    leitet auf {entryHost} weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen
+    sich auf {finalHost}.
   report.actions.covers: "{findings, plural, one {# Befund} other {# Befunde}}{pages, plural, =0 {} one {, # Seite} other {, # Seiten}}"
   # Tail of a list of differing values that names only the first ones.
   report.list.more: "{count, plural, other {und # weitere}}"
@@ -267,7 +275,9 @@ ui:
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
-    {code, select, tls-blocked {Zertifikat nicht als gültig angenommen, Website nicht aufgerufen} not-selected {nicht
+    {code, select, tls-blocked {Zertifikat nicht als gültig angenommen, Website nicht aufgerufen}
+    tls-fallback-failed {Zertifikat nicht als gültig angenommen, Ziel der HTTP-Weiterleitung nicht auswertbar}
+    not-selected {nicht
     ausgewählt (--checks)} not-required {von keiner ausgewählten Prüfung benötigt} not-run {nicht ausgeführt}
     not-collected {Rohdaten nicht erhoben} collector-skipped {Erhebung der Rohdaten übersprungen} collector-error
     {Fehler bei der Erhebung der Rohdaten ({detail})} timeout {Zeitlimit erreicht} time-budget {Restzeit des Scans

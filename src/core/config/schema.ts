@@ -24,6 +24,10 @@ const int = (def: number, description: string, min: number, max?: number, minRea
 const ratio = (def: number, description: string) =>
   z.number().gt(0).max(1).default(def).meta({ description });
 
+/** What the scan does when the target's certificate is refused (`scan.tlsFallback`). */
+export const TLS_FALLBACK_MODES = ['http-redirect', 'off'] as const;
+export type TlsFallbackMode = (typeof TLS_FALLBACK_MODES)[number];
+
 /** `host`, `host:port`, `[v6]` or `[v6]:port` as accepted by `dns.Resolver.setServers`. */
 const DNS_SERVER = /^(?:\[[0-9a-f:.]+\]|[0-9a-f:.]+|[a-z0-9.-]+)(?::\d{1,5})?$/i;
 
@@ -52,6 +56,10 @@ const scan = z.strictObject({
     `Reserve on top of the global timeout for writing reports; the watchdog ends the process after timeout plus reserve. Must cover ${envName('scan', 'abortGraceMs')} plus ${envName('pdf', 'timeoutMs')}.`,
     1,
   ),
+  tlsFallback: z.enum(TLS_FALLBACK_MODES).default('http-redirect').meta({
+    description:
+      'Certificate of the target not accepted: http-redirect runs the browser checks on the host its plain-http address redirects to, when every certificate on that way was accepted; off skips the browser checks.',
+  }),
 });
 
 const browser = z.strictObject({

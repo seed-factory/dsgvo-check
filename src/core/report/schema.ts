@@ -599,10 +599,24 @@ const EvaluatedAtSchema = IsoDateTime.optional().meta({
     'Only for a re-evaluated snapshot (--from-snapshot): when the evaluation ran. startedAt and durationMs then describe the capture.',
 });
 
+const ScanEntrySchema = z
+  .object({
+    reason: z.literal('tls-invalid'),
+    requested: z.string(),
+    via: z.string(),
+    url: z.string(),
+  })
+  .meta({
+    description:
+      'Where the browser checks ran when not on the target: the certificate of `requested` was not accepted, and its plain-http address `via` redirects to `url`, reached over connections whose certificates were all accepted. Absent when the browser started on the target and in reports of earlier versions.',
+  });
+export type ScanEntry = z.infer<typeof ScanEntrySchema>;
+
 const ScanCompleteSchema = z.object({
   status: z.enum(['complete', 'partial']),
   target: z.string(),
   finalUrl: z.string().nullable(),
+  entry: ScanEntrySchema.optional(),
   startedAt: IsoDateTime.meta({
     description:
       'Start of the observation; for a re-evaluated snapshot (--from-snapshot) the time it was captured',
