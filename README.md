@@ -625,8 +625,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
   höchstens `medium`.
 - **Unterhalb des ersten Bildschirms** zeigt der Scanner eine Seite nur bis 10 000 Pixel Höhe: Was darunter liegt,
-  bleibt ungesehen, und EMBED-01 und EMBED-02 nennen die Einschränkung `reveal-height-capped`. Inhalte, die erst auf
-  ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit
+  bleibt ungesehen, und EMBED-01, EMBED-02 und EMBED-03 nennen die Einschränkung `reveal-height-capped`. Inhalte, die
+  erst auf ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit
   `DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS=0` bleibt es beim ersten Bildschirm; der Bericht nennt dann die
   Beobachtungslücke `below-fold-not-revealed`.
 - **Nur wenige Seiten.** Phase A sieht die Startseite, die Rechtstexte, die Kontaktseite und so viele weitere Seiten,

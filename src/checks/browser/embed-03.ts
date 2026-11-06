@@ -11,12 +11,19 @@ import { sortedUniq } from './lists.ts';
 import { loadMoment, type RejectFacts, rejectFacts, rejectProof } from './reject-moment.ts';
 import { serviceFields, serviceName } from './services.ts';
 import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
-import { hasPhaseA, noPhaseAReason, phaseRecord, requestIndex, throttleAware } from './snapshot.ts';
+import {
+  hasPhaseA,
+  noPhaseAReason,
+  phaseRecord,
+  requestIndex,
+  revealCapped,
+  throttleAware,
+} from './snapshot.ts';
 
 const ID = 'EMBED-03';
 /** Strongest integration first: a player says more than its API, the API more than a thumbnail without a player. */
 const INTEGRATION_ORDER = ['iframe', 'js-api', 'thumbnail', 'other'];
-/** Reason of a page the planner chose for its video link (`extraKeywords` in `browser/pages.yaml`). */
+/** Reason of a page the planner chose for its video link (group `video` of `extraGroups` in `browser/pages.yaml`). */
 const VIDEO_PAGE_REASON = 'keyword:video';
 
 /** Category of a catalog service: derive lists the observed ones and every one a policy may name. */
@@ -179,7 +186,11 @@ export const embed03 = defineCheck({
       .map(([owner, reqs]) => videoObservation(owner, reqs, x));
 
     const blocked = videoPageBlocked(browser, plan);
-    const unloaded = unloadedVideoFrame(browser, x) ? ['video-embed-not-loaded'] : [];
+    // A video below the part of a tall page the reveal showed never loaded: a limitation, as in EMBED-01 and EMBED-02.
+    const unloaded = [
+      ...(unloadedVideoFrame(browser, x) ? ['video-embed-not-loaded'] : []),
+      ...(revealCapped(browser, ['A', 'B']) ? ['reveal-height-capped'] : []),
+    ];
     if (observations.length === 0 && blocked) {
       return {
         status: 'inconclusive',

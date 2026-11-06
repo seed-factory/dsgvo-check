@@ -4,7 +4,12 @@ import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
-import type { IframeFact, PhaseRecord, RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
+import type {
+  IframeFact,
+  PageVisit,
+  PhaseRecord,
+  RequestRecord,
+} from '../../../../../src/core/snapshot/browser.ts';
 import {
   makeBrowserPlan,
   makeDom,
@@ -66,6 +71,27 @@ describe('EMBED-03 external videos and thumbnails', () => {
       },
     });
     expect(o?.evidence[0]).toMatchObject({ type: 'request', url: 'https://www.youtube.com/embed/abc123' });
+  });
+
+  it('a page taller than the largest viewport of the reveal is a limitation beside the finding', () => {
+    const withReveal = (reveal: PageVisit['reveal']) => {
+      const built = scenario('violation-youtube-embed.json');
+      const a = built.browser?.phases.find((p) => p.phase === 'A');
+      const videos = a?.pages.find((p) => p.url === VIDEOS);
+      if (videos && reveal) videos.reveal = reveal;
+      return runCheck(embed03, built);
+    };
+
+    const r = withReveal({
+      outcome: 'revealed',
+      documentHeightPx: 20_000,
+      viewportHeightPx: 10_000,
+      capped: true,
+    });
+    expect(r.outcome?.limitations).toEqual(['reveal-height-capped']);
+    expect(variantsOf(r)).toEqual(['video-loaded']);
+    expect(withReveal(undefined).outcome?.limitations).toEqual([]);
+    expect(withReveal({ outcome: 'fits-viewport', documentHeightPx: 700 }).outcome?.limitations).toEqual([]);
   });
 
   it('violation: a thumbnail of the history page before the interaction and again after the confirmed reject', () => {
