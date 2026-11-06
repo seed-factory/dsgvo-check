@@ -349,6 +349,141 @@ export function rejectCmp(o: {
   });
 }
 
+/** A first-layer control of the Wix-like bar below, as the adapter measures it. */
+const barControl = (name: string, kind: 'accept' | 'settings') => ({
+  role: 'button',
+  name,
+  tag: 'button',
+  kind,
+  kindConfidence: 'high' as const,
+  layer: 1 as const,
+  box: { x: 900, y: 700, width: 160, height: 40 },
+  visibleAtFirstScreen: true,
+  actionableAtFirstScreen: true,
+  contrast: 7,
+  selector: `[data-hook="${kind}"]`,
+  vendorRole: kind,
+});
+
+/** The Wix policy categories: every optional one denied after the save. */
+const wixDenied = (origin: ConsentStateFact['origin']): ConsentStateFact => ({
+  source: 'api',
+  ready: 'ready',
+  categories: { functional: 'denied', analytics: 'denied', advertising: 'denied' },
+  origin,
+  decision: { responded: true, method: 'explicit' },
+});
+
+/**
+ * Phase B of a Wix-like bar whose first layer has only "Cookie-Einstellungen" and "Zustimmen": the reject is the save
+ * control of the settings layer. `pressed: false` stands for a layer that was opened but not saved (`reason` in the
+ * plan), `confirmed: false` for a save the platform policy did not record (it stayed the default).
+ */
+export function settingsRejectCmp(o: { pressed?: boolean; confirmed?: boolean } = {}): CmpSection {
+  const pressed = o.pressed ?? true;
+  const confirmed = pressed && (o.confirmed ?? true);
+  const wix = {
+    cmpId: 'wix',
+    method: 'adapter' as const,
+    version: null,
+    versionSupported: null,
+    recognitionConfidence: 'high' as const,
+    signals: ['dom:[data-hook="consent-banner-root"]', 'script:static.parastorage.com'],
+  };
+  const first = cmpFacts({
+    detection: wix,
+    firstLayer: {
+      bannerPresent: true,
+      bannerVisible: true,
+      buttons: [barControl('Cookie-Einstellungen', 'settings'), barControl('Zustimmen', 'accept')],
+      purAbo: false,
+      closeMeansAccept: null,
+    },
+    blocking: { overlay: false, scrollLock: false, inert: false, coveredRatio: 0.15, method: [] },
+    state: [{ ...wixDenied('default'), decision: { responded: false, method: 'unknown' } }],
+  });
+  const afterReload = cmpFacts({
+    detection: wix,
+    moment: 'after-reload',
+    state: confirmed ? [wixDenied('stored')] : [],
+  });
+  const settings = {
+    takenAt: '2026-11-07T10:00:00.000Z',
+    opened: true,
+    buttons: [],
+    containerUnambiguous: true,
+    buttonsTruncated: false,
+    groups: [
+      { checked: true, disabled: true },
+      { checked: false, disabled: false },
+      { checked: !pressed, disabled: false },
+    ],
+    essentialGroups: 1,
+  };
+  const button = {
+    name: 'Speichern',
+    role: 'button',
+    kind: 'reject' as const,
+    kindConfidence: 'high' as const,
+  };
+  return cmpWith({
+    phase: 'B',
+    facts: pressed ? [first, afterReload] : [first],
+    settings,
+    click: pressed
+      ? { action: 'reject', clicked: true, button, path: 'settings' }
+      : { action: 'reject', clicked: false, button: null, error: 'no-unambiguous-reject' },
+    ...(pressed
+      ? {
+          verify: confirmed
+            ? {
+                action: 'reject' as const,
+                verified: true,
+                method: ['api:all-denied', 'persisted-after-reload'],
+                stateAfter: [wixDenied('action')],
+                persistedAfterReload: true,
+              }
+            : {
+                action: 'reject' as const,
+                verified: false,
+                method: [],
+                stateAfter: [
+                  { ...wixDenied('default'), decision: { responded: false, method: 'unknown' as const } },
+                ],
+                persistedAfterReload: false,
+                reason: 'decision:not-responded',
+              },
+        }
+      : {}),
+  });
+}
+
+/** The plan of that phase B: no first-layer reject, the settings control opened and its save pressed, or why not. */
+export function settingsRejectPlan(reason?: string): BrowserPlan {
+  const target = (name: string) => ({ cmpId: 'wix', name, role: 'button', kindConfidence: 'high' as const });
+  return {
+    pages: [],
+    controlPages: [],
+    click: {
+      B: {
+        phase: 'B',
+        action: 'reject',
+        target: null,
+        reason: 'no-unambiguous-reject-at-first-layer',
+        settings: {
+          open: target('Cookie-Einstellungen'),
+          save: reason ? null : target('Speichern'),
+          ...(reason ? { reason } : {}),
+        },
+      },
+      C: { phase: 'C', action: 'accept', target: target('Zustimmen') },
+    },
+  };
+}
+
+/** The phase B record of a save in the settings layer, pressed as the reject on the start page. */
+export const settingsClick = () => ({ ...click('reject'), cmpId: 'wix', name: 'Speichern' });
+
 /** A banner-shaped box the generic heuristic dismissed: one consent keyword and a settings button, no banner name. */
 export const bannerCandidate = (p: Partial<BannerCandidateFact> = {}): BannerCandidateFact => ({
   reason: 'keywords',

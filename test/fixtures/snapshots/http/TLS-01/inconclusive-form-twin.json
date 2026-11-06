@@ -1,0 +1,347 @@
+{
+  "$description": "http:// of www serves content without a redirect; the http:// address of the article timed out, and that of the contact page was cut at the read limit before a form was seen: no clean claim about either, only the root's no-redirect",
+  "$expect": {
+    "status": "partial",
+    "variants": [
+      "no-redirect"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      {
+        "id": "chain-target-http",
+        "hostVariant": "target",
+        "host": "www.example.test",
+        "scheme": "http",
+        "startUrl": "http://www.example.test/",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 200,
+            "headers": [],
+            "setCookieNames": [],
+            "durationMs": 20,
+            "requestedAt": "2026-10-30T12:00:00.000Z",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "hasForm": false,
+            "forms": [],
+            "formInspection": "complete"
+          }
+        ],
+        "final": {
+          "url": "http://www.example.test/",
+          "status": 200,
+          "headers": [],
+          "setCookieNames": [],
+          "durationMs": 20,
+          "requestedAt": "2026-10-30T12:00:00.000Z",
+          "bodyBytes": 20000,
+          "bodyKind": "html",
+          "hasForm": false,
+          "forms": [],
+          "formInspection": "complete"
+        },
+        "outcome": "ok"
+      },
+      {
+        "id": "chain-target-https",
+        "hostVariant": "target",
+        "host": "www.example.test",
+        "scheme": "https",
+        "startUrl": "https://www.example.test/",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "status": 200,
+            "headers": [],
+            "setCookieNames": [],
+            "durationMs": 20,
+            "requestedAt": "2026-10-30T12:00:00.000Z",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "final": {
+          "url": "https://www.example.test/",
+          "status": 200,
+          "headers": [],
+          "setCookieNames": [],
+          "durationMs": 20,
+          "requestedAt": "2026-10-30T12:00:00.000Z",
+          "bodyBytes": 20000,
+          "bodyKind": "html",
+          "tlsAuthorized": true,
+          "tlsAuthorizationError": null,
+          "tlsProtocol": "TLSv1.3"
+        },
+        "outcome": "ok"
+      }
+    ],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "chainId": "chain-target-https",
+        "foundVia": "target"
+      }
+    ],
+    "requestsIssued": 3,
+    "throttled": false,
+    "twins": [
+      {
+        "page": "https://www.example.test/post-1/",
+        "url": "http://www.example.test/post-1/",
+        "outcome": "timeout",
+        "hop": null,
+        "error": {
+          "code": "timeout",
+          "message": "Headers Timeout Error",
+          "phase": "http",
+          "url": "http://www.example.test/post-1/"
+        }
+      },
+      {
+        "page": "https://www.example.test/kontakt/",
+        "url": "http://www.example.test/kontakt/",
+        "outcome": "ok",
+        "hop": {
+          "url": "http://www.example.test/kontakt/",
+          "status": 200,
+          "headers": [],
+          "setCookieNames": [],
+          "durationMs": 20,
+          "requestedAt": "2026-10-30T12:00:00.000Z",
+          "bodyBytes": 524288,
+          "bodyTruncated": true,
+          "bodyKind": "html",
+          "hasForm": false,
+          "forms": [],
+          "formInspection": "truncated"
+        }
+      }
+    ],
+    "formTwinStage": {
+      "budget": 3,
+      "candidates": 2,
+      "durationMs": 20400
+    },
+    "errors": []
+  },
+  "browser": {
+    "engine": {
+      "name": "chromium",
+      "channel": "chromium",
+      "version": "156.0.8078.4",
+      "headless": "new",
+      "userAgent": "Mozilla/5.0 Chrome/156.0.0.0 Safari/537.36 dsgvo-check/test",
+      "sandbox": true,
+      "disabledFeatures": []
+    },
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "locale": "de-DE",
+    "timezoneId": "Europe/Berlin",
+    "phases": [
+      {
+        "phase": "A",
+        "status": "completed",
+        "startedAt": "2026-10-30T12:00:00.000Z",
+        "durationMs": 1000,
+        "profile": "persistent-tmp",
+        "pages": [
+          {
+            "url": "https://www.example.test/",
+            "finalUrl": "https://www.example.test/",
+            "role": "start",
+            "order": 0,
+            "phase": "A",
+            "firstVisit": true,
+            "navigation": {
+              "status": 200,
+              "ok": true,
+              "redirectChain": [],
+              "startedAt": "2026-10-30T12:00:00.000Z",
+              "quietReached": true,
+              "dwellMs": 6000
+            },
+            "responseHeaders": [
+              {
+                "name": "content-type",
+                "value": "text/html; charset=utf-8"
+              }
+            ],
+            "setCookieNames": [],
+            "challenge": {
+              "detected": false,
+              "signals": []
+            },
+            "evaluable": true,
+            "dom": {
+              "links": [],
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                }
+              ],
+              "iframes": [],
+              "linkRels": [],
+              "scripts": []
+            }
+          },
+          {
+            "url": "https://www.example.test/kontakt/",
+            "finalUrl": "https://www.example.test/kontakt/",
+            "role": "contact",
+            "order": 1,
+            "phase": "A",
+            "firstVisit": false,
+            "navigation": {
+              "status": 200,
+              "ok": true,
+              "redirectChain": [],
+              "startedAt": "2026-10-30T12:00:00.000Z",
+              "quietReached": true,
+              "dwellMs": 6000
+            },
+            "responseHeaders": [
+              {
+                "name": "content-type",
+                "value": "text/html; charset=utf-8"
+              }
+            ],
+            "setCookieNames": [],
+            "challenge": {
+              "detected": false,
+              "signals": []
+            },
+            "evaluable": true,
+            "dom": {
+              "links": [],
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                },
+                {
+                  "action": "https://www.example.test/kontakt/",
+                  "actionScheme": "https",
+                  "method": "post",
+                  "visible": true,
+                  "fieldCount": 5,
+                  "hasPasswordField": false,
+                  "hasEmailField": true,
+                  "takesInput": true
+                }
+              ],
+              "iframes": [],
+              "linkRels": [],
+              "scripts": []
+            }
+          },
+          {
+            "url": "https://www.example.test/post-1/",
+            "finalUrl": "https://www.example.test/post-1/",
+            "role": "other",
+            "order": 2,
+            "phase": "A",
+            "firstVisit": false,
+            "navigation": {
+              "status": 200,
+              "ok": true,
+              "redirectChain": [],
+              "startedAt": "2026-10-30T12:00:00.000Z",
+              "quietReached": true,
+              "dwellMs": 6000
+            },
+            "responseHeaders": [
+              {
+                "name": "content-type",
+                "value": "text/html; charset=utf-8"
+              }
+            ],
+            "setCookieNames": [],
+            "challenge": {
+              "detected": false,
+              "signals": []
+            },
+            "evaluable": true,
+            "dom": {
+              "links": [],
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                },
+                {
+                  "action": "https://www.example.test/wp-comments-post.php",
+                  "actionScheme": "https",
+                  "method": "post",
+                  "visible": true,
+                  "fieldCount": 5,
+                  "hasPasswordField": false,
+                  "hasEmailField": true,
+                  "takesInput": true
+                }
+              ],
+              "iframes": [],
+              "linkRels": [],
+              "scripts": []
+            }
+          }
+        ],
+        "requests": [],
+        "cookies": [],
+        "storage": [],
+        "errors": []
+      }
+    ],
+    "requestCap": {
+      "limit": 2000,
+      "issued": 0,
+      "truncated": false
+    },
+    "screenshots": [],
+    "knownGaps": [],
+    "errors": []
+  }
+}

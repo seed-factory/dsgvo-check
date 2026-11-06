@@ -1,7 +1,8 @@
-// Small heuristics over an HTML prefix (≤ 64 KiB for TLS-01 signals; `findLegalLinks` reads the whole body up to
-// `MAX_DECODED_BYTES`). No DOM: page content is never executed, bodies are never stored, only derived facts. The text
-// is untrusted, so every function is linear in its size (`indexOf` scans, no restart at each candidate): repeated
-// unclosed `<a `, `<form ` or `<!--` must not cause quadratic rescanning.
+// Small heuristics over HTML: client redirects and meta tags read a prefix (≤ 64 KiB), forms and legal links the whole
+// body read (up to `MAX_DECODED_BYTES`), because a comment form sits at the end of a long article. No DOM: page content
+// is never executed, bodies are never stored, only derived facts. The text is untrusted, so every function is linear in
+// its size (`indexOf` scans, no restart at each candidate): repeated unclosed `<a `, `<form ` or `<!--` must not cause
+// quadratic rescanning.
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import { parseUrl } from '../../core/url/url.ts';
 import { type HtmlRules, loadHtmlRules } from './rules.ts';
@@ -31,8 +32,15 @@ const RAW_TEXT_NAMES: ReadonlySet<string> = new Set([
 /** Closing-tag patterns by element name; `lastIndex` is set before each use. */
 const RAW_TEXT_CLOSE = new Map<string, RegExp>();
 
-// HTML input types that carry nothing the visitor types in.
-const NON_DATA_INPUTS = new Set(['hidden', 'submit', 'button', 'image', 'reset', 'search']);
+// HTML input types that carry nothing the visitor types in; the browser collector applies the same list in the page.
+export const NON_DATA_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'hidden',
+  'submit',
+  'button',
+  'image',
+  'reset',
+  'search',
+]);
 
 // Client-side redirects: the `url=` of a meta refresh and the script patterns that set `location`.
 const META_REFRESH_URL = /url\s*=\s*['"]?([^'";]+)/i;
@@ -197,15 +205,10 @@ function markupOf(source: string): string {
   return out + source.slice(pos);
 }
 
-// Elements `<name …>body</name>` of a text in document order, as `/<name\b([^>]*)>([\s\S]*?)<\/name>/gi` finds them
-// (with `closeOrEnd` an unclosed element runs to the end). One forward scan: a candidate without a `>` (or, unless
-// `closeOrEnd`, without a closing tag) ends the search because every later one fails too; the regexp restarted at each
-// one (O(n²)).
-function* elements(
-  text: string,
-  name: string,
-  closeOrEnd: boolean,
-): Generator<{ attrs: string; body: string }> {
+// Elements `<name …>body</name>` of a text in document order, as `/<name\b([^>]*)>([\s\S]*?)<\/name>/gi` finds them.
+// One forward scan: a candidate without a `>` or without a closing tag ends the search because every later one fails
+// too; the regexp restarted at each one (O(n²)).
+function* elements(text: string, name: string): Generator<{ attrs: string; body: string }> {
   const open = new RegExp(`<${name}\\b`, 'gi');
   const close = new RegExp(`</${name}>`, 'gi');
 
@@ -216,23 +219,9 @@ function* elements(
 
     close.lastIndex = gt + 1;
     const c = close.exec(text);
-    if (!c) {
-      if (closeOrEnd) yield { attrs: text.slice(attrsAt, gt), body: text.slice(gt + 1) };
-      return;
-    }
+    if (!c) return;
     yield { attrs: text.slice(attrsAt, gt), body: text.slice(gt + 1, c.index) };
     open.lastIndex = c.index + c[0].length;
-  }
-}
-
-/** Start tags by the same scan as `elements`. */
-function* startTags(text: string, name: string): Generator<string> {
-  const open = new RegExp(`<${name}\\b`, 'gi');
-  for (let m = open.exec(text); m; m = open.exec(text)) {
-    const gt = text.indexOf('>', m.index + m[0].length);
-    if (gt < 0) return;
-    yield text.slice(m.index, gt + 1);
-    open.lastIndex = gt + 1;
   }
 }
 
@@ -308,7 +297,7 @@ export function detectClientRedirect(
   const meta = metaRefreshTarget(clean, base);
   if (meta) return { kind: 'meta', url: meta.url };
 
-  for (const script of elements(clean, 'script', false)) {
+  for (const script of elements(clean, 'script')) {
     const js = scriptRedirectTarget(script.body, base);
     if (js) return { kind: 'js', url: js.url };
   }
@@ -338,35 +327,103 @@ function scriptRedirectTarget(js: string, base: string): { url: string | null } 
   return null;
 }
 
-// A form that takes user input other than a site search (TLS-01). Markup inside `<script>`, `<template>`, `<noscript>`
-// or `<textarea>` is no form.
-export function detectForm(html: string, rules: HtmlRules = loadHtmlRules()): boolean {
-  const clean = documentMarkup(html);
+/** A form that takes user input other than a site search, as the markup declares it. */
+export interface PageForm {
+  /** Absolute address the form sends to (the page itself without an `action`); null when it is no http(s) address. */
+  action: string | null;
+  actionScheme: 'http' | 'https' | 'other';
+  /** A missing or unknown `method` is GET, as browsers read it. */
+  method: 'get' | 'post' | 'dialog';
+}
 
-  for (const f of elements(clean, 'form', true)) {
-    const formAttrs = parseAttributes(`<form ${f.attrs}>`);
-    if (isSearchForm(formAttrs, rules)) continue;
-    if (takesUserInput(f.body, rules)) return true;
+const FORM_METHODS: ReadonlySet<string> = new Set(['get', 'post', 'dialog']);
+
+// The forms of a page that take user input other than a site search (TLS-01), in document order. Markup inside
+// `<script>`, `<template>`, `<noscript>` or `<textarea>` is no form. `page` is the page's URL; without one the action is
+// unknown. A relative action resolves against the first `<base href>`, as in a browser; the `formaction` of a button is
+// not read.
+export function dataForms(html: string, page: string | null, rules: HtmlRules = loadHtmlRules()): PageForm[] {
+  const markup = documentMarkup(html);
+  const base = page === null ? null : documentBase(markup, page);
+  return formsIn(markup, rules)
+    .filter((f) => f.takesInput && !isSearchForm(f.attrs, rules))
+    .map((f) => pageForm(f.attrs, page, base));
+}
+
+interface FormMarkup {
+  attrs: Map<string, string>;
+  /** A control one types into: a textarea, a select, or an input that is no button, hidden or search field. */
+  takesInput: boolean;
+}
+
+// The forms of document markup in order, read with the tag scanner that keeps a quoted attribute value inside its tag:
+// a `<form` or a `>` in a value is text, so a field value is never read as a form or its action. A `<form>` inside an
+// open form is ignored, as browsers ignore it; an unclosed form runs to the end of the document.
+function formsIn(markup: string, rules: HtmlRules): FormMarkup[] {
+  const tagEnd = tagEnder(markup);
+  const tag = new RegExp(TAG_START, 'gi');
+  const out: FormMarkup[] = [];
+  let open: FormMarkup | null = null;
+
+  for (let m = tag.exec(markup); m; m = tag.exec(markup)) {
+    const end = tagEnd(m.index + m[0].length);
+    if (end < 0) continue;
+    tag.lastIndex = end;
+
+    const name = (m[2] as string).toLowerCase();
+    const closing = m[1] === '/';
+    if (name === 'form') {
+      if (closing && open) out.push(open);
+      if (closing) open = null;
+      else open ??= { attrs: parseAttributes(markup.slice(m.index, end)), takesInput: false };
+    } else if (open && !closing && !open.takesInput) {
+      open.takesInput = controlTakesInput(name, markup.slice(m.index, end), rules);
+    }
   }
-  return false;
+
+  if (open) out.push(open);
+  return out;
+}
+
+function controlTakesInput(name: string, tag: string, rules: HtmlRules): boolean {
+  if (name === 'textarea' || name === 'select') return true;
+  if (name !== 'input') return false;
+  const attrs = parseAttributes(tag);
+  if (NON_DATA_INPUT_TYPES.has((attrs.get('type') ?? 'text').toLowerCase())) return false;
+  return !rules.searchFieldNames.has((attrs.get('name') ?? '').toLowerCase());
+}
+
+export function detectForm(html: string, rules: HtmlRules = loadHtmlRules()): boolean {
+  return dataForms(html, null, rules).length > 0;
+}
+
+/** The first `<base>` with an `href` sets the base URL; one that is no http(s) address leaves the page's. */
+function documentBase(markup: string, page: string): string {
+  for (const tag of openTags(markup, 'base')) {
+    const href = parseAttributes(tag).get('href');
+    if (href === undefined) continue;
+    return parseUrl(href.trim(), page, true)?.href ?? page;
+  }
+  return page;
+}
+
+function pageForm(formAttrs: Map<string, string>, page: string | null, base: string | null): PageForm {
+  const raw = formAttrs.get('action')?.trim() ?? '';
+  const method = (formAttrs.get('method') ?? '').trim().toLowerCase();
+  // An empty or missing action sends to the document's own address, not to the base URL.
+  const target = raw === '' ? (page === null ? null : parseUrl(page)) : parseUrl(raw, base ?? undefined);
+  const actionScheme =
+    target?.protocol === 'http:' ? 'http' : target?.protocol === 'https:' ? 'https' : 'other';
+  return {
+    action: actionScheme === 'other' ? null : (target as URL).href,
+    actionScheme,
+    method: FORM_METHODS.has(method) ? (method as PageForm['method']) : 'get',
+  };
 }
 
 function isSearchForm(formAttrs: Map<string, string>, rules: HtmlRules): boolean {
   if (formAttrs.get('role')?.toLowerCase() === 'search') return true;
   return rules.searchForm.test(`${formAttrs.get('id') ?? ''} ${formAttrs.get('class') ?? ''}`);
-}
-
-function takesUserInput(formBody: string, rules: HtmlRules): boolean {
-  if (/<(textarea|select)\b/i.test(formBody)) return true;
-
-  for (const input of startTags(formBody, 'input')) {
-    const attrs = parseAttributes(input);
-    const type = (attrs.get('type') ?? 'text').toLowerCase();
-    if (NON_DATA_INPUTS.has(type)) continue;
-    if (rules.searchFieldNames.has((attrs.get('name') ?? '').toLowerCase())) continue;
-    return true;
-  }
-  return false;
 }
 
 type LegalRole = 'impressum' | 'privacy';
@@ -395,7 +452,7 @@ export function findLegalLinks(
   const byPath: Partial<Record<LegalRole, string>> = {};
   let namedForBoth: string | undefined;
 
-  for (const a of elements(withoutComments(html), 'a', false)) {
+  for (const a of elements(withoutComments(html), 'a')) {
     const attrs = parseAttributes(`<a ${a.attrs}>`);
     const href = attrs.get('href')?.trim() ?? '';
     if (!href || href.startsWith('#') || /^(javascript|mailto|tel):/i.test(href)) continue;

@@ -79,6 +79,12 @@ const redirect = (to: string) =>
     res.end();
   }) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
 
+/** A Cloudflare-like challenge page. */
+const challenge = ((res) => {
+  res.writeHead(403, { 'content-type': 'text/html; charset=utf-8', 'cf-mitigated': 'challenge' });
+  res.end(html('Just a moment...', '<p>Checking if the site connection is secure</p>'));
+}) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
+
 /** The start page is fine in phase A and challenged on every later visit (phase B). */
 function laterBlockSite(host: string): DynamicHandler {
   let starts = 0;
@@ -180,6 +186,51 @@ beforeAll(async () => {
       }),
 
       laterBlockSite('laterblock.example.test'),
+
+      // A challenge on the contact page of a start page without an Impressum link: phase A would have searched it for
+      // the link and read it as the Impressum.
+      site('contactblock.example.test', {
+        '/': send(
+          html(
+            'Start',
+            `<nav><a href="/kontakt/">Kontakt</a></nav><main><h1>Start</h1></main><footer><a href="/datenschutz/">Datenschutzerklärung</a></footer>`,
+          ),
+        ),
+        '/kontakt/': challenge,
+        '/datenschutz/': send(
+          html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`),
+        ),
+      }),
+
+      // The Impressum link leads to a news page, the next Impressum link to the page queued as the privacy policy,
+      // which is challenged: phase A would have read it for both documents.
+      site('combinedblock.example.test', {
+        '/': send(
+          html(
+            'Start',
+            `<main><h1>Start</h1></main><footer><a href="/about/">Impressum</a> <a href="/legal/">Datenschutzerklärung</a> <a href="/legal/">Anbieterkennzeichnung</a></footer>`,
+          ),
+        ),
+        '/about/': send(
+          html(
+            'Aktuelles',
+            `<main><h1>Aktuelles aus unserem Haus</h1><p>${'Neuigkeiten aus dem Unternehmen und der Region, Veranstaltungen und Termine. '.repeat(20)}</p></main>`,
+          ),
+        ),
+        '/legal/': challenge,
+      }),
+
+      // Counterexample: the same challenge on the contact page when the start page links both legal documents.
+      site('contactblock-linked.example.test', {
+        '/': send(
+          html('Start', `<nav><a href="/kontakt/">Kontakt</a></nav><main><h1>Start</h1></main>${FOOTER}`),
+        ),
+        '/kontakt/': challenge,
+        '/impressum/': send(IMPRESSUM),
+        '/datenschutz/': send(
+          html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`),
+        ),
+      }),
 
       // Two links "Datenschutz": the first leads to a substantive page of another kind (a news page),
       // the second is the policy.
@@ -289,12 +340,12 @@ describe('an inline PDF behind a legal link does not stall phase A', () => {
 describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   const blocked = (run: CollectRun) => run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
 
-  it('a 403 on the fallback probe /impressum: the page, affects LEGAL-01 only (no HDR-01)', async () => {
+  it('a 403 on the fallback probe /impressum: the page, affects the legal checks, the mail checks and TLS-01 (no HDR-01)', async () => {
     const run = await collect(server, { url: 'https://probe403.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'LEGAL-02', 'MAIL-01', 'MAIL-02', 'MAIL-03', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://probe403.example.test/impressum',
@@ -309,17 +360,72 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
     );
   });
 
-  it('a challenge on the privacy page: affects LEGAL-01, PRIV-01 and PRIV-02', async () => {
+  it('a challenge on the privacy page: affects LEGAL-01, LEGAL-02, PRIV-01, PRIV-02 and TLS-01', async () => {
     const run = await collect(server, { url: 'https://challenge.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://challenge.example.test/datenschutz/',
       kind: 'cloudflare',
     });
+  });
+
+  it('a challenge on the contact page while no Impressum link is known: affects the legal checks and the mail checks too', async () => {
+    const run = await collect(server, { url: 'https://contactblock.example.test/' });
+
+    const d = blocked(run);
+    expect(d).toHaveLength(1);
+    expect(d[0]?.params).toMatchObject({
+      count: 1,
+      page: 'https://contactblock.example.test/kontakt/',
+      phase: 'A',
+    });
+    expect(d[0]?.affects).toEqual([
+      'EMBED-02',
+      'LEGAL-01',
+      'LEGAL-02',
+      'MAIL-01',
+      'MAIL-02',
+      'MAIL-03',
+      'TLS-01',
+    ]);
+  });
+
+  it('counterexample: the same challenge on the contact page with both legal links: EMBED-02 and TLS-01 only', async () => {
+    const run = await collect(server, { url: 'https://contactblock-linked.example.test/' });
+
+    const d = blocked(run);
+    expect(d).toHaveLength(1);
+    expect(d[0]?.params).toMatchObject({
+      page: 'https://contactblock-linked.example.test/kontakt/',
+      phase: 'A',
+    });
+    expect(d[0]?.affects).toEqual(['EMBED-02', 'TLS-01']);
+  });
+
+  it('a challenge on a privacy page also read as the Impressum: affects the checks of both documents', async () => {
+    const run = await collect(server, { url: 'https://combinedblock.example.test/' });
+
+    const d = blocked(run);
+    expect(d).toHaveLength(1);
+    expect(d[0]?.params).toMatchObject({
+      count: 1,
+      page: 'https://combinedblock.example.test/legal/',
+      phase: 'A',
+    });
+    expect(d[0]?.affects).toEqual([
+      'LEGAL-01',
+      'LEGAL-02',
+      'MAIL-01',
+      'MAIL-02',
+      'MAIL-03',
+      'PRIV-01',
+      'PRIV-02',
+      'TLS-01',
+    ]);
   });
 
   it('a challenge only on the start page of phase B: affects CONSENT-04 and CONSENT-05', async () => {

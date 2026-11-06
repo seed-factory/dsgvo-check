@@ -11,7 +11,7 @@ import { type NetworkRecorder, settleWithin } from '../recording/recorder.ts';
 import { errorText, TimeoutError, truncate, withTimeout } from '../util.ts';
 import { detectChallenge } from './challenge.ts';
 import { collectDom } from './dom-facts.ts';
-import type { CandidateLink } from './pages.ts';
+import type { CandidateLink, LegalKind } from './pages.ts';
 
 export interface VisitInput {
   page: Page;
@@ -30,6 +30,12 @@ export interface VisitSpec {
   phase: BrowserPhase;
   firstVisit: boolean;
   reload?: boolean;
+  /**
+   * Legal documents phase A reads this page for: the kinds a legal page is queued for (a combined page keeps the role
+   * of its first kind), and on the contact page and intermediate pages those still missing, whose links are looked for
+   * there and whose Impressum the page itself may be while none was found.
+   */
+  legalKinds?: readonly LegalKind[];
 }
 
 export interface VisitResult {

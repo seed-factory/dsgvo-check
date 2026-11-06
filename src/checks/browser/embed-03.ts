@@ -4,7 +4,7 @@
  * player contacts make no second YouTube finding; a thumbnail on the page itself stays with its own service.
  */
 import { defineCheck, type Observation, type Phase, type ScanPlan, subjects } from '../../core/api.ts';
-import type { BrowserSection, RequestRecord } from '../../core/snapshot/browser.ts';
+import type { BrowserSection, PlannedPage, RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
 import { embedEvidence, frameParams, frameResource } from './embed-frame.ts';
 import { sortedUniq } from './lists.ts';
@@ -23,8 +23,17 @@ import {
 const ID = 'EMBED-03';
 /** Strongest integration first: a player says more than its API, the API more than a thumbnail without a player. */
 const INTEGRATION_ORDER = ['iframe', 'js-api', 'thumbnail', 'other'];
-/** Reason of a page the planner chose for its video link (group `video` of `extraGroups` in `browser/pages.yaml`). */
-const VIDEO_PAGE_REASON = 'keyword:video';
+/** Keyword group of the pages the planner chooses for a video link (`extraGroups` in `browser/pages.yaml`). */
+const VIDEO_GROUP = 'video';
+/** Older snapshots keep only the word that chose the page; there `video`, the first word of the group, names it. */
+const STORED_VIDEO_REASON = 'keyword:video';
+
+/** A page the planner chose for a video link, by whichever word of the group: the group id decides when recorded. */
+function isVideoPage(p: PlannedPage): boolean {
+  return p.keywordGroup !== undefined
+    ? p.keywordGroup === VIDEO_GROUP
+    : p.reasons.includes(STORED_VIDEO_REASON);
+}
 
 /** Category of a catalog service: derive lists the observed ones and every one a policy may name. */
 function categoryOf(derived: DerivedSection, id: string): ServiceCategory | null {
@@ -125,12 +134,10 @@ function videoObservation(owner: string, reqs: ClassifiedRequest[], x: Context):
 /** A page the planner chose for its video link could not be evaluated in phase A. */
 function videoPageBlocked(browser: BrowserSection, plan: ScanPlan): boolean {
   const visits = phaseRecord(browser, 'A')?.pages ?? [];
-  return (plan.browser?.pages ?? [])
-    .filter((p) => p.reasons.includes(VIDEO_PAGE_REASON))
-    .some((p) => {
-      const seen = visits.filter((v) => v.url === p.url || v.finalUrl === p.url);
-      return seen.length > 0 && seen.every((v) => !v.evaluable);
-    });
+  return (plan.browser?.pages ?? []).filter(isVideoPage).some((p) => {
+    const seen = visits.filter((v) => v.url === p.url || v.finalUrl === p.url);
+    return seen.length > 0 && seen.every((v) => !v.evaluable);
+  });
 }
 
 /**

@@ -345,6 +345,10 @@ export async function collect(
   if (snapshot.dns && !state.fatal) {
     await runDnsFollowUp(snapshot, collectors.dnsFollowUp, ctx(), state, log, grace);
   }
+  // So are the pages with a form, whose http:// addresses TLS-01 reads.
+  if (snapshot.http && snapshot.browser && !state.fatal) {
+    await runFormTwins(snapshot, collectors.httpFormTwins, ctx(), state, log, grace);
+  }
   return state;
 }
 
@@ -507,6 +511,43 @@ async function runDnsFollowUp(
     if (!value) return failed('timeout', 'no result within the grace period after the global timeout');
     if (value.diagnostics) snapshot.diagnostics.push(...value.diagnostics);
     if (value.sections.dns) snapshot.dns = value.sections.dns;
+  } catch (err) {
+    failed('collector-exception', errorMessage(err));
+  }
+}
+
+/**
+ * Requests the http:// addresses of the pages with a form and replaces the HTTP section with its extended copy. Like the
+ * DNS follow-up it is no collector of its own in `collection`: a failure keeps the section and is noted in it, so TLS-01
+ * says that the forms of further pages are unknown instead of reading their absence as clean.
+ */
+async function runFormTwins(
+  snapshot: Snapshot,
+  collector: Collectors['httpFormTwins'],
+  ctx: CollectorContext,
+  state: CollectState,
+  log: Logger,
+  graceMs: number,
+): Promise<void> {
+  const t0 = performance.now();
+  const failed = (code: string, message: string) => {
+    log.warn(`http:// addresses of pages with a form: ${message}`);
+    if (!snapshot.http) return;
+    snapshot.http.formTwinStage = {
+      budget: ctx.config.http.formTwinPages,
+      candidates: null,
+      durationMs: Math.round(performance.now() - t0),
+      error: { code, message },
+    };
+  };
+  try {
+    const pending = collector(ctx);
+    const res = await untilDeadline(pending, ctx.signal);
+    if (res.timedOut) state.timedOut = true;
+    const value = res.timedOut ? await withinGrace(pending, graceMs) : res.value;
+    if (!value) return failed('timeout', 'no result within the grace period after the global timeout');
+    addSideOutputs(snapshot, value);
+    if (value.sections.http) snapshot.http = value.sections.http;
   } catch (err) {
     failed('collector-exception', errorMessage(err));
   }

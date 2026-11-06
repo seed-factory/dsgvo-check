@@ -616,7 +616,12 @@ function consentActionsText(report: Report, cov: Coverage, v: ViewText): string 
     return v.label('coverage.consentActionsNoBanner');
   }
   const list = actions.map((a) =>
-    v.label('coverage.consentAction', { action: a.action, clicked: a.clicked, verified: a.verified }),
+    v.label('coverage.consentAction', {
+      action: a.action,
+      clicked: a.clicked,
+      verified: a.verified,
+      path: a.path ?? null,
+    }),
   );
   return v.label('coverage.consentActions', { actions: list.join('; ') });
 }

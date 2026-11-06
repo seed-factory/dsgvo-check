@@ -5,6 +5,7 @@ import path from 'node:path';
 import { allChecks } from './checks/index.ts';
 import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns, collectDnsFollowUp } from './collectors/dns/index.ts';
+import { collectHttpFormTwins } from './collectors/http/form-twins.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
 import { checkThresholds } from './core/config/thresholds.ts';
@@ -74,6 +75,7 @@ const DEFAULT_COLLECTORS: Collectors = {
   tls: collectTls,
   dns: collectDns,
   dnsFollowUp: collectDnsFollowUp,
+  httpFormTwins: collectHttpFormTwins,
 };
 
 /** Refuses a target that does not resolve or that points into non-public address space, before any collector runs. */
@@ -499,8 +501,14 @@ function consentActions(snapshot: Snapshot): ConsentAction[] {
     const record = snapshot.browser?.phases.find((p) => p.phase === phase);
     if (!record || record.status === 'skipped') continue;
     const clicked = record.click?.action === action && record.click.success === true;
-    const verify = snapshot.cmp?.phases.find((p) => p.phase === phase)?.verify;
-    out.push({ action, clicked, verified: clicked && verify?.action === action ? verify.verified : null });
+    const cmp = snapshot.cmp?.phases.find((p) => p.phase === phase);
+    const verify = cmp?.verify;
+    out.push({
+      action,
+      clicked,
+      verified: clicked && verify?.action === action ? verify.verified : null,
+      ...(clicked && cmp?.click?.path === 'settings' ? { path: 'settings' as const } : {}),
+    });
   }
   return out;
 }

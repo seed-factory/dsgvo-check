@@ -1467,6 +1467,18 @@ describe('the full report in words', () => {
     );
   });
 
+  it('names a reject saved in the settings layer in the coverage', () => {
+    const r = sampleFullReport();
+    r.scan.coverage.consentActions = [
+      { action: 'reject', clicked: true, verified: true, path: 'settings' },
+      { action: 'accept', clicked: true, verified: true },
+    ];
+    expect(html(r)).toContain(
+      'Klicks im Einwilligungsbanner: Ablehnen über die Einstellungen ausgelöst und bestätigt; Annehmen ausgelöst und bestätigt',
+    );
+    expect(html(r, 'en')).toContain('reject click via the settings triggered and confirmed');
+  });
+
   it('prints the draft note once, next to the stamp', () => {
     const texts = loadTexts('de').ui;
     const out = html();

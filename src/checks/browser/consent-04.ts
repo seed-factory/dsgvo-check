@@ -316,6 +316,8 @@ function judgeRejectClick(
 ): void {
   const b = cmp.phases.find((p) => p.phase === 'B');
   if (b?.click?.action !== 'reject' || !b.click.clicked || !b.verify) return;
+  // A save in the settings layer is no first-layer reject: CONSENT-05 says whether the CMP state confirms it.
+  if (b.click.path === 'settings') return;
   if (b.verify.verified) return;
 
   if (b.verify.stateAfter.some(showsRejectOutcome)) {

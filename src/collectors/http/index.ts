@@ -1,7 +1,8 @@
 // HTTP collector: passive probes for TLS-01 and HDR-01: manual redirect chains (≤ 5 hops) for http:// and https:// of
 // the target, its www and apex; the start page and the legal pages it links (http runs before the browser plan exists);
 // meta / JS redirect and form heuristics. With an explicit port the start document and reachability come from exactly
-// that origin. A final host outside target/www/apex gets TLS handshakes (`finalTls`).
+// that origin. A final host outside target/www/apex gets TLS handshakes (`finalTls`). The http:// addresses of further
+// pages with a form are requested after the browser (form-twins.ts).
 
 import { BLOCKED_DOCUMENT, startFinalHost } from '../../checks/http/shared.ts';
 import { storedHeaderRecord } from '../../core/redaction/headers.ts';
@@ -11,6 +12,7 @@ import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import type {
   DocumentResponse,
   HostVariant,
+  HttpFormFact,
   HttpHop,
   HttpSection,
   ProbeRecord,
@@ -24,10 +26,12 @@ import { httpChallenge } from './challenge.ts';
 import { type FetchResult, HttpClient, type HttpClientOptions } from './client.ts';
 import { type ChainOutcome, outcomeOf, ProbeError } from './errors.ts';
 import { type HostTarget, hostVariants } from './hosts.ts';
-import { detectClientRedirect, detectForm, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
+import { dataForms, detectClientRedirect, extractMeta, findLegalLinks, HEURISTIC_BYTES } from './html.ts';
 
-/** Link discovery on the start page reads this much; the heuristics use the first 64 KiB. */
-const DOCUMENT_READ_BYTES = 512 * 1024;
+/** Raw bytes read of a document: link discovery and forms read all of it, the other heuristics the first 64 KiB. */
+export const DOCUMENT_READ_BYTES = 512 * 1024;
+/** Forms kept per page: enough to name where the first ones send, bounded because the markup is untrusted. */
+const MAX_STORED_FORMS = 5;
 /** Statuses that continue a chain when they come with a `Location`. */
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 /** Outcomes that, with no hop at all, mean the origin could not be reached. */
@@ -75,7 +79,7 @@ interface ChainRun {
   start: string;
 }
 
-function toHop(r: FetchResult): HttpHop {
+export function toHop(r: FetchResult): HttpHop {
   const html = isHtml(r.contentType, r.body);
   const hop: HttpHop = {
     url: sanitizeUrl(r.url),
@@ -97,18 +101,40 @@ function toHop(r: FetchResult): HttpHop {
     hop.tlsAuthorizationError = r.conn?.authorizationError ?? null;
   }
 
-  // Only a plain-http success page is inspected: TLS-01 asks what it could redirect to or collect.
-  if (r.url.startsWith('http:') && r.status >= 200 && r.status < 300 && html) {
-    const prefix = r.body.subarray(0, HEURISTIC_BYTES).toString('utf8');
-    const client = detectClientRedirect(prefix, r.url);
-    if (client) hop.clientRedirect = { kind: client.kind, url: client.url ? sanitizeUrl(client.url) : null };
-    hop.hasForm = detectForm(prefix);
+  // Only a plain-http success page is inspected: TLS-01 asks what it could redirect to or collect. Bytes the client could
+  // not decode are no text to sniff: without a Content-Type they may be the page, whose forms are then unknown.
+  const undecodedPage = r.undecodedEncoding !== undefined && r.contentType === null;
+  if (r.url.startsWith('http:') && r.status >= 200 && r.status < 300 && (html || undecodedPage)) {
+    if (r.undecodedEncoding === undefined) {
+      const prefix = r.body.subarray(0, HEURISTIC_BYTES).toString('utf8');
+      const client = detectClientRedirect(prefix, r.url);
+      if (client)
+        hop.clientRedirect = { kind: client.kind, url: client.url ? sanitizeUrl(client.url) : null };
+    }
+    Object.assign(hop, formFacts(r));
   }
 
   return hop;
 }
 
-function errorOf(err: unknown, url: string): CollectorError {
+/**
+ * The forms of the whole body that was read. A body cut at the read limit is `truncated` and one the client could not
+ * decode `unavailable`, so a form beyond what was seen never reads as absent. Only the action, its scheme and the method
+ * are kept: field names and values stay in memory.
+ */
+function formFacts(r: FetchResult): Pick<HttpHop, 'hasForm' | 'forms' | 'formInspection'> {
+  if (r.undecodedEncoding !== undefined) return { hasForm: false, forms: [], formInspection: 'unavailable' };
+  const forms: HttpFormFact[] = dataForms(r.body.toString('utf8'), r.url)
+    .slice(0, MAX_STORED_FORMS)
+    .map((f) => ({
+      action: f.action === null ? null : sanitizeUrl(f.action),
+      actionScheme: f.actionScheme,
+      method: f.method,
+    }));
+  return { hasForm: forms.length > 0, forms, formInspection: r.bodyTruncated ? 'truncated' : 'complete' };
+}
+
+export function errorOf(err: unknown, url: string): CollectorError {
   const code = err instanceof ProbeError ? err.code : 'error';
   const outcome = outcomeOf(code);
   return {
@@ -247,6 +273,12 @@ function documentFrom(
     doc.tlsAuthorized = final.tlsAuthorized ?? null;
     doc.tlsAuthorizationError = final.tlsAuthorizationError ?? null;
   }
+  // A linked document that ended on plain http keeps its forms: its chain is not stored, and TLS-01 reads them here.
+  if (foundVia === 'link' && final?.formInspection) {
+    doc.hasForm = final.hasForm ?? false;
+    doc.forms = final.forms ?? [];
+    doc.formInspection = final.formInspection;
+  }
 
   if (run.last && isHtml(run.last.contentType, run.last.body)) {
     const meta = extractMeta(run.last.body.subarray(0, HEURISTIC_BYTES).toString('utf8'));
@@ -361,7 +393,7 @@ async function probeFinalHost(
 
 type ProbeLog = (target: string, purpose: string) => void;
 
-function createClient(ctx: CollectorContext, opts: HttpCollectorOptions): HttpClient {
+export function createClient(ctx: CollectorContext, opts: HttpCollectorOptions): HttpClient {
   const cfg = ctx.config.http;
   return new HttpClient({
     network: ctx.network,

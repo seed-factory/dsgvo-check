@@ -331,6 +331,9 @@ const PageEvidence = z.object({
   role: z.string().optional(),
   evaluable: z.boolean().optional(),
   reason: z.string().optional(),
+  formAction: z.string().optional().meta({
+    description: 'Address the first form of the page sends its input to (sanitized), read from the markup',
+  }),
 });
 
 const RedirectChainEvidence = z.object({
@@ -566,6 +569,10 @@ export const CoverageSchema = z.object({
         action: z.enum(['reject', 'accept']),
         clicked: z.boolean(),
         verified: z.boolean().nullable(),
+        path: z.enum(['settings']).optional().meta({
+          description:
+            'settings: the reject was the save control of the settings layer, as the first layer offers no reject. Absent: a first-layer control.',
+        }),
       }),
     )
     .optional()

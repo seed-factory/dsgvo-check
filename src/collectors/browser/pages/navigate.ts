@@ -6,6 +6,7 @@ import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.t
 import type { DiagnosticInput } from '../../../core/snapshot/index.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
 import type { BrowserCollection, Session } from '../collector.ts';
+import type { LegalKind } from '../legal/lexicon.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
 import { sleep } from '../util.ts';
 import { type VisitResult, type VisitSpec, visitPage } from './visit.ts';
@@ -31,10 +32,18 @@ const BROWSER_CHECKS = [
   'EMBED-02',
   'EMBED-03',
   'LEGAL-01',
+  'LEGAL-02',
   'PRIV-01',
   'PRIV-02',
   'TRACK-01',
 ];
+/** TLS-01 reads the http links of every page phase A could read; a page it did not read shows none. */
+const CHECKS_READING_PHASE_A_LINKS: readonly string[] = ['TLS-01'];
+/**
+ * The mail checks query the domains of the addresses the Impressum shows (`dns.mailDomains`, taken from the browser's
+ * Impressum after phase A); the privacy policy and other pages are left out on purpose.
+ */
+const CHECKS_READING_IMPRESSUM_MAIL: readonly string[] = ['MAIL-01', 'MAIL-02', 'MAIL-03'];
 
 export const THROTTLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
 /** Throttling responses of the target host in one phase that end further navigation to it. */
@@ -43,12 +52,20 @@ const THROTTLE_RESPONSES = 3;
 // Check ids that read a page by its role; a role not listed is read by none. The start page of B/C is read by the
 // consent checks (phase A's start page is the fatal case, not a gap).
 const CHECKS_READING_ROLE: ReadonlyMap<PageRole, readonly string[]> = new Map([
-  ['impressum', ['LEGAL-01']],
-  ['legal-hop', ['LEGAL-01']],
-  ['privacy', ['LEGAL-01', 'PRIV-01', 'PRIV-02']],
+  ['impressum', ['LEGAL-01', 'LEGAL-02']],
+  ['legal-hop', ['LEGAL-01', 'LEGAL-02']],
+  ['privacy', ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02']],
   ['contact', ['EMBED-02']],
 ]);
 const CHECKS_READING_START_BC: readonly string[] = ['CONSENT-04', 'CONSENT-05'];
+// A page phase A reads for a legal document (`VisitSpec.legalKinds`) takes that document from its checks when blocked,
+// whatever the page's role: the second kind of a combined legal page, or the documents the contact page or an
+// intermediate page may link or be. The mail checks read the Impressum's addresses. B and C revisit only pages phase A
+// could read, so a block there takes neither documents, links nor addresses from these checks.
+const CHECKS_READING_KIND: Readonly<Record<LegalKind, readonly string[]>> = {
+  impressum: ['LEGAL-01', 'LEGAL-02', ...CHECKS_READING_IMPRESSUM_MAIL],
+  privacy: ['LEGAL-01', 'LEGAL-02', 'PRIV-01', 'PRIV-02'],
+};
 
 export async function visit(c: BrowserCollection, s: Session, spec: VisitSpec): Promise<VisitResult> {
   await c.pace();
@@ -93,7 +110,19 @@ function fallbackRole(rawUrl: string): PageRole {
 export function blockedAffects(spec: VisitSpec): string[] {
   const role = spec.role === 'fallback' ? fallbackRole(spec.rawUrl) : spec.role;
   if (role === 'start') return spec.phase === 'A' ? [] : [...CHECKS_READING_START_BC];
-  return [...(CHECKS_READING_ROLE.get(role) ?? [])];
+  const byRole = CHECKS_READING_ROLE.get(role) ?? [];
+  if (spec.phase !== 'A') return [...byRole];
+  const kinds = new Set<LegalKind>(spec.legalKinds ?? []);
+  if (role === 'impressum') kinds.add('impressum');
+  const byKind = [...kinds].flatMap((k) => CHECKS_READING_KIND[k]);
+  return [...new Set([...byRole, ...byKind, ...CHECKS_READING_PHASE_A_LINKS])].sort();
+}
+
+/** Checks a throttle in `phase` leaves with incomplete input: phase A also holds the links and the Impressum. */
+export function throttledAffects(phase: BrowserPhase): string[] {
+  return phase === 'A'
+    ? [...BROWSER_CHECKS, ...CHECKS_READING_PHASE_A_LINKS, ...CHECKS_READING_IMPRESSUM_MAIL]
+    : [...BROWSER_CHECKS];
 }
 
 function noteBlocked(c: BrowserCollection, spec: VisitSpec, r: VisitResult): void {
@@ -202,7 +231,7 @@ export function markThrottled(
   c.ctx.log.warn(`target host throttles (${statuses.join(', ')}); no further navigation to it`);
   c.diagnostics.push({
     code: 'SCAN-THROTTLED',
-    affects: [...BROWSER_CHECKS],
+    affects: throttledAffects(s.phase),
     params: { phase: s.phase, scope, url, statuses: statuses.slice(0, 10).join(',') },
   });
 }

@@ -1,10 +1,11 @@
 /**
- * Legal documents as the collector extracts them and as LEGAL-01 / PRIV-01 read them: fallback redirects to the home
- * page, policies in another language, headings of navigation or footer, empty panels, masked e-mail addresses, and
- * Impressum details on the contact and start pages.
+ * Legal documents as the collector extracts them and as LEGAL-01 / LEGAL-02 / PRIV-01 read them: fallback redirects to
+ * the home page, policies in another language, headings of navigation or footer, empty panels, masked e-mail
+ * addresses, Impressum details on the contact and start pages, and a designation of a former legal situation.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
+import { legal02 } from '../../../../src/checks/browser/legal-02.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
 import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import {
@@ -80,6 +81,12 @@ const WIDGET_FOOTER =
 const widgetPage = (title: string, main: string, footer = WIDGET_FOOTER) =>
   html(title, `${WIDGET_NAV}<main><h1>${title}</h1>${main}</main>${footer}`);
 const BROKEN_FOOTER = '<footer><a href="/impressum/">Impressum</a></footer>';
+/** The participant list of the former framework, linked with an id in the query as policies did. */
+const SHIELD_LIST = 'https://www.privacyshield.gov/participant?id=a2zt0000000TESTAAI';
+const SHIELD_POLICY = html(
+  'Datenschutzerklärung',
+  `<main><h1>Datenschutzerklärung</h1><h2>Verantwortlicher</h2><p>${LOREM.repeat(60)}</p><h2>Analyse</h2><p>Durch die Zertifizierung nach dem <strong>EU-US Privacy</strong> Shield garantiert der Anbieter ein angemessenes Datenschutzniveau: <a href="${SHIELD_LIST}">${SHIELD_LIST}</a></p></main>${FOOTER}`,
+);
 const CONTACT_FORM =
   '<p>Musterstraße 1, 10115 Berlin, Telefon 030 123456.</p><form><label>Nachricht <textarea name="m"></textarea></label></form>';
 
@@ -215,6 +222,13 @@ beforeAll(async () => {
         '/': send(widgetPage('Willkommen', `<p>${LOREM.repeat(3)}</p>`, '')),
         '/kontakt/': send(widgetPage('Kontakt', CONTACT_FORM, '')),
         '/datenschutz/': send(widgetPage('Datenschutzerklärung', `<p>${LOREM.repeat(60)}</p>`, '')),
+      }),
+
+      // the policy names the former EU-US framework in a sentence split by inline markup, with a link to its list
+      site('shield.example.test', {
+        '/': send(START()),
+        '/impressum/': send(IMPRESSUM),
+        '/datenschutz/': send(SHIELD_POLICY),
       }),
 
       // Portuguese policy and legal notice; the lang attribute is wrong ("en") on purpose
@@ -477,5 +491,35 @@ describe('free text of the documents is masked before it is stored', () => {
     expect(stored).not.toContain('max.mustermann');
     expect(stored).not.toContain('privat.person');
     expect(stored).toContain('[redacted]@example.test');
+  });
+});
+
+describe('a designation of a former legal situation in the policy (LEGAL-02)', () => {
+  it('a sentence split by inline markup is stored whole, the query of its link redacted, and LEGAL-02 reports it', async () => {
+    const run = await collect(server, { url: 'https://shield.example.test/' });
+
+    const part = privacyDoc(run)?.parts.find((p) => p.text.includes('Shield'));
+    expect(part?.section).toBe('Datenschutzerklärung > Analyse');
+    expect(part?.text).toContain('nach dem EU-US Privacy Shield garantiert der Anbieter');
+    expect(part?.text).toContain('https://www.privacyshield.gov/participant?id=[redacted]');
+    expect(JSON.stringify(run.result.sections.documents)).not.toContain('a2zt0000000TESTAAI');
+
+    const os = observationsOf(runCheck(legal02, snapshotOf(run)));
+    expect(os.map((o) => [o.subject, o.params.mentionCount, o.params.section])).toEqual([
+      ['privacy:privacy-shield', 1, 'Datenschutzerklärung > Analyse'],
+    ]);
+    const quote = os[0]?.evidence.find((e) => e.type === 'text-match');
+    expect(quote).toMatchObject({ matchLevel: 'term' });
+    expect(JSON.stringify(quote)).not.toContain('a2zt0000000TESTAAI');
+  });
+
+  it('the link to the former participant list is text of the policy: no request goes there, no page is added', async () => {
+    const run = await collect(server, { url: 'https://shield.example.test/' });
+
+    expect(run.requests.filter((r) => r.url.includes('privacyshield'))).toEqual([]);
+    const hosts = (run.result.sections.browser?.phases ?? [])
+      .flatMap((p) => p.pages)
+      .map((p) => new URL(p.url).host);
+    expect(new Set(hosts)).toEqual(new Set(['shield.example.test']));
   });
 });

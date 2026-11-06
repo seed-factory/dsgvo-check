@@ -230,7 +230,7 @@ ui:
   report.coverage.duration: Duration
   report.coverage.consentActions: "Clicks in the consent banner: {actions}"
   report.coverage.consentActionsNoBanner: "Clicks in the consent banner: none, as no consent banner was found"
-  report.coverage.consentAction: "{action, select, reject {reject click} other {accept click}} {clicked, select, true {triggered{verified, select, true { and confirmed} false {, not confirmed} other {}}} other {not triggered}}"
+  report.coverage.consentAction: "{action, select, reject {reject click{path, select, settings { via the settings} other {}}} other {accept click}} {clicked, select, true {triggered{verified, select, true { and confirmed} false {, not confirmed} other {}}} other {not triggered}}"
   report.coverage.browserRequests: "Browser requests: {issued} of at most {limit}{truncated, select, true { (list truncated)} other {}}"
   report.coverage.checks: Checks
   report.coverage.check: Check
@@ -264,7 +264,14 @@ ui:
     not counted} pagehide-capture-unavailable {Requests sent when leaving a page not captured} reject-not-in-effect
     {Pages after the rejection not evaluated where the consent banner showed again or no answer was stored}
     accept-not-in-effect {Pages after the acceptance not evaluated where the consent banner showed again or no
-    answer was stored} first-layer-not-visible {First
+    answer was stored} settings-control-not-found {Rejection via the settings not attempted: no unambiguous
+    settings control on the first layer} settings-not-opened {Rejection via the settings not triggered: settings not
+    shown after the click} settings-layer-ambiguous {Rejection via the settings not triggered: settings not measured
+    unambiguously} settings-groups-unreadable {Rejection via the settings not triggered: category switches not
+    readable} preselected-groups {Rejection via the settings not triggered: optional categories already switched on
+    there, switches are not changed} settings-save-not-found {Rejection via the settings not triggered: no
+    unambiguous save control} settings-save-failed {Rejection via the settings not triggered: the click on the save
+    control failed} first-layer-not-visible {First
     layer of the banner not visible} spf-include-unresolved {SPF include not fully resolved} mx-unknown {MX record
     could not be determined} throttled {The server throttled requests} status {Start page answered with HTTP
     {detail}} document-blocked {Page blocked by bot protection: {detail}} document-unavailable {Page not
@@ -277,13 +284,25 @@ ui:
     privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further privacy
     notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} reveal-height-capped {Lower
     part of a long page not shown, the window height is capped} page-links-not-observed {Links of the pages not observed
-    because the browser did not run or no page was evaluable} values-not-stored {Versions in some headers not stored in
+    because the browser did not run or no page was evaluable} http-form-not-inspected {Forms of {detail} not read in
+    full (response cut, not readable or replaced by bot protection)} http-form-twin-undecided {http address of {detail} without a usable answer}
+    http-form-twins-capped {http addresses of further pages with a form not requested (limit
+    DSGVO_CHECK_HTTP_FORM_TWIN_PAGES)} http-form-twins-not-collected {http addresses of the pages with a form not
+    requested in this run} values-not-stored {Versions in some headers not stored in
     the snapshot (older snapshot)} mail-domain-unresolved {DNS lookups for {detail} without a conclusive answer}
     mail-domain-mx-unknown {MX record of {detail} could not be determined} mail-domain-spf-incomplete {SPF include of
     {detail} not fully resolved} mail-domains-capped {Further e-mail domains from the Impressum not queried (limit
     DSGVO_CHECK_DNS_MAX_MAIL_DOMAINS)} mail-domains-not-collected {E-mail domains from the Impressum not collected in
     this run} dkim-selectors-unresolved {Not every DKIM selector answered conclusively} mail-domain-dkim-key-unparsable
-    {DKIM key of {detail} not readable} mail-domain-dkim-key-revoked {DKIM key of {detail} withdrawn} other {}}
+    {DKIM key of {detail} not readable} mail-domain-dkim-key-revoked {DKIM key of {detail} withdrawn}
+    impressum-not-found {Legal notice not found, not searched} privacy-not-found {Privacy policy not found, not
+    searched} impressum-pdf {Legal notice only as PDF, not searched} privacy-pdf {Privacy policy only as PDF, not
+    searched} impressum-unsupported-format {Legal notice in an unsupported format, not searched}
+    privacy-unsupported-format {Privacy policy in an unsupported format, not searched} impressum-language-unsupported
+    {Legal notice in a language other than German or English, not searched} privacy-language-unsupported {Privacy
+    policy in a language other than German or English, not searched} impressum-incomplete {Legal notice not read
+    completely, only the text read was searched} privacy-incomplete {Privacy policy not read completely, only the text
+    read was searched} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -322,8 +341,9 @@ ui:
     stored in the snapshot (older snapshot)} dkim-not-collected {DKIM selectors not queried in this run} key-unparsable
     {DKIM key not readable} dns-budget-exhausted {DNS query budget used up} null-mx {domain accepts no e-mail (Null MX)}
     no-mail-records {neither MX nor SPF record found} key-revoked {DKIM key withdrawn (empty p=)} dkim-selectors-capped
-    {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} other {}}
-  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
+    {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} no-documents {neither a
+    legal notice nor a privacy policy found as readable text} other {}}
+  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
   report.evidence.field: >-
@@ -340,7 +360,7 @@ ui:
     {Viewport} click {Click} source {Source} ready {Readiness} categories {Categories} scope {Scope} kind {Kind} lang
     {Language} parts {Parts} complete {Complete} errors {Errors} sha256 {SHA-256} manifest {Extent read} documentId
     {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} claim {Statement} status {HTTP
-    status} role {Role} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
+    status} role {Role} formAction {Form target} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
     href {Target} text {Link text} target {Link target} region {Part of the page} visible {Visible} method {Method} resourceType {Resource} result {Response}
     delivery {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other
     {{key}}}
@@ -380,7 +400,7 @@ ui:
   report.evidence.cookieState: "{state, select, attempted {setting attempted} accepted {accepted by the browser} rejected {rejected by the browser} sent {sent with a request} other {{state}}}"
   report.evidence.lifetime: "{kind, select, session {session} other {persistent{hasDays, select, true {, {days, number} days} other {}}}}"
   report.evidence.setBy: "{setter, select, http-response {HTTP response} script {script} other {unknown}}{hasHost, select, true { from {host}} other {}}"
-  report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {no status}}{evaluable, select, true { · evaluable} false { · not evaluable{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · phase {phase}} other {}}"
+  report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {no status}}{evaluable, select, true { · evaluable} false { · not evaluable{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · phase {phase}} other {}}{hasFormAction, select, true { · form sends to {formAction}} other {}}"
   report.evidence.linkVisibility: "{visible, select, true {visible} other {not visible}}"
   report.evidence.headerLine: "{present, select, true {present{hasValue, select, true {: {value}} other {}}} other {not present}}"
   # The notice section in groups, each paragraph under a label: `key` is the paragraph key without `disclaimer.`

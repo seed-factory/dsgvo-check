@@ -1,9 +1,10 @@
 /**
- * HTTP heuristics read untrusted markup: legal-link selection accepts the whole bounded body, other probes its prefix;
- * repeated incomplete tags must not restart a scan at every candidate, ordinary markup keeps the extracted facts.
+ * HTTP heuristics read untrusted markup: legal-link selection and forms accept the whole bounded body, other probes its
+ * prefix; repeated incomplete tags must not restart a scan at every candidate, ordinary markup keeps the extracted facts.
  */
 import { describe, expect, it } from 'vitest';
 import {
+  dataForms,
   detectClientRedirect,
   detectForm,
   extractMeta,
@@ -38,6 +39,9 @@ const links: Run = (h) => findLegalLinks(h, BASE);
 const redirect: Run = (h) => detectClientRedirect(h, BASE);
 const meta: Run = (h) => extractMeta(h);
 const form: Run = (h) => detectForm(h);
+const forms: Run = (h) => dataForms(h, BASE);
+/** The read limit of a document: forms are looked for in all of it. */
+const DOCUMENT_BYTES = 512 * KIB;
 
 interface Hostile {
   name: string;
@@ -150,6 +154,37 @@ const HOSTILE: readonly Hostile[] = [
     smallBytes: 256 * KIB,
     build: (n) => fill('<a x=">" ', n),
   },
+  // Forms are looked for in the whole document read (512 KiB), so the adversarial input reaches that size.
+  {
+    name: 'dataForms: unclosed forms, each with a field',
+    run: forms,
+    smallBytes: DOCUMENT_BYTES / 4,
+    build: (n) => fill('<form method=post><textarea>', n),
+  },
+  {
+    name: 'dataForms: "<form " without any ">"',
+    run: forms,
+    smallBytes: DOCUMENT_BYTES / 4,
+    build: (n) => fill('<form action="/x" ', n),
+  },
+  {
+    name: 'dataForms: "<input " without any ">" inside one form',
+    run: forms,
+    smallBytes: DOCUMENT_BYTES / 4,
+    build: (n) => `<form method="post">${fill('<input name="a" ', n)}`,
+  },
+  {
+    name: 'dataForms: closed forms with a field each',
+    run: forms,
+    smallBytes: DOCUMENT_BYTES / 4,
+    build: (n) => fill('<form action="/a?b=c"><input name="e"></form>', n),
+  },
+  {
+    name: 'dataForms: unclosed templates and scripts before the forms',
+    run: forms,
+    smallBytes: DOCUMENT_BYTES / 4,
+    build: (n) => fill('<template><script>', n),
+  },
 ];
 
 describe('HTML parsing scales with hostile input size', () => {
@@ -170,6 +205,14 @@ describe('HTML parsing scales with hostile input size', () => {
     expect(findLegalLinks(build(BIG_BYTES), BASE)).toEqual({
       impressum: 'http://www.example.test/impressum',
     });
+  });
+
+  it('finds a comment form at the end of a document of the full read size', () => {
+    const tail = '<form action="/wp-comments-post.php" method="post"><textarea name="c"></textarea></form>';
+    const big = `${fill('<p>text</p>', DOCUMENT_BYTES - tail.length)}${tail}`;
+    expect(dataForms(big, BASE)).toEqual([
+      { action: 'http://www.example.test/wp-comments-post.php', actionScheme: 'http', method: 'post' },
+    ]);
   });
 
   it('finds both footer links behind a full body of ordinary markup', () => {
@@ -259,7 +302,8 @@ describe('HTML parsing of ordinary and malformed markup', () => {
     [`<form id="suche"><input name="x"></form>`, false],
     [`<form><!-- <input name="email"> --></form>`, false],
     [`<form><input value="a>b" name="email"></form>`, true],
-    [`<form-x><input name="email"></form-x>`, true],
+    // A custom element is no form, like `<template-card>` is no template.
+    [`<form-x><input name="email"></form-x>`, false],
     [`<form><form><input name="email"></form>`, true],
     [`<form></form><input name="email">`, false],
     [`<p>no form</p>`, false],

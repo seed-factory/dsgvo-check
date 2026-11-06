@@ -29,8 +29,23 @@ export interface PlannedPage {
   /** Why the page was selected, e.g. `footer-link:impressum`, `sitemap`. */
   reasons: string[];
   source: 'start' | 'link' | 'sitemap' | 'fallback' | 'config' | 'hop';
+  /**
+   * Id of the keyword group (`extraGroups` in `browser/pages.yaml`) that chose an extra page, e.g. `video`, whichever
+   * of its words matched (the word is in `reasons`). Absent for other pages and in older snapshots.
+   */
+  keywordGroup?: string;
   /** robots.txt verdict for additional pages (start and legal pages are always visited). */
   robotsAllowed?: boolean;
+}
+
+/** An element core chose to press. */
+export interface ClickPlanTarget {
+  cmpId: string | null;
+  name: string;
+  role?: string;
+  /** Internal locator; never shown to users. */
+  selector?: string;
+  kindConfidence: 'high' | 'medium' | 'low';
 }
 
 /** Decision about which first-layer button to press (`plan.click`). */
@@ -38,15 +53,14 @@ export interface ClickPlan {
   phase: 'B' | 'C';
   action: 'reject' | 'accept';
   /** null when no unambiguous element was found (then nothing is clicked). */
-  target: {
-    cmpId: string | null;
-    name: string;
-    role?: string;
-    /** Internal locator; never shown to users. */
-    selector?: string;
-    kindConfidence: 'high' | 'medium' | 'low';
-  } | null;
+  target: ClickPlanTarget | null;
   reason?: string;
+  /**
+   * Phase B when the first layer offers no reject and the adapter describes a settings layer: the settings control
+   * opened and the save control pressed as the reject there; `reason` (e.g. `preselected-groups`) when none was pressed.
+   * `target` and `reason` above stay those of the first layer.
+   */
+  settings?: { open: ClickPlanTarget | null; save: ClickPlanTarget | null; reason?: string };
 }
 
 export interface BrowserPlan {
@@ -92,6 +106,8 @@ export interface FormFact {
   fieldCount: number;
   hasPasswordField: boolean;
   hasEmailField: boolean;
+  /** Takes input other than a site search (the HTTP collector's rule on markup); absent in older snapshots. */
+  takesInput?: boolean;
   frameUrl?: SanitizedUrl;
 }
 

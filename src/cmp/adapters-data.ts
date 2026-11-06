@@ -47,6 +47,19 @@ const BannerSchema = z.strictObject({
     .default([]),
 });
 
+/**
+ * The settings layer the first layer's settings control opens: its containers in priority order, the switches of the
+ * consent groups inside it, and the vendor's save or reject controls there. The opener is the first-layer control with
+ * the vendor role `settings` (`banner.vendorRoles`).
+ */
+const SettingsLayerSchema = z.strictObject({
+  containers: z.array(Selector).min(1),
+  groups: Selector,
+  /** Switches the vendor shows on and locked for its essential processing; a further locked one blocks the save. */
+  essentialGroups: z.number().int().min(0).max(3),
+  vendorRoles: z.array(z.strictObject({ selector: Selector, role: z.enum(['save', 'reject']) })).min(1),
+});
+
 const AdapterSchema = z
   .strictObject({
     name: z.string().min(1),
@@ -76,11 +89,18 @@ const AdapterSchema = z
       .optional(),
     /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
     closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
+    /** Present only for adapters whose first layer may lack a reject that phase B can then give in the settings layer. */
+    settingsLayer: SettingsLayerSchema.optional(),
   })
   .refine((a) => !a.answerCookie || !a.consentCookies?.includes(a.answerCookie), {
     // Every answer sets the answer cookie, so as a permission cookie it would make every reject look like a consent.
     message: 'the answer cookie is no permission cookie',
     path: ['consentCookies'],
+  })
+  .refine((a) => !a.settingsLayer || a.banner.vendorRoles.some((v) => v.role === 'settings'), {
+    // Only a control the vendor marks as settings opens the layer; a label alone may name a page or a link.
+    message: 'a settings layer needs a first-layer control with the vendor role settings',
+    path: ['settingsLayer'],
   });
 
 export type AdapterData = z.infer<typeof AdapterSchema>;

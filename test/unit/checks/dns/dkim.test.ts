@@ -12,8 +12,10 @@ import {
   parseDkimKey,
   parseDkimTags,
   planDkimSelectors,
+  recognizedProviders,
   rsaModulusBits,
 } from '../../../../src/checks/dns/lib/dkim.ts';
+import { loadDkimRules } from '../../../../src/collectors/dns/rules.ts';
 import { base64, dkimRecord, ED25519_KEY, rsaKey, rsaPkcs1Der, rsaSpkiDer } from './dkim-keys.ts';
 import { zone } from './zone.ts';
 
@@ -323,5 +325,37 @@ describe('dkimSignals: which domains are probed', () => {
     ['MX without SPF', { 'MX example.de': ['10 mx.example.de'], 'TXT example.de': 'NXDOMAIN' }, null],
   ] as const)('%s → skip %s', (_label, spec, skip) => {
     expect(dkimSignals('example.de', zone(spec)).skip).toBe(skip);
+  });
+});
+
+describe('test/data/dns/dkim.yaml recognises Microsoft 365 by each MX form Microsoft issues', () => {
+  const rules = loadDkimRules();
+  /** A tenant domain whose SPF includes Exchange Online, with the given MX host. */
+  const withMx = (mx: string) =>
+    recognizedProviders(
+      dkimSignals(
+        'example.de',
+        zone({
+          'MX example.de': [`0 ${mx}`],
+          'TXT example.de': ['v=spf1 include:spf.protection.outlook.com -all'],
+          'TXT spf.protection.outlook.com': ['v=spf1 ip4:192.0.2.0/24 -all'],
+        }),
+      ),
+      rules,
+    ).map((p) => p.id);
+
+  it.each([
+    ['the MX of Exchange Online', 'example-de.mail.protection.outlook.com'],
+    ['the MX of a domain with inbound DNSSEC and DANE', 'example-de.o-v1.mx.microsoft'],
+  ])('%s (%s)', (_name, mx) => {
+    expect(withMx(mx)).toEqual(['microsoft-365']);
+  });
+
+  it.each([
+    ['a host under another zone that ends in the same labels', 'example-de.o-v1.mx.microsoft.example.test'],
+    ['a host whose last labels only look alike', 'example-de.o-v1.examplemx.microsoft'],
+    ['a host of the site itself', 'mx.example.de'],
+  ])('counterexample: %s (%s) is no Microsoft 365 MX', (_name, mx) => {
+    expect(withMx(mx)).toEqual([]);
   });
 });

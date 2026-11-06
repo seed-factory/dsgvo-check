@@ -4,13 +4,14 @@
  * page where the reject is not in effect (`pagesWithoutDecision`) is no page after the reject: what it sends or stores
  * is left out, and so is the page from the evaluated ones (`reject-not-in-effect`).
  */
-import type { CmpSection } from '../../cmp/types.ts';
+import type { ClickOutcome, CmpSection } from '../../cmp/types.ts';
 import {
   type CheckOutcome,
   defineCheck,
   type EvidenceInput,
   isCookieHeld,
   type Observation,
+  type ScanPlan,
   subjects,
 } from '../../core/api.ts';
 import type { BrowserSection, RequestRecord } from '../../core/snapshot/browser.ts';
@@ -22,6 +23,7 @@ import type {
 } from '../../derive/types.ts';
 import { cookieEvidence, distinctRequestEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
+import { type RejectPath, rejectPath } from './reject-moment.ts';
 import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
 import {
   allCmpFacts,
@@ -186,6 +188,7 @@ function groupObservations(
   groups: Groups,
   derived: DerivedSection,
   rejectEvidence: EvidenceInput[],
+  path: RejectPath,
 ): Observation[] {
   return [...groups.values()]
     .sort((a, b) => a.subject.localeCompare(b.subject))
@@ -207,9 +210,21 @@ function groupObservations(
         pageCount: g.pages.size,
         consentModeDenied: g.consentModeDenied,
         requestCount: g.requests.length,
+        rejectPath: path,
       },
       ...serviceFields(derived, g.serviceId),
     }));
+}
+
+/**
+ * Why phase B pressed nothing in the settings layer of a first layer without reject, as a limitation of the open
+ * outcome: the reason of `plan.click.B.settings`, or a save core chose whose click did not go through. None when the
+ * settings layer was not tried.
+ */
+function settingsNotPressed(plan: ScanPlan, click: ClickOutcome | undefined): string[] {
+  const reason = plan.browser?.click.B?.settings?.reason;
+  if (reason) return [reason];
+  return click?.path === 'settings' && !click.clicked ? ['settings-save-failed'] : [];
 }
 
 /**
@@ -219,6 +234,7 @@ function groupObservations(
 function rejectBasis(
   browser: BrowserSection,
   cmp: CmpSection,
+  plan: ScanPlan,
   minCandidatePages: number,
 ):
   | { outcome: CheckOutcome }
@@ -248,7 +264,15 @@ function rejectBasis(
   const cmpB = cmp.phases.find((p) => p.phase === 'B');
   const click = cmpB?.click;
   if (click?.action !== 'reject' || !click.clicked) {
-    return { outcome: { status: 'inconclusive', reason: 'no-reject-click', observations: [] } };
+    const limitations = settingsNotPressed(plan, click);
+    return {
+      outcome: {
+        status: 'inconclusive',
+        reason: 'no-reject-click',
+        observations: [],
+        ...(limitations.length > 0 ? { limitations } : {}),
+      },
+    };
   }
 
   const confirmed = confirmedReject(cmpB);
@@ -265,11 +289,11 @@ function rejectBasis(
 export const consent05 = defineCheck({
   id: ID,
   module: 'browser',
-  requires: ['browser', 'cmp', 'derived'],
+  requires: ['browser', 'cmp', 'derived', 'plan'],
   // `connect-only-after-reject` needs the proxy CONNECT log (in-process egress proxy, not in the prototype).
   variants: RANK.map((variant) => ({ variant, variantGroup: 'after-reject' })),
-  run({ browser, cmp, derived }, ctx) {
-    const basis = rejectBasis(browser, cmp, ctx.thresholds.cmp.minCandidatePages);
+  run({ browser, cmp, derived, plan }, ctx) {
+    const basis = rejectBasis(browser, cmp, plan, ctx.thresholds.cmp.minCandidatePages);
     if ('outcome' in basis) return basis.outcome;
     const { phaseB, rejectEvidence } = basis;
 
@@ -277,7 +301,7 @@ export const consent05 = defineCheck({
     const groups: Groups = new Map();
     addRequestHits(groups, derived, requestIndex(browser), withoutReject);
     addStorageWrites(groups, browser, derived, withoutReject);
-    const observations = groupObservations(groups, derived, rejectEvidence);
+    const observations = groupObservations(groups, derived, rejectEvidence, rejectPath(cmp));
 
     const afterPages = phaseB.pages.filter((p) => p.reload || p.role !== 'start' || p.order > 0);
     const coverage = {

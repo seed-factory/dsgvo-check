@@ -169,6 +169,12 @@ const http = z.strictObject({
   bodyTimeoutMs: int(10_000, 'Time limit between two chunks of a response body.', 100),
   requestTimeoutMs: int(20_000, 'Time limit of one request from start to the end of the body.', 100),
   maxRedirects: int(5, 'Redirect hops followed per probe chain.', 1, 20),
+  formTwinPages: int(
+    3,
+    'Pages of phase A with a form whose http:// address is requested once (GET, no redirect followed, nothing submitted) after the browser, only on a host whose http:// root serves content without a redirect (TLS-01); 0 requests none.',
+    0,
+    10,
+  ),
 });
 
 const tls = z.strictObject({

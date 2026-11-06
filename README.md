@@ -12,7 +12,7 @@ GitHub Action und im GitLab CI und lässt die Pipeline fehlschlagen, sobald ein 
 
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
-> **Status: Prototyp 0.1.0.** 19 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
+> **Status: Prototyp 0.1.0.** 20 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
 > PDF auf Wunsch. Der Prototyp prüft die Architektur an echten Websites und ist kein Release 1.0. Die Texte im Bericht
 > sind Entwürfe („Textentwurf“). Noch nicht veröffentlicht (kein npm-Paket). Lücken: siehe [Grenzen](#grenzen).
 
@@ -40,7 +40,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 ## Funktionen
 
 - **Drei Browser-Phasen** mit frischem Profil: vor jeder Interaktion, nach „Ablehnen“, nach „Alle akzeptieren“.
-- **19 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
+- **20 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
   TLS und E-Mail.
 - **Zehn CMP-Adapter** (Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub und die
   Banner von Shopware, Wix und TYPO3-cookieman).
@@ -66,11 +66,12 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                         |
 | EMBED-03   | Videos und Vorschaubilder (z. B. YouTube, Vimeo) ohne Zwei-Klick-Lösung                   |
 | LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt       |
+| LEGAL-02   | Bezeichnungen früherer Rechtslage im Text (z. B. TMG, RStV, TTDSG, Privacy Shield)        |
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
 | PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen       |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
 | HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                              |
-| TLS-01     | Umleitung von http auf https; Links der Seiten auf http-Adressen der eigenen Website      |
+| TLS-01     | Umleitung von http auf https; Formulare auf http-Seiten; Links auf eigene http-Adressen   |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
 | MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum     |
 | MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                   |
@@ -98,6 +99,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                       |
 | `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                       |
 | `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
+| `LEGAL-02`   | —                                          | —                                                                                                                       | `outdated-reference`                                                                                    |
 | `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                      |
 | `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
@@ -130,7 +132,6 @@ Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt
 | `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                  | —                        |
 | `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                        | —                        |
 | `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete` | —                        |
-| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                | —                        |
 | `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                 | —                        |
 | `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                       | —                        |
 
@@ -222,7 +223,24 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Zustimmung: Was sie sendet oder speichert, gilt nicht als Befund nach der Ablehnung, die Seite nicht als ausgewertet
   (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
   Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
+- Bietet die erste Ebene eines mit hoher Konfidenz erkannten Banners keine Ablehnung und beschreibt der Adapter eine
+  Einstellungsebene (bisher nur Wix, `settingsLayer` in `test/data/cmp/adapters.yaml`), lehnt Phase B dort ab: Der
+  Scanner klickt die Einstellungsschaltfläche des Banners, liest die Schalter der Kategorien und klickt „Speichern“
+  nur, wenn jede Kategorie, die der Besucher umstellen kann, schon ausgeschaltet ist, kein gesperrter Schalter außer
+  dem für die erforderliche Verarbeitung des Anbieters eingeschaltet ist (bei Wix einer, `essentialGroups`) und genau
+  eine solche Schaltfläche des Anbieters zu sehen ist. Schalter stellt er nie um. Ist eine Kategorie schon
+  eingeschaltet, klickt er nichts mehr (`preselected-groups`). Der Zeitpunkt der Ablehnung ist das Speichern: Was lädt, während die
+  Einstellungen offen sind, zählt als vor der Ablehnung. Danach folgen wie sonst die Prüfung des Zustands, das
+  Neuladen und die Kontrollseiten. Die Befunde nennen die Ablehnung „über die Einstellungen“.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
+- Sperrt Bot-Schutz eine weitere Seite (`SCAN-BLOCKED`) oder drosselt der Zielhost (`SCAN-THROTTLED`), nennt der Bericht
+  die Prüfungen, denen dadurch Beobachtungen fehlen: für eine gesperrte Seite die Prüfungen, die Seiten ihrer Art lesen
+  (etwa LEGAL-01, LEGAL-02, PRIV-01 und PRIV-02 die Datenschutzerklärung), in Phase A zusätzlich TLS-01, das die Links
+  jeder Seite liest, und beim Impressum MAIL-01 bis MAIL-03, die die E-Mail-Domains des Impressums abfragen. Liest
+  Phase A eine Seite für einen Rechtstext, den ihre Art nicht nennt (eine Seite für Datenschutzerklärung und Impressum,
+  die Kontaktseite und Zwischenseiten, solange ein Rechtstext fehlt), nennt der Bericht auch dessen Prüfungen: LEGAL-01,
+  LEGAL-02 und beim Impressum MAIL-01 bis MAIL-03, bei der Datenschutzerklärung PRIV-01 und PRIV-02. Drosselung in
+  Phase A betrifft neben den Browser-Prüfungen ebenso TLS-01 und MAIL-01 bis MAIL-03.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
 - Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
@@ -243,7 +261,10 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
 - Fehlt auf der ersten Ebene eines erkannten Banners die Ablehnung, meldet CONSENT-04 `warning`, wenn das Banner die
   Seite nicht blockiert (`nonblocking-no-reject`, etwa nur „Cookie-Einstellungen“ und „Zustimmen“), und `critical`,
   wenn es sie blockiert und „Zustimmen“ anbietet (`blocking-no-reject`). Eine Schließen-Schaltfläche (×) zählt nie als
-  Ablehnen: Der Scanner klickt im Besuch mit Ablehnung dann nichts, und CONSENT-05 bleibt `inconclusive`.
+  Ablehnen. Der Scanner lehnt dann über die Einstellungen ab, wenn der Adapter sie kennt (siehe
+  [Ablauf im Browser](#ablauf-im-browser)); CONSENT-04 bewertet weiter die erste Ebene. Sonst klickt er im Besuch
+  mit Ablehnung nichts, und CONSENT-05 bleibt `inconclusive`, mit dem Grund als Einschränkung, wenn die Einstellungen
+  geöffnet, aber nicht gespeichert wurden.
 - Ein anderes Banner wird nur heuristisch erkannt: CONSENT-04 meldet `info` „Banner nicht erkannt“ (Status
   `inconclusive`), der Scanner klickt nicht.
 - Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort (auf der Seite oder in einem iframe, das
@@ -618,7 +639,11 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
   - die Umleitungsketten von `http://` und `https://` für den Zielhost und seine `www.`- und Apex-Varianten, dazu die
     Kette auf einem in der Ziel-URL ausdrücklich genannten Port;
   - je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung (nur gleiche
-    Website, für die Sicherheits-Header und Versionsangaben).
+    Website, für die Sicherheits-Header und Versionsangaben);
+  - nach dem Browser höchstens 3 Anfragen (`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`) an die `http://`-Adressen von Seiten,
+    auf denen Phase A ein Formular gesehen hat, nur wenn `http://` ihres Hosts ohne Umleitung auf https ausliefert:
+    je ein GET, ohne einer Weiterleitung zu folgen und ohne etwas abzusenden, keine Wiederholung und nach 429 oder 503
+    keine weitere Anfrage an diesen Host (für TLS-01).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
 - **DNS:** MX-, SPF-, DMARC- und DKIM-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website: für die
@@ -648,18 +673,33 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **Nur die 19 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **Nur die 20 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
   als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
   verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
-  Plugins bleiben unberücksichtigt. Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  Plugins bleiben unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
+  schon ausgeschaltet ist; voreingestellte Kategorien schaltet er nicht aus, die Ablehnung bleibt dann ungeprüft. Die
+  Selektoren der Wix-Einstellungen sind am eigenen Simulator getestet: Passt eine Wix-Version nicht dazu, öffnet der
+  Scanner die Einstellungen, speichert aber nichts (`settings-not-opened`). Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
   erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
   die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen
   dafür nur ein Abschnitt „Impressum“ und der Seitenfuß, weil sie auch Firmenangaben von Auftragsverarbeitern nennt.
+- **LEGAL-02** sucht nur die Bezeichnungen aus dem Wörterbuch
+  [test/data/legal/outdated-references.yaml](test/data/legal/outdated-references.yaml): TMG, RStV, TTDSG, EU-US
+  Privacy Shield, Safe Harbor, Richtlinie 95/46/EG und ausdrücklich „BDSG a. F.“ (das BDSG selbst gilt weiter und
+  zählt nicht). Gelesen werden die HTML-Fassungen von Impressum und Datenschutzerklärung (deutsch oder englisch) und
+  die weiteren Datenschutzhinweise der Website, ohne nicht angezeigten Text; eine Seite, die beides ist, ergibt einen
+  Befund je Bezeichnung. Ein Satz beginnt mit einem Großbuchstaben, „§“ oder einer Zahl. Ein Satz, der die
+  Bezeichnung als frühere nennt („vormals § 5 TMG“, „für ungültig erklärt“) oder zusammen mit der Nachfolgeregelung
+  („§ 5 TMG bzw. § 5 DDG“, „Data Privacy Framework“), zählt nicht. Das kann einen Satz übersehen, der beides tut; ein
+  Hinweis im Nachbarsatz zählt dagegen nicht für ihn. Fehlt ein Dokument, liegt es nur als PDF oder in einer anderen
+  Sprache vor oder ist es abgeschnitten, nennt die Prüfung das als Einschränkung (`partial`), ohne lesbares Dokument
+  ist sie `inconclusive` (`no-documents`). Die Befunde sind `info`; ob eine Angabe rechtlich erheblich ist, bewertet
+  die Prüfung nicht.
 - **Nach dem Ablehnen** bewertet CONSENT-05 nur Tracking (Analyse, Werbung, Sitzungsaufzeichnung). Schriften,
   Karten und Videos, die danach weiter laden, melden EMBED-01, EMBED-02 und EMBED-03: Titel und Text sagen, ob sie
   vor der Interaktion, nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das
@@ -673,7 +713,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   (`generate_204`) nicht. Die Seite eines Player-Rahmens ist die Seite, auf der sein Dokument geladen wurde, auch wenn
   ein Beacon des Players erst beim Wechsel zur nächsten Seite gesendet wird. Was ein Player speichert, meldet
   CONSENT-02 als eigenen, verknüpften Befund. Ein Videorahmen im Seitenaufbau, der beim Besuch nichts lädt, ergibt
-  keinen Befund, sondern die Einschränkung `video-embed-not-loaded`.
+  keinen Befund, sondern die Einschränkung `video-embed-not-loaded`. Ist die Seite, die der Scanner für einen Link mit
+  einem Wort der Gruppe `video` gewählt hat („Video“, „Videos“, „Mediathek“, Liste in `test/data/browser/pages.yaml`),
+  nicht auswertbar, ergibt das ohne Video auf anderen Seiten `inconclusive` (`video-page-not-evaluable`), mit Video
+  die Einschränkung gleichen Namens.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames, dazu die weiteren
   Datenschutzhinweise der Website, die Phase A gelesen hat: Eine Nennung in einem davon gilt als Nennung. Andere
   Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
@@ -716,7 +759,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain
   zuerst die Selektoren aus `DSGVO_CHECK_DNS_DKIM_SELECTORS` (`selector` für jede Domain oder `domain/selector`), dann
   die festen Selektoren eines erkannten Anbieters (Microsoft 365: `selector1`, `selector2`, erkannt nur an MX-Eintrag
-  und SPF-include zusammen), dann übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
+  unter `mail.protection.outlook.com` oder, bei DANE mit DNSSEC, unter `mx.microsoft` und SPF-include zusammen), dann
+  übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
   `DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS` (8). Ohne Schlüssel unter den angegebenen oder festen Selektoren meldet der
   Scanner `given-selector-missing` (`warning`), sonst nur `selectors-not-found` (`info`): Ein Schlüssel unter einem
   anderen Namen bleibt unsichtbar. Ein veröffentlichter Schlüssel belegt nicht, dass E-Mails signiert werden.
@@ -734,6 +778,20 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Rechnernamen ohne Punkt nicht unterscheiden. `<meta name="generator">` wird nicht gelesen. Ob eine Version
   Schwachstellen hat, bewertet die Prüfung nicht. Snapshots älterer Versionen enthalten die Angaben nicht: HDR-02
   bleibt dort `inconclusive`.
+- **Formulare über http (TLS-01)** liest der Scanner aus dem Markup der Antwort, ohne Skripte auszuführen: Ein
+  Formular, das erst ein Skript einfügt, sieht er nicht. Ein relatives `action` löst er wie ein Browser gegen das erste
+  `<base href>` auf; das `formaction` einer Schaltfläche liest er nicht. Gelesen werden die ersten 512 KiB einer Seite;
+  wurde eine Antwort dort abgeschnitten, ließ sie sich nicht entpacken oder stand dort statt des Impressums oder der
+  Datenschutzerklärung ein Bot-Schutz, und stand im gelesenen Teil kein Formular, nennt TLS-01 die Einschränkung
+  `http-form-not-inspected`. Außer der Startseite und den verlinkten Rechtstexten fragt er nur die `http://`-Adressen
+  von bis zu 3 Seiten ab, auf denen Phase A ein Formular gesehen hat, das mehr als eine Suche auf der Website nimmt
+  (dieselbe Regel wie für das Markup, Wörter in `test/data/http/html.yaml`), und nur auf Hosts, deren Wurzel
+  `http://<host>/` ohne Umleitung auf https ausgeliefert wird; Formulare mit E-Mail- oder Passwortfeld zuerst. Seiten
+  mit Query-Parametern oder Port in der Adresse werden nicht abgefragt. Antwortet ein Host mit 429 oder 503, bekommt er
+  in diesem Schritt keine weitere Anfrage. Ein Beitrag mit Kommentarformular wird nur gesehen, wenn Phase A ihn besucht
+  (Seitengruppe Blog/News). Antwortet die Adresse mit einem Bot-Schutz, einem Fehler oder einer Weiterleitung auf eine
+  andere `http://`-Adresse, bleibt es bei der Einschränkung `http-form-twin-undecided`. Ein Formular einer
+  https-Seite, das an eine `http://`-Adresse sendet, ist kein TLS-01-Befund.
 - **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
   `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
   (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,

@@ -14,12 +14,21 @@ import { phaseRecord } from './snapshot.ts';
 
 export type LoadMoment = 'before-interaction' | 'after-reject' | 'before-and-after-reject';
 
+/** Where phase B pressed its reject: a first-layer control, or the save control of the settings layer. */
+export type RejectPath = 'first-layer' | 'settings';
+
 /** What phase B says about its reject, independent of the loads of one finding. */
 export interface RejectFacts {
   /** The state our click set and the state read back after the reload; empty when the CMP state does not confirm it. */
   proof: EvidenceInput[];
   /** Whether the reject is in effect on a page of phase B by the CMP facts recorded there (`decisionInEffect`). */
   inEffect: (pageUrl: string) => boolean;
+  path: RejectPath;
+}
+
+/** The path of the reject click of phase B; a click recorded before the settings layer existed is a first-layer one. */
+export function rejectPath(cmp: CmpSection): RejectPath {
+  return cmp.phases.find((p) => p.phase === 'B')?.click?.path === 'settings' ? 'settings' : 'first-layer';
 }
 
 export function rejectFacts(browser: BrowserSection, cmp: CmpSection): RejectFacts {
@@ -40,6 +49,7 @@ export function rejectFacts(browser: BrowserSection, cmp: CmpSection): RejectFac
         facts.filter((f) => f.pageUrl === pageUrl),
         'B',
       ),
+    path: rejectPath(cmp),
   };
 }
 
@@ -56,6 +66,8 @@ export interface MomentParams {
   afterRejectPageCount: number;
   /** A load after the reject click, confirmed or not; kept so reports keep the param they always had. */
   afterReject: boolean;
+  /** Where the reject was pressed; null without a load after the reject. */
+  rejectPath: RejectPath | null;
 }
 
 /**
@@ -78,6 +90,7 @@ export function loadMoment(
       rejectConfirmed: null,
       afterRejectPageCount: 0,
       afterReject: false,
+      rejectPath: null,
     };
   }
   return {
@@ -85,6 +98,7 @@ export function loadMoment(
     rejectConfirmed: reject.proof.length > 0 && inEffect > 0,
     afterRejectPageCount: inEffect,
     afterReject: true,
+    rejectPath: reject.path,
   };
 }
 
