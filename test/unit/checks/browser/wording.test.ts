@@ -149,3 +149,94 @@ describe('browser actions also serve several findings at once', () => {
     );
   });
 });
+
+describe('EMBED titles name the moment of the loads', () => {
+  const service = { 'EMBED-01.fonts-loaded': 'Google Fonts', 'EMBED-02.maps-loaded': 'Google Maps' } as const;
+  /** Moment params, then the de and en titles of fonts and maps with the service left out. */
+  const CASES: Array<
+    [string, Record<string, string | boolean | null>, Record<'de' | 'en', [string, string]>]
+  > = [
+    [
+      'before the interaction',
+      { moment: 'before-interaction', rejectConfirmed: null },
+      {
+        de: ['Externe Schriftarten geladen', 'Externer Kartendienst geladen'],
+        en: ['External fonts loaded', 'External map service loaded'],
+      },
+    ],
+    [
+      'before the interaction and after the confirmed reject',
+      { moment: 'before-and-after-reject', rejectConfirmed: true },
+      {
+        de: [
+          'Externe Schriftarten geladen, auch nach bestätigter Ablehnung',
+          'Externer Kartendienst geladen, auch nach bestätigter Ablehnung',
+        ],
+        en: [
+          'External fonts loaded, also after confirmed rejection',
+          'External map service loaded, also after confirmed rejection',
+        ],
+      },
+    ],
+    [
+      'before the interaction and after a reject the CMP state did not confirm',
+      { moment: 'before-and-after-reject', rejectConfirmed: false },
+      {
+        de: [
+          'Externe Schriftarten geladen, auch nach Ablehnung',
+          'Externer Kartendienst geladen, auch nach Ablehnung',
+        ],
+        en: [
+          'External fonts loaded, also after rejection',
+          'External map service loaded, also after rejection',
+        ],
+      },
+    ],
+    [
+      'only after the confirmed reject',
+      { moment: 'after-reject', rejectConfirmed: true },
+      {
+        de: [
+          'Externe Schriftarten nach bestätigter Ablehnung geladen',
+          'Externer Kartendienst nach bestätigter Ablehnung geladen',
+        ],
+        en: [
+          'External fonts loaded after confirmed rejection',
+          'External map service loaded after confirmed rejection',
+        ],
+      },
+    ],
+    [
+      'a summary of findings with different moments',
+      { moment: 'after-reject, before-and-after-reject', rejectConfirmed: true },
+      {
+        de: ['Externe Schriftarten geladen', 'Externer Kartendienst geladen'],
+        en: ['External fonts loaded', 'External map service loaded'],
+      },
+    ],
+  ];
+
+  for (const lang of ['de', 'en'] as const) {
+    const texts = loadTexts(lang);
+    it.each(CASES)(`${lang}: %s`, (_name, moment, titles) => {
+      (['EMBED-01.fonts-loaded', 'EMBED-02.maps-loaded'] as const).forEach((key, i) => {
+        const params = {
+          ...moment,
+          service: service[key],
+          fontService: true,
+          integrationType: 'iframe',
+          bannerFound: true,
+          afterReject: moment.moment !== 'before-interaction',
+          pageCount: 1,
+          afterRejectPageCount: moment.moment === 'before-interaction' ? 0 : 1,
+          frameFontRequestCount: 0,
+          frameHelperCount: 0,
+        };
+        const m = renderMessage(texts, key, params);
+        expect(m.title).toBe(`${titles[lang][i]}: ${service[key]}`);
+        const text = unquote(`${m.title}\n${m.body}`);
+        expect(RULES[lang].filter(([, re]) => re.test(text)).map(([label]) => label)).toEqual([]);
+      });
+    });
+  }
+});

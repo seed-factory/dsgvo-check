@@ -145,7 +145,8 @@ export function distinctRequestEvidence(
   return out;
 }
 
-type RequestItem = { r: RequestRecord; c: ClassifiedRequest | null | undefined };
+/** A request record with its classification, as the evidence builders take them. */
+export type RequestItem = { r: RequestRecord; c: ClassifiedRequest | null | undefined };
 
 /**
  * Places kept for requests after the reject: a repeat of a request seen before the interaction is then still shown

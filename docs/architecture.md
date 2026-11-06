@@ -141,13 +141,14 @@ dsgvo-check/
 
 | Модуль | Что даёт | Кто пользуется |
 |---|---|---|
-| [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05 |
+| [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05, EMBED-01, EMBED-02 |
 | [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung или причина, почему её нельзя прочитать; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
 | [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
+| [reject-moment.ts](../src/checks/browser/reject-moment.ts) | `loadMoment` — когда загружено: до взаимодействия, после отказа или в оба момента (`moment`), подтверждён ли отказ состоянием CMP на странице с загрузкой после него (`rejectConfirmed`), на скольких страницах отказ действовал (`afterRejectPageCount`); `rejectProof` и `momentEvidence` — запросы по моментам и две улики `consent-state`, как у CONSENT-05 | EMBED-01, EMBED-02 |
 
 `derive` добавляет для проверок два факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
 
-- `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет.
+- `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет; EMBED-02 по ним называет шрифты кадра карты (`frameFontServices`, `frameFontRequestCount`), отдельной находки EMBED-01 для них нет.
 - `DerivedSection.serviceNames` — имя, псевдонимы, компании и категория каждого сервиса каталога с `policyRelevance` `required` или `optional`, замеченного или нет: по ним проверка понимает, о каком сервисе предложение политики.
 
 ## Словари и сопоставления

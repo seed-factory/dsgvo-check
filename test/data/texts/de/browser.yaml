@@ -267,17 +267,23 @@ messages:
 
   # EMBED-01
   EMBED-01.fonts-loaded:
-    title: "Externe Schriftarten geladen: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {Externe Schriftarten geladen, auch nach {rejectConfirmed, select, true
+      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externe Schriftarten nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externe Schriftarten geladen:
+      {service}}}
     body: >-
       {fontService, select, true {Schriftdateien oder Stylesheets von {service} wurden von einem externen Server
-      geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {afterReject,
-      select, true
-      {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor
-      einer Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner
-      gefunden}
+      geladen} other {Schriftdateien wurden vom Drittanbieter-Server {service} geladen}}, Zeitpunkt: {moment, select,
+      before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}
+      after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
+      (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem
+      Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
       unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}} ({pageCount, plural, one {#
-      Seite} other {# Seiten}}).
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
+      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).
   EMBED-01.preconnect-only:
     title: >-
       {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
@@ -289,18 +295,27 @@ messages:
 
   # EMBED-02
   EMBED-02.maps-loaded:
-    title: "Externer Kartendienst geladen: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {Externer Kartendienst geladen, auch nach {rejectConfirmed, select, true
+      {bestätigter Ablehnung} other {Ablehnung}}: {service}} after-reject {Externer Kartendienst nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung} other {Ablehnung}} geladen: {service}} other {Externer Kartendienst geladen:
+      {service}}}
     body: >-
       Ein externer Kartendienst von {service} wurde als {integrationType, select, iframe {eingebettete Karte
       (iframe)} js-api {JavaScript-API} static {statisches Kartenbild} tiles {Kartenkacheln} other {Karteninhalt}}
-      geladen, Zeitpunkt: {afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
-      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
-      jeder Interaktion, kein Einwilligungsbanner gefunden}
+      geladen, Zeitpunkt: {moment, select, before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner
+      und erneut nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {dem Klick auf „Ablehnen“
+      (Ablehnung nicht bestätigt)}}} after-reject {nach {rejectConfirmed, select, true {bestätigter Ablehnung} other
+      {dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)}}} other {{afterReject, select, true {vor einer
+      Interaktion mit dem Einwilligungsbanner bzw. nach Ablehnung} other {{bannerFound, select, true {vor einer
+      Interaktion mit dem Einwilligungsbanner} false {vor jeder Interaktion, kein Einwilligungsbanner gefunden}
       unrecognized {vor jeder Interaktion, Einwilligungsbanner beobachtet, aber nicht erkannt}
-      other {vor jeder Interaktion, Einwilligungsbanner nicht
-      ausgewertet}}}} ({pageCount, plural, one {# Seite} other {# Seiten}}).{frameResourceCount, plural, =0 {} one {
-      Dazu zählt # Anfrage des Kartenrahmens an Schriftdienste oder Hilfshosts.} other { Dazu zählen # Anfragen des
-      Kartenrahmens an Schriftdienste oder Hilfshosts.}}
+      other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}} ({pageCount, plural, one {# Seite}
+      other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach der Ablehnung}}).{frameFontRequestCount,
+      plural, =0 {} one { Der Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfrage).} other { Der
+      Kartenrahmen lud dabei Schriften von {frameFontServices} (# Anfragen).}}{frameHelperCount, plural, =0 {} one {
+      Der Kartenrahmen stellte außerdem # Anfrage an Hilfshosts.} other { Der Kartenrahmen stellte außerdem #
+      Anfragen an Hilfshosts.}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:

@@ -265,15 +265,21 @@ messages:
 
   # EMBED-01
   EMBED-01.fonts-loaded:
-    title: "External fonts loaded: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {External fonts loaded, also after {rejectConfirmed, select, true
+      {confirmed rejection} other {rejection}}: {service}} after-reject {External fonts loaded after {rejectConfirmed,
+      select, true {confirmed rejection} other {rejection}}: {service}} other {External fonts loaded: {service}}}
     body: >-
       {fontService, select, true {Font files or stylesheets of {service} were loaded from an external server} other
-      {Font files were loaded from the third-party server {service}}}, timing: {afterReject, select, true {before any
-      interaction with the consent banner or after rejection} other {{bannerFound, select, true {before any
-      interaction with the consent banner} false {before any interaction, no consent banner found}
+      {Font files were loaded from the third-party server {service}}}, timing: {moment, select, before-and-after-reject
+      {before any interaction with the consent banner and again after {rejectConfirmed, select, true {confirmed
+      rejection} other {the click on "Reject" (rejection not confirmed)}}} after-reject {after {rejectConfirmed,
+      select, true {confirmed rejection} other {the click on "Reject" (rejection not confirmed)}}} other {{afterReject,
+      select, true {before any interaction with the consent banner or after rejection} other {{bannerFound, select,
+      true {before any interaction with the consent banner} false {before any interaction, no consent banner found}
       unrecognized {before any interaction, consent banner observed but not recognised}
-      other {before
-      any interaction, consent banner not evaluated}}}} ({pageCount, plural, one {# page} other {# pages}}).
+      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).
   EMBED-01.preconnect-only:
     title: >-
       {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
@@ -284,18 +290,26 @@ messages:
 
   # EMBED-02
   EMBED-02.maps-loaded:
-    title: "External map service loaded: {service}"
+    title: >-
+      {moment, select, before-and-after-reject {External map service loaded, also after {rejectConfirmed, select, true
+      {confirmed rejection} other {rejection}}: {service}} after-reject {External map service loaded after
+      {rejectConfirmed, select, true {confirmed rejection} other {rejection}}: {service}} other {External map service
+      loaded: {service}}}
     body: >-
       An external map service of {service} was loaded as {integrationType, select, iframe {embedded map (iframe)}
-      js-api {JavaScript API} static {static map image} tiles {map tiles} other {map content}}, timing:
-      {afterReject, select, true {before any interaction with the consent banner or after rejection} other
-      {{bannerFound, select, true {before any interaction with the consent banner} false {before any interaction, no
-      consent banner found}
+      js-api {JavaScript API} static {static map image} tiles {map tiles} other {map content}}, timing: {moment,
+      select, before-and-after-reject {before any interaction with the consent banner and again after
+      {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection not confirmed)}}}
+      after-reject {after {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection
+      not confirmed)}}} other {{afterReject, select, true {before any interaction with the consent banner or after
+      rejection} other {{bannerFound, select, true {before any interaction with the consent banner} false {before any
+      interaction, no consent banner found}
       unrecognized {before any interaction, consent banner observed but not recognised}
-      other {before any interaction, consent banner not evaluated}}}} ({pageCount, plural,
-      one {# page} other {# pages}}).{frameResourceCount, plural,
-      =0 {} one { This includes # request of the map's frame to font services or helper hosts.} other { This
-      includes # requests of the map's frame to font services or helper hosts.}}
+      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).{frameFontRequestCount,
+      plural, =0 {} one { The map frame also loaded fonts from {frameFontServices} (# request).} other { The map frame
+      also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one { The map frame
+      also made # request to helper hosts.} other { The map frame also made # requests to helper hosts.}}
 
   # LEGAL-01
   LEGAL-01.document-not-found:

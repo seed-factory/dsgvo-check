@@ -560,6 +560,12 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`.
+- **Nach dem Ablehnen** bewertet CONSENT-05 nur Tracking (Analyse, Werbung, Sitzungsaufzeichnung). Schriften und
+  Karten, die danach weiter laden, melden EMBED-01 und EMBED-02: Titel und Text sagen, ob sie vor der Interaktion,
+  nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das Ablehnen bestätigt. Als
+  „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der CMP gilt: Das Banner
+  erscheint dort nicht wieder. Schriften, die ein Kartenrahmen lädt, nennt EMBED-02 mit; einen eigenen
+  EMBED-01-Befund gibt es dafür nicht.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.

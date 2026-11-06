@@ -9,6 +9,7 @@ import type { ClassifiedRequest, DerivedSection } from '../../derive/types.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
+import { loadMoment, momentEvidence, type RejectFacts, rejectFacts, rejectProof } from './reject-moment.ts';
 import { serviceFields, serviceName } from './services.ts';
 import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
 import { hasPhaseA, noPhaseAReason, requestIndex, throttleAware } from './snapshot.ts';
@@ -78,21 +79,28 @@ function withoutLoad(g: Group): 'hint' | 'attempt' | 'hint-and-attempt' {
   return g.attempted.length > 0 ? 'hint-and-attempt' : 'hint';
 }
 
-/** `fonts-loaded` when a font arrived; otherwise the attempts and hints alone make a `preconnect-only` finding. */
+/**
+ * `fonts-loaded` when a font arrived; otherwise the attempts and hints alone make a `preconnect-only` finding. Only a
+ * load states its moment and shows the requests after the reject with its proof. The attempts of a `preconnect-only`
+ * finding are listed once each, as a failed attempt fetched nothing after the reject, so places stay for its hints.
+ */
 function fontObservation(
   g: Group,
   records: Map<string, RequestRecord>,
   derived: DerivedSection,
   banner: BannerState,
+  reject: RejectFacts,
 ): Observation {
   const loaded = g.loaded.length > 0;
   const reqs = loaded ? g.loaded : g.attempted;
-  const evidence: EvidenceInput[] = distinctRequestEvidence(
-    reqs.flatMap((c) => {
-      const r = records.get(c.requestId);
-      return r ? [{ r, c }] : [];
-    }),
-  );
+  const items = reqs.flatMap((c) => {
+    const r = records.get(c.requestId);
+    return r ? [{ r, c }] : [];
+  });
+  const moment = loaded ? loadMoment(reqs, records, reject) : null;
+  const evidence: EvidenceInput[] = moment
+    ? momentEvidence(items, rejectProof(moment, reject))
+    : distinctRequestEvidence(items);
   if (!loaded) {
     for (const h of g.hints.slice(0, MAX_EVIDENCE - evidence.length)) {
       evidence.push({ type: 'link', href: h.href, text: `rel=${h.rel}`, phase: h.phase, page: h.pageUrl });
@@ -118,7 +126,7 @@ function fontObservation(
     params: {
       service: serviceName(derived, g.serviceId, g.etld1),
       pageCount: pages.length,
-      afterReject: reqs.some((c) => c.timing === 'after-reject'),
+      ...(moment ?? { afterReject: reqs.some((c) => c.timing === 'after-reject') }),
       bannerFound: banner,
       fontService: g.fontService,
       ...(loaded ? {} : { observed: withoutLoad(g) }),
@@ -145,9 +153,10 @@ export const embed01 = defineCheck({
 
     const records = requestIndex(browser);
     const banner = bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
+    const reject = rejectFacts(browser, cmp);
     const observations = [...groupFontUse(derived, records).values()]
       .sort((a, b) => a.subject.localeCompare(b.subject))
-      .map((g) => fontObservation(g, records, derived, banner));
+      .map((g) => fontObservation(g, records, derived, banner, reject));
 
     return throttleAware(
       browser,

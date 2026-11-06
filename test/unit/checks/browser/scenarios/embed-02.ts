@@ -1,5 +1,5 @@
 import { makeDom, makeLink } from '../../../../utils/snapshot-builder.ts';
-import { CONTACT, defaultPages, page, phase, req, site } from '../helpers.ts';
+import { CONTACT, click, defaultPages, page, phase, rejectCmp, req, START, site } from '../helpers.ts';
 import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
 export const scenarios: Scenario[] = [
@@ -27,6 +27,39 @@ export const scenarios: Scenario[] = [
           }),
         ],
       }),
+  },
+  {
+    file: 'violation-maps-after-reject.json',
+    description:
+      'The Kontakt page embeds Google Maps before any interaction and again as a control page after the reject, which the CMP state confirms',
+    expect: { status: 'completed', variants: ['maps-loaded'] },
+    build: () => {
+      const map = (id: string, p = {}) =>
+        req(id, 'https://www.google.com/maps/embed?pb=[redacted]', {
+          pageUrl: CONTACT,
+          resourceType: 'document',
+          isNavigation: true,
+          isMainFrame: false,
+          frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
+          ...p,
+        });
+      return site({
+        phases: [
+          phase('A', { requests: [map('A-1')] }),
+          phase('B', {
+            click: click('reject'),
+            reloaded: true,
+            pages: [
+              page(START, 'start', 'B'),
+              page(START, 'start', 'B', { reload: true }),
+              page(CONTACT, 'contact', 'B'),
+            ],
+            requests: [map('B-1', { phase: 'B', afterClick: true })],
+          }),
+        ],
+        cmp: rejectCmp({ confirmed: true, pages: { [CONTACT]: 'in-effect' } }),
+      });
+    },
   },
   {
     file: 'clean-two-click-placeholder.json',
