@@ -276,3 +276,27 @@ describe('header parser equivalence', () => {
     expectSameAsLegacy('link', legacyLink, { pieces, seed: 31102026, runs: 20_000, maxParts: 10 });
   });
 });
+
+describe('product headers: 64 KiB values are read in linear time', () => {
+  it.each<[string, string, (n: number) => string]>([
+    ['many pairs', 'server', (n) => 'a/1 '.repeat(n / 4)],
+    ['opening parentheses', 'server', (n) => '('.repeat(n)],
+    ['closing parentheses', 'server', (n) => ')'.repeat(n)],
+    ['escapes inside a comment', 'server', (n) => `(${'\\('.repeat(n / 2)}`],
+    ['one long token', 'x-powered-by', (n) => 'a'.repeat(n)],
+    ['one long token with a slash', 'x-powered-by', (n) => `a/${'1'.repeat(n)}`],
+    ['slashes', 'x-powered-by', (n) => 'a/'.repeat(n / 2)],
+    ['a long dotted version', 'x-powered-by', (n) => `PHP/${'1.'.repeat(n / 2)}`],
+    ['a long dotted product', 'x-powered-by', (n) => `${'a.'.repeat(n / 2)}/1`],
+    ['a long suffix', 'x-powered-by', (n) => `PHP/1${'-a'.repeat(n / 2)}`],
+    ['commas and blanks', 'server', (n) => ', '.repeat(n / 2)],
+    ['a version alone', 'x-aspnet-version', (n) => '1.'.repeat(n / 2)],
+  ])('%s', (_what, name, build) => {
+    expectLinear((n) => stored(name, build(n)));
+
+    const record = stored(name, build(SIZE));
+
+    expect(record.value).toBe(REDACTED);
+    expect(record.productVersions?.length ?? 0).toBeLessThanOrEqual(4);
+  });
+});

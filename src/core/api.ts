@@ -16,7 +16,7 @@ export type {
 export { defineCheck, normalizeOutcome, variantGroupOf } from './evaluation/check.ts';
 export type { TlsHostRole } from './evaluation/fingerprint.ts';
 export { fingerprint, subjects, tlsHostRole } from './evaluation/fingerprint.ts';
-export { cspFrameAncestors, MAX_HEADER_VALUE } from './redaction/headers.ts';
+export { cspFrameAncestors, MAX_HEADER_VALUE, PRODUCT_HEADERS } from './redaction/headers.ts';
 export { maskEmails, maskMailto, redactText } from './redaction/redact.ts';
 export type { Confidence, MessageParams, Severity } from './report/schema.ts';
 export { isCookieHeld, isHttpHref } from './snapshot/browser.ts';

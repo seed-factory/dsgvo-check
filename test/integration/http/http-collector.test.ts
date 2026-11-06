@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import zlib from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
+import { hdr02 } from '../../../src/checks/http/hdr-02.ts';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { MAX_DECODED_BYTES } from '../../../src/collectors/http/body.ts';
@@ -16,7 +17,13 @@ import type { HostVariant, HttpSection } from '../../../src/core/snapshot/http.t
 import type { TlsSection } from '../../../src/core/snapshot/tls.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
+import {
+  makeSnapshot,
+  makeTarget,
+  observationsOf,
+  runCheck,
+  variantsOf,
+} from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, httpProxy, silentServer, withRoutes } from './helpers.ts';
 import { ALL_ROUTES } from './sites.ts';
 
@@ -251,6 +258,81 @@ describe('HTTP collector: http → https redirect site', () => {
   });
 });
 
+describe('HTTP collector: headers that name the server software', () => {
+  const startUrl = 'https://www.powered.test/';
+  let http: HttpSection;
+
+  beforeAll(async () => {
+    server.reset();
+    http = (await collect(startUrl)).sections.http as HttpSection;
+  });
+
+  const productHeaders = (role: string) =>
+    http.documents
+      .find((d) => d.role === role)
+      ?.headers.filter((h) => h.name === 'server' || h.name === 'x-powered-by')
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+  it('stores product and version next to the redacted value of every main document', () => {
+    for (const role of ['start', 'impressum']) {
+      expect(productHeaders(role)).toEqual([
+        { name: 'server', value: '[redacted]', productVersions: [{ product: 'Apache', version: '2.4.41' }] },
+        {
+          name: 'x-powered-by',
+          value: '[redacted]',
+          productVersions: [{ product: 'PHP', version: '7.2.34' }],
+        },
+      ]);
+    }
+    expect(productHeaders('privacy')).toEqual([{ name: 'server', value: '[redacted]', productVersions: [] }]);
+  });
+
+  it('the comment with the operating system is stored nowhere in the section', () => {
+    expect(JSON.stringify(http)).not.toContain('Ubuntu');
+    expect(server.unexpected).toEqual([]);
+  });
+
+  it('HDR-02 reports each header, product and version once, with the pages united', () => {
+    const r = runCheck(hdr02, makeSnapshot({ target: makeTarget(startUrl), http }));
+
+    expect(r.status).toBe('completed');
+    expect(
+      observationsOf(r).map((o) => [
+        o.subject,
+        o.pages,
+        o.evidence.map((e) => (e as { value?: unknown }).value),
+      ]),
+    ).toEqual([
+      [
+        'x-powered-by|php/7.2.34',
+        [startUrl, 'https://www.powered.test/impressum'],
+        ['PHP/7.2.34', 'PHP/7.2.34'],
+      ],
+      [
+        'server|apache/2.4.41',
+        [startUrl, 'https://www.powered.test/impressum'],
+        ['Apache/2.4.41', 'Apache/2.4.41'],
+      ],
+    ]);
+  });
+
+  it('counterexample: a version only in the markup (meta generator, meta http-equiv) is not stored or reported', async () => {
+    server.reset();
+    const res = await collect('https://www.markup.test/', { 'markup.test': closed });
+    const section = res.sections.http as HttpSection;
+    const start = section.documents.find((d) => d.role === 'start');
+
+    expect(start?.metaHttpEquiv).toEqual([{ name: 'x-powered-by', value: '[redacted]' }]);
+    expect(JSON.stringify(section)).not.toMatch(/7\.2\.34|6\.4\.2/);
+    const r = runCheck(
+      hdr02,
+      makeSnapshot({ target: makeTarget('https://www.markup.test/'), http: section }),
+    );
+    expect(r.status).toBe('completed');
+    expect(variantsOf(r)).toEqual([]);
+  });
+});
+
 describe('HTTP collector: problem sites', () => {
   it('http without redirect and a form on the http page', async () => {
     const res = await collect('https://www.plain.test/', { 'plain.test': closed });
@@ -285,7 +367,7 @@ describe('HTTP collector: problem sites', () => {
     expect(variantsOf(hdr)).not.toContain('hsts-missing');
   });
 
-  it('a WAF challenge instead of the start page → SCAN-HTTP-BLOCKED, HDR-01 inconclusive (blocked)', async () => {
+  it('a WAF challenge instead of the start page → SCAN-HTTP-BLOCKED, HDR-01 and HDR-02 inconclusive (blocked)', async () => {
     const res = await collect('https://www.challenge.test/', { 'challenge.test': closed });
 
     const http = res.sections.http as HttpSection;
@@ -295,7 +377,7 @@ describe('HTTP collector: problem sites', () => {
     expect(res.diagnostics).toEqual([
       {
         code: 'SCAN-HTTP-BLOCKED',
-        affects: ['HDR-01'],
+        affects: ['HDR-01', 'HDR-02'],
         params: expect.objectContaining({ count: 1, page: 'https://www.challenge.test/' }),
       },
     ]);
@@ -304,6 +386,11 @@ describe('HTTP collector: problem sites', () => {
     const { hdr } = evaluate('https://www.challenge.test/', http);
     expect(hdr).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
     expect(variantsOf(hdr)).toEqual([]);
+    const versions = runCheck(
+      hdr02,
+      makeSnapshot({ target: makeTarget('https://www.challenge.test/'), http }),
+    );
+    expect(versions).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
     expect(server.unexpected).toEqual([]);
   });
 
@@ -399,7 +486,7 @@ describe('HTTP collector: problem sites', () => {
       expect(http.throttled).toBe(true);
       expect(http.throttledHosts).toEqual(['busy.test']);
       expect(res.status).toBe('partial');
-      expect(res.diagnostics).toEqual([{ code: 'SCAN-THROTTLED', affects: ['HDR-01', 'TLS-01'] }]);
+      expect(res.diagnostics).toEqual([{ code: 'SCAN-THROTTLED', affects: ['HDR-01', 'HDR-02', 'TLS-01'] }]);
     });
 
     it('retries the third 429 once, after the (capped) Retry-After pause', () => {

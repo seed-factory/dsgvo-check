@@ -3,26 +3,13 @@
 import { errorMessage } from '../runtime/errors.ts';
 import {
   type BrowserPhase,
-  type CollectorName,
-  SECTION_PRODUCER,
   type Snapshot,
   type SnapshotSectionKey,
+  sectionCollector,
   sliceSnapshot,
 } from '../snapshot/index.ts';
 import type { ExecutedCheck } from './assess.ts';
 import { type AnyCheck, type CheckContext, normalizeOutcome } from './check.ts';
-
-/** The collector whose status explains a missing section: derived data comes from the browser, core sections from none. */
-const COLLECTOR_OF_PRODUCER: Readonly<
-  Record<(typeof SECTION_PRODUCER)[SnapshotSectionKey], CollectorName | null>
-> = {
-  browser: 'browser',
-  http: 'http',
-  tls: 'tls',
-  dns: 'dns',
-  derive: 'browser',
-  core: null,
-};
 
 /**
  * Status of a check whose required section is missing: collector timeout → `error/timeout`; collector ran without the
@@ -34,7 +21,7 @@ export function missingSectionResult(
   timedOut: boolean,
 ): ExecutedCheck {
   for (const key of missing) {
-    const collector = COLLECTOR_OF_PRODUCER[SECTION_PRODUCER[key]];
+    const collector = sectionCollector(key);
     const st = collector ? snapshot.collection[collector] : undefined;
 
     if (st?.reason === 'timeout' || (timedOut && st === undefined)) {
@@ -126,8 +113,14 @@ export function executeCheck(
   opts: { timedOut?: boolean } = {},
 ): ExecutedCheck {
   const t0 = performance.now();
-  const sliced = sliceSnapshot(snapshot, check.requires as SnapshotSectionKey[]);
-  if (!sliced.ok) return missingSectionResult(sliced.missing, snapshot, opts.timedOut ?? false);
+  const timedOut = opts.timedOut ?? false;
+  const sliced = sliceSnapshot(
+    snapshot,
+    check.requires as SnapshotSectionKey[],
+    (check.optional ?? []) as SnapshotSectionKey[],
+    timedOut,
+  );
+  if (!sliced.ok) return missingSectionResult(sliced.missing, snapshot, timedOut);
 
   try {
     const outcome = normalizeOutcome(check.run(sliced.slice, ctx));

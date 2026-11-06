@@ -1,26 +1,34 @@
 /** Collector phase of a scan: runs the collectors the checks need under the global deadline and merges their sections into the snapshot. */
+import { isIP } from 'node:net';
 import path from 'node:path';
+import { DEFAULT_TLS_PORT } from './collectors/tls/probe.ts';
+import type { TlsFallbackMode } from './core/config/schema.ts';
 import type { AnyCheck } from './core/evaluation/check.ts';
 import { errorMessage, ScanFatalError } from './core/runtime/errors.ts';
 import type { Logger } from './core/runtime/logger.ts';
 import { uaToken } from './core/runtime/user-agent.ts';
 import type {
   CollectorContext,
+  CollectorHandover,
   CollectorResult,
   Collectors,
+  EntryTarget,
   FatalSignal,
 } from './core/snapshot/collector.ts';
+import type { RedirectChain } from './core/snapshot/http.ts';
 import {
+  type BrowserEntry,
   type CollectorName,
   SECTION_PRODUCER,
   type Snapshot,
   type SnapshotSectionKey,
   type TargetInfo,
+  type TlsFallbackDeclined,
 } from './core/snapshot/index.ts';
-import { sanitizeUrl } from './core/url/url.ts';
+import { bareHost, sanitizeUrl } from './core/url/url.ts';
 import type { ResolvedScanOptions } from './scan-options.ts';
 
-/** Collectors needed by the given checks (`derived` implies `browser`). */
+/** Collectors needed by the given checks (`derived` implies `browser`); optional sections start none. */
 export function requiredCollectors(checks: readonly AnyCheck[]): Set<CollectorName> {
   const out = new Set<CollectorName>();
   for (const c of checks) {
@@ -187,6 +195,87 @@ const INCOMPLETE_CHAIN_ERRORS: ReadonlySet<string> = new Set([
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
 ]);
 
+/**
+ * Where the browser may start instead of the target, or why it may not. Only the observed standard-port plain-http
+ * chain of the target counts, never a redirect received over a refused https connection: the chain must end normally
+ * on https of another DNS host, every https hop on the way must have been confirmed by Node (`true`, not unknown), a
+ * handshake record of that host must be accepted, and the page must have answered with content or a challenge the
+ * browser may pass. The raw URL comes from the HTTP collector's in-memory handover.
+ */
+export function tlsFallbackEntry(
+  snapshot: Readonly<Snapshot>,
+  handover: CollectorHandover | null | undefined,
+  mode: TlsFallbackMode,
+): TlsFallbackDecision {
+  const declined = (why: TlsFallbackDeclined): TlsFallbackDecision => ({ entry: null, declined: why });
+  if (mode === 'off') return declined('off');
+
+  const target = snapshot.target;
+  if (isIP(bareHost(target.host)) || new URL(target.url).port !== '') return declined('none');
+  const chain = snapshot.http?.chains.find(
+    (c) => c.hostVariant === 'target' && c.scheme === 'http' && c.port === undefined,
+  );
+  if (!chain) return declined('none');
+
+  const targetHost = target.host.toLowerCase();
+  const urls = chainUrls(chain);
+  const end = urls.at(-1);
+  if (!end || !urls.some((u) => u.protocol === 'https:')) return declined('none');
+  if (end.protocol === 'https:' && end.hostname.toLowerCase() === targetHost) return declined('same-host');
+  if (chain.outcome !== 'ok' || !chain.final)
+    return declined(chain.outcome === 'tls-error' ? 'invalid' : 'none');
+
+  const raw = handover?.chainUrls?.[chain.id];
+  const final = raw ? parseUrl(raw.final) : null;
+  if (!raw || !final || final.protocol !== 'https:') return declined('none');
+  const host = final.hostname.toLowerCase();
+  if (host === targetHost) return declined('same-host');
+  if (isIP(bareHost(host)) || final.port !== '') return declined('none');
+
+  const httpsHops = chain.hops.filter((h) => h.url.startsWith('https:'));
+  if (httpsHops.some((h) => h.tlsAuthorized !== true) || !handshakesAccepted(snapshot, host)) {
+    return declined('invalid');
+  }
+  if (!FALLBACK_START_STATUS(chain.final.status)) return declined('none');
+
+  return {
+    entry: { reason: 'tls-invalid', url: raw.final, via: raw.start },
+    record: { reason: 'tls-invalid', url: sanitizeUrl(raw.final), via: chain.startUrl },
+  };
+}
+
+export type TlsFallbackDecision =
+  | { entry: EntryTarget; record: BrowserEntry }
+  | { entry: null; declined: TlsFallbackDeclined };
+
+/** Content, or a bot challenge (403, 429) that the browser may pass where the HTTP client did not. */
+const FALLBACK_START_STATUS = (status: number | null): boolean =>
+  status !== null && ((status >= 200 && status < 300) || status === 403 || status === 429);
+
+/** The URLs a chain reached, and the one its last redirect pointed to when the chain broke off there, in order. */
+function chainUrls(chain: RedirectChain): URL[] {
+  const urls = chain.hops.map((h) => h.url);
+  const last = chain.hops.at(-1);
+  if (chain.outcome !== 'ok' && last?.location) urls.push(last.location);
+  return urls.map(parseUrl).filter((u): u is URL => u !== null);
+}
+
+function parseUrl(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Every handshake record of `host` on 443, from the TLS collector or after the redirect, completed and was accepted. */
+function handshakesAccepted(snapshot: Readonly<Snapshot>, host: string): boolean {
+  const records = [...(snapshot.tls?.endpoints ?? []), ...(snapshot.http?.finalTls ?? [])].filter(
+    (e) => e.host.toLowerCase() === host && e.port === DEFAULT_TLS_PORT,
+  );
+  return records.every((e) => e.outcome === 'handshake' && e.authorized);
+}
+
 /** True when the TLS collector saw an invalid certificate on the target host (browser checks → `tls-blocked`). */
 function tlsBlocked(snapshot: Snapshot): boolean {
   if (snapshot.target.scheme !== 'https') return false;
@@ -231,7 +320,9 @@ export async function collect(
   if (dns?.sections.dns) snapshot.dns = dns.sections.dns;
 
   if (needed.has('browser') && !state.fatal) {
-    await runBrowserCollector(snapshot, collectors.browser, ctx(), state, log, grace);
+    const entry = browserEntry(snapshot, http?.handover, o.config.scan.tlsFallback, log);
+    if (entry) await runBrowserCollector(snapshot, collectors.browser, entry(ctx()), state, log, grace);
+    if (snapshot.plan.browserEntry) endFailedAttempt(snapshot, state);
   }
 
   // Prefer the browser's final URL; use the HTTP start document when the browser did not provide it.
@@ -288,7 +379,73 @@ function collectorContext(
   };
 }
 
-/** Runs the browser collector unless the TLS verdict makes a visit pointless, and merges its sections. */
+/**
+ * Where the browser starts, as a change of its context; null when the TLS verdict makes a visit pointless (browser
+ * skipped as `tls-blocked`, with the reason no other start page was taken). A refused certificate of the target sends
+ * the browser to the redirect target of its plain-http address when `tlsFallbackEntry` accepts one.
+ */
+function browserEntry(
+  snapshot: Snapshot,
+  handover: CollectorHandover | undefined,
+  mode: TlsFallbackMode,
+  log: Logger,
+): ((ctx: CollectorContext) => CollectorContext) | null {
+  if (!tlsBlocked(snapshot)) return (ctx) => ctx;
+
+  const decision = tlsFallbackEntry(snapshot, handover, mode);
+  if (!decision.entry) {
+    snapshot.plan.tlsFallback = decision.declined;
+    snapshot.collection.browser = { status: 'skipped', reason: 'tls-blocked', durationMs: 0 };
+    return null;
+  }
+  snapshot.plan.browserEntry = decision.record;
+  log.info(`certificate of ${snapshot.target.host} refused: browser starts on ${decision.record.url}`);
+  const entry = decision.entry;
+  return (ctx) => ({ ...ctx, entry });
+}
+
+/**
+ * On the redirect target of a refused certificate the browser was only an attempt: whatever kept it from the start page
+ * there (the page itself, a browser that did not start, an exception, the global timeout) skips the browser checks, as
+ * the refused certificate alone would have, instead of failing the scan or leaving the checks in error.
+ */
+function endFailedAttempt(snapshot: Snapshot, state: CollectState): void {
+  const fatal = state.fatal;
+  const status = snapshot.collection.browser;
+  if (status?.reason === TLS_FALLBACK_FAILED) return;
+  if (!fatal && startPageDone(snapshot)) return;
+
+  const params = Object.entries(fatal?.params ?? {}).map(([k, v]) => `${k}=${v}`);
+  fallbackFailed(
+    snapshot,
+    fatal
+      ? { code: fatal.code, message: params.join('; ') || fatal.reason }
+      : {
+          code: status?.error?.code ?? status?.reason ?? 'no-start-page',
+          message: status?.error?.message ?? 'start page not visited',
+        },
+  );
+  state.fatal = null;
+}
+
+/** The browser checks did not run on the redirect target either; nothing the browser handed over is kept. */
+function fallbackFailed(snapshot: Snapshot, error: { code: string; message: string }): void {
+  snapshot.collection.browser = {
+    status: 'skipped',
+    reason: TLS_FALLBACK_FAILED,
+    durationMs: snapshot.collection.browser?.durationMs ?? 0,
+    error,
+  };
+  delete snapshot.browser;
+  delete snapshot.documents;
+  delete snapshot.cmp;
+  snapshot.plan.browser = null;
+}
+
+/** Reason of a browser skipped because its start page on the redirect target of a refused certificate failed. */
+export const TLS_FALLBACK_FAILED = 'tls-fallback-failed';
+
+/** Runs the browser collector and merges its sections. */
 async function runBrowserCollector(
   snapshot: Snapshot,
   collector: Collectors['browser'],
@@ -297,11 +454,6 @@ async function runBrowserCollector(
   log: Logger,
   graceMs: number,
 ): Promise<void> {
-  if (tlsBlocked(snapshot)) {
-    snapshot.collection.browser = { status: 'skipped', reason: 'tls-blocked', durationMs: 0 };
-    return;
-  }
-
   const result = await runCollector('browser', collector, ctx, snapshot, state, log, graceMs);
   if (!result) return;
 

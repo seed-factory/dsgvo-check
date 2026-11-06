@@ -932,6 +932,20 @@ describe('the overview: checks without a result', () => {
     );
   });
 
+  it('names the browser checks that did not run because the redirect target of a refused certificate failed too', () => {
+    const sentences = overview([
+      check('CONSENT-01', 'skipped', 'tls-fallback-failed'),
+      check('TLS-02', 'completed', null, 'http'),
+    ]);
+
+    expect(sentences).toContain(
+      'Eine Prüfung (CONSENT-01) wurde nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und auf dem Ziel ihrer HTTP-Weiterleitung hat der Browser keine auswertbare Seite erhalten.',
+    );
+    expect(overview([check('CONSENT-01', 'skipped', 'tls-fallback-failed')], [], 'en')).toContain(
+      'One check (CONSENT-01) was not run: the certificate of the website was not accepted as valid, and the browser did not receive an evaluable page on the target of its HTTP redirect.',
+    );
+  });
+
   it('speaks English with --lang en', () => {
     const sentences = overview([check('CONSENT-01', 'skipped', 'tls-blocked')], [], 'en');
     expect(sentences).toContain(
@@ -977,6 +991,46 @@ describe('the overview: region and redirect', () => {
       'Die angegebene Adresse leitet auf www.other-shop.example weiter. Für ein vollständiges Bild sollte auch diese Adresse direkt gescannt werden.',
     );
     expect(sentences(same).join(' ')).not.toContain('leitet auf');
+  });
+
+  it('says the browser checks continued on the redirect target of a refused certificate instead of asking for a direct scan', () => {
+    const continued = (lang: 'de' | 'en') => {
+      const r = reportWith([entry(1, 'a')]);
+      r.scan.target = 'https://broken.example.test/';
+      r.scan.finalUrl = 'https://site.example.test/start';
+      r.scan.entry = {
+        reason: 'tls-invalid',
+        requested: 'https://broken.example.test/',
+        via: 'http://broken.example.test/',
+        url: 'https://site.example.test/start',
+      };
+      return buildReportView(r, ctx('brief', lang)).overview;
+    };
+
+    expect(continued('de')).toContain(
+      'Das Zertifikat der angegebenen Adresse broken.example.test wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse leitet auf site.example.test weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen sich auf site.example.test.',
+    );
+    expect(continued('de').join(' ')).not.toContain('direkt gescannt werden');
+    expect(continued('en')).toContain(
+      'The certificate of the given address broken.example.test was not accepted as valid. Its plain-http address redirects to site.example.test, whose certificate was accepted as valid; the browser checks refer to site.example.test.',
+    );
+    expect(continued('en').join(' ')).not.toContain('scanned directly');
+  });
+
+  it('names the host the browser ended up on when the redirect target sent it on once more', () => {
+    const r = reportWith([entry(1, 'a')]);
+    r.scan.target = 'https://broken.example.test/';
+    r.scan.finalUrl = 'https://www.other.example.org/';
+    r.scan.entry = {
+      reason: 'tls-invalid',
+      requested: 'https://broken.example.test/',
+      via: 'http://broken.example.test/',
+      url: 'https://site.example.test/start',
+    };
+
+    expect(sentences(r)).toContain(
+      'Das Zertifikat der angegebenen Adresse broken.example.test wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse leitet auf site.example.test weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen sich auf www.other.example.org.',
+    );
   });
 });
 
@@ -1164,6 +1218,36 @@ describe('the evidence of a finding', () => {
     );
     expect(html).toContain('Belege (4)');
   });
+
+  it('names where on the page each listed link sits and whether it was visible', () => {
+    const link = base().evidence.find((e) => e.id === 'ev-link')!;
+    const links = [
+      {
+        ...link,
+        id: 'ev-l1',
+        href: 'http://work.example.de/',
+        text: 'Startseite',
+        region: 'nav',
+        visible: true,
+      },
+      { ...link, id: 'ev-l2', text: 'Impressum', region: 'banner', visible: false },
+    ] as Evidence[];
+    const html = renderHtml(withEvidence(links), ctx());
+
+    expect(html).toContain('<span class="ev-type">Links</span>');
+    expect(html).toContain('HTTP 200 · Navigation · sichtbar');
+    expect(html).toContain('HTTP 200 · Bereich des Einwilligungsbanners · nicht sichtbar');
+    // a link without these facts keeps its line as before
+    const plain = renderHtml(
+      withEvidence([
+        { ...link, id: 'ev-l3' },
+        { ...link, id: 'ev-l4' },
+      ] as Evidence[]),
+      ctx(),
+    );
+    expect(plain).toContain('<div>HTTP 200</div>');
+    expect(renderHtml(withEvidence(links), ctx('full', 'en'))).toContain('consent banner area · not visible');
+  });
 });
 
 describe('the full report in words', () => {
@@ -1215,7 +1299,7 @@ describe('the full report in words', () => {
   const CHECK_REASONS = [
     // evaluation
     'not-selected not-run not-collected collector-skipped collector-error:browser',
-    'tls-blocked timeout exception invalid-observation',
+    'tls-blocked tls-fallback-failed timeout exception invalid-observation',
     // browser checks; CONSENT-05 passes on why the visit with the reject did not start
     'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
     'first-layer-not-visible unknown-classification consent-frame-unresolved banner-candidate-unrecognized',

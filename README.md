@@ -40,7 +40,8 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 ## Funktionen
 
 - **Drei Browser-Phasen** mit frischem Profil: vor jeder Interaktion, nach „Ablehnen“, nach „Alle akzeptieren“.
-- **16 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, TLS und E-Mail.
+- **16 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
+  TLS und E-Mail.
 - **Zehn CMP-Adapter** (Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub und die
   Banner von Shopware, Wix und TYPO3-cookieman).
 - **Keine Werte:** Cookies, Web Storage und TC-String gelangen nie in Bericht, Snapshot oder Logs, auch nicht gehasht.
@@ -68,7 +69,8 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
 | PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen       |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
-| TLS-01     | Umleitung von http auf https                                                              |
+| HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                              |
+| TLS-01     | Umleitung von http auf https; Links der Seiten auf http-Adressen der eigenen Website      |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
 | MAIL-01    | DMARC-Eintrag und Richtlinie                                                              |
 | MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC                                    |
@@ -100,7 +102,8 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
 | `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
 | `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                                              | `redirect-chain-detail`                                                                                 |
+| `HDR-02`     | —                                          | —                                                                                                                       | `version-header`                                                                                        |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                  |
 | `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                        |
 <!-- registry:end -->
 
@@ -112,23 +115,23 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt die geplanten Varianten je Schweregrad.
 
-| ID                    | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                                           | Ohne Befund (`reason`)   |
-| --------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
-| `EMBED-04`            | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                              | —                        |
-| `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                                | —                        |
-| `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                                | `not-observable`         |
-| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                                | `source-unavailable`     |
-| `MAIL-03`             | DKIM                                       | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                                            | —                        |
-| `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                                          | —                        |
-| `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                                | `handshake-inconclusive` |
-| `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                               | —                        |
-| `HDR-02`              | Cookie-Attribute und Versionsangaben       | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`, `version-header` | —                        |
-| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                               | —                        |
-| `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                                     | —                        |
-| `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete`              | —                        |
-| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                             | —                        |
-| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                              | —                        |
-| `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                                    | —                        |
+| ID                    | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                              | Ohne Befund (`reason`)   |
+| --------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------ |
+| `EMBED-04`            | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                 | —                        |
+| `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                   | —                        |
+| `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                   | `not-observable`         |
+| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                   | `source-unavailable`     |
+| `MAIL-03`             | DKIM                                       | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                               | —                        |
+| `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                             | —                        |
+| `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                   | `handshake-inconclusive` |
+| `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                  | —                        |
+| `HDR-02`              | Cookie-Attribute                           | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`      | —                        |
+| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                  | —                        |
+| `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                        | —                        |
+| `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete` | —                        |
+| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                | —                        |
+| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                 | —                        |
+| `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                       | —                        |
 
 ³ Die Stufen gelten bei exakt bestimmter Version; bei einem Versionsbereich liegt jede Variante eine Stufe niedriger.  
 ⁴ Nur auf ausdrücklichen Wunsch (Opt-in); der Prototyp sendet solche Anfragen nicht.  
@@ -221,6 +224,14 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
+- Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
+  unverschlüsselte Adresse (`http://`, Standardport) auf einen anderen Host weiter und wurde jedes Zertifikat auf
+  diesem Weg als gültig angenommen, laufen die Phasen A, B und C dort, mit derselben Prüfung der Zertifikate wie sonst.
+  Der Bericht nennt das (`SCAN-TLS-FALLBACK`, in `report.json` unter `scan.entry`); TLS-02 meldet das Zertifikat der
+  Ziel-URL weiterhin. Eine Weiterleitung, die über ein abgelehntes Zertifikat läuft, zählt nicht. Liefert der Browser
+  dort keine auswertbare Seite (Challenge, Fehlerstatus, Zeitlimit) oder kommt er nicht bis dorthin, entfallen die
+  Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl.
+  `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
 
 ### Banner
 
@@ -597,7 +608,8 @@ Der Scanner schickt Browser-Navigationen und die folgenden Standardanfragen, son
 will, was bei ihm angekommen ist, findet es hier vollständig.
 
 - **Browser:** Navigationen der Phasen A, B und C (siehe [Ablauf im Browser](#ablauf-im-browser)), jeweils eine nach
-  der anderen mit mindestens 1,5 s Pause.
+  der anderen mit mindestens 1,5 s Pause. Bei einem abgelehnten Zertifikat der Ziel-URL gehen sie an das Ziel ihrer
+  HTTP-Weiterleitung, nicht zusätzlich.
 - **HTTP** (höchstens 2 Anfragen pro Sekunde und Host):
   - `robots.txt` des Ursprungs der Startseite;
   - höchstens 2 Sitemap-Anfragen, nur wenn die Links der Startseite das Seitenbudget nicht füllen (die Sitemap oder ein
@@ -605,7 +617,7 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
   - die Umleitungsketten von `http://` und `https://` für den Zielhost und seine `www.`- und Apex-Varianten, dazu die
     Kette auf einem in der Ziel-URL ausdrücklich genannten Port;
   - je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung (nur gleiche
-    Website, für die Sicherheits-Header).
+    Website, für die Sicherheits-Header und Versionsangaben).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
 - **DNS:** MX-, SPF- und DMARC-Abfragen (höchstens 60 Abfragen) beim Resolver des prüfenden Rechners, nicht bei der
@@ -626,8 +638,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   nicht die Erlaubnis des Website-Betreibers.
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
-  Domain maskiert. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste
-  eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Domain maskiert. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne
+  Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase
+  entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
@@ -687,6 +700,26 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu
   Geschichte), daher kann auf Portalen auch ein Artikel als weitere Seite gewählt werden.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **Versionsangaben (HDR-02)** stammen nur aus den Headern `Server`, `X-Powered-By`, `X-Generator`,
+  `X-Redirect-By`, `X-AspNet-Version` und `X-AspNetMvc-Version` von Startseite, Impressum und Datenschutzerklärung
+  und nur in der Form `Produkt/Version`. Nicht gespeichert werden Kommentare in Klammern, Text in Anführungszeichen
+  und Text, der ohne Leerzeichen an beiden hängt, Produktnamen mit Punkt oder in der Form einer Kennung (Hash, UUID),
+  Versionen in der Form eines Hostnamens, mit Hash im Zusatz oder aus vier Zahlen wie eine IPv4-Adresse (also auch
+  `openresty/1.21.4.1`) und alles nach den ersten vier Paaren. Ein Produktname aus einem Wort lässt sich von einem
+  Rechnernamen ohne Punkt nicht unterscheiden. `<meta name="generator">` wird nicht gelesen. Ob eine Version
+  Schwachstellen hat, bewertet die Prüfung nicht. Snapshots älterer Versionen enthalten die Angaben nicht: HDR-02
+  bleibt dort `inconclusive`.
+- **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
+  `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
+  (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,
+  für andere Hosts bleibt die Konfidenz `medium`. Ohne Browser (`--checks TLS-01`) bewertet TLS-01 nur die
+  http-Adressen; lief der Browser nicht, nennt die Prüfung die Einschränkung.
+- **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
+  auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die
+  Seite selbst aus, leitet es auf HTTPS desselben Hosts weiter oder nennt die Ziel-URL einen Port oder eine IP-Adresse,
+  entfallen sie (`SCAN-TLS-BLOCKED` nennt den Grund). Hinter `--proxy` ist das Urteil über die Zertifikate unbekannt,
+  der Browser wechselt dann nicht. Ohne TLS-02 (`--checks`) wird das Zertifikat nicht vorab geprüft: Der Browser ruft
+  die Ziel-URL auf und bricht beim Zertifikat ab, ohne Fortsetzung.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
   Ziel hinter einem `--proxy`. Den Scanner nicht in einem Netz mit sensiblen internen Diensten und nicht in Jobs mit

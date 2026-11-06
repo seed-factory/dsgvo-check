@@ -34,6 +34,17 @@ export interface HeaderRecord {
   truncated?: boolean;
   /** CSP only: `frame-ancestors` evaluated on the complete value as sent, before editing and the cut. Set when the directive is present or the value reached `MAX_HEADER_VALUE`. */
   frameAncestors?: FrameAncestorsFact;
+  /**
+   * Product headers only (`Server`, `X-Powered-By`, …), whose `value` stays `[redacted]`: the `product/version` pairs
+   * of the value, at most four. Empty when the value names no version; absent in snapshots older than this field.
+   */
+  productVersions?: ProductVersion[];
+}
+
+/** One RFC 9110 product token with a version, e.g. `PHP/7.2.34`; comments, hosts, addresses and URLs are not kept. */
+export interface ProductVersion {
+  product: string;
+  version: string;
 }
 
 /** `frame-ancestors` of a CSP header value; several comma-joined policies are summed up. */

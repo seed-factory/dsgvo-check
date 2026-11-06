@@ -17,6 +17,7 @@ import type {
   BrowserSections,
   CollectorContext,
   CollectorResult,
+  EntryTarget,
 } from '../../../src/core/snapshot/collector.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { parseTarget } from '../../../src/core/url/url.ts';
@@ -62,6 +63,8 @@ export async function collect(
     maxPages?: number;
     screenshots?: boolean;
     signal?: AbortSignal;
+    /** Start page chosen by the orchestrator instead of `url` (redirect target of a refused certificate). */
+    entry?: EntryTarget;
   } = {},
 ): Promise<CollectRun> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-browser-test-'));
@@ -85,6 +88,7 @@ export async function collect(
     now: () => new Date(),
     log: silentLogger,
     snapshot: makeSnapshot({ target }),
+    ...(o.entry ? { entry: o.entry } : {}),
   };
   const collector = createBrowserCollector({ timing: FAST_TIMING, phases: ['A'], ...o.deps });
   const result = await collector(ctx);

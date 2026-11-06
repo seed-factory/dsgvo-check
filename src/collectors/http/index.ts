@@ -71,6 +71,8 @@ function isHtml(contentType: string | null, body: Buffer): boolean {
 interface ChainRun {
   chain: RedirectChain;
   last: FetchResult | null;
+  /** Raw start URL; the chain stores it sanitized. */
+  start: string;
 }
 
 function toHop(r: FetchResult): HttpHop {
@@ -140,6 +142,7 @@ async function followChain(
   maxRedirects: number,
 ): Promise<ChainRun> {
   const chain = emptyChain(startUrl, hostVariant, id);
+  const ended = (last: FetchResult | null): ChainRun => ({ chain, last, start: startUrl });
   let url = startUrl;
 
   for (let i = 0; ; i++) {
@@ -149,7 +152,7 @@ async function followChain(
     } catch (err) {
       chain.outcome = outcomeOf(err instanceof ProbeError ? err.code : 'error') as ChainOutcome;
       chain.error = errorOf(err, url);
-      return { chain, last: null };
+      return ended(null);
     }
 
     const hop = toHop(r);
@@ -157,28 +160,32 @@ async function followChain(
 
     if (!REDIRECT_STATUSES.has(r.status) || !r.location) {
       chain.final = hop;
-      return { chain, last: r };
+      return ended(r);
     }
 
     const next = new URL(r.location);
     if (!isHttpUrl(next)) {
       chain.outcome = 'error';
       chain.error = { code: 'unsupported-redirect', message: next.protocol, phase: 'http', url: hop.url };
-      return { chain, last: null };
+      return ended(null);
     }
     if (i >= maxRedirects) {
       chain.outcome = 'redirect-limit';
-      return { chain, last: null };
+      return ended(null);
     }
     url = next.href;
   }
 }
 
 // A `<meta http-equiv>` as stored: reduced like the response header of the same name (URLs sanitized, a value outside
-// the allowlist `[redacted]`). A meta CSP has no effect on `frame-ancestors`, so the derived fact is not stored with
-// it.
+// the allowlist `[redacted]`). A meta CSP has no effect on `frame-ancestors`, and a meta tag named like a product
+// header is page text rather than a response header, so neither derived fact is stored with it.
 function storedMeta(meta: HeaderRecord, base: string): HeaderRecord {
-  const { frameAncestors: _fact, ...record } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
+  const {
+    frameAncestors: _fact,
+    productVersions: _products,
+    ...record
+  } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
   return record;
 }
 
@@ -269,8 +276,8 @@ function documentFrom(
 }
 
 /**
- * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 does not judge their headers. Its own code:
- * the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
+ * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 and HDR-02 do not read their headers. Its own
+ * code: the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
  */
 export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[]): DiagnosticInput | null {
   const blocked = documents.filter((d) => d.error?.code === BLOCKED_DOCUMENT);
@@ -278,7 +285,7 @@ export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[
   const pages = [...new Set(blocked.map((d) => d.finalUrl))];
   return {
     code: 'SCAN-HTTP-BLOCKED',
-    affects: ['HDR-01'],
+    affects: ['HDR-01', 'HDR-02'],
     params: {
       count: pages.length,
       page: pages[0] as string,
@@ -469,6 +476,14 @@ function startPageFatal(
   };
 }
 
+// The browser may start where a chain ended (a refused certificate of the target, see `tlsFallbackEntry`): it needs
+// the URL as the site sent it, while the stored hops are sanitized. Kept in memory only.
+function chainUrls(runs: readonly ChainRun[]): Record<string, { start: string; final: string }> {
+  return Object.fromEntries(
+    runs.flatMap((r) => (r.last ? [[r.chain.id, { start: r.start, final: r.last.url }] as const] : [])),
+  );
+}
+
 export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollector {
   return async (ctx) => {
     const client = createClient(ctx, opts);
@@ -517,7 +532,9 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
       };
       const blocked = blockedDocumentsDiagnostic(documents);
       const diagnostics: DiagnosticInput[] = [
-        ...(client.throttled ? [{ code: 'SCAN-THROTTLED' as const, affects: ['HDR-01', 'TLS-01'] }] : []),
+        ...(client.throttled
+          ? [{ code: 'SCAN-THROTTLED' as const, affects: ['HDR-01', 'HDR-02', 'TLS-01'] }]
+          : []),
         ...(blocked ? [blocked] : []),
       ];
       const fatal = startPageFatal(ctx, chains, startRun, port);
@@ -529,6 +546,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
         probes,
         ...(diagnostics.length > 0 ? { diagnostics } : {}),
         ...(fatal ? { fatal } : {}),
+        handover: { chainUrls: chainUrls(runs) },
       };
     } catch (err) {
       ctx.log.error(`http collector: ${errorMessage(err)}`);

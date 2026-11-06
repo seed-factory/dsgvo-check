@@ -350,6 +350,11 @@ const LinkEvidence = z.object({
   text: z.string(),
   target: z.string().optional(),
   status: z.number().int().nullable().optional(),
+  region: z
+    .enum(['header', 'nav', 'main', 'footer', 'banner', 'aside', 'other'])
+    .optional()
+    .meta({ description: 'Part of the page the link sits in; `banner` is a consent banner container' }),
+  visible: z.boolean().optional().meta({ description: 'The link was visible when the page was read' }),
 });
 
 export const KNOWN_EVIDENCE_TYPES = [
@@ -603,10 +608,24 @@ const EvaluatedAtSchema = IsoDateTime.optional().meta({
     'Only for a re-evaluated snapshot (--from-snapshot): when the evaluation ran. startedAt and durationMs then describe the capture.',
 });
 
+const ScanEntrySchema = z
+  .object({
+    reason: z.literal('tls-invalid'),
+    requested: z.string(),
+    via: z.string(),
+    url: z.string(),
+  })
+  .meta({
+    description:
+      'Where the browser checks ran when not on the target: the certificate of `requested` was not accepted, and its plain-http address `via` redirects to `url`, reached over connections whose certificates were all accepted. Absent when the browser started on the target and in reports of earlier versions.',
+  });
+export type ScanEntry = z.infer<typeof ScanEntrySchema>;
+
 const ScanCompleteSchema = z.object({
   status: z.enum(['complete', 'partial']),
   target: z.string(),
   finalUrl: z.string().nullable(),
+  entry: ScanEntrySchema.optional(),
   startedAt: IsoDateTime.meta({
     description:
       'Start of the observation; for a re-evaluated snapshot (--from-snapshot) the time it was captured',

@@ -1,0 +1,27 @@
+{
+  "$description": "Version-like text in a header that names no product (x-request-id) is not read, even with product facts attached",
+  "$expect": { "status": "completed", "variants": [] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "x-request-id", "value": "[redacted]", "productVersions": [{ "product": "PHP", "version": "7.2.34" }] }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}
