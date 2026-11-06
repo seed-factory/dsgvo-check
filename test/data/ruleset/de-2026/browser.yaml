@@ -67,6 +67,11 @@ checks:
     gating: true
     variants:
       maps-loaded: { severity: warning, crm: T1_MAPS_BEFORE_CONSENT }
+  EMBED-03:
+    gating: true
+    variants:
+      # The catalog files video under the code of maps loaded before consent.
+      video-loaded: { severity: warning, crm: T1_MAPS_BEFORE_CONSENT }
   LEGAL-01:
     gating: true
     variants:

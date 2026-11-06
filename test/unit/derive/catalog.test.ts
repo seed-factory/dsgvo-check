@@ -179,7 +179,23 @@ describe('URL matching', () => {
     ],
     ['https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js', 'jsdelivr', null],
     ['https://www.youtube-nocookie.com/embed/abc', 'youtube-nocookie', 'embed'],
+    // Thumbnails and preview data of video services: images and oEmbed answers, not a player.
     ['https://i.ytimg.com/vi/abc/hqdefault.jpg', 'youtube', 'thumbnail'],
+    ['https://i1.ytimg.com/vi/abc/hqdefault.jpg', 'youtube', 'thumbnail'],
+    ['https://i.ytimg.com/vi_webp/abc/maxresdefault.webp', 'youtube', 'thumbnail'],
+    ['https://i.ytimg.com/an_webp/abc/mqdefault_6s.webp?du=[redacted]', 'youtube', 'thumbnail'],
+    ['https://img.youtube.com/vi/abc/0.jpg', 'youtube', 'thumbnail'],
+    ['https://www.youtube.com/oembed?url=[redacted]&format=json', 'youtube', 'oembed'],
+    ['https://i.vimeocdn.com/video/123456789-abc_640', 'vimeo', 'thumbnail'],
+    ['https://vimeo.com/api/oembed.json?url=[redacted]', 'vimeo', 'oembed'],
+    // Scripts and styles of a player are no use of its API by the site.
+    ['https://www.youtube.com/s/player/abc123/player_ias.vflset/de_DE/base.js', 'youtube', 'player-assets'],
+    ['https://www.youtube-nocookie.com/s/player/abc123/www-player.css', 'youtube-nocookie', 'player-assets'],
+    ['https://f.vimeocdn.com/p/4.36.0/js/player.js', 'vimeo', 'player-assets'],
+    // A player's beacon image is no thumbnail: the domain alone names the service.
+    ['https://www.youtube-nocookie.com/generate_204?abc', 'youtube-nocookie', null],
+    ['https://i.ytimg.com/generate_204', 'youtube', null],
+    ['https://img.youtube.com/favicon.ico', 'youtube', null],
     ['https://cdn.trustindex.io/loader.js', 'trustindex', null],
     ['https://tile.openstreetmap.org/1/2/3.png', 'openstreetmap', 'tiles'],
     ['https://www.google.com/search?q=x', null, null],

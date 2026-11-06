@@ -12,7 +12,7 @@ GitHub Action und im GitLab CI und lässt die Pipeline fehlschlagen, sobald ein 
 
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
-> **Status: Prototyp 0.1.0.** 15 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
+> **Status: Prototyp 0.1.0.** 16 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
 > PDF auf Wunsch. Der Prototyp prüft die Architektur an echten Websites und ist kein Release 1.0. Die Texte im Bericht
 > sind Entwürfe („Textentwurf“). Noch nicht veröffentlicht (kein npm-Paket). Lücken: siehe [Grenzen](#grenzen).
 
@@ -40,7 +40,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 ## Funktionen
 
 - **Drei Browser-Phasen** mit frischem Profil: vor jeder Interaktion, nach „Ablehnen“, nach „Alle akzeptieren“.
-- **15 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, TLS und E-Mail.
+- **16 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, TLS und E-Mail.
 - **Zehn CMP-Adapter** (Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub und die
   Banner von Shopware, Wix und TYPO3-cookieman).
 - **Keine Werte:** Cookies, Web Storage und TC-String gelangen nie in Bericht, Snapshot oder Logs, auch nicht gehasht.
@@ -63,6 +63,7 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | TRACK-01   | Dienste-Inventar je Zeitpunkt: vor Interaktion, nach Ablehnung, nach Zustimmung           |
 | EMBED-01   | Schriften von Drittservern (z. B. Google Fonts)                                           |
 | EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                         |
+| EMBED-03   | Videos und Vorschaubilder (z. B. YouTube, Vimeo) ohne Zwei-Klick-Lösung                   |
 | LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt       |
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
@@ -91,6 +92,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `TRACK-01`   | —                                          | —                                                                                            | `service-inventory`                                                                                                              |
 | `EMBED-01`   | —                                          | `fonts-loaded`                                                                               | `preconnect-only`                                                                                                                |
 | `EMBED-02`   | —                                          | `maps-loaded`                                                                                | —                                                                                                                                |
+| `EMBED-03`   | —                                          | `video-loaded`                                                                               | —                                                                                                                                |
 | `LEGAL-01`   | `document-not-found`, `links-broken`       | `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner`       | `unresolved`                                                                                                                     |
 | `PRIV-01`    | —                                          | `not-named`                                                                                  | `category-only`, `ambiguous-match`                                                                                               |
 | `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                          | `weak-option`, `legacy-pct`                                                                                                      |
@@ -111,7 +113,6 @@ Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt
 | ID                    | Thema                                                | `critical`                      | `warning`                                                                    | `info`                                                           | Ohne Befund (`reason`)   |
 | --------------------- | ---------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
 | `PRIV-02`             | Datenschutzerklärung im Abgleich mit der Beobachtung | `contradiction-replicated`      | `contradiction-single`                                                       | `wording-to-review`                                              | `claim-ambiguous`        |
-| `EMBED-03`            | Videos und Vorschaubilder                            | —                               | `video-loaded`                                                               | —                                                                | —                        |
 | `EMBED-04`            | CAPTCHA                                              | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                              | —                        |
 | `EMBED-05`            | Widgets                                              | —                               | `widget-loaded`                                                              | —                                                                | —                        |
 | `CONSENT-06`          | Consent Mode                                         | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                                | `not-observable`         |
@@ -556,16 +557,24 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **Nur die 15 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **Nur die 16 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`.
-- **Nach dem Ablehnen** bewertet CONSENT-05 nur Tracking (Analyse, Werbung, Sitzungsaufzeichnung). Schriften und
-  Karten, die danach weiter laden, melden EMBED-01 und EMBED-02: Titel und Text sagen, ob sie vor der Interaktion,
-  nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das Ablehnen bestätigt. Als
-  „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der CMP gilt: Das Banner
-  erscheint dort nicht wieder. Schriften, die ein Kartenrahmen lädt, nennt EMBED-02 mit; einen eigenen
-  EMBED-01-Befund gibt es dafür nicht.
+- **Nach dem Ablehnen** bewertet CONSENT-05 nur Tracking (Analyse, Werbung, Sitzungsaufzeichnung). Schriften,
+  Karten und Videos, die danach weiter laden, melden EMBED-01, EMBED-02 und EMBED-03: Titel und Text sagen, ob sie
+  vor der Interaktion, nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das
+  Ablehnen bestätigt. Als „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der
+  CMP gilt: Das Banner erscheint dort nicht wieder. Schriften, die ein Kartenrahmen oder ein Videoplayer lädt, nennen
+  EMBED-02 und EMBED-03 mit; einen eigenen EMBED-01-Befund gibt es dafür nicht.
+- **Videos (EMBED-03)** werden je Einbettung gemeldet: Was ein Player-Rahmen lädt, gehört zu dessen Dienst, auch die
+  Vorschaubilder und Videodaten von YouTube, die ein Player von youtube-nocookie.com abruft; ein Vorschaubild auf der
+  Seite selbst bleibt beim Dienst, von dem es stammt. Als Vorschaubild gilt ein Bild nur mit der Signatur des
+  Dienstekatalogs (`/vi/` auf `ytimg.com`, `/video/` auf `i.vimeocdn.com`), ein Beacon-Bild des Players
+  (`generate_204`) nicht. Die Seite eines Player-Rahmens ist die Seite, auf der sein Dokument geladen wurde, auch wenn
+  ein Beacon des Players erst beim Wechsel zur nächsten Seite gesendet wird. Was ein Player speichert, meldet
+  CONSENT-02 als eigenen, verknüpften Befund. Ein Videorahmen im Seitenaufbau, der beim Besuch nichts lädt, ergibt
+  keinen Befund, sondern die Einschränkung `video-embed-not-loaded`.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.

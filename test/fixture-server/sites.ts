@@ -158,6 +158,15 @@ export const SITES: Record<string, SiteConfig> = {
       },
     ],
   },
+  'browser/video': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.youtube-nocookie.com': 'nocookie',
+      'i.ytimg.com': 'ytimg',
+    },
+    routes: [{ host: 'www.youtube-nocookie.com', path: '/youtubei/v1/log_event', status: 204 }],
+    fileHeaders: { 'nocookie/embed/fixture-a': html, 'nocookie/embed/fixture-b': html },
+  },
   'cmp/borlabs': { hosts: { 'www.borlabs.test': 'www' } },
   'cmp/ccm19': { hosts: { 'www.ccm19.test': 'www', 'cloud.ccm19.de': 'ccm' } },
   'cmp/complianz': { hosts: { 'www.complianz.test': 'www' } },

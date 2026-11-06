@@ -311,6 +311,30 @@ messages:
       also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one { The map frame
       also made # request to helper hosts.} other { The map frame also made # requests to helper hosts.}}
 
+  # EMBED-03
+  EMBED-03.video-loaded:
+    title: >-
+      {moment, select, before-and-after-reject {External video service loaded, also after {rejectConfirmed, select,
+      true {confirmed rejection} other {rejection}}: {service}} after-reject {External video service loaded after
+      {rejectConfirmed, select, true {confirmed rejection} other {rejection}}: {service}} other {External video
+      service loaded: {service}}}
+    body: >-
+      An external video service of {service} was loaded as {integrationType, select, iframe {an embedded player
+      (iframe)} js-api {the player API} thumbnail {a thumbnail image without a player} other {video content}},
+      timing: {moment, select, before-and-after-reject {before any interaction with the consent banner and again
+      after {rejectConfirmed, select, true {confirmed rejection} other {the click on "Reject" (rejection not
+      confirmed)}}} after-reject {after {rejectConfirmed, select, true {confirmed rejection} other {the click on
+      "Reject" (rejection not confirmed)}}} other {{afterReject, select, true {before any interaction with the
+      consent banner or after rejection} other {{bannerFound, select, true {before any interaction with the consent
+      banner} false {before any interaction, no consent banner found}
+      unrecognized {before any interaction, consent banner observed but not recognised}
+      other {before any interaction, consent banner not evaluated}}}}}} ({pageCount, plural, one {# page} other {#
+      pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after the rejection}}).{frameFontRequestCount,
+      plural, =0 {} one { The video player also loaded fonts from {frameFontServices} (# request).} other { The
+      video player also loaded fonts from {frameFontServices} (# requests).}}{frameHelperCount, plural, =0 {} one {
+      The video player also made # request to helper hosts.} other { The video player also made # requests to
+      helper hosts.}}
+
   # LEGAL-01
   LEGAL-01.document-not-found:
     title: "{documentKind, select, impressum {Legal notice (Impressum)} privacy {Privacy policy} other {Legal notice (Impressum) and privacy policy}} not found"
@@ -455,6 +479,14 @@ legalNotes:
     status: contested
     reviewedAt: null
     reviewBy: null
+  EMBED-03:
+    text: >-
+      Section 25 TDDDG where information is stored on the device; Art. 6 GDPR; DSK guidance on digital services. For
+      thumbnails without a player and for the privacy-enhanced mode (youtube-nocookie.com) the classification is
+      contested.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
   LEGAL-01:
     text: >-
       Section 5 DDG; Art. 13 GDPR; BGH I ZR 228/03 (reachable within two clicks, also via "Kontakt"). Section 18 MStV
@@ -550,6 +582,8 @@ actions:
       not load the fonts from there.}}
   EMBED-02.maps-loaded:
     text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
+  EMBED-03.video-loaded:
+    text: "{integrationType, select, thumbnail {Serve the thumbnails of {service} from your own server or load them only after consent.} other {Load the player of {service} only after visitors click on it or after consent.}}"
   LEGAL-01.document-not-found:
     text: "Link {documentKind, select, impressum {the legal notice} privacy {the privacy policy} other {the legal notice and the privacy policy}} clearly in the footer of every page{inOtherDocument, select, true {, as a page of its own or directly to the section “{otherHeading}” of the privacy policy ({otherDocument})} other {}}."
   LEGAL-01.links-broken:

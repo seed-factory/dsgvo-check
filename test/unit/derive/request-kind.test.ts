@@ -51,7 +51,8 @@ describe('integrationFromKind', () => {
     ['video', 'library', 'js-api'],
     ['maps', 'tile', 'tiles'],
     ['maps', 'image', 'static'],
-    ['video', 'image', 'thumbnail'],
+    // A video image is a thumbnail only by its catalog signature (a player's beacon image is none).
+    ['video', 'image', 'other'],
     ['maps', 'hit', 'other'],
     ['video', 'resource', 'other'],
     ['analytics', 'embed', undefined],
