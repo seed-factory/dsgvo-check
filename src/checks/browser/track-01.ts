@@ -1,4 +1,8 @@
-/** TRACK-01 (P0): inventory of tracking services by stage and timing; `info` only, gating belongs to the related CONSENT finding. */
+/**
+ * TRACK-01 (P0): inventory of tracking services by stage and timing; `info` only, gating belongs to the related CONSENT
+ * finding. What a control page records where the decision of its phase's click is not in effect
+ * (`pagesWithoutDecision`) belongs to no timing and is left out (`reject-not-in-effect`, `accept-not-in-effect`).
+ */
 
 import {
   defineCheck,
@@ -19,7 +23,8 @@ import type {
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceInfo, serviceName } from './services.ts';
-import { requestIndex, throttleAware } from './snapshot.ts';
+import { withoutDecision } from './signals.ts';
+import { classifiedCookies, classifiedStorage, requestIndex, throttleAware } from './snapshot.ts';
 import { type StoredIdentifier, storedIdentifiersByService } from './stored.ts';
 
 const ID = 'TRACK-01';
@@ -55,6 +60,32 @@ function timingObserved(browser: BrowserSection, timing: InteractionTiming): boo
   );
 }
 
+/** The timing of each stored tracking identifier of a service, on the pages where the decision of its phase holds. */
+type StoredTimings = Map<string, Set<InteractionTiming | undefined>>;
+
+function storedTimings(
+  browser: BrowserSection,
+  derived: DerivedSection,
+  excludes: (phase: Phase, pageUrl: string) => boolean,
+): StoredTimings {
+  const out: StoredTimings = new Map();
+  const add = (serviceId: string | null, timing: InteractionTiming | undefined) => {
+    if (!serviceId) return;
+    const set = out.get(serviceId) ?? new Set();
+    set.add(timing);
+    out.set(serviceId, set);
+  };
+  for (const { record, cls } of classifiedCookies(browser, derived)) {
+    if (cls.tracking && isCookieHeld(cls.state) && !excludes(record.phase, record.pageUrl)) {
+      add(cls.serviceId, cls.timing);
+    }
+  }
+  for (const { record, cls } of classifiedStorage(browser, derived)) {
+    if (cls.tracking && !excludes(record.phase, record.pageUrl)) add(cls.serviceId, cls.timing);
+  }
+  return out;
+}
+
 /**
  * The highest stage a service reached at one timing; a tracking cookie or storage key seen then proves at least
  * `initialised`, also without a request at that timing (a cookie set by a response of another service's host). A
@@ -62,16 +93,13 @@ function timingObserved(browser: BrowserSection, timing: InteractionTiming): boo
  */
 function stageAt(
   browser: BrowserSection,
-  derived: DerivedSection,
+  stored: StoredTimings,
   serviceId: string,
   reqs: readonly ClassifiedRequest[],
   timing: InteractionTiming,
 ): TimingStage {
   const at = reqs.filter((c) => c.timing === timing);
-  const initialisedProof =
-    derived.cookies.some(
-      (c) => c.serviceId === serviceId && c.tracking && isCookieHeld(c.state) && c.timing === timing,
-    ) || derived.storage.some((c) => c.serviceId === serviceId && c.tracking && c.timing === timing);
+  const initialisedProof = stored.get(serviceId)?.has(timing) === true;
   if (at.length === 0) {
     if (initialisedProof) return 'initialised';
     return timingObserved(browser, timing) ? 'none' : 'not-checked';
@@ -84,22 +112,28 @@ function stageAt(
 function requestsByService(
   derived: DerivedSection,
   records: Map<string, RequestRecord>,
+  excludes: (phase: Phase, pageUrl: string) => boolean,
 ): Map<string, ClassifiedRequest[]> {
   const byService = new Map<string, ClassifiedRequest[]>();
   for (const c of derived.requests) {
     if (!c.serviceId || !INVENTORY.has(c.category)) continue;
     // Reached the page (network response, SW or cache); a blocked or unanswered request is no inventory.
-    if (!records.has(c.requestId) || !c.loaded) continue;
+    const r = records.get(c.requestId);
+    if (!r || !c.loaded || excludes(c.phase, r.pageUrl)) continue;
     byService.set(c.serviceId, [...(byService.get(c.serviceId) ?? []), c]);
   }
   return byService;
 }
 
 /** Tracking services by their stored identifiers; the inventory lists them like CONSENT-02 and CONSENT-05 do. */
-function storedByService(browser: BrowserSection, derived: DerivedSection): Map<string, StoredIdentifier[]> {
+function storedByService(
+  browser: BrowserSection,
+  derived: DerivedSection,
+  excludes: (phase: Phase, pageUrl: string) => boolean,
+): Map<string, StoredIdentifier[]> {
   const out = new Map<string, StoredIdentifier[]>();
   for (const [serviceId, entries] of storedIdentifiersByService(browser, derived)) {
-    const tracked = entries.filter((e) => INVENTORY.has(e.category));
+    const tracked = entries.filter((e) => INVENTORY.has(e.category) && !excludes(e.phase, e.page));
     if (tracked.length > 0) out.set(serviceId, tracked);
   }
   return out;
@@ -112,9 +146,10 @@ function inventoryObservation(
   browser: BrowserSection,
   derived: DerivedSection,
   records: Map<string, RequestRecord>,
+  timings: StoredTimings,
 ): Observation {
   const byTiming = TIMINGS.map(
-    ([timing, param]) => [param, stageAt(browser, derived, serviceId, reqs, timing)] as const,
+    ([timing, param]) => [param, stageAt(browser, timings, serviceId, reqs, timing)] as const,
   );
   // `stage` is the highest stage over all timings; the text pairs every timing with its own stage.
   const stage = byTiming.reduce<TrackingStage>(
@@ -176,9 +211,9 @@ function inventoryObservation(
 export const track01 = defineCheck({
   id: ID,
   module: 'browser',
-  requires: ['browser', 'derived'],
+  requires: ['browser', 'cmp', 'derived'],
   variants: [{ variant: 'service-inventory' }],
-  run({ browser, derived }) {
+  run({ browser, cmp, derived }) {
     if (!browser.phases.some((p) => p.status !== 'skipped' && p.pages.some((v) => v.evaluable))) {
       const throttled = browser.phases.some((p) => p.reason === 'throttled');
       const reason = throttled ? 'throttled' : 'no-network-observation';
@@ -186,8 +221,10 @@ export const track01 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const requests = requestsByService(derived, records);
-    const stored = storedByService(browser, derived);
+    const without = withoutDecision(browser, cmp);
+    const requests = requestsByService(derived, records, without.excludes);
+    const stored = storedByService(browser, derived, without.excludes);
+    const timings = storedTimings(browser, derived, without.excludes);
     const observations = sortedUniq([...requests.keys(), ...stored.keys()]).map((serviceId) =>
       inventoryObservation(
         serviceId,
@@ -196,13 +233,22 @@ export const track01 = defineCheck({
         browser,
         derived,
         records,
+        timings,
       ),
     );
 
-    return throttleAware(browser, {
+    const outcome = throttleAware(browser, {
       status: 'completed',
       observations,
       limitations: browser.requestCap.truncated ? ['request-cap-truncated'] : [],
     });
+    // Pages left out make the inventory after a click partial: "nicht gefunden" there covers the other pages only.
+    const notInEffect = without.limitations(['B', 'C']);
+    if (notInEffect.length === 0) return outcome;
+    return {
+      ...outcome,
+      status: 'partial',
+      limitations: sortedUniq([...(outcome.limitations ?? []), ...notInEffect]),
+    };
   },
 });

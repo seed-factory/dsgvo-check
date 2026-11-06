@@ -1247,6 +1247,31 @@ describe('the full report in words', () => {
     expect(CHECK_REASONS.filter((reason, n) => shown.get(id(n)) === reason)).toEqual([]);
   });
 
+  it.each([
+    ['de', 'reject-not-in-effect', /nach der Ablehnung.*erneut/],
+    ['de', 'accept-not-in-effect', /nach der Zustimmung.*erneut/],
+    ['en', 'reject-not-in-effect', /after the rejection.*again/],
+    ['en', 'accept-not-in-effect', /after the acceptance.*again/],
+  ] as const)(
+    'words the control pages left out because the click decision is not in effect there (%s, %s)',
+    (lang, code, words) => {
+      const r = sampleFullReport();
+      r.checks = [
+        {
+          id: 'CONSENT-05',
+          module: 'browser',
+          status: 'partial',
+          reason: null,
+          limitations: [code],
+          coverage: { observed: 4, evaluated: 2 },
+          durationMs: 1,
+        },
+      ];
+      const [shown] = buildReportView(r, ctx('full', lang)).checks!;
+      expect(shown?.limitations).toEqual([{ text: expect.stringMatching(words), code: null }]);
+    },
+  );
+
   it('words the exit reasons and the phases', () => {
     const out = html();
     expect(out).toContain('<div>Befunde ab der eingestellten Schwelle</div>');

@@ -251,7 +251,10 @@ ui:
     evaluable} buttons-truncated {Not all buttons of the banner recorded} geometry-unsettled {Position and size of
     the banner not measured stably} final-host-not-probed {Final host of the redirect not probed}
     preconnect-not-observable {Connections without a request (preconnect) not observable}
-    pagehide-capture-unavailable {Requests sent when leaving a page not captured} first-layer-not-visible {First
+    pagehide-capture-unavailable {Requests sent when leaving a page not captured} reject-not-in-effect {Pages after
+    the rejection not evaluated where the consent banner showed again or no answer was stored}
+    accept-not-in-effect {Pages after the acceptance not evaluated where the consent banner showed again or no
+    answer was stored} first-layer-not-visible {First
     layer of the banner not visible} spf-include-unresolved {SPF include not fully resolved} mx-unknown {MX record
     could not be determined} throttled {The server throttled requests} status {Start page answered with HTTP
     {detail}} document-blocked {Page blocked by bot protection: {detail}} document-unavailable {Page not

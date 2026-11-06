@@ -171,6 +171,12 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   `/impressum` und `/datenschutz`.
 - Jede Seite bleibt mindestens 6 s (Phase A) bzw. 4 s (B und C) offen, bis der Netzverkehr ruhig ist; Obergrenzen:
   20 s bzw. 12 s.
+- Ob die Ablehnung oder Zustimmung auf einer Kontrollseite gilt, liest der Scanner dort am Banner ab. Zeigt es sich
+  erneut oder liegt ihm keine Antwort vor (etwa weil das Cookie der Antwort nur für den Host der Startseite gilt und die
+  Kontrollseite auf `www` liegt), zählen CONSENT-05 und TRACK-01 die Seite nicht als Seite nach Ablehnung bzw.
+  Zustimmung: Was sie sendet oder speichert, gilt nicht als Befund nach der Ablehnung, die Seite nicht als ausgewertet
+  (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
+  Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
@@ -591,7 +597,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
   als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
   verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
-  Plugins bleiben unberücksichtigt.
+  Plugins bleiben unberücksichtigt. Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.

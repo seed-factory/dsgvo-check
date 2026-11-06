@@ -1,13 +1,19 @@
+import type { CmpFacts } from '../../../../../src/cmp/types.ts';
 import {
   bannerCandidate,
+  CONTACT,
   candidateCmp,
   click,
   cmpFacts,
   cmpWith,
+  consentPages,
+  controlPageFacts,
   cookie,
+  IMPRESSUM,
   noBannerCmp,
   phase,
   req,
+  SHOP_HOST,
   site,
   unopenedDialogCmp,
 } from '../helpers.ts';
@@ -130,6 +136,85 @@ const shopwareScenarios: Scenario[] = [
   },
 ];
 
+/** The confirmed reject of `confirmedReject`, plus the facts read on the control pages. */
+const rejectWithControlPages = (control: CmpFacts[]) => {
+  const cmp = confirmedReject();
+  const b = cmp.phases[0]!;
+  return cmpWith({ ...b, facts: [...b.facts, ...control] });
+};
+
+const OTHER_HOST_PAGE = `${SHOP_HOST}/kontakt`;
+
+/**
+ * After the confirmed reject, phase B visits `control` and GA sends a page_view on each page of `hitsOn`: the start
+ * page after the click, the reload and the control pages.
+ */
+const afterRejectOn = (control: string[], hitsOn: string[]) =>
+  phase('B', {
+    click: click('reject'),
+    reloaded: true,
+    pages: consentPages('B', control),
+    requests: hitsOn.map((pageUrl, i) =>
+      ga.hit(`B-${i + 1}`, { phase: 'B', afterClick: true, tRef: 'click', tStartMs: 2_500, pageUrl }),
+    ),
+  });
+
+/**
+ * Each control page counts only where the CMP facts recorded there show the reject in effect: a control page that shows
+ * the banner again without an answer (a consent cookie bound to the host of the click page) is no page after the reject.
+ */
+const controlPageScenarios: Scenario[] = [
+  {
+    file: 'violation-tracking-on-control-page-after-reject.json',
+    description:
+      'Reject confirmed; the contact page reads the stored reject back, and GA4 sends a page_view with identifier there',
+    expect: { status: 'completed', variants: ['tracking-after-reject'] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterRejectOn([CONTACT], [CONTACT])],
+        cmp: rejectWithControlPages([controlPageFacts(CONTACT, 'B', true)]),
+      }),
+  },
+  {
+    file: 'inconclusive-reject-not-in-effect-on-control-page.json',
+    description:
+      'Reject confirmed on the start page; the control page on another host shows the banner again without an answer, so its GA4 page_view is no tracking after the reject and the page is not evaluated',
+    expect: { status: 'partial', variants: [] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterRejectOn([CONTACT, OTHER_HOST_PAGE], [OTHER_HOST_PAGE])],
+        cmp: rejectWithControlPages([
+          controlPageFacts(CONTACT, 'B', true),
+          controlPageFacts(OTHER_HOST_PAGE, 'B', false),
+        ]),
+      }),
+  },
+  {
+    file: 'clean-control-pages-after-reject.json',
+    description: 'Reject confirmed; both control pages read the stored reject back and send nothing',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterRejectOn([CONTACT, IMPRESSUM], [])],
+        cmp: rejectWithControlPages([
+          controlPageFacts(CONTACT, 'B', true),
+          controlPageFacts(IMPRESSUM, 'B', true),
+        ]),
+      }),
+  },
+  {
+    file: 'violation-tracking-on-other-host-with-shared-reject.json',
+    description:
+      'Counterexample: the control page on another host of the site reads the stored reject back (a consent cookie for the whole domain), so its GA4 page_view counts after the reject',
+    expect: { status: 'completed', variants: ['tracking-after-reject'] },
+    build: () =>
+      site({
+        phases: [phase('A'), afterRejectOn([OTHER_HOST_PAGE], [OTHER_HOST_PAGE])],
+        cmp: rejectWithControlPages([controlPageFacts(OTHER_HOST_PAGE, 'B', true)]),
+      }),
+  },
+];
+
 /** Without a recognised banner nothing was clicked: a banner observed but not recognised leaves the reject open. */
 const bannerScenarios: Scenario[] = [
   {
@@ -169,6 +254,7 @@ const bannerScenarios: Scenario[] = [
 export const scenarios: Scenario[] = [
   ...bannerScenarios,
   ...shopwareScenarios,
+  ...controlPageScenarios,
   {
     file: 'violation-tracking-after-reject.json',
     description:

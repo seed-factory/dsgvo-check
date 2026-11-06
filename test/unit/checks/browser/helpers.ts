@@ -225,6 +225,56 @@ export function unopenedDialogCmp(b: Partial<CmpFacts> = {}): CmpSection {
   );
 }
 
+/** Another host of the site (same registrable domain as `ORIGIN`), as a consent cookie bound to one host splits them. */
+export const SHOP_HOST = 'https://shop.example.de';
+
+/**
+ * CMP facts of a control page after the click of phase B (reject) or C (accept). `inEffect`: the CMP read back the
+ * stored answer of the click and hides the banner; otherwise it shows the banner again and has no answer, as on a host
+ * the consent cookie of the click page does not reach.
+ */
+export function controlPageFacts(pageUrl: string, ph: 'B' | 'C', inEffect: boolean): CmpFacts {
+  const answer = ph === 'B' ? 'denied' : 'granted';
+  return cmpFacts({
+    phase: ph,
+    pageUrl,
+    moment: 'control-page',
+    firstLayer: {
+      bannerPresent: true,
+      bannerVisible: !inEffect,
+      buttons: [],
+      purAbo: false,
+      closeMeansAccept: null,
+    },
+    state: [
+      inEffect
+        ? {
+            source: 'api',
+            ready: 'ready',
+            categories: { statistics: answer, marketing: answer },
+            origin: 'stored',
+            decision: { responded: true, method: 'explicit' },
+          }
+        : {
+            source: 'api',
+            ready: 'ready',
+            categories: { statistics: 'denied', marketing: 'denied' },
+            origin: 'default',
+            decision: { responded: false, method: 'unknown' },
+          },
+    ],
+  });
+}
+
+/** Pages of a consent phase: the start page, in B its reload, then the control pages in this order. */
+export function consentPages(ph: 'B' | 'C', control: readonly string[]): PageVisit[] {
+  return [
+    page(START, 'start', ph, { order: 0 }),
+    ...(ph === 'B' ? [page(START, 'start', ph, { order: 0, reload: true })] : []),
+    ...control.map((url, i) => page(url, url === CONTACT ? 'contact' : 'nav', ph, { order: i + 1 })),
+  ];
+}
+
 /** CMP section without any banner candidate (facts recorded, nothing detected). */
 export function noBannerCmp(phases: Array<'A' | 'B'> = ['A']): CmpSection {
   return {

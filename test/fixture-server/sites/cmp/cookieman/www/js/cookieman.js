@@ -1,8 +1,12 @@
 /* Own minimal simulator of the TYPO3 extension cookieman for integration tests (no vendor code). Mimics public
    identifiers only: window.cookieman (showOnce, show, hide, hasConsented), #cookieman-modal with
    data-cookieman-settings, the data-cookieman-accept-none / -accept-all / -save buttons, the group checkboxes and the
-   cookie "CookieConsent" listing the accepted groups separated by "|". Accepting "marketing" loads the local tracker. */
+   cookie "CookieConsent" listing the accepted groups separated by "|". Accepting "marketing" loads the local tracker.
+   The cookie is bound to the page's host unless the script tag names a domain in data-sim-cookie-domain, a knob of the
+   simulator (not cookieman markup) for sites whose hosts share one answer. */
 (function () {
+  var script = document.currentScript;
+  var cookieDomain = script ? script.getAttribute('data-sim-cookie-domain') : null;
   function stored() {
     var parts = document.cookie.split(';');
     for (var i = 0; i < parts.length; i++) {
@@ -40,7 +44,8 @@
     var boxes = modal().querySelectorAll('[data-cookieman-form] input[type=checkbox]');
     var groups = [];
     for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) groups.push(boxes[i].name);
-    document.cookie = 'CookieConsent=' + encodeURIComponent(groups.join('|')) + '; path=/; max-age=31536000; SameSite=Lax';
+    document.cookie = 'CookieConsent=' + encodeURIComponent(groups.join('|')) + '; path=/; max-age=31536000; SameSite=Lax' +
+      (cookieDomain ? '; domain=' + cookieDomain : '');
     if (groups.indexOf('marketing') !== -1) loadTracker();
     hide();
   }

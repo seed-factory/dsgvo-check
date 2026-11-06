@@ -252,6 +252,27 @@ export const SITES: Record<string, SiteConfig> = {
       'www.wix-leaky-shop.test': 'leaky',
     },
   },
+  // Shops on the cookieman simulator of cmp/cookieman with the start page on the bare domain and every other page on
+  // www: one sets the answer cookie for the start host only, the other for the whole domain.
+  'pipeline/cookieman-shop': {
+    hosts: {
+      'cookieman-shop.test': 'host-only',
+      'www.cookieman-shop.test': 'www',
+      'shared-cookieman-shop.test': 'shared',
+      'www.shared-cookieman-shop.test': 'www',
+    },
+    routes: [
+      'cookieman-shop.test',
+      'www.cookieman-shop.test',
+      'shared-cookieman-shop.test',
+      'www.shared-cookieman-shop.test',
+    ].map((host) => ({
+      host,
+      path: '/js/cookieman.js',
+      headers: js,
+      file: 'cmp/cookieman/www/js/cookieman.js',
+    })),
+  },
   'pipeline/passive': {
     hosts: { 'www.example.test': 'www', 'example.test': 'www' },
     routes: [

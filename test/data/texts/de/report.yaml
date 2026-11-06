@@ -257,6 +257,9 @@ ui:
     Banners erfasst} geometry-unsettled {Lage und Größe des Banners nicht stabil gemessen} final-host-not-probed
     {Zielhost der Umleitung nicht geprüft} preconnect-not-observable {Verbindungen ohne Anfrage (preconnect) nicht
     beobachtbar} pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite nicht erfasst}
+    reject-not-in-effect {Seiten nach der Ablehnung nicht ausgewertet, auf denen das Einwilligungsbanner erneut
+    angezeigt wurde oder keine Antwort gespeichert war} accept-not-in-effect {Seiten nach der Zustimmung nicht
+    ausgewertet, auf denen das Einwilligungsbanner erneut angezeigt wurde oder keine Antwort gespeichert war}
     first-layer-not-visible {Erste Ebene des Banners nicht sichtbar} spf-include-unresolved {SPF-include nicht
     vollständig aufgelöst} mx-unknown {MX-Eintrag nicht feststellbar} throttled {Der Server hat Anfragen gedrosselt}
     status {Startseite antwortete mit HTTP {detail}} document-blocked {Seite durch Bot-Schutz blockiert: {detail}}

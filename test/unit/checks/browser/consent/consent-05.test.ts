@@ -3,7 +3,21 @@ import { consent05 } from '../../../../../src/checks/browser/consent-05.ts';
 import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpPhaseFacts } from '../../../../../src/cmp/types.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { click, cmpFacts, cmpWith, cookie, phase, req, site } from '../helpers.ts';
+import {
+  CONTACT,
+  click,
+  cmpFacts,
+  cmpWith,
+  consentPages,
+  controlPageFacts,
+  cookie,
+  page,
+  phase,
+  req,
+  SHOP_HOST,
+  START,
+  site,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-05']!.find((s) => s.file === file)!.build();
@@ -328,5 +342,125 @@ describe('CONSENT-05 after a confirmed reject', () => {
       }),
     ]);
     expect(variantsOf(r)).toEqual([]);
+  });
+});
+
+describe('CONSENT-05 on the control pages after the reject', () => {
+  const OTHER = `${SHOP_HOST}/kontakt`;
+  /** The reject of `rejectB`, with the facts read on the control pages; `hits` are GA page_views on these pages. */
+  const runControl = (
+    control: Array<[string, boolean]>,
+    hits: string[],
+    extra: Partial<Parameters<typeof phase>[1]> = {},
+    knownGaps: string[] = [],
+  ) =>
+    runCheck(
+      consent05,
+      site({
+        phases: [
+          phase('A'),
+          phase('B', {
+            click: click('reject'),
+            reloaded: true,
+            pages: consentPages(
+              'B',
+              control.map(([url]) => url),
+            ),
+            requests: hits.map((pageUrl, i) => gaAfter(`b${i}`, { pageUrl })),
+            ...extra,
+          }),
+        ],
+        cmp: cmpWith(
+          rejectB({}, [
+            cmpFacts(),
+            ...control.map(([url, inEffect]) => controlPageFacts(url, 'B', inEffect)),
+          ]),
+        ),
+        knownGaps,
+      }),
+    );
+
+  it('violation: GA4 with identifier on a control page that reads the stored reject back', () => {
+    const r = runCheck(consent05, scenario('violation-tracking-on-control-page-after-reject.json'));
+    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+    expect(observationsOf(r).map((o) => [o.variant, o.pages])).toEqual([
+      ['tracking-after-reject', [CONTACT]],
+    ]);
+    // Reload and contact page: both after the reject.
+    expect(r.outcome?.coverage).toEqual({ observed: 3, evaluated: 2 });
+  });
+
+  it('a control page that shows the banner again without an answer: its hit is no finding, the page is not evaluated', () => {
+    const r = runCheck(consent05, scenario('inconclusive-reject-not-in-effect-on-control-page.json'));
+    expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['reject-not-in-effect'] } });
+    expect(observationsOf(r)).toEqual([]);
+    // Start page, reload, contact page and the page on the other host; the last one is left out.
+    expect(r.outcome?.coverage).toEqual({ observed: 4, evaluated: 2 });
+  });
+
+  it('clean: control pages with the stored reject and no request give a completed result over every page', () => {
+    const r = runCheck(consent05, scenario('clean-control-pages-after-reject.json'));
+    expect(r).toMatchObject({
+      status: 'completed',
+      outcome: { limitations: [], coverage: { evaluated: 3 } },
+    });
+    expect(observationsOf(r)).toEqual([]);
+  });
+
+  it('counterexample: a control page on another host with the stored reject (shared consent cookie) still counts', () => {
+    const r = runCheck(consent05, scenario('violation-tracking-on-other-host-with-shared-reject.json'));
+    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+    expect(observationsOf(r).map((o) => [o.variant, o.pages])).toEqual([['tracking-after-reject', [OTHER]]]);
+  });
+
+  it('the hits of the pages where the reject is in effect remain, those of the other page are left out', () => {
+    const r = runControl(
+      [
+        [CONTACT, true],
+        [OTHER, false],
+      ],
+      [START, CONTACT, OTHER, OTHER],
+    );
+    expect(r.status).toBe('partial');
+    expect(observationsOf(r).map((o) => [o.variant, o.pages, o.params.requestCount])).toEqual([
+      ['tracking-after-reject', [START, CONTACT], 2],
+    ]);
+  });
+
+  it('a tracking cookie written on a page without the reject is no storage finding', () => {
+    const r = runControl([[OTHER, false]], [], {
+      cookies: [cookie('_ga', { phase: 'B', afterClick: true, pageUrl: OTHER })],
+    });
+    expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['reject-not-in-effect'] } });
+    expect(observationsOf(r)).toEqual([]);
+  });
+
+  it('counterexample: the same cookie on a page with the stored reject is tracking after the reject', () => {
+    const r = runControl([[OTHER, true]], [], {
+      cookies: [cookie('_ga', { phase: 'B', afterClick: true, pageUrl: OTHER })],
+    });
+    expect(observationsOf(r).map((o) => [o.variant, o.params.kind, o.params.name])).toEqual([
+      ['tracking-after-reject', 'storage', '_ga'],
+    ]);
+  });
+
+  it('without the page-exit capture the result stays inconclusive and names both limitations', () => {
+    const r = runControl([[OTHER, false]], [OTHER], {}, ['pagehide-beacons']);
+    expect(r).toMatchObject({
+      status: 'inconclusive',
+      reason: 'pagehide-capture-unavailable',
+      outcome: { limitations: ['pagehide-capture-unavailable', 'reject-not-in-effect'] },
+    });
+    expect(observationsOf(r)).toEqual([]);
+  });
+
+  it('a page without the reject that was not evaluable anyway is left out once', () => {
+    const r = runControl([[OTHER, false]], [], {
+      pages: [
+        ...consentPages('B', []),
+        page(OTHER, 'nav', 'B', { order: 1, evaluable: false, notEvaluableReason: 'challenge' }),
+      ],
+    });
+    expect(r.outcome?.coverage).toEqual({ observed: 3, evaluated: 1 });
   });
 });

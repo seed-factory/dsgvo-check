@@ -1,8 +1,8 @@
 /**
  * All browser-side modules together: real browser collector and CMP subsystem, derive, browser checks, assess/gate and
- * reporters on hand-written shops with the Cookiebot, the Wix and the Shopware simulator. Variants: consent respected,
- * tracker before consent, blocking banner, a first layer without a reject, a reject the CMP state confirms or cannot
- * confirm.
+ * reporters on hand-written shops with the Cookiebot, the Wix, the Shopware and the cookieman simulator. Variants:
+ * consent respected, tracker before consent, blocking banner, a first layer without a reject, a reject the CMP state
+ * confirms or cannot confirm, control pages on another host the answer of the start page does or does not reach.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,6 +44,8 @@ beforeAll(async () => {
       'pipeline/wix-shop',
       'cmp/wix',
       'pipeline/shopware-shop',
+      'pipeline/cookieman-shop',
+      'cmp/cookieman',
     ],
   });
 });
@@ -553,5 +555,97 @@ describe('full browser pipeline on the Shopware simulator', () => {
     expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'consent-without-action', 'warning']]);
     expect(check(report, 'CONSENT-04')?.limitations).toContain('reject-unverified');
     expectNoShopwareValues(scanned);
+  });
+});
+
+const controlFacts = (r: ScanResult, phase: 'B' | 'C') =>
+  (cmpPhase(r, phase)?.facts ?? []).filter((f) => f.moment === 'control-page');
+const gaInventory = (report: FullReport) =>
+  report.findings.find((f) => f.checkId === 'TRACK-01' && f.serviceId === 'google-analytics');
+
+describe('full browser pipeline on the cookieman simulator, start page on the bare domain, other pages on www', () => {
+  describe('answer cookie bound to the start host: the pages on www show the banner again', () => {
+    let scanned: Awaited<ReturnType<typeof run>>;
+
+    beforeAll(async () => {
+      scanned = await run('cookieman-shop.test');
+    });
+
+    it('rejects and accepts on the start page through the cookieman adapter; the reject is confirmed there', () => {
+      const { r } = scanned;
+      expect(r.snapshot?.plan.browser?.click).toMatchObject({
+        B: { action: 'reject', target: { cmpId: 'cookieman', name: 'Alle Cookies ablehnen' } },
+        C: { action: 'accept', target: { cmpId: 'cookieman', name: 'Alle Cookies akzeptieren' } },
+      });
+      expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
+    });
+
+    it('revisits control pages on www only, where the banner shows again without an answer after both clicks', () => {
+      const { r } = scanned;
+      const control = r.snapshot?.plan.browser?.controlPages.map((p) => new URL(p.url).hostname) ?? [];
+      expect(control.length).toBeGreaterThan(0);
+      expect(new Set(control)).toEqual(new Set(['www.cookieman-shop.test']));
+      for (const phase of ['B', 'C'] as const) {
+        const facts = controlFacts(r, phase);
+        expect(facts).toHaveLength(control.length);
+        for (const f of facts) {
+          expect(f.firstLayer.bannerVisible).toBe(true);
+          expect(f.state.map((s) => s.decision?.responded)).toEqual([false]);
+        }
+      }
+    });
+
+    it('Google Analytics on the www pages after the reject is no CONSENT-05 finding; those pages are left out', () => {
+      const { r, report } = scanned;
+      expect(ids(report).filter((x) => x.startsWith('CONSENT-05'))).toEqual([]);
+      const c05 = check(report, 'CONSENT-05');
+      expect(c05?.limitations).toContain('reject-not-in-effect');
+      // Only the reload of the start page is a page after the reject.
+      const pagesB = r.snapshot?.browser?.phases.find((p) => p.phase === 'B')?.pages ?? [];
+      expect(c05?.coverage).toEqual({ observed: pagesB.length, evaluated: 1 });
+      // The tag on www before any interaction is a finding of CONSENT-01 all the same.
+      expect(ids(report)).toContain('CONSENT-01.tracking-completed');
+    });
+
+    it('TRACK-01 counts the www pages for neither click and names both limitations', () => {
+      const { report } = scanned;
+      expect(check(report, 'TRACK-01')).toMatchObject({
+        status: 'partial',
+        limitations: ['accept-not-in-effect', 'reject-not-in-effect'],
+      });
+      expect(gaInventory(report)?.params).toMatchObject({
+        stageBeforeInteraction: 'event-sent',
+        stageAfterReject: 'none',
+        stageAfterAccept: 'none',
+      });
+    });
+
+    it('the report words the pages left out', () => {
+      expect(scanned.files).toContain('Seiten nach der Ablehnung nicht ausgewertet');
+      expect(scanned.files).toContain('Seiten nach der Zustimmung nicht ausgewertet');
+    });
+  });
+
+  it('counterexample: an answer cookie for the whole domain reaches www, so the tag there counts after the reject', async () => {
+    const { r, report } = await run('shared-cookieman-shop.test');
+
+    const control = controlFacts(r, 'B');
+    expect(control.length).toBeGreaterThan(0);
+    for (const f of control) {
+      expect(new URL(f.pageUrl).hostname).toBe('www.shared-cookieman-shop.test');
+      expect(f.firstLayer.bannerVisible).toBe(false);
+      expect(f.state).toMatchObject([{ origin: 'stored', decision: { responded: true } }]);
+    }
+    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
+      variant: 'tracking-after-reject',
+      severity: 'critical',
+      serviceId: 'google-analytics',
+    });
+    expect(check(report, 'CONSENT-05')?.limitations).not.toContain('reject-not-in-effect');
+    expect(check(report, 'TRACK-01')?.limitations).toEqual([]);
+    expect(gaInventory(report)?.params).toMatchObject({
+      stageAfterReject: 'event-sent',
+      stageAfterAccept: 'event-sent',
+    });
   });
 });

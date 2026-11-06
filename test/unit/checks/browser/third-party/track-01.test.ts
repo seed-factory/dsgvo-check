@@ -3,7 +3,19 @@ import { track01 } from '../../../../../src/checks/browser/track-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { click, cookie, phase, req, START, site } from '../helpers.ts';
+import {
+  click,
+  cmpFacts,
+  cmpWith,
+  consentPages,
+  controlPageFacts,
+  cookie,
+  phase,
+  req,
+  SHOP_HOST,
+  START,
+  site,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['TRACK-01']!.find((s) => s.file === file)!.build();
@@ -513,5 +525,123 @@ describe('TRACK-01 stage per timing', () => {
             expect(body).not.toMatch(/beobachtet beobachtet/);
           }
     }
+  });
+});
+
+describe('TRACK-01 on control pages where the decision of the click is not in effect', () => {
+  const OTHER = `${SHOP_HOST}/kontakt`;
+  const hit = (id: string, ph: 'B' | 'C', pageUrl: string) =>
+    req(id, 'https://region1.google-analytics.com/g/collect?v=2&tid=G-ABC&cid=[redacted]&en=page_view', {
+      phase: ph,
+      afterClick: true,
+      resourceType: 'ping',
+      pageUrl,
+    });
+  const libraryInA = () =>
+    phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtag/js?id=G-ABC')] });
+  /** Phases B and C with the control page `url`; `inEffect` per phase, and GA hits on the pages in `hits`. */
+  const consentRun = (
+    url: string,
+    inEffect: { B: boolean; C: boolean },
+    hits: { B?: string[]; C?: string[] },
+    extra: { B?: Partial<Parameters<typeof phase>[1]> } = {},
+  ) =>
+    runCheck(
+      track01,
+      site({
+        phases: [
+          libraryInA(),
+          phase('B', {
+            click: click('reject'),
+            reloaded: true,
+            pages: consentPages('B', [url]),
+            requests: (hits.B ?? []).map((p, i) => hit(`b${i}`, 'B', p)),
+            ...extra.B,
+          }),
+          phase('C', {
+            click: click('accept'),
+            pages: consentPages('C', [url]),
+            requests: (hits.C ?? []).map((p, i) => hit(`c${i}`, 'C', p)),
+          }),
+        ],
+        cmp: cmpWith(
+          { phase: 'B', facts: [cmpFacts(), controlPageFacts(url, 'B', inEffect.B)] },
+          { phase: 'C', facts: [cmpFacts({ phase: 'C' }), controlPageFacts(url, 'C', inEffect.C)] },
+        ),
+      }),
+    );
+
+  it('a hit on a control page without the reject is not "after rejection"; the result names the pages left out', () => {
+    const r = consentRun(OTHER, { B: false, C: true }, { B: [OTHER] });
+    expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['reject-not-in-effect'] } });
+    expect(observationsOf(r)[0]?.params).toMatchObject({
+      stageBeforeInteraction: 'loaded',
+      stageAfterReject: 'none',
+      afterReject: false,
+      requestCount: 1,
+    });
+    expect(observationsOf(r)[0]?.pages).toEqual([START]);
+  });
+
+  it('a hit on a control page without the accept is not "after acceptance"', () => {
+    const r = consentRun(OTHER, { B: true, C: false }, { C: [OTHER] });
+    expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['accept-not-in-effect'] } });
+    expect(observationsOf(r)[0]?.params).toMatchObject({ stageAfterAccept: 'none', afterAccept: false });
+  });
+
+  it('both pages without the decision: both limitations, and the hits after the clicks on the start page still count', () => {
+    const r = consentRun(OTHER, { B: false, C: false }, { B: [START, OTHER], C: [START, OTHER] });
+    expect(r.outcome?.limitations).toEqual(['accept-not-in-effect', 'reject-not-in-effect']);
+    expect(observationsOf(r)[0]?.params).toMatchObject({
+      stageAfterReject: 'event-sent',
+      stageAfterAccept: 'event-sent',
+      requestCount: 3,
+    });
+  });
+
+  it('a tracking cookie written on a control page without the reject proves no stage after the reject', () => {
+    const r = consentRun(
+      OTHER,
+      { B: false, C: true },
+      {},
+      {
+        B: { cookies: [cookie('_ga', { phase: 'B', afterClick: true, pageUrl: OTHER })] },
+      },
+    );
+    expect(observationsOf(r)[0]?.params).toMatchObject({ stageAfterReject: 'none', afterReject: false });
+  });
+
+  it('a throttled phase keeps its limitation next to the pages left out', () => {
+    const r = consentRun(
+      OTHER,
+      { B: false, C: true },
+      { B: [OTHER] },
+      { B: { status: 'partial', reason: 'throttled' } },
+    );
+    expect(r).toMatchObject({
+      status: 'partial',
+      outcome: { limitations: ['reject-not-in-effect', 'throttled'] },
+    });
+  });
+
+  it('counterexample: control pages on another host with the stored decision count for both timings', () => {
+    const r = consentRun(OTHER, { B: true, C: true }, { B: [OTHER], C: [OTHER] });
+    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+    expect(observationsOf(r)[0]?.params).toMatchObject({
+      stageAfterReject: 'event-sent',
+      stageAfterAccept: 'event-sent',
+    });
+  });
+
+  it('counterexample: a cookie of the service on a control page with the stored reject proves "initialised"', () => {
+    const r = consentRun(
+      OTHER,
+      { B: true, C: true },
+      {},
+      {
+        B: { cookies: [cookie('_ga', { phase: 'B', afterClick: true, pageUrl: OTHER })] },
+      },
+    );
+    expect(observationsOf(r)[0]?.params).toMatchObject({ stageAfterReject: 'initialised' });
   });
 });
