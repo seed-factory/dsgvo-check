@@ -266,7 +266,8 @@ ui:
     {Link target of the legal notice not evaluable} privacy-target-not-evaluable {Link target of the privacy policy
     not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
     privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} page-links-not-observed {Links of the
-    pages not observed because the browser did not run or no page was evaluable} other {}}
+    pages not observed because the browser did not run or no page was evaluable} values-not-stored {Versions in
+    some headers not stored in the snapshot (older snapshot)} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -297,7 +298,8 @@ ui:
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}
     challenge {bot protection page} http {HTTP {detail}} navigation-failed {navigation failed ({detail})}
-    dom-unavailable {page structure not readable} not-html {not HTML} other {}}
+    dom-unavailable {page structure not readable} not-html {not HTML} values-not-stored {versions in the headers
+    not stored in the snapshot (older snapshot)} other {}}
   report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"

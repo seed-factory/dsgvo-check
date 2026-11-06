@@ -178,10 +178,14 @@ async function followChain(
 }
 
 // A `<meta http-equiv>` as stored: reduced like the response header of the same name (URLs sanitized, a value outside
-// the allowlist `[redacted]`). A meta CSP has no effect on `frame-ancestors`, so the derived fact is not stored with
-// it.
+// the allowlist `[redacted]`). A meta CSP has no effect on `frame-ancestors`, and a meta tag named like a product
+// header is page text rather than a response header, so neither derived fact is stored with it.
 function storedMeta(meta: HeaderRecord, base: string): HeaderRecord {
-  const { frameAncestors: _fact, ...record } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
+  const {
+    frameAncestors: _fact,
+    productVersions: _products,
+    ...record
+  } = storedHeaderRecord(meta.name, meta.value, base, sanitizeUrl);
   return record;
 }
 
@@ -272,8 +276,8 @@ function documentFrom(
 }
 
 /**
- * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 does not judge their headers. Its own code:
- * the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
+ * One diagnostic for the documents a bot or WAF challenge answered; HDR-01 and HDR-02 do not read their headers. Its own
+ * code: the browser may still evaluate these pages, and the report joins diagnostics of one code into one.
  */
 export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[]): DiagnosticInput | null {
   const blocked = documents.filter((d) => d.error?.code === BLOCKED_DOCUMENT);
@@ -281,7 +285,7 @@ export function blockedDocumentsDiagnostic(documents: readonly DocumentResponse[
   const pages = [...new Set(blocked.map((d) => d.finalUrl))];
   return {
     code: 'SCAN-HTTP-BLOCKED',
-    affects: ['HDR-01'],
+    affects: ['HDR-01', 'HDR-02'],
     params: {
       count: pages.length,
       page: pages[0] as string,
@@ -528,7 +532,9 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
       };
       const blocked = blockedDocumentsDiagnostic(documents);
       const diagnostics: DiagnosticInput[] = [
-        ...(client.throttled ? [{ code: 'SCAN-THROTTLED' as const, affects: ['HDR-01', 'TLS-01'] }] : []),
+        ...(client.throttled
+          ? [{ code: 'SCAN-THROTTLED' as const, affects: ['HDR-01', 'HDR-02', 'TLS-01'] }]
+          : []),
         ...(blocked ? [blocked] : []),
       ];
       const fatal = startPageFatal(ctx, chains, startRun, port);

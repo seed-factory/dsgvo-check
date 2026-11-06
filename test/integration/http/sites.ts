@@ -172,7 +172,41 @@ export const BUILDER_SITE: RouteSpec[] = [
   html('www.builder.test', 'https', '/impressum-2', page('Datenschutz')),
 ];
 
+/** Headers of a server that names its software, with the operating system in a comment. */
+export const VERSION_HEADERS: Record<string, string> = {
+  ...GOOD_HEADERS,
+  'x-powered-by': 'PHP/7.2.34',
+  server: 'Apache/2.4.41 (Ubuntu)',
+};
+
+/** powered.test — start page and Impressum name PHP and Apache with versions; the Datenschutz page names none. */
+export const POWERED_SITE: RouteSpec[] = [
+  redirect('www.powered.test', 'http', '/', 'https://www.powered.test/'),
+  redirect('powered.test', 'http', '/', 'https://www.powered.test/'),
+  redirect('powered.test', 'https', '/', 'https://www.powered.test/'),
+  html('www.powered.test', 'https', '/', page('Start', LEGAL_LINKS), VERSION_HEADERS),
+  html('www.powered.test', 'https', '/impressum', page('Impressum'), VERSION_HEADERS),
+  html('www.powered.test', 'https', '/datenschutz', page('Datenschutz'), {
+    ...GOOD_HEADERS,
+    server: 'nginx',
+  }),
+];
+
+/** markup.test — the version is only in the page markup (meta generator, meta http-equiv), not in a response header. */
+export const MARKUP_VERSION_SITE: RouteSpec[] = [
+  html(
+    'www.markup.test',
+    'https',
+    '/',
+    '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="generator" content="WordPress 6.4.2">' +
+      '<meta http-equiv="X-Powered-By" content="PHP/7.2.34"><title>Start</title></head><body><h1>Start</h1>' +
+      `${filler}</body></html>`,
+  ),
+];
+
 export const ALL_ROUTES: RouteSpec[] = [
+  ...POWERED_SITE,
+  ...MARKUP_VERSION_SITE,
   ...CHALLENGE_SITE,
   ...BUILDER_SITE,
   ...PORT_SITE,

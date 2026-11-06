@@ -51,6 +51,10 @@ export const subjects = {
   header(name: string): string {
     return name.toLowerCase();
   },
+  /** HDR-02 version headers: header name and `product/version` (lower-case); another version is another subject. */
+  versionHeader(name: string, product: string, version: string): string {
+    return `${name}|${product}/${version}`.toLowerCase();
+  },
   /** MAIL-*, DNS-01: record kind, e.g. `dmarc`, `spf`. */
   record(kind: string): string {
     return kind.toLowerCase();

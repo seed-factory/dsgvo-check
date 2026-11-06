@@ -83,6 +83,16 @@ describe('the names of <meta http-equiv> are bounded when they are stored', () =
     expect(JSON.stringify(out)).not.toContain('zq7');
   });
 
+  it('a meta tag named like a product header is no response header: its value stays redacted, without product facts', () => {
+    const html = [
+      '<meta http-equiv="X-Powered-By" content="PHP/7.2.34">',
+      '<meta name="generator" content="WordPress 6.4.2">',
+    ].join('');
+    expect(storedMetaHttpEquiv(extractMeta(html).httpEquiv, BASE)).toEqual([
+      { name: 'x-powered-by', value: '[redacted]' },
+    ]);
+  });
+
   it('counterexample: a document with a few records loses none of them', () => {
     const records = Array.from({ length: 32 }, (_, i) => meta(`h${i}`, 'v'));
     expect(storedMetaHttpEquiv(records, BASE)).toHaveLength(32);

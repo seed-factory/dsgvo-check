@@ -272,7 +272,8 @@ ui:
     auswertbar} privacy-target-not-evaluable {Linkziel der Datenschutzerklärung nicht auswertbar}
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
     {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} page-links-not-observed {Links
-    der Seiten nicht beobachtet, weil der Browser nicht lief oder keine Seite auswertbar war} other {}}
+    der Seiten nicht beobachtet, weil der Browser nicht lief oder keine Seite auswertbar war} values-not-stored
+    {Versionsangaben einzelner Header im Snapshot nicht gespeichert (älterer Snapshot)} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -307,7 +308,8 @@ ui:
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation
     {ungültige Beobachtung} blocked {durch Bot-Schutz blockiert} challenge {Seite des Bot-Schutzes} http {HTTP
     {detail}} navigation-failed {Aufruf fehlgeschlagen ({detail})} dom-unavailable {Seitenaufbau nicht lesbar}
-    not-html {kein HTML} other {}}
+    not-html {kein HTML} values-not-stored {Versionsangaben der Header im Snapshot nicht gespeichert (älterer
+    Snapshot)} other {}}
   report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
   report.collectorStatus: "{status, select, ok {abgeschlossen} partial {teilweise} error {Fehler} skipped {übersprungen} not-run {nicht ausgeführt} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Anfrage} other {Anfragen}}} cookie {Cookie} storage {Speichereintrag} header {Header} dns {DNS-Eintrag} tls {TLS-Verbindung} cmp {Einwilligungsbanner} consent-state {Einwilligungsstatus} document {Dokument} text-match {Textstelle} screenshot {Screenshot} page {{count, plural, one {Seite} other {Seiten}}} redirect-chain {Umleitungskette} link {{count, plural, one {Link} other {Links}}} other {{type}}}"

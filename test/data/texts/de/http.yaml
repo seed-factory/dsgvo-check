@@ -39,6 +39,15 @@ messages:
       benötigte Funktionen abschalten, z. B. camera=(), microphone=(), geolocation=().} referrer-policy {Browser
       verwenden dann ihren Standard (meist strict-origin-when-cross-origin). Empfehlung: die Richtlinie
       ausdrücklich setzen.} other {Empfehlung: die Header-Konfiguration prüfen.}}
+  # HDR-02: one finding per (header, product, version); the collector stores only the product/version pairs.
+  HDR-02.version-header:
+    title: "Softwareversion im Header {header}"
+    body: >-
+      In der Antwort von {url} wurde der Header {header} beobachtet{count, plural, one {} other { (betrifft #
+      Seiten)}}. Er nennt {product} in der Version {version}. Wer die Seite abruft, kann damit ablesen, welche
+      Software in welcher Version auf dem Server läuft. Ob für diese Version Schwachstellen bekannt sind, prüft diese
+      Meldung nicht. Empfehlung: die Versionsangabe in der Server-Konfiguration abschalten, z. B. expose_php = Off
+      (PHP), ServerTokens Prod (Apache) oder server_tokens off (nginx).
   # TLS-01
   TLS-01.https-unavailable:
     title: "Inhalte nur über http nutzbar"
@@ -137,19 +146,28 @@ messages:
     body: >-
       Das TLS-Zertifikat von {host} läuft am {notAfter} ab ({daysLeft, plural, one {noch # Tag} other {noch # Tage}}
       bei einer Laufzeit von {lifetimeDays} Tagen). Empfehlung: die automatische Verlängerung prüfen.
-  # Raised by the HTTP collector: only the headers HDR-01 reads are missing, the browser may still evaluate the page.
+  # Raised by the HTTP collector: only the headers HDR-01 and HDR-02 read are missing, the browser may still evaluate
+  # the page.
   diagnostic.SCAN-HTTP-BLOCKED:
     title: "Sicherheits-Header nicht bewertet: Zugriff blockiert"
     body: >-
       {count, plural, one {Auf die direkte HTTP-Anfrage an {page} antwortete} other {Auf die direkten HTTP-Anfragen an
-      # Seiten ({pages}) antwortete}} eine Zugriffssperre oder Challenge statt der Website; die Sicherheits-Header
-      {count, plural, one {dieser Seite} other {dieser Seiten}} wurden nicht bewertet.
+      # Seiten ({pages}) antwortete}} eine Zugriffssperre oder Challenge statt der Website; die Sicherheits-Header und
+      Versionsangaben {count, plural, one {dieser Seite} other {dieser Seiten}} wurden nicht bewertet.
 legalNotes:
   HDR-01:
     text: >-
       Art. 32 und Art. 25 DSGVO verlangen technische Maßnahmen nach dem Stand der Technik; § 19 Abs. 4 TDDDG
       verpflichtet Anbieter digitaler Dienste zu Vorkehrungen gegen unerlaubten Zugriff. Sicherheits-Header sind ein
       verbreiteter technischer Standard. Welche Maßnahme im Einzelfall angemessen ist, hängt vom Risiko ab.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  HDR-02:
+    text: >-
+      Art. 32 DSGVO verlangt technische Maßnahmen nach dem Stand der Technik. Eine Versionsangabe im Header ist für
+      sich keine Sicherheitslücke; sie zeigt Dritten aber, welche Software in welcher Version eingesetzt wird. Ob
+      eine genannte Version bekannte Schwachstellen hat, bewertet diese Prüfung nicht.
     status: technical
     reviewedAt: null
     reviewBy: null
@@ -191,6 +209,10 @@ actions:
       referrer-policy {Setzen Sie in der Webserver-Konfiguration den Header Referrer-Policy, zum Beispiel auf
       strict-origin-when-cross-origin.} other {Ergänzen Sie in der Webserver-Konfiguration die Header {header};
       passende Werte nennt der ausführliche Bericht.}}
+  HDR-02.version-header:
+    text: >-
+      Schalten Sie die Versionsangabe in der Server-Konfiguration ab, zum Beispiel mit expose_php = Off (PHP),
+      ServerTokens Prod (Apache) oder server_tokens off (nginx).
   TLS-01.https-unavailable:
     text: "Richten Sie für die Seite ein gültiges Zertifikat ein und liefern Sie sie ausschließlich über https aus."
   TLS-01.form-on-http-page:
