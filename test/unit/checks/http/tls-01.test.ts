@@ -2,11 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { tls01 } from '../../../../src/checks/http/tls-01.ts';
 import { loadRuleset } from '../../../../src/core/data/load.ts';
 import type { LinkFact, PageVisit, PhaseRecord } from '../../../../src/core/snapshot/browser.ts';
-import type { HostVariant, HttpHop, RedirectChain } from '../../../../src/core/snapshot/http.ts';
+import type {
+  DocumentResponse,
+  FormTwinStage,
+  HostVariant,
+  HttpHop,
+  HttpSection,
+  HttpTwin,
+  RedirectChain,
+} from '../../../../src/core/snapshot/http.ts';
 import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import {
   makeBrowser,
   makeChain,
+  makeDocumentResponse,
   makeDom,
   makeHop,
   makeHttp,
@@ -847,5 +856,315 @@ describe('TLS-01 same-site links to http', () => {
     const variants = loadRuleset().checks['TLS-01']?.variants;
     expect(variants?.['internal-http-link']).toEqual({ severity: 'warning', crm: 'T1_UNENCRYPTED' });
     expect(variants?.['internal-http-link-upgraded']).toEqual({ severity: 'info', crm: null });
+  });
+});
+
+describe('TLS-01 forms on pages served over http beyond the root', () => {
+  const ROOT = 'http://www.example.test/';
+  const POST = 'http://www.example.test/post-1/';
+  const ACTION = 'http://www.example.test/wp-comments-post.php';
+  const COMMENT_FORM = { action: ACTION, actionScheme: 'http' as const, method: 'post' as const };
+
+  /** http:// of www serves the start page without a redirect; https works. */
+  const root = (h: Partial<HttpHop> = {}) =>
+    chain(
+      ROOT,
+      [
+        {
+          status: 200,
+          bodyBytes: BIG,
+          bodyKind: 'html',
+          hasForm: false,
+          forms: [],
+          formInspection: 'complete',
+          ...h,
+        },
+      ],
+      {
+        hostVariant: 'target',
+      },
+    );
+  const https = () => httpsOk('www.example.test');
+
+  function twin(hop: Partial<HttpHop> | null, p: Partial<HttpTwin> = {}): HttpTwin {
+    return {
+      page: 'https://www.example.test/post-1/',
+      url: POST,
+      hop:
+        hop === null
+          ? null
+          : makeHop({
+              url: POST,
+              status: 200,
+              bodyBytes: BIG,
+              bodyKind: 'html',
+              hasForm: false,
+              forms: [],
+              formInspection: 'complete',
+              ...hop,
+            }),
+      outcome: 'ok',
+      ...p,
+    };
+  }
+  const STAGE: FormTwinStage = { budget: 3, candidates: 1, durationMs: 600 };
+
+  const withTwins = (twins: HttpTwin[], p: Partial<HttpSection> = {}, chains = [root(), https()]) =>
+    makeSnapshot({
+      target: makeTarget('https://www.example.test/'),
+      http: makeHttp({ chains, twins, formTwinStage: STAGE, ...p }),
+    });
+  const formOf = (r: ReturnType<typeof runCheck>) =>
+    observationsOf(r).find((o) => o.variant === 'form-on-http-page');
+
+  it('a comment form on the http:// address of an article → form-on-http-page naming where the form sends', () => {
+    const r = runCheck(tls01, withTwins([twin({ hasForm: true, forms: [COMMENT_FORM] })]));
+    expect(r.status).toBe('completed');
+    expect(variantsOf(r)).toEqual(['form-on-http-page', 'no-redirect']);
+    expect(formOf(r)).toMatchObject({
+      subject: 'http-entry:final',
+      phases: ['http'],
+      pages: [POST],
+      params: {
+        host: 'www.example.test',
+        url: POST,
+        action: ACTION,
+        hasAction: 'yes',
+        count: 1,
+        downgrade: 'no',
+      },
+    });
+    expect(formOf(r)?.evidence).toContainEqual({
+      type: 'page',
+      phase: 'http',
+      url: POST,
+      status: 200,
+      role: 'http-form',
+      formAction: ACTION,
+    });
+  });
+
+  it('forms on the root and on an article of one host are one finding over both pages, the root first', () => {
+    const r = runCheck(
+      tls01,
+      withTwins([twin({ hasForm: true, forms: [COMMENT_FORM] })], {}, [
+        root({
+          hasForm: true,
+          forms: [{ action: 'http://www.example.test/kontakt', actionScheme: 'http', method: 'post' }],
+        }),
+        https(),
+      ]),
+    );
+    const forms = observationsOf(r).filter((o) => o.variant === 'form-on-http-page');
+    expect(forms).toHaveLength(1);
+    expect(forms[0]).toMatchObject({
+      pages: [ROOT, POST],
+      params: { url: ROOT, action: 'http://www.example.test/kontakt', count: 2 },
+    });
+  });
+
+  it.each<[string, Partial<HttpHop>]>([
+    [
+      'the address redirects to https',
+      { status: 301, location: 'https://www.example.test/post-1/', bodyBytes: 0, bodyKind: 'empty' },
+    ],
+    ['the address answers 404', { status: 404 }],
+    ['the http page has no data form', { hasForm: false, forms: [], formInspection: 'complete' }],
+  ])('clean: %s', (_name, hop) => {
+    const r = runCheck(
+      tls01,
+      withTwins([twin({ hasForm: undefined, forms: undefined, formInspection: undefined, ...hop })]),
+    );
+    expect(r.status).toBe('completed');
+    expect(variantsOf(r)).toEqual(['no-redirect']);
+  });
+
+  it.each<[string, HttpTwin]>([
+    ['the request timed out', twin(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } })],
+    [
+      'the host throttled the scan',
+      twin(null, { outcome: 'throttled', error: { code: 'throttled', message: 'x' } }),
+    ],
+    [
+      'a bot challenge answered',
+      twin({ status: 403, hasForm: true, forms: [COMMENT_FORM] }, { challenge: 'cloudflare' }),
+    ],
+    ['a redirect to another http address', twin({ status: 301, location: 'http://www.example.test/post-1' })],
+    ['a server error', twin({ status: 503 })],
+  ])('no clean claim when %s: limitation, no form finding', (_name, t) => {
+    const r = runCheck(tls01, withTwins([t]));
+    expect(r.status).toBe('partial');
+    expect(r.outcome?.limitations).toContain('http-form-twin-undecided:https://www.example.test/post-1/');
+    expect(variantsOf(r)).toEqual(['no-redirect']);
+  });
+
+  it.each(['truncated', 'unavailable'] as const)(
+    'an article read %s without a form seen: limitation http-form-not-inspected, no clean claim',
+    (formInspection) => {
+      const r = runCheck(tls01, withTwins([twin({ formInspection })]));
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual([`http-form-not-inspected:${POST}`]);
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    },
+  );
+
+  it('a form in the part of a cut body that was read is a finding without a limitation', () => {
+    const r = runCheck(
+      tls01,
+      withTwins([twin({ hasForm: true, forms: [COMMENT_FORM], formInspection: 'truncated' })]),
+    );
+    expect(r.status).toBe('completed');
+    expect(variantsOf(r)).toEqual(['form-on-http-page', 'no-redirect']);
+  });
+
+  it('the http:// root read only in part without a form seen: limitation http-form-not-inspected', () => {
+    const r = runCheck(
+      tls01,
+      withTwins([], {}, [root({ formInspection: 'truncated', bodyTruncated: true }), https()]),
+    );
+    expect(r.status).toBe('partial');
+    expect(r.outcome?.limitations).toEqual([`http-form-not-inspected:${ROOT}`]);
+  });
+
+  describe('linked legal documents that ended on plain http', () => {
+    const legal = (p: Partial<DocumentResponse> = {}) =>
+      makeDocumentResponse({
+        role: 'impressum',
+        url: 'http://www.example.test/impressum',
+        foundVia: 'link',
+        hasForm: true,
+        forms: [{ action: 'http://www.example.test/impressum', actionScheme: 'http', method: 'post' }],
+        formInspection: 'complete',
+        ...p,
+      });
+
+    it('a contact form on the Impressum served over http → form-on-http-page on that page', () => {
+      const r = runCheck(tls01, withTwins([], { documents: [legal()] }));
+      expect(formOf(r)).toMatchObject({
+        pages: ['http://www.example.test/impressum'],
+        params: { url: 'http://www.example.test/impressum', action: 'http://www.example.test/impressum' },
+      });
+    });
+
+    it.each<[string, Partial<DocumentResponse>]>([
+      ['it ended on https', { finalUrl: 'https://www.example.test/impressum', formInspection: undefined }],
+      ['it answered 404', { status: 404 }],
+      [
+        'a bot challenge answered on https',
+        {
+          finalUrl: 'https://www.example.test/impressum',
+          formInspection: undefined,
+          error: { code: 'blocked', message: 'cloudflare: cf-mitigated' },
+        },
+      ],
+    ])('no finding and no limitation when %s', (_name, p) => {
+      const r = runCheck(tls01, withTwins([], { documents: [legal(p)] }));
+      expect(r.status).toBe('completed');
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+
+    it('a bot challenge answered on http instead of the document: limitation, no clean claim', () => {
+      const blocked = legal({
+        status: 403,
+        hasForm: undefined,
+        forms: undefined,
+        formInspection: undefined,
+        error: { code: 'blocked', message: 'cloudflare: cf-mitigated' },
+      });
+      const r = runCheck(tls01, withTwins([], { documents: [blocked] }));
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual(['http-form-not-inspected:http://www.example.test/impressum']);
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+
+    it('read only in part without a form: limitation http-form-not-inspected', () => {
+      const r = runCheck(
+        tls01,
+        withTwins([], { documents: [legal({ hasForm: false, forms: [], formInspection: 'truncated' })] }),
+      );
+      expect(r.outcome?.limitations).toEqual(['http-form-not-inspected:http://www.example.test/impressum']);
+    });
+  });
+
+  it('the step failed: partial with http-form-twins-not-collected', () => {
+    const r = runCheck(
+      tls01,
+      withTwins([], {
+        formTwinStage: {
+          budget: 3,
+          candidates: null,
+          durationMs: 1,
+          error: { code: 'collector-exception', message: 'x' },
+        },
+      }),
+    );
+    expect(r.status).toBe('partial');
+    expect(r.outcome?.limitations).toEqual(['http-form-twins-not-collected']);
+  });
+
+  it('more pages with a form than the budget: partial with http-form-twins-capped', () => {
+    const r = runCheck(
+      tls01,
+      withTwins([twin({})], { formTwinStage: { budget: 1, candidates: 4, durationMs: 1 } }),
+    );
+    expect(r.outcome?.limitations).toEqual(['http-form-twins-capped']);
+  });
+
+  it('the step switched off (budget 0) or with nothing to request: no limitation', () => {
+    for (const formTwinStage of [
+      { budget: 0, candidates: 2, durationMs: 0 },
+      { budget: 3, candidates: 0, durationMs: 0 },
+    ]) {
+      expect(runCheck(tls01, withTwins([], { formTwinStage })).status).toBe('completed');
+    }
+  });
+
+  it('an older snapshot (hasForm without form facts) still gives the finding, without an action', () => {
+    const old = chain(ROOT, [{ status: 200, bodyBytes: BIG, bodyKind: 'html', hasForm: true }]);
+    const r = runCheck(tls01, snap(old, https()));
+    expect(formOf(r)?.params).toMatchObject({ url: ROOT, action: '', hasAction: 'no', count: 1 });
+  });
+
+  it('counterexample: an https page whose form sends to http is no TLS-01 finding', () => {
+    const form = {
+      action: 'http://www.example.test/senden',
+      actionScheme: 'http' as const,
+      method: 'post',
+      visible: true,
+      fieldCount: 3,
+      hasPasswordField: false,
+      hasEmailField: true,
+    };
+    const snapshot = makeSnapshot({
+      target: makeTarget('https://www.example.test/'),
+      http: makeHttp({
+        chains: [redirect301('www.example.test'), https()],
+        twins: [],
+        formTwinStage: { budget: 3, candidates: 0, durationMs: 0 },
+      }),
+      browser: makeBrowser({
+        phases: [
+          makePhase('A', {
+            pages: [
+              makePage({
+                url: 'https://www.example.test/kontakt/',
+                role: 'contact',
+                dom: makeDom({ forms: [form] }),
+              }),
+            ],
+          }),
+        ],
+      }),
+    });
+    const r = runCheck(tls01, snapshot);
+    expect(r.status).toBe('completed');
+    expect(variantsOf(r)).toEqual([]);
+  });
+
+  it('level: a form on a page served over http is critical (T1_UNENCRYPTED)', () => {
+    expect(loadRuleset().checks['TLS-01']?.variants['form-on-http-page']).toEqual({
+      severity: 'critical',
+      crm: 'T1_UNENCRYPTED',
+    });
   });
 });

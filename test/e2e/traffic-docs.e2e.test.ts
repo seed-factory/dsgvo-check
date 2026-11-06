@@ -41,6 +41,9 @@ const DESCRIBED: Record<string, RegExp> = {
     /die Umleitungsketten von `http:\/\/` und `https:\/\/` für den Zielhost und seine `www\.`- und Apex-Varianten, dazu die Kette auf einem in der Ziel-URL ausdrücklich genannten Port/,
   'security-headers:':
     /je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung/,
+  // after the browser: the http:// address of pages with a form, only where http:// of the host serves content.
+  'form-twin':
+    /nach dem Browser höchstens \d+ Anfragen \(`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`\) an die `http:\/\/`-Adressen von Seiten, auf denen Phase A ein Formular gesehen hat, nur wenn `http:\/\/` ihres Hosts ohne Umleitung auf https ausliefert: je ein GET, ohne einer Weiterleitung zu folgen und ohne etwas abzusenden/,
   // after a redirect to another domain the HTTP collector reads the final host's certificates as well.
   certificate:
     /ein Handshake je Host-Variante \(höchstens 3\).*nach einer Umleitung auf eine andere Domain höchstens 3 weitere für den Zielhost und seine `www\.`- und Apex-Varianten/,
@@ -74,6 +77,12 @@ describe('README.md section "Was der Scanner sendet" describes the probes the sc
     expect(flat).toContain(`je höchstens ${mailDomainQueryBudget} weitere`);
     expect(flat).toContain(`bis zu ${maxMailDomains} E-Mail-Domains aus dem Impressum`);
     expect(flat).toContain(`je E-Mail-Domain höchstens ${dkimMaxSelectors} Selektoren`);
+  });
+
+  it('names the budget of the http:// addresses of pages with a form', () => {
+    expect(flat).toContain(
+      `nach dem Browser höchstens ${DEFAULT_CONFIG.http.formTwinPages} Anfragen (\`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES\`)`,
+    );
   });
 
   it('promises no probe that the code does not send', () => {

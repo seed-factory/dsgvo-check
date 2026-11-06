@@ -65,6 +65,7 @@ site('clean', (get) => {
         fieldCount: 2,
         hasPasswordField: false,
         hasEmailField: true,
+        takesInput: true,
       },
     ]);
   });

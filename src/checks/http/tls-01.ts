@@ -2,6 +2,8 @@
  * TLS-01: does `http://` of the host, www and apex lead to https? A closed port is not "serving content", a stub of
  * ≤ 1 KiB gives no finding, a timeout is inconclusive. When the browser ran, same-site links of phase A that ask for
  * `http://` are reported per linked host (tls-01-links.ts); without the browser the http entries are evaluated alone.
+ * A form on a page served over http counts on the entries, on linked legal documents that ended on http and on the
+ * http:// addresses of pages with a form that the scan requested after the browser (`http.twins`).
  */
 
 import {
@@ -12,8 +14,15 @@ import {
   subjects,
   tlsHostRole,
 } from '../../core/api.ts';
-import type { HostVariant, HttpHop, RedirectChain } from '../../core/snapshot/http.ts';
-import { browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
+import type {
+  DocumentResponse,
+  HostVariant,
+  HttpHop,
+  HttpSection,
+  HttpTwin,
+  RedirectChain,
+} from '../../core/snapshot/http.ts';
+import { BLOCKED_DOCUMENT, browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
 import { evaluateHttpLinks } from './tls-01-links.ts';
 
 const ID = 'TLS-01';
@@ -59,10 +68,30 @@ function chainEvidence(c: RedirectChain): EvidenceInput {
   };
 }
 
+/** A page served over plain http with a form that takes input: an entry, a linked document or a twin. */
+interface FormPage {
+  page: string;
+  status: number | null;
+  /** Host the subject is named after: the entry's host for an entry, else the page's. */
+  host: string;
+  /** Where its first form sends; empty when unknown (an http(s) action not found, or an older snapshot). */
+  action: string;
+  downgrade: 'yes' | 'no';
+  /** Evidence beside the page itself (the redirect chain of an entry). */
+  evidence: EvidenceInput[];
+}
+
+/** What a response says about forms: a form that takes input, a page whose forms were not all seen, or nothing. */
+interface FormResult {
+  form?: FormPage;
+  limitation?: string;
+}
+
 interface Verdict {
   observations: Observation[];
   undecided: boolean;
   timeout: boolean;
+  forms: FormResult[];
 }
 
 /**
@@ -90,8 +119,31 @@ function observation(
   };
 }
 
-const noVerdict = (): Verdict => ({ observations: [], undecided: false, timeout: false });
-const undecided = (timeout: boolean): Verdict => ({ observations: [], undecided: true, timeout });
+const noVerdict = (): Verdict => ({ observations: [], undecided: false, timeout: false, forms: [] });
+const undecided = (timeout: boolean): Verdict => ({ ...noVerdict(), undecided: true, timeout });
+
+type FormFacts = Pick<HttpHop, 'hasForm' | 'forms' | 'formInspection'>;
+
+/**
+ * The forms of a plain-http success page. Without a form seen, a body read only in part (or not decodable) leaves the
+ * question open: a limitation, so that the page never reads as one without a form.
+ */
+function formResult(facts: FormFacts, page: Omit<FormPage, 'action'>): FormResult {
+  if (facts.hasForm) {
+    const action = facts.forms?.find((f) => f.action !== null)?.action ?? '';
+    return { form: { ...page, action } };
+  }
+  const missed = facts.formInspection === 'truncated' || facts.formInspection === 'unavailable';
+  return missed ? { limitation: `http-form-not-inspected:${page.page}` } : {};
+}
+
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
 
 const hasHttpsHop = (hops: readonly HttpHop[]): boolean => hops.some((h) => h.url.startsWith('https:'));
 
@@ -151,21 +203,15 @@ function judgeChainEndingOnHttp(
   const page = last.url;
   const entry = entryParams(http, page);
   const observations: Observation[] = [];
-  if (last.hasForm) {
-    observations.push(
-      observation(
-        'form-on-http-page',
-        http,
-        finalHost,
-        page,
-        [
-          { type: 'page', phase: 'http', url: page, status: last.status, role: 'http-form' },
-          chainEvidence(http),
-        ],
-        { host: http.host, url: page, downgrade },
-      ),
-    );
-  }
+  const forms = [
+    formResult(last, {
+      page,
+      status: last.status,
+      host: http.host,
+      downgrade,
+      evidence: [chainEvidence(http)],
+    }),
+  ];
 
   const client = last.clientRedirect;
   if (client?.url?.startsWith('https:')) {
@@ -180,12 +226,14 @@ function judgeChainEndingOnHttp(
         'medium',
       ),
     );
-    return { ...noVerdict(), observations };
+    return { ...noVerdict(), observations, forms };
   }
-  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES) return { ...noVerdict(), observations };
+  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES)
+    return { ...noVerdict(), observations, forms };
 
   const state = httpsStateOfHost(https, hops);
-  if (state === 'unknown') return { observations, undecided: true, timeout: https?.outcome === 'timeout' };
+  if (state === 'unknown')
+    return { observations, undecided: true, timeout: https?.outcome === 'timeout', forms };
 
   if (state === 'ok') {
     observations.push(
@@ -203,7 +251,7 @@ function judgeChainEndingOnHttp(
       ),
     );
   }
-  return { ...noVerdict(), observations };
+  return { ...noVerdict(), observations, forms };
 }
 
 function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain | undefined): Verdict {
@@ -218,16 +266,98 @@ function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain |
   return judgeChainEndingOnHttp(finalHost, http, https);
 }
 
-/** Entries (www and apex) that end on the same http page with a form describe one form: it is reported once. */
-function withoutRepeatedForms(observations: readonly Observation[]): Observation[] {
-  const seen = new Set<string>();
-  return observations.filter((o) => {
-    if (o.variant !== 'form-on-http-page') return true;
-    const page = o.pages[0] ?? '';
-    if (seen.has(page)) return false;
-    seen.add(page);
-    return true;
+/**
+ * A linked legal document that ended on a plain-http page. A bot challenge answered there instead of the document:
+ * whether the document carries a form over http is then unknown.
+ */
+function documentForms(doc: DocumentResponse): FormResult {
+  if (doc.foundVia !== 'link') return {};
+  if (doc.error?.code === BLOCKED_DOCUMENT) {
+    return doc.finalUrl.startsWith('http:') ? { limitation: `http-form-not-inspected:${doc.finalUrl}` } : {};
+  }
+  if (doc.error || !doc.formInspection) return {};
+  if (!doc.finalUrl.startsWith('http:') || !isSuccess(doc.status)) return {};
+  return formResult(doc, {
+    page: doc.finalUrl,
+    status: doc.status,
+    host: hostOf(doc.finalUrl),
+    downgrade: 'no',
+    evidence: [],
   });
+}
+
+/**
+ * The http:// address of a page with a form, requested once without following a redirect. A redirect to https serves
+ * no form over http; a failed request, a challenge, a redirect to another http address or a server error leaves it open.
+ */
+function twinForms(twin: HttpTwin): FormResult {
+  const open: FormResult = { limitation: `http-form-twin-undecided:${twin.page}` };
+  const hop = twin.hop;
+  if (twin.outcome !== 'ok' || !hop || twin.challenge) return open;
+  if (isRedirect(hop.status)) return hop.location?.startsWith('https:') ? {} : open;
+  if (hop.status === null || hop.status === 429 || hop.status >= 500) return open;
+  if (!isSuccess(hop.status) || !hop.url.startsWith('http:')) return {};
+  return formResult(hop, {
+    page: hop.url,
+    status: hop.status,
+    host: hostOf(hop.url),
+    downgrade: 'no',
+    evidence: [],
+  });
+}
+
+/**
+ * One finding per host role: a host whose http pages carry forms on the root and on an article is one finding over
+ * those pages, the first one speaking. A page reached by several entries (www and apex) counts once.
+ */
+function formObservations(forms: readonly FormPage[], finalHost: string): Observation[] {
+  const seen = new Set<string>();
+  const groups = new Map<string, FormPage[]>();
+  for (const f of forms) {
+    if (seen.has(f.page)) continue;
+    seen.add(f.page);
+    const subject = subjects.tlsEndpoint('http-entry', tlsHostRole(f.host, finalHost));
+    groups.set(subject, [...(groups.get(subject) ?? []), f]);
+  }
+
+  return [...groups].map(([subject, pages]) => {
+    const first = pages[0] as FormPage;
+    return {
+      checkId: ID,
+      variant: 'form-on-http-page',
+      confidence: 'high',
+      subject,
+      phases: ['http'],
+      pages: pages.map((p) => p.page),
+      evidence: pages.flatMap((p): EvidenceInput[] => [
+        {
+          type: 'page',
+          phase: 'http',
+          url: p.page,
+          status: p.status,
+          role: 'http-form',
+          ...(p.action ? { formAction: p.action } : {}),
+        },
+        ...p.evidence,
+      ]),
+      params: {
+        host: first.host,
+        url: first.page,
+        action: first.action,
+        hasAction: first.action ? 'yes' : 'no',
+        count: pages.length,
+        downgrade: first.downgrade,
+      },
+    };
+  });
+}
+
+/** Whether the step after the browser saw all pages with a form it could request. */
+function twinStageLimitations(http: HttpSection): string[] {
+  const stage = http.formTwinStage;
+  if (!stage) return [];
+  if (stage.error) return ['http-form-twins-not-collected'];
+  return stage.budget > 0 && (stage.candidates ?? 0) > stage.budget ? ['http-form-twins-capped'] : [];
 }
 
 /** Standard-port probe of a host variant (chains of an explicit target port only load the start page). */
@@ -255,7 +385,8 @@ export const tls01 = defineCheck({
     if (!chainFor(slice, 'target', 'http')) throw new Error('http section has no http chain for the target');
     const finalHost = startFinalHost(slice.http) ?? slice.target.finalHost ?? slice.target.host;
 
-    const found: Observation[] = [];
+    const observations: Observation[] = [];
+    const forms: FormResult[] = [];
     const limitations: string[] = [];
     let targetUndecided = false;
     let targetTimeout = false;
@@ -264,7 +395,8 @@ export const tls01 = defineCheck({
       if (!http) continue;
 
       const v = evaluate(finalHost, http, chainFor(slice, hv, 'https'));
-      found.push(...v.observations);
+      observations.push(...v.observations);
+      forms.push(...v.forms);
       if (!v.undecided) continue;
       limitations.push(`undecided:${hv}`);
       if (hv === 'target') {
@@ -281,7 +413,18 @@ export const tls01 = defineCheck({
     );
     if (!finalHostProbed) limitations.push('final-host-not-probed');
     if (slice.http.throttled) limitations.push('throttled');
-    const observations = withoutRepeatedForms(found);
+
+    forms.push(...slice.http.documents.map(documentForms), ...(slice.http.twins ?? []).map(twinForms));
+    observations.push(
+      ...formObservations(
+        forms.flatMap((f) => (f.form ? [f.form] : [])),
+        finalHost,
+      ),
+    );
+    limitations.push(
+      ...new Set(forms.flatMap((f) => (f.limitation ? [f.limitation] : []))),
+      ...twinStageLimitations(slice.http),
+    );
 
     if (slice.browser) {
       const links = evaluateHttpLinks(slice.http, slice.browser);

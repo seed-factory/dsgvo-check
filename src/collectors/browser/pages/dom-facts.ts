@@ -11,7 +11,9 @@ import {
 } from '../../../core/snapshot/browser.ts';
 import type { HeaderRecord } from '../../../core/snapshot/common.ts';
 import { maskMailto, parseUrl, registrableDomain } from '../../../core/url/url.ts';
-import { domFactsInPage, type RawDomFacts } from '../in-page/dom.ts';
+import { NON_DATA_INPUT_TYPES } from '../../http/html.ts';
+import { loadHtmlRules } from '../../http/rules.ts';
+import { domFactsInPage, type FormRules, type RawDomFacts } from '../in-page/dom.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
 import { loadDomPatterns } from '../rules.ts';
 import { redactFreeText } from '../util.ts';
@@ -171,8 +173,19 @@ function mapForms(raw: RawDomFacts): FormFact[] {
       fieldCount: f.fieldCount,
       hasPasswordField: f.hasPasswordField,
       hasEmailField: f.hasEmailField,
+      takesInput: f.takesInput,
     };
   });
+}
+
+/** The search-form wording of test/data/http/html.yaml, as the page code takes it (sources and lists). */
+export function formRules(): FormRules {
+  const rules = loadHtmlRules();
+  return {
+    searchForm: rules.searchForm.source,
+    searchFieldNames: [...rules.searchFieldNames],
+    nonDataInputs: [...NON_DATA_INPUT_TYPES],
+  };
 }
 
 /** Iframes of the main document (depth 1) and the nested frames Playwright knows (depth 2 and deeper). */
@@ -227,6 +240,7 @@ export async function collectDom(
     maxLinks: MAX_LINKS,
     maxScripts: MAX_SCRIPTS,
     patterns: loadDomPatterns().page,
+    forms: formRules(),
   });
   const base = page.url();
 

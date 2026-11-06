@@ -62,12 +62,16 @@ messages:
       unavailable {not reachable} invalid {only reachable with an invalid certificate} other {not usable}}. Page
       views and inputs are therefore transmitted unencrypted. Recommendation: install a valid certificate and
       redirect http permanently (301 or 308) to https.
+  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends.
   TLS-01.form-on-http-page:
     title: "Form on an http page"
     body: >-
-      A form served via unencrypted http was observed on {url}{downgrade, select, yes { (the redirect leads via
-      https back to http)} other {}}. The form was not filled in or submitted. Inputs may be transmitted
-      unencrypted. Recommendation: serve the page via https only and redirect http to https.
+      {count, plural, one {A form served via unencrypted http was observed on {url}} other {Forms were observed on #
+      pages served via unencrypted http, first on {url}}}{downgrade, select, yes { (the redirect leads via https back
+      to http)} other {}}.{hasAction, select, yes { {count, plural, one {It sends} other {The first one sends}} its
+      input to {action}.} other {}} {count, plural, one {The form was} other {The forms were}} not filled in or
+      submitted. Inputs may be transmitted unencrypted. Recommendation: serve the page via https only and redirect
+      http to https.
   TLS-01.no-redirect:
     title: "No redirect from http to https"
     body: >-

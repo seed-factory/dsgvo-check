@@ -92,6 +92,8 @@ export interface FormFact {
   fieldCount: number;
   hasPasswordField: boolean;
   hasEmailField: boolean;
+  /** Takes input other than a site search (the HTTP collector's rule on markup); absent in older snapshots. */
+  takesInput?: boolean;
   frameUrl?: SanitizedUrl;
 }
 

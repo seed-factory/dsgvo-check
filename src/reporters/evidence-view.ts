@@ -457,6 +457,8 @@ function listRow(ev: Evidence, t: EvidenceTools): Row {
       reason: f.reason ? reasonText(str(f.reason), t) : '',
       hasPhase: Boolean(f.phase),
       phase: f.phase ? t.phase(phaseKey(f)) : '',
+      hasFormAction: Boolean(f.formAction),
+      formAction: str(f.formAction),
     });
     return {
       label: t.label('pageRole', { role: str(f.role) }),

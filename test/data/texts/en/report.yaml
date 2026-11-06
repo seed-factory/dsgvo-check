@@ -277,7 +277,11 @@ ui:
     privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further privacy
     notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} reveal-height-capped {Lower
     part of a long page not shown, the window height is capped} page-links-not-observed {Links of the pages not observed
-    because the browser did not run or no page was evaluable} values-not-stored {Versions in some headers not stored in
+    because the browser did not run or no page was evaluable} http-form-not-inspected {Forms of {detail} not read in
+    full (response cut, not readable or replaced by bot protection)} http-form-twin-undecided {http address of {detail} without a usable answer}
+    http-form-twins-capped {http addresses of further pages with a form not requested (limit
+    DSGVO_CHECK_HTTP_FORM_TWIN_PAGES)} http-form-twins-not-collected {http addresses of the pages with a form not
+    requested in this run} values-not-stored {Versions in some headers not stored in
     the snapshot (older snapshot)} mail-domain-unresolved {DNS lookups for {detail} without a conclusive answer}
     mail-domain-mx-unknown {MX record of {detail} could not be determined} mail-domain-spf-incomplete {SPF include of
     {detail} not fully resolved} mail-domains-capped {Further e-mail domains from the Impressum not queried (limit
@@ -323,7 +327,7 @@ ui:
     {DKIM key not readable} dns-budget-exhausted {DNS query budget used up} null-mx {domain accepts no e-mail (Null MX)}
     no-mail-records {neither MX nor SPF record found} key-revoked {DKIM key withdrawn (empty p=)} dkim-selectors-capped
     {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} other {}}
-  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
+  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
   report.evidence.field: >-
@@ -340,7 +344,7 @@ ui:
     {Viewport} click {Click} source {Source} ready {Readiness} categories {Categories} scope {Scope} kind {Kind} lang
     {Language} parts {Parts} complete {Complete} errors {Errors} sha256 {SHA-256} manifest {Extent read} documentId
     {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} claim {Statement} status {HTTP
-    status} role {Role} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
+    status} role {Role} formAction {Form target} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
     href {Target} text {Link text} target {Link target} region {Part of the page} visible {Visible} method {Method} resourceType {Resource} result {Response}
     delivery {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other
     {{key}}}
@@ -380,7 +384,7 @@ ui:
   report.evidence.cookieState: "{state, select, attempted {setting attempted} accepted {accepted by the browser} rejected {rejected by the browser} sent {sent with a request} other {{state}}}"
   report.evidence.lifetime: "{kind, select, session {session} other {persistent{hasDays, select, true {, {days, number} days} other {}}}}"
   report.evidence.setBy: "{setter, select, http-response {HTTP response} script {script} other {unknown}}{hasHost, select, true { from {host}} other {}}"
-  report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {no status}}{evaluable, select, true { · evaluable} false { · not evaluable{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · phase {phase}} other {}}"
+  report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {no status}}{evaluable, select, true { · evaluable} false { · not evaluable{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · phase {phase}} other {}}{hasFormAction, select, true { · form sends to {formAction}} other {}}"
   report.evidence.linkVisibility: "{visible, select, true {visible} other {not visible}}"
   report.evidence.headerLine: "{present, select, true {present{hasValue, select, true {: {value}} other {}}} other {not present}}"
   # The notice section in groups, each paragraph under a label: `key` is the paragraph key without `disclaimer.`

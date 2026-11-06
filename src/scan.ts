@@ -5,6 +5,7 @@ import path from 'node:path';
 import { allChecks } from './checks/index.ts';
 import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns, collectDnsFollowUp } from './collectors/dns/index.ts';
+import { collectHttpFormTwins } from './collectors/http/form-twins.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
 import { checkThresholds } from './core/config/thresholds.ts';
@@ -74,6 +75,7 @@ const DEFAULT_COLLECTORS: Collectors = {
   tls: collectTls,
   dns: collectDns,
   dnsFollowUp: collectDnsFollowUp,
+  httpFormTwins: collectHttpFormTwins,
 };
 
 /** Refuses a target that does not resolve or that points into non-public address space, before any collector runs. */

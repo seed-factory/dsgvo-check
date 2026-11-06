@@ -1,6 +1,6 @@
-# Wording the HTTP collector looks for in the HTML of a response. The collector reads a prefix of the body without a DOM,
-# so these are the few phrases it can act on: what is a site search (no form that takes user input), and which links of
-# the start page are the Impressum and the privacy policy. Entries are regular-expression fragments, matched
+# Wording the HTTP collector looks for in the HTML of a response. The collector reads the body without a DOM (forms and
+# links in all of it that was read), so these are the few phrases it can act on: what is a site search (no form that
+# takes user input), and which links of the start page are the Impressum and the privacy policy. Entries are regular-expression fragments, matched
 # case-insensitively. The richer, language-aware lexicon of the browser collector is test/data/legal/links.yaml.
 html:
   form:
