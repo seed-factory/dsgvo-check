@@ -7,15 +7,16 @@ import { formatAnswer, resolverLabel } from './records.ts';
 export function dnsEvidence(
   q: DnsQueryRecord,
   section: Pick<DnsSection, 'resolver'>,
-  extra: { treeWalk?: string[] } = {},
+  extra: { treeWalk?: string[]; formatRecord?: (record: string) => string } = {},
 ): EvidenceInput {
+  const format = extra.formatRecord ?? ((r: string) => r);
   return {
     type: 'dns',
     phase: 'dns',
     qname: q.qname,
     qtype: q.type,
     rcode: q.rcode,
-    records: q.answers.map(formatAnswer),
+    records: q.answers.map((a) => format(formatAnswer(a))),
     resolver: resolverLabel(section),
     ...(extra.treeWalk ? { treeWalk: extra.treeWalk } : {}),
   };

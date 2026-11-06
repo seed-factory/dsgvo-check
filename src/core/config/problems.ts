@@ -16,6 +16,7 @@ export const REASON = {
   floor: 'floor',
   proxyScheme: 'proxy-scheme',
   dnsServer: 'dns-server',
+  dkimSelector: 'dkim-selector',
   dwellOrder: 'dwell-order',
   tlsDaysOrder: 'tls-days-order',
   tlsShareOrder: 'tls-share-order',

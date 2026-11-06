@@ -67,12 +67,13 @@ describe('README.md section "Was der Scanner sendet" describes the probes the sc
     }
   });
 
-  it('names DNS lookups with the real query budgets, also of the further mail domains', () => {
+  it('names DNS lookups with the real query budgets, also of the further mail domains and the DKIM selectors', () => {
     expect(flat).toContain(`höchstens ${DNS_QUERY_BUDGET} Abfragen`);
-    expect(flat).toMatch(/MX-, SPF- und DMARC-Abfragen/);
-    const { mailDomainQueryBudget, maxMailDomains } = DEFAULT_CONFIG.dns;
+    expect(flat).toMatch(/MX-, SPF-, DMARC- und DKIM-Abfragen/);
+    const { mailDomainQueryBudget, maxMailDomains, dkimMaxSelectors } = DEFAULT_CONFIG.dns;
     expect(flat).toContain(`je höchstens ${mailDomainQueryBudget} weitere`);
     expect(flat).toContain(`bis zu ${maxMailDomains} E-Mail-Domains aus dem Impressum`);
+    expect(flat).toContain(`je E-Mail-Domain höchstens ${dkimMaxSelectors} Selektoren`);
   });
 
   it('promises no probe that the code does not send', () => {

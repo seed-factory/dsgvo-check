@@ -1,14 +1,14 @@
 // DNS collector: `node:dns/promises` with `ctx.network.dnsServers` when non-empty (system configuration otherwise),
 // direct even with `--proxy`. At most `dns.queryBudget` queries for the scanned domain, and after the browser at most
-// `dns.mailDomainQueryBudget` for each further mail domain; `mailto:` masked before storing.
+// `dns.mailDomainQueryBudget` for each further mail domain, DKIM selectors included; `mailto:` masked before storing.
 import { isIP } from 'node:net';
 import type { CollectorContext, DnsCollector } from '../../core/snapshot/collector.ts';
 import type { DnsSection } from '../../core/snapshot/dns.ts';
 import { registrableDomain } from '../../core/url/url.ts';
-import { collectMailDns, collectMailDomains } from './collect.ts';
+import { collectMailDns, collectMailDomains, type DkimOptions } from './collect.ts';
 import { selectMailTargets } from './mail-targets.ts';
 import { createNodeDnsClient, type DnsClient } from './resolver.ts';
-import { loadMailDomainRules } from './rules.ts';
+import { loadDkimRules, loadMailDomainRules } from './rules.ts';
 
 function createClient(ctx: CollectorContext): DnsClient {
   const cfg = ctx.config.dns;
@@ -17,6 +17,11 @@ function createClient(ctx: CollectorContext): DnsClient {
     timeoutMs: cfg.timeoutMs,
     retries: cfg.retries,
   });
+}
+
+function dkimOptions(ctx: CollectorContext): DkimOptions {
+  const cfg = ctx.config.dns;
+  return { selectors: cfg.dkimSelectors, maxSelectors: cfg.dkimMaxSelectors, rules: loadDkimRules() };
 }
 
 function notApplicable(host: string, reason: string, budget: number): DnsSection {
@@ -66,6 +71,7 @@ export const collectDns: DnsCollector = async (ctx) => {
       budget: cfg.queryBudget,
       concurrency: cfg.concurrency,
       maxTimeoutResults: cfg.maxTimeoutResults,
+      dkim: dkimOptions(ctx),
     });
     return { status: r.status, ...(r.reason ? { reason: r.reason } : {}), sections: { dns: r.section } };
   } finally {
@@ -110,6 +116,7 @@ export const collectDnsFollowUp: DnsCollector = async (ctx) => {
       budget: cfg.mailDomainQueryBudget,
       concurrency: cfg.concurrency,
       maxTimeoutResults: cfg.maxTimeoutResults,
+      dkim: dkimOptions(ctx),
     });
     const stopped = section.mailDomains?.some(
       (d) => d.status !== 'checked' && d.reason !== 'free-mail' && d.reason !== 'limit',

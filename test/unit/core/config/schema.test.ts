@@ -60,6 +60,10 @@ describe('built-in defaults', () => {
     // Further mail domains (Impressum addresses, the site after a redirect): settings from their first version.
     ['dns', 'maxMailDomains', 2],
     ['dns', 'mailDomainQueryBudget', 30],
+    // DKIM (MAIL-03): settings from their first version; 1024 bits is the minimum of RFC 8301.
+    ['dns', 'dkimSelectors', []],
+    ['dns', 'dkimMaxSelectors', 8],
+    ['dns', 'dkimMinRsaBits', 1_024],
     ['cmp', 'blockingCoveredRatio', 0.85],
     ['cmp', 'waitMs', 5_000],
     ['cmp', 'minCandidatePages', 2],
@@ -144,10 +148,11 @@ describe('field list', () => {
     'maxEvidencePerFinding',
     'impressumMinGroups',
     'policyClaimMinContexts',
+    'dkimMaxSelectors',
   ]);
-  it('names the unit of every number: _MS, _BYTES, _DAYS, a count or a share', () => {
+  it('names the unit of every number: _MS, _BYTES, _DAYS, _BITS, a count or a share', () => {
     for (const f of fields.filter((x) => x.kind === 'int' || x.kind === 'number')) {
-      const ok = /(Ms|Bytes|Days|Share|Ratio)$/.test(f.key) || COUNTS.has(f.key);
+      const ok = /(Ms|Bytes|Days|Bits|Share|Ratio)$/.test(f.key) || COUNTS.has(f.key);
       expect(ok, `${f.section}.${f.key}`).toBe(true);
     }
   });
@@ -249,6 +254,35 @@ describe('validation', () => {
       env: { DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS: '4', DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS: '5' },
     });
     expect(config.legal).toEqual({ impressumMinGroups: 4, policyClaimMinContexts: 5 });
+  });
+
+  it('passes the minimum DKIM RSA length to the checks; it can be raised but not lowered below RFC 8301', () => {
+    expect(checkThresholds(DEFAULT_CONFIG).dns).toEqual({ dkimMinRsaBits: 1_024 });
+    expect(checkThresholds(ConfigSchema.parse({ dns: { dkimMinRsaBits: 2_048 } })).dns).toEqual({
+      dkimMinRsaBits: 2_048,
+    });
+    expect(ConfigSchema.safeParse({ dns: { dkimMinRsaBits: 1_023 } }).success).toBe(false);
+    const { config } = resolveConfig({ env: { DSGVO_CHECK_DNS_DKIM_MIN_RSA_BITS: '4096' } });
+    expect(config.dns.dkimMinRsaBits).toBe(4_096);
+  });
+
+  it('reads DKIM selectors as a list of selector or domain/selector', () => {
+    const { config } = resolveConfig({
+      env: { DSGVO_CHECK_DNS_DKIM_SELECTORS: 'selector1, example.de/s2024.mail,k_1' },
+    });
+    expect(config.dns.dkimSelectors).toEqual(['selector1', 'example.de/s2024.mail', 'k_1']);
+    for (const bad of [
+      'a b',
+      'example.de/',
+      '/s1',
+      '.s1',
+      's1._domainkey.example.de/x',
+      'example/s1',
+      'selector1._domainkey.example.de',
+      'example.de/selector1._domainkey',
+    ]) {
+      expect(ConfigSchema.safeParse({ dns: { dkimSelectors: [bad] } }).success, bad).toBe(false);
+    }
   });
 
   it('accepts DNS servers as host, host:port and bracketed IPv6', () => {

@@ -307,7 +307,7 @@ const contactPlan = (...domains: string[]): MailTargetPlan => ({
 });
 
 describe('collectMailDomains: queries of the further mail domains', () => {
-  it('MX, DMARC walk, SPF tree per domain; ids continue and an include the first stage resolved is not asked again', async () => {
+  it('MX, DMARC walk, SPF tree, DKIM selectors per domain; ids continue and an include the first stage resolved is not asked again', async () => {
     const client = fakeClient(ZONE);
     const first = await firstStage(client);
     const before = client.calls.length;
@@ -325,6 +325,14 @@ describe('collectMailDomains: queries of the further mail domains', () => {
       'TXT _dmarc.example-mail.de',
       'TXT _dmarc.de',
       'TXT example-mail.de',
+      ...['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1'].map(
+        (s) => `TXT ${s}._domainkey.example-mail.de`,
+      ),
+    ]);
+    // The scanned domain's selectors stay first; the further domain's follow under its own name.
+    expect(section.dkimPlan?.map((e) => e.domain)).toEqual([
+      ...Array(7).fill('example.de'),
+      ...Array(7).fill('example-mail.de'),
     ]);
     expect(section.queries.slice(0, first.queries.length)).toEqual(first.queries);
     expect(section.queries.map((q) => q.id)).toEqual(
@@ -332,7 +340,7 @@ describe('collectMailDomains: queries of the further mail domains', () => {
     );
     expect(section.budget).toEqual(first.budget);
     expect(section.mailDomains).toMatchObject([
-      { domain: 'example-mail.de', status: 'checked', budget: { limit: 30, used: 4 } },
+      { domain: 'example-mail.de', status: 'checked', budget: { limit: 30, used: 11 } },
     ]);
   });
 
@@ -380,18 +388,19 @@ describe('collectMailDomains: queries of the further mail domains', () => {
       ],
     };
 
+    // example-other.de needs 10 queries (MX, DMARC, SPF, 7 selectors); example-mail.de 12, its walk starts lower.
     const section = await collectMailDomains({
       section: first,
       plan,
       client,
       now: () => FIXED_NOW,
-      budget: 3,
+      budget: 10,
     });
 
     expect(section.budget).toEqual(first.budget);
     expect(section.mailDomains?.map((d) => [d.domain, d.status, d.reason ?? null, d.budget.used])).toEqual([
-      ['example-mail.de', 'partial', 'dns-budget-exhausted', 3],
-      ['example-other.de', 'checked', null, 3],
+      ['example-mail.de', 'partial', 'dns-budget-exhausted', 10],
+      ['example-other.de', 'checked', null, 10],
     ]);
   });
 
@@ -433,6 +442,30 @@ describe('collectMailDomains: queries of the further mail domains', () => {
       { status: 'partial', reason: 'aborted', budget: { used: 1 } },
     ]);
     expect(section.queries.at(-1)?.qname).toBe('example-mail.de');
+  });
+
+  it('timeouts on the selector names of one domain do not keep MX, DMARC and SPF of the next domain from being asked', async () => {
+    const spec: ZoneSpec = { ...ZONE };
+    for (const name of ['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1']) {
+      spec[`TXT ${name}._domainkey.example.de`] = 'TIMEOUT';
+      spec[`TXT ${name}._domainkey.example-mail.de`] = 'TIMEOUT';
+    }
+    const client = fakeClient(spec);
+    const first = await firstStage(client);
+    expect(first.errors.map((e) => e.code)).not.toContain('resolver-unresponsive');
+
+    const section = await collectMailDomains({
+      section: first,
+      plan: contactPlan('example-mail.de', 'example-other.de'),
+      client,
+      now: () => FIXED_NOW,
+    });
+
+    expect(section.mailDomains?.map((d) => [d.domain, d.status, d.reason ?? null])).toEqual([
+      ['example-mail.de', 'checked', null],
+      ['example-other.de', 'checked', null],
+    ]);
+    expect(client.calls).toEqual(expect.arrayContaining(['MX example-other.de', 'TXT example-other.de']));
   });
 
   it('a resolver the first stage found unresponsive is not asked again', async () => {

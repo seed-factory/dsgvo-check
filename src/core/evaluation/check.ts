@@ -90,6 +90,8 @@ export interface CheckThresholds {
    * the heuristic did not take must show on.
    */
   cmp: Pick<Config['cmp'], 'blockingCoveredRatio' | 'minCandidatePages'>;
+  /** MAIL-03: the smallest RSA DKIM key that is not reported. */
+  dns: Pick<Config['dns'], 'dkimMinRsaBits'>;
   /**
    * Policy and Impressum checks: kinds of provider details that make a block of text Impressum details, and the
    * observations a statement of the privacy policy must differ from to count as repeated.

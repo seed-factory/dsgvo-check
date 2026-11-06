@@ -24,13 +24,36 @@ export interface DnsQueryRecord {
   attempts: number;
   durationMs: number;
   queriedAt: IsoTimestamp;
-  /** `mx`, `dmarc`, `dmarc-tree-walk`, `dmarc-mail-domain`, `spf`, `spf-include`, `spf-redirect`, `spf-void-check`. */
+  /**
+   * `mx`, `dmarc`, `dmarc-tree-walk`, `dmarc-mail-domain`, `spf`, `spf-include`, `spf-redirect`, `spf-void-check`,
+   * `dkim` (`<selector>._domainkey.<domain>`).
+   */
   purpose: string;
   /** Position in the DMARC Tree Walk (RFC 9989), 0 = the host itself. */
   treeWalkStep?: number;
   error?: CollectorError;
   /** TXT answers dropped because they are not relevant to `purpose` (e.g. site-verification tokens); count only. */
   filteredAnswers?: number;
+}
+
+/** Why a DKIM selector is queried: set by the operator, named by a recognised mail provider, or a common name. */
+export type DkimSelectorReason = 'operator' | `provider:${string}` | 'common';
+
+/** One DKIM selector queried for a mail domain; its query is `TXT <selector>._domainkey.<domain>`. */
+export interface DkimPlanEntry {
+  domain: string;
+  selector: string;
+  reason: DkimSelectorReason;
+  /**
+   * A key is expected here: the operator set the selector, or the recognised provider always signs with it. Common
+   * names and selectors a provider lets the customer change are probes only.
+   */
+  given: boolean;
+  /**
+   * Over `dns.dkimMaxSelectors`, so not queried. Only given selectors are kept this way: MAIL-03 must not read a given
+   * selector it never asked as one without a key.
+   */
+  capped?: true;
 }
 
 /** Why a further mail domain is checked: the site's domain after a redirect, or an address seen in the Impressum. */
@@ -86,4 +109,9 @@ export interface DnsSection {
   /** Further mail domains in the order they were found: the final site's domain first, then Impressum addresses. */
   mailDomains?: MailDomainTarget[];
   mailDomainStage?: MailDomainStage;
+  /**
+   * DKIM selectors per checked mail domain, in query order (MAIL-03). A domain without entries was not probed: Null MX,
+   * or neither MX nor SPF. Absent in older snapshots.
+   */
+  dkimPlan?: DkimPlanEntry[];
 }

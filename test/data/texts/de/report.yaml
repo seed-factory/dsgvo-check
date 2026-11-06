@@ -268,7 +268,10 @@ ui:
     feststellbar} mail-domain-spf-incomplete {SPF-include von {detail} nicht vollständig aufgelöst}
     mail-domains-capped {Weitere E-Mail-Domains aus dem Impressum nicht abgefragt (Grenze
     DSGVO_CHECK_DNS_MAX_MAIL_DOMAINS)} mail-domains-not-collected {E-Mail-Domains aus dem Impressum in diesem Lauf
-    nicht erhoben} other {}}
+    nicht erhoben}
+    dkim-selectors-unresolved {Nicht alle DKIM-Selektoren abschließend abgefragt} mail-domain-dkim-key-unparsable
+    {DKIM-Schlüssel von {detail} nicht auswertbar}
+    mail-domain-dkim-key-revoked {DKIM-Schlüssel von {detail} widerrufen} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -301,7 +304,12 @@ ui:
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation
     {ungültige Beobachtung} blocked {durch Bot-Schutz blockiert} challenge {Seite des Bot-Schutzes} http {HTTP
     {detail}} navigation-failed {Aufruf fehlgeschlagen ({detail})} dom-unavailable {Seitenaufbau nicht lesbar}
-    not-html {kein HTML} other {}}
+    not-html {kein HTML}
+    dkim-not-collected {DKIM-Selektoren in diesem Lauf nicht abgefragt} key-unparsable {DKIM-Schlüssel nicht
+    auswertbar} dns-budget-exhausted {DNS-Abfragebudget aufgebraucht} null-mx {Domain nimmt keine E-Mails an
+    (Null-MX)} no-mail-records {weder MX- noch SPF-Eintrag gefunden}
+    key-revoked {DKIM-Schlüssel widerrufen (leeres p=)} dkim-selectors-capped {erwartete DKIM-Selektoren über der
+    Grenze DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS nicht abgefragt} other {}}
   report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
   report.collectorStatus: "{status, select, ok {abgeschlossen} partial {teilweise} error {Fehler} skipped {übersprungen} not-run {nicht ausgeführt} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Anfrage} other {Anfragen}}} cookie {Cookie} storage {Speichereintrag} header {Header} dns {DNS-Eintrag} tls {TLS-Verbindung} cmp {Einwilligungsbanner} consent-state {Einwilligungsstatus} document {Dokument} text-match {Textstelle} screenshot {Screenshot} page {{count, plural, one {Seite} other {Seiten}}} redirect-chain {Umleitungskette} link {{count, plural, one {Link} other {Links}}} other {{type}}}"

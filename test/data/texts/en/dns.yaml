@@ -131,6 +131,43 @@ messages:
       The SPF record of {domain} contains ptr. RFC 7208 discourages it (slow and unreliable); some receivers do not
       evaluate ptr.{scope, select, contact { The domain {mailDomain} comes from an e-mail address observed in the
       Impressum.} final { The start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.key-too-short:
+    title: >-
+      DKIM key of {bits} bits on the selector {selector}{scope, select, contact { (e-mail domain from the Impressum:
+      {mailDomain})} final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      {selector}._domainkey.{domain} publishes an RSA key of {bits} bits. {belowRfc, select, yes {Under RFC 8301,
+      receivers do not accept signatures made with RSA keys below 1024 bits; messages signed with it count as
+      unsigned.} other {RFC 8301 requires at least 1024 bits and recommends 2048 bits; this scan is set to a minimum
+      of {minBits} bits.}} The shorter the key, the less effort it takes to compute the private key from the public
+      one and to create signatures for the domain. Guidance (RFC 8301): use RSA keys of at least 2048 bits.{scope,
+      select, contact { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The
+      start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.given-selector-missing:
+    title: >-
+      No DKIM key on the expected selectors{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      No DKIM key was found for {domain} on {provider, select, operator {the selectors given in the settings}
+      microsoft-365 {the selectors Microsoft 365 signs with (recognised by the MX record and the SPF include)} other
+      {the selectors the recognised mail provider signs with}} ({selectors}), and none of the {count} selectors
+      checked showed a key. Without a published key, receivers cannot verify DKIM signatures of this domain, and DMARC
+      can only rely on SPF. Selectors are chosen freely: a key under another name is not visible to these lookups.
+      Guidance (BSI TR-03182): enable DKIM signing at the mail provider and publish the public key in DNS.{scope,
+      select, contact { The domain {mailDomain} comes from an e-mail address observed in the Impressum.} final { The
+      start page redirects to the domain {mailDomain}.} other {}}
+  MAIL-03.selectors-not-found:
+    title: >-
+      No DKIM key on the selectors checked{scope, select, contact { (e-mail domain from the Impressum: {mailDomain})}
+      final { (domain after the redirect: {mailDomain})} other {}}
+    body: >-
+      No published DKIM key was found for {domain} on {count, plural, one {the selector checked} other {the #
+      selectors checked}} ({selectors}). Selectors are chosen freely; a key under another selector is not visible to
+      these lookups.{provider, select, google-workspace { Google Workspace suggests the selector “google”, but the
+      prefix can be changed.} other {}} If the selector in use is known, it can be given for further scans in
+      DSGVO_CHECK_DNS_DKIM_SELECTORS. Conversely, a published key does not show that e-mails are signed. For
+      information.{scope, select, contact { The domain {mailDomain} comes from an e-mail address observed in the
+      Impressum.} final { The start page redirects to the domain {mailDomain}.} other {}}
 legalNotes:
   MAIL-01:
     text: >-
@@ -145,6 +182,15 @@ legalNotes:
       Technical standard, not a legal norm in itself: SPF per RFC 7208, assessed together with DMARC per BSI TR-03182.
       Indirect reference: Art. 32 GDPR; whether a specific measure is required depends on the individual case. The SPF
       record says nothing about actual email sending.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  MAIL-03:
+    text: >-
+      Technical standard, not a legal norm in itself: DKIM per RFC 6376, key lengths per RFC 8301, assessed together
+      with DMARC per BSI TR-03182. Indirect reference: Art. 32 GDPR; whether a specific measure is required depends on
+      the individual case. Selectors are chosen freely: a key not found does not show that none is published, and a
+      published key does not show that e-mails are signed.
     status: technical
     reviewedAt: null
     reviewBy: null
@@ -193,3 +239,16 @@ actions:
     text: "No action is needed as long as DMARC stays active with quarantine or reject."
   MAIL-02.ptr-mechanism:
     text: "Replace ptr in the SPF record of {domain} with specific ip4, ip6 or include entries."
+  MAIL-03.key-too-short:
+    text: >-
+      Generate a new RSA key of at least 2048 bits for {domain}, publish it under a new selector and switch signing to
+      it; then withdraw the key on {selector} with an empty p=.
+  MAIL-03.given-selector-missing:
+    text: >-
+      Enable DKIM signing for {domain} at the mail provider and publish the DNS records it shows for
+      {selectors}{provider, select, microsoft-365 { (for Microsoft 365, two CNAME records pointing to the keys of the
+      tenant)} other {}}.
+  MAIL-03.selectors-not-found:
+    text: >-
+      Check with the mail provider of {domain} whether DKIM signing is active and the public key is in DNS; give the
+      selector in use for further scans in DSGVO_CHECK_DNS_DKIM_SELECTORS.

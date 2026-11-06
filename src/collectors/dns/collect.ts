@@ -1,8 +1,15 @@
 // DNS collection for MAIL-*: MX of the mail domain, the DMARC Tree Walk (RFC 9989) from the host and from the mail
-// domain, and the SPF include/redirect tree (RFC 7208); first for the scanned domain, after the browser for the further
-// mail domains (`collectMailDomains`). The checks' own pure analyses decide what to query next, so the snapshot has what
-// they need (each domain within its own budget). Redaction happens here before storing: addresses are masked by
-// `redactText`, unrelated TXT at SPF names is dropped (count only).
+// domain, the SPF include/redirect tree (RFC 7208), and last the DKIM selectors (RFC 6376); first for the scanned
+// domain, after the browser for the further mail domains (`collectMailDomains`). The checks' own pure analyses decide
+// what to query next, so the snapshot has what they need (each domain within its own budget). Redaction happens here
+// before storing: addresses are masked by `redactText`, unrelated TXT at SPF and selector names is dropped (count only).
+import {
+  type DkimRules,
+  dkimQname,
+  dkimSignals,
+  isDkimCandidate,
+  planDkimSelectors,
+} from '../../checks/dns/lib/dkim.ts';
 import { analyzeDmarc, DMARC_MAX_WALK } from '../../checks/dns/lib/dmarc.ts';
 import {
   type DnsLookup,
@@ -16,14 +23,34 @@ import { DEFAULT_CONFIG } from '../../core/config/schema.ts';
 import { redactText } from '../../core/redaction/redact.ts';
 import type { Logger } from '../../core/runtime/logger.ts';
 import type { CollectorError } from '../../core/snapshot/common.ts';
-import type { DnsAnswer, DnsQueryRecord, DnsSection, MailDomainTarget } from '../../core/snapshot/dns.ts';
+import type {
+  DkimPlanEntry,
+  DnsAnswer,
+  DnsQueryRecord,
+  DnsSection,
+  MailDomainTarget,
+} from '../../core/snapshot/dns.ts';
 import type { MailTargetPlan } from './mail-targets.ts';
 import type { DnsClient, RawDnsResult } from './resolver.ts';
+import { loadDkimRules } from './rules.ts';
 
 /** Queries per scan; the README's list of what the scanner sends quotes this number. */
 export const DNS_QUERY_BUDGET = DEFAULT_CONFIG.dns.queryBudget;
 /** Passes over the SPF include tree: one per nesting level, far above the 10 lookups RFC 7208 allows. */
 const SPF_ROUNDS = 16;
+/**
+ * Purpose of the selector lookups. Their timeouts do not count for the circuit breaker: some name servers drop queries
+ * for names under `_domainkey`, and that must not cost the next domain its MX, DMARC and SPF answers.
+ */
+const DKIM_PURPOSE = 'dkim';
+const countsForBreaker = (purpose: string) => purpose !== DKIM_PURPOSE;
+
+/** Which DKIM selectors are queried per mail domain (`dns.dkimSelectors`, `dns.dkimMaxSelectors`, dkim.yaml). */
+export interface DkimOptions {
+  selectors: readonly string[];
+  maxSelectors: number;
+  rules: DkimRules;
+}
 
 export interface MailDnsOptions {
   host: string;
@@ -34,8 +61,18 @@ export interface MailDnsOptions {
   concurrency?: number;
   /** TIMEOUT results (each already retried) after which the resolver is treated as unresponsive. */
   maxTimeoutResults?: number;
+  /** Defaults: the built-in settings and test/data/dns/dkim.yaml. */
+  dkim?: DkimOptions;
   signal?: AbortSignal;
   log?: Logger;
+}
+
+function dkimDefaults(): DkimOptions {
+  return {
+    selectors: DEFAULT_CONFIG.dns.dkimSelectors,
+    maxSelectors: DEFAULT_CONFIG.dns.dkimMaxSelectors,
+    rules: loadDkimRules(),
+  };
 }
 
 export interface MailDnsResult {
@@ -62,14 +99,24 @@ export function rechunk(value: string, original: readonly string[]): string[] {
   return out;
 }
 
+/**
+ * TXT answers worth keeping at SPF and selector names; any other purpose keeps all. Both kinds stay at both, because a
+ * name is asked once and its answer then serves the SPF and the DKIM analysis alike.
+ */
+function relevantTxt(purpose: string): ((txt: string) => boolean) | null {
+  if (!purpose.startsWith('spf') && purpose !== DKIM_PURPOSE) return null;
+  return (txt) => isSpfCandidate(txt) || isDkimCandidate(txt);
+}
+
 function redact(answers: DnsAnswer[], purpose: string): { answers: DnsAnswer[]; filtered: number } {
   const masked = answers.map((a) => {
     if (a.type !== 'TXT') return a;
     const value = redactText(a.value);
     return { ...a, value, ...(a.chunks ? { chunks: rechunk(value, a.chunks) } : {}) };
   });
-  if (!purpose.startsWith('spf')) return { answers: masked, filtered: 0 };
-  const kept = masked.filter((a) => a.type !== 'TXT' || isSpfCandidate(a.value));
+  const relevant = relevantTxt(purpose);
+  if (!relevant) return { answers: masked, filtered: 0 };
+  const kept = masked.filter((a) => a.type !== 'TXT' || relevant(a.value));
   return { answers: kept, filtered: masked.length - kept.length };
 }
 
@@ -206,7 +253,11 @@ function createQueryPool(
           message: `${p.type} ${rec.qname}: ${rec.rcode} after ${rec.attempts} attempt(s)`,
         });
       }
-      if (rec.rcode === 'TIMEOUT' && ++shared.timeouts >= limits.maxTimeoutResults) {
+      if (
+        rec.rcode === 'TIMEOUT' &&
+        countsForBreaker(p.purpose) &&
+        ++shared.timeouts >= limits.maxTimeoutResults
+      ) {
         shared.halted ??= 'resolver-unresponsive';
         state.stopped ??= shared.halted;
       }
@@ -269,11 +320,39 @@ async function walkSpf(runner: QueryRunner, domain: string): Promise<void> {
   }
 }
 
-/** MX, then the DMARC Tree Walk, then the SPF tree of one mail domain. */
-async function collectDomain(runner: QueryRunner, host: string, domain: string, orgDomain: string) {
+/**
+ * The DKIM selectors of one mail domain, planned from its MX and SPF answers. They run last, so a selector never takes
+ * a query MAIL-01 or MAIL-02 needs. The plan is returned even when the budget stops the queries: MAIL-03 then knows
+ * which selectors are open instead of reading them as absent.
+ */
+async function walkDkim(runner: QueryRunner, domain: string, o: DkimOptions): Promise<DkimPlanEntry[]> {
+  const plan = planDkimSelectors({
+    domain,
+    signals: dkimSignals(domain, runner.lookup),
+    operatorSelectors: o.selectors,
+    maxSelectors: o.maxSelectors,
+    rules: o.rules,
+  });
+  await runner.runAll(
+    plan
+      .filter((e) => !e.capped)
+      .map((e) => ({ qname: dkimQname(e.selector, domain), type: 'TXT' as const, purpose: DKIM_PURPOSE })),
+  );
+  return plan;
+}
+
+/** MX, then the DMARC Tree Walk, then the SPF tree, then the DKIM selectors of one mail domain. */
+async function collectDomain(
+  runner: QueryRunner,
+  host: string,
+  domain: string,
+  orgDomain: string,
+  dkim: DkimOptions,
+): Promise<DkimPlanEntry[]> {
   await runner.run({ qname: domain, type: 'MX', purpose: 'mx' });
   await walkDmarc(runner, host, domain, orgDomain);
   await walkSpf(runner, domain);
+  return walkDkim(runner, domain, dkim);
 }
 
 function stopMessage(stopped: string, limits: Limits): string {
@@ -296,7 +375,7 @@ export async function collectMailDns(o: MailDnsOptions): Promise<MailDnsResult> 
   const pool = createQueryPool(o, limits);
   const runner = pool.runner(limits.budget);
 
-  await collectDomain(runner, host, domain, domain);
+  const dkimPlan = await collectDomain(runner, host, domain, domain, o.dkim ?? dkimDefaults());
 
   const { queries, errors } = pool;
   const stopped = runner.state.stopped;
@@ -312,6 +391,7 @@ export async function collectMailDns(o: MailDnsOptions): Promise<MailDnsResult> 
       queries,
       budget: { limit: limits.budget, used: runner.state.used },
       errors,
+      dkimPlan,
     },
   };
 }
@@ -342,18 +422,23 @@ export async function collectMailDomains(o: MailDomainsOptions): Promise<DnsSect
   const pool = createQueryPool(o, limits, {
     queries: o.section.queries,
     issued: o.section.budget.used,
-    timeouts: o.section.queries.filter((q) => q.rcode === 'TIMEOUT').length,
+    timeouts: o.section.queries.filter((q) => q.rcode === 'TIMEOUT' && countsForBreaker(q.purpose)).length,
     halted: haltOf(o.section),
   });
 
+  const dkim = o.dkim ?? dkimDefaults();
   const mailDomains: MailDomainTarget[] = [];
+  const dkimPlan: DkimPlanEntry[] = [...(o.section.dkimPlan ?? [])];
   for (const { skip, ...t } of o.plan.targets) {
     if (skip) {
       mailDomains.push({ ...t, status: 'skipped', reason: skip, budget: { limit: budget, used: 0 } });
       continue;
     }
     const runner = pool.runner(budget);
-    await collectDomain(runner, normalizeName(t.host), normalizeName(t.domain), normalizeName(t.orgDomain));
+    const host = normalizeName(t.host);
+    dkimPlan.push(
+      ...(await collectDomain(runner, host, normalizeName(t.domain), normalizeName(t.orgDomain), dkim)),
+    );
     const stopped = runner.state.stopped as MailDomainTarget['reason'] | null;
     const used = runner.state.used;
     mailDomains.push({
@@ -369,5 +454,6 @@ export async function collectMailDomains(o: MailDomainsOptions): Promise<DnsSect
     queries: [...o.section.queries, ...pool.queries],
     errors: [...o.section.errors, ...pool.errors],
     mailDomains,
+    dkimPlan,
   };
 }

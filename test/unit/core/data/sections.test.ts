@@ -103,6 +103,25 @@ describe('a broken data file is reported with its directory and key', () => {
     );
   });
 
+  it.each([
+    [
+      'a selector that is a full DNS name',
+      'selectors: [selector1, selector2]',
+      'selectors: [selector1._domainkey.x]',
+      /dkim\.providers\.0\.selectors\.0: must be a DKIM selector/,
+    ],
+    [
+      'a second provider with the same id',
+      'id: google-workspace',
+      'id: microsoft-365',
+      /dkim\.providers: provider ids must be unique/,
+    ],
+    ['a provider without the fixed flag', '      fixed: false\n', '', /dkim\.providers\.1\.fixed/],
+  ])('DKIM data: %s is refused', (_label, from, to, message) => {
+    const root = dataDirCopy('dns', 'dkim.yaml', (t) => t.replace(from, to));
+    expect(() => loadSection(byKey('dns', 'dkim'), root)).toThrow(message);
+  });
+
   it('a missing section names the key it expected', () => {
     const root = dataDirCopy('http', 'html.yaml', (t) => t.replace(/^html:/m, 'htmx:'));
     expect(() => loadSection(byKey('http', 'html'), root)).toThrow(

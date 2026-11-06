@@ -28,6 +28,8 @@ flowchart LR
 
 DNS собирается в два этапа. Первый идёт параллельно с http и tls и опрашивает только сканируемый домен (`dns.queryBudget`). Второй ([collectDnsFollowUp](../src/collectors/dns/index.ts)) идёт после браузера и после подстановки конечного URL из HTTP, поэтому знает и конечный хост, когда браузер пропущен как `tls-blocked`. Он берёт цели из [mail-targets.ts](../src/collectors/dns/mail-targets.ts): регистрируемый домен конечного хоста, если редирект ведёт на другой домен (`final`), и точные домены адресов из Impressum (`contact`: текст документа без частей `hidden-irrelevant` и `mailto:` в содержимом страниц с ролью `impressum`, сначала адреса текста, потом получатели `mailto:`; не больше `dns.maxMailDomains`, без фримейла). У каждой цели свой бюджет `dns.mailDomainQueryBudget`; кэш, номера запросов, счётчик таймаутов и остановка по `--timeout` общие с первым этапом. Запросы дописываются в `dns.queries`, цели и их статус — в `dns.mailDomains`, сам этап — в `dns.mailDomainStage`. MAIL-01 и MAIL-02 оценивают каждую цель отдельно: у сканируемого домена subject прежний (`dmarc`, `spf`), у остальных — `dmarc@final`, `dmarc@contact:<домен>`, поэтому `assess` не сливает находки разных доменов, а отпечатки старых находок не меняются. Сбой ответа у сканируемого домена — ошибка проверки, у другой цели — ограничение `mail-domain-unresolved:<домен>`.
 
+DKIM (MAIL-03) опрашивается в конце обработки каждой цели, после дерева SPF и из её же бюджета, поэтому не отнимает запросы у MAIL-01 и MAIL-02. План селекторов строит чистая [dkim.ts](../src/checks/dns/lib/dkim.ts) по уже полученным MX и SPF: сначала `dns.dkimSelectors` (`selector` для всех доменов или `domain/selector`), затем селекторы провайдера из [dkim.yaml](../test/data/dns/dkim.yaml), если совпали и суффикс MX, и include в дереве SPF, затем общие имена; без повторов, не больше `dns.dkimMaxSelectors` запросов; заданный селектор сверх предела остаётся в плане с `capped` и не опрашивается. Домен с Null MX или без MX и без SPF не опрашивается. План с причиной (`operator`, `provider:<id>`, `common`) и признаком `given` (селектор задал оператор или провайдер всегда им подписывает) пишется в `dns.dkimPlan` и сохраняется, даже если бюджет кончился, поэтому проверка отличает неопрошенный селектор от отсутствующего. По именам SPF и селекторов сохраняются записи SPF и записи ключей DKIM (тег версии DKIM или `p=`), потому что один ответ служит обоим разборам; остальной TXT отбрасывается с подсчётом в `filteredAnswers`. Таймауты запросов DKIM не считаются в предохранителе `resolver-unresponsive`: сервер, роняющий запросы к `_domainkey`, не должен лишать следующий домен ответов MX, DMARC и SPF. CNAME разрешает резолвер (c-ares отдаёт TXT цели, висячий CNAME — NXDOMAIN). Проверка читает теги по RFC 6376 §3.2 и длину модуля RSA из DER (SubjectPublicKeyInfo или PKCS#1), Ed25519 — ровно 32 байта, пустой `p=` — отозванный ключ; разбор никогда не бросает исключение. `key-too-short` — RSA короче `ctx.thresholds.dns.dkimMinRsaBits`; `given-selector-missing` — ни на одном опрошенном селекторе нет записи ключа, а заданные или фиксированные провайдером есть в плане; иначе `selectors-not-found` (info). Сбой ответа без найденного ключа — ошибка, неопрошенный из-за бюджета селектор — `inconclusive` `dns-budget-exhausted`, нечитаемый ключ (в том числе другой версии DKIM) — `inconclusive` `key-unparsable`, отозванный — `key-revoked`, заданный селектор сверх предела — `dkim-selectors-capped`, снимок без `dkimPlan` — `inconclusive` `dkim-not-collected`. Subject — `dkim` (наличие ключа) и `dkim:<селектор>` (длина), у других целей с суффиксом `@final` и `@contact:<домен>`.
+
 ```mermaid
 flowchart LR
     A["Фаза A<br/>без взаимодействия"] --> B["Фаза B<br/>отказ в баннере"] --> C["Фаза C<br/>принятие в баннере"]
@@ -61,7 +63,7 @@ dsgvo-check/
 │   ├── scan-options.ts        # опции скана: умолчания и проверка
 │   ├── checks/                # проверки: чистые функции над срезом снимка
 │   │   ├── browser/           # CONSENT, EMBED, LEGAL, PRIV, TRACK
-│   │   ├── dns/               # MAIL-01, MAIL-02; lib/ — разбор SPF и DMARC, цели-домены
+│   │   ├── dns/               # MAIL-01–03; lib/ — разбор SPF, DMARC и DKIM, цели-домены
 │   │   ├── http/              # HDR-01, TLS-01, TLS-02
 │   │   └── index.ts           # явный реестр всех проверок
 │   ├── cmp/                   # распознавание баннера CMP и клик по выбору
@@ -78,7 +80,7 @@ dsgvo-check/
 │   │   │   ├── phases/        # phase-a.ts, consent-phase.ts (B и C)
 │   │   │   ├── recording/     # запросы, cookies и Web Storage без значений
 │   │   │   └── collector.ts   # сбор по фазам
-│   │   ├── dns/               # MX, DMARC (Tree Walk), SPF; второй этап — домены после браузера
+│   │   ├── dns/               # MX, DMARC (Tree Walk), SPF, селекторы DKIM; второй этап — домены после браузера
 │   │   ├── http/              # HTTP-пробы класса T: редиректы, заголовки
 │   │   └── tls/               # рукопожатия; HTTP CONNECT для --proxy
 │   ├── core/                  # контракты и чистая логика, проверок не знает
@@ -98,7 +100,7 @@ dsgvo-check/
 │   ├── data/                  # данные пакета: идут в npm и образ
 │   │   ├── browser/, cmp/     # словари и сигнатуры браузерного коллектора
 │   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки
-│   │   ├── dns/               # фримейл-домены, которые второй этап DNS не опрашивает
+│   │   ├── dns/               # фримейл-домены второго этапа DNS, провайдеры и селекторы DKIM
 │   │   ├── report/report.html # шаблон HTML-отчёта
 │   │   ├── ruleset/de-2026/   # варианты, уровни, gating, коды CRM
 │   │   ├── services/          # каталог сервисов (Apache-2.0)
@@ -170,6 +172,7 @@ dsgvo-check/
 | `browser/pages.yaml` | ключевые слова дополнительных страниц, исключённые пути, расширения файлов | `selectPages` |
 | `http/html.yaml` | слова поиска и юридических ссылок в префиксе HTML | `detectForm`, `findLegalLinks` |
 | `dns/mail-domains.yaml` | фримейл-домены (точное совпадение), чьи адреса в Impressum не делают домен целью MAIL-01/02 | `selectMailTargets` |
+| `dns/dkim.yaml` | провайдеры почты (суффиксы MX, include SPF, селекторы, `fixed`) и общие имена селекторов DKIM | `collectMailDns` и `collectMailDomains` (план MAIL-03) |
 | `services/_catalog.yaml` | параметры, заданные при визите; буквы `gcd` | derive |
 
 - У каждого файла свой ключ верхнего уровня со zod-схемой (`dataSection` в [parse.ts](../src/core/data/parse.ts)); [sections.test.ts](../test/unit/core/data/sections.test.ts) проверяет, что схема есть у каждого файла и ключа и каждая загружается.
@@ -179,7 +182,7 @@ dsgvo-check/
 
 ## Настройки
 
-- Все пороги, таймауты, паузы и лимиты описывает одна схема — [schema.ts](../src/core/config/schema.ts): у настройки есть умолчание, границы и описание, имя переменной — `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>` с единицей в конце (`_MS`, `_BYTES`, `_DAYS`). Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
+- Все пороги, таймауты, паузы и лимиты описывает одна схема — [schema.ts](../src/core/config/schema.ts): у настройки есть умолчание, границы и описание, имя переменной — `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>` с единицей в конце (`_MS`, `_BYTES`, `_DAYS`, `_BITS`). Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
 - Приоритет: флаг CLI → переменная окружения → `.env` в текущем каталоге → умолчание. `.env` необязателен; его читает `util.parseEnv` и ничего не пишет в `process.env`, поэтому чужие переменные не доходят до Chromium.
 - Неверное значение — код 2 (`invalid-config`): причина — id с параметрами ([problems.ts](../src/core/config/problems.ts)), текст `config.problem.<id>` лежит в `test/data/texts/{de,en}`.
 - Паузы правила 1 (`DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS` ≥ 1500, `DSGVO_CHECK_BROWSER_RETRY_DELAY_MS` ≥ 3000, `DSGVO_CHECK_HTTP_MIN_INTERVAL_MS` ≥ 500) можно только ужесточать: нижняя граница равна умолчанию.

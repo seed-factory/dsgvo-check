@@ -27,6 +27,10 @@ const ratio = (def: number, description: string) =>
 /** `host`, `host:port`, `[v6]` or `[v6]:port` as accepted by `dns.Resolver.setServers`. */
 const DNS_SERVER = /^(?:\[[0-9a-f:.]+\]|[0-9a-f:.]+|[a-z0-9.-]+)(?::\d{1,5})?$/i;
 
+/** A DKIM selector (labels as in front of `._domainkey.`), optionally behind `<domain>/` for one mail domain. */
+const DKIM_SELECTOR =
+  /^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+\/)?[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?)*$/i;
+
 const scan = z.strictObject({
   failOn: FailOnSchema.default('critical').meta({
     description: 'Severity from which the exit code is 1 (CLI: --fail-on).',
@@ -190,6 +194,31 @@ const dns = z.strictObject({
     'Queries that end in a timeout (after retries) before the resolver counts as unresponsive and the rest is skipped.',
     1,
     20,
+  ),
+  dkimSelectors: z
+    .array(
+      z
+        .string()
+        .regex(DKIM_SELECTOR, { error: REASON.dkimSelector })
+        // The selector alone: `selector1._domainkey.example.de` would be asked under `._domainkey.` a second time.
+        .refine((v) => !/(?:^|[./])_domainkey(?:\.|$)/i.test(v), { error: REASON.dkimSelector }),
+    )
+    .default([])
+    .meta({
+      description:
+        'DKIM selectors the mail domains sign with, comma-separated: selector for every checked mail domain, or domain/selector for one. MAIL-03 queries them first and expects a key there.',
+    }),
+  dkimMaxSelectors: int(
+    8,
+    `DKIM selectors queried per mail domain (MAIL-03): those of ${envName('dns', 'dkimSelectors')} first, then the fixed ones of a recognised mail provider, then common names. They count against the query budget of the domain.`,
+    1,
+    32,
+  ),
+  dkimMinRsaBits: int(
+    1_024,
+    'MAIL-03: an RSA DKIM key with fewer bits is reported. RFC 8301 requires 1024 bits and recommends 2048, so the minimum can only be raised.',
+    1_024,
+    16_384,
   ),
 });
 
