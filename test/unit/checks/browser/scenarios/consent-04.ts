@@ -74,6 +74,75 @@ const firstLayerSite = (
     }),
   });
 
+/** Wix recognised by its policy API, the banner script and the banner root, as the adapter reports it. */
+const WIX: CmpFacts['detection'] = {
+  cmpId: 'wix',
+  method: 'adapter',
+  version: null,
+  versionSupported: null,
+  recognitionConfidence: 'high',
+  signals: [
+    'global:consentPolicyManager',
+    'script:static.parastorage.com/services/cookie-consent-banner-for-uou',
+    'dom:[data-hook="consent-banner-root"]',
+  ],
+};
+
+/** The Wix bar at the bottom of the first screen with its policy link and the × in the corner. */
+const wixSite = (controls: CmpButton[]) =>
+  site({
+    cmp: cmpWith({
+      phase: 'B',
+      facts: [
+        cmpFacts({
+          detection: WIX,
+          firstLayer: {
+            bannerPresent: true,
+            bannerVisible: true,
+            buttons: [
+              button('Zur Datenschutzerklärung', { role: 'link', tag: 'a' }),
+              ...controls,
+              button('Schließen', { vendorRole: 'close', box: { x: 1240, y: 600, width: 32, height: 32 } }),
+            ],
+            purAbo: false,
+            closeMeansAccept: null,
+          },
+          blocking: { ...BAR, coveredRatio: 0.17 },
+        }),
+      ],
+    }),
+  });
+
+/**
+ * A Wix first layer with only settings and accept next to its × does not block the page and has no reject; the × is a
+ * close button, never taken for one. With "Alle ablehnen" on the first layer there is nothing to report.
+ */
+const wixScenarios: Scenario[] = [
+  {
+    file: 'violation-wix-settings-and-accept-only.json',
+    description:
+      'Wix bar with "Cookie-Einstellungen", "Zustimmen" and ×, not blocking: no reject on the first layer, the × does not count as one',
+    expect: { status: 'completed', variants: ['nonblocking-no-reject'] },
+    build: () =>
+      wixSite([
+        button('Cookie-Einstellungen', { vendorRole: 'settings' }),
+        button('Zustimmen', { vendorRole: 'accept' }),
+      ]),
+  },
+  {
+    file: 'clean-wix-reject-at-first-layer.json',
+    description:
+      'Counterexample: the same Wix bar with "Alle ablehnen" next to "Zustimmen": nothing to report',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      wixSite([
+        button('Einstellungen', { role: 'button', tag: 'span', vendorRole: 'settings' }),
+        button('Alle ablehnen', { vendorRole: 'reject' }),
+        button('Zustimmen', { vendorRole: 'accept' }),
+      ]),
+  },
+];
+
 /** A banner observed but not recognised gets the same info as a banner the heuristic found; header chrome does not. */
 const candidateScenarios: Scenario[] = [
   {
@@ -152,6 +221,7 @@ const unopenedDialogScenarios: Scenario[] = [
 
 export const scenarios: Scenario[] = [
   ...candidateScenarios,
+  ...wixScenarios,
   ...unopenedDialogScenarios,
   {
     file: 'violation-consent-without-action.json',

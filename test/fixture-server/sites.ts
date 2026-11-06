@@ -206,6 +206,15 @@ export const SITES: Record<string, SiteConfig> = {
       'www.notice-shop.test': 'notice',
     },
   },
+  // A small Wix site on the Wix banner simulator of cmp/wix, which serves its script and tracker.
+  'pipeline/wix-shop': {
+    hosts: {
+      'www.wix-shop.test': 'decline',
+      'www.wix-nodecline-shop.test': 'no-decline',
+      'www.wix-unreadable-shop.test': 'policy-throws',
+      'www.wix-leaky-shop.test': 'leaky',
+    },
+  },
   'pipeline/passive': {
     hosts: { 'www.example.test': 'www', 'example.test': 'www' },
     routes: [

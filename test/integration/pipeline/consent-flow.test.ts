@@ -1,6 +1,7 @@
 /**
  * All browser-side modules together: real browser collector and CMP subsystem, derive, browser checks, assess/gate and
- * reporters on a hand-written shop with the Cookiebot simulator. Variants: consent respected, tracker before consent, blocking banner.
+ * reporters on hand-written shops with the Cookiebot and the Wix simulator. Variants: consent respected, tracker before
+ * consent, blocking banner, a first layer without a reject, a reject the CMP state confirms or cannot confirm.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,6 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
+import { bannerState } from '../../../src/reporters/front-page.ts';
 import { writeReports } from '../../../src/reporters/write.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
@@ -33,7 +35,9 @@ const GA_CLIENT_ID = '987654321';
 let server: FixtureServer;
 
 beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['pipeline/consent-shop', 'cmp/cookiebot', 'browser/ga4'] });
+  server = await startFixtureServer({
+    sites: ['pipeline/consent-shop', 'cmp/cookiebot', 'browser/ga4', 'pipeline/wix-shop', 'cmp/wix'],
+  });
 });
 
 afterAll(async () => {
@@ -209,5 +213,179 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
     expect(shot).toMatchObject({ path: 'artifacts/banner-B.jpg' });
     expect(existsSync(path.join(outDir, 'artifacts/banner-B.jpg'))).toBe(true);
     expect(files).toContain('data:image/jpeg;base64,');
+  });
+});
+
+/** Phrases that call the banner missing or unrecognised, in the report language of `run` (de). */
+const BANNER_MISSING = [
+  'kein Einwilligungsbanner gefunden',
+  'Kein Einwilligungsbanner gefunden',
+  'Einwilligungsbanner beobachtet, aber nicht erkannt',
+  'Das Einwilligungsbanner wurde nicht erkannt',
+];
+
+/** A banner the adapter recognised is named recognised everywhere: no check, overview line or text calls it missing. */
+function expectBannerRecognized({ report, files }: { report: FullReport; files: string }): void {
+  expect(bannerState(report)).toBe('recognized');
+  expect(files).toContain('Das Einwilligungsbanner wurde erkannt.');
+  for (const phrase of BANNER_MISSING) expect(files).not.toContain(phrase);
+  const bannerReasons = [
+    'no-banner',
+    'banner-not-recognized',
+    'banner-candidate-unrecognized',
+    'banner-undetermined',
+  ];
+  expect(report.checks.filter((c) => bannerReasons.includes(c.reason ?? ''))).toEqual([]);
+}
+
+const firstScreen = (r: ScanResult, phase: 'A' | 'B' | 'C') =>
+  r.snapshot?.cmp?.phases.find((p) => p.phase === phase)?.facts.find((f) => f.moment === 'first-screen');
+
+describe('full browser pipeline on the Wix simulator', () => {
+  describe('first layer with "Cookie-Einstellungen", "Zustimmen" and × only', () => {
+    let scanned: Awaited<ReturnType<typeof run>>;
+
+    beforeAll(async () => {
+      scanned = await run('www.wix-nodecline-shop.test');
+    });
+
+    it('recognises Wix and reports CONSENT-04 nonblocking-no-reject as a warning, which does not fail the run', () => {
+      const { r, report } = scanned;
+
+      expect(firstScreen(r, 'B')?.detection).toMatchObject({
+        cmpId: 'wix',
+        method: 'adapter',
+        recognitionConfidence: 'high',
+      });
+      expect(check(report, 'CONSENT-04')?.status).toBe('completed');
+      expect(report.findings.filter((f) => f.checkId === 'CONSENT-04')).toMatchObject([
+        { variant: 'nonblocking-no-reject', severity: 'warning', confidence: 'high', params: { cmp: 'wix' } },
+      ]);
+      expect(r.exitCode).toBe(0);
+    });
+
+    it('clicks no reject: the × is measured as close and never taken for one, so CONSENT-05 stays open', () => {
+      const { r, report } = scanned;
+
+      const kinds = firstScreen(r, 'B')?.firstLayer.buttons.map((b) => [b.name, b.kind]);
+      expect(kinds).toEqual([
+        ['Zur Datenschutzerklärung', 'link'],
+        ['Cookie-Einstellungen', 'settings'],
+        ['Zustimmen', 'accept'],
+        ['Schließen', 'close'],
+      ]);
+      expect(r.snapshot?.plan.browser?.click?.B).toMatchObject({
+        action: 'reject',
+        target: null,
+        reason: 'no-unambiguous-reject-at-first-layer',
+      });
+      expect(r.snapshot?.cmp?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
+        action: 'reject',
+        clicked: false,
+        button: null,
+      });
+      expect(check(report, 'CONSENT-05')).toMatchObject({
+        status: 'inconclusive',
+        reason: 'no-reject-click',
+      });
+      expect(r.snapshot?.plan.browser?.click?.C).toMatchObject({
+        action: 'accept',
+        target: { cmpId: 'wix', name: 'Zustimmen' },
+      });
+    });
+
+    it('names the banner recognised in the overview and every text, never missing', () => {
+      expectBannerRecognized(scanned);
+    });
+  });
+
+  describe('visible "Alle ablehnen", confirmed by the platform policy', () => {
+    let scanned: Awaited<ReturnType<typeof run>>;
+
+    beforeAll(async () => {
+      scanned = await run('www.wix-shop.test');
+    });
+
+    it('clicks "Alle ablehnen" in phase B and "Zustimmen" in phase C through the Wix adapter', () => {
+      const click = scanned.r.snapshot?.plan.browser?.click;
+
+      expect(click?.B).toMatchObject({ action: 'reject', target: { cmpId: 'wix', name: 'Alle ablehnen' } });
+      expect(click?.C).toMatchObject({ action: 'accept', target: { cmpId: 'wix', name: 'Zustimmen' } });
+    });
+
+    it('confirms the reject: every policy category denied by our click and still stored after the reload', () => {
+      const b = scanned.r.snapshot?.cmp?.phases.find((p) => p.phase === 'B');
+
+      expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
+      expect(b?.verify?.method).toContain('api:all-denied');
+      const denied = { functional: 'denied', analytics: 'denied', advertising: 'denied' };
+      expect(b?.verify?.stateAfter).toMatchObject([{ ready: 'ready', origin: 'action', categories: denied }]);
+      const afterReload = b?.facts.filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
+      expect(afterReload).toMatchObject([{ ready: 'ready', origin: 'stored', categories: denied }]);
+    });
+
+    // Wix keeps dataToThirdParty on after "Alle ablehnen"; it is no choice of the banner.
+    it('dataToThirdParty, still on after the reject, makes it neither ineffective nor consent without action', () => {
+      const { r, report } = scanned;
+
+      const states = (r.snapshot?.cmp?.phases ?? []).flatMap((p) => [
+        ...p.facts.flatMap((f) => f.state),
+        ...(p.verify?.stateAfter ?? []),
+      ]);
+      expect(states.length).toBeGreaterThan(0);
+      expect(states.filter((s) => Object.hasOwn(s.categories, 'dataToThirdParty'))).toEqual([]);
+      expect(check(report, 'CONSENT-04')?.status).toBe('completed');
+      expect(ids(report).filter((x) => x.startsWith('CONSENT-04'))).toEqual([]);
+    });
+
+    it('CONSENT-03, -04 and -05 find nothing; the run exits 0 and names the banner recognised', () => {
+      const { r, report } = scanned;
+
+      expect(ids(report).filter((x) => /^CONSENT-0[345]\./.test(x))).toEqual([]);
+      expect(check(report, 'CONSENT-03')?.status).toBe('completed');
+      // The confirmed reject is the basis of CONSENT-05: it is neither missing nor unconfirmed.
+      expect(['no-reject-click', 'reject-not-confirmed', 'no-banner']).not.toContain(
+        check(report, 'CONSENT-05')?.reason,
+      );
+      expect(r.exitCode).toBe(0);
+      expectBannerRecognized(scanned);
+    });
+  });
+
+  it('a tracker that loads on every visit after a confirmed Wix reject → CONSENT-05 tracking-after-reject', async () => {
+    const { r, report } = await run('www.wix-leaky-shop.test');
+
+    expect(r.snapshot?.cmp?.phases.find((p) => p.phase === 'B')?.verify).toMatchObject({
+      verified: true,
+      persistedAfterReload: true,
+    });
+    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
+      variant: 'tracking-after-reject',
+      severity: 'critical',
+      serviceId: 'google-analytics',
+    });
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('a policy API that throws: the reject is clicked but not confirmed, called neither ineffective nor missing', async () => {
+    const scanned = await run('www.wix-unreadable-shop.test');
+    const { r, report } = scanned;
+
+    expect(r.snapshot?.plan.browser?.click?.B).toMatchObject({
+      action: 'reject',
+      target: { cmpId: 'wix', name: 'Alle ablehnen' },
+    });
+    const b = r.snapshot?.cmp?.phases.find((p) => p.phase === 'B');
+    expect(b?.click?.clicked).toBe(true);
+    expect(b?.verify).toMatchObject({ verified: false });
+    expect(b?.verify?.stateAfter.filter((s) => s.ready === 'ready')).toEqual([]);
+
+    expect(check(report, 'CONSENT-05')).toMatchObject({
+      status: 'inconclusive',
+      reason: 'reject-not-confirmed',
+    });
+    expect(ids(report).filter((x) => x.startsWith('CONSENT-04'))).toEqual([]);
+    expect(check(report, 'CONSENT-04')?.limitations).toContain('reject-unverified');
+    expectBannerRecognized(scanned);
   });
 });

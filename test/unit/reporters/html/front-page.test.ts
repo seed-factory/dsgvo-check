@@ -792,6 +792,78 @@ describe('the overview: checks without a result', () => {
     expect(sentences.join(' ')).not.toMatch(/wurde nicht erkannt/);
   });
 
+  it.each([
+    [
+      'de',
+      'Es wurden keine kritischen Befunde beobachtet. Ein Befund sollte geprüft werden.',
+      'Das Einwilligungsbanner wurde erkannt.',
+      /kein Einwilligungsbanner gefunden|nicht erkannt/,
+    ],
+    [
+      'en',
+      'No critical findings were observed. One finding should be checked.',
+      'The consent banner was recognised.',
+      /No consent banner was found|not recognised/,
+    ],
+  ] as const)(
+    'a first layer without a reject is a warning about a recognised banner, never a banner called missing (%s)',
+    (lang, counts, recognised, missing) => {
+      const noReject = finding(1, {
+        checkId: 'CONSENT-04',
+        variant: 'nonblocking-no-reject',
+        messageId: 'CONSENT-04.nonblocking-no-reject',
+        severity: 'warning',
+        params: { cmp: 'wix' },
+        text: undefined,
+      });
+      const sentences = overview(
+        [
+          check('CONSENT-03', 'completed', null),
+          check('CONSENT-04', 'completed', null),
+          check('CONSENT-05', 'inconclusive', 'no-reject-click'),
+        ],
+        [noReject],
+        lang,
+      );
+
+      expect(sentences[0]).toBe(counts);
+      expect(sentences).toContain(recognised);
+      expect(sentences.join(' ')).not.toMatch(missing);
+      // The reject that was never clicked stays open, and the overview says so.
+      expect(sentences.join(' ')).toContain('(CONSENT-05)');
+    },
+  );
+
+  // Only CONSENT-04 "no-banner" says the banner is missing; every outcome of a banner an adapter found says otherwise.
+  it.each([
+    ['completed', null, []],
+    ['inconclusive', 'first-layer-not-visible', []],
+    ['inconclusive', 'cmp-dialog-not-opened', []],
+    ['inconclusive', 'cmp-not-supported', []],
+    ['inconclusive', 'unknown-classification', []],
+    ['inconclusive', 'bot-mode', []],
+    ['inconclusive', 'geo', []],
+    ['inconclusive', 'banner-not-recognized', [{ cmp: 'wix', bannerRecognized: true }]],
+  ] as const)('CONSENT-04 %s (%s) never gives the sentence of a missing banner', (status, reason, params) => {
+    const findings = params.map((p, i) =>
+      finding(10 + i, {
+        checkId: 'CONSENT-04',
+        variant: 'banner-not-recognized',
+        messageId: 'CONSENT-04.banner-not-recognized',
+        severity: 'info',
+        params: p,
+        text: undefined,
+      }),
+    );
+    const checks = [
+      check('CONSENT-04', status, reason),
+      check('CONSENT-05', 'inconclusive', 'no-reject-click'),
+    ];
+
+    expect(overview(checks, findings).join(' ')).not.toMatch(/kein Einwilligungsbanner gefunden/);
+    expect(overview(checks, findings, 'en').join(' ')).not.toMatch(/No consent banner was found/);
+  });
+
   it('lets the banner sentence explain the reject that could not be clicked; with a recognised banner it is named', () => {
     const missing = overview([
       check('CONSENT-04', 'not_applicable', 'no-banner'),
