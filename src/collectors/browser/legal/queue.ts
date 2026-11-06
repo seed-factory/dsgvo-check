@@ -11,10 +11,12 @@ import { THROTTLE_STATUSES } from '../pages/navigate.ts';
 import {
   type CandidateLink,
   findLegalLink,
+  type LanguageContext,
   type LegalKind,
   type LegalLinkResult,
   type PageChoice,
   pageKey,
+  privacySupplements,
 } from '../pages/pages.ts';
 import { navigationErrorCode, type VisitResult } from '../pages/visit.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
@@ -40,8 +42,28 @@ export interface QueueItem {
   foundVia?: DocumentRecord['foundVia'];
   extra?: boolean;
   hop?: boolean;
+  /**
+   * Read as a further privacy notice of the site after the policy; it never leads to another candidate. With `docKind`
+   * the page was queued for the notice alone; without it, it is a page queued for its own sake (the contact page, an
+   * intermediate or extra page) that keeps its role and is read as the notice too.
+   */
+  supplement?: boolean;
   pool?: readonly CandidateLink[];
 }
+
+/** Further privacy notices read after the policy: the language versions of the site and how many notices at most. */
+export interface SupplementPolicy {
+  language: LanguageContext;
+  max: number;
+}
+
+const isPdfUrl = (raw: string): boolean => {
+  try {
+    return /\.pdf$/i.test(new URL(raw).pathname);
+  } catch {
+    return false;
+  }
+};
 
 interface Scope {
   startRaw: string;
@@ -64,24 +86,25 @@ function recordPdf(
     url: SanitizedUrl;
     foundVia: DocumentRecord['foundVia'];
     attemptVia: Attempt['via'];
+    supplement?: boolean;
   },
 ): void {
-  documents.documents.push(
-    pdfDocument({
-      id: `doc-${pdf.kind}-${documents.documents.length + 1}`,
-      kind: pdf.kind,
-      phase: 'A',
-      url: pdf.url,
-      foundVia: pdf.foundVia,
-      status: null,
-    }),
-  );
+  const doc = pdfDocument({
+    id: `doc-${pdf.kind}-${documents.documents.length + 1}`,
+    kind: pdf.kind,
+    phase: 'A',
+    url: pdf.url,
+    foundVia: pdf.foundVia,
+    status: null,
+  });
+  documents.documents.push(pdf.supplement ? { ...doc, role: 'supplement' } : doc);
   documents.attempts.push({
     kind: pdf.kind,
     via: pdf.attemptVia,
     url: pdf.url,
     status: null,
     outcome: 'found',
+    ...(pdf.supplement ? { supplement: true } : {}),
   });
 }
 
@@ -90,14 +113,24 @@ export class PageQueue {
   readonly found: Record<LegalKind, boolean> = { impressum: false, privacy: false };
   private readonly tried: Record<LegalKind, Set<string>> = { impressum: new Set(), privacy: new Set() };
   private candidateRetries = 0;
+  private supplementsQueued = false;
+  /** Pages phase A visited for further privacy notices: legal pages, so they leave --max-pages to the other pages. */
+  supplementVisits = 0;
   private readonly visited: Set<string>;
   private readonly documents: DocumentsSection;
   private readonly scope: Scope;
+  private readonly supplements: SupplementPolicy | null;
 
-  constructor(visited: Set<string>, documents: DocumentsSection, scope: Scope) {
+  constructor(
+    visited: Set<string>,
+    documents: DocumentsSection,
+    scope: Scope,
+    supplements: SupplementPolicy | null = null,
+  ) {
     this.visited = visited;
     this.documents = documents;
     this.scope = scope;
+    this.supplements = supplements;
   }
 
   pending(k: LegalKind): boolean {
@@ -152,6 +185,72 @@ export class PageQueue {
     else this.items.push(item);
   }
 
+  /**
+   * After the policy was read from `item`'s link: the further privacy notices among the privacy links of the same page
+   * are queued, best-ranked first and at most `max`, once per scan. A language version of the policy is noted without
+   * a navigation; a PDF notice is recorded without one. A page already visited, tried or queued for a legal kind is
+   * not read again; one queued as a plain page stays what it is and is read as the notice as well.
+   */
+  queueSupplements(item: QueueItem): void {
+    const o = this.supplements;
+    if (!o || o.max <= 0 || this.supplementsQueued || !item.pool) return;
+    this.supplementsQueued = true;
+
+    const queuedLegal = (key: string) => this.items.some((q) => q.docKind && pageKey(q.choice.raw) === key);
+    const sel = privacySupplements(item.pool, this.scope, {
+      language: o.language,
+      max: o.max,
+      skip: (key) => this.visited.has(key) || this.tried.privacy.has(key) || queuedLegal(key),
+    });
+    const via = item.foundVia === 'hop' ? 'hop' : 'link';
+    for (const l of sel.languages) {
+      this.documents.attempts.push({
+        kind: 'privacy',
+        via,
+        url: l.url,
+        status: null,
+        outcome: 'other-language',
+        supplement: true,
+      });
+    }
+
+    for (const n of sel.notices) {
+      const key = pageKey(n.raw);
+      this.tried.privacy.add(key);
+      if (isPdfUrl(n.raw)) {
+        recordPdf(this.documents, {
+          kind: 'privacy',
+          url: n.url,
+          foundVia: via,
+          attemptVia: via,
+          supplement: true,
+        });
+        continue;
+      }
+      const choice: PageChoice =
+        via === 'hop'
+          ? {
+              ...n,
+              source: 'hop',
+              reasons: [...n.reasons, ...item.choice.reasons.filter((r) => r.startsWith('via:'))],
+            }
+          : n;
+      const at = this.items.findIndex((q) => pageKey(q.choice.raw) === key);
+      const queued = this.items[at];
+      if (queued) {
+        // The contact page keeps looking for the legal links, an extra page stays within --max-pages.
+        this.items[at] = {
+          ...queued,
+          choice: { ...queued.choice, reasons: [...queued.choice.reasons, 'supplement'] },
+          foundVia: via,
+          supplement: true,
+        };
+      } else {
+        this.items.push({ choice, docKind: 'privacy', foundVia: via, supplement: true });
+      }
+    }
+  }
+
   // The page behind a legal link is substantive but not of the expected type: the next best link of the same page is
   // tried, within `MAX_CANDIDATE_RETRIES` extra GETs.
   tryNextCandidate(item: QueueItem): void {
@@ -191,7 +290,9 @@ export class PageQueue {
 }
 
 // `found`: expected type; `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor
-// soft-404: the caller may try the next candidate, LEGAL-01 reports a limitation); `no`: nothing usable.
+// soft-404: the caller may try the next candidate, LEGAL-01 reports a limitation); `no`: nothing usable. A further
+// privacy notice (`supplement`) is recorded with its role and its attempts are marked, so they never stand for the
+// policy.
 export async function recordDocument(
   c: BrowserCollection,
   s: Session,
@@ -199,37 +300,89 @@ export async function recordDocument(
   kind: LegalKind,
   url: SanitizedUrl,
   via: DocumentRecord['foundVia'],
+  supplement = false,
 ): Promise<'found' | 'unconfirmed' | 'no'> {
   const attemptVia = via === 'config' ? 'link' : via;
   const status = r.visit.navigation.status;
+  const attempt = (a: Pick<Attempt, 'status' | 'outcome'>) =>
+    c.documents.attempts.push({
+      kind,
+      via: attemptVia,
+      url,
+      ...a,
+      ...(supplement ? { supplement: true } : {}),
+    });
 
   if (r.error) {
     if (navigationErrorCode(r.error) === 'download') {
-      recordPdf(c.documents, { kind, url, foundVia: via, attemptVia });
+      recordPdf(c.documents, { kind, url, foundVia: via, attemptVia, supplement });
       return 'found';
     }
-    c.documents.attempts.push({ kind, via: attemptVia, url, status: null, outcome: 'error' });
+    attempt({ status: null, outcome: 'error' });
     return 'no';
   }
 
   if (status !== null && status >= 400) {
     // 429/503: the server refused to answer now — that proves nothing about the document (no false links-broken).
-    const outcome = THROTTLE_STATUSES.has(status) ? 'error' : 'not-found';
-    c.documents.attempts.push({ kind, via: attemptVia, url, status, outcome });
+    attempt({ status, outcome: THROTTLE_STATUSES.has(status) ? 'error' : 'not-found' });
     return 'no';
   }
 
   const doc = await extractBounded(c, s, r, { kind, url, via, status });
   if (!doc) {
-    c.documents.attempts.push({ kind, via: attemptVia, url, status, outcome: 'error' });
+    attempt({ status, outcome: 'error' });
     return 'no';
   }
 
   const outcome = outcomeOf(doc);
   // A fallback hit that is not the document (e.g. a CMS 200 page) is not recorded as a document.
-  if (outcome === 'found' || via !== 'fallback') c.documents.documents.push(doc);
-  c.documents.attempts.push({ kind, via: attemptVia, url, status, outcome });
+  if (outcome === 'found' || via !== 'fallback')
+    c.documents.documents.push(supplement ? { ...doc, role: 'supplement' } : doc);
+  attempt({ status, outcome });
   return RESULT_BY_OUTCOME[outcome];
+}
+
+/** The record under another id: part ids start with the id of their record. */
+function withId(doc: DocumentRecord, id: string): DocumentRecord {
+  const rename = (partId: string) => (partId.startsWith(doc.id) ? id + partId.slice(doc.id.length) : partId);
+  return { ...doc, id, parts: doc.parts.map((p) => ({ ...p, id: rename(p.id) })) };
+}
+
+/**
+ * While no Impressum is found, the open contact page, intermediate page or start page is read for the details of one
+ * (no further navigation). `asDocument`: a page that the heading markers confirm is the Impressum, found via the
+ * intermediate page. Any other page that was read is kept as a candidate, which is no document.
+ */
+export async function readImpressumDetails(
+  c: BrowserCollection,
+  s: Session,
+  r: VisitResult,
+  asDocument: boolean,
+): Promise<'found' | 'candidate' | 'no'> {
+  const status = r.visit.navigation.status;
+  const html = !/application\/pdf/i.test(r.contentType);
+  if (r.error || !r.visit.evaluable || status === null || status < 200 || status >= 300 || !html) return 'no';
+
+  const url = r.visit.url;
+  const doc = await extractBounded(c, s, r, { kind: 'impressum', url, via: 'hop', status });
+  if (!doc) return 'no';
+
+  if (asDocument && outcomeOf(doc) === 'found') {
+    c.documents.documents.push(doc);
+    c.documents.attempts.push({ kind: 'impressum', via: 'hop', url, status, outcome: 'found' });
+    return 'found';
+  }
+  const candidates = c.documents.candidates ?? [];
+  candidates.push(withId(doc, `cand-impressum-${candidates.length + 1}`));
+  c.documents.candidates = candidates;
+  return 'candidate';
+}
+
+/** Candidates only stand in for an Impressum that was not found; once one is found they are dropped. */
+export function dropCandidatesIfFound(documents: DocumentsSection): void {
+  if (documents.attempts.some((a) => a.kind === 'impressum' && a.outcome === 'found')) {
+    delete documents.candidates;
+  }
 }
 
 /** Reads the document of the current page; null (and an error entry in the phase record) when the read fails. */

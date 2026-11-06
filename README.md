@@ -81,23 +81,23 @@ Die Meldungs-ID eines Befunds ist `<Prüfung>.<Variante>`. Die Schweregrade sind
 mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 <!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
-| ID           | `critical`                                 | `warning`                                                                                    | `info`                                                                                                                           |
-| ------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                     | `third-party-resource`, `unknown-host`, `request-not-completed`                                                                  |
-| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                             | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                                         |
-| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                 | —                                                                                                                                |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                      | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
-| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                               | `connect-only-after-reject`                                                                                                      |
-| `TRACK-01`   | —                                          | —                                                                                            | `service-inventory`                                                                                                              |
-| `EMBED-01`   | —                                          | `fonts-loaded`                                                                               | `preconnect-only`                                                                                                                |
-| `EMBED-02`   | —                                          | `maps-loaded`                                                                                | —                                                                                                                                |
-| `LEGAL-01`   | `document-not-found`, `links-broken`       | `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner`       | `unresolved`                                                                                                                     |
-| `PRIV-01`    | —                                          | `not-named`                                                                                  | `category-only`, `ambiguous-match`                                                                                               |
-| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                          | `weak-option`, `legacy-pct`                                                                                                      |
-| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement` | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
-| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                         | `header-missing`                                                                                                                 |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                   | `redirect-chain-detail`                                                                                                          |
-| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                   | `certificate-expiry-approaching`                                                                                                 |
+| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                                           |
+| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                                                  |
+| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                                         |
+| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                                                |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
+| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                                                      |
+| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                                              |
+| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                                                |
+| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                                                |
+| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                                                     |
+| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                                               |
+| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                                                      |
+| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
+| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                                                 |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                                              | `redirect-chain-detail`                                                                                                          |
+| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                                                 |
 <!-- registry:end -->
 
 ² Fest vorgegeben (`locked`): wird nicht angehoben und zählt nicht für `--fail-on`; die Prüfung bleibt `inconclusive`.
@@ -160,17 +160,56 @@ Aufnahme; wann neu ausgewertet wurde, steht im ausführlichen Bericht und in `re
 
 Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeichnis.
 
-| Phase | Aktion                                                                                | Seiten                                                                      |
-| ----- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| A     | Ohne Interaktion beobachten                                                           | Startseite, Impressum, Datenschutzerklärung, Kontakt, bis zu 2 weitere      |
-| B     | „Ablehnen“ über den CMP-Adapter klicken, Zustand prüfen, Startseite neu laden, prüfen | Startseite und bis zu 2 Kontrollseiten                                      |
-| C     | „Alle akzeptieren“ klicken                                                            | Dieselben Kontrollseiten; entfällt, wenn Phase B keinen Adapter erkannt hat |
+| Phase | Aktion                                                                                | Seiten                                                                                    |
+| ----- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| A     | Ohne Interaktion beobachten                                                           | Startseite, Impressum, Datenschutzerklärung, Kontakt und weitere Seiten bis `--max-pages` |
+| B     | „Ablehnen“ über den CMP-Adapter klicken, Zustand prüfen, Startseite neu laden, prüfen | Startseite und bis zu 2 Kontrollseiten (`DSGVO_CHECK_BROWSER_MAX_CONTROL_PAGES`, 0 bis 5) |
+| C     | „Alle akzeptieren“ klicken                                                            | Dieselben Kontrollseiten; entfällt, wenn Phase B keinen Adapter erkannt hat               |
 
-- Die weiteren Seiten in Phase A kommen aus Links oder der Sitemap. `--max-pages` begrenzt die Seitenzahl (Standard 6);
-  Impressum und Datenschutzerklärung werden unabhängig davon besucht. Fehlt der Link, probiert der Scanner
-  `/impressum` und `/datenschutz`.
+- `--max-pages` begrenzt die Seitenzahl in Phase A (Standard 6). Die weiteren Seiten bekommen, was nach Startseite,
+  Impressum, Datenschutzerklärung, Kontakt- und Zwischenseiten übrig bleibt, beim Standard also 2. Impressum und
+  Datenschutzerklärung werden unabhängig davon besucht. Fehlt der Link, probiert der Scanner `/impressum` und
+  `/datenschutz`; diese Aufrufe zählen dann an Stelle der verlinkten Seite.
+- Die weiteren Seiten kommen aus den Links der Startseite: zuerst je Gruppe von Stichwörtern höchstens eine Seite, in
+  dieser Reihenfolge: Video, Anfahrt und Standort, Geschichte, Über uns, Team, Karriere, Referenzen, Termin, Blog und
+  News, Newsletter, Shop, Galerie, Leistungen und Produkte (Liste: `test/data/browser/pages.yaml`). Zwei Seiten
+  desselben Bereichs (`/unternehmen/geschichte`, `/unternehmen/team`) dürfen aus verschiedenen Gruppen kommen. Reicht
+  das nicht, folgen Links der Navigation und Einträge der Sitemap, je URL-Bereich eine Seite.
+- Andere Sprachversionen der Website sind nie weitere Seiten: ein anderes Sprachpräfix als das der Startseite (`/en/`
+  neben `/de/`), ein Sprachumschalter („EN“, „English“, eine Flagge ohne Text auf `/en/`), ein `hreflang` einer
+  anderen Sprache. Das Sprachpräfix der Startseite selbst zählt nicht als Bereich: Auf einer Startseite `/de/` bleiben
+  `/de/kontakt/anfahrt/` und `/de/unternehmen/geschichte/` wählbar.
+- Kontrollseiten sind Seiten aus Phase A mit eingebetteten Inhalten: iframes und Platzhalter von Drittanbietern, neue
+  Hosts gegenüber der Startseite. Karten, Videos (auch Vorschaubilder), Schriften und Widgets aus dem Dienstekatalog
+  zählen mehr als unbekannte Hosts. iframes von Einwilligungsanbietern und iframes ganz außerhalb der Seite (etwa ein
+  4×4-Hilfsframe bei −9999 px) zählen nicht. Seiten auf dem Ursprung der Startseite, auf der B und C klicken, gehen
+  vor, weil ein Einwilligungs-Cookie dieses Hosts auf einem anderen Host nicht gilt. Seiten eines anderen Ursprungs
+  kommen nur zum Zug, wenn keine Seite des Ursprungs übrig ist, und tragen im Plan den Grund `other-origin`.
+- Verlinkt die Seite mit dem Link auf die Datenschutzerklärung weitere Datenschutzhinweise der Website (etwa
+  „Datenschutz Kurse“ oder „Datenschutzhinweise Bewerbung“ im Seitenfuß), liest der Scanner danach bis zu einen davon
+  (`DSGVO_CHECK_BROWSER_MAX_SUPPLEMENTARY_POLICIES`, 0 bis 3), den am besten passenden Link zuerst. Zählt nur ein Link,
+  dessen Text ein Datenschutzwort ist oder damit beginnt und der nicht im Inhaltsbereich oder einer Seitenleiste
+  steht: Ein Artikel über Datenschutz ist kein Hinweis der Website. Diese Aufrufe zählen wie die Rechtstexte nicht
+  gegen `--max-pages`, halten aber die Pause zwischen Navigationen und das Zeitbudget ein. Andere Sprachversionen der
+  Datenschutzerklärung (`/en/datenschutz/` hinter „EN“) werden nur vermerkt, nicht aufgerufen; Links auf
+  Einstellungsdialoge („Datenschutz-Einstellungen“) bleiben unberührt.
+- Fehlt der Link auf das Impressum, liest der Scanner die ohnehin geöffneten Seiten mit: die Startseite, die
+  Kontaktseite und Zwischenseiten wie „Über uns“. Weisen die Überschriften im Inhalt einer Kontakt- oder Zwischenseite
+  sie als Impressum aus, gilt das Impressum als über diese Seite gefunden. Sonst bleibt ihr Text für LEGAL-01, das darin
+  nach Angaben eines Impressums sucht (Registereintrag, USt-IdNr., Vertretungsberechtigte, § 5 DDG, § 18 Abs. 2 MStV).
+  Dafür gibt es keine zusätzlichen Seitenaufrufe.
 - Jede Seite bleibt mindestens 6 s (Phase A) bzw. 4 s (B und C) offen, bis der Netzverkehr ruhig ist; Obergrenzen:
   20 s bzw. 12 s.
+- Erst nach den Feststellungen zum ersten Bildschirm (Banner, Screenshot, Links, Rechtstexte) vergrößert der Scanner
+  das Fenster auf die Höhe der Seite, höchstens auf 10 000 Pixel (`DSGVO_CHECK_BROWSER_REVEAL_MAX_HEIGHT_PX`), wartet
+  bis zu 3 s, bis der Netzverkehr ruhig ist (`DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS`, 0 schaltet das ab), und stellt das
+  Fenster vor der nächsten Navigation zurück. So laden Karten, Videos und andere Inhalte unterhalb des ersten
+  Bildschirms wie bei einem Besucher, der nach unten scrollt. Gescrollt wird nicht: Die Seite erhält kein Scroll-,
+  Maus- oder Tastaturereignis, Phase A bleibt ohne Interaktion, und ein Banner, das Scrollen als Einwilligung wertet,
+  wird nicht ausgelöst. In B und C geschieht das auf der Startseite erst nach dem Klick (in B auf der neu geladenen
+  Seite) und danach auf den Kontrollseiten. Seiten, die ins Fenster passen, sich nicht scrollen lassen (etwa unter
+  einem blockierenden Banner) oder selbst nach unten gescrollt haben, bleiben, wie sie sind. Anfragen danach tragen in
+  `report.json` `afterReveal: true`.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
@@ -323,8 +362,8 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 Der Scanner läuft ohne jede Konfiguration: Jeder Wert hat einen Standard. Schwellen, Zeitlimits und Grenzen lassen
 sich zusätzlich über Umgebungsvariablen der Form `DSGVO_CHECK_<ABSCHNITT>_<NAME>` setzen, etwa
 `DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS`, `DSGVO_CHECK_HTTP_MAX_REDIRECTS` oder `DSGVO_CHECK_TLS_EXPIRING_DAYS`. Die
-Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage). Eine Datei `.env` ist nicht nötig; liegt
-im aktuellen Verzeichnis eine, wird sie gelesen.
+Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel). Eine Datei `.env` ist
+nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
 
 - **Vorrang:** Flag, Umgebungsvariable, `.env`, Standardwert. Eine bereits gesetzte Umgebungsvariable wird von `.env`
   nicht überschrieben.
@@ -560,8 +599,25 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
   `info`.
-- **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
-  ausgewertet; die Konfidenz ist daher höchstens `medium`.
+- **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
+  Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
+  die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen
+  dafür nur ein Abschnitt „Impressum“ und der Seitenfuß, weil sie auch Firmenangaben von Auftragsverarbeitern nennt.
+- **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames, dazu die weiteren
+  Datenschutzhinweise der Website, die Phase A gelesen hat: Eine Nennung in einem davon gilt als Nennung. Andere
+  Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
+  oder gar nicht vorliegen, ergeben die Einschränkung `supplement-not-evaluated` (Status `partial`); die
+  Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
+  höchstens `medium`.
+- **Unterhalb des ersten Bildschirms** zeigt der Scanner eine Seite nur bis 10 000 Pixel Höhe: Was darunter liegt,
+  bleibt ungesehen, und EMBED-01 und EMBED-02 nennen die Einschränkung `reveal-height-capped`. Inhalte, die erst auf
+  ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit
+  `DSGVO_CHECK_BROWSER_REVEAL_DWELL_MS=0` bleibt es beim ersten Bildschirm; der Bericht nennt dann die
+  Beobachtungslücke `below-fold-not-revealed`.
+- **Nur wenige Seiten.** Phase A sieht die Startseite, die Rechtstexte, die Kontaktseite und so viele weitere Seiten,
+  wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
+  Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu
+  Geschichte), daher kann auf Portalen auch ein Artikel als weitere Seite gewählt werden.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das

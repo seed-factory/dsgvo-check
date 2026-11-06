@@ -31,6 +31,20 @@ flowchart LR
     A["Фаза A<br/>без взаимодействия"] --> B["Фаза B<br/>отказ в баннере"] --> C["Фаза C<br/>принятие в баннере"]
 ```
 
+На каждой странице сначала снимается первый экран, затем показывается остальное. В B и C стартовая страница доходит до показа только после клика (в B — после перезагрузки), контрольные страницы — после своих фактов.
+
+```mermaid
+flowchart LR
+    N["Навигация<br/>и тишина сети"] --> F["Первый экран 1366×768<br/>DOM, CMP, скриншот в B"]
+    F --> D["Документы<br/>и юридические ссылки"]
+    D --> R["Показ ниже первого экрана<br/>viewport до высоты документа"]
+    R --> V["viewport 1366×768<br/>следующая навигация"]
+```
+
+- Показ — [reveal.ts](../src/collectors/browser/pages/reveal.ts): `page.setViewportSize` до высоты документа, не выше `browser.revealMaxHeightPx`, затем `waitForQuiet` не дольше `browser.revealDwellMs` и жёсткого предела фазы, затем прежний viewport. Событий прокрутки, колеса и ввода нет: баннер, считающий прокрутку согласием, не срабатывает. Не меняется страница, которая помещается в окно, не прокручивается (`overflow: hidden` у корня, как под блокирующим баннером) или сама прокрутилась вниз: смена размера может вернуть её наверх, а это событие прокрутки. Если браузер не подтвердил возврат 1366×768 (`viewportSize()` Playwright сообщает запрошенный размер ещё до подтверждения) или вызов размера не завершился вовремя (он ещё может сработать после возврата), фаза дальше не навигирует: `partial`, причина `viewport-not-restored`. Ошибки шага — только своими словами, без текста исключений страницы.
+- Запросы после показа рекордер помечает `afterReveal: true` до следующей навигации; классификация по моменту (`timing`) не меняется, улика запроса несёт тот же флаг. Cookies и хранилище, появившиеся за время показа, снимаются ещё раз для той же страницы; ответы 429/503 целевого хоста считаются для троттлинга, как запросы самой страницы.
+- `PageVisit.reveal` — исход (`revealed`, `fits-viewport`, `scroll-locked`, `scrolled`, `failed`), высота документа и окна, `capped`. EMBED-01 и EMBED-02 дают ограничение `reveal-height-capped`, если в фазах A или B страница была выше предела; при `browser.revealDwellMs = 0` коллектор пишет пробел наблюдения `below-fold-not-revealed`.
+
 ## Дерево
 
 Только каталоги и ключевые файлы, список сверен с `git ls-files`. `schema/` и `dist/` создаёт `corepack pnpm build`, в git их нет. `test/data/` входит в npm-пакет и в образ: там ruleset, тексты, словари, каталог сервисов и шаблон отчёта.
@@ -72,7 +86,7 @@ dsgvo-check/
 │   │   │   ├── in-page/       # код внутри страницы: DOM, хранилище, нажатия
 │   │   │   ├── launch/        # запуск Chromium, SSRF-граница сети
 │   │   │   ├── legal/         # Impressum и Datenschutzerklärung
-│   │   │   ├── pages/         # выбор страниц, robots.txt, навигации, WAF
+│   │   │   ├── pages/         # выбор страниц, robots.txt, навигации, WAF, показ ниже первого экрана
 │   │   │   ├── phases/        # phase-a.ts, consent-phase.ts (B и C)
 │   │   │   ├── recording/     # запросы, cookies и Web Storage без значений
 │   │   │   └── collector.ts   # сбор по фазам
@@ -95,7 +109,7 @@ dsgvo-check/
 ├── test/
 │   ├── data/                  # данные пакета: идут в npm и образ
 │   │   ├── browser/, cmp/     # словари и сигнатуры браузерного коллектора
-│   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки
+│   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки, данные Impressum
 │   │   ├── report/report.html # шаблон HTML-отчёта
 │   │   ├── ruleset/de-2026/   # варианты, уровни, gating, коды CRM
 │   │   ├── services/          # каталог сервисов (Apache-2.0)
@@ -125,7 +139,7 @@ dsgvo-check/
 | Поменять шаблон отчёта | разметка и стили — [report.html](../test/data/report/report.html); подписи — [report.yaml](../test/data/texts/de/report.yaml) (и в `en/`); какие данные попадают в шаблон — [report-view.ts](../src/reporters/report-view.ts), подача улик — [evidence-view.ts](../src/reporters/evidence-view.ts); язык шаблона — [template.ts](../src/reporters/template.ts); PDF печатает тот же HTML ([pdf.ts](../src/reporters/pdf.ts)). Консоль и Job Summary — [console.ts](../src/reporters/console.ts) и [summary.ts](../src/reporters/summary.ts) |
 | Добавить сервис в каталог или сменить его категорию | `test/data/services/*.yaml` (формат записи — [_catalog.yaml](../test/data/services/_catalog.yaml)); какая проверка владеет категорией — [routing.yaml](../test/data/routing.yaml) |
 | Поддержать новый CMP или подпись кнопки | id в `KNOWN_CMP_IDS` ([types.ts](../src/cmp/types.ts)), адаптер в `src/cmp/adapters/` (чтение API) и регистрация в [src/cmp/index.ts](../src/cmp/index.ts); признаки, версии и селекторы — [adapters.yaml](../test/data/cmp/adapters.yaml); подписи кнопок — [lexicon.yaml](../test/data/cmp/lexicon.yaml); ручной стенд — `test/fixture-server/sites/cmp/<имя>/` и [sites.ts](../test/fixture-server/sites.ts); тесты — `test/integration/cmp/` |
-| Добавить или поменять слово, имя параметра или cookie, сигнатуру бот-защиты, ключевое слово страницы | YAML из таблицы «Словари и сопоставления» ниже: [browser/](../test/data/browser), [cmp/](../test/data/cmp), [http/](../test/data/http), [legal/links.yaml](../test/data/legal/links.yaml); новый ключ верхнего уровня — со схемой (`dataSection`) и строкой в [sections.test.ts](../test/unit/core/data/sections.test.ts) |
+| Добавить или поменять слово, имя параметра или cookie, сигнатуру бот-защиты, ключевое слово страницы | YAML из таблицы «Словари и сопоставления» ниже: [browser/](../test/data/browser), [cmp/](../test/data/cmp), [http/](../test/data/http), [legal/](../test/data/legal); новый ключ верхнего уровня — со схемой (`dataSection`) и строкой в [sections.test.ts](../test/unit/core/data/sections.test.ts) |
 | Добавить или изменить порог, таймаут, лимит | поле в схеме [schema.ts](../src/core/config/schema.ts) (умолчание, границы, описание); имя переменной выводится из пути; затем `corepack pnpm env:example`. Коллекторы читают значение из `ctx.config`, проверки — из `ctx.thresholds`; протокольные константы и защитные пределы остаются в коде |
 | Понять или изменить код выхода и порог | [gate.ts](../src/core/evaluation/gate.ts) (чистая функция) и [gate.test.ts](../test/unit/core/evaluation/gate.test.ts) |
 | Проверить, что в снимок не попали значения | [redact.ts](../src/core/redaction/redact.ts), [email.ts](../src/core/url/email.ts), [url.ts](../src/core/url/url.ts), [headers.ts](../src/core/redaction/headers.ts); редактирует коллектор до записи |
@@ -142,13 +156,32 @@ dsgvo-check/
 | Модуль | Что даёт | Кто пользуется |
 |---|---|---|
 | [signals.ts](../src/checks/browser/signals.ts) | `confirmedReject` — состояния CMP, доказывающие отказ: создано нашим кликом и прочитано после перезагрузки; `stateEvidence` — улика `consent-state` фазы B; `decisionInEffect` — действует ли решение клика на странице: нет, если последний факт после клика показывает баннер снова или состояние CMP без ответа (cookie согласия привязан к другому хосту) | CONSENT-05 |
-| [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung или причина, почему её нельзя прочитать; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
-| [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
+| [documents.ts](../src/checks/browser/documents.ts) | `usableDocument`; `policyDocuments` — HTML-документы Datenschutzerklärung (сначала политика, затем читаемые дополнительные уведомления) или причина, почему её нельзя прочитать; `isSupplement`; `policyText` — текст частей, видимое и скрытое отдельно; `normalizeText` для поиска слов | LEGAL-01, PRIV-01 |
+| [impressum-details.ts](../src/checks/browser/impressum-details.ts) | блоки документа — раздел с подразделами внутри одного места (`content` или `chrome`) и одного фрейма, без скрытого текста; сколько видов данных Impressum в каждом | LEGAL-01 |
+| [evidence.ts](../src/checks/browser/evidence.ts) | `requestEvidence` и `distinctRequestEvidence` (каждый запрос один раз; повтор после показа ниже первого экрана — тот же запрос); `requestEvidenceByMoment` — без повторов внутри момента (до взаимодействия, после отказа, после согласия) и с местами для запросов после отказа, чтобы те же URL фазы A их не вытеснили; `requestEvidencePerContext` — по одному запросу на пару (фаза, страница) | все браузерные проверки |
 
 `derive` добавляет для проверок два факта каталога, чтобы им не читать `derive/catalog.ts` с его загрузчиком файлов (правило 4):
 
 - `ClassifiedRequest.resourceServiceId` и `resourceCategory` — у запроса из кадра встроенного сервиса (`source: embed-frame`) сервис каталога самого ресурса: шрифт кадра карты остаётся запросом карты (`serviceId: google-maps`), но известно, что это Google Fonts. У хоста без сервиса этих полей нет.
 - `DerivedSection.serviceNames` — имя, псевдонимы, компании и категория каждого сервиса каталога с `policyRelevance` `required` или `optional`, замеченного или нет: по ним проверка понимает, о каком сервисе предложение политики.
+
+## Юридические документы в снимке
+
+Раздел `documents` пишет фаза A браузерного коллектора ([queue.ts](../src/collectors/browser/legal/queue.ts), [documents.ts](../src/collectors/browser/legal/documents.ts)).
+
+- `documents` — страницы, прочитанные как Impressum или Datenschutzerklärung, `attempts` — каждая попытка их найти (ссылка, промежуточная страница, пробный путь) с исходом.
+- `DocumentRecord.role` — `supplement` у дополнительного уведомления о данных того же сайта («Datenschutz Kurse»): после найденной политики фаза A читает до `browser.maxSupplementaryPolicies` таких страниц из ссылок той же страницы, откуда найдена политика, в порядке ранга `findLegalLink` (`privacySupplements` в [pages.ts](../src/collectors/browser/pages/pages.ts)). Берётся только ссылка с меткой не хуже «начинается с ключа» вне содержимого и боковой колонки; языковые версии определяет тот же `isLanguageAlternate` с данными `browser/pages.yaml`, что и у выбора страниц. Попытки таких страниц помечены `supplement: true`; языковая версия записывается попыткой с исходом `other-language` без навигации. Уведомления — юридические страницы: `--max-pages` они не расходуют, паузу, резерв времени и лимит запросов соблюдают. Страница, уже стоящая в очереди как контактная, промежуточная или дополнительная, сохраняет свою роль и читается ещё и как уведомление. Без `role` документ — политика, как в старых снимках.
+- PRIV-01 ищет в политике и в читаемых уведомлениях (`policyDocuments` в [documents.ts](../src/checks/browser/documents.ts)); уведомление в PDF, на другом языке, обрезанное, не загруженное или только записанная языковая версия дают ограничение `supplement-not-evaluated`. Попытки сопоставляются с документами той же роли: уведомление с тем же отредактированным URL (`?page=[redacted]`) не дисквалифицирует политику. LEGAL-01 попытки и документы уведомлений не учитывает: неудачное уведомление — не битая ссылка на политику, данные Impressum в уведомлении не заменяют Impressum.
+- `DocumentPart.place` — `content` или `chrome` по тому же правилу, что и места заголовков (`outsideText` в [document.ts](../src/collectors/browser/in-page/document.ts)); где место меняется, начинается новая часть, поэтому текст подвала без своего заголовка не сливается с разделом содержимого перед ним. В старых снимках поля нет.
+- `candidates` — страницы, прочитанные на данные Impressum, пока Impressum не найден: контактная и промежуточные страницы и стартовая без ссылки на Impressum. Страницы уже открыты, лишних навигаций нет; текст редактируется как у документов. Промежуточная страница, которую заголовки содержимого подтверждают как Impressum, становится документом `foundVia: hop`. Кандидаты — не документы: PRIV-01 и попытки их не читают, а когда Impressum найден, коллектор их убирает. Их читает только LEGAL-01 для варианта `provider-details-without-link`.
+
+## Выбор страниц браузера
+
+План фазы A и контрольные страницы фаз B и C выбирают чистые функции [pages.ts](../src/collectors/browser/pages/pages.ts); фаза A передаёт им ссылки стартовой страницы, sitemap, факты DOM и записанные запросы.
+
+- `selectPages`: бюджет дополнительных страниц — `--max-pages` минус стартовая, юридические, контактная и промежуточные страницы; юридическая страница без ссылки занимает место пробы её обычного пути (`/impressum`, `/datenschutz`), ссылка на PDF места не занимает. Сначала по одной странице на группу ключевых слов из `browser/pages.yaml`, затем ссылки навигации и sitemap — по одной на шаблон URL (первый сегмент пути после префикса локали стартовой страницы).
+- `isLanguageAlternate` и `languageContext`: языковая версия сайта — `hreflang` другого языка, префикс локали, отличный от стартового или ведущий туда, куда ведёт переключатель языка стартовой страницы, корень локали без видимого текста, код языка подписью («EN»), название языка подписью («English») у ссылки в префикс локали или в корень. Страница, которую так помечает хотя бы одна ссылка, не бывает дополнительной ни по другим ссылкам, ни из sitemap.
+- `controlSignals` и `chooseControlPages`: сигналы страницы — сторонние iframe (без фреймов поставщиков согласия и фреймов целиком вне документа), плейсхолдеры, новые сторонние хосты; встраивания каталога (`maps`, `video`, `fonts`, `widget`) весят больше неизвестных хостов. Категорию даёт каталог сервисов через `catalogCategoryOf` — здесь коллектор читает [catalog.ts](../src/derive/catalog.ts). Страницы с origin стартовой страницы, на которой B и C кликают, идут первыми; чужой origin — только когда своих не осталось, с причиной `other-origin`. Число страниц — `browser.maxControlPages`.
 
 ## Словари и сопоставления
 
@@ -161,10 +194,11 @@ dsgvo-check/
 | `cmp/categories.yaml` | имена необходимых категорий согласия | CONSENT-04 |
 | `cmp/probe.yaml` | атрибуты для селектора кнопки; имена контейнеров баннера (id и class), с которыми хватает одного слова баннера | замер баннера (в страницу — аргументом) |
 | `legal/links.yaml` | подписи, ключи и пути юридических ссылок, пробные пути | коллектор, LEGAL-01 |
+| `legal/provider-details.yaml` | слова пяти видов данных Impressum: регистр, USt-IdNr., представители, § 5 DDG, ответственный за содержание; схема — [sections.ts](../src/collectors/browser/legal/sections.ts) | LEGAL-01 |
 | `browser/identifiers.yaml` | имена параметров и cookies с идентификаторами, параметры Consent Mode | рекордер запросов |
 | `browser/challenges.yaml` | сигнатуры WAF и бот-защиты | `detectChallenge` |
 | `browser/dom.yaml` | словарь разметки для кода внутри страницы | `domFactsInPage`, `documentInPage`, `bannerBoxInPage` — аргументом `evaluate` |
-| `browser/pages.yaml` | ключевые слова дополнительных страниц, исключённые пути, расширения файлов | `selectPages` |
+| `browser/pages.yaml` | группы ключевых слов дополнительных страниц (по порядку, не больше одной страницы на группу); коды языков для префиксов локали и подписи переключателя языка; исключённые пути, расширения файлов | `selectPages`, `isLanguageAlternate` (и для языковых версий политики в `privacySupplements`) |
 | `http/html.yaml` | слова поиска и юридических ссылок в префиксе HTML | `detectForm`, `findLegalLinks` |
 | `services/_catalog.yaml` | параметры, заданные при визите; буквы `gcd` | derive |
 
@@ -175,7 +209,7 @@ dsgvo-check/
 
 ## Настройки
 
-- Все пороги, таймауты, паузы и лимиты описывает одна схема — [schema.ts](../src/core/config/schema.ts): у настройки есть умолчание, границы и описание, имя переменной — `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>` с единицей в конце (`_MS`, `_BYTES`, `_DAYS`). Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
+- Все пороги, таймауты, паузы и лимиты описывает одна схема — [schema.ts](../src/core/config/schema.ts): у настройки есть умолчание, границы и описание, имя переменной — `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>` с единицей в конце (`_MS`, `_BYTES`, `_DAYS`, `_PX`). Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
 - Приоритет: флаг CLI → переменная окружения → `.env` в текущем каталоге → умолчание. `.env` необязателен; его читает `util.parseEnv` и ничего не пишет в `process.env`, поэтому чужие переменные не доходят до Chromium.
 - Неверное значение — код 2 (`invalid-config`): причина — id с параметрами ([problems.ts](../src/core/config/problems.ts)), текст `config.problem.<id>` лежит в `test/data/texts/{de,en}`.
 - Паузы правила 1 (`DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS` ≥ 1500, `DSGVO_CHECK_BROWSER_RETRY_DELAY_MS` ≥ 3000, `DSGVO_CHECK_HTTP_MIN_INTERVAL_MS` ≥ 500) можно только ужесточать: нижняя граница равна умолчанию.

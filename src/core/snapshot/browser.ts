@@ -52,7 +52,7 @@ export interface ClickPlan {
 export interface BrowserPlan {
   /** Phase A selection (≤ maxPages). */
   pages: PlannedPage[];
-  /** B/C control selection: start + up to 2 pages chosen from A signals. */
+  /** B/C control selection: phase A pages chosen by their signals, click origin first (`browser.maxControlPages`). */
   controlPages: PlannedPage[];
   click: { B?: ClickPlan; C?: ClickPlan };
 }
@@ -163,6 +163,30 @@ export interface NavigationFacts {
   serverIp?: string | null;
 }
 
+/**
+ * After the first-screen facts the viewport was set to the document height (no scroll or input event), so that content
+ * below the first screen loads as it does for a visitor who scrolls down.
+ * - `revealed`: the viewport was enlarged and restored afterwards.
+ * - `fits-viewport`: nothing of the document lies below the viewport; it was not resized.
+ * - `scroll-locked`: the page could not be scrolled (overflow hidden on the root, as under a blocking banner), so a
+ *   visitor could not reach the rest either; it was not resized.
+ * - `scrolled`: the page had scrolled itself away from the top; a resize could move it back, which is a scroll event,
+ *   so it was not resized.
+ * - `failed`: the height could not be read or the viewport not set; the phase errors say why.
+ */
+export interface RevealFacts {
+  outcome: 'revealed' | 'fits-viewport' | 'scroll-locked' | 'scrolled' | 'failed';
+  /** Height of the document when it was measured, CSS px; null when it could not be read. */
+  documentHeightPx: number | null;
+  /** Height the viewport was set to: the document height, at most `browser.revealMaxHeightPx`. */
+  viewportHeightPx?: number;
+  /** The document was taller than the largest viewport allowed: its lower part stayed below it. */
+  capped?: true;
+  /** Quiet window reached before the end of the stay. */
+  quietReached?: boolean;
+  dwellMs?: RelativeMs;
+}
+
 export interface PageVisit {
   /** Requested URL (sanitized). */
   url: SanitizedUrl;
@@ -185,6 +209,8 @@ export interface PageVisit {
   reload?: boolean;
   notEvaluableReason?: string;
   dom: DomFacts | null;
+  /** Absent when the step did not run: switched off, page not evaluable, or a snapshot of an earlier version. */
+  reveal?: RevealFacts;
 }
 
 export type RequestState =
@@ -227,6 +253,8 @@ export interface RequestRecord {
   parserVersion?: string;
   observationSource?: 'playwright' | 'cdp' | 'proxy-log';
   afterClick: boolean;
+  /** Started after the viewport was enlarged for the content below the first screen (`PageVisit.reveal`). */
+  afterReveal?: true;
   state: RequestState;
   status?: number;
   failureText?: string;
@@ -397,6 +425,9 @@ export interface BrowserSection {
 export type DocumentKind = 'impressum' | 'privacy';
 export type DocumentPartOrigin = 'visible' | 'expandable' | 'frame' | 'linked' | 'hidden-irrelevant';
 
+/** `chrome`: text of navigation, aside, page header or footer (the reader's chrome rule); `content`: every other text. */
+export type DocumentPartPlace = 'content' | 'chrome';
+
 export interface DocumentPart {
   id: string;
   /** Heading path, e.g. `5 > Google Analytics`. */
@@ -404,6 +435,8 @@ export interface DocumentPart {
   /** Normalized text (NFC, whitespace-collapsed). Not normalized for matching — derive/checks do that. */
   text: string;
   origin: DocumentPartOrigin;
+  /** Where the text sits; a new part starts where it changes. Absent in snapshots of earlier versions. */
+  place?: DocumentPartPlace;
   sourceUrl: SanitizedUrl;
   frameUrl?: SanitizedUrl;
 }
@@ -411,6 +444,11 @@ export interface DocumentPart {
 export interface DocumentRecord {
   id: string;
   kind: DocumentKind;
+  /**
+   * `supplement`: a further privacy notice of the site that its links name beside the policy (for course participants,
+   * applicants), read after the policy was found. Absent means `main`, as in snapshots of earlier versions.
+   */
+  role?: 'main' | 'supplement';
   url: SanitizedUrl;
   finalUrl: SanitizedUrl;
   status: number | null;
@@ -448,7 +486,18 @@ export interface DocumentsSection {
     via: 'link' | 'hop' | 'fallback';
     url: SanitizedUrl;
     status: number | null;
-    /** `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404). */
-    outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved';
+    /**
+     * `unconfirmed`: a substantive page whose type could not be confirmed (neither found nor soft-404).
+     * `other-language`: another language version of the privacy policy, recorded without a navigation.
+     */
+    outcome: 'found' | 'not-found' | 'soft-404' | 'unconfirmed' | 'error' | 'unresolved' | 'other-language';
+    /** The attempt read a further privacy notice, not the policy itself; absent in snapshots of earlier versions. */
+    supplement?: boolean;
   }>;
+  /**
+   * Pages read for Impressum details while no Impressum was found: the contact page, intermediate pages and the start
+   * page without an Impressum link, each recorded like a document of kind `impressum` (same redaction). Not documents:
+   * the policy checks and the attempts ignore them. Absent when the Impressum was found and in older snapshots.
+   */
+  candidates?: DocumentRecord[];
 }

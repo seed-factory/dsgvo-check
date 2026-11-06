@@ -190,7 +190,8 @@ ui:
     internal addresses} ssrf-guard-popups-unchecked {Pop-ups are not checked against internal addresses}
     phase-a-prime-not-implemented {Phase A′ is not implemented in the prototype} phase-m-not-implemented {Phase M is
     not implemented in the prototype} egress-proxy-not-implemented {Network egress through a proxy in the target
-    region is not implemented in the prototype} other {{gap}}}
+    region is not implemented in the prototype} below-fold-not-revealed {Content below the first screen is not
+    shown} other {{gap}}}
   report.env.requests: Requests issued
   report.env.settings: Settings that differ from the defaults
   report.env.requestsValue: navigations {navigations} · HTTP probes {probes} · DNS {dns} · TLS {tls}
@@ -258,7 +259,9 @@ ui:
     privacy-search-incomplete {Search for the privacy policy incomplete: {detail}} impressum-target-not-evaluable
     {Link target of the legal notice not evaluable} privacy-target-not-evaluable {Link target of the privacy policy
     not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
-    privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} other {}}
+    privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further
+    privacy notice of the site not evaluated (PDF, other language, incomplete or not retrievable)}
+    reveal-height-capped {Lower part of a long page not shown, the window height is capped} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
@@ -266,7 +269,8 @@ ui:
     (--checks)} not-required {not needed by any selected check} not-run {not run} not-collected {raw data not
     collected} collector-skipped {collection of raw data skipped} collector-error {error while collecting raw data
     ({detail})} timeout {time limit reached} time-budget {remaining scan time not sufficient} request-cap {request
-    capture limit reached} exception {error during evaluation} start-page-status {start page answered with an error
+    capture limit reached} viewport-not-restored {window size not restored after showing the whole page} exception
+    {error during evaluation} start-page-status {start page answered with an error
     status} start-page-unavailable {start page not available} start-page-not-evaluable {start page not evaluable}
     no-banner {no consent banner found} cmp-not-observed {consent banner not observed} banner-not-recognized {consent
     banner not recognised} cmp-not-supported {consent banner recognised, but not supported} first-layer-not-visible

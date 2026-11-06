@@ -314,6 +314,17 @@ messages:
       gefunden.} other {}}{inOtherDocument, select, true { Die gefundene Datenschutzerklärung
       ({otherDocument}) enthält einen Abschnitt mit der Überschrift „{otherHeading}“; ein Link, der ihn als Impressum
       benennt, wurde nicht gefunden.} other {}}
+  LEGAL-01.provider-details-without-link:
+    title: "Angaben eines Impressums beobachtet, Link „Impressum“ nicht gefunden"
+    body: >-
+      {detailsPlace, select, privacy-section {In der Datenschutzerklärung ({detailsUrl})} footer {Im Seitenfuß von
+      {detailsUrl}} start-page {Auf der Startseite ({detailsUrl})} other {Unter {detailsUrl}}}{hasHeading, select,
+      true { im Abschnitt „{detailsHeading}“} other {}} wurden Angaben aus {groupCount} von 5 Bereichen beobachtet,
+      die ein Impressum enthält (Registereintrag, Umsatzsteuer-ID oder Steuernummer, Vertretungsberechtigte, Angaben
+      nach § 5 DDG, Verantwortliche für den Inhalt). Ein Link, der sie als Impressum benennt, wurde auf
+      {pageTotal, plural, one {der # geprüften Seite} other {den # geprüften Seiten}} nicht gefunden{hopChecked,
+      select, true {, auch nicht über eine geprüfte Zwischenseite (z. B. Kontakt)} other {}}; unter den üblichen
+      Pfaden wurde ebenfalls keine solche Seite gefunden. Die Vollständigkeit der Angaben wurde nicht bewertet.
   LEGAL-01.links-broken:
     title: "{documentKind, select, impressum {Links auf das Impressum führen} privacy {Links auf die Datenschutzerklärung führen} other {Links auf Impressum und Datenschutzerklärung führen}} auf Fehlerseiten"
     body: >-
@@ -347,27 +358,32 @@ messages:
   PRIV-01.not-named:
     title: "Nicht gefunden in der Datenschutzerklärung: {service}"
     body: >-
-      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl} ({partCount, plural, one {# Abschnitt} other
-      {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht vollständig}})
-      wurde keine Nennung gefunden, die {service} zuzuordnen ist. Gesucht wurden der Dienstname mit bekannten
-      Schreibweisen, die Firmennamen laut Dienstekatalog ({companies}), die Domains des Dienstes und eine passende
-      Kategoriebeschreibung. Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung von
-      {service}. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im
-      Text wurden nicht ausgewertet.
+      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl}{documentCount, plural, =0 {} =1 {} other { und
+      der weiteren Datenschutzhinweise der Website (durchsucht: {policyUrls})}} ({partCount, plural, one {# Abschnitt}
+      other {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht
+      vollständig}}) wurde keine Nennung gefunden, die {service} zuzuordnen ist. Gesucht wurden der Dienstname mit
+      bekannten Schreibweisen, die Firmennamen laut Dienstekatalog ({companies}), die Domains des Dienstes und eine
+      passende Kategoriebeschreibung. Die Nennung eines anderen Dienstes desselben Unternehmens gilt nicht als Nennung
+      von {service}. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen
+      im Text wurden nicht ausgewertet.
   PRIV-01.category-only:
     title: "Nur Kategoriebeschreibung gefunden: {service}"
     body: >-
-      In der Datenschutzerklärung unter {policyUrl} wurde eine Beschreibung der Kategorie {category, select,
-      analytics {Webanalyse} ads {Werbung} session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management}
-      cdn {Content Delivery Network} payment {Zahlungsdienste} consent-provider {Einwilligungsverwaltung} fonts
-      {Schriftarten} maps {Kartendienste} video {Videoplattformen} captcha {Captcha-Dienste} widget {Widgets} social
-      {soziale Netzwerke} reviews {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other
-      {{category}}} gefunden; eine eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
+      {documentCount, plural, =0 {In der Datenschutzerklärung unter {policyUrl}} =1 {In der Datenschutzerklärung unter
+      {policyUrl}} other {In der Datenschutzerklärung und den weiteren Datenschutzhinweisen der Website (durchsucht:
+      {policyUrls})}} wurde eine Beschreibung der Kategorie {category, select, analytics {Webanalyse} ads {Werbung}
+      session-recording {Sitzungsaufzeichnung} tag-manager {Tag-Management} cdn {Content Delivery Network} payment
+      {Zahlungsdienste} consent-provider {Einwilligungsverwaltung} fonts {Schriftarten} maps {Kartendienste} video
+      {Videoplattformen} captcha {Captcha-Dienste} widget {Widgets} social {soziale Netzwerke} reviews
+      {Bewertungsplattformen} chat {Chat-Dienste} monitoring {Fehleranalyse} other {{category}}} gefunden; eine
+      eindeutige Zuordnung zu {service} wurde nicht festgestellt. Bitte manuell prüfen.
   PRIV-01.ambiguous-match:
     title: "Nennung nur in nicht angezeigtem Text: {service}"
     body: >-
-      {service} wurde in der Datenschutzerklärung unter {policyUrl} nur in einem auf der Seite nicht angezeigten
-      oder keinem Abschnitt zuordenbaren Textteil gefunden. Bitte manuell prüfen.
+      {service} wurde {documentCount, plural, =0 {in der Datenschutzerklärung unter {policyUrl}} =1 {in der
+      Datenschutzerklärung unter {policyUrl}} other {in der Datenschutzerklärung und den weiteren Datenschutzhinweisen
+      der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
+      zuordenbaren Textteil gefunden. Bitte manuell prüfen.
 
 # Rechtlicher Hintergrund je Prüfung; ein Schlüssel `<Prüfung>.<Variante>` (oder `.<Variantengruppe>`) ersetzt ihn für
 # die Variante, deren Einordnung von der übrigen Prüfung abweicht.
@@ -546,6 +562,8 @@ actions:
     text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
   LEGAL-01.document-not-found:
     text: "Verlinken Sie {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}} gut sichtbar im Seitenfuß jeder Seite{inOtherDocument, select, true {, als eigene Seite oder direkt auf den Abschnitt „{otherHeading}“ der Datenschutzerklärung ({otherDocument})} other {}}."
+  LEGAL-01.provider-details-without-link:
+    text: "{detailsPlace, select, footer {Legen Sie die Angaben aus dem Seitenfuß als Seite „Impressum“ an und verlinken Sie diese im Seitenfuß jeder Seite.} other {Verlinken Sie die Angaben unter {detailsUrl} im Seitenfuß jeder Seite mit der Bezeichnung „Impressum“.}}"
   LEGAL-01.links-broken:
     text: "Korrigieren Sie die Links auf {documentKind, select, impressum {das Impressum} privacy {die Datenschutzerklärung} other {Impressum und Datenschutzerklärung}}, sodass sie auf die richtigen Seiten führen."
   LEGAL-01.link-missing-on-some-pages:

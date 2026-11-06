@@ -8,6 +8,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
+import { legalSections } from '../../../../src/collectors/browser/legal/sections.ts';
 import { browserSections } from '../../../../src/collectors/browser/rules.ts';
 import { httpSections } from '../../../../src/collectors/http/rules.ts';
 import { DataError, DEFAULT_DATA_DIR, loadDataDir, loadSection } from '../../../../src/core/data/load.ts';
@@ -18,7 +19,7 @@ const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own:
   { dir: 'cmp', sections: cmpSections, own: ['lexicon'] },
   { dir: 'browser', sections: browserSections, own: [] },
   { dir: 'http', sections: httpSections, own: [] },
-  { dir: 'legal', sections: [], own: ['legal'] },
+  { dir: 'legal', sections: legalSections, own: ['legal'] },
 ];
 
 /** Directories whose files have dedicated loaders and tests (ruleset, texts, services, routing, report template). */
@@ -78,9 +79,18 @@ describe('a broken data file is reported with its directory and key', () => {
   });
 
   it('an unknown field, a typo is not silently ignored', () => {
-    const root = dataDirCopy('browser', 'pages.yaml', (t) => t.replace('extraKeywords:', 'extraKeyword:'));
+    const root = dataDirCopy('browser', 'pages.yaml', (t) => t.replace('extraGroups:', 'extraGroup:'));
     expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(DataError);
     expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(/pages\./);
+  });
+
+  it('a locale prefix that is no language code', () => {
+    const root = dataDirCopy('browser', 'pages.yaml', (t) =>
+      t.replace(/(localePrefixes:\s*\[\s*)de,/, '$1de-de,'),
+    );
+    expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(
+      /test\/data\/browser: pages\.languages\.localePrefixes\.0: /,
+    );
   });
 
   it('a name that must be lower case', () => {
@@ -90,6 +100,22 @@ describe('a broken data file is reported with its directory and key', () => {
     expect(() => loadSection(byKey('browser', 'identifiers'), root)).toThrow(
       /identifiers\.params\.\d+: must be lower case/,
     );
+  });
+
+  it('a kind of provider details without phrases', () => {
+    const root = dataDirCopy('legal', 'provider-details.yaml', (t) =>
+      t.replace(/ {4}statement:\n {6}de: \[[^\]]*\]\n {6}en: \[[^\]]*\]\n/, '    statement: {}\n'),
+    );
+    expect(() => loadSection(byKey('legal', 'providerDetails'), root)).toThrow(
+      /test\/data\/legal: providerDetails\.groups\.statement: at least one language/,
+    );
+  });
+
+  it('a kind of provider details that the threshold does not know', () => {
+    const root = dataDirCopy('legal', 'provider-details.yaml', (t) =>
+      t.replace('    statement:', '    statements:'),
+    );
+    expect(() => loadSection(byKey('legal', 'providerDetails'), root)).toThrow(DataError);
   });
 
   it('a missing section names the key it expected', () => {

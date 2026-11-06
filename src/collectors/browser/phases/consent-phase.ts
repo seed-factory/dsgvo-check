@@ -1,5 +1,6 @@
 // Phases B and C on the start page: observe, first screen (+ banner screenshot in B), click reject (B) or accept (C)
-// via the CMP adapter, verify, reload and verify again (B), then the control pages.
+// via the CMP adapter, verify, reload and verify again (B), then the control pages. The content below the first screen
+// is shown only after the click and its facts: the click needs the first layer as the visitor sees it.
 import type { Page } from 'playwright-core';
 import type { ClickOutcome, CmpAdapter, CmpButton, CmpFacts } from '../../../cmp/types.ts';
 import type { ClickPlan, ClickRecord, PageRole } from '../../../core/snapshot/browser.ts';
@@ -112,7 +113,8 @@ async function consentPhase(c: BrowserCollection, phase: 'B' | 'C'): Promise<voi
     const clicked = await act(c, s, adapter, action, target, url);
     if (!clicked) return;
 
-    await verifyClick(c, s, phase, adapter, action, url);
+    const reload = await verifyClick(c, s, phase, adapter, action, url);
+    await c.reveal(s, reload ?? start);
     await controlPages(c, s, adapter);
   } finally {
     await c.closePhase(s);
@@ -190,7 +192,10 @@ function noteCmpNotRecognized(
   s.record.reason = 'cmp-not-recognized';
 }
 
-/** Facts after the click and the verdict of the CMP state; phase B reloads the start page and verifies again. */
+/**
+ * Facts after the click and the verdict of the CMP state; phase B reloads the start page and verifies again. Returns
+ * the reload, null when there was none.
+ */
 async function verifyClick(
   c: BrowserCollection,
   s: Session,
@@ -198,7 +203,7 @@ async function verifyClick(
   adapter: CmpAdapter,
   action: 'reject' | 'accept',
   url: SanitizedUrl,
-): Promise<void> {
+): Promise<VisitResult | null> {
   const after = await s.cmp.extract(s.page, adapter, 'after-click', url);
   if (after) s.cmpFacts.facts.push(after);
   const verify1 = await s.cmp.verify(s.page, adapter, action, url);
@@ -218,9 +223,10 @@ async function verifyClick(
     const verify2 = reload.error ? null : await s.cmp.verify(s.page, adapter, action, reload.visit.finalUrl);
     const verify = combineVerify(verify1, verify2);
     if (verify) s.cmpFacts.verify = verify;
-  } else if (verify1) {
-    s.cmpFacts.verify = verify1;
+    return reload;
   }
+  if (verify1) s.cmpFacts.verify = verify1;
+  return null;
 }
 
 // Clicks via the adapter, then observes with `tRef: click`; false when nothing was clicked. The click moment is the
@@ -306,7 +312,7 @@ async function observeAfterClick(
 async function controlPages(c: BrowserCollection, s: Session, adapter: CmpAdapter): Promise<void> {
   let order = 1;
   for (const page of c.control) {
-    if (!c.timeLeft() || c.counter.truncated || c.throttled) break;
+    if (!c.timeLeft() || c.counter.truncated || c.throttled || s.viewportLost) break;
     const r = await navigate(c, s, {
       rawUrl: page.raw,
       role: page.role as PageRole,
@@ -315,6 +321,7 @@ async function controlPages(c: BrowserCollection, s: Session, adapter: CmpAdapte
       firstVisit: false,
     });
     await c.afterPage(s, r, 'control-page', adapter);
+    await c.reveal(s, r);
   }
 }
 

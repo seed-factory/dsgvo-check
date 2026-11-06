@@ -119,17 +119,41 @@ export const domSection = dataSection(
     }),
 );
 
+const ExtraGroup = z.strictObject({
+  id: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/),
+  words: z.array(LowerName).min(1),
+});
+
 export const pagesSection = dataSection(
   'browser',
   'pages',
   z
     .strictObject({
-      extraKeywords: z.array(LowerName).min(1),
+      extraGroups: z
+        .array(ExtraGroup)
+        .min(1)
+        .superRefine((groups, ctx) => {
+          const seen = new Set<string>();
+          for (const g of groups) {
+            if (seen.has(g.id)) ctx.addIssue({ code: 'custom', message: `duplicate group id "${g.id}"` });
+            seen.add(g.id);
+          }
+        }),
+      languages: z.strictObject({
+        localePrefixes: z
+          .array(z.string().regex(/^[a-z]{2,3}$/, 'must be a lower-case language code'))
+          .min(1),
+        switchLabels: z.array(LowerName).min(1),
+      }),
       excludedPaths: z.array(RegexSource).min(1),
       fileExtensions: z.array(RegexSource).min(1),
     })
     .transform((v) => ({
-      extraKeywords: v.extraKeywords as readonly string[],
+      extraGroups: v.extraGroups as ReadonlyArray<{ id: string; words: readonly string[] }>,
+      languages: {
+        localePrefixes: new Set(v.languages.localePrefixes) as ReadonlySet<string>,
+        switchLabels: new Set(v.languages.switchLabels) as ReadonlySet<string>,
+      },
       excludedPath: new RegExp(`(${alternation(v.excludedPaths)})`, 'i'),
       file: new RegExp(`\\.(${alternation(v.fileExtensions)})$`, 'i'),
     })),
@@ -143,6 +167,7 @@ export const loadPageRules = (dataDir?: string) => loadSection(pagesSection, dat
 export type IdentifierRules = ReturnType<typeof loadIdentifierRules>;
 export type ChallengeRules = ReturnType<typeof loadChallengeRules>;
 export type PageRules = ReturnType<typeof loadPageRules>;
+export type LanguageRules = PageRules['languages'];
 
 /** The sections, for the completeness test. */
 export const browserSections = [identifiersSection, challengesSection, domSection, pagesSection] as const;

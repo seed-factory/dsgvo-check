@@ -178,6 +178,14 @@ row(
     '<footer><h4>Kontakt</h4><a href="/x">x</a></footer>',
 );
 
+row(
+  'footer-text-without-heading',
+  'footer text without a heading of its own after a section of the content',
+  'privacy',
+  `<main><h1>Datenschutzerklärung</h1>${BODY_TEXT}<h2>Kontakt</h2><p>Beispiel GmbH, Musterstraße 1.</p></main>` +
+    '<footer><p>Geschäftsführung: Erika Mustermann. HRB 12345.</p></footer>',
+);
+
 /** `content`: the h1 of the wrapper confirms the document; `chrome`: the wrapper is a part of the page, it does not. */
 const H1_WRAPPERS: Array<[string, string, string, 'content' | 'chrome']> = [
   ['has-fixed-header', '<div class="wrapper has-fixed-header">', '</div>', 'content'],
@@ -329,5 +337,27 @@ describe('the record keeps the headings of the content', () => {
     // The reader keeps the footer text as a part of its own; only the list of content headings leaves it out.
     expect(doc.parts.some((p) => (p.section ?? '').split(' > ').includes('Kontakt'))).toBe(true);
     expect(doc.contentHeadings).not.toContain('Kontakt');
+  });
+});
+
+describe('each part records whether its text is content or page chrome', () => {
+  it('footer text without a heading of its own is a part of its own, in the chrome', async () => {
+    const r = rows['footer-text-without-heading'] as Row;
+    const doc = await extract(r.path, r.kind);
+
+    const under = doc.parts.filter((p) => p.section === 'Datenschutzerklärung > Kontakt');
+    expect(under.map((p) => [p.place, p.text])).toEqual([
+      ['content', 'Kontakt Beispiel GmbH, Musterstraße 1.'],
+      ['chrome', 'Geschäftsführung: Erika Mustermann. HRB 12345.'],
+    ]);
+  });
+
+  it('a footer column and the content section in front of it keep their places', async () => {
+    const r = rows['privacy-with-impressum-section'] as Row;
+    const doc = await extract(r.path, r.kind);
+
+    const byHeading = (h: string) => doc.parts.find((p) => (p.section ?? '').endsWith(h))?.place;
+    expect(byHeading('Impressum')).toBe('content');
+    expect(byHeading('Kontakt')).toBe('chrome');
   });
 });

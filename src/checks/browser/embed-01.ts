@@ -11,7 +11,7 @@ import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields, serviceName } from './services.ts';
 import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
-import { hasPhaseA, noPhaseAReason, requestIndex, throttleAware } from './snapshot.ts';
+import { hasPhaseA, noPhaseAReason, requestIndex, revealCapped, throttleAware } from './snapshot.ts';
 
 const ID = 'EMBED-01';
 /** Request kinds that fetch a file; a tracking `hit` is not a font load. */
@@ -154,10 +154,11 @@ export const embed01 = defineCheck({
       {
         status: 'completed',
         observations,
-        // The collector names the gap `preconnect-without-request`: match the prefix, not one spelling.
-        limitations: browser.knownGaps.some((g) => g.startsWith('preconnect'))
-          ? ['preconnect-not-observable']
-          : [],
+        limitations: [
+          // The collector names the gap `preconnect-without-request`: match the prefix, not one spelling.
+          ...(browser.knownGaps.some((g) => g.startsWith('preconnect')) ? ['preconnect-not-observable'] : []),
+          ...(revealCapped(browser, ['A', 'B']) ? ['reveal-height-capped'] : []),
+        ],
       },
       ['A', 'B'],
     );

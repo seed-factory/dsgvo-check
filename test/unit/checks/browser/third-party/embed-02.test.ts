@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { embed02 } from '../../../../../src/checks/browser/embed-02.ts';
+import type { PageVisit } from '../../../../../src/core/snapshot/browser.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import { CONTACT, click, phase, req, site } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
@@ -79,6 +80,28 @@ describe('EMBED-02 external maps', () => {
       params: { integrationType: 'tiles', afterReject: true },
       provider: { name: 'OpenStreetMap Foundation', country: 'GB' },
     });
+  });
+
+  it('a page taller than the largest viewport of the reveal is a limitation beside the finding', () => {
+    const capped = {
+      outcome: 'revealed',
+      documentHeightPx: 20_000,
+      viewportHeightPx: 10_000,
+      capped: true,
+    } as const;
+    const withReveal = (reveal: PageVisit['reveal']) => {
+      const built = scenario('violation-maps-contact.json');
+      const a = built.browser?.phases.find((p) => p.phase === 'A');
+      const contact = a?.pages.find((p) => p.role === 'contact');
+      if (contact && reveal) contact.reveal = reveal;
+      return runCheck(embed02, built);
+    };
+
+    const r = withReveal(capped);
+    expect(r.outcome?.limitations).toEqual(['reveal-height-capped']);
+    expect(variantsOf(r)).toEqual(['maps-loaded']);
+    expect(withReveal(undefined).outcome?.limitations).toEqual([]);
+    expect(withReveal({ outcome: 'fits-viewport', documentHeightPx: 700 }).outcome?.limitations).toEqual([]);
   });
 
   it('a blocked attempt is not described as a load', () => {

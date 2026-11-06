@@ -74,10 +74,15 @@ describe('page rules', () => {
     sitemapLocs: [],
   };
 
-  it('the keywords decide which extra pages are chosen, in the order of the file', () => {
+  it('the keyword groups decide which extra pages are chosen, in the order of the file', () => {
     expect(selectPages(input).extras[0]?.reasons).toEqual(['keyword:blog']);
     const own = pagesSection.parse({
-      pages: { extraKeywords: ['podcast'], excludedPaths: ['intern'], fileExtensions: ['pdf'] },
+      pages: {
+        extraGroups: [{ id: 'podcast', words: ['podcast'] }],
+        languages: { localePrefixes: ['de'], switchLabels: ['deutsch'] },
+        excludedPaths: ['intern'],
+        fileExtensions: ['pdf'],
+      },
     });
     const plan = selectPages(input, undefined, own);
     expect(plan.extras[0]).toMatchObject({
@@ -85,6 +90,34 @@ describe('page rules', () => {
       reasons: ['keyword:podcast'],
     });
     expect(plan.extras.map((e) => e.url)).not.toContain('https://www.example.test/podcast-intern/');
+  });
+
+  it('every group has an id of its own and words', () => {
+    expect(rules.extraGroups.map((g) => g.id)).toEqual([...new Set(rules.extraGroups.map((g) => g.id))]);
+    expect(rules.extraGroups.slice(0, 3).map((g) => g.id)).toEqual(['video', 'location', 'history']);
+    const parse = (extraGroups: unknown) =>
+      pagesSection.parse({
+        pages: {
+          extraGroups,
+          languages: { localePrefixes: ['de'], switchLabels: ['deutsch'] },
+          excludedPaths: ['intern'],
+          fileExtensions: ['pdf'],
+        },
+      });
+    expect(() => parse([{ id: 'a', words: [] }])).toThrow(/pages\.extraGroups\.0\.words/);
+    expect(() =>
+      parse([
+        { id: 'a', words: ['x'] },
+        { id: 'a', words: ['y'] },
+      ]),
+    ).toThrow(/pages\.extraGroups: duplicate group id "a"/);
+  });
+
+  it('locale prefixes are language codes; the words "karte" and "unternehmen" are no keywords', () => {
+    for (const code of rules.languages.localePrefixes) expect(code).toMatch(/^[a-z]{2,3}$/);
+    const words = rules.extraGroups.flatMap((g) => g.words);
+    expect(words).not.toContain('karte');
+    expect(words).not.toContain('unternehmen');
   });
 });
 

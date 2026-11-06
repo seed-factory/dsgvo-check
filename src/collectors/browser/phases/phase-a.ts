@@ -1,18 +1,27 @@
 // Phase A: the start page (one repeat of a failed first navigation, fatal start-page conditions), then up to `maxPages`
 // pages without interaction (legal documents, contact page, extras from links or the sitemap) and the choice of control
-// pages for B and C.
+// pages for B and C. Each page shows its content below the first screen last, before the next navigation.
 
 import { TOOL_NAME } from '../../../core/runtime/version.ts';
 import type { FatalSignal } from '../../../core/snapshot/collector.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
+import { loadServiceCatalog } from '../../../derive/catalog.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
-import type { AVisit, BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
+import type { BrowserCollection, PhaseAOutcome, Session } from '../collector.ts';
 import { fetchText } from '../launch/http-fetch.ts';
 import { loadLegalLexicon } from '../legal/lexicon-file.ts';
-import { PageQueue, type QueueItem, recordDocument } from '../legal/queue.ts';
+import {
+  dropCandidatesIfFound,
+  PageQueue,
+  type QueueItem,
+  readImpressumDetails,
+  recordDocument,
+} from '../legal/queue.ts';
 import { checkThrottleResponses, markThrottled, navigate, throttleStatus, visit } from '../pages/navigate.ts';
 import {
+  catalogCategoryOf,
   chooseControlPages,
+  controlSignals,
   findLegalLink,
   LEGAL_KINDS,
   type LegalKind,
@@ -70,9 +79,13 @@ async function phaseABody(c: BrowserCollection, s: Session): Promise<PhaseAOutco
   const scope: Scope = { startRaw: c.startRaw, finalHost: c.scope.finalHost, etld1: c.scope.etld1 };
   const selection = await selectSubpages(c, start, origin, robots, scope);
   const queue = queueSelection(c, selection, start, visited, scope);
+  // The start page is still open: without an Impressum link it is read for Impressum details before the queue leaves it.
+  if (selection.impressum.status === 'none') await readImpressumDetails(c, s, start, false);
+  await c.reveal(s, start);
 
   const order = await visitQueue(c, s, queue, visited, scope);
   await probeFallbacks(c, s, origin, visited, queue.found, order);
+  dropCandidatesIfFound(c.documents);
   chooseControl(c, s);
   return { kind: 'ok' };
 }
@@ -227,9 +240,11 @@ async function selectSubpages(
   robots: Robots | null,
   scope: Scope,
 ): Promise<PageSelection> {
+  const lang = start.visit.dom?.lang;
   const selectArgs = {
     links: start.candidates,
     ...scope,
+    ...(lang ? { startLang: lang } : {}),
     maxPages: c.ctx.options.maxPages,
     robots,
     token: TOOL_NAME,
@@ -248,7 +263,10 @@ function queueSelection(
   visited: Set<string>,
   scope: Scope,
 ): PageQueue {
-  const queue = new PageQueue(visited, c.documents, scope);
+  const queue = new PageQueue(visited, c.documents, scope, {
+    language: sel.language,
+    max: c.ctx.config.browser.maxSupplementaryPolicies,
+  });
   queue.handleLink(sel.impressum, 'link', null, start.candidates);
   queue.handleLink(sel.privacy, 'link', null, start.candidates);
   if (sel.contact) queue.items.push({ choice: sel.contact });
@@ -270,12 +288,14 @@ async function visitQueue(
     const item = queue.items.shift() as QueueItem;
     if (queueCut(c, s)) break;
 
-    // --max-pages counts every page of phase A; legal pages and legal hops are visited regardless.
+    // --max-pages counts every page of phase A except the further privacy notices; legal pages and legal hops are
+    // visited regardless.
     const budgeted = !item.docKind && !item.hop;
-    if (budgeted && s.record.pages.length >= c.ctx.options.maxPages) continue;
+    if (budgeted && s.record.pages.length - queue.supplementVisits >= c.ctx.options.maxPages) continue;
     if (visited.has(pageKey(item.choice.raw))) continue;
     visited.add(pageKey(item.choice.raw));
 
+    const visitsBefore = s.record.pages.length;
     const r = await navigate(c, s, {
       rawUrl: item.choice.raw,
       role: item.choice.role,
@@ -284,6 +304,7 @@ async function visitQueue(
       firstVisit: false,
     });
     visited.add(pageKey(r.rawFinalUrl));
+    if (item.supplement && item.docKind) queue.supplementVisits += s.record.pages.length - visitsBefore;
     c.plan.pages.push({
       url: item.choice.url,
       role: item.choice.role,
@@ -297,14 +318,16 @@ async function visitQueue(
     c.aVisits.push({ raw: item.choice.raw, result: r, source: item.choice.source });
 
     await recordQueuedDocuments(c, s, queue, item, r);
-    if (item.choice.role === 'contact' || item.hop) lookForLegalLinks(c, queue, item, r, scope);
+    if (item.choice.role === 'contact' || item.hop) await lookForLegalLinks(c, s, queue, item, r, scope);
+    // Last on the page: the documents were read from the page as a visitor first sees it.
+    await c.reveal(s, r);
   }
   return order;
 }
 
 /** A limit that ends the queue; the phase record says why it is incomplete. */
 function queueCut(c: BrowserCollection, s: Session): boolean {
-  if (c.throttled) return true;
+  if (c.throttled || s.viewportLost) return true;
   if (!c.timeLeft()) {
     c.cutByTime(s.record);
     return true;
@@ -317,7 +340,10 @@ function queueCut(c: BrowserCollection, s: Session): boolean {
   return false;
 }
 
-/** Reads the page for the legal kind it was queued for; a combined legal page is read once per kind. */
+/**
+ * Reads the page for the legal kind it was queued for; a combined legal page is read once per kind. Once the policy is
+ * found, the further privacy notices its link's page names are queued; a notice itself leads to nothing further.
+ */
 async function recordQueuedDocuments(
   c: BrowserCollection,
   s: Session,
@@ -325,34 +351,51 @@ async function recordQueuedDocuments(
   item: QueueItem,
   r: VisitResult,
 ): Promise<void> {
-  if (!item.docKind) return;
   const via = item.foundVia ?? 'link';
-
-  const doc = await recordDocument(c, s, r, item.docKind, item.choice.url, via);
-  if (doc === 'found') queue.found[item.docKind] = true;
-  else if (doc === 'unconfirmed') queue.tryNextCandidate(item);
-
-  for (const kind of item.alsoKinds ?? []) {
-    const also = await recordDocument(c, s, r, kind, item.choice.url, via);
-    if (also === 'found') queue.found[kind] = true;
-    else if (also === 'unconfirmed') queue.tryNextCandidate({ ...item, docKind: kind });
+  if (item.supplement) {
+    await recordDocument(c, s, r, 'privacy', item.choice.url, via, true);
+    return;
   }
+  if (!item.docKind) return;
+
+  const read = async (kind: LegalKind, next: QueueItem) => {
+    const doc = await recordDocument(c, s, r, kind, item.choice.url, via);
+    if (doc === 'found') {
+      queue.found[kind] = true;
+      if (kind === 'privacy') queue.queueSupplements(next);
+    } else if (doc === 'unconfirmed') queue.tryNextCandidate(next);
+  };
+  await read(item.docKind, item);
+  for (const kind of item.alsoKinds ?? []) await read(kind, { ...item, docKind: kind });
 }
 
-/** On the contact page and on hops: the legal links not found yet are queued, a missing link is a recorded attempt. */
-function lookForLegalLinks(
+/**
+ * On the contact page and on hops: the legal links not found yet are queued, a missing link is a recorded attempt.
+ * Without an Impressum link the page itself is read for the Impressum, unless it was already read as one. It can only
+ * become the Impressum while no link of the site was tried for it: a broken or unconfirmed link keeps its verdict.
+ */
+async function lookForLegalLinks(
   c: BrowserCollection,
+  s: Session,
   queue: PageQueue,
   item: QueueItem,
   r: VisitResult,
   scope: Scope,
-): void {
+): Promise<void> {
+  const readAsImpressum = item.docKind === 'impressum' || item.alsoKinds?.includes('impressum') === true;
   for (const kind of LEGAL_KINDS) {
     if (queue.found[kind] || queue.pending(kind)) continue;
 
     const lr = findLegalLink(r.candidates, kind, scope);
     if (lr.status === 'page' || lr.status === 'pdf') {
       queue.handleLink(lr, 'hop', item.choice.role, r.candidates);
+    } else if (
+      kind === 'impressum' &&
+      lr.status === 'none' &&
+      !readAsImpressum &&
+      (await readImpressumDetails(c, s, r, !impressumLinkTried(c))) === 'found'
+    ) {
+      queue.found.impressum = true;
     } else {
       c.documents.attempts.push({
         kind,
@@ -365,6 +408,9 @@ function lookForLegalLinks(
   }
 }
 
+const impressumLinkTried = (c: BrowserCollection): boolean =>
+  c.documents.attempts.some((a) => a.kind === 'impressum' && a.via === 'link');
+
 /** One GET of the conventional path per legal kind that was not found by link. */
 async function probeFallbacks(
   c: BrowserCollection,
@@ -375,7 +421,7 @@ async function probeFallbacks(
   order: number,
 ): Promise<void> {
   for (const kind of LEGAL_KINDS) {
-    if (found[kind] || c.throttled) continue;
+    if (found[kind] || c.throttled || s.viewportLost) continue;
     if (!c.timeLeft()) {
       // A fallback probe that was not made leaves phase A unfinished, like a cut queue.
       if (s.record.status === 'completed') c.cutByTime(s.record);
@@ -405,21 +451,41 @@ async function probeFallbacks(
     await c.afterPage(s, r, 'first-screen');
     c.aVisits.push({ raw, result: r, source: 'fallback' });
     await recordDocument(c, s, r, kind, sanitizeRequestUrl(raw), 'fallback');
+    await c.reveal(s, r);
   }
 }
 
-/** Evaluable subpages of phase A, chosen by their third-party signals. */
+/**
+ * Evaluable subpages of phase A, chosen by their third-party signals. B and C click on the start page, so pages of its
+ * origin come first: a consent cookie set for that host does not reach another one.
+ */
 function chooseControl(c: BrowserCollection, s: Session): void {
+  const categoryOf = catalogCategoryOf(loadServiceCatalog());
+  const requestsOn = (pageUrl: string) =>
+    s.recorder.records.filter((r) => r.pageUrl === pageUrl).map((r) => ({ url: r.url, host: r.host }));
+  const startRequests = requestsOn(sanitizeRequestUrl(c.startRaw));
+
   c.control = chooseControlPages(
     c.aVisits
       .filter((v) => v.source !== 'start' && v.source !== 'fallback' && v.result.visit.evaluable)
-      .map((v) => ({
-        raw: v.raw,
-        url: v.result.visit.url,
-        role: v.result.visit.role,
-        order: v.result.visit.order,
-        signals: signalsOf(c, v, s),
-      })),
+      .map((v) => {
+        const visit = v.result.visit;
+        const facts = {
+          iframes: visit.dom?.iframes ?? [],
+          placeholders: visit.dom?.embedPlaceholders?.length ?? 0,
+          requests: requestsOn(visit.finalUrl),
+          startRequests,
+        };
+        return {
+          raw: v.raw,
+          url: visit.url,
+          finalUrl: visit.finalUrl,
+          role: visit.role,
+          order: visit.order,
+          signals: controlSignals(facts, c.scope.etld1, categoryOf),
+        };
+      }),
+    { max: c.ctx.config.browser.maxControlPages, clickOrigin: new URL(c.startRaw).origin },
   );
   c.plan.controlPages = c.control.map((page, i) => ({
     url: page.url,
@@ -428,34 +494,6 @@ function chooseControl(c: BrowserCollection, s: Session): void {
     reasons: page.reasons,
     source: c.aVisits.find((v) => v.raw === page.raw)?.source ?? 'link',
   }));
-}
-
-function signalsOf(c: BrowserCollection, v: AVisit, s: Session) {
-  const etld1 = c.scope.etld1;
-  const isThirdParty = (url: string | null) => {
-    if (!url) return false;
-    try {
-      return registrableDomain(new URL(url).hostname) !== etld1;
-    } catch {
-      return false;
-    }
-  };
-  const thirdPartyHostsOn = (pageUrl: string) =>
-    new Set(
-      s.recorder.records
-        .filter((r) => r.pageUrl === pageUrl && registrableDomain(r.host) !== etld1)
-        .map((r) => r.host),
-    );
-
-  const dom = v.result.visit.dom;
-  const startHosts = thirdPartyHostsOn(sanitizeRequestUrl(c.startRaw));
-  const pageHosts = thirdPartyHostsOn(v.result.visit.finalUrl);
-
-  return {
-    thirdPartyIframes: (dom?.iframes ?? []).filter((f) => f.depth === 1 && isThirdParty(f.src)).length,
-    placeholders: dom?.embedPlaceholders?.length ?? 0,
-    newThirdPartyHosts: [...pageHosts].filter((h) => !startHosts.has(h)).length,
-  };
 }
 
 async function fetchRobots(c: BrowserCollection, origin: string): Promise<Robots | null> {

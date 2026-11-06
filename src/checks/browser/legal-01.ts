@@ -5,7 +5,6 @@ import {
   isUnconfirmedDocument,
   type LegalLexicon,
   legalLexiconFromData,
-  matchLegalLink,
   matchLegalLinks,
   matchNav,
   pageKey,
@@ -27,8 +26,17 @@ import type {
   LinkFact,
   PageVisit,
 } from '../../core/snapshot/browser.ts';
-import { judgedNotDocument, usableDocument } from './documents.ts';
+import { isSupplement, judgedNotDocument, usableDocument } from './documents.ts';
 import { pageEvidence } from './evidence.ts';
+import {
+  type Block,
+  bestBlock,
+  blocksOf,
+  type DetailsMatcher,
+  detailsMatcherOf,
+  isImpressumHeading,
+  shownHeading,
+} from './impressum-details.ts';
 import { sortedUniq } from './lists.ts';
 import { allCmpFacts } from './signals.ts';
 import { phaseRecord, visitedPages } from './snapshot.ts';
@@ -67,9 +75,6 @@ function linksOfKind(lex: LegalLexicon, links: readonly LinkFact[], kind: Docume
   return own.filter((_, i) => found[i] !== null);
 }
 
-/** A heading longer than this is a sentence, not a section title. */
-const MAX_HEADING_CHARS = 80;
-
 /**
  * An Impressum kept as a section of the fetched privacy policy ("Datenschutzerklärung > Impressum"): a content heading
  * that is exactly one of the Impressum labels. Not the other way round: a short "Datenschutz" paragraph or a data
@@ -85,15 +90,80 @@ function impressumSectionInPrivacy(
     const content = d.contentHeadings ? new Set(d.contentHeadings) : null;
     for (const part of d.parts) {
       for (const heading of (part.section ?? '').split(' > ')) {
-        if (heading === '' || heading.length > MAX_HEADING_CHARS) continue;
         if (content && !content.has(heading)) continue;
-        if (matchLegalLink(lex, 'impressum', { text: heading, path: '' })?.tier === 0) {
-          return { url: d.finalUrl || d.url, heading };
-        }
+        if (isImpressumHeading(lex, heading)) return { url: d.finalUrl || d.url, heading };
       }
     }
   }
   return null;
+}
+
+type DetailsPlace = 'privacy-section' | 'footer' | 'contact-page' | 'start-page';
+
+interface ImpressumDetails {
+  url: string;
+  place: DetailsPlace;
+  heading: string | null;
+  kinds: number;
+  evidence: EvidenceInput;
+}
+
+const isHtml2xx = (d: DocumentRecord): boolean =>
+  d.format === 'html' && d.status !== null && d.status >= 200 && d.status < 300;
+
+/**
+ * The details of an Impressum observed without a link that names them: one block with at least `minGroups` kinds of
+ * provider details. Any block of a page read for them (contact, intermediate or start page) counts; in the privacy
+ * policy only a block headed with an Impressum label or one in the page chrome, because a policy lists the company
+ * details of its processors too.
+ */
+function impressumDetails(env: Env): ImpressumDetails | null {
+  const { documents, details, lex } = env;
+  const roles = new Map(
+    env.pages.flatMap((p) => [p.url, p.finalUrl || p.url].map((u) => [pageKey(u), p.role] as const)),
+  );
+  const roleOf = (d: DocumentRecord) => roles.get(pageKey(d.finalUrl || d.url)) ?? roles.get(pageKey(d.url));
+  // A page behind a challenge or a failed navigation shows nothing of the site.
+  const blocked = (d: DocumentRecord) =>
+    [d.url, d.finalUrl].some((u) => u && env.blockedKeys.has(pageKey(u)));
+
+  const blocks: Block[] = [];
+  for (const d of documents.candidates ?? []) {
+    if (d.kind !== 'impressum' || !isHtml2xx(d) || blocked(d)) continue;
+    blocks.push(...blocksOf(d, details));
+  }
+  for (const d of documents.documents) {
+    if (d.kind !== 'privacy' || d.format !== 'html' || !usableDocument(d, documents.attempts)) continue;
+    if (blocked(d)) continue;
+    blocks.push(
+      ...blocksOf(d, details).filter((b) => b.place === 'chrome' || isImpressumHeading(lex, b.heading)),
+    );
+  }
+
+  const best = bestBlock(blocks.filter((b) => b.kinds >= env.minGroups));
+  if (!best) return null;
+
+  const fromPolicy = best.doc.kind === 'privacy';
+  const role = fromPolicy ? 'privacy' : (roleOf(best.doc) ?? 'contact');
+  const place: DetailsPlace =
+    best.place === 'chrome'
+      ? 'footer'
+      : fromPolicy
+        ? 'privacy-section'
+        : role === 'start'
+          ? 'start-page'
+          : 'contact-page';
+  return {
+    url: best.doc.finalUrl || best.doc.url,
+    place,
+    heading: shownHeading(best),
+    kinds: best.kinds,
+    // A page read for the details is no Impressum document: the evidence names its role.
+    evidence: docEvidence(best.doc, {
+      kind: role,
+      parts: [{ origin: best.first.origin, ...(best.path ? { section: best.path } : {}) }],
+    }),
+  };
 }
 
 function isBlockedPage(p: PageVisit): boolean {
@@ -131,6 +201,7 @@ type LinkClass = 'working' | 'broken' | 'blocked' | 'unconfirmed' | 'unverified'
 
 type Variant =
   | 'document-not-found'
+  | 'provider-details-without-link'
   | 'links-broken'
   | 'link-missing-on-some-pages'
   | 'reachable-via-intermediate'
@@ -159,6 +230,9 @@ interface Env {
   /** The collector could have visited an intermediate page: a same-site contact/rechtliches/über-uns link. */
   hopCandidates: boolean;
   hopVisited: boolean;
+  details: DetailsMatcher;
+  /** Kinds of provider details one block must hold to count as the details of an Impressum. */
+  minGroups: number;
 }
 
 /** What the check has concluded so far, over all document kinds. */
@@ -206,11 +280,15 @@ interface KindAnalysis {
   attemptEvidence: EvidenceInput[];
 }
 
-const docEvidence = (d: DocumentRecord): EvidenceInput => ({
+const docEvidence = (
+  d: DocumentRecord,
+  over: { kind?: string; parts?: Array<{ origin: string; section?: string }> } = {},
+): EvidenceInput => ({
   type: 'document',
   url: d.finalUrl || d.url,
-  kind: d.kind,
+  kind: over.kind ?? d.kind,
   lang: d.lang,
+  ...(over.parts ? { parts: over.parts } : {}),
   complete: d.complete,
   errors: d.errors,
   phase: d.phase,
@@ -259,11 +337,29 @@ function hasHopCandidate(lex: LegalLexicon, evaluated: readonly PageVisit[]): bo
   );
 }
 
-function buildEnv(lex: LegalLexicon, browser: BrowserSection, documents: DocumentsSection) {
+/**
+ * The search for the documents themselves. A further privacy notice read beside the policy, and a language version
+ * only noted, say nothing about whether the Impressum and the policy are linked and reachable: a failed notice is no
+ * broken privacy link, and provider details in a notice do not stand in for the Impressum.
+ */
+const ownAttempt = (a: Attempt): boolean => a.supplement !== true && a.outcome !== 'other-language';
+
+function buildEnv(
+  lex: LegalLexicon,
+  browser: BrowserSection,
+  documents: DocumentsSection,
+  details: Pick<Env, 'details' | 'minGroups'>,
+) {
+  // Every page phase A judged an error page is left out, the notices' pages included.
   const { pages, evaluated, coverage } = judgedPages(browser, documents);
   const env: Env = {
+    ...details,
     lex,
-    documents,
+    documents: {
+      ...documents,
+      documents: documents.documents.filter((d) => !isSupplement(d)),
+      attempts: documents.attempts.filter(ownAttempt),
+    },
     pages,
     evaluated,
     blockedKeys: new Set(
@@ -459,6 +555,29 @@ function judgeNoDocument(
     return;
   }
 
+  const details = kind === 'impressum' ? impressumDetails(env) : null;
+  if (details) {
+    emit(
+      'provider-details-without-link',
+      'medium',
+      [details.evidence, ...a.attemptEvidence, ...pageEvidenceOf(a.missing)],
+      {
+        missingCount: a.missing.length,
+        foundVia: null,
+        reachableViaHop: false,
+        hopChecked,
+        fallbackChecked,
+        detailsUrl: details.url,
+        detailsPlace: details.place,
+        hasHeading: details.heading !== null,
+        detailsHeading: details.heading,
+        groupCount: details.kinds,
+      },
+      sortedPageUrls(a.missing),
+    );
+    return;
+  }
+
   const section = kind === 'impressum' ? impressumSectionInPrivacy(env.lex, env.documents) : null;
   emit(
     'document-not-found',
@@ -572,6 +691,7 @@ export const legal01 = defineCheck({
   data: ['legal'],
   variants: [
     { variant: 'document-not-found', variantGroup: 'reachability' },
+    { variant: 'provider-details-without-link', variantGroup: 'reachability', maxConfidence: 'medium' },
     { variant: 'links-broken', variantGroup: 'reachability' },
     { variant: 'link-missing-on-some-pages', variantGroup: 'reachability' },
     { variant: 'reachable-via-intermediate', variantGroup: 'reachability', maxConfidence: 'medium' },
@@ -580,7 +700,10 @@ export const legal01 = defineCheck({
   ],
   run({ browser, documents, cmp }, ctx) {
     const lex = legalLexiconFromData(ctx.data.legal);
-    const { env, coverage } = buildEnv(lex, browser, documents);
+    const { env, coverage } = buildEnv(lex, browser, documents, {
+      details: detailsMatcherOf(ctx.data.legal),
+      minGroups: ctx.thresholds.legal.impressumMinGroups,
+    });
     if (env.evaluated.length === 0)
       return { status: 'inconclusive', reason: 'no-evaluable-pages', observations: [], coverage };
 

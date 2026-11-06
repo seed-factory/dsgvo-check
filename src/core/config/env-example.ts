@@ -22,8 +22,8 @@ const HEADER = [
   '',
   'Precedence: command-line flag > environment variable > this file (.env in the current directory) >',
   'built-in default. A variable that is already set in the environment wins over this file.',
-  'Numbers carry their unit in the name (_MS milliseconds, _BYTES bytes, _DAYS days). An empty value counts',
-  'as unset. Values are read as they stand: no quotes needed, lists are comma-separated.',
+  'Numbers carry their unit in the name (_MS milliseconds, _BYTES bytes, _DAYS days, _PX CSS pixels). An',
+  'empty value counts as unset. Values are read as they stand: no quotes needed, lists are comma-separated.',
   '',
   'Generated from src/core/config by `corepack pnpm env:example`; do not edit by hand.',
 ];

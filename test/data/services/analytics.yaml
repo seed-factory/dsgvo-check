@@ -76,7 +76,8 @@ services:
         query: { id: "^GT-" }
         kind: library
         stage: loaded
-    aliasesDe: [Google Tag Manager, Google-Tag-Manager, Google Tag]
+    # "Tagmanager" written as one word is a common German spelling of the product name.
+    aliasesDe: [Google Tag Manager, Google-Tag-Manager, Google Tagmanager, Google Tag]
     aliasesEn: [Google Tag Manager, Google Tag]
     companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
 
