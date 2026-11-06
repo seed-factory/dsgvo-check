@@ -9,33 +9,48 @@ export const MAX_DECODED_BYTES = 4 * 1024 * 1024;
 
 type Decompressor = zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress;
 
+// Decoders by `Content-Encoding`. They finish the stream on its last byte (the default flush), so a stream that stops
+// before its end is reported as an error after the prefix it decoded, instead of passing for a complete body.
+const DECODERS: Readonly<Record<string, () => Decompressor>> = {
+  gzip: () => zlib.createGunzip(),
+  'x-gzip': () => zlib.createGunzip(),
+  deflate: () => zlib.createInflate(),
+  br: () => zlib.createBrotliDecompress(),
+};
+
+const encodingOf = (encoding: string | null): string => (encoding ?? '').trim().toLowerCase();
+
+/** False for a `Content-Encoding` without a decoder here: the body is then the raw bytes, not text to read. */
+export function canDecode(encoding: string | null): boolean {
+  const enc = encodingOf(encoding);
+  return enc === '' || enc === 'identity' || Object.hasOwn(DECODERS, enc);
+}
+
 function decompressor(enc: string): Decompressor | null {
-  if (enc === 'gzip' || enc === 'x-gzip')
-    return zlib.createGunzip({ finishFlush: zlib.constants.Z_SYNC_FLUSH });
-  if (enc === 'deflate') return zlib.createInflate({ finishFlush: zlib.constants.Z_SYNC_FLUSH });
-  if (enc === 'br')
-    return zlib.createBrotliDecompress({ finishFlush: zlib.constants.BROTLI_OPERATION_FLUSH });
-  return null;
+  return Object.hasOwn(DECODERS, enc) ? (DECODERS[enc] as () => Decompressor)() : null;
 }
 
 interface DecodedBody {
   body: Buffer;
   truncated: boolean;
+  /** The stream was corrupt or incomplete: `body` is what came out before the error, possibly nothing. */
+  failed: boolean;
 }
 
 // Decodes a (possibly cut) body by `Content-Encoding`, streaming, with at most `maxOutput` decoded bytes so a small
 // compressed response cannot expand into hundreds of megabytes. A corrupt or cut stream yields the prefix decoded so
-// far; `truncated` = the output hit the limit.
+// far; `truncated` = the output hit the limit, `failed` = the stream was corrupt or ended before its end. Whether a cut
+// was expected (the read limit) the caller knows.
 export function decodeBody(buf: Buffer, encoding: string | null, maxOutput: number): Promise<DecodedBody> {
-  const d = decompressor((encoding ?? '').trim().toLowerCase());
+  const d = decompressor(encodingOf(encoding));
   if (!d) return Promise.resolve(capBody(buf, maxOutput));
   return inflateCapped(d, buf, maxOutput);
 }
 
 function capBody(buf: Buffer, maxOutput: number): DecodedBody {
   return buf.length > maxOutput
-    ? { body: buf.subarray(0, maxOutput), truncated: true }
-    : { body: buf, truncated: false };
+    ? { body: buf.subarray(0, maxOutput), truncated: true, failed: false }
+    : { body: buf, truncated: false, failed: false };
 }
 
 function inflateCapped(d: Decompressor, buf: Buffer, maxOutput: number) {
@@ -44,12 +59,12 @@ function inflateCapped(d: Decompressor, buf: Buffer, maxOutput: number) {
     let size = 0;
     let done = false;
 
-    const finish = (truncated: boolean) => {
+    const finish = (truncated: boolean, failed = false) => {
       if (done) return;
       done = true;
       d.removeAllListeners('data');
       d.destroy();
-      resolve({ body: Buffer.concat(out, size), truncated });
+      resolve({ body: Buffer.concat(out, size), truncated, failed });
     };
 
     d.on('data', (chunk: Buffer) => {
@@ -64,7 +79,7 @@ function inflateCapped(d: Decompressor, buf: Buffer, maxOutput: number) {
       size += chunk.length;
     });
     d.on('end', () => finish(false));
-    d.on('error', () => finish(false));
+    d.on('error', () => finish(false, true));
 
     d.end(buf);
   });

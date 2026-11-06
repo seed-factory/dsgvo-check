@@ -241,6 +241,36 @@ describe('HTML report: sections and content', () => {
     expect(all).toContain('sourceUrl');
   });
 
+  it('names where the form of a page served over http sends, on its own and in a list of pages', () => {
+    const r = sampleFullReport();
+    const page = r.evidence.find((e) => e.id === 'ev-page')!;
+    const form = {
+      status: 200,
+      role: 'http-form',
+      evaluable: undefined,
+      reason: undefined,
+      formAction: 'http://www.example.de/wp-comments-post.php',
+    };
+    Object.assign(page, { ...form, url: 'http://www.example.de/blog/post-1/' });
+    r.findings[0]!.evidenceIds = ['ev-page'];
+    const single = renderHtml(r, ctx());
+    expect(single).toContain('Seite mit Formular über http');
+    expect(single).toContain('>Ziel des Formulars<');
+    expect(single).toContain('wp-comments-post.php');
+
+    r.evidence.push({
+      ...page,
+      ...form,
+      id: 'ev-page-2',
+      url: 'http://www.example.de/kontakt/',
+    } as typeof page);
+    r.findings[0]!.evidenceIds = ['ev-page', 'ev-page-2'];
+    expect(renderHtml(r, ctx())).toContain('Formular sendet an http://www.example.de/wp-comments-post.php');
+    const en = renderHtml(r, ctx('en'));
+    expect(en).toContain('page with a form over http');
+    expect(en).toContain('form sends to http://www.example.de/wp-comments-post.php');
+  });
+
   it('words the match of a dictionary term and labels the kind of statement a quote makes', () => {
     const r = sampleFullReport();
     const match = r.evidence.find((e) => e.id === 'ev-match')!;

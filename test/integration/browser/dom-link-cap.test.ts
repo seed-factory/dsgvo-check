@@ -1,11 +1,12 @@
 /**
  * The link cap must not drop a footer's legal links on a page with a long article list (LEGAL-01 would infer a missing
- * link from truncated input): legal-looking and footer/nav links go first, the list is reported as truncated.
+ * link from truncated input): legal-looking and footer/nav links go first, the list is reported as truncated. Forms
+ * carry whether they take input other than a site search, by the rules the HTTP collector applies to markup.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { domFactsInPage } from '../../../src/collectors/browser/in-page/dom.ts';
-import { collectDom } from '../../../src/collectors/browser/pages/dom-facts.ts';
+import { collectDom, formRules } from '../../../src/collectors/browser/pages/dom-facts.ts';
 import { loadDomPatterns } from '../../../src/collectors/browser/rules.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
@@ -30,6 +31,15 @@ beforeAll(async () => {
     'short/index.html': html(`
       <main><ul>${articles(20)}</ul></main>
       <footer><a href="/impressum/">Impressum</a></footer>`),
+    'forms/index.html': html(`
+      <header><form role="search" action="/"><input type="search" name="s"><input type="submit"></form></header>
+      <form class="site-search" action="/suche"><input name="term"></form>
+      <form action="/"><input type="text" name="s"><button>Suchen</button></form>
+      <form method="post"><input type="hidden" name="a" value="1"><input type="submit" value="Abmelden"></form>
+      <form method="get" action="/kontakt/senden"><input name="name"><textarea name="nachricht"></textarea></form>
+      <form method="post" action="/wp-comments-post.php"><textarea name="comment"></textarea></form>
+      <form method="post" action="/login"><input type="password" name="pw"></form>
+      <template><form method="post"><textarea></textarea></form></template>`),
   });
   server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
   browser = await launchTestBrowser(server);
@@ -88,6 +98,21 @@ describe('collectDom with more links than the cap', () => {
   });
 });
 
+describe('collectDom: forms', () => {
+  it('a site search or a form without a field to type in takes no input; a GET contact form does', async () => {
+    const { dom } = await collectAt('forms/');
+    expect(dom.forms.map((f) => [f.method, f.takesInput])).toEqual([
+      ['get', false],
+      ['get', false],
+      ['get', false],
+      ['post', false],
+      ['get', true],
+      ['post', true],
+      ['post', true],
+    ]);
+  });
+});
+
 describe('domFactsInPage with a small cap', () => {
   it('reads priority links first and fills the rest in document order', async () => {
     await tab.goto('https://www.example.test/long/');
@@ -95,6 +120,7 @@ describe('domFactsInPage with a small cap', () => {
       maxLinks: 10,
       maxScripts: 5,
       patterns: loadDomPatterns().page,
+      forms: formRules(),
     });
     expect(raw.linksTotal).toBe(1603);
     expect(raw.linksTruncated).toBe(true);

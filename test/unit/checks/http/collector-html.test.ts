@@ -1,5 +1,6 @@
 /** Pure HTML heuristics used by the HTTP collector; integration tests cover the collector itself. */
 import { describe, expect, it } from 'vitest';
+import type { FetchResult } from '../../../../src/collectors/http/client.ts';
 import {
   detectClientRedirect,
   detectForm,
@@ -7,6 +8,7 @@ import {
   findLegalLinks,
   parseAttributes,
 } from '../../../../src/collectors/http/html.ts';
+import { toHop } from '../../../../src/collectors/http/index.ts';
 import { htmlSection } from '../../../../src/collectors/http/rules.ts';
 
 const BASE = 'http://www.example.test/start';
@@ -266,5 +268,248 @@ describe('HTML wording is data (test/data/http/html.yaml)', () => {
       impressum: 'http://www.example.test/mentions-legales',
       privacy: 'http://www.example.test/politique',
     });
+  });
+});
+
+describe('form facts of a plain-http page: the whole body that was read', () => {
+  const KIB = 1024;
+  const PAGE_URL = 'http://www.example.test/post-1/';
+  const filler = (bytes: number): string => {
+    const unit = '<p>Ein Absatz Text auf der Seite, damit sie lang wird.</p>\n';
+    return unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
+  };
+  const page = (body: string) =>
+    `<!doctype html><html><head><title>t</title></head><body>${body}</body></html>`;
+  // Field names and values the snapshot must never hold.
+  const COMMENT_FORM =
+    '<form action="http://www.example.test/wp-comments-post.php" method="post" id="commentform">' +
+    '<textarea name="comment">fixture-comment-text</textarea>' +
+    '<input name="author" value="fixture-author-value"><input type="submit" value="Senden"></form>';
+
+  function response(html: string, p: Partial<FetchResult> = {}): FetchResult {
+    const body = Buffer.from(html);
+    return {
+      url: PAGE_URL,
+      status: 200,
+      headers: [],
+      setCookieNames: [],
+      blankHeaderNames: [],
+      location: null,
+      contentType: 'text/html; charset=utf-8',
+      body,
+      bodyBytes: body.length,
+      bodyTruncated: false,
+      conn: null,
+      durationMs: 5,
+      requestedAt: '2026-10-30T12:00:00.000Z',
+      ...p,
+    };
+  }
+
+  it('a comment form after 70 KiB of a 90 KiB page is found, with where it sends its input', () => {
+    const html = page(`${filler(70 * KIB)}${COMMENT_FORM}${filler(20 * KIB)}`);
+    expect(Buffer.byteLength(html)).toBeGreaterThan(90 * KIB);
+    expect(toHop(response(html))).toMatchObject({
+      hasForm: true,
+      formInspection: 'complete',
+      forms: [
+        { action: 'http://www.example.test/wp-comments-post.php', actionScheme: 'http', method: 'post' },
+      ],
+    });
+  });
+
+  it('a form that starts before 64 KiB and has its field after it is found', () => {
+    const open = '<form method="post" action="/kontakt/senden">';
+    const html = page(
+      `${filler(64 * KIB - open.length - 60)}${open}${filler(2 * KIB)}<textarea name="m"></textarea></form>`,
+    );
+    expect(html.indexOf('<textarea')).toBeGreaterThan(64 * KIB);
+    expect(toHop(response(html))).toMatchObject({
+      hasForm: true,
+      forms: [{ action: 'http://www.example.test/kontakt/senden', actionScheme: 'http', method: 'post' }],
+    });
+  });
+
+  it('a body cut before the form says so: no form seen, inspection truncated', () => {
+    const hop = toHop(response(page(filler(80 * KIB)), { bodyTruncated: true }));
+    expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'truncated' });
+  });
+
+  it('a form in the part of a cut body that was read still counts', () => {
+    const hop = toHop(response(page(`${filler(10 * KIB)}${COMMENT_FORM}`), { bodyTruncated: true }));
+    expect(hop).toMatchObject({ hasForm: true, formInspection: 'truncated' });
+  });
+
+  it.each<[string, Partial<FetchResult>]>([
+    ['an encoding without a decoder', { undecodedEncoding: 'zstd' }],
+    ['a corrupt gzip stream', { undecodedEncoding: 'gzip' }],
+    ['an encoding without a decoder and no Content-Type', { undecodedEncoding: 'zstd', contentType: null }],
+  ])('a body the collector could not decode (%s) is unavailable, not form-free', (_name, p) => {
+    const hop = toHop(response('(µ/ý binary <meta http-equiv="refresh" content="0;url=https://x.test/">', p));
+    expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'unavailable' });
+    expect(hop.clientRedirect).toBeUndefined();
+  });
+
+  it('a decoded body that is no HTML and names no type is not inspected', () => {
+    const hop = toHop(response('%PDF-1.7 binary', { contentType: null }));
+    expect(hop.formInspection).toBeUndefined();
+  });
+
+  // Counterexamples after the first 64 KiB: what takes no input, or is no form of the document.
+  it.each([
+    ['a site search (role=search)', '<form role="search" action="/"><input name="x"></form>'],
+    ['a site search (field s)', '<form action="/"><input type="text" name="s"><input type="submit"></form>'],
+    [
+      'hidden fields only',
+      '<form method="post"><input type="hidden" name="a" value="1"><button>OK</button></form>',
+    ],
+    ['markup in a script', '<script>var f = "<form method=post><textarea></textarea></form>";</script>'],
+    ['markup in a template', '<template><form method="post"><textarea></textarea></form></template>'],
+    ['markup in noscript', '<noscript><form method="post"><input name="email"></form></noscript>'],
+    [
+      'markup in a textarea',
+      '<textarea>&lt;form&gt;<form method="post"><input name="email"></form></textarea>',
+    ],
+  ])('%s after 64 KiB is no data form', (_name, markup) => {
+    const hop = toHop(response(page(`${filler(70 * KIB)}${markup}`)));
+    expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'complete' });
+  });
+
+  it.each([
+    ['no action: the page itself', '<form method="post"><textarea></textarea></form>', PAGE_URL, 'http'],
+    [
+      'an empty action: the page itself',
+      '<form action="" method="post"><textarea></textarea></form>',
+      PAGE_URL,
+      'http',
+    ],
+    [
+      'a relative action',
+      '<form action="../senden" method="post"><textarea></textarea></form>',
+      'http://www.example.test/senden',
+      'http',
+    ],
+    [
+      'an https action',
+      '<form action="https://www.example.test/senden" method="post"><textarea></textarea></form>',
+      'https://www.example.test/senden',
+      'https',
+    ],
+    [
+      'a query in the action is redacted',
+      '<form action="/senden?token=abc123&amp;v=2" method="post"><textarea></textarea></form>',
+      'http://www.example.test/senden?token=[redacted]&v=2',
+      'http',
+    ],
+    [
+      'a javascript: action is no address',
+      '<form action="javascript:void(0)"><textarea></textarea></form>',
+      null,
+      'other',
+    ],
+    [
+      'a mailto: action is no address',
+      '<form action="mailto:info@example.test" method="post"><textarea></textarea></form>',
+      null,
+      'other',
+    ],
+  ])('action: %s', (_name, markup, action, actionScheme) => {
+    expect(toHop(response(page(markup))).forms).toEqual([
+      { action, actionScheme, method: expect.any(String) },
+    ]);
+  });
+
+  it('markup inside an attribute value is no form, and nothing of the value is kept', () => {
+    const hidden =
+      '<input type="hidden" name="payload" value=\'<form action="/private-field-value"><textarea></textarea></form>\'>';
+    const hop = toHop(response(page(hidden)));
+    expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'complete' });
+    expect(JSON.stringify(hop)).not.toContain('private-field-value');
+  });
+
+  it('a ">" in a quoted attribute of the form tag does not end it: action and method are read', () => {
+    const markup =
+      '<form aria-label="a > b" action="https://forms.example.test/send" method="post"><textarea></textarea></form>';
+    expect(toHop(response(page(markup))).forms).toEqual([
+      { action: 'https://forms.example.test/send', actionScheme: 'https', method: 'post' },
+    ]);
+  });
+
+  it('a field after a quoted ">" in an earlier field still counts', () => {
+    const markup = '<form method="post"><input type="submit" value="Weiter >"><input name="email"></form>';
+    expect(toHop(response(page(markup))).hasForm).toBe(true);
+  });
+
+  it.each([
+    [
+      'a relative action resolves against <base href>',
+      '<base href="https://forms.example.test/api/"><form method="post" action="send"><textarea></textarea></form>',
+      'https://forms.example.test/api/send',
+      'https',
+    ],
+    [
+      'an empty action is the page itself, not the base',
+      '<base href="https://forms.example.test/api/"><form method="post" action=""><textarea></textarea></form>',
+      PAGE_URL,
+      'http',
+    ],
+    [
+      'a relative <base href> resolves against the page',
+      '<base href="/de/"><form method="post" action="senden"><textarea></textarea></form>',
+      'http://www.example.test/de/senden',
+      'http',
+    ],
+    [
+      'only the first <base> with an href counts',
+      '<base target="_blank"><base href="https://a.example.test/"><base href="https://b.example.test/"><form method="post" action="x"><textarea></textarea></form>',
+      'https://a.example.test/x',
+      'https',
+    ],
+    [
+      'a <base> in a template is no base',
+      '<template><base href="https://forms.example.test/"></template><form method="post" action="x"><textarea></textarea></form>',
+      'http://www.example.test/post-1/x',
+      'http',
+    ],
+    [
+      'a <base> that is no http(s) address leaves the page as base',
+      '<base href="javascript:alert(1)"><form method="post" action="x"><textarea></textarea></form>',
+      'http://www.example.test/post-1/x',
+      'http',
+    ],
+  ])('base URL: %s', (_name, markup, action, actionScheme) => {
+    expect(toHop(response(page(markup))).forms).toEqual([{ action, actionScheme, method: 'post' }]);
+  });
+
+  it.each([
+    ['POST', 'post'],
+    ['dialog', 'dialog'],
+    ['put', 'get'],
+    ['', 'get'],
+  ])('method %j is read as %s', (method, expected) => {
+    const hop = toHop(response(page(`<form method="${method}"><textarea></textarea></form>`)));
+    expect(hop.forms?.[0]?.method).toBe(expected);
+  });
+
+  it('keeps at most five forms and no field name or value', () => {
+    const hop = toHop(response(page(COMMENT_FORM.repeat(8))));
+    expect(hop.hasForm).toBe(true);
+    expect(hop.forms).toHaveLength(5);
+    const stored = JSON.stringify(hop);
+    for (const secret of ['fixture-comment-text', 'fixture-author-value', 'author', 'commentform']) {
+      expect(stored).not.toContain(secret);
+    }
+  });
+
+  it.each([
+    ['an https page', { url: 'https://www.example.test/post-1/' }],
+    ['a redirect', { status: 301, location: 'http://www.example.test/next' }],
+    ['an error page', { status: 404 }],
+    ['a page that is no HTML', { contentType: 'application/pdf' }],
+  ])('%s is not inspected for forms', (_name, p) => {
+    const hop = toHop(response(page(COMMENT_FORM), p));
+    expect(hop.hasForm).toBeUndefined();
+    expect(hop.forms).toBeUndefined();
+    expect(hop.formInspection).toBeUndefined();
   });
 });

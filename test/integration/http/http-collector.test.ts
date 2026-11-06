@@ -339,7 +339,13 @@ describe('HTTP collector: problem sites', () => {
 
     const http = res.sections.http as HttpSection;
     const httpHop = chainOf(http, 'target', 'http')?.final;
-    expect(httpHop).toMatchObject({ status: 200, hasForm: true, bodyKind: 'html' });
+    expect(httpHop).toMatchObject({
+      status: 200,
+      hasForm: true,
+      bodyKind: 'html',
+      formInspection: 'complete',
+      forms: [{ action: 'http://www.plain.test/kontakt', actionScheme: 'http', method: 'post' }],
+    });
     expect(httpHop?.clientRedirect).toBeUndefined();
     expect(http.chains.find((c) => c.hostVariant === 'apex')?.outcome).toBe('connection-refused');
     expect(variantsOf(evaluate('https://www.plain.test/', http).tls)).toEqual([

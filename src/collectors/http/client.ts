@@ -9,7 +9,7 @@ import { ACCEPT_LANGUAGE } from '../../core/runtime/user-agent.ts';
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 import type { NetworkConfig } from '../../core/url/net.ts';
 import { defaultHttpPort } from '../../core/url/url.ts';
-import { decodeBody, MAX_DECODED_BYTES, readPrefix } from './body.ts';
+import { canDecode, decodeBody, MAX_DECODED_BYTES, readPrefix } from './body.ts';
 import { type ConnectionFacts, connectionFacts, routeToPublic } from './connection.ts';
 import { ProbeError, toProbeError } from './errors.ts';
 import {
@@ -55,6 +55,8 @@ export interface FetchResult {
   body: Buffer;
   bodyBytes: number;
   bodyTruncated: boolean;
+  /** A `Content-Encoding` the client could not decode (no decoder, or a corrupt stream): `body` is not the page text. */
+  undecodedEncoding?: string;
   conn: ConnectionFacts | null;
   durationMs: number;
   requestedAt: string;
@@ -250,6 +252,10 @@ export class HttpClient {
       body: decoded.body,
       bodyBytes: decoded.body.length,
       bodyTruncated: truncated || decoded.truncated,
+      // A stream cut at the read limit cannot end properly: that is `bodyTruncated`, not an undecodable body.
+      ...(canDecode(head.contentEncoding) && !(decoded.failed && !truncated)
+        ? {}
+        : { undecodedEncoding: head.contentEncoding as string }),
       conn: this.#connectionOf(u),
       durationMs: Math.round(performance.now() - t0),
       requestedAt,

@@ -91,6 +91,31 @@ describe('decodeBody (the decoded size is bounded)', () => {
     expect(text.subarray(0, out.body.length).equals(out.body)).toBe(true);
   });
 
+  it.each(['gzip', 'deflate', 'br'])(
+    '%s: a stream that stops before its end, or is corrupt, is reported as failed; a whole one is not',
+    async (enc) => {
+      const text = Buffer.from(`<html><body>${'abcdefghij'.repeat(10_000)}<form></form></body></html>`);
+      const compressed =
+        enc === 'gzip'
+          ? zlib.gzipSync(text)
+          : enc === 'deflate'
+            ? zlib.deflateSync(text)
+            : zlib.brotliCompressSync(text);
+      expect(await decodeBody(compressed, enc, MiB)).toMatchObject({ failed: false, truncated: false });
+      // without its last bytes (for gzip the checksum and length) the stream has not ended
+      expect(await decodeBody(compressed.subarray(0, compressed.length - 4), enc, MiB)).toMatchObject({
+        failed: true,
+      });
+      const half = await decodeBody(compressed.subarray(0, compressed.length >> 1), enc, MiB);
+      expect(half).toMatchObject({ failed: true, truncated: false });
+      expect(half.body.length).toBeLessThan(text.length);
+      expect(await decodeBody(Buffer.from('<html>not compressed</html>'), enc, MiB)).toMatchObject({
+        failed: true,
+        truncated: false,
+      });
+    },
+  );
+
   it('identity: the body is passed through (and cut at the limit)', async () => {
     expect((await decodeBody(Buffer.from('abc'), null, 10)).body.toString()).toBe('abc');
     expect(await decodeBody(Buffer.from('abcdef'), 'identity', 4)).toMatchObject({ truncated: true });

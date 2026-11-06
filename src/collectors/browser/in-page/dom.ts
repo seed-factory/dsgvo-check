@@ -25,6 +25,8 @@ export interface RawForm {
   fieldCount: number;
   hasPasswordField: boolean;
   hasEmailField: boolean;
+  /** Takes input other than a site search, by the rules the HTTP collector applies to markup. */
+  takesInput: boolean;
 }
 
 export interface RawIframe {
@@ -70,6 +72,16 @@ export interface DomPatterns {
   placeholderKinds: Array<{ kind: 'maps' | 'video'; source: string }>;
 }
 
+/** What a site search is (test/data/http/html.yaml) and the input types that carry nothing typed in. */
+export interface FormRules {
+  /** Source of the id/class pattern of a search form (case-insensitive). */
+  searchForm: string;
+  /** Lower-case `name` of a search field. */
+  searchFieldNames: string[];
+  /** Lower-case `type` of inputs that take no typed input (hidden, submit, search, …). */
+  nonDataInputs: string[];
+}
+
 // DOM facts of the main document including open shadow roots. Links are capped at `maxLinks`; a plain cut loses the
 // footer (Impressum, Datenschutz) on pages with a long article list, so a page over the cap is read in two passes:
 // first the links that matter for legal and navigation checks (legal keywords, then `footer`, `banner`, `header`,
@@ -78,6 +90,7 @@ export function domFactsInPage(arg: {
   maxLinks: number;
   maxScripts: number;
   patterns: DomPatterns;
+  forms: FormRules;
 }): RawDomFacts {
   const MAX_SHADOW_DEPTH = 8;
   const MAX_PLACEHOLDERS = 20;
@@ -237,6 +250,22 @@ export function domFactsInPage(arg: {
       hreflang: String(el.getAttribute('hreflang') || ''),
     };
   };
+  // The same test as the HTTP collector's on markup: not a site search, and a field one types into.
+  const SEARCH_FORM_RE = new RegExp(arg.forms.searchForm, 'i');
+  const SEARCH_FIELDS = new Set(arg.forms.searchFieldNames);
+  const NON_DATA_INPUTS = new Set(arg.forms.nonDataInputs);
+  const takesInput = (el: any): boolean => {
+    if (String(el.getAttribute('role') || '').toLowerCase() === 'search') return false;
+    if (SEARCH_FORM_RE.test(`${el.getAttribute('id') || ''} ${el.getAttribute('class') || ''}`)) return false;
+    if (el.querySelector('textarea, select')) return true;
+    const inputs = el.querySelectorAll('input');
+    for (let i = 0; i < inputs.length; i++) {
+      const type = String(inputs[i].getAttribute('type') || 'text').toLowerCase();
+      const name = String(inputs[i].getAttribute('name') || '').toLowerCase();
+      if (!NON_DATA_INPUTS.has(type) && !SEARCH_FIELDS.has(name)) return true;
+    }
+    return false;
+  };
   const readForm = (el: any): RawForm => {
     const fields = el.querySelectorAll('input:not([type=hidden]), select, textarea');
     return {
@@ -246,6 +275,7 @@ export function domFactsInPage(arg: {
       fieldCount: fields.length,
       hasPasswordField: Boolean(el.querySelector('input[type=password]')),
       hasEmailField: Boolean(el.querySelector('input[type=email], input[name*=mail i]')),
+      takesInput: takesInput(el),
     };
   };
   const readIframe = (el: any): RawIframe => {

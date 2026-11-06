@@ -331,6 +331,9 @@ const PageEvidence = z.object({
   role: z.string().optional(),
   evaluable: z.boolean().optional(),
   reason: z.string().optional(),
+  formAction: z.string().optional().meta({
+    description: 'Address the first form of the page sends its input to (sanitized), read from the markup',
+  }),
 });
 
 const RedirectChainEvidence = z.object({
