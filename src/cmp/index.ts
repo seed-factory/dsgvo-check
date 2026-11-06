@@ -94,6 +94,9 @@ export async function waitForCmp(
 /** Result of the last `waitForBanner` per page, consumed by the next first-screen `extract`. */
 const settleResults = new WeakMap<Page, { url: string; unsettled: boolean }>();
 
+/** URL of the page on which the last `waitForBanner` ran out without a visible banner, consumed like `settleResults`. */
+const waitedInVain = new WeakMap<Page, string>();
+
 function geometrySignature(layer: CmpFirstLayer): string {
   const box = (b: { x: number; y: number; width: number; height: number } | null | undefined) =>
     b ? `${b.x},${b.y},${b.width},${b.height}` : '-';
@@ -132,6 +135,7 @@ export async function waitForBanner(
   for (;;) {
     const layer = await adapter.firstLayer(page).catch(() => null);
     if (layer?.bannerVisible) {
+      waitedInVain.delete(page);
       const settled = await geometrySettled(page, adapter, layer);
       settleResults.set(page, { url: page.url(), unsettled: !settled });
       return true;
@@ -139,6 +143,7 @@ export async function waitForBanner(
 
     if (Date.now() >= end) {
       settleResults.delete(page);
+      waitedInVain.set(page, page.url());
       return false;
     }
     await new Promise((r) => setTimeout(r, opts.stepMs ?? DEFAULT_POLL_MS));
@@ -183,6 +188,19 @@ function markGeometry(page: Page, facts: CmpFacts): CmpFacts {
     return { ...facts, firstLayer: { ...facts.firstLayer, geometryUnsettled: true } };
   }
   return facts;
+}
+
+/**
+ * Keeps `dialogNotOpened` only on a first screen measured after `waitForBanner` ran out on the same page: without that
+ * wait a dialog that opens a moment later would be called unopened.
+ */
+function markDialog(page: Page, facts: CmpFacts): CmpFacts {
+  if (facts.moment !== 'first-screen') return facts;
+  const waited = waitedInVain.get(page) === page.url();
+  waitedInVain.delete(page);
+  if (!facts.firstLayer.dialogNotOpened || waited) return facts;
+  const { dialogNotOpened: _, ...firstLayer } = facts.firstLayer;
+  return { ...facts, firstLayer };
 }
 
 /** Facts from the generic heuristic alone, for a page without a recognized adapter (`info` only). */
@@ -241,5 +259,8 @@ export async function extract(
   if (!adapter) return heuristicFacts(page, moment, opts);
 
   const own = await adapter.extract(page, moment, opts);
-  return markGeometry(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon()));
+  return markGeometry(
+    page,
+    markDialog(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon())),
+  );
 }

@@ -133,23 +133,31 @@ function byImportance(a: Item, b: Item): number {
   );
 }
 
-/** Findings that share a message form one item: they are counted, not repeated. */
+/**
+ * Findings that share a message form one item: they are counted, not repeated. A DNS record is fixed per domain, so
+ * the mail findings of different domains stay separate items, each naming its own domain.
+ */
 function actionItems(report: Report): Item[] {
-  const byMessage = new Map<string, Finding[]>();
+  const moduleOf = new Map((report.checks ?? []).map((c) => [c.id, c.module ?? '']));
+  const itemKey = (f: Finding) =>
+    moduleOf.get(f.checkId) === 'dns' && typeof f.params.domain === 'string'
+      ? `${f.messageId}\u0000${f.params.domain}`
+      : f.messageId;
+
+  const byKey = new Map<string, Finding[]>();
   for (const f of report.findings ?? []) {
     // The services table lists the inventory; an active suppression means the finding was reviewed and set aside.
     if (f.messageId === INVENTORY_MESSAGE || (f.suppression && !f.suppression.expired)) continue;
-    byMessage.set(f.messageId, [...(byMessage.get(f.messageId) ?? []), f]);
+    byKey.set(itemKey(f), [...(byKey.get(itemKey(f)) ?? []), f]);
   }
 
-  const moduleOf = new Map((report.checks ?? []).map((c) => [c.id, c.module ?? '']));
   const rank = (checkId: string) => {
     const index = MODULE_ORDER.indexOf(moduleOf.get(checkId) ?? '');
     return index === -1 ? MODULE_ORDER.length : index;
   };
-  return [...byMessage.entries()]
-    .map(([messageId, findings]) => ({
-      messageId,
+  return [...byKey.values()]
+    .map((findings) => ({
+      messageId: findings[0]!.messageId,
       findings,
       severity: highestSeverity(findings),
       module: rank(findings[0]!.checkId),
@@ -196,7 +204,13 @@ function serviceViews(rows: readonly Finding[], tools: FrontPageTools): ServiceV
     .slice(0, MAX_ROWS);
 }
 
-export type BannerState = 'recognized' | 'firstLayerAmbiguous' | 'notRecognized' | 'notFound' | 'notVisible';
+export type BannerState =
+  | 'recognized'
+  | 'firstLayerAmbiguous'
+  | 'notRecognized'
+  | 'notFound'
+  | 'notVisible'
+  | 'dialogNotOpened';
 
 /** CONSENT-04 variants of a banner that no adapter or heuristic could attribute. */
 const NOT_RECOGNIZED: ReadonlySet<string> = new Set(['banner-not-recognized', 'cmp-not-supported']);
@@ -208,11 +222,15 @@ export const firstLayerAmbiguous = (f: Finding): boolean =>
 /** CONSENT-03 saw something that looks like a banner but was not recognised, so it did not conclude "no banner". */
 const CANDIDATE_REASON = 'banner-candidate-unrecognized';
 
+/** The CMP's dialog was in the page but not opened for the scanner; nothing is known about what visitors see. */
+const NOT_OPENED_REASON = 'cmp-dialog-not-opened';
+
 /** Reasons of an inconclusive check that the banner sentence already explains. */
 const BANNER_REASONS: ReadonlySet<string> = new Set([
   ...NOT_RECOGNIZED,
   'first-layer-not-visible',
   CANDIDATE_REASON,
+  NOT_OPENED_REASON,
 ]);
 
 /**
@@ -230,16 +248,37 @@ export function bannerState(report: Report): BannerState | null {
   if (findings.length > 0) return 'firstLayerAmbiguous';
 
   const check = (report.checks ?? []).find((c) => c.id === 'CONSENT-04');
+  if (check?.status === 'inconclusive' && check.reason === NOT_OPENED_REASON) return 'dialogNotOpened';
   if (check?.status === 'completed') return 'recognized';
   if (check?.status === 'not_applicable' && check.reason === 'no-banner') return 'notFound';
   if (check?.status === 'inconclusive' && check.reason === 'first-layer-not-visible') return 'notVisible';
   return null;
 }
 
+/**
+ * The banner sentence: a dialog that stayed closed in the visit with the reject may have opened in the visit with
+ * consent, where our accept was clicked; then only the reject is open.
+ */
+function bannerSentence(report: Report, banner: BannerState, tools: FrontPageTools): string {
+  const accepted = (report.scan.coverage?.consentActions ?? []).some(
+    (a) => a.action === 'accept' && a.clicked,
+  );
+  return tools.label('overview.banner', { state: banner, accepted });
+}
+
 type CheckEntry = NonNullable<Report['checks']>[number];
 
 /** Why a check gave no conclusive result, in the groups the overview names; null for checks with a result. */
-const OPEN_CAUSES = ['tls-blocked', 'geo', 'bot', 'reject', 'timeout', 'error', 'other'] as const;
+const OPEN_CAUSES = [
+  'tls-blocked',
+  'tls-fallback-failed',
+  'geo',
+  'bot',
+  'reject',
+  'timeout',
+  'error',
+  'other',
+] as const;
 type OpenCause = (typeof OPEN_CAUSES)[number];
 
 const INCONCLUSIVE_CAUSES: Readonly<Record<string, OpenCause>> = {
@@ -264,7 +303,7 @@ function openCause(c: CheckEntry): OpenCause | 'banner' | null {
     case 'skipped':
       // Checks left out with --checks were not asked for.
       if (reason === 'not-selected') return null;
-      return reason === 'tls-blocked' ? 'tls-blocked' : 'other';
+      return reason === 'tls-blocked' || reason === 'tls-fallback-failed' ? reason : 'other';
     case 'inconclusive':
       if (BANNER_REASONS.has(reason)) return 'banner';
       return INCONCLUSIVE_CAUSES[reason] ?? 'other';
@@ -354,6 +393,20 @@ const hostOf = (url: string | null | undefined): string | null => {
   }
 };
 
+/**
+ * The browser checks ran on the redirect target of a refused certificate: the first page says so, instead of asking
+ * the reader to scan that address directly.
+ */
+function tlsFallbackSentence(report: Report, tools: FrontPageTools): string | null {
+  const entry = report.scan.status === 'failed' ? undefined : report.scan.entry;
+  const host = hostOf(entry?.requested);
+  const entryHost = hostOf(entry?.url);
+  if (!host || !entryHost) return null;
+  // The browser may have been sent on from there: the checks refer to where its start page ended.
+  const finalHost = hostOf(report.scan.finalUrl) ?? entryHost;
+  return tools.label('overview.tlsFallback', { host, entryHost, finalHost });
+}
+
 /** The start page ends up on another site: the scan covers that site only as far as the start pages go. */
 function redirectedHost(report: Report): string | null {
   const from = hostOf(report.scan.target);
@@ -395,7 +448,10 @@ function countSentences(
   return sentences;
 }
 
-/** The counts, the scan status, checks without a result, the banner, the region and a redirect to another site. */
+/**
+ * The counts, the scan status, checks without a result, the banner, the region, and a redirect to another site or the
+ * browser checks run on the redirect target of a refused certificate.
+ */
 function overviewSentences(
   report: Report,
   items: readonly Item[],
@@ -425,14 +481,16 @@ function overviewSentences(
           : 'complete';
   sentences.push(tools.label('overview.scan', { state }), ...openSentences(open, banner, tools), ...partly);
 
-  if (banner) sentences.push(tools.label('overview.banner', { state: banner }));
+  if (banner) sentences.push(bannerSentence(report, banner, tools));
 
   const consentFindings = (report.findings ?? []).some((f) => f.checkId.startsWith('CONSENT-'));
   if (report.scan.environment?.egress.region === 'unknown' && consentFindings) {
     sentences.push(tools.label('overview.region'));
   }
 
-  const redirected = redirectedHost(report);
+  const fallback = tlsFallbackSentence(report, tools);
+  const redirected = fallback ? null : redirectedHost(report);
+  if (fallback) sentences.push(fallback);
   if (redirected) sentences.push(tools.label('overview.redirect', { host: redirected }));
   return sentences;
 }
@@ -452,7 +510,7 @@ function serviceNotes(report: Report, rows: readonly Finding[], tools: FrontPage
     banner,
     tools,
   );
-  if (banner && banner !== 'recognized') notes.push(tools.label('overview.banner', { state: banner }));
+  if (banner && banner !== 'recognized') notes.push(bannerSentence(report, banner, tools));
   if (phaseCState(report) === 'unverified') notes.push(tools.label('services.acceptUnverified'));
 
   const stages = rows.flatMap((f) => [

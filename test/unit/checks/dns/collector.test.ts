@@ -5,9 +5,11 @@
 import { describe, expect, it } from 'vitest';
 import { mail01 } from '../../../../src/checks/dns/mail-01.ts';
 import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
-import { collectMailDns } from '../../../../src/collectors/dns/collect.ts';
+import { mail03 } from '../../../../src/checks/dns/mail-03.ts';
+import { collectMailDns, type DkimOptions } from '../../../../src/collectors/dns/collect.ts';
 import { collectDns } from '../../../../src/collectors/dns/index.ts';
 import { type DnsClient, errorToRcode, type RawDnsResult } from '../../../../src/collectors/dns/resolver.ts';
+import { loadDkimRules } from '../../../../src/collectors/dns/rules.ts';
 import { defaultConfig } from '../../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
@@ -20,6 +22,7 @@ import {
   runCheck,
   variantsOf,
 } from '../../../utils/snapshot-builder.ts';
+import { dkimRecord, rsaKey } from './dkim-keys.ts';
 import type { ZoneSpec } from './zone.ts';
 
 interface FakeClient extends DnsClient {
@@ -66,7 +69,10 @@ const site: ZoneSpec = {
   'TXT _spf.provider.example': ['v=spf1 ip4:192.0.2.0/24 -all'],
 };
 
-const collect = (spec: ZoneSpec, o: { budget?: number; signal?: AbortSignal; host?: string } = {}) => {
+const collect = (
+  spec: ZoneSpec,
+  o: { budget?: number; signal?: AbortSignal; host?: string; dkim?: DkimOptions } = {},
+) => {
   const client = fakeClient(spec);
   const run = collectMailDns({
     host: o.host ?? 'www.example.de',
@@ -75,9 +81,15 @@ const collect = (spec: ZoneSpec, o: { budget?: number; signal?: AbortSignal; hos
     now: () => FIXED_NOW,
     ...(o.budget ? { budget: o.budget } : {}),
     ...(o.signal ? { signal: o.signal } : {}),
+    ...(o.dkim ? { dkim: o.dkim } : {}),
   });
   return { client, run };
 };
+
+/** The common selector names of test/data/dns/dkim.yaml, each asked under example.de. */
+const COMMON_DKIM = ['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1'].map(
+  (s) => `TXT ${s}._domainkey.example.de`,
+);
 
 describe('collectMailDns: query plan', () => {
   it('redacts spaced mailto and bare addresses in TXT records', async () => {
@@ -106,7 +118,7 @@ describe('collectMailDns: query plan', () => {
     expect(txt?.value).not.toContain('dmarc@');
   });
 
-  it('MX, then the DMARC Tree Walk, then the SPF tree', async () => {
+  it('MX, then the DMARC Tree Walk, then the SPF tree, then the DKIM selectors', async () => {
     const { client, run } = collect(site);
 
     const r = await run;
@@ -118,29 +130,38 @@ describe('collectMailDns: query plan', () => {
       'TXT _dmarc.example.de',
       'TXT example.de',
       'TXT _spf.provider.example',
+      ...COMMON_DKIM,
     ]);
 
     const q = r.section.queries;
-    expect(q.map((x) => x.purpose)).toEqual(['mx', 'dmarc', 'dmarc-tree-walk', 'spf', 'spf-include']);
-    expect(q.map((x) => x.treeWalkStep)).toEqual([undefined, 0, 1, undefined, undefined]);
+    expect(q.map((x) => x.purpose)).toEqual([
+      'mx',
+      'dmarc',
+      'dmarc-tree-walk',
+      'spf',
+      'spf-include',
+      ...COMMON_DKIM.map(() => 'dkim'),
+    ]);
+    expect(q.slice(0, 5).map((x) => x.treeWalkStep)).toEqual([undefined, 0, 1, undefined, undefined]);
 
     expect(r.section).toMatchObject({
       domain: 'example.de',
       host: 'www.example.de',
       resolver: { kind: 'custom', servers: ['192.0.2.53'] },
-      budget: { limit: 60, used: 5 },
+      budget: { limit: 60, used: 12 },
       errors: [],
     });
-    expect(new Set(q.map((x) => x.id)).size).toBe(5);
+    expect(new Set(q.map((x) => x.id)).size).toBe(12);
     expect(q[0]?.queriedAt).toBe(FIXED_NOW.toISOString());
   });
 
-  it('the section feeds MAIL-01 and MAIL-02 (end to end)', async () => {
+  it('the section feeds MAIL-01, MAIL-02 and MAIL-03 (end to end)', async () => {
     const { run } = collect(site);
     const snap = makeSnapshot({ dns: (await run).section });
 
     expect(variantsOf(runCheck(mail01, snap))).toEqual([]);
     expect(variantsOf(runCheck(mail02, snap))).toEqual(['softfail-with-enforcement']);
+    expect(variantsOf(runCheck(mail03, snap))).toEqual(['selectors-not-found']);
   });
 
   it('walks up to the TLD when no record exists', async () => {
@@ -205,6 +226,146 @@ describe('collectMailDns: query plan', () => {
 
     expect(r.section.budget.used).toBeLessThanOrEqual(60);
     expect(variantsOf(runCheck(mail02, makeSnapshot({ dns: r.section })))).toEqual(['record-invalid']);
+  });
+});
+
+const rules = loadDkimRules();
+const dkim = (selectors: string[] = [], maxSelectors = 8): DkimOptions => ({
+  selectors,
+  maxSelectors,
+  rules,
+});
+
+/** Microsoft 365: MX and SPF include, without DMARC. */
+const m365: ZoneSpec = {
+  'MX example.de': ['0 example-de.mail.protection.outlook.com'],
+  'TXT _dmarc.example.de': [`v=DMARC1; p=reject; ${RUA}`],
+  'TXT example.de': ['v=spf1 include:spf.protection.outlook.com -all'],
+  'TXT spf.protection.outlook.com': ['v=spf1 ip4:192.0.2.0/24 include:spfb.protection.outlook.com -all'],
+  'TXT spfb.protection.outlook.com': ['v=spf1 ip4:198.51.100.0/24 -all'],
+};
+
+describe('collectMailDns: DKIM selectors', () => {
+  it('plans the operator selectors, then the provider selectors, then common names, up to the cap', async () => {
+    const { run } = collect(m365, { dkim: dkim(['mailing', 'example.de/news', 'other.example/x'], 6) });
+    const plan = (await run).section.dkimPlan?.map((e) => `${e.selector}:${e.reason}:${e.given}`);
+    expect(plan).toEqual([
+      'mailing:operator:true',
+      'news:operator:true',
+      'selector1:provider:microsoft-365:true',
+      'selector2:provider:microsoft-365:true',
+      'default:common:false',
+      'dkim:common:false',
+    ]);
+  });
+
+  it('asks every selector after the last SPF query, also one of a nested include', async () => {
+    const { client, run } = collect(m365);
+    await run;
+    const lastSpf = client.calls.indexOf('TXT spfb.protection.outlook.com');
+    const firstDkim = client.calls.findIndex((c) => c.includes('._domainkey.'));
+    expect(lastSpf).toBeGreaterThan(0);
+    expect(firstDkim).toBeGreaterThan(lastSpf);
+    expect(client.calls.slice(firstDkim)).toEqual([
+      'TXT selector1._domainkey.example.de',
+      'TXT selector2._domainkey.example.de',
+      ...COMMON_DKIM.slice(0, 6),
+    ]);
+  });
+
+  it.each([
+    ['Null MX', { 'MX example.de': ['0 .'], 'TXT example.de': ['v=spf1 -all'] }],
+    ['neither MX nor SPF', { 'MX example.de': 'NXDOMAIN', 'TXT example.de': 'NXDOMAIN' }],
+  ] as const)('%s: no selector is asked and the plan is empty', async (_label, spec) => {
+    const { client, run } = collect({ 'TXT _dmarc.example.de': [`v=DMARC1; p=reject; ${RUA}`], ...spec });
+    const r = await run;
+    expect(client.calls.filter((c) => c.includes('_domainkey'))).toEqual([]);
+    expect(r.section.dkimPlan).toEqual([]);
+  });
+
+  it('a budget that runs out among the selectors: the plan is kept, MAIL-03 is inconclusive, never selectors-not-found', async () => {
+    // MX, two DMARC steps and the SPF tree take 5 queries; 3 of the 7 selectors fit.
+    const r = await collect(site, { budget: 8 }).run;
+    expect(r).toMatchObject({ status: 'partial', reason: 'dns-budget-exhausted' });
+    expect(r.section.dkimPlan).toHaveLength(7);
+    expect(r.section.queries.filter((q) => q.purpose === 'dkim')).toHaveLength(3);
+
+    const check = runCheck(mail03, makeSnapshot({ dns: r.section }));
+    expect(check).toMatchObject({ status: 'inconclusive', reason: 'dns-budget-exhausted' });
+    expect(variantsOf(check)).toEqual([]);
+    // MAIL-01 and MAIL-02 had all their answers before the selectors started.
+    expect(runCheck(mail01, makeSnapshot({ dns: r.section })).status).toBe('completed');
+    expect(runCheck(mail02, makeSnapshot({ dns: r.section })).status).toBe('completed');
+  });
+
+  it('a given selector over the cap is planned as capped and not asked', async () => {
+    const { client, run } = collect(m365, { dkim: dkim([], 1) });
+    const r = await run;
+    expect(r.section.dkimPlan?.map((e) => `${e.selector}:${e.capped ?? false}`)).toEqual([
+      'selector1:false',
+      'selector2:true',
+    ]);
+    expect(client.calls.filter((c) => c.includes('_domainkey'))).toEqual([
+      'TXT selector1._domainkey.example.de',
+    ]);
+  });
+
+  it('timeouts on selector names do not mark the resolver unresponsive: the scanned domain stays ok for MAIL-01/02', async () => {
+    const spec: ZoneSpec = { ...site };
+    for (const name of ['default', 'dkim', 'mail', 's1', 's2'])
+      spec[`TXT ${name}._domainkey.example.de`] = 'TIMEOUT';
+    const { client, run } = collect(spec);
+    const r = await run;
+    expect(client.calls.filter((c) => c.includes('_domainkey'))).toHaveLength(7);
+    expect(r.section.errors.map((e) => e.code)).not.toContain('resolver-unresponsive');
+    expect(runCheck(mail03, makeSnapshot({ dns: r.section })).status).toBe('error');
+  });
+
+  it('keeps a record of another DKIM version, which MAIL-03 reads as unparsable, not as no key', async () => {
+    const r = await collect({
+      ...m365,
+      'TXT selector1._domainkey.example.de': [`v=DKIM2; p=${rsaKey(2048)}`],
+    }).run;
+    const q = r.section.queries.find((x) => x.qname === 'selector1._domainkey.example.de');
+    expect(q?.answers).toHaveLength(1);
+    expect(q?.filteredAnswers).toBeUndefined();
+    const check = runCheck(mail03, makeSnapshot({ dns: r.section }));
+    expect(check).toMatchObject({ status: 'inconclusive', reason: 'key-unparsable' });
+  });
+
+  it('a name asked for SPF and as a selector keeps both records, so neither analysis loses its own', async () => {
+    const key = dkimRecord(rsaKey(2048));
+    const r = await collect(
+      {
+        ...site,
+        'TXT example.de': ['v=spf1 include:selector1._domainkey.example.de -all'],
+        'TXT selector1._domainkey.example.de': ['v=spf1 ip4:192.0.2.0/24 -all', key, 'site-verification=abc'],
+      },
+      { dkim: dkim(['selector1']) },
+    ).run;
+    const q = r.section.queries.filter((x) => x.qname === 'selector1._domainkey.example.de');
+    expect(q).toHaveLength(1);
+    expect(q[0]?.answers.map((a) => a.value)).toEqual(['v=spf1 ip4:192.0.2.0/24 -all', key]);
+    expect(q[0]?.filteredAnswers).toBe(1);
+    const snap = makeSnapshot({ dns: r.section });
+    expect(variantsOf(runCheck(mail03, snap))).toEqual([]);
+    expect(runCheck(mail02, snap).status).toBe('completed');
+  });
+
+  it('drops TXT answers at selector names that are no key record and counts them; keeps the key', async () => {
+    const key = dkimRecord(rsaKey(2048));
+    const r = await collect({
+      ...site,
+      'TXT default._domainkey.example.de': ['site-verification=0123456789abcdef', key],
+      'TXT dkim._domainkey.example.de': ['v=DMARC1; p=reject'],
+    }).run;
+    const def = r.section.queries.find((q) => q.qname === 'default._domainkey.example.de');
+    expect(def?.answers.map((a) => a.value)).toEqual([key]);
+    expect(def?.filteredAnswers).toBe(1);
+    const other = r.section.queries.find((q) => q.qname === 'dkim._domainkey.example.de');
+    expect(other).toMatchObject({ answers: [], filteredAnswers: 1 });
+    expect(JSON.stringify(r.section)).not.toContain('site-verification');
+    expect(variantsOf(runCheck(mail03, makeSnapshot({ dns: r.section })))).toEqual([]);
   });
 });
 

@@ -19,6 +19,7 @@ export type ZoneSpec = Record<string, ZoneEntry>;
 function purposeOf(qname: string, type: DnsRecordType): string {
   if (type === 'MX') return 'mx';
   if (qname.startsWith('_dmarc.')) return 'dmarc';
+  if (qname.includes('._domainkey.')) return 'dkim';
   return type === 'TXT' ? 'spf' : 'spf-void-check';
 }
 

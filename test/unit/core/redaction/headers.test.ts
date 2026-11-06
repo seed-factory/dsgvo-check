@@ -404,3 +404,193 @@ describe('the stored CSP value', () => {
     expect(xfo?.value).toBe('SAMEORIGIN');
   });
 });
+
+describe('product headers: only product and version are stored next to a redacted value', () => {
+  const record = (name: string, value: string) => storedHeaderRecord(name, value, BASE, sanitizeUrl);
+
+  it.each([
+    ['x-powered-by', 'PHP/7.2.34', [{ product: 'PHP', version: '7.2.34' }]],
+    [
+      'server',
+      'Apache/2.4.41 (Ubuntu) OpenSSL/1.1.1f',
+      [
+        { product: 'Apache', version: '2.4.41' },
+        { product: 'OpenSSL', version: '1.1.1f' },
+      ],
+    ],
+    ['server', 'nginx', []],
+    ['server', 'nginx/1.18.0 (Ubuntu)', [{ product: 'nginx', version: '1.18.0' }]],
+    ['server', 'Microsoft-IIS/10.0', [{ product: 'Microsoft-IIS', version: '10.0' }]],
+    ['x-powered-by', 'PHP/8.1.2-1ubuntu2.14', [{ product: 'PHP', version: '8.1.2-1ubuntu2.14' }]],
+    ['server', 'Jetty/9.4.43.v20210629', [{ product: 'Jetty', version: '9.4.43.v20210629' }]],
+    ['server', 'OpenSSL/1.0.2k-fips', [{ product: 'OpenSSL', version: '1.0.2k-fips' }]],
+    ['x-powered-by', 'PHP/5.6.40-0+deb8u12', [{ product: 'PHP', version: '5.6.40-0+deb8u12' }]],
+    [
+      'server',
+      'Oracle-Application-Server-10g/10.1.3',
+      [{ product: 'Oracle-Application-Server-10g', version: '10.1.3' }],
+    ],
+    [
+      'server',
+      'Werkzeug/2.0.1 Python/3.9.5',
+      [
+        { product: 'Werkzeug', version: '2.0.1' },
+        { product: 'Python', version: '3.9.5' },
+      ],
+    ],
+    // the header name implies the product, the value is the version alone
+    ['x-aspnet-version', '4.0.30319', [{ product: 'ASP.NET', version: '4.0.30319' }]],
+    ['x-aspnetmvc-version', '5.2', [{ product: 'ASP.NET MVC', version: '5.2' }]],
+    ['X-AspNet-Version', ' 4.0.30319 ', [{ product: 'ASP.NET', version: '4.0.30319' }]],
+    ['x-aspnet-version', 'unknown', []],
+    // comments are dropped, also nested ones; an unclosed comment hides the rest of the value
+    [
+      'server',
+      'Apache/2.4.41 (Ubuntu (focal)) PHP/7.4',
+      [
+        { product: 'Apache', version: '2.4.41' },
+        { product: 'PHP', version: '7.4' },
+      ],
+    ],
+    ['server', 'Apache/2.4.41 (Ubuntu PHP/7.4', [{ product: 'Apache', version: '2.4.41' }]],
+    // a comment needs a blank before and after it: text glued to it belongs to no product token
+    ['server', 'nginx/1.18.0(Ubuntu)', []],
+    ['server', '(Ubuntu)PHP/7.4 OpenSSL/1.1.1f', [{ product: 'OpenSSL', version: '1.1.1f' }]],
+    [
+      'server',
+      'Apache/2.4.41 (a \\) PHP/7.4) mod_ssl/2.4.41',
+      [
+        { product: 'Apache', version: '2.4.41' },
+        { product: 'mod_ssl', version: '2.4.41' },
+      ],
+    ],
+    // product tokens without a version name no version
+    ['x-generator', 'Drupal 10 (https://www.drupal.org)', []],
+    ['x-redirect-by', 'WordPress', []],
+    ['x-powered-by', 'ASP.NET', []],
+    // at most four pairs; repeated pairs count once
+    [
+      'server',
+      'a/1 b/2 c/3 d/4 e/5',
+      [
+        { product: 'a', version: '1' },
+        { product: 'b', version: '2' },
+        { product: 'c', version: '3' },
+        { product: 'd', version: '4' },
+      ],
+    ],
+    ['server', 'PHP/7.4 PHP/7.4', [{ product: 'PHP', version: '7.4' }]],
+    // several fields of one header, joined by a comma or a line break
+    ['x-powered-by', 'PHP/7.4, PleskLin', [{ product: 'PHP', version: '7.4' }]],
+    ['x-powered-by', 'PleskLin\nPHP/7.4', [{ product: 'PHP', version: '7.4' }]],
+    [
+      'server',
+      'Apache/2.4.41 (Ubuntu), PHP/7.4',
+      [
+        { product: 'Apache', version: '2.4.41' },
+        { product: 'PHP', version: '7.4' },
+      ],
+    ],
+    // a comma without a blank after it belongs to the token, as inside a URL path
+    ['x-powered-by', 'PHP/7.4,PleskLin', []],
+    // version suffixes and dotted labels that versions use
+    ['x-powered-by', 'PHP/1.2.3-rc.1', [{ product: 'PHP', version: '1.2.3-rc.1' }]],
+    ['server', 'App/1.0-20210629', [{ product: 'App', version: '1.0-20210629' }]],
+  ])('%s: %j', (name, value, expected) => {
+    const rec = record(name, value);
+    expect(rec.name).toBe(name.toLowerCase());
+    expect(rec.value).toBe('[redacted]');
+    expect(rec.productVersions).toEqual(expected);
+  });
+
+  it('the comment of the operating system appears nowhere in the record', () => {
+    const rec = record('server', 'Apache/2.4.41 (Ubuntu) OpenSSL/1.1.1f');
+    expect(JSON.stringify(rec)).not.toContain('Ubuntu');
+  });
+
+  it.each([
+    [
+      'an appended e-mail address',
+      'PHP/7.2.34 zq7admin@example.test',
+      [{ product: 'PHP', version: '7.2.34' }],
+    ],
+    ['an e-mail address as product', 'zq7admin@example.test/1.0', []],
+    ['an internal hostname', 'zq7web01.internal.example.test', []],
+    ['an internal hostname as product', 'zq7web01.internal.example.test/1.0', []],
+    ['a hostname as version', 'node/1.zq7internal.example', []],
+    [
+      'a hostname in a comment',
+      'Apache/2.4.41 (zq7web01.internal.example.test)',
+      [{ product: 'Apache', version: '2.4.41' }],
+    ],
+    ['a private address', '10.0.0.1', []],
+    ['an address as version', 'proxy/10.0.0.1', []],
+    ['an IPv6 address', 'proxy/2001:db8::1', []],
+    ['an IPv6 literal as product', '[2001:db8::1]/1.0', []],
+    ['a URL with a token', 'https://zq7portal.example.test/x?token=zq7secret', []],
+    ['a token after the version', 'PHP/7.2.34?token=zq7secret', []],
+    ['a parameter after the version', 'PHP/7.2.34;user=zq7alice', []],
+    ['a long number as version', 'build/4930123456789', []],
+    ['a hash as version', 'build/8d7f6e5c4b3a29f1', []],
+    ['a version over 30 characters', `PHP/7.${'1'.repeat(29)}`, []],
+    ['a product over 40 characters', `${'a'.repeat(41)}/1.0`, []],
+    ['a product that starts with a digit', '7zip/1.0', []],
+    ['a version that does not start with a digit', 'PHP/v7.2', []],
+    [
+      'a path segment after parentheses in a URL',
+      'https://portal.example.test/(route)zq7session/12345678',
+      [],
+    ],
+    ['a hostname label after an address', 'proxy/10.0.0.zq7web01', []],
+    ['a hostname label after a version', 'proxy/2.4.zq7web01', []],
+    ['a hash as product', 'zq7e4f0d2b916a54c78a6b3cd0123456789/1.0', []],
+    ['a hash with separators as product', 'zq7-e4f0d2b9-16a54c78-a6b3cd01/1.0', []],
+    ['a hash as version suffix', 'PHP/1-zq7e4f0d2b916a54c78', []],
+    [
+      'a path segment after parentheses and a comma in a URL',
+      'https://h.example.test/(r),zq7session/123',
+      [],
+    ],
+    ['a quoted local part of an e-mail address', '"alice zq7session/123 bob"@example.test', []],
+    ['an unclosed quote', 'PHP/7.4 "zq7alice zq7session/123', [{ product: 'PHP', version: '7.4' }]],
+    ['a host label of one letter and digits', 'proxy/10.0.0.w3b01', []],
+    ['a UUID as product', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/1.0', []],
+    ['a short hash as product', 'deadbeef/1.0', []],
+    ['a split hash as version suffix', 'PHP/8.1.2-a1b2c3d4-e5f6a7b8', []],
+    ['a short hash as version suffix', 'PHP/8.1.2-deadbeef', []],
+    ['an IPv4 address in octal notation', 'proxy/0177.0.0.1', []],
+  ])('%s: nothing beyond product and version is stored', (_label, value, expected) => {
+    const rec = record('x-powered-by', value);
+    expect(rec.value).toBe('[redacted]');
+    expect(rec.productVersions).toEqual(expected);
+    expect(JSON.stringify(rec)).not.toContain('zq7');
+  });
+
+  it('a 10 KB value stores the pairs it starts with and nothing else', () => {
+    const rec = record('server', `Apache/2.4.41 (Ubuntu) ${'x'.repeat(10_000)} PHP/7.4`);
+    expect(rec.productVersions).toEqual([
+      { product: 'Apache', version: '2.4.41' },
+      { product: 'PHP', version: '7.4' },
+    ]);
+    expect(JSON.stringify(rec).length).toBeLessThan(200);
+  });
+
+  it('counterexample: version-like text in another header is not read', () => {
+    for (const name of ['x-request-id', 'via', 'x-served-by', 'x-trace']) {
+      expect(record(name, 'PHP/7.2.34')).toEqual({ name, value: '[redacted]' });
+    }
+  });
+
+  it('counterexample: headers whose value is kept carry no product facts', () => {
+    expect(record('content-type', 'text/html')).toEqual({ name: 'content-type', value: 'text/html' });
+  });
+
+  it('the browser path (another URL sanitizer) stores the same facts', () => {
+    const [rec] = snapshotHeaderRecords([{ name: 'X-Powered-By', value: 'PHP/7.2.34' }], BASE, (u) => u);
+    expect(rec).toEqual({
+      name: 'x-powered-by',
+      value: '[redacted]',
+      productVersions: [{ product: 'PHP', version: '7.2.34' }],
+    });
+  });
+});

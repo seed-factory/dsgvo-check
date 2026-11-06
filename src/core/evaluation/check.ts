@@ -90,6 +90,8 @@ export interface CheckThresholds {
    * the heuristic did not take must show on.
    */
   cmp: Pick<Config['cmp'], 'blockingCoveredRatio' | 'minCandidatePages'>;
+  /** MAIL-03: the smallest RSA DKIM key that is not reported. */
+  dns: Pick<Config['dns'], 'dkimMinRsaBits'>;
   /**
    * Policy and Impressum checks: kinds of provider details that make a block of text Impressum details, and the
    * observations a statement of the privacy policy must differ from to count as repeated.
@@ -122,28 +124,42 @@ export interface CheckContext {
   readonly thresholds: CheckThresholds;
 }
 
-export interface Check<K extends SnapshotSectionKey = SnapshotSectionKey> {
+export interface Check<
+  K extends SnapshotSectionKey = SnapshotSectionKey,
+  O extends SnapshotSectionKey = never,
+> {
   /** Catalog id, e.g. `EMBED-01`. */
   id: string;
   module: CheckModule;
-  /** Snapshot sections the check reads. A missing section → status `error` (collector failed) or `skipped`. */
+  /**
+   * Snapshot sections the check reads. A missing section → status `error` (collector failed) or `skipped`. Only these
+   * decide which collectors a scan starts.
+   */
   requires: readonly K[];
+  /**
+   * Sections the check also reads when the scan has them. An absent one does not stop the check, and its collector is
+   * not started for it: `--checks` with only this check leaves it out. `slice.unavailable` names the optional
+   * sections the scan meant to collect and did not get.
+   */
+  optional?: readonly O[];
   /** All variants the check can emit; the completeness test requires ruleset, texts and fixtures for each. */
   variants: readonly CheckVariant[];
   /** Optional data directories under test/data/ to load into `ctx.data` (e.g. `cmp`, `services`). */
   data?: readonly string[];
   /** Pure. Throwing → status `error` with `check-error:<id>` (gate decides the exit code). */
-  run(slice: SnapshotSlice<K>, ctx: CheckContext): CheckRunResult;
+  run(slice: SnapshotSlice<K, O>, ctx: CheckContext): CheckRunResult;
 }
 
-/** Type helper: infers `K` from `requires` so `slice` is typed precisely. */
-export function defineCheck<const K extends SnapshotSectionKey>(check: Check<K>): Check<K> {
+/** Type helper: infers `K` from `requires` and `O` from `optional` so `slice` is typed precisely. */
+export function defineCheck<const K extends SnapshotSectionKey, const O extends SnapshotSectionKey = never>(
+  check: Check<K, O>,
+): Check<K, O> {
   return check;
 }
 
 /** Erased check type for registries. */
 // biome-ignore lint/suspicious/noExplicitAny: registry stores checks with different slice types
-export type AnyCheck = Check<any>;
+export type AnyCheck = Check<any, any>;
 
 export function normalizeOutcome(result: CheckRunResult): CheckOutcome {
   if (Array.isArray(result))

@@ -19,6 +19,7 @@ import {
   type RulesetInfo,
   SCHEMA_VERSION,
   type ScanCoverage,
+  type ScanEntry,
   type ScanEnvironment,
 } from './schema.ts';
 
@@ -155,6 +156,13 @@ function collectorCoverage(snapshot: Snapshot): ScanCoverage['collectors'] {
   return collectors;
 }
 
+/** The browser's start page when it was the redirect target of a refused certificate and the browser ran there. */
+function entryOf(snapshot: Snapshot): ScanEntry | undefined {
+  const entry = snapshot.plan.browserEntry;
+  if (!entry || snapshot.collection.browser?.status === 'skipped') return undefined;
+  return { reason: entry.reason, requested: snapshot.target.url, via: entry.via, url: entry.url };
+}
+
 export interface FullReportInput {
   snapshot: Snapshot;
   status: 'complete' | 'partial';
@@ -174,6 +182,7 @@ export interface FullReportInput {
 }
 
 export function buildFullReport(i: FullReportInput): FullReport {
+  const entry = entryOf(i.snapshot);
   const report: FullReport = {
     schemaVersion: SCHEMA_VERSION,
     tool: { name: TOOL_NAME, version: TOOL_VERSION },
@@ -183,6 +192,7 @@ export function buildFullReport(i: FullReportInput): FullReport {
       status: i.status,
       target: i.snapshot.target.url,
       finalUrl: i.snapshot.target.finalUrl,
+      ...(entry ? { entry } : {}),
       startedAt: i.startedAt,
       durationMs: i.durationMs,
       ...(i.evaluatedAt ? { evaluatedAt: i.evaluatedAt } : {}),

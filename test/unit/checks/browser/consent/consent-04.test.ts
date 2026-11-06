@@ -14,7 +14,7 @@ import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { SanitizedUrl } from '../../../../../src/core/snapshot/common.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import { makeBrowserPlan, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { cmpFacts, cmpWith, phase, site } from '../helpers.ts';
+import { cmpFacts, cmpWith, phase, site, unopenedDialogCmp, unopenedDialogFacts } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-04']!.find((s) => s.file === file)!.build();
@@ -282,10 +282,18 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     expect(r.outcome?.limitations).toContain('reject-unverified');
   });
 
-  // A CMP whose state cannot list its categories (Shopware) proves no failed reject by that state alone.
+  // Only a missing answer or a granted category shows a failed reject. A state that lists nothing, nothing known or
+  // nothing but denied categories (an answer stored before the click, which the click left unchanged) proves no failure.
   it.each([
     ['the answer recorded, no category listed', {}, true, [], 'reject-unverified'],
     ['the answer recorded, every category unknown', { statistics: 'unknown' }, true, [], 'reject-unverified'],
+    [
+      'the answer recorded, every category denied',
+      { statistics: 'denied', marketing: 'denied' },
+      true,
+      [],
+      'reject-unverified',
+    ],
     ['no answer recorded after the click', {}, false, ['reject-ineffective'], null],
     [
       'the answer recorded, a category granted',
@@ -428,6 +436,54 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
       }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
+  });
+
+  describe('a dialog the CMP did not open for the scanner', () => {
+    it('names that reason and nothing else: no observation, no limitation about visibility', () => {
+      const r = runCheck(consent04, scenario('inconclusive-cmp-dialog-not-opened.json'));
+
+      expect(r.outcome).toEqual({
+        status: 'inconclusive',
+        reason: 'cmp-dialog-not-opened',
+        observations: [],
+      });
+    });
+
+    it('also no consent-without-action from a default state the closed dialog reports', () => {
+      const granted = {
+        source: 'api',
+        ready: 'ready',
+        categories: { embeddings: 'granted' },
+        origin: 'default',
+        decision: { responded: false, method: 'unknown' },
+      } as const;
+      const r = runCheck(
+        consent04,
+        site({ phases: [phase('A'), phase('B')], cmp: unopenedDialogCmp({ state: [granted] }) }),
+      );
+
+      expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-dialog-not-opened' });
+      expect(observationsOf(r)).toEqual([]);
+    });
+
+    it('a flag on facts of phase A, taken without waiting for the banner, does not decide', () => {
+      const r = runCheck(
+        consent04,
+        site({
+          phases: [phase('A')],
+          cmp: cmpWith({ phase: 'A', facts: [unopenedDialogFacts({ phase: 'A' })] }),
+        }),
+      );
+
+      expect(r).toMatchObject({ status: 'inconclusive', reason: 'first-layer-not-visible' });
+    });
+
+    it('a bot signal of the adapter takes precedence (bot-mode)', () => {
+      const r = runCheck(consent04, scenario('inconclusive-dialog-not-opened-bot-signal.json'));
+
+      expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
+      expect(r.outcome?.diagnostics?.[0]).toMatchObject({ code: 'SCAN-BOTMODE' });
+    });
   });
 
   it('replay with a changed lexicon is flagged against plan.click', () => {

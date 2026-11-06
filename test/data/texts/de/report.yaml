@@ -58,7 +58,9 @@ ui:
   report.overview.open: >-
     {count, plural, one {Eine Prüfung} other {# Prüfungen}} ({checks}) {cause, select, tls-blocked {{count, plural,
     one {wurde} other {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen,
-    deshalb hat der Browser die Website nicht aufgerufen.} geo {{count, plural, one {ist} other {sind}} nicht
+    deshalb hat der Browser die Website nicht aufgerufen.} tls-fallback-failed {{count, plural, one {wurde} other
+    {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und auf dem Ziel ihrer
+    HTTP-Weiterleitung hat der Browser keine auswertbare Seite erhalten.} geo {{count, plural, one {ist} other {sind}} nicht
     eindeutig: Das Einwilligungsbanner hat einen Standort außerhalb des EWR gemeldet und verhält sich gegenüber
     Besuchern aus dem EWR womöglich anders.} bot {{count, plural, one {ist} other {sind}} nicht eindeutig: Das
     Einwilligungsbanner hat den Scan als automatisierten Zugriff behandelt.} reject {{count, plural, one {ist} other
@@ -80,7 +82,11 @@ ui:
     notFound {Auf den geprüften Seiten wurde kein Einwilligungsbanner gefunden; Ablehnung und Zustimmung wurden daher
     nicht geprüft.} notVisible {Ein Einwilligungsbanner ist im Seitenaufbau vorhanden, wurde während des Scans aber
     nicht sichtbar angezeigt; davon abhängige Prüfungen sind nicht abschließend ausgewertet und sollten manuell
-    geprüft werden.} other {}}
+    geprüft werden.} dialogNotOpened {{accepted, select, true {Ein Einwilligungsbanner ist im Seitenquelltext
+    vorhanden, wurde dem Scanner beim Besuch mit Ablehnung aber nicht geöffnet (Bedienelemente deaktiviert); die
+    Ablehnung wurde daher nicht geprüft.} other {Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem
+    Scanner aber nicht geöffnet (Bedienelemente deaktiviert); Ablehnung und Zustimmung wurden daher nicht geprüft.}}}
+    other {}}
   report.overview.region: >-
     Die Region, aus der der Scan lief, ist nicht bekannt. Websites können Einwilligungsbanner und Dienste je nach
     Region des Besuchers unterschiedlich ausspielen; die Befunde zur Einwilligung gelten für diese Messumgebung und
@@ -88,6 +94,12 @@ ui:
   report.overview.redirect: >-
     Die angegebene Adresse leitet auf {host} weiter. Für ein vollständiges Bild sollte auch diese Adresse direkt
     gescannt werden.
+  # The browser checks ran on the target of the plain-http redirect (`entryHost`) because the certificate of `host` was
+  # refused; `finalHost` is where the browser's start page ended.
+  report.overview.tlsFallback: >-
+    Das Zertifikat der angegebenen Adresse {host} wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse
+    leitet auf {entryHost} weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen
+    sich auf {finalHost}.
   report.actions.covers: "{findings, plural, one {# Befund} other {# Befunde}}{pages, plural, =0 {} one {, # Seite} other {, # Seiten}}"
   # Tail of a list of differing values that names only the first ones.
   report.list.more: "{count, plural, other {und # weitere}}"
@@ -256,6 +268,9 @@ ui:
     {Zielhost der Umleitung nicht geprüft} preconnect-not-observable {Verbindungen ohne Anfrage (preconnect) nicht
     beobachtbar} embed-navigation-excluded {Anfragen nach Zustimmung auf Seiten mit einem Karten- oder Videodienst im
     Hauptdokument nicht gewertet} pagehide-capture-unavailable {Anfragen beim Verlassen einer Seite nicht erfasst}
+    reject-not-in-effect {Seiten nach der Ablehnung nicht ausgewertet, auf denen das Einwilligungsbanner erneut
+    angezeigt wurde oder keine Antwort gespeichert war} accept-not-in-effect {Seiten nach der Zustimmung nicht
+    ausgewertet, auf denen das Einwilligungsbanner erneut angezeigt wurde oder keine Antwort gespeichert war}
     first-layer-not-visible {Erste Ebene des Banners nicht sichtbar} spf-include-unresolved {SPF-include nicht
     vollständig aufgelöst} mx-unknown {MX-Eintrag nicht feststellbar} throttled {Der Server hat Anfragen gedrosselt}
     status {Startseite antwortete mit HTTP {detail}} document-blocked {Seite durch Bot-Schutz blockiert: {detail}}
@@ -266,14 +281,24 @@ ui:
     Datenschutzerklärung unvollständig: {detail}} impressum-target-not-evaluable {Linkziel des Impressums nicht
     auswertbar} privacy-target-not-evaluable {Linkziel der Datenschutzerklärung nicht auswertbar}
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
-    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} supplement-not-evaluated
-    {Weiterer Datenschutzhinweis der Website nicht ausgewertet (PDF, andere Sprache, unvollständig oder nicht
-    abrufbar)} reveal-height-capped {Unterer Teil einer langen Seite nicht angezeigt, die Fensterhöhe ist begrenzt}
-    other {}}
+    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} supplement-not-evaluated {Weiterer
+    Datenschutzhinweis der Website nicht ausgewertet (PDF, andere Sprache, unvollständig oder nicht abrufbar)}
+    reveal-height-capped {Unterer Teil einer langen Seite nicht angezeigt, die Fensterhöhe ist begrenzt}
+    page-links-not-observed {Links der Seiten nicht beobachtet, weil der Browser nicht lief oder keine Seite auswertbar
+    war} values-not-stored {Versionsangaben einzelner Header im Snapshot nicht gespeichert (älterer Snapshot)}
+    mail-domain-unresolved {DNS-Abfragen für {detail} ohne abschließende Antwort} mail-domain-mx-unknown {MX-Eintrag von
+    {detail} nicht feststellbar} mail-domain-spf-incomplete {SPF-include von {detail} nicht vollständig aufgelöst}
+    mail-domains-capped {Weitere E-Mail-Domains aus dem Impressum nicht abgefragt (Grenze
+    DSGVO_CHECK_DNS_MAX_MAIL_DOMAINS)} mail-domains-not-collected {E-Mail-Domains aus dem Impressum in diesem Lauf nicht
+    erhoben} dkim-selectors-unresolved {Nicht alle DKIM-Selektoren abschließend abgefragt}
+    mail-domain-dkim-key-unparsable {DKIM-Schlüssel von {detail} nicht auswertbar} mail-domain-dkim-key-revoked
+    {DKIM-Schlüssel von {detail} widerrufen} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-
-    {code, select, tls-blocked {Zertifikat nicht als gültig angenommen, Website nicht aufgerufen} not-selected {nicht
+    {code, select, tls-blocked {Zertifikat nicht als gültig angenommen, Website nicht aufgerufen}
+    tls-fallback-failed {Zertifikat nicht als gültig angenommen, Ziel der HTTP-Weiterleitung nicht auswertbar}
+    not-selected {nicht
     ausgewählt (--checks)} not-required {von keiner ausgewählten Prüfung benötigt} not-run {nicht ausgeführt}
     not-collected {Rohdaten nicht erhoben} collector-skipped {Erhebung der Rohdaten übersprungen} collector-error
     {Fehler bei der Erhebung der Rohdaten ({detail})} timeout {Zeitlimit erreicht} time-budget {Restzeit des Scans
@@ -300,12 +325,18 @@ ui:
     banner-undetermined {nicht feststellbar, ob ein Einwilligungsbanner angezeigt wurde} claim-ambiguous {Angabe der
     Datenschutzerklärung nicht eindeutig: unter Vorbehalt, in nicht angezeigtem Text, zusammen mit dem externen
     Abruf im selben Satz, in einem Satz zu mehreren Diensten oder in einem zu langen Satz}
+    cmp-dialog-not-opened {Einwilligungsbanner dem Scanner nicht geöffnet}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
     eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation
     {ungültige Beobachtung} blocked {durch Bot-Schutz blockiert} challenge {Seite des Bot-Schutzes} http {HTTP
     {detail}} navigation-failed {Aufruf fehlgeschlagen ({detail})} dom-unavailable {Seitenaufbau nicht lesbar}
-    not-html {kein HTML} other {}}
+    not-html {kein HTML} values-not-stored {Versionsangaben der Header im Snapshot nicht gespeichert (älterer Snapshot)}
+    dkim-not-collected {DKIM-Selektoren in diesem Lauf nicht abgefragt} key-unparsable {DKIM-Schlüssel nicht auswertbar}
+    dns-budget-exhausted {DNS-Abfragebudget aufgebraucht} null-mx {Domain nimmt keine E-Mails an (Null-MX)}
+    no-mail-records {weder MX- noch SPF-Eintrag gefunden} key-revoked {DKIM-Schlüssel widerrufen (leeres p=)}
+    dkim-selectors-capped {erwartete DKIM-Selektoren über der Grenze DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS nicht abgefragt}
+    other {}}
   report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
   report.collectorStatus: "{status, select, ok {abgeschlossen} partial {teilweise} error {Fehler} skipped {übersprungen} not-run {nicht ausgeführt} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Anfrage} other {Anfragen}}} cookie {Cookie} storage {Speichereintrag} header {Header} dns {DNS-Eintrag} tls {TLS-Verbindung} cmp {Einwilligungsbanner} consent-state {Einwilligungsstatus} document {Dokument} text-match {Textstelle} screenshot {Screenshot} page {{count, plural, one {Seite} other {Seiten}}} redirect-chain {Umleitungskette} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
@@ -325,7 +356,7 @@ ui:
     {Abschnitte} complete {Vollständig} errors {Fehler} sha256 {SHA-256} manifest {Leseumfang} documentId {Dokument}
     section {Abschnitt} quote {Zitat} matchLevel {Treffer} negation {Verneinung} claim {Angabe} status {HTTP-Status}
     role {Rolle} evaluable {Auswertbar} reason {Grund} startUrl {Start-URL} hops {Schritte} outcome {Ergebnis} href
-    {Ziel} text {Linktext} target {Linkziel} method {Methode} resourceType {Ressource} result {Antwort} delivery
+    {Ziel} text {Linktext} target {Linkziel} region {Bereich der Seite} visible {Sichtbar} method {Methode} resourceType {Ressource} result {Antwort} delivery
     {Zustellung} provenance {Herkunft der Antwort} features {Merkmale} candidate {Bannerähnlicher Kasten} other
     {{key}}}
   report.evidence.fetch: >-
@@ -358,13 +389,15 @@ ui:
     {}}} claim {{value, select, self-hosted {lokal eingebunden} no-connection {keine Verbindung zu externen Servern}
     consent-gated {erst nach Einwilligung geladen} other {}}} part {{value, select, visible {sichtbarer Text}
     expandable {aufklappbarer Abschnitt} frame {Frame} linked {verlinkte Seite} hidden-irrelevant {ausgeblendeter
-    Text} other {}}} other {}}
+    Text} other {}}} region {{value, select, header {Kopfbereich} nav {Navigation} main {Hauptinhalt} footer
+    {Fußzeile} banner {Bereich des Einwilligungsbanners} aside {Seitenleiste} other {anderer Bereich}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (lokal aufgelöst)} upstream { (vom Proxy gemeldet)} other {}}"
   report.evidence.firstPartyDomain: eigene Domain
   report.evidence.cookieState: "{state, select, attempted {Setzen versucht} accepted {vom Browser angenommen} rejected {vom Browser abgelehnt} sent {mit einer Anfrage gesendet} other {{state}}}"
   report.evidence.lifetime: "{kind, select, session {Sitzung} other {dauerhaft{hasDays, select, true {, {days, number} Tage} other {}}}}"
   report.evidence.setBy: "{setter, select, http-response {HTTP-Antwort} script {Skript} other {unbekannt}}{hasHost, select, true { von {host}} other {}}"
   report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {ohne Status}}{evaluable, select, true { · auswertbar} false { · nicht auswertbar{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · Phase {phase}} other {}}"
+  report.evidence.linkVisibility: "{visible, select, true {sichtbar} other {nicht sichtbar}}"
   report.evidence.headerLine: "{present, select, true {vorhanden{hasValue, select, true {: {value}} other {}}} other {nicht vorhanden}}"
   # The notice section in groups, each paragraph under a label: `key` is the paragraph key without `disclaimer.`
   # (`nature` for the base text), plus `rechtsstand` and `draft`.

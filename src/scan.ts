@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import path from 'node:path';
 import { allChecks } from './checks/index.ts';
 import { collectBrowser } from './collectors/browser/index.ts';
-import { collectDns } from './collectors/dns/index.ts';
+import { collectDns, collectDnsFollowUp } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
 import { checkThresholds } from './core/config/thresholds.ts';
@@ -47,6 +47,7 @@ import { uaToken } from './core/runtime/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/runtime/version.ts';
 import type { Collectors } from './core/snapshot/collector.ts';
 import {
+  type BrowserEntry,
   type DiagnosticInput,
   detectTrustStore,
   SNAPSHOT_VERSION,
@@ -57,7 +58,7 @@ import {
 import { classifyAddress, type NetworkConfig } from './core/url/net.ts';
 import { bareHost, parseTarget, redactTarget, redactTargetInfo, sanitizeUrl } from './core/url/url.ts';
 import { derive } from './derive/index.ts';
-import { type CollectState, collect, requiredCollectors } from './scan-collect.ts';
+import { type CollectState, collect, requiredCollectors, TLS_FALLBACK_FAILED } from './scan-collect.ts';
 import { type ResolvedScanOptions, reportOptions, resolveOptions, type ScanOptions } from './scan-options.ts';
 
 export interface ScanResult {
@@ -72,6 +73,7 @@ const DEFAULT_COLLECTORS: Collectors = {
   http: collectHttp,
   tls: collectTls,
   dns: collectDns,
+  dnsFollowUp: collectDnsFollowUp,
 };
 
 /** Refuses a target that does not resolve or that points into non-public address space, before any collector runs. */
@@ -239,6 +241,7 @@ function scanDiagnostics(
   executed: ReadonlyMap<string, ExecutedCheck>,
   state: CollectState,
   o: ResolvedScanOptions,
+  enabled: readonly AnyCheck[],
 ): Diagnostic[] {
   const inputs: DiagnosticInput[] = [...snapshot.diagnostics];
   for (const e of executed.values()) inputs.push(...(e.outcome?.diagnostics ?? []));
@@ -248,23 +251,57 @@ function scanDiagnostics(
     inputs.push({ code: 'SCAN-TIMEOUT', affects: affected, params: { count: affected.length } });
   }
   if (o.sandbox === 'off') inputs.push({ code: 'SCAN-SANDBOX-OFF', affects: [] });
-  if (snapshot.collection.browser?.reason === 'tls-blocked')
-    inputs.push(tlsBlockedDiagnostic(snapshot, executed));
+  const browserReason = snapshot.collection.browser?.reason;
+  const entry = snapshot.plan.browserEntry;
+  if (browserReason === 'tls-blocked' || browserReason === TLS_FALLBACK_FAILED)
+    inputs.push(tlsBlockedDiagnostic(snapshot, executed, browserReason));
+  else if (entry) inputs.push(tlsFallbackDiagnostic(snapshot, entry, executed, enabled));
   if (state.fatal?.reason === 'unreachable') inputs.push({ code: 'SCAN-UNREACHABLE', affects: [] });
   if (state.fatal?.reason === 'blocked') inputs.push(blockedStartPageDiagnostic(snapshot));
 
   return mergeDiagnostics(inputs);
 }
 
-/** The browser checks did not run because the target's certificate was refused: say so instead of leaving only `skipped`. */
+/**
+ * The browser checks did not run because the target's certificate was refused: say so instead of leaving only
+ * `skipped`, with why the browser did not continue on the redirect target of the plain-http address (`fallback`).
+ */
 function tlsBlockedDiagnostic(
   snapshot: Snapshot,
   executed: ReadonlyMap<string, ExecutedCheck>,
+  reason: string,
 ): DiagnosticInput {
   const affected = [...executed.entries()]
-    .filter(([, e]) => e.status === 'skipped' && e.reason === 'tls-blocked')
+    .filter(([, e]) => e.status === 'skipped' && e.reason === reason)
     .map(([id]) => id);
-  return { code: 'SCAN-TLS-BLOCKED', affects: affected, params: { host: snapshot.target.host } };
+  const entry = snapshot.plan.browserEntry;
+  const fallback = reason === TLS_FALLBACK_FAILED ? 'blocked' : snapshot.plan.tlsFallback;
+  return {
+    code: 'SCAN-TLS-BLOCKED',
+    affects: affected,
+    params: {
+      host: snapshot.target.host,
+      ...(fallback ? { fallback } : {}),
+      ...(reason === TLS_FALLBACK_FAILED && entry ? { via: entry.via, url: entry.url } : {}),
+    },
+  };
+}
+
+/** The browser checks ran on the redirect target of a refused certificate, not on the target: the report says where. */
+function tlsFallbackDiagnostic(
+  snapshot: Snapshot,
+  entry: BrowserEntry,
+  executed: ReadonlyMap<string, ExecutedCheck>,
+  enabled: readonly AnyCheck[],
+): DiagnosticInput {
+  const affected = enabled
+    .filter((c) => requiredCollectors([c]).has('browser') && executed.get(c.id)?.status !== 'skipped')
+    .map((c) => c.id);
+  return {
+    code: 'SCAN-TLS-FALLBACK',
+    affects: affected,
+    params: { host: snapshot.target.host, via: entry.via, url: entry.url },
+  };
 }
 
 /** Bot-protection signals are listed up to a cap so that the diagnostic stays short. */
@@ -373,7 +410,7 @@ function evaluateSnapshot(
 
   return {
     assessed,
-    diagnostics: scanDiagnostics(snapshot, executed, state, o),
+    diagnostics: scanDiagnostics(snapshot, executed, state, o, enabled),
     gateChecks: toGateChecks(assessed.checks, new Set(disabled.map((c) => c.id))),
     gateFindings: toGateFindings(assessed.findings, core.ruleset),
   };
@@ -483,13 +520,14 @@ function addConsentActions(report: Report, snapshot: Snapshot, texts: Texts | nu
 
 /**
  * When and how long the site was observed, for a saved snapshot: its capture time, and the run time of its collectors
- * (http, tls and dns run side by side, the browser after them). The clock of the re-evaluation would date the report
- * to a moment the site was not visited.
+ * (http, tls and dns run side by side, the browser after them, then the DNS stage of the further mail domains). The
+ * clock of the re-evaluation would date the report to a moment the site was not visited.
  */
 export function captureTiming(snapshot: Snapshot): { startedAt: string; durationMs: number } {
   const c = snapshot.collection;
   const sideBySide = Math.max(0, ...(['http', 'tls', 'dns'] as const).map((n) => c[n]?.durationMs ?? 0));
-  return { startedAt: snapshot.createdAt, durationMs: sideBySide + (c.browser?.durationMs ?? 0) };
+  const followUp = snapshot.dns?.mailDomainStage?.durationMs ?? 0;
+  return { startedAt: snapshot.createdAt, durationMs: sideBySide + (c.browser?.durationMs ?? 0) + followUp };
 }
 
 /** Runs one scan; fatal conditions produce a `failed` report (exit 2) instead of throwing. Report files are written by `writeReports`. */

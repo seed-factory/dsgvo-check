@@ -10,7 +10,7 @@ import {
   type LinkRelFact,
 } from '../../../core/snapshot/browser.ts';
 import type { HeaderRecord } from '../../../core/snapshot/common.ts';
-import { parseUrl, registrableDomain } from '../../../core/url/url.ts';
+import { maskMailto, parseUrl, registrableDomain } from '../../../core/url/url.ts';
 import { domFactsInPage, type RawDomFacts } from '../in-page/dom.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
 import { loadDomPatterns } from '../rules.ts';
@@ -118,8 +118,9 @@ function languageTag(value: string): string | null {
   return /^(?:[a-z]{2,3}(?:-[a-z0-9]{1,8})*|x-default)$/.test(tag) ? tag : null;
 }
 
-function mapLinks(
-  raw: RawDomFacts,
+/** Raw links to stored link facts (redacted) and to the in-memory candidates of the page planner. */
+export function mapLinks(
+  raw: Pick<RawDomFacts, 'links'>,
   target: { etld1: string | null; host: string },
 ): { links: LinkFact[]; candidates: CandidateLink[] } {
   const candidates: CandidateLink[] = [];
@@ -145,6 +146,8 @@ function mapLinks(
     return {
       href: navigable || kind === 'other' ? sanitizeRequestUrl(l.href) : null,
       hrefKind: kind,
+      // The recipient domain names the mail domain of an Impressum whose link text is no address ("E-Mail schreiben").
+      ...(kind === 'mailto' ? { mailto: maskMailto(l.attr) } : {}),
       text,
       ...(name ? { accessibleName: name } : {}),
       region: l.region,

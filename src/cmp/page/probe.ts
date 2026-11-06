@@ -647,23 +647,27 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     heuristic: ProbeResult['heuristic'];
   }
 
-  /** The first container selector that matches; rendered matches win over hidden ones. */
+  const showsControl = (el: DElement): boolean => deepWithin(el, INTERACTIVE).some(isRendered);
+
+  /**
+   * The first container selector that matches, its shown matches first: rendered, or (box-less) showing a control, as
+   * the probe judges a banner below. When it finds only hidden ones, a later selector may still find the dialog, but
+   * only with a match that shows a control: a hidden copy an earlier, narrower selector finds (a template, a closed
+   * second dialog) must not hide the open dialog, and a wrapper whose own box is all that shows of a closed dialog must
+   * not pass for it.
+   */
   const findBySelectors = (): ContainerHit | null => {
+    let hidden: ContainerHit | null = null;
     for (const sel of args.containers) {
       const found = [...new Set(deepQueryAll(sel))];
-      if (found.length === 0) continue;
+      const first = found[0];
+      if (!first) continue;
 
-      const rendered = found.filter(isRendered);
-      const el = rendered[0] ?? found[0];
-      if (!el) continue;
-      return {
-        el,
-        count: rendered.length > 0 ? rendered.length : found.length,
-        selector: sel,
-        heuristic: null,
-      };
+      const shown = found.filter((el) => (hidden ? showsControl(el) : isRendered(el) || showsControl(el)));
+      if (shown[0]) return { el: shown[0], count: shown.length, selector: sel, heuristic: null };
+      hidden ??= { el: first, count: found.length, selector: sel, heuristic: null };
     }
-    return null;
+    return hidden;
   };
 
   /** Controls looked at per candidate when asking whether it offers a choice. */

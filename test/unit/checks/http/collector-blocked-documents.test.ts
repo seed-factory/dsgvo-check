@@ -1,6 +1,6 @@
 /**
- * Documents that a bot or WAF challenge answered to the HTTP probe. Only HDR-01 loses them, so they get a diagnostic of
- * their own: it stays apart from the browser's SCAN-BLOCKED, whose pages were not evaluated for content.
+ * Documents that a bot or WAF challenge answered to the HTTP probe. Only the header checks lose them, so they get a
+ * diagnostic of their own: it stays apart from the browser's SCAN-BLOCKED, whose pages were not evaluated for content.
  */
 import { describe, expect, it } from 'vitest';
 import { blockedDocumentsDiagnostic } from '../../../../src/collectors/http/index.ts';
@@ -37,10 +37,10 @@ const browserBlocked: DiagnosticInput = {
 };
 
 describe('documents a challenge answered to the HTTP probe', () => {
-  it('name the challenged pages and affect HDR-01 only', () => {
+  it('name the challenged pages and affect the header checks only', () => {
     expect(blockedDocumentsDiagnostic(documents)).toEqual({
       code: 'SCAN-HTTP-BLOCKED',
-      affects: ['HDR-01'],
+      affects: ['HDR-01', 'HDR-02'],
       params: {
         count: 2,
         page: 'https://www.example.test/',
@@ -62,14 +62,14 @@ describe('documents a challenge answered to the HTTP probe', () => {
 
     expect(merged.map((d) => [d.code, d.affects, d.params?.count, d.params?.page])).toEqual([
       ['SCAN-BLOCKED', ['LEGAL-01'], 1, 'https://www.example.test/kontakt'],
-      ['SCAN-HTTP-BLOCKED', ['HDR-01'], 2, 'https://www.example.test/'],
+      ['SCAN-HTTP-BLOCKED', ['HDR-01', 'HDR-02'], 2, 'https://www.example.test/'],
     ]);
   });
 
   it.each([
-    ['de', 'Sicherheits-Header', 'inhaltlich'],
-    ['en', 'security headers', 'for content'],
-  ] as const)('%s: the text names the security headers, not the content of the page', (lang, says, not) => {
+    ['de', 'Sicherheits-Header und Versionsangaben', 'inhaltlich'],
+    ['en', 'security and version headers', 'for content'],
+  ] as const)('%s: the text names the headers, not the content of the page', (lang, says, not) => {
     const texts = loadTexts(lang);
     const http = blockedDocumentsDiagnostic(documents) as DiagnosticInput;
     const m = renderMessage(texts, `diagnostic.${http.code}`, http.params ?? {});

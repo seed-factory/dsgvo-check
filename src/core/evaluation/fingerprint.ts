@@ -51,9 +51,16 @@ export const subjects = {
   header(name: string): string {
     return name.toLowerCase();
   },
-  /** MAIL-*, DNS-01: record kind, e.g. `dmarc`, `spf`. */
-  record(kind: string): string {
-    return kind.toLowerCase();
+  /** HDR-02 version headers: header name and `product/version` (lower-case); another version is another subject. */
+  versionHeader(name: string, product: string, version: string): string {
+    return `${name}|${product}/${version}`.toLowerCase();
+  },
+  /**
+   * MAIL-*, DNS-01: record kind, e.g. `dmarc`, `spf`. A further mail domain adds its scope (`final`,
+   * `contact:<domain>`), so its finding is not merged with the scanned domain's; the scanned domain keeps the bare kind.
+   */
+  record(kind: string, scope?: string): string {
+    return scope ? `${kind.toLowerCase()}@${scope.toLowerCase()}` : kind.toLowerCase();
   },
   /** LEGAL-01: document type. */
   document(kind: 'impressum' | 'privacy'): string {
@@ -62,6 +69,13 @@ export const subjects = {
   /** CONSENT-03, CONSENT-04. */
   consentUi(): string {
     return 'consent-ui';
+  },
+  /**
+   * TLS-01 links to http: the linked host as its labels below the registrable domain (`www`, `work`, `@` for the
+   * registrable domain itself), so the fingerprint does not name the site.
+   */
+  httpLink(label: string): string {
+    return `http-link:${label.toLowerCase()}`;
   },
   /** TLS-01 (`http-entry:<role>`) and TLS-02 (`certificate:<role>`), role relative to the final host. */
   tlsEndpoint(kind: 'http-entry' | 'certificate', role: TlsHostRole): string {

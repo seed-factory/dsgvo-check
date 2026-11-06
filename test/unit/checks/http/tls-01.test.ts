@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { tls01 } from '../../../../src/checks/http/tls-01.ts';
+import { loadRuleset } from '../../../../src/core/data/load.ts';
+import type { LinkFact, PageVisit, PhaseRecord } from '../../../../src/core/snapshot/browser.ts';
 import type { HostVariant, HttpHop, RedirectChain } from '../../../../src/core/snapshot/http.ts';
+import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import {
+  makeBrowser,
   makeChain,
+  makeDom,
   makeHop,
   makeHttp,
+  makeLink,
+  makePage,
+  makePhase,
   makeSnapshot,
   makeTarget,
   observationsOf,
@@ -384,5 +392,460 @@ describe('TLS-01 subject by host role, independent of how the target was typed (
     expect(subjectOf(viaApex, 'no-redirect')).toBe('http-entry:final');
     expect(subjectOf(direct, 'no-redirect')).toBe('http-entry:final');
     expect(subjectOf(viaApex, 'redirect-chain-detail')).toBe('http-entry:pair');
+  });
+});
+
+describe('TLS-01 same-site links to http', () => {
+  const SITE = 'https://www.example.test/';
+  const HSTS = { name: 'strict-transport-security', value: 'max-age=31536000' };
+
+  /** http and https chains of a host variant; `http` decides what its plain-http root does. */
+  const wwwUpgraded = (headers: HttpHop['headers'] = []) => [
+    chain(
+      'http://www.example.test/',
+      [
+        { status: 301, location: 'https://www.example.test/' },
+        { url: 'https://www.example.test/', status: 200, bodyBytes: BIG, tlsAuthorized: true, headers },
+      ],
+      { hostVariant: 'target' },
+    ),
+    chain('https://www.example.test/', [{ status: 200, bodyBytes: BIG, tlsAuthorized: true, headers }]),
+  ];
+  const wwwServed = () => [
+    chain('http://www.example.test/', [{ status: 200, bodyBytes: 50_000, bodyKind: 'html' }]),
+    chain('https://www.example.test/', [{ status: 200, bodyBytes: BIG, tlsAuthorized: true }]),
+  ];
+  const apexClosed = () =>
+    chain('http://example.test/', [], { hostVariant: 'apex', outcome: 'connection-refused' });
+
+  const link = (href: string | null, p: Partial<LinkFact> = {}): LinkFact =>
+    makeLink({ text: 'Startseite', href, hrefKind: 'http', sameSite: true, region: 'nav', ...p });
+  const visit = (url: string, links: LinkFact[], p: Partial<PageVisit> = {}): PageVisit =>
+    makePage({ url, phase: 'A', role: url === SITE ? 'start' : 'other', dom: makeDom({ links }), ...p });
+
+  function linkSnapshot(
+    chains: RedirectChain[],
+    phases: PhaseRecord[] | null,
+    collection: Partial<Snapshot['collection']> = {},
+  ): Snapshot {
+    return makeSnapshot({
+      target: makeTarget(SITE),
+      http: makeHttp({ chains: [...chains, apexClosed()] }),
+      ...(phases ? { browser: makeBrowser({ phases }) } : {}),
+      collection,
+    });
+  }
+  const phaseA = (...pages: PageVisit[]) => [makePhase('A', { pages })];
+  const linkObservations = (r: ReturnType<typeof runCheck>) =>
+    observationsOf(r).filter((o) => o.variant.startsWith('internal-http-link'));
+
+  it('a visible nav link to an http subdomain the scan did not probe → internal-http-link, medium', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(wwwUpgraded([HSTS]), phaseA(visit(SITE, [link('http://work.example.test/')]))),
+    );
+    expect(r.status).toBe('completed');
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({
+        variant: 'internal-http-link',
+        confidence: 'medium',
+        subject: 'http-link:work',
+        phases: ['A'],
+        pages: [SITE],
+        params: expect.objectContaining({
+          host: 'work.example.test',
+          href: 'http://work.example.test/',
+          text: 'Startseite',
+          httpState: 'not-probed',
+          count: 1,
+          links: 1,
+          visible: 'yes',
+        }),
+      }),
+    ]);
+    const evidence = linkObservations(r)[0]?.evidence ?? [];
+    expect(evidence).toEqual([
+      {
+        type: 'link',
+        phase: 'A',
+        page: SITE,
+        href: 'http://work.example.test/',
+        text: 'Startseite',
+        region: 'nav',
+        visible: true,
+      },
+    ]);
+  });
+
+  it('hidden banner links to a host that serves http content → one internal-http-link, high, both pages', () => {
+    const banner = (path: string, text: string) =>
+      link(`http://www.example.test/${path}`, { text, region: 'banner', visible: false });
+    const legal = [banner('impressum', 'Impressum'), banner('datenschutz', 'Datenschutz')];
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwServed(),
+        phaseA(visit(SITE, legal), visit('https://www.example.test/kontakt', legal, { order: 1 })),
+      ),
+    );
+    const links = linkObservations(r);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      variant: 'internal-http-link',
+      confidence: 'high',
+      subject: 'http-link:www',
+      pages: [SITE, 'https://www.example.test/kontakt'],
+      params: { host: 'www.example.test', httpState: 'served', count: 2, links: 2, visible: 'no' },
+    });
+    // the probe of the host comes first: the per-finding evidence cap never drops it
+    expect(links[0]?.evidence.map((e) => e.type)).toEqual(['redirect-chain', 'link', 'link']);
+    // the entry finding of the same host stays as it was
+    expect(variantsOf(r)).toEqual(['internal-http-link', 'no-redirect']);
+  });
+
+  it('a link to a host that redirects to https without HSTS → internal-http-link-upgraded', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwUpgraded(),
+        phaseA(visit(SITE, [link('http://www.example.test/produkte', { text: 'Produkte' })])),
+      ),
+    );
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({
+        variant: 'internal-http-link-upgraded',
+        confidence: 'high',
+        subject: 'http-link:www',
+        params: expect.objectContaining({ host: 'www.example.test', location: 'https://www.example.test/' }),
+      }),
+    ]);
+    expect(linkObservations(r)[0]?.evidence.map((e) => e.type)).toEqual(['redirect-chain', 'link']);
+  });
+
+  it.each(['max-age=0', 'max-age=31536000; max-age=0'])(
+    'a header without effect (%s) is no HSTS: the upgraded link is still reported',
+    (value) => {
+      const r = runCheck(
+        tls01,
+        linkSnapshot(
+          wwwUpgraded([{ name: 'strict-transport-security', value }]),
+          phaseA(visit(SITE, [link('http://www.example.test/produkte')])),
+        ),
+      );
+      expect(linkObservations(r).map((o) => o.variant)).toEqual(['internal-http-link-upgraded']);
+    },
+  );
+
+  it('HSTS of the linked host outside the redirect the link takes protects nothing: still upgraded', () => {
+    const toApex = chain(
+      'http://www.example.test/',
+      [
+        { status: 301, location: 'https://example.test/' },
+        { url: 'https://example.test/', status: 200, bodyBytes: BIG, tlsAuthorized: true },
+      ],
+      { hostVariant: 'target' },
+    );
+    const wwwHttps = chain('https://www.example.test/', [
+      { status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] },
+    ]);
+    const r = runCheck(
+      tls01,
+      makeSnapshot({
+        target: makeTarget(SITE),
+        http: makeHttp({ chains: [toApex, wwwHttps, apexClosed()] }),
+        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://www.example.test/produkte')])) }),
+      }),
+    );
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({
+        variant: 'internal-http-link-upgraded',
+        params: expect.objectContaining({ location: 'https://example.test/' }),
+      }),
+    ]);
+  });
+
+  it('a probe cut on an https redirect back to http is no upgrade → internal-http-link, medium (unknown)', () => {
+    const backToHttp = chain(
+      'http://www.example.test/',
+      [
+        { status: 301, location: 'https://www.example.test/' },
+        {
+          url: 'https://www.example.test/',
+          status: 302,
+          location: 'http://www.example.test/next',
+          tlsAuthorized: true,
+          headers: [HSTS],
+        },
+      ],
+      { hostVariant: 'target', outcome: 'timeout' },
+    );
+    const r = runCheck(
+      tls01,
+      makeSnapshot({
+        target: makeTarget(SITE),
+        http: makeHttp({ chains: [backToHttp, ...wwwUpgraded([HSTS]).slice(1), apexClosed()] }),
+        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://www.example.test/produkte')])) }),
+      }),
+    );
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({
+        variant: 'internal-http-link',
+        confidence: 'medium',
+        params: expect.objectContaining({ httpState: 'unknown' }),
+      }),
+    ]);
+  });
+
+  it('HSTS on an IP address has no effect in browsers: the upgraded link to it is reported', () => {
+    const ip = 'https://192.0.2.1/';
+    const chains = [
+      chain('http://192.0.2.1/', [
+        { status: 301, location: ip },
+        { url: ip, status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] },
+      ]),
+      chain(ip, [{ status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] }]),
+    ];
+    const r = runCheck(
+      tls01,
+      makeSnapshot({
+        target: makeTarget(ip),
+        http: makeHttp({ chains }),
+        browser: makeBrowser({ phases: phaseA(visit(ip, [link('http://192.0.2.1/legal')])) }),
+      }),
+    );
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({ variant: 'internal-http-link-upgraded', subject: 'http-link:@' }),
+    ]);
+  });
+
+  it('a link to a host whose http probe timed out → internal-http-link, medium (unknown)', () => {
+    const r = runCheck(
+      tls01,
+      makeSnapshot({
+        target: makeTarget(SITE),
+        http: makeHttp({
+          chains: [
+            ...wwwUpgraded([HSTS]),
+            chain('http://example.test/', [], { hostVariant: 'apex', outcome: 'timeout' }),
+          ],
+        }),
+        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://example.test/')])) }),
+      }),
+    );
+    expect(linkObservations(r)).toEqual([
+      expect.objectContaining({
+        variant: 'internal-http-link',
+        confidence: 'medium',
+        subject: 'http-link:@',
+        params: expect.objectContaining({ httpState: 'unknown' }),
+      }),
+    ]);
+  });
+
+  it('the pages of a host are counted once and the visible, most prominent link speaks for it', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwUpgraded([HSTS]),
+        phaseA(
+          visit(SITE, [
+            link('http://work.example.test/a', { text: 'Versteckt', region: 'banner', visible: false }),
+            link('http://work.example.test/', { text: 'Startseite', region: 'nav' }),
+            link('http://work.example.test/', { text: 'Startseite', region: 'nav' }),
+          ]),
+          visit('https://www.example.test/b', [link('http://work.example.test/')], { order: 1 }),
+        ),
+      ),
+    );
+    const [o] = linkObservations(r);
+    expect(o?.params).toMatchObject({
+      href: 'http://work.example.test/',
+      text: 'Startseite',
+      count: 2,
+      links: 2,
+    });
+    expect(o?.params.visible).toBe('yes');
+    expect(o?.evidence).toHaveLength(2);
+  });
+
+  it('a link inside a same-site frame counts like one in the page', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwUpgraded([HSTS]),
+        phaseA(
+          visit(SITE, [link('http://work.example.test/', { frameUrl: 'https://www.example.test/frame' })]),
+        ),
+      ),
+    );
+    expect(linkObservations(r).map((o) => o.variant)).toEqual(['internal-http-link']);
+  });
+
+  it.each<[string, () => Snapshot]>([
+    [
+      'an external http link',
+      () => linkSnapshot(wwwServed(), phaseA(visit(SITE, [link('http://other.test/', { sameSite: false })]))),
+    ],
+    [
+      'a look-alike host that only starts with the site name',
+      () =>
+        linkSnapshot(
+          wwwServed(),
+          phaseA(visit(SITE, [link('http://example.test.other.test/', { sameSite: false })])),
+        ),
+    ],
+    [
+      'mailto, javascript and fragment links',
+      () =>
+        linkSnapshot(
+          wwwServed(),
+          phaseA(
+            visit(SITE, [
+              link(null, { hrefKind: 'mailto' }),
+              link(null, { hrefKind: 'javascript' }),
+              link(null, { hrefKind: 'fragment' }),
+            ]),
+          ),
+        ),
+    ],
+    [
+      'a link inside a cross-site frame',
+      () =>
+        linkSnapshot(
+          wwwServed(),
+          phaseA(visit(SITE, [link('http://www.example.test/', { frameUrl: 'https://other.test/embed' })])),
+        ),
+    ],
+    [
+      'a link to a host that redirects to https with a valid HSTS header',
+      () =>
+        linkSnapshot(wwwUpgraded([HSTS]), phaseA(visit(SITE, [link('http://www.example.test/produkte')]))),
+    ],
+    [
+      'a link to a host that redirects to https of another host with a valid HSTS header',
+      () =>
+        makeSnapshot({
+          target: makeTarget(SITE),
+          http: makeHttp({
+            chains: [
+              ...wwwUpgraded([HSTS]),
+              chain(
+                'http://example.test/',
+                [
+                  { status: 301, location: SITE },
+                  { url: SITE, status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] },
+                ],
+                { hostVariant: 'apex' },
+              ),
+            ],
+          }),
+          browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://example.test/legal')])) }),
+        }),
+    ],
+    [
+      'a link to a host whose http port is closed',
+      () => linkSnapshot(wwwUpgraded([HSTS]), phaseA(visit(SITE, [link('http://example.test/')]))),
+    ],
+    [
+      'a link on a page that is itself served over http',
+      () =>
+        linkSnapshot(
+          wwwUpgraded([HSTS]),
+          phaseA(visit('http://www.example.test/alt', [link('http://work.example.test/')])),
+        ),
+    ],
+    [
+      'a link on a page that could not be evaluated (challenge)',
+      () =>
+        linkSnapshot(
+          wwwUpgraded([HSTS]),
+          phaseA(
+            visit(SITE, []),
+            visit('https://www.example.test/b', [link('http://work.example.test/')], {
+              order: 1,
+              evaluable: false,
+              notEvaluableReason: 'challenge',
+            }),
+          ),
+        ),
+    ],
+    [
+      'a protocol-relative link resolved on an https page',
+      () =>
+        linkSnapshot(
+          wwwServed(),
+          phaseA(visit(SITE, [link('https://www.example.test/', { hrefKind: 'https' })])),
+        ),
+    ],
+  ])('counterexample: %s gives no link finding', (_name, snapshot) => {
+    const r = runCheck(tls01, snapshot());
+    expect(linkObservations(r)).toEqual([]);
+    expect(r.outcome?.limitations ?? []).not.toContain('page-links-not-observed');
+  });
+
+  it('repeats in phases B and C add nothing: one observation with the phase A pages', () => {
+    const work = link('http://work.example.test/');
+    const r = runCheck(
+      tls01,
+      linkSnapshot(wwwUpgraded([HSTS]), [
+        makePhase('A', { pages: [visit(SITE, [work])] }),
+        makePhase('B', {
+          pages: [
+            visit(SITE, [work], { phase: 'B' }),
+            visit('https://www.example.test/b', [work], { phase: 'B' }),
+          ],
+        }),
+        makePhase('C', { pages: [visit(SITE, [work], { phase: 'C' })] }),
+      ]),
+    );
+    expect(linkObservations(r)).toHaveLength(1);
+    expect(linkObservations(r)[0]).toMatchObject({ phases: ['A'], pages: [SITE] });
+  });
+
+  it.each<[string, Partial<Snapshot['collection']>]>([
+    ['skipped as tls-blocked', { browser: { status: 'skipped', reason: 'tls-blocked', durationMs: 0 } }],
+    ['failed', { browser: { status: 'error', durationMs: 0 } }],
+  ])(
+    'browser %s: partial with page-links-not-observed, the http entries still evaluated',
+    (_n, collection) => {
+      const r = runCheck(tls01, linkSnapshot(wwwServed(), null, collection));
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toContain('page-links-not-observed');
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    },
+  );
+
+  it('browser ran but phase A has no evaluable page: partial with page-links-not-observed', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(
+        wwwUpgraded([HSTS]),
+        phaseA(visit(SITE, [link('http://work.example.test/')], { evaluable: false, dom: null })),
+      ),
+    );
+    expect(r.status).toBe('partial');
+    expect(r.outcome?.limitations).toEqual(['page-links-not-observed']);
+  });
+
+  it('browser not selected (--checks TLS-01): no limitation, completed', () => {
+    const r = runCheck(
+      tls01,
+      linkSnapshot(wwwUpgraded([HSTS]), null, {
+        browser: { status: 'not-run', reason: 'not-required', durationMs: 0 },
+      }),
+    );
+    expect(r.status).toBe('completed');
+    expect(r.outcome?.limitations ?? []).toEqual([]);
+  });
+
+  it('reads the browser section only when the scan has it: --checks TLS-01 does not start the browser', () => {
+    expect(tls01.requires).toEqual(['http']);
+    expect(tls01.optional).toEqual(['browser']);
+  });
+
+  it('levels: http link to unencrypted or unknown content is a warning (T1_UNENCRYPTED), an upgraded one info', () => {
+    const variants = loadRuleset().checks['TLS-01']?.variants;
+    expect(variants?.['internal-http-link']).toEqual({ severity: 'warning', crm: 'T1_UNENCRYPTED' });
+    expect(variants?.['internal-http-link-upgraded']).toEqual({ severity: 'info', crm: null });
   });
 });

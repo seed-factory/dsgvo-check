@@ -226,9 +226,14 @@ export function analyzeDmarc(host: string, orgDomain: string, lookup: DnsLookup)
 /** The domain's own DMARC policy for the SPF matrix (a PSD-only record does not count as the domain's own). */
 export type DmarcEnforcement = DmarcPolicy | 'missing' | 'invalid' | 'unknown';
 
+/**
+ * The policy that applies to the walk's start: its own record's `p`, or for a subdomain that inherits the record of a
+ * parent the subdomain policy `sp` (RFC 9989), falling back to `p`.
+ */
 export function dmarcEnforcement(a: DmarcAnalysis): DmarcEnforcement {
   if (a.state === 'failed' || a.state === 'incomplete') return 'unknown';
   if (!a.found || a.found.scope === 'psd') return 'missing';
   if (a.found.invalid || !a.found.record?.p) return 'invalid';
-  return a.found.record.p;
+  const inherited = a.found.step.domain !== a.host;
+  return inherited ? (a.found.record.sp ?? a.found.record.p) : a.found.record.p;
 }

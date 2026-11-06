@@ -4,10 +4,26 @@
  * CMP without an answer or the banner shown again (a consent cookie bound to another host).
  */
 import { describe, expect, it } from 'vitest';
-import { confirmedReject, decisionInEffect, stateEvidence } from '../../../../src/checks/browser/signals.ts';
+import {
+  confirmedReject,
+  decisionInEffect,
+  pagesWithoutDecision,
+  stateEvidence,
+} from '../../../../src/checks/browser/signals.ts';
 import type { CmpFacts, CmpPhaseFacts, ConsentStateFact } from '../../../../src/cmp/types.ts';
 import { EvidenceSchema } from '../../../../src/core/report/schema.ts';
-import { cmpFacts } from './helpers.ts';
+import {
+  CONTACT,
+  click,
+  cmpFacts,
+  cmpWith,
+  consentPages,
+  controlPageFacts,
+  IMPRESSUM,
+  phase,
+  SHOP_HOST,
+  site,
+} from './helpers.ts';
 
 const denied = (origin: ConsentStateFact['origin'], p: Partial<ConsentStateFact> = {}): ConsentStateFact => ({
   source: 'api',
@@ -187,5 +203,96 @@ describe('decisionInEffect', () => {
     ];
     expect(decisionInEffect(facts, 'B')).toBe(true);
     expect(decisionInEffect(facts, 'C')).toBe(false);
+  });
+});
+
+describe('pagesWithoutDecision', () => {
+  const SHOP = `${SHOP_HOST}/kontakt`;
+  const without = (ph: 'B' | 'C', control: string[], facts: CmpFacts[]) => {
+    const s = site({
+      phases: [
+        phase('A'),
+        phase(ph, { click: click(ph === 'B' ? 'reject' : 'accept'), pages: consentPages(ph, control) }),
+      ],
+      cmp: cmpWith({ phase: ph, facts }),
+      derive: false,
+    });
+    return pagesWithoutDecision(s.browser!, s.cmp!, ph);
+  };
+
+  it.each<[string, 'B' | 'C', string[], CmpFacts[], string[]]>([
+    [
+      'a control page that shows the banner again without an answer',
+      'B',
+      [CONTACT],
+      [controlPageFacts(CONTACT, 'B', false)],
+      [CONTACT],
+    ],
+    ['a control page with the stored reject', 'B', [CONTACT], [controlPageFacts(CONTACT, 'B', true)], []],
+    [
+      'counterexample: a control page on another host with the stored reject (consent shared by a domain cookie)',
+      'B',
+      [SHOP],
+      [controlPageFacts(SHOP, 'B', true)],
+      [],
+    ],
+    [
+      'only the control pages without the decision, sorted',
+      'B',
+      [SHOP, CONTACT, IMPRESSUM],
+      [
+        controlPageFacts(SHOP, 'B', false),
+        controlPageFacts(CONTACT, 'B', true),
+        controlPageFacts(IMPRESSUM, 'B', false),
+      ],
+      [SHOP, IMPRESSUM],
+    ],
+    ['a control page without CMP facts (not read) is not contradicted', 'B', [CONTACT], [], []],
+    [
+      'the start page, whose reload proves the reject itself, even with the banner shown after the reload',
+      'B',
+      [],
+      [
+        cmpFacts({ moment: 'after-click', firstLayer: shown(false), state: [denied('action')] }),
+        cmpFacts({ moment: 'after-reload', firstLayer: shown(true), state: [unanswered()] }),
+      ],
+      [],
+    ],
+    [
+      'phase C: a control page where the accept shows the banner again',
+      'C',
+      [CONTACT],
+      [controlPageFacts(CONTACT, 'C', false)],
+      [CONTACT],
+    ],
+    [
+      'phase C: the start page right after the accept, its banner still closing',
+      'C',
+      [CONTACT],
+      [
+        cmpFacts({ phase: 'C', moment: 'after-click', firstLayer: shown(true), state: [unanswered()] }),
+        controlPageFacts(CONTACT, 'C', true),
+      ],
+      [],
+    ],
+  ])('%s', (_case, ph, control, facts, expected) => {
+    expect(without(ph, control, facts)).toEqual(expected);
+  });
+
+  it('reads the facts of the given phase only', () => {
+    const s = site({
+      phases: [
+        phase('A'),
+        phase('B', { click: click('reject'), pages: consentPages('B', [CONTACT]) }),
+        phase('C', { click: click('accept'), pages: consentPages('C', [CONTACT]) }),
+      ],
+      cmp: cmpWith(
+        { phase: 'B', facts: [controlPageFacts(CONTACT, 'B', true)] },
+        { phase: 'C', facts: [controlPageFacts(CONTACT, 'C', false)] },
+      ),
+      derive: false,
+    });
+    expect(pagesWithoutDecision(s.browser!, s.cmp!, 'B')).toEqual([]);
+    expect(pagesWithoutDecision(s.browser!, s.cmp!, 'C')).toEqual([CONTACT]);
   });
 });

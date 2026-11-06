@@ -73,6 +73,53 @@ describe('diagnostic texts use the params the collectors send (browser-collector
   );
 
   it.each(['de', 'en'] as const)(
+    '%s: SCAN-TLS-BLOCKED adds one sentence of its own for each reason the browser did not continue elsewhere',
+    (lang) => {
+      const texts = loadTexts(lang);
+      const params = {
+        host: 'broken.example.test',
+        via: 'http://broken.example.test/',
+        url: 'https://site.example.test/',
+      };
+      const body = (fallback?: string) =>
+        renderMessage(texts, 'diagnostic.SCAN-TLS-BLOCKED', fallback ? { ...params, fallback } : params).body;
+      // Older snapshots carry no reason: the text stays as it was.
+      const base = body();
+      const reasons = ['none', 'same-host', 'invalid', 'blocked', 'off'];
+      const bodies = reasons.map(body);
+
+      for (const b of bodies) {
+        expect(b.startsWith(base)).toBe(true);
+        expect(b.length).toBeGreaterThan(base.length);
+        expect(b).not.toMatch(/\{[a-z]+\}/);
+      }
+      expect(new Set(bodies).size).toBe(reasons.length);
+      expect(bodies[reasons.indexOf('blocked')]).toContain('https://site.example.test/');
+      expect(templateParams(texts.messages['diagnostic.SCAN-TLS-BLOCKED']?.body ?? '').sort()).toEqual([
+        'fallback',
+        'host',
+        'url',
+        'via',
+      ]);
+    },
+  );
+
+  it.each(['de', 'en'] as const)(
+    '%s: SCAN-TLS-FALLBACK names the refused host, its plain-http address and where the browser checks ran',
+    (lang) => {
+      const m = renderMessage(loadTexts(lang), 'diagnostic.SCAN-TLS-FALLBACK', {
+        host: 'broken.example.test',
+        via: 'http://broken.example.test/',
+        url: 'https://site.example.test/start',
+      });
+      expect(m.body).toContain('broken.example.test');
+      expect(m.body).toContain('http://broken.example.test/');
+      expect(m.body).toContain('https://site.example.test/start');
+      expect(`${m.title} ${m.body}`).not.toMatch(/\{[a-z]+\}/);
+    },
+  );
+
+  it.each(['de', 'en'] as const)(
     '%s: SCAN-THROTTLED needs no params (raised by HTTP without any)',
     (lang) => {
       const t = loadTexts(lang).messages['diagnostic.SCAN-THROTTLED'];

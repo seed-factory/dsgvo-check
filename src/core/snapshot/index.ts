@@ -126,9 +126,32 @@ function caOptions(
   return { systemFlag, openssl };
 }
 
+/**
+ * The browser's start page when it is not the target: the target's certificate was refused, and the plain-http address
+ * of the target redirects to another host over https connections whose certificates were all accepted.
+ */
+export interface BrowserEntry {
+  reason: 'tls-invalid';
+  /** The plain-http address of the target whose redirect chain was followed. */
+  via: SanitizedUrl;
+  /** Where that chain ended: phase A starts here. */
+  url: SanitizedUrl;
+}
+
+/**
+ * Why the browser did not continue on another host after the target's certificate was refused: `none` no redirect of the
+ * plain-http address to another host with a usable page, `same-host` it leads to https of the target itself, `invalid`
+ * not every certificate on the way was accepted, `off` switched off by the operator.
+ */
+export type TlsFallbackDeclined = 'none' | 'same-host' | 'invalid' | 'off';
+
 export interface ScanPlan {
   browser: BrowserPlan | null;
   probes: ProbeRecord[];
+  /** Set when the browser started on the redirect target of a refused certificate; absent when it started on the target. */
+  browserEntry?: BrowserEntry;
+  /** Set when the target's certificate was refused and the browser did not continue elsewhere. Absent in older snapshots. */
+  tlsFallback?: TlsFallbackDeclined;
 }
 
 export type CollectorName = 'browser' | 'http' | 'tls' | 'dns';
@@ -207,17 +230,41 @@ export const SECTION_PRODUCER: Readonly<Record<SnapshotSectionKey, CollectorName
   derived: 'derive',
 };
 
-/** What a check receives: exactly its required sections, all guaranteed present, plus `target`. */
-export type SnapshotSlice<K extends SnapshotSectionKey> = {
-  readonly [P in K]-?: NonNullable<Snapshot[P]>;
-} & { readonly target: TargetInfo };
+/** The collector whose run decides whether a section exists: derived data comes from the browser, core sections from none. */
+export function sectionCollector(key: SnapshotSectionKey): CollectorName | null {
+  const producer = SECTION_PRODUCER[key];
+  if (producer === 'derive') return 'browser';
+  return producer === 'core' ? null : producer;
+}
 
-/** Build the slice for `requires`; returns the list of missing sections instead when any is absent. */
-export function sliceSnapshot<K extends SnapshotSectionKey>(
+/**
+ * What a check receives: its required sections, all guaranteed present, the optional ones the scan has, plus `target`.
+ * `unavailable` lists the optional sections the scan meant to collect and did not get (collector skipped, failed or
+ * cut by the deadline); one whose collector the scan did not run (`not-run`) is just absent.
+ */
+export type SnapshotSlice<K extends SnapshotSectionKey, O extends SnapshotSectionKey = never> = {
+  readonly [P in K]-?: NonNullable<Snapshot[P]>;
+} & {
+  readonly [P in Exclude<O, K>]?: NonNullable<Snapshot[P]>;
+} & { readonly target: TargetInfo; readonly unavailable: readonly O[] };
+
+/** The scan meant to produce `key`: its collector has a status other than `not-run`, or the deadline cut the scan before one. */
+function meantToCollect(snapshot: Snapshot, key: SnapshotSectionKey, timedOut: boolean): boolean {
+  const collector = sectionCollector(key);
+  const status = collector ? snapshot.collection[collector] : undefined;
+  if (status === undefined) return timedOut;
+  return status.status !== 'not-run';
+}
+
+/** Build the slice for `requires` and `optional`; returns the list of missing required sections instead when any is absent. */
+export function sliceSnapshot<K extends SnapshotSectionKey, O extends SnapshotSectionKey = never>(
   snapshot: Snapshot,
   requires: readonly K[],
-): { ok: true; slice: SnapshotSlice<K> } | { ok: false; missing: K[] } {
+  optional: readonly O[] = [],
+  timedOut = false,
+): { ok: true; slice: SnapshotSlice<K, O> } | { ok: false; missing: K[] } {
   const missing: K[] = [];
+  const unavailable: O[] = [];
   const slice: Record<string, unknown> = { target: snapshot.target };
   for (const key of requires) {
     const value = snapshot[key];
@@ -225,7 +272,13 @@ export function sliceSnapshot<K extends SnapshotSectionKey>(
     else slice[key] = value;
   }
   if (missing.length > 0) return { ok: false, missing };
-  return { ok: true, slice: Object.freeze(slice) as SnapshotSlice<K> };
+  for (const key of optional) {
+    const value = snapshot[key];
+    if (value !== undefined && value !== null) slice[key] = value;
+    else if (meantToCollect(snapshot, key, timedOut)) unavailable.push(key);
+  }
+  slice.unavailable = Object.freeze(unavailable);
+  return { ok: true, slice: Object.freeze(slice) as SnapshotSlice<K, O> };
 }
 
 /** Strip computed parts before saving (`derived` is recomputed on replay). */

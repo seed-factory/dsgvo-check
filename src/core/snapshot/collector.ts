@@ -20,9 +20,26 @@ export interface CollectorOptions {
   assumeRegion: AssumeRegion | null;
 }
 
+/** Where the browser starts instead of the target (raw URLs, navigation only: never store them). */
+export interface EntryTarget {
+  reason: 'tls-invalid';
+  /** Start page of phase A, as the HTTP collector reached it. */
+  url: string;
+  /** The plain-http address of the target that redirected there. */
+  via: string;
+}
+
+/** Facts a collector hands to later steps of the same scan in memory; never stored, so they may hold raw URLs. */
+export interface CollectorHandover {
+  /** First and last URL of each redirect chain that ended normally, by chain id; the stored hops are sanitized. */
+  chainUrls?: Readonly<Record<string, { start: string; final: string }>>;
+}
+
 export interface CollectorContext {
   /** Target for navigation as given (query included); never store it, sections hold sanitized values. `ctx.snapshot.target` is the redacted copy. */
   target: TargetInfo;
+  /** Browser only: the start page when the orchestrator chose another one than the target (`snapshot.plan.browserEntry`). */
+  entry?: EntryTarget;
   options: CollectorOptions;
   network: NetworkConfig;
   /** Operator settings of this scan (timeouts, limits); `deps` of a collector factory override them in tests. */
@@ -41,7 +58,7 @@ export interface CollectorContext {
   /** Milliseconds since `scan.startedAt` on a monotonic clock, the one time scale for all phases. Collectors run without the orchestrator start their own. */
   clock?: () => number;
   log: Logger;
-  /** Sections collected earlier in this scan (http/tls/dns run before the browser). Read-only. */
+  /** Sections collected earlier in this scan (http/tls/dns run before the browser, the DNS follow-up after it). Read-only. */
   snapshot: Readonly<Snapshot>;
 }
 
@@ -63,6 +80,8 @@ export interface CollectorResult<S> {
   error?: CollectorError;
   /** Scan-level failure: unreachable or blocked start page, sandbox unavailable, browser missing. */
   fatal?: FatalSignal;
+  /** In memory only, for later steps of this scan. */
+  handover?: CollectorHandover;
 }
 
 export interface BrowserSections {
@@ -84,6 +103,8 @@ export interface Collectors {
   http: HttpCollector;
   tls: TlsCollector;
   dns: DnsCollector;
+  /** Second DNS stage after the browser: extends `ctx.snapshot.dns` with the further mail domains. */
+  dnsFollowUp: DnsCollector;
 }
 
 export function skipped<S>(reason: string, sections: S): CollectorResult<S> {

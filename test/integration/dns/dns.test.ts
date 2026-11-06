@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mail01 } from '../../../src/checks/dns/mail-01.ts';
 import { mail02 } from '../../../src/checks/dns/mail-02.ts';
+import { mail03 } from '../../../src/checks/dns/mail-03.ts';
 import { collectDns } from '../../../src/collectors/dns/index.ts';
 import { createNodeDnsClient } from '../../../src/collectors/dns/resolver.ts';
 import { parseConfigInput } from '../../../src/core/config/load.ts';
@@ -63,6 +64,24 @@ describe('node:dns client against dns2', () => {
     });
   });
 
+  it('a TXT query on a CNAME returns the TXT of its target; a dangling CNAME is NXDOMAIN', async () => {
+    const c = clientFor({
+      'CNAME selector1._domainkey.example.test': [
+        'selector1-example-test._domainkey.example-test.onmicrosoft.com',
+      ],
+      'TXT selector1-example-test._domainkey.example-test.onmicrosoft.com': ['v=DKIM1; k=rsa; p=AAAA'],
+      'CNAME selector2._domainkey.example.test': [
+        'selector2-example-test._domainkey.example-test.onmicrosoft.com',
+      ],
+    });
+
+    expect(await c.query('selector1._domainkey.example.test', 'TXT')).toMatchObject({
+      rcode: 'NOERROR',
+      answers: [{ type: 'TXT', value: 'v=DKIM1; k=rsa; p=AAAA' }],
+    });
+    expect((await c.query('selector2._domainkey.example.test', 'TXT')).rcode).toBe('NXDOMAIN');
+  });
+
   it('retries SERVFAIL exactly once', async () => {
     const client = clientFor({ 'TXT _dmarc.example.test': 'SERVFAIL' });
 
@@ -109,7 +128,7 @@ function collectorContext(url: string, config: ConfigInput = {}): CollectorConte
 }
 
 describe('collectDns with dnsServers', () => {
-  it('collects MX, the DMARC walk and the SPF tree; masks mailto; drops unrelated TXT', async () => {
+  it('collects MX, the DMARC walk, the SPF tree and the DKIM selectors; masks mailto; drops unrelated TXT', async () => {
     dns.setZone(MAIL_SITE);
 
     const r = await collectDns(collectorContext('https://www.example.test/'));
@@ -123,6 +142,9 @@ describe('collectDns with dnsServers', () => {
       'TXT _dmarc.example.test NOERROR',
       'TXT example.test NOERROR',
       'TXT _spf.provider.test NOERROR',
+      ...['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1'].map(
+        (s) => `TXT ${s}._domainkey.example.test NXDOMAIN`,
+      ),
     ]);
     expect(section.resolver).toEqual({ kind: 'custom', servers: [dns.server] });
 
@@ -134,6 +156,23 @@ describe('collectDns with dnsServers', () => {
     const snap = makeSnapshot({ target: makeTarget('https://www.example.test/'), dns: section });
     expect(variantsOf(runCheck(mail01, snap))).toEqual(['policy-none']);
     expect(variantsOf(runCheck(mail02, snap))).toEqual(['softfail-without-enforcement']);
+    expect(variantsOf(runCheck(mail03, snap))).toEqual(['selectors-not-found']);
+  });
+
+  it('the DKIM settings decide which selectors are asked, and how many', async () => {
+    dns.setZone(MAIL_SITE);
+
+    const r = await collectDns(
+      collectorContext('https://www.example.test/', {
+        dns: { dkimSelectors: ['mailing', 'example.test/news'], dkimMaxSelectors: 3 },
+      }),
+    );
+
+    expect(r.sections.dns?.queries.filter((q) => q.purpose === 'dkim').map((q) => q.qname)).toEqual([
+      'mailing._domainkey.example.test',
+      'news._domainkey.example.test',
+      'default._domainkey.example.test',
+    ]);
   });
 
   it('the query budget of the settings stops the collection and is recorded', async () => {

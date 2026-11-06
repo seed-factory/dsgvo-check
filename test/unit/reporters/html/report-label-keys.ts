@@ -6,6 +6,7 @@ import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
 import {
   CheckStatusSchema,
   ConfidenceSchema,
+  type FullReport,
   type Report,
   ScanStatusSchema,
   SeveritySchema,
@@ -112,6 +113,16 @@ export function usedReportLabelKeys(): string[] {
     capture(full);
   }
 
+  // Two links of one finding form a list whose lines name their part of the page and their visibility.
+  const links = sampleFullReport();
+  const link = links.evidence.find((e) => e.id === 'ev-link')!;
+  links.evidence = [
+    { ...link, region: 'nav', visible: true },
+    { ...link, id: 'ev-link-hidden', region: 'banner', visible: false },
+  ] as FullReport['evidence'];
+  links.findings[0]!.evidenceIds = links.evidence.map((e) => e.id);
+  capture(links);
+
   // Front page: a recognized banner, every timing state of an observed service and repeated requests.
   const front = sampleFullReport();
   front.checks.find((c) => c.id === 'CONSENT-04')!.status = 'completed';
@@ -137,6 +148,17 @@ export function usedReportLabelKeys(): string[] {
   front.scan.finalUrl = 'https://www.example.com/';
   capture(front);
   capture(front, 'brief');
+
+  // The browser checks ran on the redirect target of a refused certificate.
+  const continued = sampleFullReport();
+  continued.scan.finalUrl = 'https://www.example.com/';
+  continued.scan.entry = {
+    reason: 'tls-invalid',
+    requested: continued.scan.target,
+    via: 'http://www.example.de/',
+    url: 'https://www.example.com/',
+  };
+  capture(continued, 'brief');
 
   // A re-evaluated snapshot, a site without a banner, and the pages and headers of one finding listed together.
   const replay = sampleFullReport();

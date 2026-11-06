@@ -14,7 +14,14 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { DocumentResponse } from '../../core/snapshot/http.ts';
-import { BLOCKED_DOCUMENT, browserAcceptsTls, evidenceValue, headerValues, isSuccess } from './shared.ts';
+import {
+  BLOCKED_DOCUMENT,
+  browserAcceptsTls,
+  evidenceValue,
+  headerValues,
+  hstsOf,
+  isSuccess,
+} from './shared.ts';
 
 const ID = 'HDR-01';
 
@@ -48,20 +55,6 @@ const REFERRER_POLICIES = new Set([
 ]);
 /** Policies that send the full URL to other origins, or to http after a downgrade. */
 const UNSAFE_REFERRER = new Set(['unsafe-url', 'no-referrer-when-downgrade']);
-
-/** RFC 6797 §6.1: `max-age` is required; the UA uses only the first header. */
-export function parseHsts(value: string): { ok: true; maxAge: number } | { ok: false; problem: string } {
-  const directives = value
-    .split(';')
-    .map((d) => d.trim())
-    .filter(Boolean);
-  const maxAge = directives.find((d) => /^max-age\s*=/i.test(d));
-  const m = maxAge ? /^max-age\s*=\s*"?(\d+)"?$/i.exec(maxAge) : null;
-  if (!m) return { ok: false, problem: 'no-max-age' };
-  const n = Number(m[1]);
-  if (n === 0) return { ok: false, problem: 'max-age-zero' };
-  return { ok: true, maxAge: n };
-}
 
 /** Effective policy from a comma-separated list: the last recognised token wins (Referrer Policy §8.1). */
 export function effectiveReferrerPolicy(values: readonly string[]): string | null {
@@ -113,8 +106,8 @@ function hstsProblem(doc: DocumentResponse): Problem | null {
   if (hsts === undefined) return missing(null, 'absent');
 
   // A header without effect (no max-age, max-age=0) leaves the response without HSTS.
-  const parsed = parseHsts(hsts.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0] ?? '');
-  return parsed.ok ? null : missing(hsts, parsed.problem);
+  const parsed = hstsOf(doc.headers);
+  return parsed?.ok ? null : missing(hsts, parsed?.problem ?? 'absent');
 }
 
 /** No `X-Frame-Options` and no CSP `frame-ancestors`; a CSP cut at the limit gives a limitation, not a finding. */

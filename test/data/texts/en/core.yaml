@@ -172,6 +172,7 @@ ui:
   config.problem.unknown-keys: "unknown keys: {keys}"
   config.problem.proxy-scheme: "only http:// proxies (HTTP CONNECT) are supported"
   config.problem.dns-server: "expected host, host:port or [ipv6]:port"
+  config.problem.dkim-selector: "expected a DKIM selector or domain/selector, e.g. selector1 or example.de/selector1"
   config.problem.dwell-order: "must not be below {other} ({value})"
   config.problem.tls-days-order: "must not exceed {other} ({value})"
   config.problem.tls-share-order: "must not exceed {other} ({value})"
@@ -194,9 +195,23 @@ messages:
   diagnostic.SCAN-TIMEOUT:
     title: "Time limit reached"
     body: "{count, plural, =0 {The global time limit was reached; observations already collected remain in the report.} one {The global time limit was reached. One check was not completed in full; observations already collected remain in the report.} other {The global time limit was reached. # checks were not completed in full; observations already collected remain in the report.}}"
+  # `fallback`: why the browser did not continue on the target of the plain-http redirect (absent in older snapshots).
   diagnostic.SCAN-TLS-BLOCKED:
     title: "Browser checks not run: certificate invalid"
-    body: "The TLS check did not accept the certificate of {host} as valid. The browser therefore did not visit the website; consent, tracking, embedded services and legal pages were not checked."
+    body: >-
+      The TLS check did not accept the certificate of {host} as valid. The browser therefore did not visit the
+      website; consent, tracking, embedded services and legal pages were not checked.{fallback, select, none { No
+      redirect of the plain-http address to another host with a valid certificate and a retrievable page was
+      observed.} same-host { The plain-http address redirects to HTTPS on the same host.} invalid { The plain-http
+      address redirects to another host, but not every certificate on the way was confirmed as valid.} blocked { The
+      plain-http address {via} redirects to {url}; the browser did not receive an evaluable page there.} off {
+      Continuing on the target of the HTTP redirect is switched off (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
+  diagnostic.SCAN-TLS-FALLBACK:
+    title: Browser checks run on the target of the HTTP redirect
+    body: >-
+      The TLS check did not accept the certificate of {host} as valid. The plain-http address {via} redirects to
+      {url}; every certificate on the way was accepted as valid. Consent, tracking, embedded services and legal
+      pages were therefore checked there, not on {host}.
   diagnostic.SCAN-SANDBOX-OFF:
     title: "Chromium sandbox disabled"
     body: "The browser ran without sandbox (--sandbox off)."

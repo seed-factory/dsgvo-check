@@ -24,8 +24,16 @@ const int = (def: number, description: string, min: number, max?: number, minRea
 const ratio = (def: number, description: string) =>
   z.number().gt(0).max(1).default(def).meta({ description });
 
+/** What the scan does when the target's certificate is refused (`scan.tlsFallback`). */
+export const TLS_FALLBACK_MODES = ['http-redirect', 'off'] as const;
+export type TlsFallbackMode = (typeof TLS_FALLBACK_MODES)[number];
+
 /** `host`, `host:port`, `[v6]` or `[v6]:port` as accepted by `dns.Resolver.setServers`. */
 const DNS_SERVER = /^(?:\[[0-9a-f:.]+\]|[0-9a-f:.]+|[a-z0-9.-]+)(?::\d{1,5})?$/i;
+
+/** A DKIM selector (labels as in front of `._domainkey.`), optionally behind `<domain>/` for one mail domain. */
+const DKIM_SELECTOR =
+  /^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+\/)?[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?)*$/i;
 
 const scan = z.strictObject({
   failOn: FailOnSchema.default('critical').meta({
@@ -52,6 +60,10 @@ const scan = z.strictObject({
     `Reserve on top of the global timeout for writing reports; the watchdog ends the process after timeout plus reserve. Must cover ${envName('scan', 'abortGraceMs')} plus ${envName('pdf', 'timeoutMs')}.`,
     1,
   ),
+  tlsFallback: z.enum(TLS_FALLBACK_MODES).default('http-redirect').meta({
+    description:
+      'Certificate of the target not accepted: http-redirect runs the browser checks on the host its plain-http address redirects to, when every certificate on that way was accepted; off skips the browser checks.',
+  }),
 });
 
 const browser = z.strictObject({
@@ -195,13 +207,50 @@ const dns = z.strictObject({
     }),
   timeoutMs: int(3_000, 'Time limit of one DNS attempt.', 100),
   retries: int(1, 'Further attempts after SERVFAIL or a timeout.', 0, 5),
-  queryBudget: int(60, 'DNS queries per scan.', 1, 200),
+  queryBudget: int(60, 'DNS queries for the scanned domain.', 1, 200),
+  maxMailDomains: int(
+    2,
+    'Mail domains of addresses in the Impressum checked besides the scanned domain (MX, DMARC, SPF); 0 checks none. Free-mail domains do not count.',
+    0,
+    5,
+  ),
+  mailDomainQueryBudget: int(
+    30,
+    'DNS queries for each further mail domain (the domain of the site after a redirect, an Impressum address domain), besides the budget of the scanned domain.',
+    1,
+    100,
+  ),
   concurrency: int(4, 'DNS queries in flight at once.', 1, 16),
   maxTimeoutResults: int(
     3,
     'Queries that end in a timeout (after retries) before the resolver counts as unresponsive and the rest is skipped.',
     1,
     20,
+  ),
+  dkimSelectors: z
+    .array(
+      z
+        .string()
+        .regex(DKIM_SELECTOR, { error: REASON.dkimSelector })
+        // The selector alone: `selector1._domainkey.example.de` would be asked under `._domainkey.` a second time.
+        .refine((v) => !/(?:^|[./])_domainkey(?:\.|$)/i.test(v), { error: REASON.dkimSelector }),
+    )
+    .default([])
+    .meta({
+      description:
+        'DKIM selectors the mail domains sign with, comma-separated: selector for every checked mail domain, or domain/selector for one. MAIL-03 queries them first and expects a key there.',
+    }),
+  dkimMaxSelectors: int(
+    8,
+    `DKIM selectors queried per mail domain (MAIL-03): those of ${envName('dns', 'dkimSelectors')} first, then the fixed ones of a recognised mail provider, then common names. They count against the query budget of the domain.`,
+    1,
+    32,
+  ),
+  dkimMinRsaBits: int(
+    1_024,
+    'MAIL-03: an RSA DKIM key with fewer bits is reported. RFC 8301 requires 1024 bits and recommends 2048, so the minimum can only be raised.',
+    1_024,
+    16_384,
   ),
 });
 
@@ -212,7 +261,7 @@ const cmp = z.strictObject({
   ),
   waitMs: int(
     5_000,
-    `Time to wait for a CMP and its banner to appear (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
+    `Time to wait for a CMP and its banner to appear, and for an answer a CMP records some time after the click (capped by ${envName('browser', 'cmpCallTimeoutMs')}).`,
     0,
   ),
   minCandidatePages: int(

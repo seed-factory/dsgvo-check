@@ -1,6 +1,8 @@
 /**
  * CONSENT-05: tracking after a technically confirmed reject. The reject is confirmed by CMP state only, never by
- * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`.
+ * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`. A control
+ * page where the reject is not in effect (`pagesWithoutDecision`) is no page after the reject: what it sends or stores
+ * is left out, and so is the page from the evaluated ones (`reject-not-in-effect`).
  */
 import type { CmpSection } from '../../cmp/types.ts';
 import {
@@ -27,6 +29,9 @@ import {
   bannerUndetermined,
   confirmedReject,
   consentSignals,
+  DECISION_NOT_IN_EFFECT,
+  dialogNotOpenedOutcome,
+  pagesWithoutDecision,
   persistentIdentifier,
   signalOutcome,
   stateEvidence,
@@ -103,13 +108,18 @@ function groupFor(
   return g;
 }
 
-/** Tracking hits delivered after the reject. */
-function addRequestHits(groups: Groups, derived: DerivedSection, records: Map<string, RequestRecord>): void {
+/** Tracking hits delivered after the reject, on the pages where it is in effect. */
+function addRequestHits(
+  groups: Groups,
+  derived: DerivedSection,
+  records: Map<string, RequestRecord>,
+  withoutReject: ReadonlySet<string>,
+): void {
   for (const c of derived.requests) {
     if (c.phase !== 'B' || c.timing !== 'after-reject') continue;
     if (!TRACKING_CATEGORIES.has(c.category) || !c.delivered || c.kind !== 'hit') continue;
     const r = records.get(c.requestId);
-    if (!r) continue;
+    if (!r || withoutReject.has(r.pageUrl)) continue;
 
     const g = groupFor(groups, requestVariant(c), 'request', c, c.etld1);
     g.pages.add(r.pageUrl);
@@ -118,8 +128,13 @@ function addRequestHits(groups: Groups, derived: DerivedSection, records: Map<st
   }
 }
 
-/** Tracking cookies and storage entries written after the reject. */
-function addStorageWrites(groups: Groups, browser: BrowserSection, derived: DerivedSection): void {
+/** Tracking cookies and storage entries written after the reject, on the pages where it is in effect. */
+function addStorageWrites(
+  groups: Groups,
+  browser: BrowserSection,
+  derived: DerivedSection,
+  withoutReject: ReadonlySet<string>,
+): void {
   const stored = [
     ...classifiedCookies(browser, derived).map((x) => ({
       ...x,
@@ -135,6 +150,7 @@ function addStorageWrites(groups: Groups, browser: BrowserSection, derived: Deri
 
   for (const s of stored) {
     if (s.record.phase !== 'B' || s.cls.timing !== 'after-reject' || !s.cls.tracking) continue;
+    if (withoutReject.has(s.record.pageUrl)) continue;
     // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not.
     if ('state' in s.record && !isCookieHeld(s.record.state)) continue;
 
@@ -209,6 +225,8 @@ function rejectBasis(
   | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
   const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
   if (signal) return { outcome: signal };
+  const notOpened = dialogNotOpenedOutcome(cmp);
+  if (notOpened) return { outcome: notOpened };
   // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
   // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
   if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp, browser, minCandidatePages)) {
@@ -255,16 +273,18 @@ export const consent05 = defineCheck({
     if ('outcome' in basis) return basis.outcome;
     const { phaseB, rejectEvidence } = basis;
 
+    const withoutReject = new Set(pagesWithoutDecision(browser, cmp, 'B'));
     const groups: Groups = new Map();
-    addRequestHits(groups, derived, requestIndex(browser));
-    addStorageWrites(groups, browser, derived);
+    addRequestHits(groups, derived, requestIndex(browser), withoutReject);
+    addStorageWrites(groups, browser, derived, withoutReject);
     const observations = groupObservations(groups, derived, rejectEvidence);
 
     const afterPages = phaseB.pages.filter((p) => p.reload || p.role !== 'start' || p.order > 0);
     const coverage = {
       observed: phaseB.pages.length,
-      evaluated: afterPages.filter((p) => p.evaluable).length,
+      evaluated: afterPages.filter((p) => p.evaluable && !withoutReject.has(p.finalUrl || p.url)).length,
     };
+    const notInEffect = withoutReject.size > 0 ? [DECISION_NOT_IN_EFFECT.B] : [];
 
     // Without the page-exit capture the evaluation after the reject is not conclusive, even with findings; they still gate.
     if (browser.knownGaps.includes('pagehide-beacons')) {
@@ -272,10 +292,12 @@ export const consent05 = defineCheck({
         status: 'inconclusive',
         reason: 'pagehide-capture-unavailable',
         observations,
-        limitations: ['pagehide-capture-unavailable'],
+        limitations: ['pagehide-capture-unavailable', ...notInEffect],
         coverage,
       };
     }
-    return { status: 'completed', observations, limitations: [], coverage };
+    // Pages left out make the result partial: a page without the reject is neither a finding nor clean.
+    const status = notInEffect.length > 0 ? 'partial' : 'completed';
+    return { status, observations, limitations: notInEffect, coverage };
   },
 });

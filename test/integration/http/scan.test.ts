@@ -1,10 +1,15 @@
 /** `scan` with the real HTTP and TLS collectors and only the http checks; a spy browser collector must stay unused. */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { httpChecks } from '../../../src/checks/http/index.ts';
+import { loadTexts } from '../../../src/core/data/load.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
+import type { ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { FullReport, Report } from '../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
+import { renderConsole } from '../../../src/reporters/console.ts';
+import { renderHtml } from '../../../src/reporters/html.ts';
+import { renderJson } from '../../../src/reporters/json.ts';
 import { scan } from '../../../src/scan.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
@@ -37,7 +42,7 @@ function httpScan(url: string, network: NetworkConfig, failOn?: 'warning') {
   return scan({ url, network, registry, ...(failOn ? { failOn } : {}), log: silentLogger });
 }
 
-describe('scan with HDR-01, TLS-01, TLS-02', () => {
+describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
   describe('good site', () => {
     let result: Awaited<ReturnType<typeof httpScan>>;
     let report: FullReport;
@@ -48,11 +53,12 @@ describe('scan with HDR-01, TLS-01, TLS-02', () => {
       report = full(result.report);
     });
 
-    it('is a valid, complete report with all three checks completed', () => {
+    it('is a valid, complete report with all four checks completed', () => {
       expectValidReport(result.report);
       expect(report.scan.status).toBe('complete');
       expect(Object.fromEntries(report.checks.map((c) => [c.id, c.status]))).toEqual({
         'HDR-01': 'completed',
+        'HDR-02': 'completed',
         'TLS-01': 'completed',
         'TLS-02': 'completed',
       });
@@ -74,6 +80,62 @@ describe('scan with HDR-01, TLS-01, TLS-02', () => {
       expect(result.snapshot?.collection.browser).toMatchObject({ status: 'not-run' });
       expect(browserSpy).not.toHaveBeenCalled();
       expect(result.snapshot?.plan.probes.length).toBe(8);
+      expect(server.unexpected).toEqual([]);
+    });
+  });
+
+  describe('a server that names its software in the headers', () => {
+    let result: Awaited<ReturnType<typeof httpScan>>;
+    let report: FullReport;
+    const ctx = (lang: 'de' | 'en'): ReporterContext => ({
+      texts: loadTexts(lang),
+      lang,
+      outDir: '/nonexistent-out',
+      color: false,
+    });
+
+    beforeAll(async () => {
+      server.reset();
+      result = await httpScan('https://www.powered.test/', server.network());
+      report = full(result.report);
+    });
+
+    it('reports each product version once as info without a catalog code, with the pages united', () => {
+      expectValidReport(result.report);
+      expect(
+        report.findings
+          .filter((f) => f.checkId === 'HDR-02')
+          .map((f) => [
+            f.variant,
+            f.severity,
+            f.crmCode,
+            f.params.header,
+            f.params.product,
+            f.params.version,
+            f.pages.length,
+          ])
+          .sort(),
+      ).toEqual([
+        ['version-header', 'info', null, 'Server', 'Apache', '2.4.41', 2],
+        ['version-header', 'info', null, 'X-Powered-By', 'PHP', '7.2.34', 2],
+      ]);
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('the comment with the operating system is in no report and not in the snapshot', () => {
+      const outputs = [
+        JSON.stringify(result.snapshot),
+        renderJson(result.report),
+        ...(['de', 'en'] as const).flatMap((lang) => [
+          renderHtml(result.report, ctx(lang)),
+          renderConsole(result.report, ctx(lang)),
+        ]),
+      ];
+      for (const out of outputs) {
+        expect(out).not.toContain('Ubuntu');
+      }
+      expect(renderJson(result.report)).toContain('PHP/7.2.34');
+      expect(renderHtml(result.report, ctx('de'))).toContain('7.2.34');
       expect(server.unexpected).toEqual([]);
     });
   });

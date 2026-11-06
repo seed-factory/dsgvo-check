@@ -12,7 +12,7 @@ GitHub Action und im GitLab CI und lässt die Pipeline fehlschlagen, sobald ein 
 
 Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefunden in …“), keine rechtliche Bewertung.
 
-> **Status: Prototyp 0.1.0.** 16 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
+> **Status: Prototyp 0.1.0.** 19 Prüfungen, zehn CMP-Adapter; Berichte als JSON, Konsole, HTML und Markdown-Summary,
 > PDF auf Wunsch. Der Prototyp prüft die Architektur an echten Websites und ist kein Release 1.0. Die Texte im Bericht
 > sind Entwürfe („Textentwurf“). Noch nicht veröffentlicht (kein npm-Paket). Lücken: siehe [Grenzen](#grenzen).
 
@@ -40,7 +40,8 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 ## Funktionen
 
 - **Drei Browser-Phasen** mit frischem Profil: vor jeder Interaktion, nach „Ablehnen“, nach „Alle akzeptieren“.
-- **16 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, TLS und E-Mail.
+- **19 Prüfungen** zu Einwilligung, Tracking, Einbettungen, Rechtstexten, Sicherheits-Headern, Versionsangaben,
+  TLS und E-Mail.
 - **Zehn CMP-Adapter** (Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub und die
   Banner von Shopware, Wix und TYPO3-cookieman).
 - **Keine Werte:** Cookies, Web Storage und TC-String gelangen nie in Bericht, Snapshot oder Logs, auch nicht gehasht.
@@ -68,10 +69,12 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
 | PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen       |
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
-| TLS-01     | Umleitung von http auf https                                                              |
+| HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                              |
+| TLS-01     | Umleitung von http auf https; Links der Seiten auf http-Adressen der eigenen Website      |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
-| MAIL-01    | DMARC-Eintrag und Richtlinie                                                              |
-| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC                                    |
+| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum     |
+| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                   |
+| MAIL-03    | DKIM-Schlüssel auf den geprüften Selektoren und ihre RSA-Länge, je E-Mail-Domain          |
 
 Jede Prüfung kann mehrere Varianten melden. Die Tabelle darunter wird aus `test/data/ruleset` erzeugt und zeigt, welche
 Variante mit welchem Standard-Schweregrad gemeldet wird.
@@ -83,25 +86,27 @@ Die Meldungs-ID eines Befunds ist `<Prüfung>.<Variante>`. Die Schweregrade sind
 mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 <!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
-| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                                           |
-| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                                                  |
-| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                                         |
-| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                                                |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `nonblocking-no-reject`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
-| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                                                      |
-| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                                              |
-| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                                                |
-| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                                                |
-| `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                                                |
-| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                                                     |
-| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                                               |
-| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                                              |
-| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                                                      |
-| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                                                     |
-| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                                                 |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`                                                                              | `redirect-chain-detail`                                                                                                          |
-| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                                                 |
+| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                  |
+| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                         |
+| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                |
+| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                       |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`, `nonblocking-no-reject`                        | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
+| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                             |
+| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                     |
+| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                       |
+| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                       |
+| `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                       |
+| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
+| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                      |
+| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
+| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
+| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
+| `MAIL-03`    | —                                          | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                   |
+| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
+| `HDR-02`     | —                                          | —                                                                                                                       | `version-header`                                                                                        |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                  |
+| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                        |
 <!-- registry:end -->
 
 ² Fest vorgegeben (`locked`): wird nicht angehoben und zählt nicht für `--fail-on`; die Prüfung bleibt `inconclusive`.
@@ -112,23 +117,22 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt die geplanten Varianten je Schweregrad.
 
-| ID                    | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                                           | Ohne Befund (`reason`)   |
-| --------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
-| `EMBED-04`            | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                              | —                        |
-| `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                                | —                        |
-| `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                                | `not-observable`         |
-| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                                | `source-unavailable`     |
-| `MAIL-03`             | DKIM                                       | —                               | `key-too-short`, `given-selector-missing`                                    | `selectors-not-found`                                            | —                        |
-| `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                                          | —                        |
-| `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                                | `handshake-inconclusive` |
-| `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                               | —                        |
-| `HDR-02`              | Cookie-Attribute und Versionsangaben       | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`, `version-header` | —                        |
-| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                               | —                        |
-| `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                                     | —                        |
-| `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete`              | —                        |
-| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                             | —                        |
-| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                              | —                        |
-| `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                                    | —                        |
+| ID                    | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                              | Ohne Befund (`reason`)   |
+| --------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------ |
+| `EMBED-04`            | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                 | —                        |
+| `EMBED-05`            | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                   | —                        |
+| `CONSENT-06`          | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                   | `not-observable`         |
+| `VULN-01`, `VULN-02`³ | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                   | `source-unavailable`     |
+| `TLS-03`              | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                             | —                        |
+| `TLS-04`              | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                   | `handshake-inconclusive` |
+| `DNS-01`              | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                  | —                        |
+| `HDR-02`              | Cookie-Attribute                           | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`      | —                        |
+| `ADMIN-01`⁴           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                  | —                        |
+| `FILE-01`⁴            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                        | —                        |
+| `SEC-01`              | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete` | —                        |
+| `LEGAL-02`            | Veraltete Bezeichnungen                    | —                               | —                                                                            | `outdated-reference`                                | —                        |
+| `BFSG-01`⁵            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                 | —                        |
+| `PERF-01`⁵            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                       | —                        |
 
 ³ Die Stufen gelten bei exakt bestimmter Version; bei einem Versionsbereich liegt jede Variante eine Stufe niedriger.  
 ⁴ Nur auf ausdrücklichen Wunsch (Opt-in); der Prototyp sendet solche Anfragen nicht.  
@@ -212,9 +216,23 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Seite) und danach auf den Kontrollseiten. Seiten, die ins Fenster passen, sich nicht scrollen lassen (etwa unter
   einem blockierenden Banner) oder selbst nach unten gescrollt haben, bleiben, wie sie sind. Anfragen danach tragen in
   `report.json` `afterReveal: true`.
+- Ob die Ablehnung oder Zustimmung auf einer Kontrollseite gilt, liest der Scanner dort am Banner ab. Zeigt es sich
+  erneut oder liegt ihm keine Antwort vor (etwa weil das Cookie der Antwort nur für den Host der Startseite gilt und die
+  Kontrollseite auf `www` liegt), zählen CONSENT-05 und TRACK-01 die Seite nicht als Seite nach Ablehnung bzw.
+  Zustimmung: Was sie sendet oder speichert, gilt nicht als Befund nach der Ablehnung, die Seite nicht als ausgewertet
+  (Einschränkung `reject-not-in-effect` bzw. `accept-not-in-effect`, Status `partial`). Eine Seite auf einem anderen
+  Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - B und C entfallen auch, wenn der Zielhost drosselt (429/503) oder das Zeitbudget erschöpft ist.
 - Wird das globale Zeitlimit nach der Startseite erreicht, bleiben die Beobachtungen im Bericht; nicht ausgeführte
   Phasen gelten als abgeschnitten, Prüfungen ohne Daten enden mit Status `error` (`timeout`).
+- Nimmt die TLS-Prüfung das Zertifikat der Ziel-URL nicht als gültig an, ruft der Browser sie nicht auf. Leitet ihre
+  unverschlüsselte Adresse (`http://`, Standardport) auf einen anderen Host weiter und wurde jedes Zertifikat auf
+  diesem Weg als gültig angenommen, laufen die Phasen A, B und C dort, mit derselben Prüfung der Zertifikate wie sonst.
+  Der Bericht nennt das (`SCAN-TLS-FALLBACK`, in `report.json` unter `scan.entry`); TLS-02 meldet das Zertifikat der
+  Ziel-URL weiterhin. Eine Weiterleitung, die über ein abgelehntes Zertifikat läuft, zählt nicht. Liefert der Browser
+  dort keine auswertbare Seite (Challenge, Fehlerstatus, Zeitlimit) oder kommt er nicht bis dorthin, entfallen die
+  Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl.
+  `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
 
 ### Banner
 
@@ -222,6 +240,10 @@ Eigene Adapter gibt es für Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, 
 für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookieman. Geklickt wird nur über sie.
 
 - CONSENT-04 bewertet oberhalb von `info` nur bei Erkennung mit hoher Konfidenz.
+- Fehlt auf der ersten Ebene eines erkannten Banners die Ablehnung, meldet CONSENT-04 `warning`, wenn das Banner die
+  Seite nicht blockiert (`nonblocking-no-reject`, etwa nur „Cookie-Einstellungen“ und „Zustimmen“), und `critical`,
+  wenn es sie blockiert und „Zustimmen“ anbietet (`blocking-no-reject`). Eine Schließen-Schaltfläche (×) zählt nie als
+  Ablehnen: Der Scanner klickt im Besuch mit Ablehnung dann nichts, und CONSENT-05 bleibt `inconclusive`.
 - Ein anderes Banner wird nur heuristisch erkannt: CONSENT-04 meldet `info` „Banner nicht erkannt“ (Status
   `inconclusive`), der Scanner klickt nicht.
 - Sieht die Heuristik einen bannerähnlichen Kasten mit einem Einwilligungswort (auf der Seite oder in einem iframe, das
@@ -248,9 +270,34 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
   „Accept necessary“), ist nie ein Annehmen; die Formulierungen aus dem Lexikon sind ein Ablehnen, wenn daneben nur
   Cookie-, Notwendigkeits- und Hinweiswörter wie „empfohlen“ stehen („Accept necessary and analytics cookies“ ist weder
   Ablehnen noch Annehmen).
-- Bei Shopware zeigt die Seite nur, dass der Besucher geantwortet hat, nicht welche Cookies er erlaubt hat: Ablehnen
-  und Annehmen werden geklickt, gelten aber als nicht bestätigt. Shopware und Wix gelten nur mit ihrem Banner (oder dem
-  Banner-Skript von Wix) als erkannt, nicht allein durch die Kennungen der Plattform.
+- Shopware vermerkt die Antwort im Cookie `cookie-preference` und die Erlaubnis jedes optionalen Cookies in einem
+  eigenen Berechtigungs-Cookie. Gelesen werden nur die Namen der Berechtigungs-Cookies von Shopware selbst
+  (`google-analytics-enabled`, `google-ads-enabled`, `wishlist-enabled`, `youtube-video`, `vimeo-video`; `consentCookies`
+  in `test/data/cmp/adapters.yaml`), nie Werte. Ein Ablehnen gilt als bestätigt, wenn erst der Klick `cookie-preference`
+  gesetzt hat, keines dieser Cookies vorhanden ist und beides nach dem Neuladen so bleibt (`cookie:known-flags-absent`).
+  Berechtigungs-Cookies von Plugins kennt der Scanner nicht; die Bestätigung schließt sie nicht aus. Ein Annehmen gilt
+  als bestätigt, wenn der Klick mindestens eines dieser Cookies gesetzt hat; die übrigen bietet die Installation
+  womöglich nicht an. Da Shopware beim Annehmen zuerst die Cookie-Liste des Shops lädt, wartet der Scanner auf die
+  Antwort bis zu `DSGVO_CHECK_CMP_WAIT_MS`. Setzt das Ablehnen eines der Berechtigungs-Cookies oder keine Antwort, gilt
+  es als nicht bestätigt: CONSENT-05 bleibt `inconclusive` ohne Befund, CONSENT-04 meldet „Ablehnung nicht bestätigt“
+  (`warning`).
+- Einen Zustand, den der Klick unverändert ließ (eine schon vorher gespeicherte Antwort), liest das Neuladen nur noch
+  einmal: Er bestätigt das Ablehnen bei keinem Banner. „Ablehnung nicht bestätigt“ meldet CONSENT-04 nur, wenn der
+  Zustand nach dem Klick keine Antwort zeigt oder eine Kategorie erlaubt; sonst bleibt es bei der Einschränkung
+  `reject-unverified` ohne Befund.
+- Shopware und Wix gelten nur mit ihrem Banner (oder dem Banner-Skript von Wix) als erkannt, nicht allein durch die
+  Kennungen der Plattform.
+- CCM19 legt seinen Dialog verborgen und mit deaktivierten Bedienelementen in die Seite und öffnet ihn später. Ist er
+  auf dem ersten Bildschirm der Phasen B und C nach der Wartezeit auf das Banner (`DSGVO_CHECK_CMP_WAIT_MS`) noch so
+  und keine Antwort gespeichert, klickt der Scanner nichts: CONSENT-04 und CONSENT-05 bleiben `inconclusive`
+  („Einwilligungsbanner dem Scanner nicht geöffnet“), ohne Befund, ebenso CONSENT-03, wenn vor einer Interaktion
+  einwilligungsbedürftige Dienste geladen wurden. Über das, was Besucher sehen, sagt der Bericht dann nichts.
+- Findet der erste passende Container-Selektor eines Adapters nur verborgene Elemente, zählt ein späterer, wenn sein
+  Element eine sichtbare Schaltfläche oder einen sichtbaren Link zeigt: Eine verborgene Vorlage verdeckt so nicht den
+  offenen Dialog, und ein Rahmen, von dem bei geschlossenem Banner nur der eigene Kasten zu sehen ist, gilt nicht als
+  Banner.
+- Hat der Scanner im Besuch mit Zustimmung angenommen, obwohl sich der Dialog im Besuch mit Ablehnung nicht öffnete,
+  nennt die Übersicht nur die Ablehnung als nicht geprüft.
 - Verhält sich ein Banner wie gegenüber einem Bot oder meldet es einen Standort außerhalb des EWR, werden die
   betroffenen Prüfungen `inconclusive`, nicht zu Befunden.
 
@@ -364,8 +411,8 @@ Vollständig: `dsgvo-check --help`. Befehle: Scan (Standard), `report <report.js
 Der Scanner läuft ohne jede Konfiguration: Jeder Wert hat einen Standard. Schwellen, Zeitlimits und Grenzen lassen
 sich zusätzlich über Umgebungsvariablen der Form `DSGVO_CHECK_<ABSCHNITT>_<NAME>` setzen, etwa
 `DSGVO_CHECK_BROWSER_QUIET_WINDOW_MS`, `DSGVO_CHECK_HTTP_MAX_REDIRECTS` oder `DSGVO_CHECK_TLS_EXPIRING_DAYS`. Die
-Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel). Eine Datei `.env` ist
-nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
+Einheit steht im Namen (`_MS` Millisekunden, `_BYTES` Bytes, `_DAYS` Tage, `_PX` CSS-Pixel, `_BITS` Bit). Eine
+Datei `.env` ist nicht nötig; liegt im aktuellen Verzeichnis eine, wird sie gelesen.
 
 - **Vorrang:** Flag, Umgebungsvariable, `.env`, Standardwert. Eine bereits gesetzte Umgebungsvariable wird von `.env`
   nicht überschrieben.
@@ -562,7 +609,8 @@ Der Scanner schickt Browser-Navigationen und die folgenden Standardanfragen, son
 will, was bei ihm angekommen ist, findet es hier vollständig.
 
 - **Browser:** Navigationen der Phasen A, B und C (siehe [Ablauf im Browser](#ablauf-im-browser)), jeweils eine nach
-  der anderen mit mindestens 1,5 s Pause.
+  der anderen mit mindestens 1,5 s Pause. Bei einem abgelehnten Zertifikat der Ziel-URL gehen sie an das Ziel ihrer
+  HTTP-Weiterleitung, nicht zusätzlich.
 - **HTTP** (höchstens 2 Anfragen pro Sekunde und Host):
   - `robots.txt` des Ursprungs der Startseite;
   - höchstens 2 Sitemap-Anfragen, nur wenn die Links der Startseite das Seitenbudget nicht füllen (die Sitemap oder ein
@@ -570,11 +618,13 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
   - die Umleitungsketten von `http://` und `https://` für den Zielhost und seine `www.`- und Apex-Varianten, dazu die
     Kette auf einem in der Ziel-URL ausdrücklich genannten Port;
   - je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung (nur gleiche
-    Website, für die Sicherheits-Header).
+    Website, für die Sicherheits-Header und Versionsangaben).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
-- **DNS:** MX-, SPF- und DMARC-Abfragen (höchstens 60 Abfragen) beim Resolver des prüfenden Rechners, nicht bei der
-  Website.
+- **DNS:** MX-, SPF-, DMARC- und DKIM-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website: für die
+  gescannte Domain höchstens 60 Abfragen; nach dem Browser je höchstens 30 weitere für die Domain, auf die die
+  Startseite weiterleitet, und für bis zu 2 E-Mail-Domains aus dem Impressum. DKIM: je E-Mail-Domain höchstens 8
+  Selektoren (`<selector>._domainkey.<domain>`), nach den übrigen Abfragen und innerhalb desselben Budgets.
 
 Nicht gesendet werden Anfragen auf offene Dateien oder Admin-Oberflächen, Logins und Formulare. Der Scanner versucht
 nie, Bot-Schutz, CAPTCHAs oder Geo-Sperren zu umgehen: Eine blockierte Website wird als blockiert vermerkt und nicht
@@ -591,16 +641,21 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   nicht die Erlaubnis des Website-Betreibers.
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
-  Domain maskiert. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste
-  eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Domain maskiert. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne
+  Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase
+  entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **Nur die 16 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **Nur die 19 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
-  `info`.
+  `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
+  als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
+  verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
+  Plugins bleiben unberücksichtigt. Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
   die Prüfung statt „nicht gefunden“ die Warnung `provider-details-without-link`. In der Datenschutzerklärung zählen
@@ -647,7 +702,49 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   wie `--max-pages` erlaubt; sie stammen aus den Links der Startseite und ihrer Sitemap. Einbettungen auf anderen
   Unterseiten bleiben unbeobachtet. Die Stichwörter werden als Wortteile gesucht („Firmengeschichte“ zählt zu
   Geschichte), daher kann auf Portalen auch ein Artikel als weitere Seite gewählt werden.
-- **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen.
+- **E-Mail-Domains (MAIL-01 bis MAIL-03):** Geprüft werden die gescannte Domain, nach einer Weiterleitung der Startseite
+  auf eine andere Domain auch deren Domain, und die Domains von bis zu 2 E-Mail-Adressen aus dem Impressum (zuerst
+  Adressen im Text, dann `mailto:`-Links im Inhalt der Impressumsseite; Freemail-Anbieter wie `gmx.de` nicht, Liste in
+  `test/data/dns/mail-domains.yaml`). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
+  die Domain betreibt. Adressen aus der Datenschutzerklärung, aus DMARC-Berichtsadressen und von anderen Seiten werden
+  nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig ohne Weiterleitung auf
+  einen anderen Host, Impressum nicht gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in
+  diesem Lauf nicht erhoben“).
+  Adressen in der Form `name(at)domain.de` oder `name [at] domain.de` werden wie andere Adressen bis auf die Domain
+  maskiert.
+- **DKIM (MAIL-03):** Selektoren sind frei wählbar, und DNS verrät nicht, welche es gibt. Abgefragt werden je Domain
+  zuerst die Selektoren aus `DSGVO_CHECK_DNS_DKIM_SELECTORS` (`selector` für jede Domain oder `domain/selector`), dann
+  die festen Selektoren eines erkannten Anbieters (Microsoft 365: `selector1`, `selector2`, erkannt nur an MX-Eintrag
+  und SPF-include zusammen), dann übliche Namen (Liste in `test/data/dns/dkim.yaml`), höchstens
+  `DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS` (8). Ohne Schlüssel unter den angegebenen oder festen Selektoren meldet der
+  Scanner `given-selector-missing` (`warning`), sonst nur `selectors-not-found` (`info`): Ein Schlüssel unter einem
+  anderen Namen bleibt unsichtbar. Ein veröffentlichter Schlüssel belegt nicht, dass E-Mails signiert werden.
+  RSA-Schlüssel unter `DSGVO_CHECK_DNS_DKIM_MIN_RSA_BITS` (1024, nach RFC 8301; anhebbar) ergeben `key-too-short`;
+  Ed25519 hat keine RSA-Länge. Domains mit Null-MX oder ganz ohne MX- und SPF-Eintrag werden nicht abgefragt.
+  Fehlgeschlagene Abfragen, ein aufgebrauchtes Budget, nicht lesbare oder widerrufene Schlüssel (leeres `p=`) und
+  erwartete Selektoren über der Grenze ergeben keinen Befund. Zeitüberschreitungen bei DKIM-Abfragen halten die
+  Abfragen der nächsten Domain nicht an.
+- **Versionsangaben (HDR-02)** stammen nur aus den Headern `Server`, `X-Powered-By`, `X-Generator`,
+  `X-Redirect-By`, `X-AspNet-Version` und `X-AspNetMvc-Version` von Startseite, Impressum und Datenschutzerklärung
+  und nur in der Form `Produkt/Version`. Nicht gespeichert werden Kommentare in Klammern, Text in Anführungszeichen
+  und Text, der ohne Leerzeichen an beiden hängt, Produktnamen mit Punkt oder in der Form einer Kennung (Hash, UUID),
+  Versionen in der Form eines Hostnamens, mit Hash im Zusatz oder aus vier Zahlen wie eine IPv4-Adresse (also auch
+  `openresty/1.21.4.1`) und alles nach den ersten vier Paaren. Ein Produktname aus einem Wort lässt sich von einem
+  Rechnernamen ohne Punkt nicht unterscheiden. `<meta name="generator">` wird nicht gelesen. Ob eine Version
+  Schwachstellen hat, bewertet die Prüfung nicht. Snapshots älterer Versionen enthalten die Angaben nicht: HDR-02
+  bleibt dort `inconclusive`.
+- **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
+  `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
+  (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,
+  für andere Hosts bleibt die Konfidenz `medium`. Ohne Browser (`--checks TLS-01`) bewertet TLS-01 nur die
+  http-Adressen; lief der Browser nicht, nennt die Prüfung die Einschränkung.
+- **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
+  auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die
+  Seite selbst aus, leitet es auf HTTPS desselben Hosts weiter oder nennt die Ziel-URL einen Port oder eine IP-Adresse,
+  entfallen sie (`SCAN-TLS-BLOCKED` nennt den Grund). Hinter `--proxy` ist das Urteil über die Zertifikate unbekannt,
+  der Browser wechselt dann nicht. Ohne TLS-02 (`--checks`) wird das Zertifikat nicht vorab geprüft: Der Browser ruft
+  die Ziel-URL auf und bricht beim Zertifikat ab, ohne Fortsetzung.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
   Ziel hinter einem `--proxy`. Den Scanner nicht in einem Netz mit sensiblen internen Diensten und nicht in Jobs mit

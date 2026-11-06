@@ -156,6 +156,131 @@ export function cmpFacts(p: Partial<CmpFacts> = {}): CmpFacts {
   });
 }
 
+/** A control of a dialog that was rendered into the page but not opened: no box, disabled, second layer. */
+const closedControl = (name: string, kind: 'accept' | 'reject' | 'settings') => ({
+  role: 'button',
+  name,
+  tag: 'button',
+  kind,
+  kindConfidence: 'high' as const,
+  layer: 2 as const,
+  box: null,
+  visibleAtFirstScreen: false,
+  actionableAtFirstScreen: false,
+  contrast: null,
+  vendorRole: kind,
+  enabled: false,
+  inViewport: false,
+  hitTestOk: false,
+});
+
+/**
+ * CCM19 recognised with high confidence, its dialog in the page but not opened: hidden, every control disabled, no
+ * answer stored. `notOpened` is the adapter's flag, which only the first screen of a consent phase carries, measured
+ * after the wait for the banner.
+ */
+export function unopenedDialogFacts(p: Partial<CmpFacts> = {}, notOpened = true): CmpFacts {
+  return makeCmpFacts({
+    phase: 'B',
+    pageUrl: START,
+    moment: 'first-screen',
+    detection: {
+      cmpId: 'ccm19',
+      method: 'adapter',
+      version: null,
+      versionSupported: null,
+      recognitionConfidence: 'high',
+      signals: ['global:CCM', 'dom:#ccm-widget'],
+    },
+    firstLayer: {
+      bannerPresent: true,
+      bannerVisible: false,
+      buttons: [
+        closedControl('Alle akzeptieren', 'accept'),
+        closedControl('Einstellungen', 'settings'),
+        closedControl('Ablehnen', 'reject'),
+      ],
+      purAbo: false,
+      closeMeansAccept: null,
+      textLength: 0,
+      containerBox: null,
+      containerUnambiguous: true,
+      ...(notOpened ? { dialogNotOpened: true } : {}),
+    },
+    state: [
+      {
+        source: 'api',
+        ready: 'ready',
+        categories: { embeddings: 'denied' },
+        origin: 'default',
+        decision: { responded: false, method: 'unknown' },
+      },
+    ],
+    ...p,
+  });
+}
+
+/**
+ * Phases A and B on a site whose CCM19 dialog never opened: the facts of A are taken without waiting and carry no flag,
+ * the first screen of B carries it; nothing was clicked.
+ */
+export function unopenedDialogCmp(b: Partial<CmpFacts> = {}): CmpSection {
+  return cmpWith(
+    { phase: 'A', facts: [unopenedDialogFacts({ phase: 'A' }, false)] },
+    { phase: 'B', facts: [unopenedDialogFacts(b)] },
+  );
+}
+
+/** Another host of the site (same registrable domain as `ORIGIN`), as a consent cookie bound to one host splits them. */
+export const SHOP_HOST = 'https://shop.example.de';
+
+/**
+ * CMP facts of a control page after the click of phase B (reject) or C (accept). `inEffect`: the CMP read back the
+ * stored answer of the click and hides the banner; otherwise it shows the banner again and has no answer, as on a host
+ * the consent cookie of the click page does not reach.
+ */
+export function controlPageFacts(pageUrl: string, ph: 'B' | 'C', inEffect: boolean): CmpFacts {
+  const answer = ph === 'B' ? 'denied' : 'granted';
+  return cmpFacts({
+    phase: ph,
+    pageUrl,
+    moment: 'control-page',
+    firstLayer: {
+      bannerPresent: true,
+      bannerVisible: !inEffect,
+      buttons: [],
+      purAbo: false,
+      closeMeansAccept: null,
+    },
+    state: [
+      inEffect
+        ? {
+            source: 'api',
+            ready: 'ready',
+            categories: { statistics: answer, marketing: answer },
+            origin: 'stored',
+            decision: { responded: true, method: 'explicit' },
+          }
+        : {
+            source: 'api',
+            ready: 'ready',
+            categories: { statistics: 'denied', marketing: 'denied' },
+            origin: 'default',
+            decision: { responded: false, method: 'unknown' },
+          },
+    ],
+  });
+}
+
+/** Pages of a consent phase: the start page, in B its reload, then the control pages in this order. */
+export function consentPages(ph: 'B' | 'C', control: readonly string[]): PageVisit[] {
+  return [
+    page(START, 'start', ph, { order: 0 }),
+    ...(ph === 'B' ? [page(START, 'start', ph, { order: 0, reload: true })] : []),
+    ...control.map((url, i) => page(url, url === CONTACT ? 'contact' : 'nav', ph, { order: i + 1 })),
+  ];
+}
+
 /** CMP section without any banner candidate (facts recorded, nothing detected). */
 export function noBannerCmp(phases: Array<'A' | 'B'> = ['A']): CmpSection {
   return {

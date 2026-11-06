@@ -631,12 +631,93 @@ describe('the overview: checks without a result', () => {
       /nicht sichtbar angezeigt/,
     ],
     ['recognized', check('CONSENT-04', 'completed', null), /^Das Einwilligungsbanner wurde erkannt\.$/],
+    [
+      'dialogNotOpened',
+      check('CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'),
+      /im Seitenquelltext vorhanden, wurde dem Scanner aber nicht geöffnet \(Bedienelemente deaktiviert\)/,
+    ],
   ])('describes the banner state %s', (_state, consent04, sentence) => {
     const sentences = overview([consent04, check('CONSENT-05', 'inconclusive', 'no-reject-click')]);
     expect(sentences.some((s) => sentence.test(s))).toBe(true);
     expect(sentences).toContain(
       'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
     );
+  });
+
+  describe('a consent dialog the CMP did not open for the scanner', () => {
+    const unopenedChecks = () => [
+      check('CONSENT-03', 'inconclusive', 'cmp-dialog-not-opened'),
+      check('CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'),
+      check('CONSENT-05', 'inconclusive', 'cmp-dialog-not-opened'),
+    ];
+
+    it.each([
+      [
+        'de',
+        'Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem Scanner aber nicht geöffnet (Bedienelemente deaktiviert); Ablehnung und Zustimmung wurden daher nicht geprüft.',
+      ],
+      [
+        'en',
+        'A consent banner is present in the page source but was not opened for the scanner (controls disabled); rejection and acceptance were therefore not checked.',
+      ],
+    ] as const)(
+      'has its own banner sentence, never the one about a banner not shown visibly (%s)',
+      (lang, text) => {
+        const sentences = overview(unopenedChecks(), [], lang);
+
+        expect(sentences).toContain(text);
+        expect(sentences.join(' ')).not.toMatch(/nicht sichtbar angezeigt|not shown visibly/);
+        // The banner sentence explains the open checks; they are not listed again under "no conclusive result".
+        expect(sentences.join(' ')).not.toMatch(/CONSENT-0[345]/);
+        expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      },
+    );
+
+    it('says nothing about what visitors see', () => {
+      const sentence = overview(unopenedChecks()).find((s) => s.includes('Seitenquelltext')) ?? '';
+      expect(sentence).not.toMatch(/Besucher|angezeigt|sichtbar/);
+    });
+
+    it.each([
+      [
+        'de',
+        'Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem Scanner beim Besuch mit Ablehnung aber nicht geöffnet (Bedienelemente deaktiviert); die Ablehnung wurde daher nicht geprüft.',
+        /Zustimmung wurden daher nicht geprüft/,
+      ],
+      [
+        'en',
+        'A consent banner is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled); rejection was therefore not checked.',
+        /acceptance were therefore not checked/,
+      ],
+    ] as const)(
+      'when the dialog opened in the visit with consent and our accept was clicked, only the reject is open (%s)',
+      (lang, text, denied) => {
+        const r = reportWith([]);
+        r.checks = unopenedChecks();
+        r.scan.coverage.consentActions = [
+          { action: 'reject', clicked: false, verified: null },
+          { action: 'accept', clicked: true, verified: true },
+        ];
+
+        const sentences = buildReportView(r, ctx('brief', lang)).overview;
+
+        expect(sentences).toContain(text);
+        expect(sentences.join(' ')).not.toMatch(denied);
+      },
+    );
+
+    it('an accept that was not clicked keeps both open', () => {
+      const r = reportWith([]);
+      r.checks = unopenedChecks();
+      r.scan.coverage.consentActions = [
+        { action: 'reject', clicked: false, verified: null },
+        { action: 'accept', clicked: false, verified: null },
+      ];
+
+      expect(buildReportView(r, ctx('brief')).overview.join(' ')).toMatch(
+        /Ablehnung und Zustimmung wurden daher nicht geprüft/,
+      );
+    });
   });
 
   describe('a banner observed but not recognised', () => {
@@ -711,6 +792,78 @@ describe('the overview: checks without a result', () => {
     expect(sentences.join(' ')).not.toMatch(/wurde nicht erkannt/);
   });
 
+  it.each([
+    [
+      'de',
+      'Es wurden keine kritischen Befunde beobachtet. Ein Befund sollte geprüft werden.',
+      'Das Einwilligungsbanner wurde erkannt.',
+      /kein Einwilligungsbanner gefunden|nicht erkannt/,
+    ],
+    [
+      'en',
+      'No critical findings were observed. One finding should be checked.',
+      'The consent banner was recognised.',
+      /No consent banner was found|not recognised/,
+    ],
+  ] as const)(
+    'a first layer without a reject is a warning about a recognised banner, never a banner called missing (%s)',
+    (lang, counts, recognised, missing) => {
+      const noReject = finding(1, {
+        checkId: 'CONSENT-04',
+        variant: 'nonblocking-no-reject',
+        messageId: 'CONSENT-04.nonblocking-no-reject',
+        severity: 'warning',
+        params: { cmp: 'wix' },
+        text: undefined,
+      });
+      const sentences = overview(
+        [
+          check('CONSENT-03', 'completed', null),
+          check('CONSENT-04', 'completed', null),
+          check('CONSENT-05', 'inconclusive', 'no-reject-click'),
+        ],
+        [noReject],
+        lang,
+      );
+
+      expect(sentences[0]).toBe(counts);
+      expect(sentences).toContain(recognised);
+      expect(sentences.join(' ')).not.toMatch(missing);
+      // The reject that was never clicked stays open, and the overview says so.
+      expect(sentences.join(' ')).toContain('(CONSENT-05)');
+    },
+  );
+
+  // Only CONSENT-04 "no-banner" says the banner is missing; every outcome of a banner an adapter found says otherwise.
+  it.each([
+    ['completed', null, []],
+    ['inconclusive', 'first-layer-not-visible', []],
+    ['inconclusive', 'cmp-dialog-not-opened', []],
+    ['inconclusive', 'cmp-not-supported', []],
+    ['inconclusive', 'unknown-classification', []],
+    ['inconclusive', 'bot-mode', []],
+    ['inconclusive', 'geo', []],
+    ['inconclusive', 'banner-not-recognized', [{ cmp: 'wix', bannerRecognized: true }]],
+  ] as const)('CONSENT-04 %s (%s) never gives the sentence of a missing banner', (status, reason, params) => {
+    const findings = params.map((p, i) =>
+      finding(10 + i, {
+        checkId: 'CONSENT-04',
+        variant: 'banner-not-recognized',
+        messageId: 'CONSENT-04.banner-not-recognized',
+        severity: 'info',
+        params: p,
+        text: undefined,
+      }),
+    );
+    const checks = [
+      check('CONSENT-04', status, reason),
+      check('CONSENT-05', 'inconclusive', 'no-reject-click'),
+    ];
+
+    expect(overview(checks, findings).join(' ')).not.toMatch(/kein Einwilligungsbanner gefunden/);
+    expect(overview(checks, findings, 'en').join(' ')).not.toMatch(/No consent banner was found/);
+  });
+
   it('lets the banner sentence explain the reject that could not be clicked; with a recognised banner it is named', () => {
     const missing = overview([
       check('CONSENT-04', 'not_applicable', 'no-banner'),
@@ -779,6 +932,20 @@ describe('the overview: checks without a result', () => {
     );
   });
 
+  it('names the browser checks that did not run because the redirect target of a refused certificate failed too', () => {
+    const sentences = overview([
+      check('CONSENT-01', 'skipped', 'tls-fallback-failed'),
+      check('TLS-02', 'completed', null, 'http'),
+    ]);
+
+    expect(sentences).toContain(
+      'Eine Prüfung (CONSENT-01) wurde nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und auf dem Ziel ihrer HTTP-Weiterleitung hat der Browser keine auswertbare Seite erhalten.',
+    );
+    expect(overview([check('CONSENT-01', 'skipped', 'tls-fallback-failed')], [], 'en')).toContain(
+      'One check (CONSENT-01) was not run: the certificate of the website was not accepted as valid, and the browser did not receive an evaluable page on the target of its HTTP redirect.',
+    );
+  });
+
   it('speaks English with --lang en', () => {
     const sentences = overview([check('CONSENT-01', 'skipped', 'tls-blocked')], [], 'en');
     expect(sentences).toContain(
@@ -824,6 +991,46 @@ describe('the overview: region and redirect', () => {
       'Die angegebene Adresse leitet auf www.other-shop.example weiter. Für ein vollständiges Bild sollte auch diese Adresse direkt gescannt werden.',
     );
     expect(sentences(same).join(' ')).not.toContain('leitet auf');
+  });
+
+  it('says the browser checks continued on the redirect target of a refused certificate instead of asking for a direct scan', () => {
+    const continued = (lang: 'de' | 'en') => {
+      const r = reportWith([entry(1, 'a')]);
+      r.scan.target = 'https://broken.example.test/';
+      r.scan.finalUrl = 'https://site.example.test/start';
+      r.scan.entry = {
+        reason: 'tls-invalid',
+        requested: 'https://broken.example.test/',
+        via: 'http://broken.example.test/',
+        url: 'https://site.example.test/start',
+      };
+      return buildReportView(r, ctx('brief', lang)).overview;
+    };
+
+    expect(continued('de')).toContain(
+      'Das Zertifikat der angegebenen Adresse broken.example.test wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse leitet auf site.example.test weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen sich auf site.example.test.',
+    );
+    expect(continued('de').join(' ')).not.toContain('direkt gescannt werden');
+    expect(continued('en')).toContain(
+      'The certificate of the given address broken.example.test was not accepted as valid. Its plain-http address redirects to site.example.test, whose certificate was accepted as valid; the browser checks refer to site.example.test.',
+    );
+    expect(continued('en').join(' ')).not.toContain('scanned directly');
+  });
+
+  it('names the host the browser ended up on when the redirect target sent it on once more', () => {
+    const r = reportWith([entry(1, 'a')]);
+    r.scan.target = 'https://broken.example.test/';
+    r.scan.finalUrl = 'https://www.other.example.org/';
+    r.scan.entry = {
+      reason: 'tls-invalid',
+      requested: 'https://broken.example.test/',
+      via: 'http://broken.example.test/',
+      url: 'https://site.example.test/start',
+    };
+
+    expect(sentences(r)).toContain(
+      'Das Zertifikat der angegebenen Adresse broken.example.test wurde nicht als gültig angenommen. Ihre unverschlüsselte Adresse leitet auf site.example.test weiter, dessen Zertifikat als gültig angenommen wurde; die Prüfungen im Browser beziehen sich auf www.other.example.org.',
+    );
   });
 });
 
@@ -931,6 +1138,48 @@ describe('the action list: params of grouped findings', () => {
   });
 });
 
+describe('the action list: mail findings of several domains', () => {
+  const mail = (n: number, domain: string, scope: string, variant = 'record-not-found') =>
+    finding(300 + n, {
+      checkId: 'MAIL-01',
+      variant,
+      messageId: `MAIL-01.${variant}`,
+      severity: 'warning',
+      subject: scope === 'site' ? 'dmarc' : `dmarc@contact:${domain}`,
+      pages: [],
+      params: { domain, mailDomain: domain, scope, inherited: 'none' },
+      text: undefined,
+    });
+  const withDnsChecks = (r: FullReport) => {
+    r.checks = [{ ...r.checks[0]!, id: 'MAIL-01', module: 'dns' }];
+    return r;
+  };
+
+  it('a missing DMARC record on the scanned domain and on an Impressum domain → two items, each naming its domain', () => {
+    const r = withDnsChecks(
+      reportWith([mail(1, 'example.de', 'site'), mail(2, 'example-mail.de', 'contact')]),
+    );
+    const actions = buildReportView(r, ctx()).actions;
+
+    expect(actions).toHaveLength(2);
+    expect(actions.map((a) => a.covers)).toEqual(['1 Befund', '1 Befund']);
+    expect(actions[0]!.action).toContain('für example.de');
+    expect(actions[0]!.action).not.toContain('example-mail.de');
+    expect(actions[1]!.title).toContain('example-mail.de');
+    expect(actions[1]!.action).toContain('für example-mail.de');
+  });
+
+  it('the same record found again under another scope stays one item', () => {
+    const r = withDnsChecks(
+      reportWith([
+        mail(1, 'example.de', 'site', 'policy-none'),
+        mail(2, 'example.de', 'contact', 'policy-none'),
+      ]),
+    );
+    expect(buildReportView(r, ctx()).actions).toHaveLength(1);
+  });
+});
+
 describe('the evidence of a finding', () => {
   const base = () => sampleFullReport();
   function withEvidence(items: Evidence[], params: Finding['params'] = {}): FullReport {
@@ -1011,6 +1260,36 @@ describe('the evidence of a finding', () => {
     );
     expect(html).toContain('Belege (4)');
   });
+
+  it('names where on the page each listed link sits and whether it was visible', () => {
+    const link = base().evidence.find((e) => e.id === 'ev-link')!;
+    const links = [
+      {
+        ...link,
+        id: 'ev-l1',
+        href: 'http://work.example.de/',
+        text: 'Startseite',
+        region: 'nav',
+        visible: true,
+      },
+      { ...link, id: 'ev-l2', text: 'Impressum', region: 'banner', visible: false },
+    ] as Evidence[];
+    const html = renderHtml(withEvidence(links), ctx());
+
+    expect(html).toContain('<span class="ev-type">Links</span>');
+    expect(html).toContain('HTTP 200 · Navigation · sichtbar');
+    expect(html).toContain('HTTP 200 · Bereich des Einwilligungsbanners · nicht sichtbar');
+    // a link without these facts keeps its line as before
+    const plain = renderHtml(
+      withEvidence([
+        { ...link, id: 'ev-l3' },
+        { ...link, id: 'ev-l4' },
+      ] as Evidence[]),
+      ctx(),
+    );
+    expect(plain).toContain('<div>HTTP 200</div>');
+    expect(renderHtml(withEvidence(links), ctx('full', 'en'))).toContain('consent banner area · not visible');
+  });
 });
 
 describe('the full report in words', () => {
@@ -1062,11 +1341,11 @@ describe('the full report in words', () => {
   const CHECK_REASONS = [
     // evaluation
     'not-selected not-run not-collected collector-skipped collector-error:browser',
-    'tls-blocked timeout exception invalid-observation',
+    'tls-blocked tls-fallback-failed timeout exception invalid-observation',
     // browser checks; CONSENT-05 passes on why the visit with the reject did not start
     'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
     'first-layer-not-visible unknown-classification consent-frame-unresolved banner-candidate-unrecognized',
-    'banner-undetermined',
+    'banner-undetermined cmp-dialog-not-opened',
     'no-pre-consent-observation',
     'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
     'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',
@@ -1093,6 +1372,31 @@ describe('the full report in words', () => {
 
     expect(CHECK_REASONS.filter((reason, n) => shown.get(id(n)) === reason)).toEqual([]);
   });
+
+  it.each([
+    ['de', 'reject-not-in-effect', /nach der Ablehnung.*erneut/],
+    ['de', 'accept-not-in-effect', /nach der Zustimmung.*erneut/],
+    ['en', 'reject-not-in-effect', /after the rejection.*again/],
+    ['en', 'accept-not-in-effect', /after the acceptance.*again/],
+  ] as const)(
+    'words the control pages left out because the click decision is not in effect there (%s, %s)',
+    (lang, code, words) => {
+      const r = sampleFullReport();
+      r.checks = [
+        {
+          id: 'CONSENT-05',
+          module: 'browser',
+          status: 'partial',
+          reason: null,
+          limitations: [code],
+          coverage: { observed: 4, evaluated: 2 },
+          durationMs: 1,
+        },
+      ];
+      const [shown] = buildReportView(r, ctx('full', lang)).checks!;
+      expect(shown?.limitations).toEqual([{ text: expect.stringMatching(words), code: null }]);
+    },
+  );
 
   it('words the exit reasons and the phases', () => {
     const out = html();

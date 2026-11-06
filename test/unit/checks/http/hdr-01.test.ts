@@ -329,6 +329,8 @@ describe('HDR-01 security headers', () => {
     ['max-age=0', 'max-age-zero'],
     ['includeSubDomains', 'no-max-age'],
     ['max-age=abc', 'no-max-age'],
+    ['max-age=31536000; max-age=0', 'repeated-directive'],
+    ['max-age=31536000; includeSubDomains; includesubdomains', 'repeated-directive'],
   ])('HSTS "%s" has no effect → hsts-missing (%s)', (value, problem) => {
     const headers = [...without('strict-transport-security'), { name: 'strict-transport-security', value }];
     const r = runCheck(hdr01, snap([start(headers)]));

@@ -7,14 +7,16 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { browserChecks } from '../../../../src/checks/browser/index.ts';
+import type { CmpFacts, CmpSection } from '../../../../src/cmp/types.ts';
 import { CheckRegistry } from '../../../../src/core/evaluation/registry.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import { toSavedSnapshot } from '../../../../src/core/snapshot/index.ts';
+import { bannerState } from '../../../../src/reporters/front-page.ts';
 import { scan } from '../../../../src/scan.ts';
 import { expectValidReport } from '../../../utils/report/validator.ts';
-import { FIXED_NOW } from '../../../utils/snapshot-builder.ts';
-import { CONTACT, click, cookie, phase, req, site } from './helpers.ts';
-import { SCENARIOS } from './scenarios/index.ts';
+import { FIXED_NOW, makeCmpFacts } from '../../../utils/snapshot-builder.ts';
+import { CONTACT, click, cmpFacts, cmpWith, cookie, IMPRESSUM, phase, req, START, site } from './helpers.ts';
+import { SCENARIOS, scenariosOf } from './scenarios/index.ts';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'm3-report-'));
 
@@ -93,6 +95,100 @@ describe('browser checks in a full report', () => {
     );
     expect((report.checks ?? []).find((c) => c.id === 'CONSENT-03')).toMatchObject({ status: 'completed' });
   });
+
+  it('a non-blocking first layer without a reject is a warning with its catalog code; it does not fail the run', async () => {
+    const wix = scenariosOf('CONSENT-04').find(
+      (s) => s.file === 'violation-wix-settings-and-accept-only.json',
+    );
+
+    const { report, exitCode } = await scanSnapshot(wix!.build(), 'wix-no-reject');
+
+    expectValidReport(report);
+    const consent04 = (report.findings ?? []).filter((f) => f.checkId === 'CONSENT-04');
+    expect(consent04.map((f) => [f.variant, f.severity, f.confidence, f.crmCode])).toEqual([
+      ['nonblocking-no-reject', 'warning', 'high', 'T1_CONSENT_BANNER_BROKEN'],
+    ]);
+    expect((report.findings ?? []).filter((f) => f.severity === 'critical')).toEqual([]);
+    expect(exitCode).toBe(0);
+    expect(bannerState(report)).toBe('recognized');
+  });
+
+  const WIX: CmpFacts['detection'] = {
+    cmpId: 'wix',
+    method: 'adapter',
+    version: null,
+    versionSupported: null,
+    recognitionConfidence: 'high',
+    signals: ['global:consentPolicyManager', 'dom:[data-hook="consent-banner-root"]'],
+  };
+  /** Wix recognised by its adapter on one fact only; every other fact of the scan found no banner. */
+  const recognisedOn = (p: Partial<CmpFacts>): CmpFacts =>
+    cmpFacts({
+      detection: WIX,
+      firstLayer: {
+        bannerPresent: true,
+        bannerVisible: false,
+        buttons: [],
+        purAbo: false,
+        closeMeansAccept: null,
+      },
+      ...p,
+    });
+  const none = (ph: 'A' | 'B' | 'C', pageUrl = START) =>
+    makeCmpFacts({ phase: ph, pageUrl, moment: ph === 'A' ? 'phase-end' : 'first-screen' });
+  const RECOGNISED_ON_ONE_FACT: Array<[string, CmpSection]> = [
+    [
+      'only on a subpage of phase A',
+      cmpWith(
+        {
+          phase: 'A',
+          facts: [none('A'), recognisedOn({ phase: 'A', pageUrl: IMPRESSUM, moment: 'phase-end' })],
+        },
+        { phase: 'B', facts: [none('B')] },
+      ),
+    ],
+    [
+      'only on the first screen of phase C',
+      cmpWith(
+        { phase: 'A', facts: [none('A'), none('A', IMPRESSUM)] },
+        { phase: 'B', facts: [none('B')] },
+        { phase: 'C', facts: [recognisedOn({ phase: 'C' })] },
+      ),
+    ],
+    [
+      'with less than high confidence on the start page',
+      cmpWith(
+        { phase: 'A', facts: [none('A', IMPRESSUM)] },
+        {
+          phase: 'B',
+          facts: [
+            recognisedOn({
+              detection: {
+                ...WIX,
+                recognitionConfidence: 'medium',
+                signals: ['dom:[data-hook="consent-banner-root"]'],
+              },
+            }),
+          ],
+        },
+      ),
+    ],
+  ];
+
+  it.each(RECOGNISED_ON_ONE_FACT)(
+    'a banner its adapter recognised %s is never reported as missing',
+    async (name, cmp) => {
+      const snapshot = site({ phases: [phase('A'), phase('B'), phase('C')], cmp });
+
+      const { report } = await scanSnapshot(snapshot, `recognised-${name.replace(/[^a-z]+/g, '-')}`);
+
+      expectValidReport(report);
+      const ids = ['CONSENT-03', 'CONSENT-04', 'CONSENT-05'];
+      expect((report.checks ?? []).filter((c) => ids.includes(c.id) && c.reason === 'no-banner')).toEqual([]);
+      expect(bannerState(report)).not.toBe('notFound');
+      expect((report.findings ?? []).filter((f) => /^no-banner/.test(f.variant))).toEqual([]);
+    },
+  );
 
   it.each(
     Object.entries(SCENARIOS).flatMap(([id, list]) => list.map((s) => [`${id}/${s.file}`, s] as const)),

@@ -1,6 +1,7 @@
 /**
  * Start-page conditions: WAF/challenge → blocked, 5xx twice or connection failure → unreachable, 429 after the retry →
- * SCAN-THROTTLED, invalid certificate → skipped (tls-blocked); abort leaves no browser process or temp profile.
+ * SCAN-THROTTLED, invalid certificate → skipped (tls-blocked); on the redirect target of a refused certificate each of
+ * them only skips the browser (tls-fallback-failed); abort leaves no browser process or temp profile.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -101,6 +102,43 @@ describe('fatal start-page conditions', () => {
     expect(liveProfileDirs().filter((d) => dirs.includes(d))).toEqual([]);
     const ps = execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' });
     for (const dir of dirs) expect(ps.includes(dir)).toBe(false);
+  });
+
+  describe('on the redirect target of a refused certificate', () => {
+    const fallback = (url: string) =>
+      collect(server, {
+        url: 'https://expired.example.test/',
+        entry: { reason: 'tls-invalid', url, via: 'http://expired.example.test/' },
+      });
+
+    it.each([
+      ['a challenge', 'https://blocked.example.test/', 'start-page-blocked'],
+      ['503 twice', 'https://down.example.test/', 'start-page-5xx'],
+      ['an invalid certificate', 'https://expired.example.test/', 'start-page-tls'],
+      ['a connection failure', 'https://www.example.test:8443/', 'start-page-unreachable'],
+      // not fatal on the target itself (throttled), but nothing to evaluate there either
+      [
+        '429 twice without a challenge signature',
+        'https://throttled.example.test/',
+        'start-page-not-evaluable',
+      ],
+    ])('%s → skipped with tls-fallback-failed, no fatal, no phase record', async (_name, url, code) => {
+      const run = await fallback(url);
+
+      expect(run.result).toMatchObject({ status: 'skipped', reason: 'tls-fallback-failed', error: { code } });
+      expect(run.result.fatal).toBeUndefined();
+      expect(run.result.sections).toEqual({});
+    });
+
+    it('never navigates to the target whose certificate was refused', async () => {
+      const toTarget = () => server.requestsTo('expired.example.test').length;
+      const toEntry = () => server.requestsTo('blocked.example.test').length;
+      const before = { target: toTarget(), entry: toEntry() };
+      await fallback('https://blocked.example.test/');
+
+      expect(toEntry()).toBeGreaterThan(before.entry);
+      expect(toTarget()).toBe(before.target);
+    });
   });
 
   it('touches only declared hosts', () => {

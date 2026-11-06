@@ -1,6 +1,7 @@
 /**
- * The real browser collector writes no e-mail local part, no query value inside link text or accessible names and no
- * identifier from matrix or `prefix:k=v` path segments into the snapshot. Markers start with `zq7`.
+ * The real browser collector writes no e-mail local part, no query value inside link text or accessible names, no
+ * identifier from matrix or `prefix:k=v` path segments and no comment of a product header into the snapshot. Markers
+ * start with `zq7`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
@@ -29,6 +30,16 @@ beforeAll(async () => {
   server = await startFixtureServer({
     hosts: { 'www.example.test': site.root },
     routes: [
+      {
+        host: 'www.example.test',
+        path: '/',
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'x-powered-by': 'PHP/7.2.34',
+          server: 'Apache/2.4.41 (Ubuntu; zq7web01.internal.example.test)',
+        },
+        body: INDEX,
+      },
       {
         host: 'ad.doubleclick.net',
         path: '^/activityi',
@@ -91,6 +102,21 @@ describe('identifiers in the path of request URLs', () => {
   it('redacts the values of a prefix:k=v&k=v segment', () => {
     const r = run.requests.find((x) => x.host === 'dpm.demdex.net');
     expect(r?.url).toBe('https://dpm.demdex.net/ibs:dpid=[redacted]&dpuuid=[redacted]');
+  });
+});
+
+describe('headers that name the server software', () => {
+  it('the main document keeps product and version next to the redacted value, as the HTTP collector does', () => {
+    const headers = run.result.sections.browser?.phases[0]?.pages[0]?.responseHeaders ?? [];
+    expect(
+      headers
+        .filter((h) => h.name === 'server' || h.name === 'x-powered-by')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ).toEqual([
+      { name: 'server', value: '[redacted]', productVersions: [{ product: 'Apache', version: '2.4.41' }] },
+      { name: 'x-powered-by', value: '[redacted]', productVersions: [{ product: 'PHP', version: '7.2.34' }] },
+    ]);
+    expect(persisted(run)).not.toContain('Ubuntu');
   });
 });
 

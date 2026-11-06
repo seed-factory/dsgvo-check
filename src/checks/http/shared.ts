@@ -50,6 +50,30 @@ export function headerValues(headers: readonly HeaderRecord[], name: string): st
   return headers.filter((h) => h.name.toLowerCase() === n).map((h) => h.value);
 }
 
+/** RFC 6797 §6.1: `max-age` is required and each directive appears once; the UA uses only the first header. */
+function parseHsts(value: string): { ok: true; maxAge: number } | { ok: false; problem: string } {
+  const directives = value
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean);
+  // Browsers drop a header that repeats a directive, so its first max-age protects nothing.
+  const names = directives.map((d) => (d.split('=')[0] ?? '').trim().toLowerCase());
+  if (new Set(names).size !== names.length) return { ok: false, problem: 'repeated-directive' };
+  const maxAge = directives.find((d) => /^max-age\s*=/i.test(d));
+  const m = maxAge ? /^max-age\s*=\s*"?(\d+)"?$/i.exec(maxAge) : null;
+  if (!m) return { ok: false, problem: 'no-max-age' };
+  const n = Number(m[1]);
+  if (n === 0) return { ok: false, problem: 'max-age-zero' };
+  return { ok: true, maxAge: n };
+}
+
+/** The HSTS policy of a response as a browser reads it (first header, first comma-separated value); null without one. */
+export function hstsOf(headers: readonly HeaderRecord[]): ReturnType<typeof parseHsts> | null {
+  const hsts = headerValues(headers, 'strict-transport-security')[0];
+  if (hsts === undefined) return null;
+  return parseHsts(hsts.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0] ?? '');
+}
+
 export function isSuccess(status: number | null | undefined): boolean {
   return typeof status === 'number' && status >= 200 && status < 300;
 }

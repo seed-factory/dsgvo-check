@@ -11,8 +11,12 @@ export const adapterData = (id: KnownCmpId): AdapterData => loadAdapterData()[id
 
 /** Reader inputs the schema requires for their adapter (see READER_INPUTS in adapters-data.ts). */
 export function readerInput(id: KnownCmpId, key: 'botUserAgent' | 'answerCookie'): string;
-export function readerInput(id: KnownCmpId, key: 'optionalGroups' | 'essentialEmbeddings'): string[];
+export function readerInput(
+  id: KnownCmpId,
+  key: 'optionalGroups' | 'essentialEmbeddings' | 'consentCookies',
+): string[];
 export function readerInput(id: KnownCmpId, key: 'groupsSource'): NonNullable<AdapterData['groupsSource']>;
+export function readerInput(id: KnownCmpId, key: 'closedDialog'): NonNullable<AdapterData['closedDialog']>;
 export function readerInput(id: KnownCmpId, key: ReaderInput) {
   return adapterData(id)[key];
 }
