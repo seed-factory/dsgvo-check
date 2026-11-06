@@ -40,16 +40,38 @@ const ORPHAN_LOCAL_IN_URL_RE = orphanLocal(LOCAL_URL_STRUCTURE);
 
 const maskedAddress = (m: string) => `${REDACTED}@${m.slice(m.lastIndexOf('@') + 1).toLowerCase()}`;
 
-/** Every bare address in `text` → `[redacted]@domain` (domain kept, lower-cased). */
+/**
+ * `info(at)example.de` and `info [at] example.de`: an address written so that harvesters miss it is an address all the
+ * same. Only the bracketed forms count; a plain " at " is English prose ("meet at noon").
+ */
+const BLANK = String.raw`[\s\p{Z}]`;
+const OBFUSCATED_AT = `${BLANK}{0,3}(?:\\(${BLANK}{0,2}at${BLANK}{0,2}\\)|\\[${BLANK}{0,2}at${BLANK}{0,2}\\])${BLANK}{0,3}`;
+const obfuscatedSource = (extraBorder: string) =>
+  `(?:${QUOTED_LOCAL}|${localChar(extraBorder)}{1,64})${OBFUSCATED_AT}(${EMAIL_DOMAIN})`;
+const OBFUSCATED_RE = new RegExp(obfuscatedSource(''), 'giu');
+const OBFUSCATED_IN_URL_RE = new RegExp(obfuscatedSource(LOCAL_URL_STRUCTURE), 'giu');
+const MAY_BE_OBFUSCATED = /[([][\s\p{Z}]{0,2}at[\s\p{Z}]{0,2}[)\]]/iu;
+
+function maskObfuscated(text: string, re: RegExp): string {
+  if (!MAY_BE_OBFUSCATED.test(text)) return text;
+  return text.replace(re, (_m, domain: string) => `${REDACTED}@${domain.toLowerCase()}`);
+}
+
+/** Cheap pre-check before the masks: an `@` or an `(at)` / `[at]` marker. */
+export function mayHoldAddress(text: string): boolean {
+  return text.includes('@') || MAY_BE_OBFUSCATED.test(text);
+}
+
+/** Every bare address in `text`, also in the `(at)` and `[at]` forms → `[redacted]@domain` (domain kept, lower-cased). */
 export function maskEmails(text: string): string {
-  if (!text.includes('@')) return text;
-  return text.replace(EMAIL_RE, maskedAddress);
+  const masked = text.includes('@') ? text.replace(EMAIL_RE, maskedAddress) : text;
+  return maskObfuscated(masked, OBFUSCATED_RE);
 }
 
 /** `maskEmails` for a URL: `/`, `?`, `#`, `&` and `=` end the local part. */
 export function maskEmailsInUrl(text: string): string {
-  if (!text.includes('@')) return text;
-  return text.replace(EMAIL_IN_URL_RE, maskedAddress);
+  const masked = text.includes('@') ? text.replace(EMAIL_IN_URL_RE, maskedAddress) : text;
+  return maskObfuscated(masked, OBFUSCATED_IN_URL_RE);
 }
 
 /** `maskEmails` (or `maskEmailsInUrl` with `inUrl`) plus orphaned local parts before masks, for one decoded path piece. */

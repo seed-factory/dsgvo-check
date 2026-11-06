@@ -51,9 +51,12 @@ export const subjects = {
   header(name: string): string {
     return name.toLowerCase();
   },
-  /** MAIL-*, DNS-01: record kind, e.g. `dmarc`, `spf`. */
-  record(kind: string): string {
-    return kind.toLowerCase();
+  /**
+   * MAIL-*, DNS-01: record kind, e.g. `dmarc`, `spf`. A further mail domain adds its scope (`final`,
+   * `contact:<domain>`), so its finding is not merged with the scanned domain's; the scanned domain keeps the bare kind.
+   */
+  record(kind: string, scope?: string): string {
+    return scope ? `${kind.toLowerCase()}@${scope.toLowerCase()}` : kind.toLowerCase();
   },
   /** LEGAL-01: document type. */
   document(kind: 'impressum' | 'privacy'): string {

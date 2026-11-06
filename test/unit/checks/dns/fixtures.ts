@@ -7,6 +7,8 @@ import type {
   DnsQueryRecord,
   DnsRcode,
   DnsRecordType,
+  MailDomainStage,
+  MailDomainTarget,
 } from '../../../../src/core/snapshot/dns.ts';
 import type { FixtureExpect, RawFixture } from '../../../utils/snapshot-builder.ts';
 
@@ -21,6 +23,9 @@ interface DnsFixture {
   host?: string;
   notApplicable?: string;
   queries: Query[];
+  /** Further mail domains of the stage after the browser; their queries are in `queries` too. */
+  mailDomains?: MailDomainTarget[];
+  mailDomainStage?: MailDomainStage;
 }
 
 const q = (
@@ -29,6 +34,253 @@ const q = (
   purpose: string,
   rest: { rcode?: DnsRcode; answers?: DnsAnswer[]; treeWalkStep?: number; attempts?: number } = {},
 ): Query => ({ type, qname, purpose, ...rest });
+
+const txt = (value: string): DnsAnswer => ({ type: 'TXT', value, chunks: [value] });
+const mxOf = (exchange: string): DnsAnswer => ({ type: 'MX', value: exchange, priority: 10 });
+const NX = { rcode: 'NXDOMAIN' } as const;
+
+/** www.example.de without a record of its own; `_dmarc.example.de` decides (null = no record there either). */
+function siteDmarc(record: string | null): Query[] {
+  return [
+    q('MX', 'example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
+    q('TXT', '_dmarc.www.example.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
+    record
+      ? q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { answers: [txt(record)], treeWalkStep: 1 })
+      : q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
+    q('TXT', '_dmarc.de', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
+  ];
+}
+
+const REJECT = 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de';
+const IMPRESSUM = 'https://www.example.de/impressum/';
+const STAGE: MailDomainStage = { contacts: 'impressum', durationMs: 4 };
+
+/** An address domain of the Impressum, checked with its own budget. */
+function contact(domain: string, over: Partial<MailDomainTarget> = {}): MailDomainTarget {
+  return {
+    domain,
+    host: domain,
+    orgDomain: domain,
+    roles: ['contact'],
+    sources: [{ kind: 'impressum-text', url: IMPRESSUM }],
+    status: 'checked',
+    budget: { limit: 30, used: 3 },
+    ...over,
+  };
+}
+
+/** The domain of the start page after a redirect to www.example.net. */
+const FINAL: MailDomainTarget = {
+  domain: 'example.net',
+  host: 'www.example.net',
+  orgDomain: 'example.net',
+  roles: ['final'],
+  sources: [],
+  status: 'checked',
+  budget: { limit: 30, used: 4 },
+};
+
+/** MX and the DMARC walk of example-mail.de: no record there, none at the TLD. */
+const CONTACT_WITHOUT_DMARC: Query[] = [
+  q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
+  q('TXT', '_dmarc.example-mail.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
+];
+
+/** MAIL-01 on the further mail domains: each domain on its own, the scanned domain's result unchanged. */
+const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
+  {
+    file: 'violation-contact-domain-missing.json',
+    description:
+      'The scanned domain enforces DMARC, the domain of an Impressum address has no record: record-not-found for that domain only',
+    expect: { status: 'completed', variants: ['record-not-found'] },
+    queries: [...siteDmarc(REJECT), ...CONTACT_WITHOUT_DMARC],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'clean-contact-domain-reject.json',
+    description: 'The Impressum address domain publishes p=reject with rua: no finding for either domain',
+    expect: { status: 'completed', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
+      q('TXT', '_dmarc.example-mail.de', 'dmarc', {
+        answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example-mail.de')],
+        treeWalkStep: 0,
+      }),
+    ],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'inconclusive-contact-domain-servfail.json',
+    description:
+      'SERVFAIL after retry on the Impressum address domain: partial (mail-domain-unresolved), no "no record" for it, the scanned domain still evaluated',
+    expect: { status: 'partial', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
+      q('TXT', '_dmarc.example-mail.de', 'dmarc', { rcode: 'SERVFAIL', attempts: 2, treeWalkStep: 0 }),
+    ],
+    mailDomains: [contact('example-mail.de', { status: 'checked' })],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'counterexample-contact-subdomain-inherits.json',
+    description:
+      'Counterexample: the address domain mail.example.de has no record of its own, its organizational domain example.de has p=reject: no finding',
+    expect: { status: 'completed', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      q('MX', 'mail.example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
+      q('TXT', '_dmarc.mail.example.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
+    ],
+    mailDomains: [contact('mail.example.de', { orgDomain: 'example.de' })],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'violation-final-domain-missing.json',
+    description:
+      'The redirect leads to www.example.net, whose domain has no DMARC record, while the scanned example.de has p=quarantine: one record-not-found for example.net',
+    expect: { status: 'completed', variants: ['record-not-found'] },
+    queries: [
+      ...siteDmarc('v=DMARC1; p=quarantine; rua=mailto:[redacted]@example.de'),
+      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
+      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
+      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
+      q('TXT', '_dmarc.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
+    ],
+    mailDomains: [FINAL],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'counterexample-final-enforced-entry-missing.json',
+    description:
+      'Counterexample: p=reject of the redirect target does not stand in for the scanned domain, which has no record: record-not-found for example.de only',
+    expect: { status: 'completed', variants: ['record-not-found'] },
+    queries: [
+      ...siteDmarc(null),
+      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
+      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
+      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', {
+        answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example.net')],
+        treeWalkStep: 1,
+      }),
+    ],
+    mailDomains: [FINAL],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'inconclusive-mail-domains-not-collected.json',
+    description:
+      'No Impressum was read in this run (browser not run): partial with mail-domains-not-collected, the scanned domain evaluated',
+    expect: { status: 'partial', variants: [] },
+    queries: siteDmarc(REJECT),
+    mailDomains: [],
+    mailDomainStage: { contacts: 'not-collected', durationMs: 0 },
+  },
+  {
+    file: 'other-contact-domains-capped.json',
+    description:
+      'A free-mail domain is left out without a note; a domain over dns.maxMailDomains makes the result partial (mail-domains-capped)',
+    expect: { status: 'partial', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
+      q('TXT', '_dmarc.example-mail.de', 'dmarc', { answers: [txt(REJECT)], treeWalkStep: 0 }),
+    ],
+    mailDomains: [
+      contact('gmx.de', { status: 'skipped', reason: 'free-mail', budget: { limit: 30, used: 0 } }),
+      contact('example-mail.de'),
+      contact('example-other.de', { status: 'skipped', reason: 'limit', budget: { limit: 30, used: 0 } }),
+    ],
+    mailDomainStage: STAGE,
+  },
+];
+
+/** SPF of the scanned domain: -all with one include. */
+const SITE_SPF_FAIL: Query[] = [
+  q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 include:_spf.provider.example -all')] }),
+  q('TXT', '_spf.provider.example', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+];
+
+/** MAIL-02 on the further mail domains: the DMARC matrix of each domain uses that domain's DMARC only. */
+const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
+  {
+    file: 'violation-contact-permissive.json',
+    description:
+      'The Impressum address domain ends its SPF with ?all: permissive-qualifier for that domain only',
+    expect: { status: 'completed', variants: ['permissive-qualifier'] },
+    queries: [
+      ...siteDmarc(REJECT),
+      ...SITE_SPF_FAIL,
+      ...CONTACT_WITHOUT_DMARC,
+      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 a mx ?all')] }),
+      q('A', 'example-mail.de', 'spf-void-check', { answers: [{ type: 'A', value: '192.0.2.20' }] }),
+    ],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'clean-contact-fail-all.json',
+    description: 'The Impressum address domain ends its SPF with -all: no finding',
+    expect: { status: 'completed', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      ...SITE_SPF_FAIL,
+      ...CONTACT_WITHOUT_DMARC,
+      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+    ],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'inconclusive-contact-spf-servfail.json',
+    description:
+      'SERVFAIL after retry on the SPF of the Impressum address domain: partial (mail-domain-unresolved), never record-not-found',
+    expect: { status: 'partial', variants: [] },
+    queries: [
+      ...siteDmarc(REJECT),
+      ...SITE_SPF_FAIL,
+      ...CONTACT_WITHOUT_DMARC,
+      q('TXT', 'example-mail.de', 'spf', { rcode: 'SERVFAIL', attempts: 2 }),
+    ],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'violation-final-softfail.json',
+    description:
+      'The redirect target example.net ends its SPF with ~all and has no DMARC record: softfail-without-enforcement for example.net, the scanned domain stays clean',
+    expect: { status: 'completed', variants: ['softfail-without-enforcement'] },
+    queries: [
+      ...siteDmarc(REJECT),
+      ...SITE_SPF_FAIL,
+      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
+      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
+      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
+      q('TXT', '_dmarc.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
+      q('TXT', 'example.net', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
+    ],
+    mailDomains: [FINAL],
+    mailDomainStage: STAGE,
+  },
+  {
+    file: 'counterexample-softfail-other-domain-enforced.json',
+    description:
+      "Counterexample: the scanned domain's ~all without DMARC stays softfail-without-enforcement although the Impressum address domain enforces DMARC",
+    expect: { status: 'completed', variants: ['softfail-without-enforcement'] },
+    queries: [
+      ...siteDmarc(null),
+      q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
+      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
+      q('TXT', '_dmarc.example-mail.de', 'dmarc', { answers: [txt(REJECT)], treeWalkStep: 0 }),
+      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+    ],
+    mailDomains: [contact('example-mail.de')],
+    mailDomainStage: STAGE,
+  },
+];
 
 export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
   'MAIL-01': [
@@ -207,6 +459,7 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
         q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
       ],
     },
+    ...MAIL_01_FURTHER_DOMAINS,
   ],
   'MAIL-02': [
     {
@@ -590,6 +843,7 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
         }),
       ],
     },
+    ...MAIL_02_FURTHER_DOMAINS,
   ],
 };
 
@@ -618,6 +872,8 @@ export function dnsFixture(f: DnsFixture): RawFixture {
       budget: { limit: 60, used: queries.length },
       errors: [],
       ...(f.notApplicable ? { notApplicable: f.notApplicable } : {}),
+      ...(f.mailDomains ? { mailDomains: f.mailDomains } : {}),
+      ...(f.mailDomainStage ? { mailDomainStage: f.mailDomainStage } : {}),
     },
   } as RawFixture;
 }

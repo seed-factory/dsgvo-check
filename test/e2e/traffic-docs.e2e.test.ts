@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DNS_QUERY_BUDGET } from '../../src/collectors/dns/collect.ts';
+import { DEFAULT_CONFIG } from '../../src/core/config/schema.ts';
 import { REPO_ROOT } from '../utils/snapshot-builder.ts';
 
 const read = (rel: string) => readFileSync(path.join(REPO_ROOT, rel), 'utf8');
@@ -66,9 +67,12 @@ describe('README.md section "Was der Scanner sendet" describes the probes the sc
     }
   });
 
-  it('names DNS lookups with the real query budget', () => {
+  it('names DNS lookups with the real query budgets, also of the further mail domains', () => {
     expect(flat).toContain(`höchstens ${DNS_QUERY_BUDGET} Abfragen`);
     expect(flat).toMatch(/MX-, SPF- und DMARC-Abfragen/);
+    const { mailDomainQueryBudget, maxMailDomains } = DEFAULT_CONFIG.dns;
+    expect(flat).toContain(`je höchstens ${mailDomainQueryBudget} weitere`);
+    expect(flat).toContain(`bis zu ${maxMailDomains} E-Mail-Domains aus dem Impressum`);
   });
 
   it('promises no probe that the code does not send', () => {

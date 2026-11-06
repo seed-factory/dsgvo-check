@@ -263,7 +263,12 @@ ui:
     Datenschutzerklärung unvollständig: {detail}} impressum-target-not-evaluable {Linkziel des Impressums nicht
     auswertbar} privacy-target-not-evaluable {Linkziel der Datenschutzerklärung nicht auswertbar}
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
-    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} other {}}
+    {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} mail-domain-unresolved
+    {DNS-Abfragen für {detail} ohne abschließende Antwort} mail-domain-mx-unknown {MX-Eintrag von {detail} nicht
+    feststellbar} mail-domain-spf-incomplete {SPF-include von {detail} nicht vollständig aufgelöst}
+    mail-domains-capped {Weitere E-Mail-Domains aus dem Impressum nicht abgefragt (Grenze
+    DSGVO_CHECK_DNS_MAX_MAIL_DOMAINS)} mail-domains-not-collected {E-Mail-Domains aus dem Impressum in diesem Lauf
+    nicht erhoben} other {}}
   # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
   # code the texts do not know, which the report then shows as it is.
   report.reason: >-

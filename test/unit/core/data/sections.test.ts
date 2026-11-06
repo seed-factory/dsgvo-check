@@ -1,5 +1,5 @@
 /**
- * Every YAML file of the data directories that hold lists and vocabularies (cmp, browser, http, legal) belongs to a
+ * Every YAML file of the data directories that hold lists and vocabularies (cmp, browser, http, dns, legal) belongs to a
  * schema, and a bad file stops with a message that names the directory and the key.
  */
 import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
 import { browserSections } from '../../../../src/collectors/browser/rules.ts';
+import { dnsSections } from '../../../../src/collectors/dns/rules.ts';
 import { httpSections } from '../../../../src/collectors/http/rules.ts';
 import { DataError, DEFAULT_DATA_DIR, loadDataDir, loadSection } from '../../../../src/core/data/load.ts';
 import type { DataSection } from '../../../../src/core/data/parse.ts';
@@ -18,6 +19,7 @@ const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own:
   { dir: 'cmp', sections: cmpSections, own: ['lexicon'] },
   { dir: 'browser', sections: browserSections, own: [] },
   { dir: 'http', sections: httpSections, own: [] },
+  { dir: 'dns', sections: dnsSections, own: [] },
   { dir: 'legal', sections: [], own: ['legal'] },
 ];
 
@@ -89,6 +91,15 @@ describe('a broken data file is reported with its directory and key', () => {
     );
     expect(() => loadSection(byKey('browser', 'identifiers'), root)).toThrow(
       /identifiers\.params\.\d+: must be lower case/,
+    );
+  });
+
+  it('a free-mail entry that is no domain name (a URL or an address) is refused', () => {
+    const root = dataDirCopy('dns', 'mail-domains.yaml', (t) =>
+      t.replace('    - gmx.de\n', '    - mail@gmx.de\n'),
+    );
+    expect(() => loadSection(byKey('dns', 'mailDomains'), root)).toThrow(
+      /test\/data\/dns: mailDomains\.freeMail\.\d+: must be a domain name/,
     );
   });
 

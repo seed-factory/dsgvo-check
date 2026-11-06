@@ -68,8 +68,8 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 | HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
 | TLS-01     | Umleitung von http auf https                                                              |
 | TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
-| MAIL-01    | DMARC-Eintrag und Richtlinie                                                              |
-| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC                                    |
+| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum     |
+| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                   |
 
 Jede Prüfung kann mehrere Varianten melden. Die Tabelle darunter wird aus `test/data/ruleset` erzeugt und zeigt, welche
 Variante mit welchem Standard-Schweregrad gemeldet wird.
@@ -532,8 +532,9 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
     Website, für die Sicherheits-Header).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
-- **DNS:** MX-, SPF- und DMARC-Abfragen (höchstens 60 Abfragen) beim Resolver des prüfenden Rechners, nicht bei der
-  Website.
+- **DNS:** MX-, SPF- und DMARC-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website: für die
+  gescannte Domain höchstens 60 Abfragen; nach dem Browser je höchstens 30 weitere für die Domain, auf die die
+  Startseite weiterleitet, und für bis zu 2 E-Mail-Domains aus dem Impressum.
 
 Nicht gesendet werden Anfragen auf offene Dateien oder Admin-Oberflächen, Logins und Formulare. Der Scanner versucht
 nie, Bot-Schutz, CAPTCHAs oder Geo-Sperren zu umgehen: Eine blockierte Website wird als blockiert vermerkt und nicht
@@ -563,6 +564,15 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **PRIV-01** liest den Text der Datenschutzerklärung auf derselben Seite und in Frames. Verneinungen werden nicht
   ausgewertet; die Konfidenz ist daher höchstens `medium`.
 - **Nicht ausgewertet:** Datenschutzerklärungen als PDF, aufklappbare Menüs, pagehide-Beacons nach dem Ablehnen, DKIM.
+- **E-Mail-Domains (MAIL-01, MAIL-02):** Geprüft werden die gescannte Domain, nach einer Weiterleitung der Startseite
+  auf eine andere Domain auch deren Domain, und die Domains von bis zu 2 E-Mail-Adressen aus dem Impressum (zuerst
+  Adressen im Text, dann `mailto:`-Links im Inhalt der Impressumsseite; Freemail-Anbieter wie `gmx.de` nicht, Liste in
+  `test/data/dns/mail-domains.yaml`). Jede Domain bekommt eigene Befunde; die Adresse im Impressum belegt nicht, wer
+  die Domain betreibt. Adressen aus der Datenschutzerklärung, aus DMARC-Berichtsadressen und von anderen Seiten werden
+  nicht abgefragt. Ohne gelesenes Impressum (nur MAIL-Prüfungen gewählt, Zertifikat ungültig, Impressum nicht
+  gefunden) bleibt das im Ergebnis vermerkt („E-Mail-Domains aus dem Impressum in diesem Lauf nicht erhoben“).
+  Adressen in der Form `name(at)domain.de` oder `name [at] domain.de` werden wie andere Adressen bis auf die Domain
+  maskiert.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
   Ziel hinter einem `--proxy`. Den Scanner nicht in einem Netz mit sensiblen internen Diensten und nicht in Jobs mit

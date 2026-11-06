@@ -70,6 +70,8 @@ export interface LinkFact {
   /** Absolute, sanitized href; null for `#`, `javascript:` and empty hrefs (see `hrefKind`). */
   href: SanitizedUrl | null;
   hrefKind: HrefKind;
+  /** `mailto` links: the recipients masked to `mailto:[redacted]@domain`, headers dropped. Absent in older snapshots. */
+  mailto?: string;
   /** Visible text (trimmed, whitespace-collapsed, ≤ 200 chars). */
   text: string;
   /** Accessible name if it differs from text (aria-label, title, img alt). */

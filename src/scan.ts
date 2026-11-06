@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import path from 'node:path';
 import { allChecks } from './checks/index.ts';
 import { collectBrowser } from './collectors/browser/index.ts';
-import { collectDns } from './collectors/dns/index.ts';
+import { collectDns, collectDnsFollowUp } from './collectors/dns/index.ts';
 import { collectHttp } from './collectors/http/index.ts';
 import { collectTls } from './collectors/tls/index.ts';
 import { checkThresholds } from './core/config/thresholds.ts';
@@ -72,6 +72,7 @@ const DEFAULT_COLLECTORS: Collectors = {
   http: collectHttp,
   tls: collectTls,
   dns: collectDns,
+  dnsFollowUp: collectDnsFollowUp,
 };
 
 /** Refuses a target that does not resolve or that points into non-public address space, before any collector runs. */
@@ -483,13 +484,14 @@ function addConsentActions(report: Report, snapshot: Snapshot, texts: Texts | nu
 
 /**
  * When and how long the site was observed, for a saved snapshot: its capture time, and the run time of its collectors
- * (http, tls and dns run side by side, the browser after them). The clock of the re-evaluation would date the report
- * to a moment the site was not visited.
+ * (http, tls and dns run side by side, the browser after them, then the DNS stage of the further mail domains). The
+ * clock of the re-evaluation would date the report to a moment the site was not visited.
  */
 export function captureTiming(snapshot: Snapshot): { startedAt: string; durationMs: number } {
   const c = snapshot.collection;
   const sideBySide = Math.max(0, ...(['http', 'tls', 'dns'] as const).map((n) => c[n]?.durationMs ?? 0));
-  return { startedAt: snapshot.createdAt, durationMs: sideBySide + (c.browser?.durationMs ?? 0) };
+  const followUp = snapshot.dns?.mailDomainStage?.durationMs ?? 0;
+  return { startedAt: snapshot.createdAt, durationMs: sideBySide + (c.browser?.durationMs ?? 0) + followUp };
 }
 
 /** Runs one scan; fatal conditions produce a `failed` report (exit 2) instead of throwing. Report files are written by `writeReports`. */

@@ -1,0 +1,29 @@
+# Mail domains the DNS stage after the browser does not query for an address seen in the Impressum. A free-mail
+# provider's DMARC and SPF are not the site's own settings. Exact, lower-case domains: `gmx.de` excludes `gmx.de`
+# only, not `gmx.de.example.test` or `mail.gmx.de`.
+mailDomains:
+  freeMail:
+    - gmx.de
+    - gmx.net
+    - gmx.at
+    - gmx.ch
+    - web.de
+    - gmail.com
+    - googlemail.com
+    - t-online.de
+    - outlook.com
+    - outlook.de
+    - hotmail.com
+    - hotmail.de
+    - live.com
+    - live.de
+    - yahoo.com
+    - yahoo.de
+    - icloud.com
+    - me.com
+    - freenet.de
+    - posteo.de
+    - mailbox.org
+    - aol.com
+    - aol.de
+    - arcor.de

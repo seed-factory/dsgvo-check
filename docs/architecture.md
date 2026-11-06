@@ -26,6 +26,8 @@ flowchart LR
 
 Браузерный коллектор проходит три фазы, каждую в свежем профиле Chromium: cookies и хранилище предыдущей фазы не переносятся.
 
+DNS собирается в два этапа. Первый идёт параллельно с http и tls и опрашивает только сканируемый домен (`dns.queryBudget`). Второй ([collectDnsFollowUp](../src/collectors/dns/index.ts)) идёт после браузера и после подстановки конечного URL из HTTP, поэтому знает и конечный хост, когда браузер пропущен как `tls-blocked`. Он берёт цели из [mail-targets.ts](../src/collectors/dns/mail-targets.ts): регистрируемый домен конечного хоста, если редирект ведёт на другой домен (`final`), и точные домены адресов из Impressum (`contact`: текст документа без частей `hidden-irrelevant` и `mailto:` в содержимом страниц с ролью `impressum`, сначала адреса текста, потом получатели `mailto:`; не больше `dns.maxMailDomains`, без фримейла). У каждой цели свой бюджет `dns.mailDomainQueryBudget`; кэш, номера запросов, счётчик таймаутов и остановка по `--timeout` общие с первым этапом. Запросы дописываются в `dns.queries`, цели и их статус — в `dns.mailDomains`, сам этап — в `dns.mailDomainStage`. MAIL-01 и MAIL-02 оценивают каждую цель отдельно: у сканируемого домена subject прежний (`dmarc`, `spf`), у остальных — `dmarc@final`, `dmarc@contact:<домен>`, поэтому `assess` не сливает находки разных доменов, а отпечатки старых находок не меняются. Сбой ответа у сканируемого домена — ошибка проверки, у другой цели — ограничение `mail-domain-unresolved:<домен>`.
+
 ```mermaid
 flowchart LR
     A["Фаза A<br/>без взаимодействия"] --> B["Фаза B<br/>отказ в баннере"] --> C["Фаза C<br/>принятие в баннере"]
@@ -59,7 +61,7 @@ dsgvo-check/
 │   ├── scan-options.ts        # опции скана: умолчания и проверка
 │   ├── checks/                # проверки: чистые функции над срезом снимка
 │   │   ├── browser/           # CONSENT, EMBED, LEGAL, PRIV, TRACK
-│   │   ├── dns/               # MAIL-01, MAIL-02; lib/ — разбор SPF и DMARC
+│   │   ├── dns/               # MAIL-01, MAIL-02; lib/ — разбор SPF и DMARC, цели-домены
 │   │   ├── http/              # HDR-01, TLS-01, TLS-02
 │   │   └── index.ts           # явный реестр всех проверок
 │   ├── cmp/                   # распознавание баннера CMP и клик по выбору
@@ -76,7 +78,7 @@ dsgvo-check/
 │   │   │   ├── phases/        # phase-a.ts, consent-phase.ts (B и C)
 │   │   │   ├── recording/     # запросы, cookies и Web Storage без значений
 │   │   │   └── collector.ts   # сбор по фазам
-│   │   ├── dns/               # MX, DMARC (Tree Walk), SPF
+│   │   ├── dns/               # MX, DMARC (Tree Walk), SPF; второй этап — домены после браузера
 │   │   ├── http/              # HTTP-пробы класса T: редиректы, заголовки
 │   │   └── tls/               # рукопожатия; HTTP CONNECT для --proxy
 │   ├── core/                  # контракты и чистая логика, проверок не знает
@@ -96,6 +98,7 @@ dsgvo-check/
 │   ├── data/                  # данные пакета: идут в npm и образ
 │   │   ├── browser/, cmp/     # словари и сигнатуры браузерного коллектора
 │   │   ├── http/, legal/      # слова HTTP-коллектора, юридические ссылки
+│   │   ├── dns/               # фримейл-домены, которые второй этап DNS не опрашивает
 │   │   ├── report/report.html # шаблон HTML-отчёта
 │   │   ├── ruleset/de-2026/   # варианты, уровни, gating, коды CRM
 │   │   ├── services/          # каталог сервисов (Apache-2.0)
@@ -166,6 +169,7 @@ dsgvo-check/
 | `browser/dom.yaml` | словарь разметки для кода внутри страницы | `domFactsInPage`, `documentInPage`, `bannerBoxInPage` — аргументом `evaluate` |
 | `browser/pages.yaml` | ключевые слова дополнительных страниц, исключённые пути, расширения файлов | `selectPages` |
 | `http/html.yaml` | слова поиска и юридических ссылок в префиксе HTML | `detectForm`, `findLegalLinks` |
+| `dns/mail-domains.yaml` | фримейл-домены (точное совпадение), чьи адреса в Impressum не делают домен целью MAIL-01/02 | `selectMailTargets` |
 | `services/_catalog.yaml` | параметры, заданные при визите; буквы `gcd` | derive |
 
 - У каждого файла свой ключ верхнего уровня со zod-схемой (`dataSection` в [parse.ts](../src/core/data/parse.ts)); [sections.test.ts](../test/unit/core/data/sections.test.ts) проверяет, что схема есть у каждого файла и ключа и каждая загружается.

@@ -171,7 +171,19 @@ const dns = z.strictObject({
     }),
   timeoutMs: int(3_000, 'Time limit of one DNS attempt.', 100),
   retries: int(1, 'Further attempts after SERVFAIL or a timeout.', 0, 5),
-  queryBudget: int(60, 'DNS queries per scan.', 1, 200),
+  queryBudget: int(60, 'DNS queries for the scanned domain.', 1, 200),
+  maxMailDomains: int(
+    2,
+    'Mail domains of addresses in the Impressum checked besides the scanned domain (MX, DMARC, SPF); 0 checks none. Free-mail domains do not count.',
+    0,
+    5,
+  ),
+  mailDomainQueryBudget: int(
+    30,
+    'DNS queries for each further mail domain (the domain of the site after a redirect, an Impressum address domain), besides the budget of the scanned domain.',
+    1,
+    100,
+  ),
   concurrency: int(4, 'DNS queries in flight at once.', 1, 16),
   maxTimeoutResults: int(
     3,
