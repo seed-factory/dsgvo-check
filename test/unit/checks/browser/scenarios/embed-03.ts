@@ -112,7 +112,7 @@ export const scenarios: Scenario[] = [
   {
     file: 'inconclusive-video-page-blocked.json',
     description:
-      'The page chosen for its video link was behind a challenge and could not be evaluated; no video request elsewhere',
+      'The page chosen for its "Mediathek" link (keyword group video) was behind a challenge and could not be evaluated; no video request elsewhere',
     expect: { status: 'inconclusive', variants: [], reason: 'video-page-not-evaluable' },
     build: () =>
       site({
@@ -128,7 +128,14 @@ export const scenarios: Scenario[] = [
         plan: makeBrowserPlan({
           pages: [
             { url: START, role: 'start', order: 0, reasons: ['start'], source: 'start' },
-            { url: VIDEOS, role: 'nav', order: 4, reasons: ['keyword:video'], source: 'link' },
+            {
+              url: VIDEOS,
+              role: 'nav',
+              order: 4,
+              reasons: ['keyword:mediathek'],
+              source: 'link',
+              keywordGroup: 'video',
+            },
           ],
         }),
       }),

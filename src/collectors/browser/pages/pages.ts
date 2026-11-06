@@ -54,6 +54,8 @@ export interface PageChoice {
   role: PageRole;
   reasons: string[];
   source: PlannedPage['source'];
+  /** The keyword group that chose an extra page (`PlannedPage.keywordGroup`). */
+  keywordGroup?: string;
   robotsAllowed?: boolean;
 }
 
@@ -312,6 +314,7 @@ function choice(
   reasons: string[],
   source: PlannedPage['source'],
   robotsAllowed?: boolean,
+  keywordGroup?: string,
 ): PageChoice {
   return {
     raw,
@@ -319,7 +322,21 @@ function choice(
     role,
     reasons,
     source,
+    ...(keywordGroup !== undefined ? { keywordGroup } : {}),
     ...(robotsAllowed !== undefined ? { robotsAllowed } : {}),
+  };
+}
+
+/** The plan entry of a chosen page that phase A visited as the `order`-th page. */
+export function plannedPage(c: PageChoice, order: number): PlannedPage {
+  return {
+    url: c.url,
+    role: c.role,
+    order,
+    reasons: c.reasons,
+    source: c.source,
+    ...(c.keywordGroup !== undefined ? { keywordGroup: c.keywordGroup } : {}),
+    ...(c.robotsAllowed !== undefined ? { robotsAllowed: c.robotsAllowed } : {}),
   };
 }
 
@@ -598,18 +615,21 @@ function pickExtras(
     reasons: string[],
     source: PlannedPage['source'],
     perTemplate: boolean,
+    keywordGroup?: string,
   ): boolean => {
     if (extras.length >= need || chosen.used.has(pageKey(raw))) return false;
     if (perTemplate && chosen.templates.has(chosen.template(raw))) return false;
     const robotsAllowed = allowed(raw);
     if (robotsAllowed === false) return false;
-    extras.push(choice(raw, source === 'sitemap' ? 'other' : 'nav', reasons, source, robotsAllowed));
+    const role = source === 'sitemap' ? 'other' : 'nav';
+    extras.push(choice(raw, role, reasons, source, robotsAllowed, keywordGroup));
     take(chosen, raw);
     return true;
   };
 
   // A group names a kind of page, not a section: `/unternehmen/geschichte` and `/unternehmen/team` are both worth a
-  // visit, `/blog/a` and `/news/b` are one kind.
+  // visit, `/blog/a` and `/news/b` are one kind. The plan keeps the group's id beside the word that matched, so a
+  // check can tell a kind of page by the id whatever the words of the group are.
   for (const group of rules.extraGroups) {
     if (extras.length >= need) break;
     const ms: Match[] = [];
@@ -618,7 +638,9 @@ function pickExtras(
       const m = matchKeyword(l, group.words);
       if (m) ms.push({ link: l, ...m });
     }
-    for (const m of ms.sort(rank)) if (tryExtra(m.link.raw, [`keyword:${m.keyword}`], 'link', false)) break;
+    for (const m of ms.sort(rank)) {
+      if (tryExtra(m.link.raw, [`keyword:${m.keyword}`], 'link', false, group.id)) break;
+    }
   }
 
   const navLinks = i.links

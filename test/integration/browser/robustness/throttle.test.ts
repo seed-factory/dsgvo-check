@@ -44,7 +44,9 @@ describe('429 on a subpage navigation', () => {
     expect(run.result.status).toBe('partial');
     expect(run.result.fatal).toBeUndefined();
     expect(run.result.diagnostics?.filter((d) => d.code === 'SCAN-THROTTLED')).toHaveLength(1);
-    expect(run.result.diagnostics?.find((d) => d.code === 'SCAN-THROTTLED')?.affects).toContain('LEGAL-01');
+    expect(run.result.diagnostics?.find((d) => d.code === 'SCAN-THROTTLED')?.affects).toEqual(
+      expect.arrayContaining(['LEGAL-01', 'MAIL-01', 'MAIL-02', 'MAIL-03', 'TLS-01']),
+    );
     expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
       ['A', 'partial', 'throttled'],
       ['B', 'skipped', 'throttled'],

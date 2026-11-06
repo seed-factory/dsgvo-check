@@ -338,8 +338,14 @@ describe('video (stub CMP, phases A and B)', () => {
 
   it('plans the video page by its keyword and the history page, and rechecks both after the reject', () => {
     const plan = run.result.sections.plan;
-    expect(plan?.pages.find((p) => p.url === VIDEOS)?.reasons).toEqual(['keyword:video']);
-    expect(plan?.pages.find((p) => p.url === HISTORY)?.reasons).toEqual(['keyword:geschichte']);
+    expect(plan?.pages.find((p) => p.url === VIDEOS)).toMatchObject({
+      reasons: ['keyword:video'],
+      keywordGroup: 'video',
+    });
+    expect(plan?.pages.find((p) => p.url === HISTORY)).toMatchObject({
+      reasons: ['keyword:geschichte'],
+      keywordGroup: 'history',
+    });
     expect(plan?.controlPages.map((p) => p.url).sort()).toEqual([HISTORY, VIDEOS]);
     expect(phase('B')?.click).toMatchObject({ action: 'reject', success: true });
   });

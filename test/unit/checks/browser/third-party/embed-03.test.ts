@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { embed03 } from '../../../../../src/checks/browser/embed-03.ts';
 import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
+import { plannedPage, selectPages } from '../../../../../src/collectors/browser/pages/pages.ts';
+import { loadPageRules } from '../../../../../src/collectors/browser/rules.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import type {
   IframeFact,
   PageVisit,
   PhaseRecord,
+  PlannedPage,
   RequestRecord,
 } from '../../../../../src/core/snapshot/browser.ts';
 import {
@@ -23,6 +26,9 @@ import {
   cmpFacts,
   cmpWith,
   footerLinks,
+  IMPRESSUM,
+  ORIGIN,
+  PRIVACY,
   page,
   phase,
   rejectCmp,
@@ -378,24 +384,115 @@ describe('EMBED-03 reports only videos that were delivered before the accept', (
       ],
       {
         plan: makeBrowserPlan({
-          pages: [{ url: VIDEOS, role: 'nav', order: 4, reasons: ['keyword:video'], source: 'link' }],
+          pages: [
+            {
+              url: VIDEOS,
+              role: 'nav',
+              order: 4,
+              reasons: ['keyword:mediathek'],
+              source: 'link',
+              keywordGroup: 'video',
+            },
+          ],
         }),
       },
     );
     expect(r).toMatchObject({ status: 'completed', outcome: { limitations: ['video-page-not-evaluable'] } });
     expect(variantsOf(r)).toEqual(['video-loaded']);
   });
+});
 
-  it('counterexample: a blocked page chosen for another keyword is no video page', () => {
-    const r = run(
-      [phase('A', { pages: videoPages(VIDEOS, { evaluable: false, notEvaluableReason: 'challenge' }) })],
-      {
-        plan: makeBrowserPlan({
-          pages: [{ url: VIDEOS, role: 'nav', order: 4, reasons: ['keyword:karriere'], source: 'link' }],
-        }),
-      },
-    );
-    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+describe('EMBED-03 knows the video page by the keyword group the planner chose it for', () => {
+  const PAGE = `${ORIGIN}/seite/`;
+  const GROUPS = loadPageRules().extraGroups;
+  const VIDEO_WORDS = GROUPS.find((g) => g.id === 'video')?.words ?? [];
+  const OTHER_GROUPS = GROUPS.filter((g) => g.id !== 'video').map((g) => [g.id, g.words[0] as string]);
+
+  /** The plan entry phase A stores for a page the planner chose by a single link with this text. */
+  const plannedFor = (text: string): PlannedPage => {
+    const links = [
+      { raw: IMPRESSUM, text: 'Impressum', region: 'footer' as const },
+      { raw: PRIVACY, text: 'Datenschutz', region: 'footer' as const },
+      { raw: PAGE, text, region: 'nav' as const },
+    ].map((l, order) => ({ ...l, hrefKind: 'https' as const, visible: true, order }));
+    const s = selectPages({
+      links,
+      startRaw: START,
+      finalHost: 'www.example.de',
+      etld1: 'example.de',
+      maxPages: 6,
+      robots: null,
+      token: 'dsgvo-check',
+      sitemapLocs: [],
+    });
+    const choice = [s.contact, ...s.hops, ...s.extras].find((c) => c?.raw === PAGE);
+    if (!choice) throw new Error(`no page chosen for the link text "${text}"`);
+    return plannedPage(choice, 4);
+  };
+  const blockedRun = (planned: PlannedPage) =>
+    run([phase('A', { pages: videoPages(PAGE, { evaluable: false, notEvaluableReason: 'challenge' }) })], {
+      plan: makeBrowserPlan({ pages: [planned] }),
+    });
+
+  it('the dictionary has a video group with more than one word', () => {
+    expect(VIDEO_WORDS.length).toBeGreaterThan(1);
+  });
+
+  it.each(VIDEO_WORDS)(
+    'a blocked page chosen by the link text "%s" → inconclusive video-page-not-evaluable',
+    (word) => {
+      const planned = plannedFor(word);
+      expect(planned.keywordGroup).toBe('video');
+      expect(blockedRun(planned)).toMatchObject({
+        status: 'inconclusive',
+        reason: 'video-page-not-evaluable',
+      });
+    },
+  );
+
+  it.each(OTHER_GROUPS)(
+    'counterexample: a blocked page chosen for the group %s ("%s") is no video page',
+    (_id, word) => {
+      const planned = plannedFor(word);
+      expect(planned.keywordGroup).not.toBe('video');
+      const r = blockedRun(planned);
+      expect(r).toMatchObject({ status: 'completed' });
+      expect(r.outcome?.limitations ?? []).not.toContain('video-page-not-evaluable');
+    },
+  );
+
+  it('a stored snapshot without the group still knows the video page by its reason keyword:video', () => {
+    const stored: PlannedPage = {
+      url: PAGE,
+      role: 'nav',
+      order: 4,
+      reasons: ['keyword:video'],
+      source: 'link',
+    };
+    expect(blockedRun(stored)).toMatchObject({ status: 'inconclusive', reason: 'video-page-not-evaluable' });
+  });
+
+  it('counterexample: a stored snapshot without the group whose page was chosen for another keyword', () => {
+    const stored: PlannedPage = {
+      url: PAGE,
+      role: 'nav',
+      order: 4,
+      reasons: ['keyword:karriere'],
+      source: 'link',
+    };
+    expect(blockedRun(stored)).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+  });
+
+  it('counterexample: the group decides over the reason when the plan records one', () => {
+    const planned: PlannedPage = {
+      url: PAGE,
+      role: 'nav',
+      order: 4,
+      reasons: ['keyword:video'],
+      source: 'link',
+      keywordGroup: 'gallery',
+    };
+    expect(blockedRun(planned)).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
   });
 });
 

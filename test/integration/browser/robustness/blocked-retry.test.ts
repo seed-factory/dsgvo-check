@@ -135,7 +135,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
     expect(privacyHits('stays-blocked.example.test')).toHaveLength(2);
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       count: 1,
       page: 'https://stays-blocked.example.test/datenschutz/',
@@ -153,7 +153,7 @@ describe('a blocked first attempt that the repeat made good is no SCAN-BLOCKED',
     expect(visits[0]?.evaluable).toBe(false);
     const d = blocked(run);
     expect(d).toHaveLength(1);
-    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02']);
+    expect(d[0]?.affects).toEqual(['LEGAL-01', 'PRIV-01', 'PRIV-02', 'TLS-01']);
     expect(d[0]?.params).toMatchObject({
       page: 'https://repeat-fails.example.test/datenschutz/',
       kind: 'cloudflare',
