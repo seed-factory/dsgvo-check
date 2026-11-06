@@ -636,7 +636,8 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   auch den Abruf von einer Quelle außerhalb der Website („von Google“, „Drittanbieter“) oder wurden nur Abrufe ohne
   Antwort und Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte
   lädt, gehören zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im
-  Hauptdokument nicht. Ohne Befund ist die Datenschutzerklärung nicht als zutreffend bestätigt.
+  Hauptdokument nicht. Weitere Datenschutzhinweise der Website liest PRIV-02 nicht, nur die Datenschutzerklärung.
+  Ohne Befund ist die Datenschutzerklärung nicht als zutreffend bestätigt.
 - **Unterhalb des ersten Bildschirms** zeigt der Scanner eine Seite nur bis 10 000 Pixel Höhe: Was darunter liegt,
   bleibt ungesehen, und EMBED-01, EMBED-02 und EMBED-03 nennen die Einschränkung `reveal-height-capped`. Inhalte, die
   erst auf ein Scroll-Ereignis hin nachladen oder in einem eigenen Scrollbereich der Seite liegen, sieht er nicht. Mit

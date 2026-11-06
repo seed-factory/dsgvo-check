@@ -499,6 +499,26 @@ describe('PRIV-02 levels', () => {
     expect(variantsOf(r)).toEqual(['contradiction-replicated']);
   });
 
+  it('a statement in a further privacy notice of the site is not read; the same document as a policy is', () => {
+    const notice = (role?: 'supplement') =>
+      privacyDoc([fontsPart(LOCAL_CLAIM)], {
+        id: 'doc-privacy-courses',
+        url: `${PRIVACY}-kurse`,
+        ...(role ? { role } : {}),
+      });
+    const run = (doc: ReturnType<typeof notice>) =>
+      runCheck(
+        priv02,
+        site({
+          phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
+          documents: { documents: [...policyWith().documents, doc], attempts: [] },
+        }),
+      );
+    expect(run(notice('supplement')).status).toBe('completed');
+    expect(variantsOf(run(notice('supplement')))).toEqual([]);
+    expect(variantsOf(run(notice()))).toEqual(['contradiction-replicated']);
+  });
+
   it('a disclosure too long to quote still makes it wording-to-review, and every quote stays within the limit', () => {
     const long = `Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen, ${'um die Schriftarten der Website zu laden '.repeat(4)}.`;
     const [o] = observationsOf(

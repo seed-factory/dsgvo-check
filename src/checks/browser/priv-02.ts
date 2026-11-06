@@ -13,7 +13,7 @@ import type {
   DerivedSection,
   ServiceCategory,
 } from '../../derive/types.ts';
-import { policyDocuments, policyEvidence, policyText } from './documents.ts';
+import { isSupplement, policyDocuments, policyEvidence, policyText } from './documents.ts';
 import { MAX_EVIDENCE, requestEvidencePerContext } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import {
@@ -377,7 +377,9 @@ export const priv02 = defineCheck({
     const found = policyDocuments(documents);
     if ('reason' in found) return { status: 'inconclusive', reason: found.reason, observations: [] };
 
-    const { html } = found;
+    // Only the policy: the finding names it as the page that makes the statement, and a further notice of the site
+    // could neither be quoted under that name nor disclose a load for a statement of the policy.
+    const html = found.html.filter((d) => !isSupplement(d));
     const main = html[0] as DocumentRecord;
     const text = policyText(html);
     const vocab = serviceVocabulary(derived.serviceNames ?? []);
