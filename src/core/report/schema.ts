@@ -300,8 +300,15 @@ const TextMatchEvidence = z.object({
   documentId: z.string(),
   section: z.string().nullable().optional(),
   quote: z.string().max(200),
-  matchLevel: z.enum(['named', 'company', 'domain', 'category', 'none']),
+  /** What matched: a name of the service, its company, domain or category, or a term of a dictionary. */
+  matchLevel: z.enum(['named', 'company', 'domain', 'category', 'term', 'none']),
   negation: z.enum(['none', 'negated', 'ambiguous']).optional(),
+  /** The kind of statement the quote makes, as a kebab-case code (e.g. `no-connection`); never words of the page. */
+  claim: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .max(40)
+    .optional(),
 });
 
 const ScreenshotEvidence = z.object({

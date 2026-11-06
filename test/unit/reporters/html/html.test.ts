@@ -241,6 +241,21 @@ describe('HTML report: sections and content', () => {
     expect(all).toContain('sourceUrl');
   });
 
+  it('words the match of a dictionary term and labels the kind of statement a quote makes', () => {
+    const r = sampleFullReport();
+    const match = r.evidence.find((e) => e.id === 'ev-match')!;
+    Object.assign(match, { matchLevel: 'term', claim: 'no-connection' });
+    r.findings[0]!.evidenceIds = ['ev-match'];
+
+    const de = renderHtml(r, ctx());
+    expect(de).toContain('>Angabe<');
+    expect(de).toContain('Begriff aus der Wortliste');
+    expect(de).not.toContain('>claim<');
+    const en = renderHtml(r, ctx('en'));
+    expect(en).toContain('>Statement<');
+    expect(en).toContain('dictionary term');
+  });
+
   it('renders a banner-like box the heuristic did not take by its features, without buttons or blocking', () => {
     const r = sampleFullReport();
     const cmp = r.evidence.find((e) => e.type === 'cmp') as CmpEvidence;

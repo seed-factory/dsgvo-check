@@ -1,6 +1,14 @@
 /** What a check reads as a consent-relevant signal: persistent identifiers, CMP facts, bot and geo signals. */
-import type { BannerCandidateFact, BotSignal, CmpFacts, CmpSection, GeoSignal } from '../../cmp/types.ts';
-import type { BrowserPhase, CheckOutcome } from '../../core/api.ts';
+import type {
+  BannerCandidateFact,
+  BotSignal,
+  CmpFacts,
+  CmpPhaseFacts,
+  CmpSection,
+  ConsentStateFact,
+  GeoSignal,
+} from '../../cmp/types.ts';
+import type { BrowserPhase, CheckOutcome, EvidenceInput } from '../../core/api.ts';
 import type { BrowserSection } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest } from '../../derive/types.ts';
 import { sortedUniq } from './lists.ts';
@@ -178,4 +186,61 @@ export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome 
     };
   }
   return null;
+}
+
+const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
+
+/**
+ * The ready states proving a reject: produced by our click and read back after the reload. A reject is confirmed by
+ * CMP state only, never by network silence; null when phase B holds no such pair.
+ */
+export function confirmedReject(
+  b: CmpPhaseFacts | undefined,
+): { action: ConsentStateFact; stored: ConsentStateFact } | null {
+  const v = b?.verify;
+  if (v?.action !== 'reject' || !v.verified || v.persistedAfterReload !== true) return null;
+  const ready = (s: ConsentStateFact) => s.ready === 'ready' && decisionRecorded(s);
+  const action = v.stateAfter.find((s) => ready(s) && s.origin === 'action');
+  const afterReload = (b?.facts ?? []).filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
+  const stored = [...v.stateAfter, ...afterReload].find((s) => ready(s) && s.origin === 'stored');
+  return action && stored ? { action, stored } : null;
+}
+
+/** `consent-state` evidence of a state of phase B, the proof of a confirmed reject. */
+export function stateEvidence(s: ConsentStateFact, page: string | null): EvidenceInput {
+  return {
+    type: 'consent-state',
+    source: s.source,
+    ready: s.ready,
+    categories: s.categories,
+    origin: s.origin,
+    phase: 'B',
+    ...(page ? { page } : {}),
+    ...(s.scope ? { scope: s.scope } : {}),
+  };
+}
+
+/** Moments a consent phase records after its click; its first screen shows the banner before the click by design. */
+const AFTER_CLICK_MOMENTS: ReadonlySet<CmpFacts['moment']> = new Set([
+  'after-click',
+  'after-reload',
+  'control-page',
+  'phase-end',
+]);
+
+/**
+ * Whether the decision of the phase's click is in effect on a page, by the CMP facts recorded there after the click:
+ * not when the latest of them shows the banner again or a CMP state without an answer, as happens when the consent
+ * cookie is bound to the host of the click page and the page lies on another host. The latest fact decides because a
+ * banner may still be closing right after the click. A page without such facts is not contradicted. The adapters say
+ * "no answer" from the missing consent cookie even while the CMP is still loading, and `unknown` when they cannot
+ * tell, so only an explicit `false` counts.
+ *
+ * `pageFacts`: the facts recorded on one page, in the order of the snapshot.
+ */
+export function decisionInEffect(pageFacts: readonly CmpFacts[], phase: BrowserPhase): boolean {
+  const latest = pageFacts.filter((f) => f.phase === phase && AFTER_CLICK_MOMENTS.has(f.moment)).at(-1);
+  if (!latest) return true;
+  if (latest.firstLayer.bannerVisible) return false;
+  return !latest.state.some((s) => s.decision?.responded === false);
 }

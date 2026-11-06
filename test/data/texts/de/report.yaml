@@ -314,10 +314,11 @@ ui:
     Banner-Erkennung} buttons {Schaltflächen} blocking {Blockierung} viewport {Viewport} click {Klick} source
     {Quelle} ready {Bereitschaft} categories {Kategorien} scope {Geltungsbereich} kind {Art} lang {Sprache} parts
     {Abschnitte} complete {Vollständig} errors {Fehler} sha256 {SHA-256} manifest {Leseumfang} documentId {Dokument}
-    section {Abschnitt} quote {Zitat} matchLevel {Treffer} negation {Verneinung} status {HTTP-Status} role {Rolle}
-    evaluable {Auswertbar} reason {Grund} startUrl {Start-URL} hops {Schritte} outcome {Ergebnis} href {Ziel} text
-    {Linktext} target {Linkziel} method {Methode} resourceType {Ressource} result {Antwort} delivery {Zustellung}
-    provenance {Herkunft der Antwort} features {Merkmale} candidate {Bannerähnlicher Kasten} other {{key}}}
+    section {Abschnitt} quote {Zitat} matchLevel {Treffer} negation {Verneinung} claim {Angabe} status {HTTP-Status}
+    role {Rolle} evaluable {Auswertbar} reason {Grund} startUrl {Start-URL} hops {Schritte} outcome {Ergebnis} href
+    {Ziel} text {Linktext} target {Linkziel} method {Methode} resourceType {Ressource} result {Antwort} delivery
+    {Zustellung} provenance {Herkunft der Antwort} features {Merkmale} candidate {Bannerähnlicher Kasten} other
+    {{key}}}
   report.evidence.fetch: >-
     {method} · {resourceType, select, document {Dokument} stylesheet {Stylesheet} script {Skript} font {Schrift}
     image {Bild} xhr {XHR} fetch {Fetch} ping {Ping} media {Medien} websocket {WebSocket} manifest {Manifest} other
@@ -343,10 +344,10 @@ ui:
     {}}} origin {{value, select, default {Voreinstellung} stored {gespeicherte Auswahl} action {Auswahl im Banner}
     special-branch {Sonderfall des Banners} other {}}} state {{value, select, denied {abgelehnt} granted {erteilt}
     partial {teilweise} unknown {unbekannt} other {}}} matchLevel {{value, select, named {Dienstname} company
-    {Firmenname} domain {Domain} category {Kategoriebeschreibung} none {kein Treffer} other {}}} negation {{value,
-    select, none {keine} negated {verneint} ambiguous {nicht eindeutig} other {}}} part {{value, select, visible
-    {sichtbarer Text} expandable {aufklappbarer Abschnitt} frame {Frame} linked {verlinkte Seite} hidden-irrelevant
-    {ausgeblendeter Text} other {}}} other {}}
+    {Firmenname} domain {Domain} category {Kategoriebeschreibung} term {Begriff aus der Wortliste} none {kein
+    Treffer} other {}}} negation {{value, select, none {keine} negated {verneint} ambiguous {nicht eindeutig} other
+    {}}} part {{value, select, visible {sichtbarer Text} expandable {aufklappbarer Abschnitt} frame {Frame} linked
+    {verlinkte Seite} hidden-irrelevant {ausgeblendeter Text} other {}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (lokal aufgelöst)} upstream { (vom Proxy gemeldet)} other {}}"
   report.evidence.firstPartyDomain: eigene Domain
   report.evidence.cookieState: "{state, select, attempted {Setzen versucht} accepted {vom Browser angenommen} rejected {vom Browser abgelehnt} sent {mit einer Anfrage gesendet} other {{state}}}"

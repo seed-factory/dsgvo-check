@@ -305,10 +305,11 @@ ui:
     recognitionConfidence {Confidence of the banner recognition} buttons {Buttons} blocking {Blocking} viewport
     {Viewport} click {Click} source {Source} ready {Readiness} categories {Categories} scope {Scope} kind {Kind} lang
     {Language} parts {Parts} complete {Complete} errors {Errors} sha256 {SHA-256} manifest {Extent read} documentId
-    {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} status {HTTP status} role
-    {Role} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome} href {Target}
-    text {Link text} target {Link target} method {Method} resourceType {Resource} result {Response} delivery
-    {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other {{key}}}
+    {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} claim {Statement} status {HTTP
+    status} role {Role} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
+    href {Target} text {Link text} target {Link target} method {Method} resourceType {Resource} result {Response}
+    delivery {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other
+    {{key}}}
   report.evidence.fetch: >-
     {method} · {resourceType, select, document {document} stylesheet {stylesheet} script {script} font {font} image
     {image} xhr {XHR} fetch {fetch} ping {ping} media {media} websocket {WebSocket} manifest {manifest} other
@@ -334,9 +335,9 @@ ui:
     {default} stored {stored choice} action {choice in the banner} special-branch {special case of the banner} other
     {}}} state {{value, select, denied {denied} granted {granted} partial {partial} unknown {unknown} other {}}}
     matchLevel {{value, select, named {service name} company {company name} domain {domain} category {category
-    description} none {no match} other {}}} negation {{value, select, none {none} negated {negated} ambiguous
-    {ambiguous} other {}}} part {{value, select, visible {visible text} expandable {expandable section} frame {frame}
-    linked {linked page} hidden-irrelevant {hidden text} other {}}} other {}}
+    description} term {dictionary term} none {no match} other {}}} negation {{value, select, none {none} negated
+    {negated} ambiguous {ambiguous} other {}}} part {{value, select, visible {visible text} expandable {expandable
+    section} frame {frame} linked {linked page} hidden-irrelevant {hidden text} other {}}} other {}}
   report.evidence.ip: "{value}{origin, select, resolvedLocally { (resolved locally)} upstream { (reported by the proxy)} other {}}"
   report.evidence.firstPartyDomain: own domain
   report.evidence.cookieState: "{state, select, attempted {setting attempted} accepted {accepted by the browser} rejected {rejected by the browser} sent {sent with a request} other {{state}}}"

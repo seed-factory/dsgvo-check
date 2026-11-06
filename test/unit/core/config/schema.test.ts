@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { configFields } from '../../../../src/core/config/fields.ts';
+import { resolveConfig } from '../../../../src/core/config/load.ts';
 import { envName } from '../../../../src/core/config/names.ts';
 import { reasonOf } from '../../../../src/core/config/problems.ts';
 import { ConfigSchema, DEFAULT_CONFIG } from '../../../../src/core/config/schema.ts';
+import { checkThresholds } from '../../../../src/core/config/thresholds.ts';
 
 describe('built-in defaults', () => {
   // The values the scanner had as constants before the settings existed: a scan without configuration is unchanged.
@@ -58,6 +60,9 @@ describe('built-in defaults', () => {
     ['cmp', 'blockingCoveredRatio', 0.85],
     ['cmp', 'waitMs', 5_000],
     ['cmp', 'minCandidatePages', 2],
+    // Thresholds of the Impressum details and of repeated policy contradictions: settings from their first version.
+    ['legal', 'impressumMinGroups', 3],
+    ['legal', 'policyClaimMinContexts', 2],
     ['report', 'formats', ['console', 'json']],
     ['report', 'detail', 'full'],
     ['report', 'outDir', './dsgvo-check-report'],
@@ -132,6 +137,8 @@ describe('field list', () => {
     'maxTimeoutResults',
     'summaryMaxFindings',
     'maxEvidencePerFinding',
+    'impressumMinGroups',
+    'policyClaimMinContexts',
   ]);
   it('names the unit of every number: _MS, _BYTES, _DAYS, a count or a share', () => {
     for (const f of fields.filter((x) => x.kind === 'int' || x.kind === 'number')) {
@@ -197,6 +204,12 @@ describe('validation', () => {
     [{ dns: { queryBudget: 201 } }],
     [{ dns: { concurrency: 17 } }],
     [{ cmp: { blockingCoveredRatio: 0 } }],
+    [{ legal: { impressumMinGroups: 1 } }],
+    [{ legal: { impressumMinGroups: 6 } }],
+    [{ legal: { impressumMinGroups: 2.5 } }],
+    [{ legal: { policyClaimMinContexts: 1 } }],
+    [{ legal: { policyClaimMinContexts: 21 } }],
+    [{ legal: { unknown: 1 } }],
     [{ report: { formats: [] } }],
     [{ report: { formats: ['xml'] } }],
     [{ report: { lang: 'fr' } }],
@@ -206,6 +219,29 @@ describe('validation', () => {
     [{ browser: { unknown: 1 } }],
   ])('rejects %j', (input) => {
     expect(bad(input)).not.toBeNull();
+  });
+
+  it('accepts the legal thresholds at their bounds and hands them to the checks', () => {
+    for (const [impressumMinGroups, policyClaimMinContexts] of [
+      [2, 2],
+      [5, 20],
+    ] as const) {
+      const config = ConfigSchema.parse({ legal: { impressumMinGroups, policyClaimMinContexts } });
+      expect(checkThresholds(config).legal).toEqual({ impressumMinGroups, policyClaimMinContexts });
+    }
+    expect(checkThresholds(DEFAULT_CONFIG).legal).toEqual({
+      impressumMinGroups: 3,
+      policyClaimMinContexts: 2,
+    });
+  });
+
+  it('reads the legal thresholds from their variables', () => {
+    expect(envName('legal', 'impressumMinGroups')).toBe('DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS');
+    expect(envName('legal', 'policyClaimMinContexts')).toBe('DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS');
+    const { config } = resolveConfig({
+      env: { DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS: '4', DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS: '5' },
+    });
+    expect(config.legal).toEqual({ impressumMinGroups: 4, policyClaimMinContexts: 5 });
   });
 
   it('accepts DNS servers as host, host:port and bracketed IPv6', () => {

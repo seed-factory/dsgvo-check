@@ -11,6 +11,7 @@ const SECTION_TITLES: Readonly<Record<SectionName, string>> = {
   tls: 'tls: handshakes and certificate windows (TLS-02)',
   dns: 'dns: mail DNS lookups (MAIL-01, MAIL-02)',
   cmp: 'cmp: cookie banner recognition (CONSENT-04)',
+  legal: 'legal: Impressum details and statements of the privacy policy',
   report: 'report: output and size limits',
   pdf: 'pdf: PDF printing',
 };

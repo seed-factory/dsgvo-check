@@ -336,7 +336,7 @@ const coded = (field: string, value: unknown, t: EvidenceTools): string =>
 /** Fields whose values are codes of a closed set, worded by `evidence.value`. */
 const CODED_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
   'consent-state': new Set(['source', 'ready', 'origin']),
-  'text-match': new Set(['matchLevel', 'negation']),
+  'text-match': new Set(['matchLevel', 'negation', 'claim']),
 };
 
 /** One field of a type without its own layout; structured values that have words of their own get them here. */

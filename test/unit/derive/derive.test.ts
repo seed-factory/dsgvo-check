@@ -548,7 +548,96 @@ describe('derive: requests of embedded frames', () => {
     expect(row('site-font')).toEqual(['google-fonts', 'fonts', 'catalog', 'font', undefined]);
     // The player's font is no use of Google Fonts by the site: only the site's own font request counts for it.
     expect(d.services.find((s) => s.serviceId === 'google-fonts')?.requestIds).toEqual(['site-font']);
+
+    // The catalog still knows what the embed's resource is: the player's font is a Google Fonts font, its helper host
+    // is of no catalog service. The site's own requests need no second name.
+    const resource = (id: string) => {
+      const r = d.requests.find((x) => x.requestId === id);
+      return [r?.resourceServiceId, r?.resourceCategory];
+    };
+    expect(resource('font')).toEqual(['google-fonts', 'fonts']);
+    expect(resource('helper')).toEqual([undefined, undefined]);
+    expect(resource('xhr')).toEqual([undefined, undefined]);
+    expect(resource('ads')).toEqual([undefined, undefined]);
+    expect(resource('site-font')).toEqual([undefined, undefined]);
   });
+
+  it.each([
+    [
+      'a builder frame that loads Google Maps',
+      'https://static.builder.example/map.html?lang=[redacted]',
+      true,
+    ],
+    ['the Google Maps embed frame itself', 'https://www.google.com/maps/embed?pb=[redacted]', false],
+  ])(
+    'the fonts of %s keep their catalog service as the resource, while the map owns the request',
+    (_case, frameUrl, loadsApi) => {
+      const frame = inFrame('A-f9', frameUrl);
+      const d = derive(
+        snap([
+          makePhase('A', {
+            requests: [
+              ...(loadsApi
+                ? [req('https://maps.googleapis.com/maps/api/js?key=[redacted]', { id: 'api', ...frame })]
+                : []),
+              req('https://fonts.googleapis.com/css?family=Roboto', {
+                id: 'css',
+                resourceType: 'stylesheet',
+                ...frame,
+              }),
+              req('https://fonts.gstatic.com/s/roboto/v48/a.woff2', {
+                id: 'font',
+                resourceType: 'font',
+                ...frame,
+              }),
+              req('https://helper.unknown-host.example/a.js', {
+                id: 'helper',
+                resourceType: 'script',
+                ...frame,
+              }),
+            ],
+          }),
+        ]),
+      );
+      const row = (id: string) => {
+        const r = d.requests.find((x) => x.requestId === id);
+        return [
+          r?.serviceId,
+          r?.category,
+          r?.source,
+          r?.frameServiceId,
+          r?.resourceServiceId,
+          r?.resourceCategory,
+        ];
+      };
+      expect(row('css')).toEqual([
+        'google-maps',
+        'maps',
+        'embed-frame',
+        'google-maps',
+        'google-fonts',
+        'fonts',
+      ]);
+      expect(row('font')).toEqual([
+        'google-maps',
+        'maps',
+        'embed-frame',
+        'google-maps',
+        'google-fonts',
+        'fonts',
+      ]);
+      expect(row('helper')).toEqual([
+        'google-maps',
+        'maps',
+        'embed-frame',
+        'google-maps',
+        undefined,
+        undefined,
+      ]);
+      // The map frame's fonts stay out of the site's own use of Google Fonts.
+      expect(d.services.find((s) => s.serviceId === 'google-fonts')).toBeUndefined();
+    },
+  );
 
   it.each([
     ['an unknown host', 'https://static.builder.example', [null, 'none']],
@@ -577,6 +666,10 @@ describe('derive: requests of embedded frames', () => {
         ['css', 'google-maps', 'embed-frame', 'google-maps'],
         ['api', 'google-maps', 'catalog', 'google-maps'],
       ]);
+      expect(d.requests.find((r) => r.requestId === 'css')).toMatchObject({
+        resourceServiceId: 'google-fonts',
+        resourceCategory: 'fonts',
+      });
     },
   );
 
@@ -799,6 +892,52 @@ describe('derive: cookies and storage', () => {
       ['uc_settings', null, false, true, true],
       ['yt-remote-device-id', 'youtube', true, false, true],
       ['tmp', null, false, false, false],
+    ]);
+  });
+});
+
+describe('derive: names of catalog services', () => {
+  it('lists every service a policy may name, observed or not, with its aliases and companies', () => {
+    const d = derive(snap([makePhase('A', {})]));
+    expect(d.catalog).toEqual({});
+
+    const fonts = d.serviceNames?.find((s) => s.serviceId === 'google-fonts');
+    expect(fonts).toEqual({
+      serviceId: 'google-fonts',
+      name: 'Google Fonts',
+      category: 'fonts',
+      aliases: ['Google Fonts', 'Google Web Fonts', 'Google Webfonts'],
+      companyAliases: ['Google Ireland Ltd', 'Google Ireland Ltd.', 'Google Ireland Limited', 'Google LLC'],
+      provider: { name: 'Google Ireland Limited', country: 'IE' },
+      parent: { name: 'Google LLC', country: 'US' },
+    });
+  });
+
+  it('leaves out entries of no policy relevance, such as the generic Google cookie entry named "Google"', () => {
+    const catalog = loadServiceCatalog();
+    const ids = derive(snap([makePhase('A', {})]), { catalog }).serviceNames?.map((s) => s.serviceId);
+    expect(ids).not.toContain('google-cookies');
+    expect(ids).toContain('cookiebot');
+    expect(ids).toEqual(
+      catalog.data.services
+        .filter((s) => s.policyRelevance !== 'none')
+        .map((s) => s.id)
+        .sort(),
+    );
+  });
+
+  it('a service without parties or aliases has empty lists and no party fields', () => {
+    const base = loadServiceCatalog().data;
+    const own = new ServiceCatalog(
+      parseCatalog({
+        ...base,
+        services: [
+          { id: 'bare-widget', name: 'Bare Widget', category: 'widget', policyRelevance: 'optional' },
+        ],
+      }),
+    );
+    expect(derive(snap([makePhase('A', {})]), { catalog: own }).serviceNames).toEqual([
+      { serviceId: 'bare-widget', name: 'Bare Widget', category: 'widget', aliases: [], companyAliases: [] },
     ]);
   });
 });

@@ -134,12 +134,17 @@ describe('scan — settings', () => {
             sections: { browser: makeBrowser({ phases: [{ ...emptyPhase('A') }] }) },
           }),
         }),
-        config: { cmp: { blockingCoveredRatio: 0.6 }, tls: { expiringDays: 7, approachingDays: 20 } },
+        config: {
+          cmp: { blockingCoveredRatio: 0.6 },
+          legal: { impressumMinGroups: 4 },
+          tls: { expiringDays: 7, approachingDays: 20 },
+        },
       }),
     );
 
     expect(seen).toEqual({
       cmp: { blockingCoveredRatio: 0.6, minCandidatePages: 2 },
+      legal: { impressumMinGroups: 4, policyClaimMinContexts: 2 },
       tls: {
         shortLivedDays: 10,
         expiringDays: 7,

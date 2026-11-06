@@ -2,7 +2,7 @@
  * CONSENT-05: tracking after a technically confirmed reject. The reject is confirmed by CMP state only, never by
  * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`.
  */
-import type { CmpPhaseFacts, CmpSection, ConsentStateFact } from '../../cmp/types.ts';
+import type { CmpSection } from '../../cmp/types.ts';
 import {
   type CheckOutcome,
   defineCheck,
@@ -25,9 +25,11 @@ import {
   allCmpFacts,
   bannerFound,
   bannerUndetermined,
+  confirmedReject,
   consentSignals,
   persistentIdentifier,
   signalOutcome,
+  stateEvidence,
   unrecognizedBanner,
 } from './signals.ts';
 import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
@@ -58,34 +60,6 @@ interface Group {
 /** A persistent identifier as in CONSENT-01; a cookieless, per-load or anonymous hit → warning. */
 const requestVariant = (c: ClassifiedRequest): Variant =>
   persistentIdentifier(c) ? 'tracking-after-reject' : 'cookieless-ping-after-reject';
-
-const decisionRecorded = (s: ConsentStateFact) => s.decision?.responded !== false;
-
-/** The ready states proving the reject: produced by our click and read back after the reload. */
-function confirmedReject(
-  b: CmpPhaseFacts | undefined,
-): { action: ConsentStateFact; stored: ConsentStateFact } | null {
-  const v = b?.verify;
-  if (v?.action !== 'reject' || !v.verified || v.persistedAfterReload !== true) return null;
-  const ready = (s: ConsentStateFact) => s.ready === 'ready' && decisionRecorded(s);
-  const action = v.stateAfter.find((s) => ready(s) && s.origin === 'action');
-  const afterReload = (b?.facts ?? []).filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
-  const stored = [...v.stateAfter, ...afterReload].find((s) => ready(s) && s.origin === 'stored');
-  return action && stored ? { action, stored } : null;
-}
-
-function stateEvidence(s: ConsentStateFact, page: string | null): EvidenceInput {
-  return {
-    type: 'consent-state',
-    source: s.source,
-    ready: s.ready,
-    categories: s.categories,
-    origin: s.origin,
-    phase: 'B',
-    ...(page ? { page } : {}),
-    ...(s.scope ? { scope: s.scope } : {}),
-  };
-}
 
 type Groups = Map<string, Group>;
 

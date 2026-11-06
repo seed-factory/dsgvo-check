@@ -135,6 +135,13 @@ export interface ClassifiedRequest {
    * `embed-frame` the request itself is attributed to the embed: a font or a host of no other service.
    */
   frameServiceId?: string;
+  /**
+   * With source `embed-frame`: the catalog service the requested resource itself belongs to (Google Fonts for the
+   * font of a map frame), so a check can name it while the embed keeps the request. Absent for a host of no service.
+   */
+  resourceServiceId?: string;
+  /** Category of `resourceServiceId`. */
+  resourceCategory?: ServiceCategory;
 }
 
 /** Key `(name, domain|first-party, path, partitionKey)` used to compare cookies across phases. */
@@ -197,6 +204,23 @@ export interface ClassifiedHint {
   category: ServiceCategory;
 }
 
+/**
+ * The names by which a policy may mention a catalog service: its name, its aliases and its companies. Every service of
+ * the catalog whose mention in a policy matters, observed or not, so a check can tell which service a sentence is about
+ * without reading the catalog files.
+ */
+export interface ServiceName {
+  serviceId: string;
+  name: string;
+  category: ServiceCategory;
+  /** German and English aliases, each once. */
+  aliases: string[];
+  /** Legal names of provider and parent and their spellings (as `ServiceInfo.companyAliases`). */
+  companyAliases: string[];
+  provider?: Party;
+  parent?: Party;
+}
+
 /** Aggregate per service across phases (inventory for TRACK-01 / PRIV-01). */
 export interface ServiceObservation {
   serviceId: string;
@@ -233,6 +257,8 @@ export interface DerivedSection {
   services: ServiceObservation[];
   /** Catalog entries referenced by `services` (lookup for checks). */
   catalog: Record<string, ServiceInfo>;
+  /** Names of every catalog service of policy relevance `required` or `optional`, ordered by id. */
+  serviceNames?: ServiceName[];
   /** Connection/preload hints (EMBED-01 "preconnect only"). */
   hints?: ClassifiedHint[];
   /** Registrable domains treated as first party (final host and input host). */

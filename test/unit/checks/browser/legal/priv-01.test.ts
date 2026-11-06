@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { matchLevel, normalizeText, priv01 } from '../../../../../src/checks/browser/priv-01.ts';
+import { normalizeText } from '../../../../../src/checks/browser/documents.ts';
+import { matchLevel, priv01 } from '../../../../../src/checks/browser/priv-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
