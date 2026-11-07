@@ -8,12 +8,11 @@ import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { mail03 } from '../../../../src/checks/dns/mail-03.ts';
 import { collectMailDns, type DkimOptions } from '../../../../src/collectors/dns/collect.ts';
 import { collectDns } from '../../../../src/collectors/dns/index.ts';
-import { type DnsClient, errorToRcode, type RawDnsResult } from '../../../../src/collectors/dns/resolver.ts';
+import { type DnsClient, errorToRcode } from '../../../../src/collectors/dns/resolver.ts';
 import { loadDkimRules } from '../../../../src/collectors/dns/rules.ts';
 import { defaultConfig } from '../../../../src/core/config/schema.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
-import type { DnsRecordType } from '../../../../src/core/snapshot/dns.ts';
 import { defaultNetworkConfig } from '../../../../src/core/url/net.ts';
 import {
   FIXED_NOW,
@@ -23,43 +22,7 @@ import {
   variantsOf,
 } from '../../../utils/snapshot-builder.ts';
 import { dkimRecord, rsaKey } from './dkim-keys.ts';
-import type { ZoneSpec } from './zone.ts';
-
-interface FakeClient extends DnsClient {
-  calls: string[];
-}
-
-function fakeClient(spec: ZoneSpec): FakeClient {
-  const calls: string[] = [];
-  return {
-    calls,
-    resolver: { kind: 'custom', servers: ['192.0.2.53'] },
-    cancel() {},
-    async query(qname: string, type: DnsRecordType): Promise<RawDnsResult> {
-      const key = `${type} ${qname}`;
-      calls.push(key);
-      const entry = spec[key] ?? 'NXDOMAIN';
-      if (typeof entry === 'string') {
-        const retried = entry === 'SERVFAIL' || entry === 'TIMEOUT';
-        return {
-          rcode: entry,
-          answers: [],
-          attempts: retried ? 2 : 1,
-          durationMs: 1,
-          ...(entry === 'NXDOMAIN' || entry === 'NODATA'
-            ? {}
-            : { error: { code: `E${entry}`, message: entry } }),
-        };
-      }
-      const answers = entry.map((v) =>
-        type === 'MX'
-          ? { type, value: v.split(' ')[1] as string, priority: Number(v.split(' ')[0]) }
-          : { type, value: v, chunks: [v] },
-      );
-      return { rcode: answers.length ? 'NOERROR' : 'NODATA', answers, attempts: 1, durationMs: 1 };
-    },
-  };
-}
+import { fakeDnsClient, type ZoneSpec } from './zone.ts';
 
 const RUA = 'rua=mailto:dmarc-reports@example.de';
 const site: ZoneSpec = {
@@ -73,7 +36,7 @@ const collect = (
   spec: ZoneSpec,
   o: { budget?: number; signal?: AbortSignal; host?: string; dkim?: DkimOptions } = {},
 ) => {
-  const client = fakeClient(spec);
+  const client = fakeDnsClient(spec);
   const run = collectMailDns({
     host: o.host ?? 'www.example.de',
     domain: 'example.de',
@@ -92,32 +55,6 @@ const COMMON_DKIM = ['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1'].map(
 );
 
 describe('collectMailDns: query plan', () => {
-  it('redacts spaced mailto and bare addresses in TXT records', async () => {
-    const { run } = collect({
-      ...site,
-      'TXT _dmarc.example.de': ['v=DMARC1; p=none; rua=mailto: dmarc@example.de,other@example.de;'],
-    });
-    const answers = (await run).section.queries.flatMap((query) => query.answers);
-    const txt = answers.find((answer) => answer.value.startsWith('v=DMARC1'));
-    expect(txt?.value).toBe('v=DMARC1; p=none; rua=mailto:[redacted]@example.de,[redacted]@example.de;');
-    expect(txt?.chunks?.join('')).toBe(txt?.value);
-  });
-
-  it('keeps the tags after an address in a record without spaces (shared redactText)', async () => {
-    const { run } = collect({
-      ...site,
-      'TXT _dmarc.example.de': [
-        'v=DMARC1;p=none;rua=mailto:dmarc@example.de;ruf=mailto:ruf@example.de;pct=100',
-      ],
-    });
-    const answers = (await run).section.queries.flatMap((query) => query.answers);
-    const txt = answers.find((answer) => answer.value.startsWith('v=DMARC1'));
-    expect(txt?.value).toBe(
-      'v=DMARC1;p=none;rua=mailto:[redacted]@example.de;ruf=mailto:[redacted]@example.de;pct=100',
-    );
-    expect(txt?.value).not.toContain('dmarc@');
-  });
-
   it('MX, then the DMARC Tree Walk, then the SPF tree, then the DKIM selectors', async () => {
     const { client, run } = collect(site);
 
@@ -373,18 +310,33 @@ describe('collectMailDns: DKIM selectors', () => {
 });
 
 describe('collectMailDns: redaction and minimisation', () => {
-  it('masks mailto: in values and chunks', async () => {
-    const r = await collect(site).run;
-    const json = JSON.stringify(r.section);
-
-    expect(json).not.toContain('dmarc-reports@');
+  it.each([
+    {
+      label: 'a mailto: URI',
+      raw: `v=DMARC1; p=reject; ${RUA}`,
+      stored: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
+    },
+    {
+      label: 'a spaced mailto: and a bare address',
+      raw: 'v=DMARC1; p=none; rua=mailto: dmarc@example.de,other@example.de;',
+      stored: 'v=DMARC1; p=none; rua=mailto:[redacted]@example.de,[redacted]@example.de;',
+    },
+    {
+      // The collector shares redactText: the tags after an address stay.
+      label: 'addresses in a record without spaces',
+      raw: 'v=DMARC1;p=none;rua=mailto:dmarc@example.de;ruf=mailto:ruf@example.de;pct=100',
+      stored: 'v=DMARC1;p=none;rua=mailto:[redacted]@example.de;ruf=mailto:[redacted]@example.de;pct=100',
+    },
+  ])('masks the local part of $label in the value and the chunks', async ({ raw, stored }) => {
+    const r = await collect({ ...site, 'TXT _dmarc.example.de': [raw] }).run;
     const dmarc = r.section.queries.find((x) => x.qname === '_dmarc.example.de');
-    expect(dmarc?.answers[0]?.value).toBe('v=DMARC1; p=reject; rua=mailto:[redacted]@example.de');
-    expect(dmarc?.answers[0]?.chunks).toEqual(['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de']);
+    expect(dmarc?.answers.map((a) => [a.value, a.chunks])).toEqual([[stored, [stored]]]);
+    const json = JSON.stringify(r.section);
+    for (const local of raw.match(/[\w.-]+@/g) ?? []) expect(json).not.toContain(local);
   });
 
   it('a mailto: split across TXT character-strings does not survive in chunks', async () => {
-    const base = fakeClient(site);
+    const base = fakeDnsClient(site);
     const split = ['v=DMARC1; p=reject; rua=mail', 'to:alice@example.de', ',mailto:bob', '@example.de'];
     const client: DnsClient = {
       ...base,

@@ -7,22 +7,14 @@
     ]
   },
   "http": {
-    "userAgent": "dsgvo-check/test",
     "chains": [
       {
         "id": "chain-http",
-        "hostVariant": "target",
-        "host": "www.example.de",
-        "scheme": "http",
         "startUrl": "http://www.example.de/",
         "hops": [
           {
             "url": "http://www.example.de/",
             "status": 200,
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 20,
-            "requestedAt": "2026-10-30T12:00:00.000Z",
             "bodyBytes": 300,
             "bodyKind": "html",
             "hasForm": false,
@@ -31,64 +23,23 @@
               "url": "https://www.example.de/"
             }
           }
-        ],
-        "final": {
-          "url": "http://www.example.de/",
-          "status": 200,
-          "headers": [],
-          "setCookieNames": [],
-          "durationMs": 20,
-          "requestedAt": "2026-10-30T12:00:00.000Z",
-          "bodyBytes": 300,
-          "bodyKind": "html",
-          "hasForm": false,
-          "clientRedirect": {
-            "kind": "meta",
-            "url": "https://www.example.de/"
-          }
-        },
-        "outcome": "ok"
+        ]
       },
       {
         "id": "chain-https",
-        "hostVariant": "target",
-        "host": "www.example.de",
-        "scheme": "https",
         "startUrl": "https://www.example.de/",
         "hops": [
           {
             "url": "https://www.example.de/",
-            "status": 200,
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 20,
-            "requestedAt": "2026-10-30T12:00:00.000Z",
             "bodyBytes": 20000,
             "bodyKind": "html",
             "tlsAuthorized": true,
             "tlsAuthorizationError": null,
             "tlsProtocol": "TLSv1.3"
           }
-        ],
-        "final": {
-          "url": "https://www.example.de/",
-          "status": 200,
-          "headers": [],
-          "setCookieNames": [],
-          "durationMs": 20,
-          "requestedAt": "2026-10-30T12:00:00.000Z",
-          "bodyBytes": 20000,
-          "bodyKind": "html",
-          "tlsAuthorized": true,
-          "tlsAuthorizationError": null,
-          "tlsProtocol": "TLSv1.3"
-        },
-        "outcome": "ok"
+        ]
       }
     ],
-    "documents": [],
-    "requestsIssued": 2,
-    "throttled": false,
-    "errors": []
+    "requestsIssued": 2
   }
 }

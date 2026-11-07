@@ -7,7 +7,12 @@
 import { describe, expect, it } from 'vitest';
 import { selectFormTwins } from '../../../../src/collectors/http/form-twins.ts';
 import type { FormFact, LinkFact, PageVisit } from '../../../../src/core/snapshot/browser.ts';
-import type { DocumentResponse, HttpHop, RedirectChain } from '../../../../src/core/snapshot/http.ts';
+import type {
+  DocumentResponse,
+  HttpHop,
+  HttpSection,
+  RedirectChain,
+} from '../../../../src/core/snapshot/http.ts';
 import {
   makeBrowser,
   makeChain,
@@ -54,16 +59,28 @@ function httpChain(host: string, hops?: Partial<HttpHop>[], p: Partial<RedirectC
   return makeChain({ startUrl, hops: built, final: built.at(-1) ?? null, ...p });
 }
 
+/** The plain-http probe of a host whose root redirects to its https root. */
+const redirectedRoot = (host: string) =>
+  httpChain(host, [
+    { status: 301, location: `https://${host}/` },
+    { url: `https://${host}/`, status: 200 },
+  ]);
+
+/** The pages in phase A, or in phase B only (phase A then saw none); `http` adds to the HTTP section. */
 function snapshot(
   pages: PageVisit[],
   chains: RedirectChain[] = [httpChain('www.example.test')],
-  documents: DocumentResponse[] = [],
+  o: { documents?: DocumentResponse[]; http?: Partial<HttpSection>; onlyInPhaseB?: boolean } = {},
 ) {
+  const phases = o.onlyInPhaseB ? [makePhase('A'), makePhase('B', { pages })] : [makePhase('A', { pages })];
   return {
-    http: makeHttp({ chains, documents }),
-    browser: makeBrowser({ phases: [makePhase('A', { pages })] }),
+    http: makeHttp({ chains, documents: o.documents ?? [], ...o.http }),
+    browser: makeBrowser({ phases }),
   };
 }
+
+/** The HTTP collector stopped probing www.example.test. */
+const THROTTLED = { http: { throttled: true, throttledHosts: ['www.example.test'] } };
 
 const urls = (s: ReturnType<typeof snapshot>) => selectFormTwins(s).map((c) => c.url);
 
@@ -134,13 +151,7 @@ describe('selectFormTwins', () => {
         visit('https://www.example.test/kontakt/', [CONTACT]),
         visit('https://example.test/kontakt/', [CONTACT]),
       ],
-      [
-        httpChain('www.example.test'),
-        httpChain('example.test', [
-          { status: 301, location: 'https://example.test/' },
-          { url: 'https://example.test/', status: 200 },
-        ]),
-      ],
+      [httpChain('www.example.test'), redirectedRoot('example.test')],
     );
     expect(urls(s)).toEqual(['http://www.example.test/kontakt/']);
   });
@@ -148,16 +159,7 @@ describe('selectFormTwins', () => {
   it.each<[string, () => Parameters<typeof selectFormTwins>[0]]>([
     [
       'the http:// root redirects to https',
-      () =>
-        snapshot(
-          [visit('/kontakt/', [CONTACT])],
-          [
-            httpChain('www.example.test', [
-              { status: 301, location: SITE },
-              { url: SITE, status: 200 },
-            ]),
-          ],
-        ),
+      () => snapshot([visit('/kontakt/', [CONTACT])], [redirectedRoot('www.example.test')]),
     ],
     [
       'the http:// root timed out',
@@ -179,14 +181,7 @@ describe('selectFormTwins', () => {
     ['the host was not probed', () => snapshot([visit('https://shop.example.test/kasse/', [CONTACT])])],
     [
       'the host throttled the HTTP collector',
-      () => ({
-        http: makeHttp({
-          chains: [httpChain('www.example.test')],
-          throttled: true,
-          throttledHosts: ['www.example.test'],
-        }),
-        browser: makeBrowser({ phases: [makePhase('A', { pages: [visit('/kontakt/', [CONTACT])] })] }),
-      }),
+      () => snapshot([visit('/kontakt/', [CONTACT])], undefined, THROTTLED),
     ],
     ['only a site search', () => snapshot([visit('/suche/', [SEARCH])])],
     [
@@ -225,15 +220,7 @@ describe('selectFormTwins', () => {
     ],
     [
       'the page was seen in phase B only',
-      () => ({
-        http: makeHttp({ chains: [httpChain('www.example.test')] }),
-        browser: makeBrowser({
-          phases: [
-            makePhase('A'),
-            makePhase('B', { pages: [visit('/kontakt/', [CONTACT], { phase: 'B' })] }),
-          ],
-        }),
-      }),
+      () => snapshot([visit('/kontakt/', [CONTACT], { phase: 'B' })], undefined, { onlyInPhaseB: true }),
     ],
     [
       'the start page: its http:// address is the probed root',
@@ -242,13 +229,15 @@ describe('selectFormTwins', () => {
     [
       'the address was already fetched as a linked document',
       () =>
-        snapshot([visit('/kontakt/', [CONTACT])], undefined, [
-          makeDocumentResponse({
-            url: 'http://www.example.test/kontakt/',
-            role: 'impressum',
-            foundVia: 'link',
-          }),
-        ]),
+        snapshot([visit('/kontakt/', [CONTACT])], undefined, {
+          documents: [
+            makeDocumentResponse({
+              url: 'http://www.example.test/kontakt/',
+              role: 'impressum',
+              foundVia: 'link',
+            }),
+          ],
+        }),
     ],
   ])('nothing to request: %s', (_name, build) => {
     expect(selectFormTwins(build())).toEqual([]);
@@ -342,13 +331,7 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
   it('the www and the apex host each count by their own http:// root', () => {
     const s = snapshot(
       [start([permalink('https://example.test/apex-beitrag/'), permalink(POST)])],
-      [
-        httpChain('www.example.test'),
-        httpChain('example.test', [
-          { status: 301, location: 'https://example.test/' },
-          { url: 'https://example.test/', status: 200 },
-        ]),
-      ],
+      [httpChain('www.example.test'), redirectedRoot('example.test')],
     );
     expect(urls(s)).toEqual([POST_TWIN]);
   });
@@ -373,16 +356,7 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
     ],
     [
       'the http:// root redirects to https',
-      () =>
-        snapshot(
-          [start([permalink(POST)])],
-          [
-            httpChain('www.example.test', [
-              { status: 301, location: SITE },
-              { url: SITE, status: 200 },
-            ]),
-          ],
-        ),
+      () => snapshot([start([permalink(POST)])], [redirectedRoot('www.example.test')]),
     ],
     [
       'the http:// root timed out',
@@ -390,14 +364,7 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
     ],
     [
       'the host throttled the HTTP collector',
-      () => ({
-        http: makeHttp({
-          chains: [httpChain('www.example.test')],
-          throttled: true,
-          throttledHosts: ['www.example.test'],
-        }),
-        browser: makeBrowser({ phases: [makePhase('A', { pages: [start([permalink(POST)])] })] }),
-      }),
+      () => snapshot([start([permalink(POST)])], undefined, THROTTLED),
     ],
     [
       'the post is a page of phase A (without a form that takes data)',
@@ -426,13 +393,15 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
     [
       'the address was already fetched as a linked document',
       () =>
-        snapshot([start([permalink('https://www.example.test/impressum/')])], undefined, [
-          makeDocumentResponse({
-            url: 'http://www.example.test/impressum/',
-            role: 'impressum',
-            foundVia: 'link',
-          }),
-        ]),
+        snapshot([start([permalink('https://www.example.test/impressum/')])], undefined, {
+          documents: [
+            makeDocumentResponse({
+              url: 'http://www.example.test/impressum/',
+              role: 'impressum',
+              foundVia: 'link',
+            }),
+          ],
+        }),
     ],
     [
       'browser facts of an older version: rel="bookmark" stored, no permalink flag',
@@ -454,12 +423,7 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
     ['the linking page was not evaluable', () => snapshot([start([permalink(POST)], { evaluable: false })])],
     [
       'the permalink was seen in phase B only',
-      () => ({
-        http: makeHttp({ chains: [httpChain('www.example.test')] }),
-        browser: makeBrowser({
-          phases: [makePhase('A'), makePhase('B', { pages: [start([permalink(POST)], { phase: 'B' })] })],
-        }),
-      }),
+      () => snapshot([start([permalink(POST)], { phase: 'B' })], undefined, { onlyInPhaseB: true }),
     ],
   ])('nothing to request: %s', (_name, build) => {
     expect(selectFormTwins(build())).toEqual([]);

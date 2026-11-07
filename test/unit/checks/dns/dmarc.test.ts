@@ -5,7 +5,10 @@ import {
   dmarcTreeWalkNames,
   parseDmarcRecord,
 } from '../../../../src/checks/dns/lib/dmarc.ts';
-import { zone } from './zone.ts';
+import { type ZoneSpec, zone } from './zone.ts';
+
+/** The DNS Tree Walk from `host` for the organizational domain example.de over these answers. */
+const walk = (spec: ZoneSpec, host = 'www.example.de') => analyzeDmarc(host, 'example.de', zone(spec));
 
 describe('parseDmarcRecord (RFC 9989 tags, legacy pct)', () => {
   it('parses a typical enforcing record', () => {
@@ -71,14 +74,10 @@ describe('dmarcTreeWalkNames (RFC 9989 §4.10 DNS Tree Walk)', () => {
 
 describe('analyzeDmarc', () => {
   it('finds the organizational record through the walk (host has none)', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({
-        'TXT _dmarc.www.example.de': 'NXDOMAIN',
-        'TXT _dmarc.example.de': ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-      }),
-    );
+    const a = walk({
+      'TXT _dmarc.www.example.de': 'NXDOMAIN',
+      'TXT _dmarc.example.de': ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
+    });
     expect(a.state).toBe('found');
     expect(a.found?.scope).toBe('org');
     expect(a.found?.record?.p).toBe('reject');
@@ -86,65 +85,48 @@ describe('analyzeDmarc', () => {
   });
 
   it('stops at the host when the host has its own record', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({ 'TXT _dmarc.www.example.de': ['v=DMARC1; p=none'] }),
-    );
+    const a = walk({ 'TXT _dmarc.www.example.de': ['v=DMARC1; p=none'] });
     expect(a.state).toBe('found');
     expect(a.found?.scope).toBe('host');
     expect(a.steps).toHaveLength(1);
   });
 
   it('reports missing after walking up to the TLD', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({
-        'TXT _dmarc.www.example.de': 'NXDOMAIN',
-        'TXT _dmarc.example.de': 'NODATA',
-        'TXT _dmarc.de': 'NXDOMAIN',
-      }),
-    );
+    const a = walk({
+      'TXT _dmarc.www.example.de': 'NXDOMAIN',
+      'TXT _dmarc.example.de': 'NODATA',
+      'TXT _dmarc.de': 'NXDOMAIN',
+    });
     expect(a.state).toBe('missing');
     expect(a.steps).toHaveLength(3);
   });
 
   it('skips TXT records that are not DMARC', () => {
-    const a = analyzeDmarc(
-      'example.de',
-      'example.de',
-      zone({ 'TXT _dmarc.example.de': ['hello world'], 'TXT _dmarc.de': 'NXDOMAIN' }),
-    );
+    const a = walk({ 'TXT _dmarc.example.de': ['hello world'], 'TXT _dmarc.de': 'NXDOMAIN' }, 'example.de');
     expect(a.state).toBe('missing');
   });
 
   it('asks for the next name when the walk is not complete', () => {
-    const a = analyzeDmarc('www.example.de', 'example.de', zone({ 'TXT _dmarc.www.example.de': 'NXDOMAIN' }));
+    const a = walk({ 'TXT _dmarc.www.example.de': 'NXDOMAIN' });
     expect(a.state).toBe('incomplete');
     expect(a.next).toEqual({ qname: '_dmarc.example.de', step: 1 });
   });
 
   it('SERVFAIL/TIMEOUT without any record found → failed, never missing', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({
-        'TXT _dmarc.www.example.de': 'NXDOMAIN',
-        'TXT _dmarc.example.de': 'SERVFAIL',
-        'TXT _dmarc.de': 'NXDOMAIN',
-      }),
-    );
+    const a = walk({
+      'TXT _dmarc.www.example.de': 'NXDOMAIN',
+      'TXT _dmarc.example.de': 'SERVFAIL',
+      'TXT _dmarc.de': 'NXDOMAIN',
+    });
     expect(a.state).toBe('failed');
     expect(a.failures.map((s) => s.qname)).toEqual(['_dmarc.example.de']);
   });
 
   it('a failure on a more specific name is not replaced by the parent policy → failed', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({ 'TXT _dmarc.www.example.de': 'TIMEOUT', 'TXT _dmarc.example.de': ['v=DMARC1; p=reject'] }),
-    );
+    const a = walk({
+      'TXT _dmarc.www.example.de': 'TIMEOUT',
+      'TXT _dmarc.example.de': ['v=DMARC1; p=reject'],
+    });
     expect(a.state).toBe('failed');
     expect(a.found).toBeNull();
     expect(a.failures.map((s) => s.qname)).toEqual(['_dmarc.www.example.de']);
@@ -154,33 +136,21 @@ describe('analyzeDmarc', () => {
   });
 
   it('marks a record above the organizational domain as PSD scope', () => {
-    const a = analyzeDmarc(
-      'www.example.de',
-      'example.de',
-      zone({
-        'TXT _dmarc.www.example.de': 'NXDOMAIN',
-        'TXT _dmarc.example.de': 'NXDOMAIN',
-        'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'],
-      }),
-    );
+    const a = walk({
+      'TXT _dmarc.www.example.de': 'NXDOMAIN',
+      'TXT _dmarc.example.de': 'NXDOMAIN',
+      'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'],
+    });
     expect(a.found?.scope).toBe('psd');
   });
 
   it('two DMARC records at one name → invalid multiple-records', () => {
-    const a = analyzeDmarc(
-      'example.de',
-      'example.de',
-      zone({ 'TXT _dmarc.example.de': ['v=DMARC1; p=reject', 'v=DMARC1; p=none'] }),
-    );
+    const a = walk({ 'TXT _dmarc.example.de': ['v=DMARC1; p=reject', 'v=DMARC1; p=none'] }, 'example.de');
     expect(a.found).toMatchObject({ invalid: 'multiple-records', record: null });
   });
 
   it('a record with v=DMARC1 not first is found but invalid', () => {
-    const a = analyzeDmarc(
-      'example.de',
-      'example.de',
-      zone({ 'TXT _dmarc.example.de': ['p=reject; v=DMARC1'] }),
-    );
+    const a = walk({ 'TXT _dmarc.example.de': ['p=reject; v=DMARC1'] }, 'example.de');
     expect(a.found?.invalid).toBe('version-not-first');
   });
 });
@@ -188,13 +158,12 @@ describe('analyzeDmarc', () => {
 describe('dmarcEnforcement (for the MAIL-02 matrix)', () => {
   const at = (txt: string | 'NXDOMAIN' | 'SERVFAIL') =>
     dmarcEnforcement(
-      analyzeDmarc(
-        'example.de',
-        'example.de',
-        zone({
+      walk(
+        {
           'TXT _dmarc.example.de': txt === 'NXDOMAIN' || txt === 'SERVFAIL' ? txt : [txt],
           'TXT _dmarc.de': 'NXDOMAIN',
-        }),
+        },
+        'example.de',
       ),
     );
 

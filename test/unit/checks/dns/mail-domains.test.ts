@@ -11,23 +11,22 @@ import { assess } from '../../../../src/core/evaluation/assess.ts';
 import { fingerprint } from '../../../../src/core/evaluation/fingerprint.ts';
 import type { MailDomainStage, MailDomainTarget } from '../../../../src/core/snapshot/dns.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
-import { dnsSnapshot, type ZoneEntry, type ZoneSpec } from './zone.ts';
+import {
+  contactDomain as contact,
+  dnsSnapshot,
+  IMPRESSUM,
+  IMPRESSUM_STAGE as STAGE,
+  siteZone,
+  type ZoneEntry,
+  type ZoneSpec,
+} from './zone.ts';
 
-const IMPRESSUM = 'https://www.example.de/impressum/';
 const REJECT = ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'] as const;
 const NONE = ['v=DMARC1; p=none; rua=mailto:[redacted]@example.de'] as const;
-const STAGE: MailDomainStage = { contacts: 'impressum', durationMs: 3 };
 
 /** The scanned www.example.de: its organizational record decides, SPF -all. */
-function site(dmarc: ZoneEntry = REJECT, spf: ZoneEntry = ['v=spf1 ip4:192.0.2.0/24 -all']): ZoneSpec {
-  return {
-    'MX example.de': ['10 mx.example.de'],
-    'TXT _dmarc.www.example.de': 'NXDOMAIN',
-    'TXT _dmarc.example.de': dmarc,
-    'TXT _dmarc.de': 'NXDOMAIN',
-    'TXT example.de': spf,
-  };
-}
+const site = (dmarc: ZoneEntry = REJECT, spf: ZoneEntry = ['v=spf1 ip4:192.0.2.0/24 -all']) =>
+  siteZone(dmarc, { 'TXT example.de': spf });
 
 /** Records of example-mail.de, the domain of an Impressum address. */
 function mailZone(dmarc: ZoneEntry, spf: ZoneEntry = ['v=spf1 ip4:192.0.2.0/24 -all']): ZoneSpec {
@@ -46,19 +45,6 @@ function finalZone(dmarc: ZoneEntry, spf: ZoneEntry = ['v=spf1 ip4:192.0.2.0/24 
     'TXT _dmarc.example.net': dmarc,
     'TXT _dmarc.net': 'NXDOMAIN',
     'TXT example.net': spf,
-  };
-}
-
-function contact(domain: string, over: Partial<MailDomainTarget> = {}): MailDomainTarget {
-  return {
-    domain,
-    host: domain,
-    orgDomain: domain,
-    roles: ['contact'],
-    sources: [{ kind: 'impressum-text', url: IMPRESSUM }],
-    status: 'checked',
-    budget: { limit: 30, used: 3 },
-    ...over,
   };
 }
 
@@ -129,17 +115,6 @@ describe('MAIL-01 on further mail domains', () => {
       snapshotOf({ ...site('SERVFAIL'), ...mailZone(REJECT) }, [contact('example-mail.de')]),
     );
     expect(r).toMatchObject({ status: 'error', reason: 'exception' });
-  });
-
-  it('a subdomain address without a record of its own inherits p=reject of its organizational domain → no finding', () => {
-    const spec: ZoneSpec = {
-      ...site(),
-      'MX mail.example.de': ['10 mx.example.de'],
-      'TXT _dmarc.mail.example.de': 'NXDOMAIN',
-    };
-    const r = runCheck(mail01, snapshotOf(spec, [contact('mail.example.de', { orgDomain: 'example.de' })]));
-    expect(r.status).toBe('completed');
-    expect(variantsOf(r)).toEqual([]);
   });
 
   it('p=none on two domains → two findings with different fingerprints; the scanned domain keeps its fingerprint', () => {

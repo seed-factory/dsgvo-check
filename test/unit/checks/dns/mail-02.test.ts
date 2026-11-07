@@ -1,20 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
-import { dnsSnapshot, type ZoneEntry, type ZoneSpec } from './zone.ts';
+import { dnsSnapshot, siteZone, type ZoneEntry, type ZoneSpec } from './zone.ts';
 
 const REJECT = ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'] as const;
 
-function site(spf: ZoneEntry, dmarc: ZoneEntry = REJECT, extra: ZoneSpec = {}): ZoneSpec {
-  return {
-    'MX example.de': ['10 mx.example.de'],
-    'TXT _dmarc.www.example.de': 'NXDOMAIN',
-    'TXT _dmarc.example.de': dmarc,
-    'TXT _dmarc.de': 'NXDOMAIN',
-    'TXT example.de': spf,
-    ...extra,
-  };
-}
+const site = (spf: ZoneEntry, dmarc: ZoneEntry = REJECT, extra: ZoneSpec = {}) =>
+  siteZone(dmarc, { 'TXT example.de': spf, ...extra });
 
 const run = (spec: ZoneSpec) => runCheck(mail02, dnsSnapshot(spec));
 
@@ -35,24 +27,21 @@ describe('MAIL-02 SPF: warning variants', () => {
     expect(variantsOf(run(site([])))).toEqual(['record-not-found']);
   });
 
-  it('two v=spf1 records → record-invalid (multiple-records)', () => {
-    const r = run(site(['v=spf1 -all', 'v=spf1 include:_spf.google.com ~all']));
-    expect(variantsOf(r)).toEqual(['record-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'multiple-records', count: 2 });
-  });
-
-  it('+all → permissive-qualifier', () => {
-    const r = run(site(['v=spf1 +all']));
-    expect(variantsOf(r)).toEqual(['permissive-qualifier']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ qualifier: '+all' });
-  });
-
-  it('?all → permissive-qualifier; no all at all → permissive-qualifier (none)', () => {
-    const q = run(site(['v=spf1 ip4:192.0.2.1 ?all']));
-    expect(variantsOf(q)).toEqual(['permissive-qualifier']);
-    expect(observationsOf(q)[0]?.params).toMatchObject({ qualifier: '?all' });
-    const none = run(site(['v=spf1 ip4:192.0.2.1']));
-    expect(observationsOf(none)[0]?.params).toMatchObject({ qualifier: 'none' });
+  it.each([
+    [
+      'two v=spf1 records',
+      'record-invalid',
+      ['v=spf1 -all', 'v=spf1 include:_spf.google.com ~all'],
+      { reason: 'multiple-records', count: 2 },
+    ],
+    ['a syntax error (permerror)', 'record-invalid', ['v=spf1 ip4:192.0.2.300 -all'], { reason: 'syntax' }],
+    ['+all', 'permissive-qualifier', ['v=spf1 +all'], { qualifier: '+all' }],
+    ['?all', 'permissive-qualifier', ['v=spf1 ip4:192.0.2.1 ?all'], { qualifier: '?all' }],
+    ['no all at all', 'permissive-qualifier', ['v=spf1 ip4:192.0.2.1'], { qualifier: 'none' }],
+  ])('%s → %s', (_label, variant, records, params) => {
+    const r = run(site(records));
+    expect(variantsOf(r)).toEqual([variant]);
+    expect(observationsOf(r)[0]?.params).toMatchObject(params);
   });
 
   it.each([
@@ -72,12 +61,6 @@ describe('MAIL-02 SPF: warning variants', () => {
     const r = run(site([`v=spf1 ${includes} -all`], REJECT, extra));
     expect(variantsOf(r)).toEqual(['record-invalid']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'too-many-lookups', lookups: 11 });
-  });
-
-  it('permerror: syntax error', () => {
-    const r = run(site(['v=spf1 ip4:192.0.2.300 -all']));
-    expect(variantsOf(r)).toEqual(['record-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'syntax' });
   });
 
   it('permerror: include of a name without SPF; the offending lookup is evidence', () => {
@@ -159,20 +142,12 @@ describe('MAIL-02 Null MX (no exception in §3.11: evaluated like any domain, te
     expect(o?.evidence.some((e) => e.type === 'dns' && e.qtype === 'MX')).toBe(true);
   });
 
-  it('Null MX with v=spf1 -all → no finding', () => {
-    expect(variantsOf(run(site(['v=spf1 -all'], REJECT, nullMx)))).toEqual([]);
-  });
-
-  it('Null MX with ~all and DMARC reject → softfail-with-enforcement (matrix as usual)', () => {
-    const r = run(site(['v=spf1 ~all'], REJECT, nullMx));
-    expect(variantsOf(r)).toEqual(['softfail-with-enforcement']);
-  });
-
-  it('Null MX with ?all → permissive-qualifier; ptr is reported as usual', () => {
-    expect(variantsOf(run(site(['v=spf1 ptr ?all'], REJECT, nullMx)))).toEqual([
-      'permissive-qualifier',
-      'ptr-mechanism',
-    ]);
+  it.each([
+    ['v=spf1 -all', [], 'no finding'],
+    ['v=spf1 ~all', ['softfail-with-enforcement'], 'the DMARC reject matrix as usual'],
+    ['v=spf1 ptr ?all', ['permissive-qualifier', 'ptr-mechanism'], 'ptr is reported as usual'],
+  ])('Null MX with "%s" → %j: %s', (record, variants) => {
+    expect(variantsOf(run(site([record], REJECT, nullMx)))).toEqual(variants);
   });
 });
 
@@ -182,17 +157,16 @@ describe('MAIL-02 errors', () => {
     expect(r).toMatchObject({ status: 'error', reason: 'exception' });
   });
 
-  it('~all while the DMARC lookup failed → error (matrix undecidable)', () => {
-    expect(run(site(['v=spf1 ~all'], 'SERVFAIL')).status).toBe('error');
-  });
-
-  it('all while the DMARC lookup failed → still decidable', () => {
-    expect(run(site(['v=spf1 -all'], 'SERVFAIL')).status).toBe('completed');
-  });
-
-  it('redirect target failed → error (effective all unknown)', () => {
-    const r = run(site(['v=spf1 redirect=_spf.example.net'], REJECT, { 'TXT _spf.example.net': 'SERVFAIL' }));
-    expect(r.status).toBe('error');
+  it.each([
+    ['~all while the DMARC lookup failed (matrix undecidable)', 'error', site(['v=spf1 ~all'], 'SERVFAIL')],
+    ['-all while the DMARC lookup failed (still decidable)', 'completed', site(['v=spf1 -all'], 'SERVFAIL')],
+    [
+      'the redirect target failed (effective all unknown)',
+      'error',
+      site(['v=spf1 redirect=_spf.example.net'], REJECT, { 'TXT _spf.example.net': 'SERVFAIL' }),
+    ],
+  ])('%s → %s', (_label, status, spec) => {
+    expect(run(spec).status).toBe(status);
   });
 
   it('include failed temporarily with +all → partial with limitation, the established result is kept', () => {

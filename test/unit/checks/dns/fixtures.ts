@@ -14,6 +14,7 @@ import type {
 } from '../../../../src/core/snapshot/dns.ts';
 import type { FixtureExpect, RawFixture } from '../../../utils/snapshot-builder.ts';
 import { dkimRecord, ED25519_KEY, rsaKey } from './dkim-keys.ts';
+import { contactDomain as contact, IMPRESSUM_STAGE } from './zone.ts';
 
 type Query = Pick<DnsQueryRecord, 'type' | 'qname' | 'purpose'> &
   Partial<Pick<DnsQueryRecord, 'rcode' | 'answers' | 'treeWalkStep' | 'attempts'>>;
@@ -46,35 +47,32 @@ const txt = (value: string): DnsAnswer => ({ type: 'TXT', value, chunks: [value]
 const mxOf = (exchange: string): DnsAnswer => ({ type: 'MX', value: exchange, priority: 10 });
 const NX = { rcode: 'NXDOMAIN' } as const;
 
-/** www.example.de without a record of its own; `_dmarc.example.de` decides (null = no record there either). */
-function siteDmarc(record: string | null): Query[] {
+/** The SPF lookup of example.de answered by these records. */
+const spf = (...records: string[]): Query => q('TXT', 'example.de', 'spf', { answers: records.map(txt) });
+
+/**
+ * www.example.de without a record of its own; `_dmarc.example.de` decides: its record (several records as an array),
+ * a lookup that failed (its rcode and attempts), or null for no record there either.
+ */
+function siteDmarc(org: string | string[] | { rcode: DnsRcode; attempts: number } | null): Query[] {
+  const answer =
+    org === null
+      ? NX
+      : typeof org === 'string'
+        ? { answers: [txt(org)] }
+        : Array.isArray(org)
+          ? { answers: org.map(txt) }
+          : org;
   return [
     q('MX', 'example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
     q('TXT', '_dmarc.www.example.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
-    record
-      ? q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { answers: [txt(record)], treeWalkStep: 1 })
-      : q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
+    q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { ...answer, treeWalkStep: 1 }),
     q('TXT', '_dmarc.de', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
   ];
 }
 
 const REJECT = 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de';
-const IMPRESSUM = 'https://www.example.de/impressum/';
-const STAGE: MailDomainStage = { contacts: 'impressum', durationMs: 4 };
-
-/** An address domain of the Impressum, checked with its own budget. */
-function contact(domain: string, over: Partial<MailDomainTarget> = {}): MailDomainTarget {
-  return {
-    domain,
-    host: domain,
-    orgDomain: domain,
-    roles: ['contact'],
-    sources: [{ kind: 'impressum-text', url: IMPRESSUM }],
-    status: 'checked',
-    budget: { limit: 30, used: 3 },
-    ...over,
-  };
-}
+const STAGE: MailDomainStage = { ...IMPRESSUM_STAGE, durationMs: 4 };
 
 /** The domain of the start page after a redirect to www.example.net. */
 const FINAL: MailDomainTarget = {
@@ -207,9 +205,17 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
 
 /** SPF of the scanned domain: -all with one include. */
 const SITE_SPF_FAIL: Query[] = [
-  q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 include:_spf.provider.example -all')] }),
+  spf('v=spf1 include:_spf.provider.example -all'),
   q('TXT', '_spf.provider.example', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
 ];
+
+/** The include the base MAIL-02 fixtures name: IPv4 and IPv6 ranges, -all. */
+const PROVIDER_INCLUDE = q('TXT', '_spf.provider.example', 'spf-include', {
+  answers: [txt('v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all')],
+});
+
+/** One more include than the 10 DNS lookups RFC 7208 allows. */
+const ELEVEN_INCLUDES = Array.from({ length: 11 }, (_, i) => `s${i}.provider.example`);
 
 /** MAIL-02 on the further mail domains: the DMARC matrix of each domain uses that domain's DMARC only. */
 const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
@@ -279,7 +285,7 @@ const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
     expect: { status: 'completed', variants: ['softfail-without-enforcement'] },
     queries: [
       ...siteDmarc(null),
-      q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
+      spf('v=spf1 ip4:192.0.2.0/24 ~all'),
       q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
       q('TXT', '_dmarc.example-mail.de', 'dmarc', { answers: [txt(REJECT)], treeWalkStep: 0 }),
       q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
@@ -332,14 +338,14 @@ const key = (record: string) => ({ answers: [txt(record)] });
 /** Microsoft 365: its MX host and its SPF include, which together make selector1 and selector2 given. */
 const M365_SITE: Query[] = [
   q('MX', 'example.de', 'mx', { answers: [mxOf('example-de.mail.protection.outlook.com')] }),
-  q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 include:spf.protection.outlook.com -all')] }),
+  spf('v=spf1 include:spf.protection.outlook.com -all'),
   q('TXT', 'spf.protection.outlook.com', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
 ];
 
 /** A domain with its own mail server: no provider recognised, the plan is the common names. */
 const OWN_MX_SITE: Query[] = [
   q('MX', 'example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
-  q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+  spf('v=spf1 ip4:192.0.2.0/24 -all'),
 ];
 
 const SITE_M365_PLAN = dkimPlan('example.de', M365_ROWS);
@@ -383,7 +389,7 @@ const MAIL_03: DnsFixture[] = [
     expect: { status: 'completed', variants: ['selectors-not-found'] },
     queries: [
       q('MX', 'example.de', 'mx', { answers: [mxOf('example-de.mail.protection.outlook.com')] }),
-      q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+      spf('v=spf1 ip4:192.0.2.0/24 -all'),
       ...dkimQueries(COMMON_SELECTORS),
     ],
     dkimPlan: SITE_COMMON_PLAN,
@@ -510,7 +516,7 @@ const MAIL_03: DnsFixture[] = [
     expect: { status: 'completed', variants: ['selectors-not-found'] },
     queries: [
       q('MX', 'example.de', 'mx', { answers: [mxOf('smtp.google.com')] }),
-      q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 include:_spf.google.com ~all')] }),
+      spf('v=spf1 include:_spf.google.com ~all'),
       q('TXT', '_spf.google.com', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
       ...dkimQueries([['google', 'provider:google-workspace', false], ...COMMON_SELECTORS]),
     ],
@@ -533,7 +539,7 @@ const MAIL_03: DnsFixture[] = [
     expect: { status: 'not_applicable', variants: [], reason: 'null-mx' },
     queries: [
       q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: '.', priority: 0 }] }),
-      q('TXT', 'example.de', 'spf', { answers: [txt('v=spf1 -all')] }),
+      spf('v=spf1 -all'),
     ],
     dkimPlan: [],
   },
@@ -598,40 +604,13 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       description:
         'Counterexample: www has no own record (NXDOMAIN) but the organizational domain does, so no "record-not-found"',
       expect: { status: 'completed', variants: [] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=quarantine; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=quarantine; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-      ],
+      queries: siteDmarc('v=DMARC1; p=quarantine; rua=mailto:[redacted]@example.de').slice(0, 3),
     },
     {
       file: 'clean-reject.json',
       description: 'Enforcing DMARC with reporting',
       expect: { status: 'completed', variants: [] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de; adkim=s',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de; adkim=s'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc('v=DMARC1; p=reject; rua=mailto:[redacted]@example.de; adkim=s'),
     },
     {
       file: 'counterexample-null-mx.json',
@@ -640,52 +619,26 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       expect: { status: 'completed', variants: ['weak-option'] },
       queries: [
         q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: '.', priority: 0 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 1 }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
+        ...siteDmarc(null).slice(1),
       ],
     },
     {
       file: 'counterexample-sp-none-info.json',
       description: 'Counterexample: sp=none under p=reject is only info weak-option',
       expect: { status: 'completed', variants: ['weak-option'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; sp=none; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; sp=none; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc('v=DMARC1; p=reject; sp=none; rua=mailto:[redacted]@example.de'),
     },
     {
       file: 'error-servfail.json',
       description: 'SERVFAIL after retry on _dmarc.example.de: error, never "no record"',
       expect: { status: 'error', variants: [], reason: 'exception' },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { rcode: 'SERVFAIL', treeWalkStep: 1, attempts: 2 }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc({ rcode: 'SERVFAIL', attempts: 2 }),
     },
     {
       file: 'error-timeout.json',
       description: 'TIMEOUT after retry on _dmarc.example.de: error, never "no record"',
       expect: { status: 'error', variants: [], reason: 'exception' },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { rcode: 'TIMEOUT', treeWalkStep: 1, attempts: 2 }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc({ rcode: 'TIMEOUT', attempts: 2 }),
     },
     {
       file: 'other-not-applicable-ip.json',
@@ -700,73 +653,25 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       file: 'violation-invalid-multiple.json',
       description: 'Two DMARC records at _dmarc.example.de: receivers discard both',
       expect: { status: 'completed', variants: ['record-invalid'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            { type: 'TXT', value: 'v=DMARC1; p=reject', chunks: ['v=DMARC1; p=reject'] },
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=none; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=none; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc(['v=DMARC1; p=reject', 'v=DMARC1; p=none; rua=mailto:[redacted]@example.de']),
     },
     {
       file: 'violation-legacy-pct.json',
       description: 'Enforcing DMARC (p=quarantine) applied to only half of the mail via the legacy pct tag',
       expect: { status: 'completed', variants: ['legacy-pct'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=quarantine; pct=50; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=quarantine; pct=50; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc('v=DMARC1; p=quarantine; pct=50; rua=mailto:[redacted]@example.de'),
     },
     {
       file: 'violation-missing.json',
       description: 'No DMARC record on www, the organizational domain or the TLD',
       expect: { status: 'completed', variants: ['record-not-found'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 1 }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc(null),
     },
     {
       file: 'violation-p-none.json',
       description: 'DMARC in monitoring mode only (p=none) with reporting',
       expect: { status: 'completed', variants: ['policy-none'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=none; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=none; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-      ],
+      queries: siteDmarc('v=DMARC1; p=none; rua=mailto:[redacted]@example.de'),
     },
     ...MAIL_01_FURTHER_DOMAINS,
   ],
@@ -775,156 +680,38 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       file: 'clean-fail-all.json',
       description: 'SPF with include and -all, DMARC reject',
       expect: { status: 'completed', variants: [] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 mx include:_spf.provider.example -all',
-              chunks: ['v=spf1 mx include:_spf.provider.example -all'],
-            },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
-      ],
+      queries: [...siteDmarc(REJECT), spf('v=spf1 mx include:_spf.provider.example -all'), PROVIDER_INCLUDE],
     },
     {
       file: 'counterexample-softfail-dmarc-reject.json',
       description:
         'Counterexample: ~all with DMARC p=reject is info softfail-with-enforcement (BSI TR-03182), not warning',
       expect: { status: 'completed', variants: ['softfail-with-enforcement'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 include:_spf.provider.example ~all',
-              chunks: ['v=spf1 include:_spf.provider.example ~all'],
-            },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
-      ],
+      queries: [...siteDmarc(REJECT), spf('v=spf1 include:_spf.provider.example ~all'), PROVIDER_INCLUDE],
     },
     {
       file: 'error-dmarc-unknown.json',
       description: '~all while the DMARC lookup failed: the matrix cannot be evaluated',
       expect: { status: 'error', variants: [], reason: 'exception' },
       queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { rcode: 'TIMEOUT', treeWalkStep: 1, attempts: 2 }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 include:_spf.provider.example ~all',
-              chunks: ['v=spf1 include:_spf.provider.example ~all'],
-            },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
+        ...siteDmarc({ rcode: 'TIMEOUT', attempts: 2 }),
+        spf('v=spf1 include:_spf.provider.example ~all'),
+        PROVIDER_INCLUDE,
       ],
     },
     {
       file: 'error-servfail.json',
       description: 'SERVFAIL after retry on the SPF lookup: error, not "missing"',
       expect: { status: 'error', variants: [], reason: 'exception' },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', { rcode: 'SERVFAIL', attempts: 2 }),
-      ],
+      queries: [...siteDmarc(REJECT), q('TXT', 'example.de', 'spf', { rcode: 'SERVFAIL', attempts: 2 })],
     },
     {
       file: 'other-include-timeout.json',
       description: 'Include lookup timed out: partial, the +all result stays',
       expect: { status: 'partial', variants: ['permissive-qualifier'] },
       queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 include:_spf.provider.example +all',
-              chunks: ['v=spf1 include:_spf.provider.example +all'],
-            },
-          ],
-        }),
+        ...siteDmarc(REJECT),
+        spf('v=spf1 include:_spf.provider.example +all'),
         q('TXT', '_spf.provider.example', 'spf-include', { rcode: 'TIMEOUT', attempts: 2 }),
       ],
     },
@@ -932,60 +719,16 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       file: 'violation-missing.json',
       description: 'No v=spf1 record at example.de',
       expect: { status: 'completed', variants: ['record-not-found'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', { rcode: 'NODATA' }),
-      ],
+      queries: [...siteDmarc(REJECT), q('TXT', 'example.de', 'spf', { rcode: 'NODATA' })],
     },
     {
       file: 'violation-multiple-records.json',
       description: 'Two v=spf1 records: permerror',
       expect: { status: 'completed', variants: ['record-invalid'] },
       queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 include:_spf.provider.example -all',
-              chunks: ['v=spf1 include:_spf.provider.example -all'],
-            },
-            { type: 'TXT', value: 'v=spf1 mx ~all', chunks: ['v=spf1 mx ~all'] },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
+        ...siteDmarc(REJECT),
+        spf('v=spf1 include:_spf.provider.example -all', 'v=spf1 mx ~all'),
+        PROVIDER_INCLUDE,
       ],
     },
     {
@@ -993,86 +736,11 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       description: '11 include lookups: more than the RFC 7208 limit of 10',
       expect: { status: 'completed', variants: ['record-invalid'] },
       queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value:
-                'v=spf1 include:s0.provider.example include:s1.provider.example include:s2.provider.example include:s3.provider.example include:s4.provider.example include:s5.provider.example include:s6.provider.example include:s7.provider.example include:s8.provider.example include:s9.provider.example include:s10.provider.example -all',
-              chunks: [
-                'v=spf1 include:s0.provider.example include:s1.provider.example include:s2.provider.example include:s3.provider.example include:s4.provider.example include:s5.provider.example include:s6.provider.example include:s7.provider.example include:s8.provider.example include:s9.provider.example include:s10.provider.example -all',
-              ],
-            },
-          ],
-        }),
-        q('TXT', 's0.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's1.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's2.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's3.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's4.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's5.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's6.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's7.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's8.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's9.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
-        q('TXT', 's10.provider.example', 'spf-include', {
-          answers: [
-            { type: 'TXT', value: 'v=spf1 ip4:192.0.2.1 -all', chunks: ['v=spf1 ip4:192.0.2.1 -all'] },
-          ],
-        }),
+        ...siteDmarc(REJECT),
+        spf(`v=spf1 ${ELEVEN_INCLUDES.map((host) => `include:${host}`).join(' ')} -all`),
+        ...ELEVEN_INCLUDES.map((host) =>
+          q('TXT', host, 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.1 -all')] }),
+        ),
       ],
     },
     {
@@ -1080,76 +748,16 @@ export const DNS_FIXTURES: Record<string, DnsFixture[]> = {
       description:
         'SPF with -all and DMARC reject, but the record still authorizes senders via the deprecated ptr mechanism',
       expect: { status: 'completed', variants: ['ptr-mechanism'] },
-      queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=reject; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ptr include:_spf.provider.example -all',
-              chunks: ['v=spf1 ptr include:_spf.provider.example -all'],
-            },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
-      ],
+      queries: [...siteDmarc(REJECT), spf('v=spf1 ptr include:_spf.provider.example -all'), PROVIDER_INCLUDE],
     },
     {
       file: 'violation-softfail-no-dmarc.json',
       description: '~all while DMARC is p=none: softfail without enforcement',
       expect: { status: 'completed', variants: ['softfail-without-enforcement'] },
       queries: [
-        q('MX', 'example.de', 'mx', { answers: [{ type: 'MX', value: 'mx.example.de', priority: 10 }] }),
-        q('TXT', '_dmarc.www.example.de', 'dmarc', { rcode: 'NXDOMAIN', treeWalkStep: 0 }),
-        q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=DMARC1; p=none; rua=mailto:[redacted]@example.de',
-              chunks: ['v=DMARC1; p=none; rua=mailto:[redacted]@example.de'],
-            },
-          ],
-          treeWalkStep: 1,
-        }),
-        q('TXT', '_dmarc.de', 'dmarc-tree-walk', { rcode: 'NXDOMAIN', treeWalkStep: 2 }),
-        q('TXT', 'example.de', 'spf', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 include:_spf.provider.example ~all',
-              chunks: ['v=spf1 include:_spf.provider.example ~all'],
-            },
-          ],
-        }),
-        q('TXT', '_spf.provider.example', 'spf-include', {
-          answers: [
-            {
-              type: 'TXT',
-              value: 'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
-              chunks: ['v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all'],
-            },
-          ],
-        }),
+        ...siteDmarc('v=DMARC1; p=none; rua=mailto:[redacted]@example.de'),
+        spf('v=spf1 include:_spf.provider.example ~all'),
+        PROVIDER_INCLUDE,
       ],
     },
     ...MAIL_02_FURTHER_DOMAINS,
