@@ -261,14 +261,20 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
     ].join('\n');
     if (observed === 'attempt') expect(actions).not.toMatch(/Verbindungsvorbereitung|connection hint/);
     else expect(actions).toMatch(/Verbindungsvorbereitung/);
-    if (observed === 'hint') {
-      expect(o?.subject).toBe('google-fonts');
-      expect(o?.evidence[0]).toMatchObject({
-        type: 'link',
-        href: 'https://fonts.gstatic.com/',
-        text: 'rel=preconnect',
-      });
-    }
+  });
+
+  it('counterexample: a preconnect to fonts.gstatic.com without a download names the font service and the link', () => {
+    const r = runCheck(
+      embed01,
+      site({ phases: [phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)] })] }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({ variant: 'preconnect-only', subject: 'google-fonts' });
+    expect(o?.evidence[0]).toMatchObject({
+      type: 'link',
+      href: 'https://fonts.gstatic.com/',
+      text: 'rel=preconnect',
+    });
   });
 
   it('counterexample: a link to a font service with another rel than a connection hint is ignored', () => {

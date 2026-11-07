@@ -178,7 +178,7 @@ const settingsScenarios: Scenario[] = [
   },
 ];
 
-/** The confirmed reject of `rejectCmp`, plus the facts read on the control pages. */
+/** `rejectCmp({ confirmed: true })` plus the facts read on the control pages. */
 const rejectWithControlPages = (control: CmpFacts[]) => {
   const cmp = rejectCmp({ confirmed: true });
   const b = cmp.phases[0]!;

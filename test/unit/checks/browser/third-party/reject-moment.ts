@@ -11,7 +11,11 @@ import { CONTACT, click, page, phase, rejectCmp, START } from '../helpers.ts';
 
 export const AFTER_CLICK = { phase: 'B', afterClick: true } as const;
 
-/** Phase B of a reject on the start page: the start page, its reload and `control` as the control page. */
+/**
+ * Phase B of a reject on the start page: the start page, its reload and `control` as the control page. The control
+ * page takes its role from its URL, as in `consentPages`: Kontakt is the `contact` page, any other URL (the history
+ * page of EMBED-03) a `nav` page.
+ */
 export const rejectPhase = (control: string, requests: RequestRecord[]) =>
   phase('B', {
     click: click('reject'),

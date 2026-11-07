@@ -71,9 +71,10 @@ export interface Expected {
   pages?: string[];
   coverage?: Record<string, unknown>;
 }
-export interface Scenario {
+/** One row of a LEGAL-01 case table, run by `verify`. */
+export interface LegalCase {
   name: string;
-  /** A site spec, or a snapshot built already (a scenario fixture). */
+  /** A site spec, or a snapshot built already (a scenario fixture of LEGAL-01). */
   input: SiteSpec | Snapshot;
   expected: Expected;
 }

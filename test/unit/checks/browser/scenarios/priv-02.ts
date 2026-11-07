@@ -72,11 +72,15 @@ export const policyWith = (...parts: DocumentPart[]) => ({
 export const fontsCss = (id: string, p: Partial<RequestRecord> = {}) =>
   req(id, FONTS_CSS, { resourceType: 'stylesheet', ...p });
 
-/** The fonts CSS loads from Google on the start and the contact page in phase A, held against `documents`. */
-export const fontsOnTwoPages = (documents: DocumentsSection) =>
+/**
+ * The fonts CSS loads from Google on the start and the contact page in phase A, held against `documents`; `cmp` are
+ * the CMP facts of the scan, by default facts without a banner.
+ */
+export const fontsOnTwoPages = (documents: DocumentsSection, cmp?: CmpSection) =>
   site({
     phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
     documents,
+    cmp,
   });
 
 /** Phase B after a reject: the start page reloaded, `requests` made after the click. */

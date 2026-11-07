@@ -35,10 +35,10 @@ import {
   doc,
   documents,
   fallback,
+  type LegalCase,
   link,
   linked,
   missing,
-  type Scenario,
   verify,
 } from './legal-01-verify.ts';
 
@@ -81,7 +81,7 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
     challenge: { detected: true, kind: 'cloudflare', signals: ['status:403'] },
   });
   const offsite = 'https://www.konzern-beispiel.de/impressum';
-  const LINK_CASES: Scenario[] = [
+  const LINK_CASES: LegalCase[] = [
     {
       name: 'counterexample: Impressum reachable via Kontakt → found-via-hop-only (warning, medium), not critical',
       input: scenario('violation-impressum-only-via-contact.json'),

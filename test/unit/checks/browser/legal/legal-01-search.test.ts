@@ -32,11 +32,11 @@ import {
   documents,
   fallback,
   impressum,
+  type LegalCase,
   link,
   linked,
   missing,
   privacy,
-  type Scenario,
   twoPages,
   verify,
 } from './legal-01-verify.ts';
@@ -47,7 +47,7 @@ describe('LEGAL-01 document search evidence', () => {
   const second = `${ORIGIN}/impressum-neu`;
   const unchecked = `${ORIGIN}/impressum-extra`;
   const viaFallback = makeDocument({ kind: 'impressum', url: second, foundVia: 'fallback' });
-  const SEARCH_CASES: Scenario[] = [
+  const SEARCH_CASES: LegalCase[] = [
     {
       name: 'an unconfirmed linked document is a limitation',
       input: linked([impressum(), privacy()], [doc('impressum')], [unconfirmed]),
@@ -129,7 +129,7 @@ describe('LEGAL-01 document search evidence', () => {
   const team = page(`${ORIGIN}/team`, 'nav', 'A', {}, [privacy()]);
   const contact = link('Kontakt', CONTACT, { region: 'nav' });
   const startWithHop = page(START, 'start', 'A', {}, [privacy(), contact]);
-  const NO_IMPRESSUM_CASES: Scenario[] = [
+  const NO_IMPRESSUM_CASES: LegalCase[] = [
     ...['time-budget', 'throttled', 'request-cap'].map((reason) => ({
       name: `an interrupted search preserves the ${reason} reason`,
       input: noImpressum([start, page(PRIVACY, 'privacy', 'A', {}, [])], [], 'partial', reason),
@@ -194,7 +194,7 @@ describe('LEGAL-01 legal link identity', () => {
     link('View our Privacy Policy', policy, { accessibleName, region: 'banner' });
   const policyOnly = (links: LinkFact[]) =>
     linked(links, [makeDocument({ kind: 'privacy', url: policy, foundVia: 'link' })], [fallback()]);
-  const IDENTITY_CASES: Scenario[] = [
+  const IDENTITY_CASES: LegalCase[] = [
     {
       name: 'French footer labels identify both documents',
       input: linked(
@@ -287,7 +287,7 @@ describe('LEGAL-01 checked page coverage', () => {
       [att('impressum', 'link', IMPRESSUM, 200, 'found'), att('privacy', 'link', policyPage, 200, outcome)],
     ),
   });
-  const COVERAGE_CASES: Scenario[] = [
+  const COVERAGE_CASES: LegalCase[] = [
     {
       name: 'a soft-404 fallback remains observed but is not a checked page',
       input: probed(probe(), att('impressum', 'fallback', IMPRESSUM, 200, 'soft-404')),
@@ -393,7 +393,7 @@ describe('LEGAL-01 checked page coverage', () => {
 describe('LEGAL-01 unavailable and unconfirmed targets', () => {
   const legal = `${ORIGIN}/rechtliches`;
   const viaFallback = makeDocument({ kind: 'privacy', url: PRIVACY, foundVia: 'fallback' });
-  const TARGET_CASES: Scenario[] = [
+  const TARGET_CASES: LegalCase[] = [
     ...[
       {
         name: 'a challenge and an unchecked alternative',
