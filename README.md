@@ -229,10 +229,12 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Host, die die gespeicherte Antwort liest (Cookie für die ganze Domain), zählt.
 - Bietet die erste Ebene eines mit hoher Konfidenz erkannten Banners keine Ablehnung und beschreibt der Adapter eine
   Einstellungsebene (bisher nur Wix, `settingsLayer` in `test/data/cmp/adapters.yaml`), lehnt Phase B dort ab: Der
-  Scanner klickt die Einstellungsschaltfläche des Banners, liest die Schalter der Kategorien und klickt „Speichern“
-  nur, wenn jede Kategorie, die der Besucher umstellen kann, schon ausgeschaltet ist, kein gesperrter Schalter außer
-  dem für die erforderliche Verarbeitung des Anbieters eingeschaltet ist (bei Wix einer, `essentialGroups`) und genau
-  eine solche Schaltfläche des Anbieters zu sehen ist. Schalter stellt er nie um. Ist eine Kategorie schon
+  Scanner klickt die Einstellungsschaltfläche des Banners, liest in der Einstellungsebene (nicht in der ersten Ebene,
+  die bei Wix dahinter offen bleibt) die Schalter der Kategorien, auch optisch verborgene, und klickt die
+  Speichern-Schaltfläche des Anbieters (bei Wix „Auswahl bestätigen“) nur, wenn jede Kategorie, die der Besucher
+  umstellen kann, schon ausgeschaltet ist, kein gesperrter Schalter außer dem für die erforderliche Verarbeitung des
+  Anbieters eingeschaltet ist (bei Wix einer, `essentialGroups`) und genau eine solche Schaltfläche des Anbieters zu
+  sehen ist. Schalter stellt er nie um. Ist eine Kategorie schon
   eingeschaltet, klickt er nichts mehr (`preselected-groups`). Der Zeitpunkt der Ablehnung ist das Speichern: Was lädt, während die
   Einstellungen offen sind, zählt als vor der Ablehnung. Danach folgen wie sonst die Prüfung des Zustands, das
   Neuladen und die Kontrollseiten. Die Befunde nennen die Ablehnung „über die Einstellungen“.
@@ -685,8 +687,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
   Plugins bleiben unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
   schon ausgeschaltet ist; voreingestellte Kategorien schaltet er nicht aus, die Ablehnung bleibt dann ungeprüft. Die
-  Selektoren der Wix-Einstellungen sind am eigenen Simulator getestet: Passt eine Wix-Version nicht dazu, öffnet der
-  Scanner die Einstellungen, speichert aber nichts (`settings-not-opened`). Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
+  Selektoren der Wix-Einstellungen sind an einem bereinigten Ausschnitt des Markups des Wix-Banners (Version 1.871.0,
+  `test/fixtures/cmp/wix/settings-layer.html`) und am eigenen Simulator getestet, der dieses Markup nachbildet. Ändert
+  Wix das Markup der Einstellungsebene, klickt der Scanner die Einstellungsschaltfläche, speichert aber nichts
+  (`settings-not-opened` oder `settings-groups-unreadable`). Ob eine Entscheidung gilt, prüft er je Seite: Kontrollseiten, auf denen das Banner
   erneut erscheint oder keine Antwort kennt, bleiben für CONSENT-05 und TRACK-01 unausgewertet.
 - **LEGAL-01** erkennt Angaben eines Impressums an Wörtern und bewertet ihre Vollständigkeit nicht. Hält ein
   Abschnitt mit seinen Unterabschnitten mindestens 3 der 5 Bereiche (`DSGVO_CHECK_LEGAL_IMPRESSUM_MIN_GROUPS`), meldet
@@ -880,7 +884,7 @@ dsgvo-check/
 │   ├── data/                # Regelwerk, Texte, Dienste-Katalog, Wörterbücher, Berichtsvorlage (auch im Image)
 │   ├── unit/  integration/  e2e/  live/
 │   ├── fixture-server/      # lokale Server mit Fake-Drittanbietern für L2 und L3
-│   └── fixtures/, utils/    # Snapshots, Berichte, Test-Helfer
+│   └── fixtures/, utils/    # Snapshots, Berichte, Banner-Markup von Anbietern, Test-Helfer
 ├── scripts/                 # Generatoren (Register, .env.example, Schema) und Canary-Runner
 ├── canary/                  # sites.example.yaml; echtes Korpus und Ergebnisse nur lokal
 ├── templates/gitlab/        # GitLab-CI-Template

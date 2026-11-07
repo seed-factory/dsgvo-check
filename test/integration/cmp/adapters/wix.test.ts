@@ -43,14 +43,14 @@ const asTarget = (b: CmpButton): ClickTarget => ({
   kind: b.kind,
 });
 
-/** Whether the simulated analytics switch is on: the layer is read, never changed. */
+/** Whether the analytics switch of the shown layer is on (the last category, as Wix lists them): read, never changed. */
 const analyticsSwitchOn = (page: Page): Promise<boolean | null> =>
-  page.evaluate(() => {
-    const doc = (
-      globalThis as unknown as { document: { querySelector(s: string): { checked: boolean } | null } }
-    ).document;
-    return doc.querySelector('[data-sim-group="anl"]')?.checked ?? null;
-  });
+  page
+    .getByRole('dialog')
+    .locator('[data-hook="consent-banner-section-toggle-input"]')
+    .last()
+    .evaluate((input) => (input as { checked: boolean }).checked)
+    .catch(() => null);
 
 describeCmpScenarios(
   {
@@ -200,9 +200,14 @@ describeCmpScenarios(
             { checked: false, disabled: false },
           ],
         });
-        expect(layer?.buttons.map((b) => [b.name, b.vendorRole])).toEqual([['Speichern', 'save']]);
+        // The layer's own controls only: the first layer, open behind it, is not what was measured.
+        expect(layer?.buttons.map((b) => [b.name, b.vendorRole])).toEqual([
+          ['Einstellungen schließen', null],
+          ['Auswahl bestätigen', 'save'],
+        ]);
+        expect((await adapter.firstLayer(page)).bannerVisible).toBe(true);
         const save = chooseSettingsSave(layer!, loadLexicon());
-        expect(save.target?.name).toBe('Speichern');
+        expect(save.target?.name).toBe('Auswahl bestätigen');
         // Opening the settings records no answer: the policy is still the default before the save.
         expect((await adapter.state(page))[0]).toMatchObject({
           origin: 'default',

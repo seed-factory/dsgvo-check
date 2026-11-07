@@ -277,7 +277,7 @@ describe('full browser pipeline on the Wix simulator', () => {
       expect(r.exitCode).toBe(0);
     });
 
-    it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Speichern"', () => {
+    it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Auswahl bestätigen"', () => {
       const { r } = scanned;
 
       const kinds = firstScreen(r, 'B')?.firstLayer.buttons.map((b) => [b.name, b.kind]);
@@ -293,7 +293,7 @@ describe('full browser pipeline on the Wix simulator', () => {
         reason: 'no-unambiguous-reject-at-first-layer',
         settings: {
           open: { cmpId: 'wix', name: 'Cookie-Einstellungen' },
-          save: { cmpId: 'wix', name: 'Speichern' },
+          save: { cmpId: 'wix', name: 'Auswahl bestätigen' },
         },
       });
       expect(r.snapshot?.plan.browser?.click?.B?.settings?.reason).toBeUndefined();
@@ -302,10 +302,15 @@ describe('full browser pipeline on the Wix simulator', () => {
         action: 'reject',
         clicked: true,
         path: 'settings',
-        button: { name: 'Speichern' },
+        button: { name: 'Auswahl bestätigen' },
       });
       expect(b?.settings).toMatchObject({
         opened: true,
+        // The layer's own controls: the first layer stays open behind it and is not what was measured.
+        buttons: [
+          { name: 'Einstellungen schließen', vendorRole: null },
+          { name: 'Auswahl bestätigen', vendorRole: 'save' },
+        ],
         groups: [
           { checked: true, disabled: true },
           { checked: false, disabled: false },
@@ -315,7 +320,7 @@ describe('full browser pipeline on the Wix simulator', () => {
       });
       expect(r.snapshot?.browser?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
         action: 'reject',
-        name: 'Speichern',
+        name: 'Auswahl bestätigen',
         success: true,
       });
       expect(r.snapshot?.plan.browser?.click?.C).toMatchObject({

@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  The Wix cookie banner (cookie-consent-banner-for-uou 1.871.0) with its settings layer open, as Chromium showed it at
+  1366x768 after a click on "Cookie-Einstellungen" of a first layer without a reject. The Wix selectors of
+  test/data/cmp/adapters.yaml and the own simulator are tested against it
+  (test/integration/cmp/adapters/wix-captured-markup.test.ts), so that a hook only the simulator renders cannot pass for
+  one of the vendor.
+  Kept from the vendor: tags, data-hook values, roles, the nesting, the order of the categories, the state of their
+  switches, which elements show and which are only visually hidden, the labels of the controls and the title of the
+  layer. Replaced: hashed class names by neutral ones, category titles and descriptions by generic ones, the styles by
+  a few rules that show and hide the same elements. The first layer holds only the controls the scan read there; it stays open behind the
+  layer.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Wix-Banner mit offenen Cookie-Einstellungen</title>
+<style>
+  body { margin: 0; font: 14px/1.4 sans-serif; color: #222; }
+  main { min-height: 1600px; padding: 24px; }
+  .banner { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99999; display: flex; align-items: center;
+    gap: 8px; padding: 12px 56px 12px 24px; background: #fff; box-shadow: 0 -2px 8px rgba(0, 0, 0, .2); }
+  .banner-button { padding: 10px 16px; border: 1px solid #116dff; background: #fff; color: #116dff; font: inherit; }
+  .banner-close { position: absolute; right: 8px; top: 8px; padding: 4px 8px; border: 0; background: none; font: inherit; }
+  .settings { position: fixed; top: 50%; left: 50%; z-index: 100000; width: 560px; max-height: 90vh; overflow: auto;
+    transform: translate(-50%, -50%); background: #fff; box-shadow: 0 2px 16px rgba(0, 0, 0, .3); }
+  .dialog { position: relative; padding: 16px 24px; }
+  .dialog-title { margin: 0 0 8px; font-size: 18px; }
+  .dialog-close { position: absolute; right: 8px; top: 8px; padding: 4px 8px; border: 0; background: none; font: inherit; }
+  .section { display: grid; grid-template-columns: 1fr auto; column-gap: 16px; margin: 10px 0; }
+  .section-title { margin: 0; font-size: 15px; }
+  .section-description { grid-column: 1; margin: 2px 0 0; }
+  .toggle { position: relative; grid-column: 2; grid-row: 1 / span 2; display: inline-block; width: 40px;
+    height: 22px; border-radius: 11px; background: #bbb; }
+  .toggle-on { background: #116dff; }
+  .toggle-input { position: absolute; width: 0; height: 0; margin: 0; opacity: 0; }
+  .save { display: block; margin: 12px 0 0 auto; padding: 10px 16px; border: 0; background: #116dff; color: #fff;
+    font: inherit; }
+</style>
+</head>
+<body>
+<main><h1>Beispielseite</h1><p>Inhalt der Seite.</p></main>
+<div class="banner" data-hook="consent-banner-root" role="region">
+  <button class="banner-button" data-hook="consent-banner-settings-button">Cookie-Einstellungen</button>
+  <button class="banner-button" data-hook="consent-banner-apply-button">Zustimmen</button>
+  <button class="banner-close" data-hook="consent-banner-close-button" aria-label="Schließen">×</button>
+</div>
+<div class="settings" data-hook="consent-banner-settings-container" role="dialog">
+  <section class="dialog" data-hook="consent-banner-settings-dialog">
+    <h2 class="dialog-title">Erweiterte Cookie-Einstellungen</h2>
+    <button class="dialog-close" aria-label="Einstellungen schließen">×</button>
+    <section class="section" data-hook="consent-banner-section-root">
+      <h3 class="section-title" data-hook="consent-banner-section-title">Erforderliche Cookies</h3>
+      <p class="section-description" data-hook="consent-banner-section-description">Für den Betrieb der Website nötig.</p>
+      <span class="toggle toggle-on" data-hook="consent-banner-section-toggle"><input class="toggle-input" data-hook="consent-banner-section-toggle-input" type="checkbox" checked disabled></span>
+    </section>
+    <section class="section" data-hook="consent-banner-section-root">
+      <h3 class="section-title" data-hook="consent-banner-section-title">Marketing-Cookies</h3>
+      <p class="section-description" data-hook="consent-banner-section-description">Für Werbung und deren Messung.</p>
+      <span class="toggle" data-hook="consent-banner-section-toggle"><input class="toggle-input" data-hook="consent-banner-section-toggle-input" type="checkbox"></span>
+    </section>
+    <section class="section" data-hook="consent-banner-section-root">
+      <h3 class="section-title" data-hook="consent-banner-section-title">Funktionale Cookies</h3>
+      <p class="section-description" data-hook="consent-banner-section-description">Für zusätzliche Funktionen.</p>
+      <span class="toggle" data-hook="consent-banner-section-toggle"><input class="toggle-input" data-hook="consent-banner-section-toggle-input" type="checkbox"></span>
+    </section>
+    <section class="section" data-hook="consent-banner-section-root">
+      <h3 class="section-title" data-hook="consent-banner-section-title">Analyse-Cookies</h3>
+      <p class="section-description" data-hook="consent-banner-section-description">Für Statistiken zur Nutzung.</p>
+      <span class="toggle" data-hook="consent-banner-section-toggle"><input class="toggle-input" data-hook="consent-banner-section-toggle-input" type="checkbox"></span>
+    </section>
+    <button class="save" data-hook="consent-banner-settings-save-button">Auswahl bestätigen</button>
+  </section>
+</div>
+</body>
+</html>
