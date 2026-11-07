@@ -265,7 +265,10 @@ export interface DerivedSection {
   cookies: ClassifiedCookie[];
   storage: ClassifiedStorage[];
   services: ServiceObservation[];
-  /** Catalog entries referenced by `services` (lookup for checks). */
+  /**
+   * Catalog entries of the services the classified facts name, the `resourceServiceId` of a frame resource included
+   * (lookup for checks).
+   */
   catalog: Record<string, ServiceInfo>;
   /** Names of every catalog service of policy relevance `required` or `optional`, ordered by id. */
   serviceNames?: ServiceName[];

@@ -299,11 +299,37 @@ messages:
       where every optional category was already switched off.} other {}}
   EMBED-01.preconnect-only:
     title: >-
-      {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
-      {service}} other {Connection hint or unfinished font request: {service}}}
+      {observed, select, hint {{embedFrameFonts, select, true {Only a connection hint from the site to a font service}
+      other {Only a connection hint to a font service}}: {service}} attempt {Unfinished font request: {service}} other
+      {Connection hint or unfinished font request: {service}}}
     body: >-
-      Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was observed; no
-      completed download of font files was found.
+      Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was
+      observed{embedFrameFonts, select, true { outside the frames of embedded services} other {}}; no completed
+      download of font files was found{embedFrameFonts, select, true { there} other {}}.{embedFrameFonts, select, true
+      { {embedCount, plural, one {The frame of {embedServices}} other {The frames of {embedServices}}}, however, loaded
+      font files or stylesheets of {service}; those requests are not part of this finding.} other {}}
+  EMBED-01.fonts-in-embed-frame:
+    title: >-
+      {moment, select, before-and-after-reject {External fonts loaded by an embed, also after {rejectConfirmed,
+      select, true {confirmed rejection} other {rejection}}{rejectPath, select, settings { via the settings} other
+      {}}: {service} in {embedService}} after-reject {External fonts loaded by an embed after {rejectConfirmed,
+      select, true {confirmed rejection} other {rejection}}{rejectPath, select, settings { via the settings} other
+      {}}: {service} in {embedService}} other {External fonts loaded by an embed: {service} in {embedService}}}
+    body: >-
+      The frame of the embedded service {embedService} loaded font files or stylesheets of {service}
+      ({requestCount, plural, one {# request} other {# requests}}), timing: {moment, select, before-and-after-reject
+      {before any interaction with the consent banner and again after {rejectConfirmed, select, true {confirmed
+      rejection{rejectPath, select, settings { via the settings} other {}}} other {{rejectPath, select, settings
+      {saving the settings (rejection not confirmed)} other {the click on "Reject" (rejection not confirmed)}}}}}
+      after-reject {after {rejectConfirmed, select, true {confirmed rejection{rejectPath, select, settings { via the
+      settings} other {}}} other {{rejectPath, select, settings {saving the settings (rejection not confirmed)} other
+      {the click on "Reject" (rejection not confirmed)}}}}} other {{afterReject, select, true {before any interaction
+      with the consent banner or after rejection} other {{bannerFound, select, true {before any interaction with the
+      consent banner} false {before any interaction, no consent banner found} unrecognized {before any interaction,
+      consent banner observed but not recognised} other {before any interaction, consent banner not evaluated}}}}}}
+      ({pageCount, plural, one {# page} other {# pages}}{afterRejectPageCount, plural, =0 {} other {, # of them after
+      the rejection}}).{rejectPath, select, settings { The first layer of the consent banner offered no rejection;
+      the rejection was saved in the settings, where every optional category was already switched off.} other {}}
 
   # EMBED-02
   EMBED-02.maps-loaded:
@@ -700,6 +726,10 @@ actions:
       attempt {Check which integration requests fonts from {service}, and remove the request or serve the fonts from
       your own server.} other {Check the connection hints and font requests to {service}, and remove them if you do
       not load the fonts from there.}}
+  EMBED-01.fonts-in-embed-frame:
+    text: >-
+      Embed {embedService} only after consent or after visitors click on it (two-click solution). The fonts of
+      {service} that the embed's frame loads cannot be served from your own server.
   EMBED-02.maps-loaded:
     text: "Load the map of {service} only after visitors click on it, or use a solution that works without an external provider."
   EMBED-03.video-loaded:

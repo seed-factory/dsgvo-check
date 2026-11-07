@@ -31,6 +31,13 @@ export const subjects = {
     if (serviceId) return serviceId;
     return `unknown:${(thirdPartyEtld1 ?? 'unknown').toLowerCase()}`;
   },
+  /**
+   * EMBED-01 fonts of an embed's frame: the font service scoped by the embed (`google-fonts@google-maps`), so they
+   * never share a fingerprint with the fonts the site itself loads from that service.
+   */
+  embedResource(serviceId: string, embedServiceId: string): string {
+    return `${serviceId}@${embedServiceId}`;
+  },
   /** CONSENT-02, HDR-02: name + (`first-party` | third-party eTLD+1) + path + partitioned. */
   cookie(c: {
     name: string;

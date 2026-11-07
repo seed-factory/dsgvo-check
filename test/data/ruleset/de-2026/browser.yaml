@@ -63,6 +63,8 @@ checks:
     variants:
       fonts-loaded: { severity: warning, crm: T1_FONTS_EXTERNAL }
       preconnect-only: { severity: info, crm: null }
+      # Fonts an embed's frame loads from a font service: the customer counts them as fonts from third-party servers.
+      fonts-in-embed-frame: { severity: warning, crm: T1_FONTS_EXTERNAL }
   EMBED-02:
     gating: true
     variants:

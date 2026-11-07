@@ -305,12 +305,42 @@ messages:
       {}}
   EMBED-01.preconnect-only:
     title: >-
-      {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
+      {observed, select, hint {{embedFrameFonts, select, true {Nur Verbindungsvorbereitung der Website zu einem
+      Schriftdienst} other {Nur Verbindungsvorbereitung zu einem Schriftdienst}}: {service}} attempt {Nicht
       abgeschlossener Schriftabruf: {service}} other {Verbindungsvorbereitung oder nicht abgeschlossener Schriftabruf:
       {service}}}
     body: >-
-      Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
-      Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
+      Zu {service} wurde {embedFrameFonts, select, true {außerhalb der Rahmen eingebetteter Dienste } other {}}nur
+      eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener Abruf beobachtet; ein
+      abgeschlossener Abruf von Schriftdateien wurde {embedFrameFonts, select, true {dort } other {}}nicht
+      festgestellt.{embedFrameFonts, select, true { {embedCount, plural, one {Der Rahmen von {embedServices} lud}
+      other {Die Rahmen von {embedServices} luden}} dagegen Schriftdateien oder Stylesheets von {service}; diese
+      Abrufe sind nicht Teil dieses Befunds.} other {}}
+  EMBED-01.fonts-in-embed-frame:
+    title: >-
+      {moment, select, before-and-after-reject {Externe Schriftarten von einer Einbettung geladen, auch nach
+      {rejectConfirmed, select, true {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings { über die
+      Einstellungen} other {}}: {service} in {embedService}} after-reject {Externe Schriftarten von einer Einbettung
+      nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings {
+      über die Einstellungen} other {}} geladen: {service} in {embedService}} other {Externe Schriftarten von einer
+      Einbettung geladen: {service} in {embedService}}}
+    body: >-
+      Der Rahmen des eingebetteten Dienstes {embedService} lud Schriftdateien oder Stylesheets von {service}
+      ({requestCount, plural, one {# Anfrage} other {# Anfragen}}), Zeitpunkt: {moment, select,
+      before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other
+      {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick
+      auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} after-reject {nach {rejectConfirmed, select, true {bestätigter
+      Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other {{rejectPath, select, settings
+      {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick auf „Ablehnen“ (Ablehnung nicht
+      bestätigt)}}}}} other {{afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
+      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
+      jeder Interaktion, kein Einwilligungsbanner gefunden} unrecognized {vor jeder Interaktion, Einwilligungsbanner
+      beobachtet, aber nicht erkannt} other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}}
+      ({pageCount, plural, one {# Seite} other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach
+      der Ablehnung}}).{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
 
   # EMBED-02
   EMBED-02.maps-loaded:
@@ -720,6 +750,11 @@ actions:
       dort laden.} attempt {Prüfen Sie, welche Einbindung Schriften von {service} anfordert, und entfernen Sie den
       Abruf oder liefern Sie die Schriften vom eigenen Server aus.} other {Prüfen Sie die Verbindungsvorbereitungen
       und Schriftabrufe zu {service} und entfernen Sie sie, wenn Sie die Schriften nicht von dort laden.}}
+  EMBED-01.fonts-in-embed-frame:
+    text: >-
+      Binden Sie {embedService} erst nach einer Einwilligung oder nach einem Klick der Besucher ein
+      (Zwei-Klick-Lösung). Die Schriften von {service}, die der Rahmen der Einbettung lädt, lassen sich nicht vom
+      eigenen Server ausliefern.
   EMBED-02.maps-loaded:
     text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
   EMBED-03.video-loaded:

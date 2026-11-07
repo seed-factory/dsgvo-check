@@ -67,6 +67,17 @@ describe('fingerprint (5.4)', () => {
   it('subject helpers follow table 5.4', () => {
     expect(subjects.service('google-analytics-4')).toBe('google-analytics-4');
     expect(subjects.service(null, 'Tracker.EXAMPLE')).toBe('unknown:tracker.example');
+    // The fonts of a map frame are scoped by the map: no shared fingerprint with the site's own Google Fonts.
+    expect(subjects.embedResource('google-fonts', 'google-maps')).toBe('google-fonts@google-maps');
+    expect(
+      fingerprint({
+        checkId: 'EMBED-01',
+        variantGroup: 'fonts',
+        subject: subjects.embedResource('google-fonts', 'google-maps'),
+      }),
+    ).not.toBe(
+      fingerprint({ checkId: 'EMBED-01', variantGroup: 'fonts', subject: subjects.service('google-fonts') }),
+    );
     expect(
       subjects.cookie({
         name: '_fbp',

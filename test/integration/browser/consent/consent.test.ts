@@ -7,6 +7,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
 import { sha256Hex } from '../../../../src/collectors/browser/util.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
@@ -178,6 +179,35 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
       'vor einer Interaktion mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung',
     );
     expect(de.body).toContain('Der Kartenrahmen lud dabei Schriften von Google Fonts');
+  });
+
+  it("EMBED-01 over the collection: the map frame's Google Fonts are their own finding, at the same moments as the map", () => {
+    const snapshot = snapshotOf(run);
+    const observations = observationsOf(runCheck(embed01, snapshot));
+    expect(observations.map((o) => [o.variant, o.subject])).toEqual([
+      ['fonts-in-embed-frame', 'google-fonts@google-maps'],
+    ]);
+    const [o] = observations;
+    expect(o).toMatchObject({
+      phases: ['A', 'B'],
+      pages: [KONTAKT],
+      params: {
+        service: 'Google Fonts',
+        embedService: 'Google Maps',
+        moment: 'before-and-after-reject',
+        rejectConfirmed: true,
+        afterRejectPageCount: 1,
+      },
+    });
+    expect(
+      o?.evidence.filter((e) => e.type === 'request').every((e) => e.type === 'request' && !!e.frameUrl),
+    ).toBe(true);
+    expect(o?.evidence.filter((e) => e.type === 'consent-state')).toHaveLength(2);
+
+    const de = renderMessage(loadTexts('de'), 'EMBED-01.fonts-in-embed-frame', o!.params);
+    expect(de.title).toBe(
+      'Externe Schriftarten von einer Einbettung geladen, auch nach bestätigter Ablehnung: Google Fonts in Google Maps',
+    );
   });
 
   it('B: banner screenshot of the first screen only (≤ 200 KB, ≤ 50 % viewport)', () => {

@@ -1,6 +1,58 @@
+import type { RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { makeDom } from '../../../../utils/snapshot-builder.ts';
-import { click, defaultPages, footerLinks, page, phase, rejectCmp, req, START, site } from '../helpers.ts';
-import type { Scenario } from './shared.ts';
+import {
+  CONTACT,
+  click,
+  defaultPages,
+  footerLinks,
+  page,
+  phase,
+  rejectCmp,
+  req,
+  START,
+  site,
+  unopenedDialogCmp,
+} from '../helpers.ts';
+import { crawlerTestSignal, type Scenario } from './shared.ts';
+
+export const MAP_EMBED = 'https://www.google.com/maps/embed?pb=[redacted]';
+export const FRAME_CSS = 'https://fonts.googleapis.com/css?family=Roboto:300,400,500';
+export const FRAME_FONT = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2';
+
+/** A request of the Google Maps frame on Kontakt; the frame id names its phase, as the collector records it. */
+export const inMapFrame = (
+  id: string,
+  url: string,
+  resourceType: RequestRecord['resourceType'],
+  p: Partial<RequestRecord> = {},
+): RequestRecord =>
+  req(id, url, {
+    pageUrl: CONTACT,
+    isMainFrame: false,
+    frameId: `${p.phase ?? 'A'}-map`,
+    frameUrl: MAP_EMBED,
+    resourceType,
+    ...p,
+  });
+
+export const CAPTCHA_FRAME = 'https://www.google.com/recaptcha/api2/anchor?k=[redacted]';
+export const WIDGET_FRAME = 'https://calendly.com/acme/30min';
+
+/** The frame `A-<name>` of an embed in phase A: its document, then the Google Fonts file the frame loads. */
+export const frameWithFont = (name: string, frameUrl: string, pageUrl = CONTACT): RequestRecord[] => {
+  const frame = { pageUrl, isMainFrame: false, frameId: `A-${name}`, frameUrl };
+  return [
+    req(`A-${name}-1`, frameUrl, { ...frame, isNavigation: true, resourceType: 'document' }),
+    req(`A-${name}-2`, FRAME_FONT, { ...frame, resourceType: 'font' }),
+  ];
+};
+
+/** The map document of the frame, then the Google Fonts stylesheet and font file the frame loads. */
+export const mapWithFonts = (prefix: string, p: Partial<RequestRecord> = {}): RequestRecord[] => [
+  inMapFrame(`${prefix}-1`, MAP_EMBED, 'document', { isNavigation: true, ...p }),
+  inMapFrame(`${prefix}-2`, FRAME_CSS, 'stylesheet', p),
+  inMapFrame(`${prefix}-3`, FRAME_FONT, 'font', p),
+];
 
 export const scenarios: Scenario[] = [
   {
@@ -89,6 +141,96 @@ export const variantScenarios: Scenario[] = [
                 }),
               }),
               ...defaultPages('A').slice(1),
+            ],
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'violation-fonts-in-map-frame.json',
+    description:
+      'Kontakt embeds Google Maps, whose frame loads a Google Fonts stylesheet and font file before any interaction',
+    expect: { status: 'completed', variants: ['fonts-in-embed-frame'] },
+    build: () => site({ phases: [phase('A', { requests: mapWithFonts('A') })] }),
+  },
+  {
+    file: 'clean-map-frame-fonts-after-accept.json',
+    description:
+      'The map on Kontakt and the fonts of its frame load only after "Alle akzeptieren"; nothing before or after the reject',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A'),
+          phase('B', { click: click('reject') }),
+          phase('C', {
+            click: click('accept'),
+            pages: [page(START, 'start', 'C'), page(CONTACT, 'contact', 'C')],
+            requests: mapWithFonts('C', { phase: 'C', afterClick: true }),
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'inconclusive-frame-fonts-cmp-bot-user-agent.json',
+    description:
+      "The map frame on Kontakt loads Google Fonts, and the CMP's own crawler test matched the scanner's User-Agent: whether a visitor gets the fonts before consent is open",
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: mapWithFonts('A') }), phase('B')],
+        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
+      }),
+  },
+  {
+    file: 'clean-map-frame-without-fonts.json',
+    description:
+      'Counterexample: the map frame on Kontakt loads tiles and a helper host but no font; the map is EMBED-02, EMBED-01 has nothing to report',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              inMapFrame('A-1', MAP_EMBED, 'document', { isNavigation: true }),
+              inMapFrame('A-2', 'https://maps.googleapis.com/maps/vt?pb=[redacted]', 'image'),
+              inMapFrame('A-3', 'https://helper.unknown-host.example/t.js', 'script'),
+            ],
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'clean-captcha-and-widget-frame-fonts.json',
+    description:
+      'Counterexample: the reCAPTCHA frame on Kontakt and a Calendly frame on the start page load Google Fonts; no check of the prototype reports CAPTCHAs and widgets (EMBED-04, EMBED-05), so their frames get no finding that could name the embed',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              ...frameWithFont('captcha', CAPTCHA_FRAME),
+              ...frameWithFont('widget', WIDGET_FRAME, START),
+            ],
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'violation-site-fonts-beside-map-frame-fonts.json',
+    description:
+      "Counterexample: the start page loads Google Fonts itself and the map frame on Kontakt loads them too: the site's request stays fonts-loaded, the frame's fonts are a finding of their own",
+    expect: { status: 'completed', variants: ['fonts-in-embed-frame', 'fonts-loaded'] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              req('A-0', 'https://fonts.googleapis.com/css2?family=Roboto&display=swap', {
+                resourceType: 'stylesheet',
+              }),
+              ...mapWithFonts('A'),
             ],
           }),
         ],

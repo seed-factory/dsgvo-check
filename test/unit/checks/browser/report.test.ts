@@ -115,6 +115,26 @@ describe('browser checks in a full report', () => {
     expect(bannerState(report)).toBe('recognized');
   });
 
+  it("a map frame that loads Google Fonts: the map is EMBED-02, its frame's fonts an EMBED-01 warning linked to it", async () => {
+    const maps = scenariosOf('EMBED-01').find((s) => s.file === 'violation-fonts-in-map-frame.json');
+
+    const { report } = await scanSnapshot(maps!.build(), 'map-frame-fonts');
+
+    expectValidReport(report);
+    const findings = report.findings ?? [];
+    const map = findings.find((f) => f.checkId === 'EMBED-02');
+    const fonts = findings.filter((f) => f.checkId === 'EMBED-01');
+    expect(map).toMatchObject({ variant: 'maps-loaded', params: { frameFontServices: 'Google Fonts' } });
+    expect(fonts.map((f) => [f.variant, f.subject, f.severity, f.crmCode, f.serviceId])).toEqual([
+      ['fonts-in-embed-frame', 'google-fonts@google-maps', 'warning', 'T1_FONTS_EXTERNAL', 'google-fonts'],
+    ]);
+    expect(fonts[0]?.related).toContainEqual({
+      checkId: 'EMBED-02',
+      fingerprint: map?.fingerprint,
+      relation: 'embedded-in',
+    });
+  });
+
   const WIX: CmpFacts['detection'] = {
     cmpId: 'wix',
     method: 'adapter',
