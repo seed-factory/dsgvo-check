@@ -17,7 +17,7 @@ import type { RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
 import { FRAME_FONT_EMBEDS, frameFont, resourceName } from './embed-frame.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
-import { otherFontFile } from './fonts.ts';
+import { fontLoadKind, otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { loadMoment, momentEvidence, type RejectFacts, rejectFacts, rejectProof } from './reject-moment.ts';
 import { serviceFields, serviceName } from './services.ts';
@@ -32,8 +32,6 @@ import {
 } from './snapshot.ts';
 
 const ID = 'EMBED-01';
-/** Request kinds that fetch a file; a tracking `hit` is not a font load. */
-const LOAD_KINDS = new Set(['stylesheet', 'font', 'library', 'resource']);
 
 interface Group {
   subject: string;
@@ -63,7 +61,7 @@ function groupOf(
 
 /** A request of a catalog font service that fetches a file. */
 const fontServiceLoad = (c: ClassifiedRequest): boolean =>
-  c.category === 'fonts' && !!c.serviceId && c.thirdParty && LOAD_KINDS.has(c.kind ?? 'resource');
+  c.category === 'fonts' && !!c.serviceId && c.thirdParty && fontLoadKind(c.kind);
 
 /** Third-party font requests before the accept, and the preconnect hints to the same font services, per service. */
 function groupFontUse(derived: DerivedSection, records: Map<string, RequestRecord>): Map<string, Group> {

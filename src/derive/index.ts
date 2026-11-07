@@ -458,7 +458,8 @@ function belongsToEmbed(
 
 /**
  * The request as a resource of the embed. The catalog service of the resource itself (the fonts of a map frame) stays
- * known as `resourceServiceId`, so a check can name it while the embed keeps the request.
+ * known as `resourceServiceId`, so a check can name it while the embed keeps the request, and so does its kind for that
+ * service: a font service's usage hit in the frame fetches no font, as on the site.
  */
 function withEmbed(
   base: ClassifiedRequest,
@@ -481,8 +482,14 @@ function withEmbed(
   if (match) {
     out.resourceServiceId = match.service.id;
     out.resourceCategory = match.service.category;
+    out.resourceKind = matchKind(match, r);
   }
   return out;
+}
+
+/** What the request is for the matched service: the kind of its catalog signature, else of its resource type. */
+function matchKind(match: RequestMatch, r: RequestRecord): RequestKind {
+  return match.signature?.kind ?? kindFromResourceType(r.resourceType, match.service.category);
 }
 
 function classifyRequest(
@@ -542,7 +549,7 @@ function withCatalogMatch(
   consentMode: ConsentModeSignal | null,
 ): ClassifiedRequest {
   const service = match.service;
-  const kind = match.signature?.kind ?? kindFromResourceType(r.resourceType, service.category);
+  const kind = matchKind(match, r);
   const out: ClassifiedRequest = {
     ...base,
     serviceId: service.id,

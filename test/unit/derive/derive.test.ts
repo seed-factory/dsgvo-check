@@ -562,6 +562,38 @@ describe('derive: requests of embedded frames', () => {
     },
   );
 
+  it("a frame resource keeps its kind for its own service, as the site's request would have it", () => {
+    const map = inFrame('A-f4', 'https://www.google.com/maps/embed?pb=[redacted]');
+    const d = deriveA({
+      requests: [
+        req('https://fonts.googleapis.com/css?family=Roboto', {
+          id: 'css',
+          resourceType: 'stylesheet',
+          ...map,
+        }),
+        req('https://fonts.gstatic.com/s/roboto/v48/a.woff2', { id: 'font', resourceType: 'font', ...map }),
+        req('https://use.typekit.net/abc1234.css', { id: 'kit', resourceType: 'stylesheet', ...map }),
+        req('https://p.typekit.net/p.css?s=[redacted]', { id: 'usage', resourceType: 'stylesheet', ...map }),
+        req('https://helper.unknown-host.example/a.js', { id: 'helper', resourceType: 'script', ...map }),
+        req('https://p.typekit.net/p.css?s=[redacted]', { id: 'site-usage', resourceType: 'stylesheet' }),
+      ],
+    });
+    const row = (id: string) => {
+      const r = d.requests.find((x) => x.requestId === id);
+      return [id, r?.serviceId, r?.kind, r?.resourceServiceId, r?.resourceKind];
+    };
+    // `kind` is the request for the map; `resourceKind` what the font service's signature says: the usage counter of
+    // Adobe Fonts is a hit in the frame as on the site, though the frame fetched it as a stylesheet.
+    expect(['css', 'font', 'kit', 'usage', 'helper', 'site-usage'].map(row)).toEqual([
+      ['css', 'google-maps', 'stylesheet', 'google-fonts', 'stylesheet'],
+      ['font', 'google-maps', 'font', 'google-fonts', 'font'],
+      ['kit', 'google-maps', 'stylesheet', 'adobe-fonts', 'stylesheet'],
+      ['usage', 'google-maps', 'stylesheet', 'adobe-fonts', 'hit'],
+      ['helper', 'google-maps', 'library', undefined, undefined],
+      ['site-usage', 'adobe-fonts', 'hit', undefined, undefined],
+    ]);
+  });
+
   it.each([
     ['an unknown host', 'https://static.builder.example', [null, 'none']],
     ['a CDN of the catalog (Wix)', 'https://static.parastorage.com', ['wix', 'catalog']],
