@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadTexts } from '../../../../src/core/data/load.ts';
 import { renderConsole } from '../../../../src/reporters/console.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
 import { renderSummary } from '../../../../src/reporters/summary.ts';
@@ -133,6 +134,22 @@ describe('stop words in test/data/texts', () => {
     expect(hits('Schaltfläche „Nur technisch notwendige“ wurde betätigt')).toEqual([]);
     expect(hits('Die Erforderlichkeit wurde nicht bewertet.')).toEqual([]);
     expect(hits('First-party-Endpunkt mit Tracking-Signatur erkannt')).toEqual([]);
+  });
+});
+
+/** Every string of the parsed texts with its key path. */
+function leaves(v: unknown, key = ''): Array<[string, string]> {
+  if (typeof v === 'string') return [[key, v]];
+  if (v === null || typeof v !== 'object') return [];
+  return Object.entries(v).flatMap(([k, x]) => leaves(x, key ? `${key}.${k}` : k));
+}
+
+describe('stop words in the parsed texts', () => {
+  // The raw scan above reads the YAML source: a stop word written as an escape sequence, or a block-scalar
+  // line that starts with "#", only shows up in the parsed value that the reports render.
+  it.each(['de', 'en'] as const)('%s: messages, legal notes, labels and actions', (lang) => {
+    const found = leaves(loadTexts(lang)).flatMap(([key, s]) => hits(s).map((h) => `${key}: ${h}`));
+    expect(found).toEqual([]);
   });
 });
 

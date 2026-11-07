@@ -8,7 +8,7 @@ import { maskEmails, maskMailto, redactText } from '../../../../src/core/redacti
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
 import { expectLinearGrowth } from '../../../utils/scaling.ts';
-import { D, expectStableText as expectStable, MARK } from '../url/redaction-helpers.ts';
+import { D, expectStableText, MARK } from '../url/redaction-helpers.ts';
 
 describe('redactText: DNS TXT records', () => {
   it.each([
@@ -38,13 +38,13 @@ describe('redactText: DNS TXT records', () => {
     ['rua=mailto:a@x.test,mailto:b@y.test!10m', `rua=mailto:${REDACTED}@x.test,mailto:${REDACTED}@y.test`],
     ['v=spf1 include:_spf.example.test ~all', 'v=spf1 include:_spf.example.test ~all'],
   ])('%j → %j', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 });
 
 describe('redactText: URLs inside text', () => {
   it('redacts query values that are not allowlisted and keeps allowlisted ones', () => {
-    expect(expectStable(`Siehe https://shop.example.test/p?token=${MARK}&id=G-ABC123 und weiter.`)).toBe(
+    expect(expectStableText(`Siehe https://shop.example.test/p?token=${MARK}&id=G-ABC123 und weiter.`)).toBe(
       `Siehe https://shop.example.test/p?token=${REDACTED}&id=G-ABC123 und weiter.`,
     );
   });
@@ -74,7 +74,7 @@ describe('redactText: URLs inside text', () => {
       `https://web.archive.example/web/20240329064148/mailto:${REDACTED}@example.test`,
     ],
   ])('redacts path parameters and drops credentials and the fragment: %s', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 
   // An apostrophe or a backtick inside a URL does not end the redaction.
@@ -91,7 +91,7 @@ describe('redactText: URLs inside text', () => {
     [`https://${D}/p;ord=a'${MARK}`, `https://${D}/p;ord=${REDACTED}`],
     [`Siehe https://${D}/p?token=alice's-id, danach.`, `Siehe https://${D}/p?token=${REDACTED}, danach.`],
   ])('an apostrophe inside the URL: %s', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
     expect(out).not.toContain("alice's");
@@ -141,7 +141,7 @@ describe('redactText: URLs inside text', () => {
     // only the surplus closing brackets are cut when the token has fewer openers than closers
     ['mailto:info@example.test)).', `mailto:${REDACTED}@example.test)).`],
   ])('punctuation around the URL stays outside: %s', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 
   it.each([
@@ -171,7 +171,7 @@ describe('redactText: URLs inside text', () => {
     'Siehe https://x.test/a/b/c.html',
     'Siehe https://x.test/',
   ])('a URL without anything sensitive stays as written (no normalisation of the visible text): %s', (s) => {
-    expect(expectStable(s)).toBe(s);
+    expect(expectStableText(s)).toBe(s);
   });
 
   describe('a path segment in front of a dot segment is an address too', () => {
@@ -232,7 +232,8 @@ describe('redactText: long runs of closing brackets after a token', () => {
 });
 
 describe('redactText: general properties', () => {
-  // The inputs that go through expectStable, here and in address-redaction.test.ts, are checked for idempotency there.
+  // Inputs that already run through expectStableText in this file or in address-redaction.test.ts are not
+  // repeated here.
   const samples = [
     `https://ad.example.test/activity;src=1;dc_pre=${MARK}`,
     'https://web.archive.example/web/2024/mailto:info@example.test',
@@ -242,7 +243,7 @@ describe('redactText: general properties', () => {
   ];
 
   it.each(samples)('is idempotent for %j', (s) => {
-    expectStable(s);
+    expectStableText(s);
   });
 
   it('is linear on long inputs (document parts reach 400 000 characters)', () => {

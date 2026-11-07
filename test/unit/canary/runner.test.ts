@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { newRunId, parseRunnerArgs } from '../../../scripts/canary/args.ts';
-import { type SiteMeta, siteRef } from '../../../scripts/canary/results.ts';
+import type { SiteMeta } from '../../../scripts/canary/results.ts';
 import { reanalyzeRun, runCanary, runPool } from '../../../scripts/canary/runner.ts';
 import { apiScanner, type SiteJob, type SiteScanner } from '../../../scripts/canary/scanners.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
@@ -334,7 +334,15 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
       metaVersion: 1,
       runId: 'src',
       mode: 'scan',
-      site: siteRef(sites(1)[0]!),
+      site: {
+        id: 'de-s0',
+        url: 'https://www.s0.de/',
+        region: 'de',
+        country: 'DE',
+        sector: 'media',
+        sizeClass: 'medium',
+        expectedCmp: 'unknown',
+      },
       exitCode: 2,
       scanStatus: 'failed',
       durationMs: 1234,
