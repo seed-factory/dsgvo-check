@@ -258,7 +258,8 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl. Antwortet das
   Ziel mit einem Bot- oder WAF-Schutz, nennen Übersicht, `SCAN-TLS-BLOCKED` (`fallback: bot-protection`), Konsole und
   Zusammenfassung diesen Schutz mit den Bezeichnungen seiner Signale (etwa `header:x-vercel-mitigated`); umgangen wird
-  er nicht. `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
+  er nicht. Ein Status 403 allein ist kein solches Signal und bleibt beim allgemeinen Text.
+  `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
 
 ### Banner
 

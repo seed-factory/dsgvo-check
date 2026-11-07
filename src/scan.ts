@@ -295,7 +295,7 @@ function tlsBlockedDiagnostic(
 
 /**
  * The bot or WAF protection signals of a start page that was a block page (`start-page-blocked`), as labels and capped;
- * null for any other failure and for snapshots that did not keep them.
+ * null for any other failure, for snapshots that did not keep them and when only a status was observed.
  */
 function protectionSignals(snapshot: Snapshot): string | null {
   const error = snapshot.collection.browser?.error;
@@ -305,7 +305,9 @@ function protectionSignals(snapshot: Snapshot): string | null {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  return labels.length > 0 ? labels.slice(0, MAX_BLOCK_SIGNALS).join(', ') : null;
+  // A status alone (`status:403`) is a refusal, not a signature of bot or WAF protection.
+  if (!labels.some((s) => !s.startsWith('status:'))) return null;
+  return labels.slice(0, MAX_BLOCK_SIGNALS).join(', ');
 }
 
 /** The browser checks ran on the redirect target of a refused certificate, not on the target: the report says where. */

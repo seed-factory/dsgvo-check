@@ -444,6 +444,10 @@ describe('scan — invalid certificate, plain-http address redirects to another 
         'a block page of an older snapshot without its signals',
         { code: 'start-page-blocked', message: 'signals=x' },
       ],
+      [
+        'a plain 403 page without a protection signature',
+        { code: 'start-page-blocked', message: 'signals=status:403', params: { signals: 'status:403' } },
+      ],
     ])('counterexample: %s keeps the general wording (fallback blocked, no signal)', async (_case, error) => {
       const result = await fallbackScan({
         browser: async () => ({ status: 'skipped', reason: 'tls-fallback-failed', sections: {}, error }),
