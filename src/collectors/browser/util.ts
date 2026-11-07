@@ -84,3 +84,17 @@ export function pageCallFailure(err: unknown): string {
   const text = errorText(err);
   return PAGE_CALL_FAILURES.find(([re]) => re.test(text))?.[1] ?? 'evaluation failed';
 }
+
+/** The prefix Playwright gives the errors of its calls into the page or its handles. */
+const PAGE_API_ERROR = /^(?:page|frame|locator|elementHandle|jsHandle|worker)\.[A-Za-z$]+:/;
+
+/**
+ * An exception that ended a phase: the kind of failure when it came from a call into the page (see pageCallFailure),
+ * else the first line of the scanner's own error, which carries no page data and is what debugging needs.
+ */
+export function phaseFailure(err: unknown): string {
+  const text = errorText(err);
+  if (!(err instanceof Error) || err instanceof TimeoutError || PAGE_API_ERROR.test(text))
+    return pageCallFailure(err);
+  return text.split('\n')[0] ?? '';
+}

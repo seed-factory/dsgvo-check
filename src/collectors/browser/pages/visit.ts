@@ -8,7 +8,7 @@ import type { BrowserTiming, PhaseTiming } from '../config.ts';
 import { sanitizeRequestUrl, splitSetCookieNames } from '../recording/features.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
 import { type NetworkRecorder, settleWithin } from '../recording/recorder.ts';
-import { errorText, TimeoutError, truncate, withTimeout } from '../util.ts';
+import { errorText, pageCallFailure, TimeoutError, truncate, withTimeout } from '../util.ts';
 import { detectChallenge } from './challenge.ts';
 import { collectDom } from './dom-facts.ts';
 import type { CandidateLink, LegalKind } from './pages.ts';
@@ -219,14 +219,15 @@ async function readContent(
       content.scripts = r.raw.scripts.map((x) => x.src).filter(Boolean);
       content.domError = undefined;
     } catch (err) {
-      const domError = firstLine(errorText(err));
+      // collectDom runs in the page: only the kind of failure is kept (see pageCallFailure); the raw text only decides.
+      const domError = pageCallFailure(err);
       content.domError = domError;
       if (err instanceof TimeoutError) {
         limitations.push({ code: 'dom-collect-timeout', message: domError });
         break;
       }
       // The page navigated itself (JS/meta redirect) while we read it: wait for the new document once.
-      if (!/context was destroyed|navigat/i.test(domError)) break;
+      if (!/context was destroyed|navigat/i.test(firstLine(errorText(err)))) break;
       await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs }).catch(() => undefined);
     }
   }

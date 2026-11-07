@@ -13,7 +13,7 @@ import { inputEventsInPage } from '../in-page/input.ts';
 import { navigate } from '../pages/navigate.ts';
 import { navigationErrorCode, type VisitResult, type VisitSpec, valueWithin } from '../pages/visit.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
-import { errorText, sleep, withTimeout } from '../util.ts';
+import { pageCallFailure, sleep, withTimeout } from '../util.ts';
 import { bannerScreenshot } from './screenshot.ts';
 
 /** Upper bound of reading the press times of one frame; the CMP call timeout applies when it is shorter. */
@@ -428,7 +428,8 @@ async function screenshot(
       noteScreenshotSkipped(s, pageUrl, shot.skipped);
     }
   } catch (err) {
-    noteScreenshotSkipped(s, pageUrl, `error: ${errorText(err).slice(0, SCREENSHOT_ERROR_MAX_CHARS)}`);
+    // The banner box is read in the page: only the kind of failure is kept, see pageCallFailure.
+    noteScreenshotSkipped(s, pageUrl, `error: ${pageCallFailure(err).slice(0, SCREENSHOT_ERROR_MAX_CHARS)}`);
   }
 }
 

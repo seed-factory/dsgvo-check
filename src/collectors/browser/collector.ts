@@ -64,7 +64,7 @@ import {
   type RequestCounter,
   type ScanClock,
 } from './recording/recorder.ts';
-import { ERROR_MESSAGE_MAX_CHARS, errorText, pageCallFailure, sleep } from './util.ts';
+import { ERROR_MESSAGE_MAX_CHARS, errorText, pageCallFailure, phaseFailure, sleep } from './util.ts';
 
 /** How long sealing a phase waits for response handlers that are still running. */
 const FLUSH_BUDGET_MS = 2_000;
@@ -306,7 +306,7 @@ export class BrowserCollection {
   private phaseAFailure(err: unknown): CollectorResult<BrowserSections> {
     if (this.ctx.signal.aborted) return this.abortedResult();
 
-    const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
+    const message = phaseFailure(err).slice(0, ERROR_MESSAGE_MAX_CHARS);
     this.ctx.log.error(`browser phase A failed: ${message}`);
     return {
       status: 'error',
@@ -569,14 +569,11 @@ export class BrowserCollection {
     try {
       await fn();
     } catch (err) {
-      this.ctx.log.warn(`phase ${phase} failed: ${errorText(err).split('\n')[0]}`);
+      const message = phaseFailure(err).slice(0, ERROR_MESSAGE_MAX_CHARS);
+      this.ctx.log.warn(`phase ${phase} failed: ${message}`);
 
       const existing = this.phases.find((p) => p.phase === phase);
-      const error = {
-        code: 'phase-failed',
-        message: errorText(err).slice(0, ERROR_MESSAGE_MAX_CHARS),
-        phase,
-      };
+      const error = { code: 'phase-failed', message, phase };
       if (existing) {
         existing.status = 'failed';
         existing.errors.push(error);
