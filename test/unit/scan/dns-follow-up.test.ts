@@ -11,15 +11,9 @@ import type { FullReport } from '../../../src/core/report/schema.ts';
 import type { CollectorContext, DnsCollector } from '../../../src/core/snapshot/collector.ts';
 import type { DnsSection } from '../../../src/core/snapshot/dns.ts';
 import { scan } from '../../../src/scan.ts';
-import {
-  makeDns,
-  makeDocumentResponse,
-  makeHttp,
-  makeTls,
-  makeTlsEndpoint,
-} from '../../utils/snapshot-builder.ts';
+import { makeDns, makeDocumentResponse, makeHttp } from '../../utils/snapshot-builder.ts';
 import { zoneQueries } from '../checks/dns/zone.ts';
-import { browserCheck, opts, withBrowser } from './fixtures.ts';
+import { browserCheck, opts, refusedTls, withBrowser } from './fixtures.ts';
 
 const FIRST: DnsSection = makeDns({
   domain: 'example.de',
@@ -58,15 +52,6 @@ const transportCheck = defineCheck({
   run: () => [],
 });
 
-const invalidCertificate = async () => ({
-  status: 'ok' as const,
-  sections: {
-    tls: makeTls({
-      endpoints: [makeTlsEndpoint({ authorized: false, authorizationError: 'CERT_HAS_EXPIRED' })],
-    }),
-  },
-});
-
 describe('scan — DNS stage of the further mail domains', () => {
   it('runs after the browser stage, with the HTTP final host when the browser was skipped (tls-blocked)', async () => {
     const calls: string[] = [];
@@ -77,7 +62,7 @@ describe('scan — DNS stage of the further mail domains', () => {
         collectors: {
           ...withBrowser,
           http: redirectedHttp,
-          tls: invalidCertificate,
+          tls: refusedTls({ authorizationError: 'CERT_HAS_EXPIRED' }),
           dns: firstStage,
           browser: async () => {
             calls.push('browser');

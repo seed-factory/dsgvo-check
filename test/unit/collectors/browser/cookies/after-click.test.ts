@@ -2,43 +2,25 @@
  * Pure tests (no browser): a `Set-Cookie` after the click marks only the cookie it can be (same name, domain, path
  * and partition) as an `afterClick` write; the first writer stays the setter.
  */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { JarTracker, type Moment } from '../../../../../src/collectors/browser/recording/jar.ts';
-import { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
 import {
   fakeContext,
   fakePage,
-  fakeRequest,
-  fakeResponse,
+  fakeRecorder,
   type JarCookie,
   jarCookie,
   moment,
   START,
   target,
-} from './fakes.ts';
+} from '../fakes.ts';
 
 describe('JarTracker: a Set-Cookie after the click marks only the cookie it can be', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const post: Moment = { ...moment, phase: 'B', tRef: 'click', afterClick: true, tMs: 500 };
 
   /** A phase-B recorder that answers one request at a time, like the collector feeds it. */
-  function liveRecorder() {
-    const ctx = new EventEmitter();
-    const counter = { limit: 2000, issued: 0, truncated: false };
-    const rec = new NetworkRecorder('B', 'example.de', counter, false);
-    rec.attach(ctx as unknown as BrowserContext);
-    rec.beginNavigation(START);
-
-    const send = async (url: string, lines: string[]) => {
-      const req = fakeRequest(url);
-      ctx.emit('request', req);
-      ctx.emit('response', fakeResponse(req, lines));
-      await rec.flush();
-    };
-    return { rec, send };
-  }
+  const liveRecorder = () => fakeRecorder({ phase: 'B', start: START });
 
   /** Three same-named cookies (first party, tracker A, tracker B), all set by responses before the click. */
   async function threeUids(extra: Partial<JarCookie> = {}) {

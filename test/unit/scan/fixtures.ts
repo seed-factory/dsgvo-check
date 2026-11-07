@@ -2,9 +2,20 @@
 import { defineCheck } from '../../../src/core/evaluation/check.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
+import type { Collectors } from '../../../src/core/snapshot/collector.ts';
+import type { HttpHop } from '../../../src/core/snapshot/http.ts';
+import type { TlsEndpoint } from '../../../src/core/snapshot/tls.ts';
 import type { ScanOptions } from '../../../src/scan-options.ts';
 import { fakeCollectors, publicLookup, testDataDir } from '../../utils/scan-harness.ts';
-import { FIXED_NOW, makeBrowser, makeHttp } from '../../utils/snapshot-builder.ts';
+import {
+  FIXED_NOW,
+  makeBrowser,
+  makeCert,
+  makeHop,
+  makeHttp,
+  makeTls,
+  makeTlsEndpoint,
+} from '../../utils/snapshot-builder.ts';
 
 export const dataDir = testDataDir({
   ruleset: {
@@ -103,6 +114,22 @@ export function emptyPhase(phase: 'A') {
   };
 }
 
+/** Browser collector that honours the abort signal: it stops and returns what it has after `delayMs`. */
+export const abortAware =
+  (sections: () => Record<string, unknown>, delayMs = 5) =>
+  (ctx: { signal: AbortSignal }) =>
+    new Promise<never>((resolve) => {
+      ctx.signal.addEventListener(
+        'abort',
+        () =>
+          setTimeout(
+            () => resolve({ status: 'partial', reason: 'timeout', sections: sections() } as never),
+            delayMs,
+          ),
+        { once: true },
+      );
+    });
+
 export function opts(over: Partial<ScanOptions> = {}): ScanOptions {
   return {
     url: 'https://www.example.de/',
@@ -115,3 +142,34 @@ export function opts(over: Partial<ScanOptions> = {}): ScanOptions {
     ...over,
   };
 }
+
+/** A TLS collector whose probe of the target was refused with `authorizationError`, the refusal under test. */
+export const refusedTls =
+  (over: Partial<TlsEndpoint> & Pick<TlsEndpoint, 'authorizationError'>): Collectors['tls'] =>
+  async () => ({
+    status: 'ok',
+    sections: { tls: makeTls({ endpoints: [makeTlsEndpoint({ authorized: false, ...over })] }) },
+  });
+
+// A target with a refused certificate whose plain-http address redirects to another host.
+export const TARGET = 'https://broken.example.test/';
+export const VIA = 'http://broken.example.test/';
+export const RAW_FINAL = 'https://site.example.test/start?token=raw-fixture-7';
+export const STORED_FINAL = 'https://site.example.test/start?token=[redacted]';
+
+export const httpHop = (url: string, status: number, location?: string): HttpHop =>
+  makeHop({ url, status, ...(location ? { location } : {}) });
+
+/** An https hop as the HTTP collector stores it: Node's verdict of the connection. */
+export const httpsHop = (url: string, status: number, over: Partial<HttpHop> = {}): HttpHop =>
+  makeHop({ url, status, tlsAuthorized: true, tlsAuthorizationError: null, ...over });
+
+/** The self-signed certificate (issued to another name) that the TLS collector refused on the target. */
+export const brokenTarget = (host = 'broken.example.test'): TlsEndpoint =>
+  makeTlsEndpoint({
+    host,
+    authorized: false,
+    authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+    hostnameMatches: false,
+    chain: [makeCert({ subject: 'CN=other.example.test', selfSigned: true })],
+  });

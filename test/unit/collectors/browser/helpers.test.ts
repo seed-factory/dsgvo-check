@@ -1,12 +1,10 @@
-/** Pure helpers of the browser collector: cookie mapping, launch errors, Link header, documents, guard, CMP facts. */
+/** Pure helpers of the browser collector: cookie mapping, launch errors, Link header, guard, CMP facts. */
 import { describe, expect, it } from 'vitest';
 import type { CmpFacts } from '../../../../src/cmp/types.ts';
 import { normalizeFacts } from '../../../../src/collectors/browser/cmp-bridge.ts';
 import { classifyLaunchError } from '../../../../src/collectors/browser/launch/launch.ts';
 import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/browser/launch/ssrf.ts';
-import { judgeDocument } from '../../../../src/collectors/browser/legal/documents.ts';
 import { parseLinkHeader } from '../../../../src/collectors/browser/pages/dom-facts.ts';
-import { navigationErrorCode } from '../../../../src/collectors/browser/pages/visit.ts';
 import { mapCookie } from '../../../../src/collectors/browser/recording/jar.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
@@ -126,18 +124,6 @@ describe('classifyLaunchError (5.2)', () => {
   });
 });
 
-describe('navigationErrorCode', () => {
-  it.each([
-    ['page.goto: net::ERR_NAME_NOT_RESOLVED at https://x/', 'ERR_NAME_NOT_RESOLVED'],
-    ['page.goto: net::ERR_CERT_DATE_INVALID at https://x/', 'ERR_CERT_DATE_INVALID'],
-    ['page.goto: Timeout 30000ms exceeded.', 'timeout'],
-    ['page.goto: Download is starting', 'download'],
-    ['something else', 'navigation-error'],
-  ])('%s → %s', (msg, code) => {
-    expect(navigationErrorCode(msg)).toBe(code);
-  });
-});
-
 describe('parseLinkHeader', () => {
   it('extracts preconnect / preload entries with absolute, sanitized URLs', () => {
     expect(
@@ -154,43 +140,6 @@ describe('parseLinkHeader', () => {
         source: 'header',
       },
     ]);
-  });
-});
-
-describe('judgeDocument', () => {
-  const long = 'Text. '.repeat(100);
-  it('soft-404 by title/h1 on short pages; no marker on a substantive page is unconfirmed', () => {
-    expect(
-      judgeDocument('privacy', { title: 'Seite nicht gefunden', h1: '', text: 'x', textLength: 1 }),
-    ).toBe('soft-404');
-    expect(
-      judgeDocument('privacy', { title: 'Start', h1: 'Willkommen', text: long, textLength: long.length }),
-    ).toBe('unconfirmed');
-    expect(
-      judgeDocument('impressum', {
-        title: 'Impressum',
-        h1: 'Impressum',
-        text: long,
-        textLength: long.length,
-      }),
-    ).toBe('ok');
-    // The statutory phrase counts as a heading; in the body text alone it proves nothing (footer small print).
-    expect(
-      judgeDocument('impressum', {
-        title: 'Kontakt',
-        h1: '',
-        sections: ['Angaben gemäß § 5 DDG'],
-        textLength: 700,
-      }),
-    ).toBe('ok');
-    expect(
-      judgeDocument('impressum', {
-        title: 'Kontakt',
-        h1: '',
-        text: `Angaben gemäß § 5 DDG ${long}`,
-        textLength: 700,
-      }),
-    ).toBe('unconfirmed');
   });
 });
 

@@ -5,36 +5,18 @@
 import { describe, expect, it } from 'vitest';
 import { matchLegalLink } from '../../../../../src/collectors/browser/legal/lexicon.ts';
 import { loadLegalLexicon } from '../../../../../src/collectors/browser/legal/lexicon-file.ts';
-import {
-  type CandidateLink,
-  findLegalLink,
-  selectPages,
-} from '../../../../../src/collectors/browser/pages/pages.ts';
+import { type CandidateLink, findLegalLink } from '../../../../../src/collectors/browser/pages/pages.ts';
+import { link, scope, plan as select, u } from '../../../../utils/candidate-links.ts';
 
-const START = 'https://www.example.test/';
-const scope = { startRaw: START, finalHost: 'www.example.test', etld1: 'example.test' };
-let n = 0;
-const link = (p: Partial<CandidateLink> & { raw: string; text: string }): CandidateLink => ({
-  hrefKind: p.raw.startsWith('https:') ? 'https' : 'http',
-  region: 'footer',
-  visible: true,
-  order: n++,
-  ...p,
-});
-const u = (path: string) => `https://www.example.test${path}`;
-const select = (links: CandidateLink[]) =>
-  selectPages({ links, ...scope, maxPages: 6, robots: null, token: 'dsgvo-check', sitemapLocs: [] });
+/** The legal link of `kind` among the links of the start page. */
+const pick = (kind: 'impressum' | 'privacy', links: CandidateLink[]) => findLegalLink(links, kind, scope);
 
 describe('exact labels outrank generic and topical ones', () => {
   it('"Rechtliche Hinweise" (first in the DOM) loses against "Impressum"', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: u('/hinweise'), text: 'Rechtliche Hinweise' }),
-        link({ raw: u('/anbieter'), text: 'Impressum' }),
-      ],
-      'impressum',
-      scope,
-    );
+    const r = pick('impressum', [
+      link({ raw: u('/hinweise'), text: 'Rechtliche Hinweise' }),
+      link({ raw: u('/anbieter'), text: 'Impressum' }),
+    ]);
     expect(r.status).toBe('page');
     expect(r.choice?.raw).toBe(u('/anbieter'));
   });
@@ -56,44 +38,31 @@ describe('exact labels outrank generic and topical ones', () => {
       'Datenschutzrichtlinie',
     ],
   ])('privacy: %s', (_, weak, good) => {
-    const r = findLegalLink(
-      [link({ raw: u('/erstens'), text: weak }), link({ raw: u('/zweitens'), text: good })],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/erstens'), text: weak }),
+      link({ raw: u('/zweitens'), text: good }),
+    ]);
     expect(r.choice?.raw).toBe(u('/zweitens'));
   });
 
   it('region does not outrank label precision: a nav "Datenschutz" beats a footer "Datenschutz vergleichen"', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: u('/vergleich'), text: 'Datenschutz vergleichen', region: 'footer' }),
-        link({ raw: u('/dse'), text: 'Datenschutz', region: 'nav' }),
-      ],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/vergleich'), text: 'Datenschutz vergleichen', region: 'footer' }),
+      link({ raw: u('/dse'), text: 'Datenschutz', region: 'nav' }),
+    ]);
     expect(r.choice?.raw).toBe(u('/dse'));
   });
 
   it('on equal precision an href with the legal slug wins, then region and DOM order', () => {
-    const a = findLegalLink(
-      [
-        link({ raw: u('/seite-7'), text: 'Datenschutz', order: 1 }),
-        link({ raw: u('/datenschutz'), text: 'Datenschutz', order: 2 }),
-      ],
-      'privacy',
-      scope,
-    );
+    const a = pick('privacy', [
+      link({ raw: u('/seite-7'), text: 'Datenschutz', order: 1 }),
+      link({ raw: u('/datenschutz'), text: 'Datenschutz', order: 2 }),
+    ]);
     expect(a.choice?.raw).toBe(u('/datenschutz'));
-    const b = findLegalLink(
-      [
-        link({ raw: u('/x'), text: 'Impressum', region: 'nav', order: 1 }),
-        link({ raw: u('/y'), text: 'Impressum', region: 'footer', order: 2 }),
-      ],
-      'impressum',
-      scope,
-    );
+    const b = pick('impressum', [
+      link({ raw: u('/x'), text: 'Impressum', region: 'nav', order: 1 }),
+      link({ raw: u('/y'), text: 'Impressum', region: 'footer', order: 2 }),
+    ]);
     expect(b.choice?.raw).toBe(u('/y'));
   });
 
@@ -104,7 +73,7 @@ describe('exact labels outrank generic and topical ones', () => {
       link({ raw: u('/c'), text: 'DSGVO' }),
       link({ raw: u('/a'), text: 'Datenschutz', region: 'nav' }),
     ];
-    const r = findLegalLink(links, 'privacy', scope);
+    const r = pick('privacy', links);
     expect(r.candidates?.map((c) => c.raw)).toEqual([u('/a'), u('/b'), u('/c')]);
     expect(r.choice?.raw).toBe(u('/a'));
     const plan = select(links);
@@ -200,7 +169,7 @@ describe('localised labels', () => {
     ['pl', 'Polityka prywatności'],
   ];
   it.each(privacy)('privacy (%s): "%s"', (_, label) => {
-    const r = findLegalLink([link({ raw: u('/p1'), text: label })], 'privacy', scope);
+    const r = pick('privacy', [link({ raw: u('/p1'), text: label })]);
     expect(r.status).toBe('page');
     expect(r.choice?.raw).toBe(u('/p1'));
   });
@@ -214,57 +183,39 @@ describe('localised labels', () => {
     ['pl', 'Nota prawna'],
   ];
   it.each(impressum)('impressum (%s): "%s"', (_, label) => {
-    const r = findLegalLink([link({ raw: u('/i1'), text: label })], 'impressum', scope);
+    const r = pick('impressum', [link({ raw: u('/i1'), text: label })]);
     expect(r.status).toBe('page');
   });
 
   it('localised path slugs find the link when the label is an icon', () => {
-    expect(
-      findLegalLink([link({ raw: u('/politique-de-confidentialite'), text: '' })], 'privacy', scope).status,
-    ).toBe('page');
-    expect(findLegalLink([link({ raw: u('/mentions-legales'), text: '' })], 'impressum', scope).status).toBe(
+    expect(pick('privacy', [link({ raw: u('/politique-de-confidentialite'), text: '' })]).status).toBe(
       'page',
     );
+    expect(pick('impressum', [link({ raw: u('/mentions-legales'), text: '' })]).status).toBe('page');
   });
 
   it('a localised policy that mentions cookies is not dropped as a settings link', () => {
-    const r = findLegalLink(
-      [link({ raw: u('/p'), text: 'Polityka prywatności i plików cookies' })],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [link({ raw: u('/p'), text: 'Polityka prywatności i plików cookies' })]);
     expect(r.status).toBe('page');
-    const de = findLegalLink(
-      [link({ raw: u('/q'), text: 'Datenschutzerklärung und Cookie-Richtlinie' })],
-      'privacy',
-      scope,
-    );
+    const de = pick('privacy', [link({ raw: u('/q'), text: 'Datenschutzerklärung und Cookie-Richtlinie' })]);
     expect(de.status).toBe('page');
   });
 
   it('counterexamples: settings links and topical headlines are no privacy link', () => {
-    const settings = findLegalLink(
-      [
-        link({ raw: u('/s1'), text: 'Cookie-Einstellungen' }),
-        link({ raw: u('/s2'), text: 'Datenschutz-Einstellungen' }),
-        link({ raw: u('/s3'), text: 'Privacy settings' }),
-        link({ raw: u('/s4'), text: 'Datenschutz & Cookies' }),
-      ],
-      'privacy',
-      scope,
-    );
+    const settings = pick('privacy', [
+      link({ raw: u('/s1'), text: 'Cookie-Einstellungen' }),
+      link({ raw: u('/s2'), text: 'Datenschutz-Einstellungen' }),
+      link({ raw: u('/s3'), text: 'Privacy settings' }),
+      link({ raw: u('/s4'), text: 'Datenschutz & Cookies' }),
+    ]);
     expect(settings.status).toBe('none');
-    const headline = findLegalLink(
-      [
-        link({
-          raw: u('/ratgeber/artikel-17'),
-          text: 'Datenschutz im Alltag: So schützen Sie Ihre persönlichen Daten online richtig',
-          region: 'main',
-        }),
-      ],
-      'privacy',
-      scope,
-    );
+    const headline = pick('privacy', [
+      link({
+        raw: u('/ratgeber/artikel-17'),
+        text: 'Datenschutz im Alltag: So schützen Sie Ihre persönlichen Daten online richtig',
+        region: 'main',
+      }),
+    ]);
     expect(headline.status).toBe('none');
   });
 });
@@ -273,41 +224,31 @@ describe('hidden vendor links of the consent banner', () => {
   const vendor = 'https://consent-vendor.example/privacy-policy';
 
   it('only a hidden banner link to another registrable domain → none', () => {
-    const r = findLegalLink(
-      [link({ raw: vendor, text: 'Privacy Policy', region: 'banner', visible: false })],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: vendor, text: 'Privacy Policy', region: 'banner', visible: false }),
+    ]);
     expect(r.status).toBe('none');
   });
 
   it('a same-site "Datenschutz" link is chosen next to it', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: vendor, text: 'Privacy Policy', region: 'banner', visible: false, order: 0 }),
-        link({ raw: u('/datenschutz'), text: 'Datenschutz', order: 1 }),
-      ],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: vendor, text: 'Privacy Policy', region: 'banner', visible: false, order: 0 }),
+      link({ raw: u('/datenschutz'), text: 'Datenschutz', order: 1 }),
+    ]);
     expect(r.choice?.raw).toBe(u('/datenschutz'));
   });
 
   it('counterexample: a hidden same-site banner link still counts', () => {
-    const r = findLegalLink(
-      [link({ raw: u('/datenschutz'), text: 'Datenschutz', region: 'banner', visible: false })],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/datenschutz'), text: 'Datenschutz', region: 'banner', visible: false }),
+    ]);
     expect(r.status).toBe('page');
   });
 
   it('counterexample: a visible offsite link is still reported as offsite', () => {
-    const r = findLegalLink(
-      [link({ raw: 'https://konzern.example/impressum', text: 'Impressum', region: 'footer' })],
-      'impressum',
-      scope,
-    );
+    const r = pick('impressum', [
+      link({ raw: 'https://konzern.example/impressum', text: 'Impressum', region: 'footer' }),
+    ]);
     expect(r.status).toBe('offsite');
   });
 });
@@ -331,26 +272,18 @@ describe('hyphenated and spaced spellings of a canonical label keep the exact ra
   });
 
   it('a topical "Datenschutz-Garten" (first in the DOM) loses against "Datenschutz-Hinweise"', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: u('/garten'), text: 'Datenschutz-Garten', order: 1 }),
-        link({ raw: u('/hinweise'), text: 'Datenschutz-Hinweise', order: 2 }),
-      ],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/garten'), text: 'Datenschutz-Garten', order: 1 }),
+      link({ raw: u('/hinweise'), text: 'Datenschutz-Hinweise', order: 2 }),
+    ]);
     expect(r.choice?.raw).toBe(u('/hinweise'));
   });
 
   it('"Datenschutzbeauftragter" (first in the DOM) loses against "Datenschutz-Erklärung"', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: u('/dsb'), text: 'Datenschutzbeauftragter', order: 1 }),
-        link({ raw: u('/erklaerung'), text: 'Datenschutz-Erklärung', order: 2 }),
-      ],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/dsb'), text: 'Datenschutzbeauftragter', order: 1 }),
+      link({ raw: u('/erklaerung'), text: 'Datenschutz-Erklärung', order: 2 }),
+    ]);
     expect(r.choice?.raw).toBe(u('/erklaerung'));
   });
 
@@ -366,9 +299,7 @@ describe('weak keys count as a whole label or in a short label, not inside a lon
     'privacy: "%s" is no privacy link',
     (label) => {
       expect(privacyMatch(label, '/leistungen/webdesign')).toBeNull();
-      expect(
-        findLegalLink([link({ raw: u('/leistungen/webdesign'), text: label })], 'privacy', scope).status,
-      ).toBe('none');
+      expect(pick('privacy', [link({ raw: u('/leistungen/webdesign'), text: label })]).status).toBe('none');
     },
   );
 
@@ -376,7 +307,7 @@ describe('weak keys count as a whole label or in a short label, not inside a lon
     expect(privacyMatch('DSGVO')).toMatchObject({ tier: 4, byText: true });
     expect(privacyMatch('DSGVO Hinweise')).toMatchObject({ tier: 4, byText: true });
     expect(privacyMatch('Webdesign DSGVO konform', '/dsgvo')).toMatchObject({ tier: 4, byText: false });
-    expect(findLegalLink([link({ raw: u('/dsgvo'), text: 'DSGVO' })], 'privacy', scope).status).toBe('page');
+    expect(pick('privacy', [link({ raw: u('/dsgvo'), text: 'DSGVO' })]).status).toBe('page');
   });
 
   it('impressum: a weak key inside a long label is no Impressum link, the whole label is', () => {
@@ -388,14 +319,10 @@ describe('weak keys count as a whole label or in a short label, not inside a lon
   });
 
   it('a weak link still loses against a real label next to it', () => {
-    const r = findLegalLink(
-      [
-        link({ raw: u('/dsgvo'), text: 'DSGVO', order: 1 }),
-        link({ raw: u('/dse'), text: 'Datenschutzerklärung', order: 2 }),
-      ],
-      'privacy',
-      scope,
-    );
+    const r = pick('privacy', [
+      link({ raw: u('/dsgvo'), text: 'DSGVO', order: 1 }),
+      link({ raw: u('/dse'), text: 'Datenschutzerklärung', order: 2 }),
+    ]);
     expect(r.choice?.raw).toBe(u('/dse'));
   });
 });
@@ -433,8 +360,8 @@ describe('one URL with an exact privacy label does not go to the Impressum throu
 
   it('the link of the banner alone (text and name on one link) is privacy, with the exact label', () => {
     const only = bannerPrivacy('Legal Information', { text: 'Privacy Policy' });
-    expect(findLegalLink([only], 'impressum', scope).status).toBe('none');
-    const p = findLegalLink([only], 'privacy', scope);
+    expect(pick('impressum', [only]).status).toBe('none');
+    const p = pick('privacy', [only]);
     expect(p.choice?.raw).toBe(PRIVACY_URL);
     expect(p.choice?.reasons[0]).toMatch(/^banner-link:privacy/);
   });

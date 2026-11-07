@@ -5,31 +5,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PageQueue } from '../../../../../src/collectors/browser/legal/queue.ts';
-import { type CandidateLink, selectPages } from '../../../../../src/collectors/browser/pages/pages.ts';
+import type { CandidateLink } from '../../../../../src/collectors/browser/pages/pages.ts';
 import type { DocumentsSection } from '../../../../../src/core/snapshot/browser.ts';
+import { link, plan, scope as site, u } from '../../../../utils/candidate-links.ts';
 
-const u = (path: string) => `https://www.example.test${path}`;
-let n = 0;
-const link = (p: Partial<CandidateLink> & { raw: string; text: string }): CandidateLink => ({
-  hrefKind: 'https',
-  region: 'footer',
-  visible: true,
-  order: n++,
-  ...p,
-});
-const scope = { startRaw: u('/de/'), finalHost: 'www.example.test', etld1: 'example.test' };
+const scope = { ...site, startRaw: u('/de/') };
 
 /** The queue after the policy link of `links` was taken from it, as phase A takes it to visit. */
 function afterFirstPolicy(links: CandidateLink[]) {
-  const sel = selectPages({
-    links,
-    ...scope,
-    startLang: 'de',
-    maxPages: 6,
-    robots: null,
-    token: 'dsgvo-check',
-    sitemapLocs: [],
-  });
+  const sel = plan(links, { ...scope, startLang: 'de' });
   const documents: DocumentsSection = { documents: [], attempts: [] };
   const queue = new PageQueue(new Set([u('/de/')]), documents, scope, { language: sel.language, max: 1 });
   queue.handleLink(sel.privacy, 'link', null, links);

@@ -2,57 +2,13 @@
  * The network recorder with fake Playwright objects (no browser): one monotonic `atMs` scale from the scan start,
  * navigation/action/frame/parent ids, independent `delivery` / `result`; a body error keeps the response.
  */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, Request, Response } from 'playwright-core';
+import type { Request, Response } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { REQUEST_FEATURES_VERSION } from '../../../../../src/collectors/browser/recording/features.ts';
-import { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
+import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../fakes.ts';
 
-interface FakeFrame {
-  parentFrame(): FakeFrame | null;
-  url(): string;
-}
-
-function frame(parent: FakeFrame | null, url = 'https://www.example.de/'): FakeFrame {
-  return { parentFrame: () => parent, url: () => url };
-}
-
-function request(
-  url: string,
-  o: { frame?: FakeFrame; nav?: boolean; from?: Request; type?: string; failure?: string } = {},
-): Request {
-  const f = o.frame ?? frame(null);
-  return {
-    url: () => url,
-    postData: () => null,
-    serviceWorker: () => null,
-    frame: () => f,
-    isNavigationRequest: () => o.nav ?? false,
-    redirectedFrom: () => o.from ?? null,
-    method: () => 'GET',
-    resourceType: () => o.type ?? 'image',
-    failure: () => (o.failure ? { errorText: o.failure } : null),
-    allHeaders: async () => ({}),
-  } as unknown as Request;
-}
-
-function response(req: Request, status: number): Response {
-  return {
-    request: () => req,
-    status: () => status,
-    fromServiceWorker: () => false,
-    headersArray: async () => [],
-    serverAddr: async () => ({ ipAddress: '93.184.215.14', port: 443 }),
-  } as unknown as Response;
-}
-
-function setup(clock?: () => number) {
-  const ctx = new EventEmitter();
-  const counter = { limit: 2000, issued: 0, truncated: false };
-  const rec = new NetworkRecorder('B', 'example.de', counter, false, clock);
-  rec.attach(ctx as unknown as BrowserContext);
-  return { ctx, rec };
-}
+const setup = (clock?: () => number) => fakeRecorder({ phase: 'B', clock });
+const response = (req: Request, status: number) => fakeResponse(req, [], { status: () => status });
 
 describe('NetworkRecorder: 5.3 request fields', () => {
   it('atMs is on the scan clock, ids link navigation, click, frame and redirect', async () => {
@@ -128,13 +84,10 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     rec.beginNavigation('https://www.example.de/');
     const slow = request('https://www.example.net/slow.js');
     ctx.emit('request', slow);
-    const res = {
-      ...response(slow, 200),
-      headersArray: () =>
-        new Promise((resolve) =>
-          setTimeout(() => resolve([{ name: 'set-cookie', value: 'late_cookie=1; Path=/' }]), 80),
-        ),
-    } as unknown as Response;
+    const late = [{ name: 'set-cookie', value: 'late_cookie=1; Path=/' }];
+    const res = fakeResponse(slow, [], {
+      headersArray: () => new Promise((resolve) => setTimeout(() => resolve(late), 80)),
+    } as Partial<Response>);
     ctx.emit('response', res);
     expect(await rec.flush()).toBe(true);
     expect(rec.records[0]).toMatchObject({

@@ -2,19 +2,18 @@
  * The reveal step of the collector with a fake page (no browser): what it records when the page or the browser fails,
  * and that the wait for late response handlers does not abandon them.
  */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, BrowserType, Page, Request, Response } from 'playwright-core';
+import type { BrowserType, Page, Request } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { BrowserCollection, type Session } from '../../../../src/collectors/browser/collector.ts';
 import type { RawScrollFacts } from '../../../../src/collectors/browser/in-page/dom.ts';
 import type { CmpApi } from '../../../../src/collectors/browser/index.ts';
-import { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
 import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import type { PageVisit, PhaseRecord } from '../../../../src/core/snapshot/browser.ts';
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
 import { parseTarget } from '../../../../src/core/url/url.ts';
 import { makePage, makeSnapshot } from '../../../utils/snapshot-builder.ts';
+import { fakeRecorder, fakeRequest, fakeResponse } from './fakes.ts';
 
 const SECRET = 'PRIVATE_COOKIE_VALUE_42';
 const KONTAKT = 'https://www.example.test/kontakt/';
@@ -57,10 +56,11 @@ function setup(fake: FakePage) {
     },
   });
 
-  const browserContext = new EventEmitter();
-  const recorder = new NetworkRecorder('A', 'example.test', c.counter, false);
-  recorder.attach(browserContext as unknown as BrowserContext);
-  recorder.beginNavigation(KONTAKT);
+  const { ctx: browserContext, rec: recorder } = fakeRecorder({
+    etld1: 'example.test',
+    counter: c.counter,
+    start: KONTAKT,
+  });
 
   const record: PhaseRecord = {
     phase: 'A',
@@ -166,30 +166,17 @@ describe('the reveal step of the collector', () => {
     const { browserContext, recorder, run } = setup({
       setViewportSize: async ({ height }) => {
         if (height === 768 || req) return;
-        req = {
-          url: () => 'https://maps.example.net/tile.png',
-          postData: () => null,
-          serviceWorker: () => null,
-          frame: () => ({ parentFrame: () => null, url: () => KONTAKT }),
-          isNavigationRequest: () => false,
-          redirectedFrom: () => null,
-          method: () => 'GET',
-          resourceType: () => 'image',
-          allHeaders: async () => ({}),
-        } as unknown as Request;
+        req = fakeRequest('https://maps.example.net/tile.png');
         browserContext.emit('request', req);
         const late = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-        const resp = {
-          request: () => req,
-          status: () => 200,
-          fromServiceWorker: () => false,
+        const resp = fakeResponse(req, [], {
           // Later than the collector's wait (2 s), within the handler's own budget (5 s).
           headersArray: async () => {
             await late(2_300);
             return [{ name: 'set-cookie', value: `tile_id=${SECRET}; Path=/` }];
           },
           serverAddr: async () => null,
-        } as unknown as Response;
+        });
         browserContext.emit('response', resp);
       },
     });
