@@ -5,9 +5,10 @@
  * `derived.serviceNames`.
  */
 import { z } from 'zod';
+import { normalizeText } from '../../core/api.ts';
 import { dataSection } from '../../core/data/parse.ts';
 import type { ServiceCategory, ServiceName } from '../../derive/types.ts';
-import { normalizeText, type PolicyPart } from './documents.ts';
+import type { PolicyPart } from './documents.ts';
 
 const CATEGORIES = [
   'analytics',

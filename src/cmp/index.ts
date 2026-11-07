@@ -274,8 +274,8 @@ export async function extract(
 }
 
 /**
- * The whole text of the adapter's dialog, its collapsed and hidden details included, as the page holds it (not
- * redacted); null when the adapter cannot read it or its container is not there.
+ * The whole text of the adapter's dialog, its collapsed and hidden details included, as the page holds it; null when
+ * the adapter cannot read it or its container is not there. The collector searches it in memory and stores none of it.
  */
 export async function readDialogText(
   page: Page,

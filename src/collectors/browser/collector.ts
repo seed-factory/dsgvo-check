@@ -164,10 +164,10 @@ export class BrowserCollection {
   readonly documents: DocumentsSection = { documents: [], attempts: [] };
   readonly cmpSection: CmpSection = { phases: [] };
   /**
-   * The dialog text is read once per scan: on the first screen of phase A where an adapter first qualified. A failed
-   * read is not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
+   * The dialog is read once per scan: on the first screen of phase A where an adapter first qualified. A failed read is
+   * not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
    */
-  private dialogTextRead = false;
+  private dialogRead = false;
   readonly screenshots: ScreenshotRecord[] = [];
   private readonly errors: CollectorError[] = [];
   readonly diagnostics: DiagnosticInput[] = [];
@@ -636,27 +636,28 @@ export class BrowserCollection {
     if (s.phase === 'A') a = (await s.cmp.detect(s.page, pageUrl))?.adapter ?? null;
     const facts = await s.cmp.extract(s.page, a, cmpMoment, pageUrl);
     if (facts) s.cmpFacts.facts.push(facts);
-    if (facts && a && s.phase === 'A' && cmpMoment === 'first-screen') await this.readDialogText(s, a, facts);
+    if (facts && a && s.phase === 'A' && cmpMoment === 'first-screen')
+      await this.readDialogMentions(s, a, facts);
     return facts;
   }
 
   /**
-   * The text of the dialog, its collapsed details included (PRIV-01 compares the services it names with the policy):
+   * The catalog services the dialog names, its collapsed details included (PRIV-01 compares them with the policy):
    * only where the CMP's own adapter recognised it with confidence `high` and its container is in the page, never what
-   * the generic heuristic found. Read in phase A, before the scan clicks anything.
+   * the generic heuristic found. Read in phase A, before the scan clicks anything; its text is not kept.
    */
-  private async readDialogText(s: Session, adapter: CmpAdapter, facts: CmpFacts): Promise<void> {
+  private async readDialogMentions(s: Session, adapter: CmpAdapter, facts: CmpFacts): Promise<void> {
     const d = facts.detection;
     const qualifies =
       d.method === 'adapter' &&
       d.cmpId === adapter.id &&
       d.recognitionConfidence === 'high' &&
       facts.firstLayer.bannerPresent;
-    if (this.dialogTextRead || !qualifies) return;
-    this.dialogTextRead = true;
-    const read = await s.cmp.dialogText(s.page, adapter, d.version, facts.pageUrl);
-    if (read === 'failed') this.cmpSection.dialogTextFailed = true;
-    else if (read !== 'absent') this.cmpSection.dialogText = read;
+    if (this.dialogRead || !qualifies) return;
+    this.dialogRead = true;
+    const read = await s.cmp.dialogMentions(s.page, adapter, d.version, facts.pageUrl);
+    if (read === 'failed') this.cmpSection.dialogMentionsFailed = true;
+    else if (read !== 'absent') this.cmpSection.dialogMentions = read;
   }
 
   /**

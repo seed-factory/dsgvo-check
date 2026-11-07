@@ -1,7 +1,8 @@
 /**
- * When the browser collector reads the text of the consent dialog (no browser, a stub CMP API): only on a first screen
- * of phase A where the CMP's own adapter recognised the banner with confidence `high`, once per scan, on the first such
- * page. A failed read is not repeated on a later page; the section says it failed, so that PRIV-01 can name it.
+ * When the browser collector reads the consent dialog for the catalog services it names (no browser, a stub CMP API):
+ * only on a first screen of phase A where the CMP's own adapter recognised the banner with confidence `high`, once per
+ * scan, on the first such page. A failed read is not repeated on a later page; the section says it failed, so that
+ * PRIV-01 can name it.
  */
 import type { BrowserType, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
@@ -111,15 +112,21 @@ function setup(stub: Stub = {}) {
   };
 }
 
-describe('the collector reads the dialog text', () => {
+describe('the collector reads the dialog for the services it names', () => {
   it('of the first page of phase A whose banner the own adapter recognised with high confidence, once', async () => {
     const t = setup();
     await t.firstScreen(HOME);
     await t.firstScreen(KONTAKT);
 
     expect(t.calls()).toBe(1);
-    expect(t.c.cmpSection.dialogText).toMatchObject({ cmpId: 'borlabs', pageUrl: HOME, version: '3.2.1' });
-    expect(t.c.cmpSection.dialogTextFailed).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentions).toMatchObject({
+      cmpId: 'borlabs',
+      pageUrl: HOME,
+      version: '3.2.1',
+      services: [{ serviceId: 'google-tag-manager', term: 'Google Tag Manager' }],
+    });
+    expect(JSON.stringify(t.c.cmpSection)).not.toContain('Cookie-Details');
+    expect(t.c.cmpSection.dialogMentionsFailed).toBeUndefined();
   });
 
   it.each<[string, Stub]>([
@@ -136,8 +143,8 @@ describe('the collector reads the dialog text', () => {
     await t.firstScreen(HOME);
 
     expect(t.calls()).toBe(0);
-    expect(t.c.cmpSection.dialogText).toBeUndefined();
-    expect(t.c.cmpSection.dialogTextFailed).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentions).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentionsFailed).toBeUndefined();
   });
 
   it.each<[string, 'A' | 'B', CmpFacts['moment']]>([
@@ -148,7 +155,7 @@ describe('the collector reads the dialog text', () => {
     await t.afterPage(phase, HOME, moment);
 
     expect(t.calls()).toBe(0);
-    expect(t.c.cmpSection.dialogText).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentions).toBeUndefined();
   });
 
   it('a failed read is recorded, not repeated on the next page, and leaves no text', async () => {
@@ -157,9 +164,9 @@ describe('the collector reads the dialog text', () => {
     await t.firstScreen(KONTAKT);
 
     expect(t.calls()).toBe(1);
-    expect(t.c.cmpSection.dialogText).toBeUndefined();
-    expect(t.c.cmpSection.dialogTextFailed).toBe(true);
-    expect(t.record.errors.map((e) => [e.code, e.url])).toEqual([['cmp-dialog-text-failed', HOME]]);
+    expect(t.c.cmpSection.dialogMentions).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentionsFailed).toBe(true);
+    expect(t.record.errors.map((e) => [e.code, e.url])).toEqual([['cmp-dialog-mentions-failed', HOME]]);
   });
 
   it('a dialog whose container is not there is no failure: nothing is stored or marked', async () => {
@@ -167,8 +174,8 @@ describe('the collector reads the dialog text', () => {
     await t.firstScreen(HOME);
 
     expect(t.calls()).toBe(1);
-    expect(t.c.cmpSection.dialogText).toBeUndefined();
-    expect(t.c.cmpSection.dialogTextFailed).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentions).toBeUndefined();
+    expect(t.c.cmpSection.dialogMentionsFailed).toBeUndefined();
     expect(t.record.errors).toEqual([]);
   });
 });

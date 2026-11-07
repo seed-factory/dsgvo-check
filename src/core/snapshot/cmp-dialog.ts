@@ -1,26 +1,35 @@
 /**
- * The text of a consent dialog (`cmp.dialogText`): read once per scan, on the first screen of phase A where a CMP's own
- * adapter recognises it with confidence `high`, as the whole text of the adapter's banner container, its collapsed and
- * hidden details included (the "Cookie-Details" of Borlabs Cookie list each service with provider and purpose). The
- * collector redacts it before it is written; a saved snapshot is validated and redacted again when it is read.
+ * What the snapshot keeps of a consent dialog (`cmp.dialogMentions`): the catalog services its text names. The text is
+ * read once per scan, on the first screen of phase A where a CMP's own adapter recognises the dialog with confidence
+ * `high`, as the whole text of the adapter's banner container, its collapsed and hidden details included (the
+ * "Cookie-Details" of Borlabs Cookie list each service with provider and purpose). The collector looks up the names and
+ * aliases of the service catalog in it in memory and keeps only the catalog's own term that matched. No text of the
+ * page is kept: the dialog prints the visitor's consent ID or UID next to the services, in shapes that no redaction
+ * tells apart from words.
  */
 import { z } from 'zod';
 import { KNOWN_CMP_IDS } from '../../cmp/types.ts';
-import { redactText } from '../redaction/redact.ts';
-import { redactValueTokens, stripInvisible } from '../redaction/values.ts';
 import { sanitizeUrl } from '../url/url.ts';
 
 /**
- * Characters of dialog text kept. A dialog that lists every cookie of a large site fits; a page that renders its whole
+ * Characters of dialog text read. A dialog that lists every cookie of a large site fits; a page that renders its whole
  * content into the dialog's container is cut, and the record says so.
  */
 export const CMP_DIALOG_TEXT_MAX_CHARS = 100_000;
 
-/** The id under which evidence quotes the dialog text. */
-export const CMP_DIALOG_ID = 'cmp-dialog';
+/** More than the catalog holds: a record that names more services is not one the collector wrote. */
+const MAX_MENTIONS = 500;
 
-export const CmpDialogTextSchema = z.strictObject({
-  id: z.literal(CMP_DIALOG_ID),
+const ServiceMentionSchema = z.strictObject({
+  serviceId: z
+    .string()
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  /** The catalog's own name or alias of the service that the dialog text holds as whole words; never page text. */
+  term: z.string().min(1).max(100),
+});
+
+export const CmpDialogMentionsSchema = z.strictObject({
   cmpId: z.enum(KNOWN_CMP_IDS),
   /** Name of the CMP as test/data/cmp/adapters.yaml gives it, e.g. `Borlabs Cookie`. */
   cmpName: z.string().min(1).max(100),
@@ -28,43 +37,15 @@ export const CmpDialogTextSchema = z.strictObject({
   phase: z.literal('A'),
   pageUrl: z.string().min(1),
   takenAt: z.string().min(1),
-  /** Whitespace-collapsed and redacted: no address, URL value, consent ID, UID or other value-like token. */
-  text: z.string().max(CMP_DIALOG_TEXT_MAX_CHARS),
-  /** The dialog held more text than `CMP_DIALOG_TEXT_MAX_CHARS`; the rest was not read. */
+  /** One entry per catalog service the text names, by service id. */
+  services: z.array(ServiceMentionSchema).max(MAX_MENTIONS),
+  /** The dialog held more text than `CMP_DIALOG_TEXT_MAX_CHARS`; the rest was not searched. */
   truncated: z.boolean(),
 });
-export type CmpDialogText = z.infer<typeof CmpDialogTextSchema>;
+export type CmpDialogMentions = z.infer<typeof CmpDialogMentionsSchema>;
 
-/** Drops the last token of a text that was cut: it may be the first part of a value, too short to look like one. */
-const withoutCutToken = (s: string): string => s.replace(/\S*$/, '').trimEnd();
-
-/**
- * The text as stored: invisible characters out first, so that an address split by a soft hyphen or a zero-width space
- * is recognised whole; then free-text redaction (`redact`: addresses and URL values, with the caller's query
- * allowlist), value-like tokens, and the cap. `cut` says the page side already cut it at the cap.
- */
-export function storedDialogText(
-  raw: string,
-  cut: boolean,
-  redact: (s: string) => string = redactText,
-): { text: string; truncated: boolean } {
-  const visible = stripInvisible(raw);
-  const body = cut ? withoutCutToken(visible) : visible;
-  const text = redactValueTokens(redact(body.replace(/\s+/g, ' ').trim()));
-  if (text.length <= CMP_DIALOG_TEXT_MAX_CHARS) return { text, truncated: cut };
-  return { text: withoutCutToken(text.slice(0, CMP_DIALOG_TEXT_MAX_CHARS)), truncated: true };
-}
-
-/** The dialog text of a saved snapshot, redacted as the collector does; null when it does not fit the schema. */
-export function parseCmpDialogText(raw: unknown): CmpDialogText | null {
-  const parsed = CmpDialogTextSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  const d = parsed.data;
-  const stored = storedDialogText(d.text, false);
-  return {
-    ...d,
-    pageUrl: sanitizeUrl(d.pageUrl),
-    text: stored.text,
-    truncated: d.truncated || stored.truncated,
-  };
+/** The dialog mentions of a saved snapshot in the shape the collector writes; null when they do not fit the schema. */
+export function parseCmpDialogMentions(raw: unknown): CmpDialogMentions | null {
+  const parsed = CmpDialogMentionsSchema.safeParse(raw);
+  return parsed.success ? { ...parsed.data, pageUrl: sanitizeUrl(parsed.data.pageUrl) } : null;
 }
