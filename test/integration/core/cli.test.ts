@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import { OFFLINE_HOOK, offlineHookEnv } from '../../utils/preload/offline-network-hook.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
@@ -38,7 +39,8 @@ describe('dsgvo-check CLI', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('Nutzungshinweise');
     expect(r.stdout).toMatch(/eigener oder im Auftrag betreuter Websites/);
-    expect(r.stdout).toMatch(/dsgvo-check\/\d+\.\d+\.\d+ \(\+https:\/\/github\.com\//);
+    // The help wraps its lines; the token is the one the scanner sends.
+    expect(r.stdout.replace(/\s+/g, ' ')).toContain(uaToken());
     expect(r.stdout).toContain('Phase C');
     expect(r.stdout).toContain('--proxy');
   });

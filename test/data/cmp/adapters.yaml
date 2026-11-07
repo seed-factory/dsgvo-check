@@ -176,7 +176,8 @@ adapters:
     # this browser.
     closedDialog: { container: "#ccm-widget", controls: "button.ccm--ctrl-init" }
     # `isBotBrowser` of CCM19's app.js, case-sensitive like there: for a matching User-Agent CCM19 revokes every
-    # permission and never opens the widget. The scanner's honest User-Agent matches (` (+https` of its repository link).
+    # permission and never opens the widget. It catches the ` (+http` of crawler tokens; the scanner's token puts its
+    # repository link after the description and without `+`, so the widget opens for the scanner as for a visitor.
     dialogBotUserAgent:
       pattern: '(bot\b|BOT\b|Bot\b|BingPreview| \(\+http)|[a-z]-Google\b'
       flags: ""

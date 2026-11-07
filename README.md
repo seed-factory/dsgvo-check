@@ -323,14 +323,16 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
   („Einwilligungsbanner dem Scanner nicht geöffnet“), ohne Befund, ebenso CONSENT-03, wenn vor einer Interaktion
   einwilligungsbedürftige Dienste geladen wurden. Über das, was Besucher sehen, sagt der Bericht dann nichts.
 - CCM19 öffnet seinen Dialog nie für einen Browser, dessen User-Agent sein eigener Crawler-Test (`isBotBrowser` in
-  seiner `app.js`) für einen Bot hält; der ehrliche User-Agent des Scanners passt mit dem Link zum Repository darauf
-  (` (+https`). Bleibt der Dialog geschlossen und passt der User-Agent der Seite auf diesen Test (`dialogBotUserAgent`
-  in `test/data/cmp/adapters.yaml`, vom Anbieter übernommen), vermerkt der Scanner ein Bot-Signal: Jede Prüfung, die
+  seiner `app.js`) für einen Bot hält; der Test erkennt unter anderem das ` (+http` in den Kennungen von
+  Suchmaschinen-Crawlern. Der User-Agent des Scanners nennt den Link zum Repository deshalb nach der Beschreibung und
+  ohne `+`, passt nicht darauf, und der Dialog öffnet sich dem Scanner wie einem Besucher. Bleibt der Dialog
+  geschlossen und passt der User-Agent der Seite auf diesen Test (`dialogBotUserAgent` in
+  `test/data/cmp/adapters.yaml`, vom Anbieter übernommen), vermerkt der Scanner ein Bot-Signal: Jede Prüfung, die
   Bot-Signale liest (CONSENT-01 bis CONSENT-05, EMBED-01 bis EMBED-03, PRIV-02), bleibt `inconclusive` mit dem Grund
   „Einwilligungsbanner dem Scanner nicht geöffnet: User-Agent passt auf das Crawler-Muster des Banners“
   (`cmp-bot-user-agent`), ohne Befund. Übersicht und `SCAN-BOTMODE` nennen den Test und dass ein Besucher mit einem
-  üblichen Browser das Banner womöglich sieht. Der User-Agent wird dafür nicht geändert und nur im Abschnitt der
-  Messumgebung gespeichert; passt er nicht, bleibt es beim Grund „Einwilligungsbanner dem Scanner nicht geöffnet“.
+  üblichen Browser das Banner womöglich sieht. Der User-Agent ist für jede Website derselbe und wird nur im Abschnitt
+  der Messumgebung gespeichert; passt er nicht, bleibt es beim Grund „Einwilligungsbanner dem Scanner nicht geöffnet“.
 - Findet der erste passende Container-Selektor eines Adapters nur verborgene Elemente, zählt ein späterer, wenn sein
   Element eine sichtbare Schaltfläche oder einen sichtbaren Link zeigt: Eine verborgene Vorlage verdeckt so nicht den
   offenen Dialog, und ein Rahmen, von dem bei geschlossenem Banner nur der eigene Kasten zu sehen ist, gilt nicht als
@@ -697,11 +699,13 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
 - **Nur die 20 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
-  `info`. CCM19 öffnet seinen Dialog dem Scanner nicht, weil sein Crawler-Test auf den ehrlichen User-Agent passt:
-  Einwilligung, Ablehnung und eingebettete Dienste bleiben auf solchen Websites `inconclusive` (`cmp-bot-user-agent`),
-  ohne Befund, und sind manuell zu prüfen. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
-  verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
-  Plugins bleiben unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
+  `info`. Ein Banner, das den Scanner an seinem User-Agent für einen Bot hält, antwortet ihm anders als einem
+  Besucher; Real Cookie Banner mit „Alle akzeptieren für Bots“ nimmt jedes `http` und `check` dafür, also auch Name und
+  Link des Scanners. Einwilligung, Ablehnung und eingebettete Dienste bleiben auf solchen Websites `inconclusive`
+  (`bot-mode`, bei einem Crawler-Test wie dem von CCM19 `cmp-bot-user-agent`), ohne Befund, und sind manuell zu prüfen.
+  Der User-Agent bleibt ehrlich, mit Name und Link zum Repository; `navigator.webdriver` wird nicht verborgen. Ein
+  Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von Plugins bleiben
+  unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
   schon ausgeschaltet ist; voreingestellte Kategorien schaltet er nicht aus, die Ablehnung bleibt dann ungeprüft. Die
   Selektoren der Wix-Einstellungen sind an einem bereinigten Ausschnitt des Markups des Wix-Banners (Version 1.871.0,
   `test/fixtures/cmp/wix/settings-layer.html`) und am eigenen Simulator getestet, der dieses Markup nachbildet. Ändert
@@ -857,7 +861,7 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
 
 `dsgvo-check` ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
 Dritter sind nicht zur Veröffentlichung vorgesehen. HTTP-Anfragen des Scanners tragen den User-Agent
-`dsgvo-check/<version> (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)`; der Browser
+`dsgvo-check/<version> (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)`; der Browser
 meldet sich als Chrome mit demselben Token. TLS-Verbindungsaufbauten und DNS-Abfragen tragen keinen User-Agent.
 Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach
 der Annahme im Banner lädt. Mit `--proxy` laufen DNS-Abfragen direkt über den Resolver, nicht über den Proxy.

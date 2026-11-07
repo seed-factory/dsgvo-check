@@ -68,7 +68,7 @@ ui:
   usageNotes: >-
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
     third-party websites are not intended for publication. HTTP requests of the scanner carry the User-Agent
-    "dsgvo-check/{version} (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)"; the browser
+    "dsgvo-check/{version} (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)"; the browser
     identifies as Chrome with the same token. TLS handshakes and DNS queries carry no User-Agent. Phase C discloses
     the scanning machine's IP address to the third parties whose resources the website loads after acceptance
     in the banner. With --proxy, DNS queries go directly to the resolver, not through the proxy.

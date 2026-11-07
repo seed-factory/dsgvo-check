@@ -27,7 +27,7 @@ export function sampleFullReport(): FullReport {
       durationMs: 61234,
       environment: {
         userAgent: {
-          http: 'dsgvo-check/0.1.0 (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)',
+          http: 'dsgvo-check/0.1.0 (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)',
           browser: 'Mozilla/5.0 Chrome/156.0.0.0 Safari/537.36 dsgvo-check/0.1.0',
         },
         browser: { engine: 'chromium', version: '156.0.8078.4', channel: 'chromium', headless: 'new' },

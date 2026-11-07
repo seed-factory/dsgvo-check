@@ -72,7 +72,7 @@ ui:
   usageNotes: >-
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
     Dritter sind nicht zur Veröffentlichung vorgesehen. HTTP-Anfragen des Scanners tragen den User-Agent
-    „dsgvo-check/{version} (+https://github.com/seed-factory/dsgvo-check; passive DSGVO/security check)“; der Browser
+    „dsgvo-check/{version} (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)“; der Browser
     meldet sich als Chrome mit demselben Token. TLS-Verbindungsaufbauten und DNS-Abfragen tragen keinen User-Agent.
     Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach
     der Annahme im Banner lädt. Mit --proxy laufen DNS-Abfragen direkt über den Resolver, nicht über den Proxy.

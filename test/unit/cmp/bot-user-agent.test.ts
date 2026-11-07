@@ -1,7 +1,8 @@
 /**
  * A CMP that keeps its dialog closed for browsers its own crawler test takes for bots (CCM19's `isBotBrowser`): the
  * test is vendor data, matched against the page's User-Agent only for a dialog the CMP did not open, and gives a bot
- * signal that names it. The User-Agent itself never reaches the facts.
+ * signal that names it. The User-Agent itself never reaches the facts. The scanner's own User-Agent is no crawler for
+ * these tests, except for one that takes every link for a bot.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -26,6 +27,14 @@ const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
 /** The scanner's own browser User-Agent: the Chrome UA plus the honest token with the repository link. */
 const SCANNER_UA = browserUserAgent(CHROME_UA);
+/** A token in the form search engine crawlers use: the link right after the bracket, with `+`. */
+const CRAWLER_FORM_UA = `${CHROME_UA} site-audit/1.0 (+https://example.test/about)`;
+/** Chrome User-Agents as `browser.version()` gives them on the platforms the scanner runs on. */
+const RAW_CHROME_UAS = [
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+  CHROME_UA,
+];
 
 /** `isBotBrowser` of the vendor script app.js of CCM19, verbatim. */
 const VENDOR_SOURCE = String.raw`(bot\b|BOT\b|Bot\b|BingPreview| \(\+http)|[a-z]-Google\b`;
@@ -77,10 +86,48 @@ describe('the crawler test of a CMP in the adapter data', () => {
   });
 });
 
+describe("the scanner's own User-Agent against every crawler test of the adapter data", () => {
+  /** Whether the scanner's User-Agent matches; a crawler test added to the data has to be listed here. */
+  const SCANNER_MATCHES: Record<string, boolean> = {
+    'borlabs:botUserAgent': false,
+    'ccm19:dialogBotUserAgent': false,
+    // Takes every "http" and "check" for a bot: a User-Agent with the tool's name and link cannot avoid it.
+    'real-cookie-banner:botUserAgent': true,
+  };
+  // The Borlabs and Real Cookie Banner readers apply `botUserAgent` case-insensitively, as their vendors do.
+  const crawlerTests = KNOWN_CMP_IDS.flatMap((id) => [
+    ...(data[id].botUserAgent
+      ? [[`${id}:botUserAgent`, new RegExp(data[id].botUserAgent, 'i')] as const]
+      : []),
+    ...(data[id].dialogBotUserAgent
+      ? [
+          [
+            `${id}:dialogBotUserAgent`,
+            new RegExp(data[id].dialogBotUserAgent.pattern, data[id].dialogBotUserAgent.flags),
+          ] as const,
+        ]
+      : []),
+  ]);
+
+  it('every crawler test of the data is listed', () => {
+    expect(crawlerTests.map(([key]) => key).sort()).toEqual(Object.keys(SCANNER_MATCHES).sort());
+  });
+
+  it.each(crawlerTests)('%s', (key, test) => {
+    for (const raw of RAW_CHROME_UAS) {
+      expect({ raw, matches: test.test(browserUserAgent(raw)) }).toEqual({
+        raw,
+        matches: SCANNER_MATCHES[key],
+      });
+    }
+  });
+});
+
 describe('a User-Agent against the crawler test', () => {
   it.each([
-    ['the scanner, with its honest token and repository link', SCANNER_UA, true],
-    ['the scanner of another release', browserUserAgent(CHROME_UA, '9.9.9'), true],
+    ['the scanner, with its honest token and repository link', SCANNER_UA, false],
+    ['the scanner of another release', browserUserAgent(CHROME_UA, '9.9.9'), false],
+    ['a token in the crawler form, the link right after the bracket with "+"', CRAWLER_FORM_UA, true],
     ['a plain desktop Chrome', CHROME_UA, false],
     ['a headless Chrome without the token', CHROME_UA.replace('Chrome/', 'HeadlessChrome/'), false],
     [
@@ -101,7 +148,7 @@ describe('a User-Agent against the crawler test', () => {
   });
 
   it('without a test, or without a User-Agent, nothing matches', () => {
-    expect(matchesBotUserAgent(undefined, SCANNER_UA)).toBe(false);
+    expect(matchesBotUserAgent(undefined, CRAWLER_FORM_UA)).toBe(false);
     expect(matchesBotUserAgent(ccm19, null)).toBe(false);
     expect(matchesBotUserAgent(ccm19, '')).toBe(false);
   });
@@ -111,20 +158,21 @@ describe('the bot signal of a dialog the CMP did not open', () => {
   const signal = { cmpId: 'ccm19', signal: BOT_USER_AGENT_SIGNAL, detail: ccm19.label };
 
   it.each([
-    ['closed dialog, the scanner User-Agent', closedDialog(), ccm19, SCANNER_UA, signal],
+    ['closed dialog, a crawler User-Agent', closedDialog(), ccm19, CRAWLER_FORM_UA, signal],
     ['counterexample: closed dialog, a plain Chrome', closedDialog(), ccm19, CHROME_UA, null],
+    ['counterexample: closed dialog, the scanner User-Agent', closedDialog(), ccm19, SCANNER_UA, null],
     [
       'counterexample: closed dialog, an adapter without a crawler test',
       closedDialog(),
       undefined,
-      SCANNER_UA,
+      CRAWLER_FORM_UA,
       null,
     ],
     [
-      'clean: the dialog opened for the scanner',
+      'clean: the dialog opened for a crawler User-Agent',
       closedDialog({ bannerVisible: true, dialogNotOpened: undefined }),
       ccm19,
-      SCANNER_UA,
+      CRAWLER_FORM_UA,
       null,
     ],
     ['closed dialog, the User-Agent could not be read', closedDialog(), ccm19, null, null],
@@ -132,7 +180,7 @@ describe('the bot signal of a dialog the CMP did not open', () => {
       'closed dialog of a CMP only the heuristic found',
       closedDialog({}, { method: 'heuristic', cmpId: null }),
       ccm19,
-      SCANNER_UA,
+      CRAWLER_FORM_UA,
       null,
     ],
   ] as const)('%s', (_case, facts, rule, userAgent, expected) => {
@@ -150,19 +198,19 @@ describe('the facts of a CMP after its first screen', () => {
   };
 
   it('a closed dialog and a matching page User-Agent: the bot signal is added, the User-Agent is not stored', async () => {
-    const { page: p, evaluate } = page(SCANNER_UA);
+    const { page: p, evaluate } = page(CRAWLER_FORM_UA);
     const out = await withDialogBotSignal(p, { id: 'ccm19', dialogBotUserAgent: ccm19 }, closedDialog());
 
     expect(evaluate).toHaveBeenCalledTimes(1);
     expect(out.botSignals).toEqual([{ cmpId: 'ccm19', signal: BOT_USER_AGENT_SIGNAL, detail: ccm19.label }]);
-    expect(JSON.stringify(out)).not.toContain('dsgvo-check/');
+    expect(JSON.stringify(out)).not.toContain('site-audit/');
   });
 
   it.each([
     ['an adapter without a crawler test', undefined, closedDialog()],
     ['a dialog the CMP opened', ccm19, closedDialog({ bannerVisible: true, dialogNotOpened: undefined })],
   ])('%s: the page User-Agent is not even read', async (_case, rule, facts) => {
-    const { page: p, evaluate } = page(SCANNER_UA);
+    const { page: p, evaluate } = page(CRAWLER_FORM_UA);
     const out = await withDialogBotSignal(p, { id: 'ccm19', dialogBotUserAgent: rule }, facts);
 
     expect(evaluate).not.toHaveBeenCalled();
@@ -171,6 +219,7 @@ describe('the facts of a CMP after its first screen', () => {
 
   it.each([
     ['a plain Chrome', CHROME_UA],
+    ['the scanner', SCANNER_UA],
     ['a page that cannot be read', new Error('Execution context was destroyed')],
   ])('counterexample: %s keeps the facts as they are', async (_case, userAgent) => {
     const facts = closedDialog();

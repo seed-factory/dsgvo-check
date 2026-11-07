@@ -13,6 +13,7 @@ import { defineCheck } from '../../../src/core/evaluation/check.ts';
 import { executeCheck } from '../../../src/core/evaluation/execute.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import { createLogger } from '../../../src/core/runtime/logger.ts';
+import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { CollectorResult, Collectors } from '../../../src/core/snapshot/collector.ts';
 import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
@@ -465,6 +466,12 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
 });
 
 describe('Nutzungshinweise', () => {
+  it.each(['de', 'en'] as const)('%s: the User-Agent named is the token the scanner sends', (lang) => {
+    const text = uiText(loadTexts(lang), 'usageNotes', { version: '1.2.3' }).replace(/\s+/g, ' ');
+
+    expect(text).toContain(uaToken('1.2.3'));
+  });
+
   it('en: the IP address is "disclosed to" the third parties, not "transmitted"', () => {
     const text = uiText(loadTexts('en'), 'usageNotes', { version: '1' });
 

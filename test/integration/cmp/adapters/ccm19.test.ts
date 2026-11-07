@@ -1,8 +1,8 @@
 /**
  * CCM19 adapter against the own simulator, which renders the widget hidden with disabled controls and opens it later,
  * and, like CCM19, never opens it for a User-Agent its crawler test takes for a bot. A widget that is never opened is
- * recorded as such, and with the reason when that test matched the page's User-Agent, in the adapter and through the
- * collector into the checks.
+ * recorded as such, and with the reason when that test matched the page's User-Agent. The scanner's own User-Agent is
+ * no crawler there: through the collector the widget opens and the reject is clicked.
  */
 import { expect, it } from 'vitest';
 import { consent03 } from '../../../../src/checks/browser/consent-03.ts';
@@ -19,6 +19,8 @@ import { collect } from '../../browser/helpers.ts';
 import { CHROME_UA, CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
 const SITE = 'https://www.ccm19.test';
+/** A token in the form search engine crawlers use, which CCM19's crawler test catches by its ` (+http`. */
+const CRAWLER_FORM_UA = `${CHROME_UA} site-audit/1.0 (+https://example.test/about)`;
 /** Long enough for the simulator to open its dialog (500 ms), short enough to keep the never-opened cases quick. */
 const SHORT_WAIT_MS = 1_500;
 
@@ -70,8 +72,8 @@ describeCmpScenarios(
       expect(await adapter.act?.(page, 'reject', null)).toMatchObject({ clicked: false });
     });
 
-    it("the scanner's honest User-Agent matches CCM19's crawler test: the widget stays closed, the bot signal says why", async () => {
-      const { page } = await env.open(`${SITE}/`, browserUserAgent(CHROME_UA));
+    it("a crawler's User-Agent matches CCM19's crawler test: the widget stays closed, the bot signal says why", async () => {
+      const { page } = await env.open(`${SITE}/`, CRAWLER_FORM_UA);
       const adapter = await recognized(page, 'ccm19');
       expect(await waitForBanner(page, adapter, { timeoutMs: SHORT_WAIT_MS })).toBe(false);
 
@@ -83,20 +85,26 @@ describeCmpScenarios(
         dialogNotOpened: true,
       });
       expect(facts.botSignals).toEqual([crawlerSignal()]);
-      expect(JSON.stringify(facts)).not.toContain('dsgvo-check/');
+      expect(JSON.stringify(facts)).not.toContain('site-audit/');
     });
 
-    it('counterexample: the same page opens its widget for a plain Chrome, without a bot signal', async () => {
-      const { page } = await env.open(`${SITE}/`);
-      const adapter = await recognized(page, 'ccm19');
-      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+    it.each([
+      ['a plain Chrome', CHROME_UA],
+      ["the scanner's own User-Agent", browserUserAgent(CHROME_UA)],
+    ])(
+      'counterexample: the same page opens its widget for %s, without a bot signal',
+      async (_name, userAgent) => {
+        const { page } = await env.open(`${SITE}/`, userAgent);
+        const adapter = await recognized(page, 'ccm19');
+        expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
-      const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+        const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
 
-      expect(facts.firstLayer.bannerVisible).toBe(true);
-      expect(facts.firstLayer.dialogNotOpened).toBeUndefined();
-      expect(facts.botSignals).toEqual([]);
-    });
+        expect(facts.firstLayer.bannerVisible).toBe(true);
+        expect(facts.firstLayer.dialogNotOpened).toBeUndefined();
+        expect(facts.botSignals).toEqual([]);
+      },
+    );
 
     it('without the wait for the banner the same widget is not called unopened', async () => {
       const { page } = await env.open(`${SITE}/not-opened.html`);
@@ -157,56 +165,86 @@ describeCmpScenarios(
       ]);
     });
 
-    // The collector browses with the scanner's own User-Agent, so the widget that opens for a plain Chrome stays closed.
-    it('through the collector: the crawler test kept the widget closed; flagged on B only, nothing clicked, CONSENT-03, 04 and 05 name the cause', async () => {
+    /** Phases A and B through the collector on one page, then CONSENT-03, 04 and 05 on the snapshot it gives. */
+    const throughCollector = async (url: string, waitMs: number) => {
       const run = await collect(env.server, {
-        url: `${SITE}/`,
+        url,
         deps: { phases: ['A', 'B'] },
-        config: { cmp: { waitMs: SHORT_WAIT_MS } },
+        config: { cmp: { waitMs } },
         maxPages: 1,
         screenshots: false,
       });
       const { browser, cmp, documents, plan } = run.result.sections;
-      const facts = (p: 'A' | 'B') => cmp?.phases.find((x) => x.phase === p)?.facts ?? [];
-
-      const firstScreen = facts('B').find((f) => f.moment === 'first-screen');
-      expect(firstScreen?.firstLayer.dialogNotOpened).toBe(true);
-      expect(firstScreen?.botSignals).toEqual([crawlerSignal()]);
-      expect(JSON.stringify(cmp)).not.toContain('dsgvo-check/');
-      // Phase A measures without waiting for the banner: the same closed widget, not called unopened there.
-      expect(
-        facts('A').map((f) => [f.firstLayer.bannerPresent, f.firstLayer.dialogNotOpened]),
-      ).toContainEqual([true, undefined]);
-      expect(facts('A').filter((f) => f.firstLayer.dialogNotOpened !== undefined)).toEqual([]);
-      expect(plan?.click.B).toMatchObject({ target: null });
-      expect(cmp?.phases.find((x) => x.phase === 'B')?.click).toMatchObject({ clicked: false });
-
-      const target = makeTarget(`${SITE}/`);
       const snapshot = withDerived(
         makeSnapshot({
-          target,
+          target: makeTarget(url),
           browser,
           cmp,
           documents,
           plan: { browser: plan ?? null, probes: [] },
         }),
       );
-      for (const check of [consent03, consent04, consent05]) {
+      const checks = [consent03, consent04, consent05].map((check) => {
         const r = runCheck(check, snapshot);
-        expect({ id: check.id, status: r.status, reason: r.reason }).toEqual({
+        return {
           id: check.id,
-          status: 'inconclusive',
-          reason: 'cmp-bot-user-agent',
-        });
-        expect(r.outcome?.observations).toEqual([]);
-        expect(r.outcome?.diagnostics).toEqual([
-          {
-            code: 'SCAN-BOTMODE',
-            affects: [check.id],
-            params: { signal: BOT_USER_AGENT_SIGNAL, cause: 'user-agent', test: crawlerSignal().detail },
-          },
-        ]);
-      }
+          status: r.status,
+          reason: r.reason ?? null,
+          observations: r.outcome?.observations ?? null,
+          diagnostics: (r.outcome?.diagnostics ?? []).map((d) => d.code),
+        };
+      });
+      return {
+        cmp,
+        plan,
+        checks,
+        facts: (p: 'A' | 'B') => cmp?.phases.find((x) => x.phase === p)?.facts ?? [],
+        click: cmp?.phases.find((x) => x.phase === 'B')?.click,
+      };
+    };
+
+    // The collector browses with the scanner's own User-Agent: CCM19 has to open its widget for it as for a visitor.
+    it("through the collector: the scanner's User-Agent is no crawler for CCM19; the widget opens on B, the reject is clicked, no check names a bot", async () => {
+      const { cmp, plan, checks, facts, click } = await throughCollector(`${SITE}/`, CMP_WAIT_MS);
+
+      const firstScreen = facts('B').find((f) => f.moment === 'first-screen');
+      expect(firstScreen?.firstLayer.bannerVisible).toBe(true);
+      expect(firstScreen?.firstLayer.dialogNotOpened).toBeUndefined();
+      expect(cmp?.phases.flatMap((x) => x.facts.flatMap((f) => f.botSignals))).toEqual([]);
+      expect(plan?.click.B?.target).toMatchObject({ cmpId: 'ccm19', name: 'Ablehnen' });
+      expect(click).toMatchObject({ clicked: true, button: { kind: 'reject' } });
+      expect(checks.map((c) => [c.id, c.status, c.reason])).toEqual([
+        // One page, fewer than CONSENT-03 needs.
+        ['CONSENT-03', 'inconclusive', 'insufficient-pages'],
+        ['CONSENT-04', 'completed', null],
+        // Beacons sent on pagehide are not captured yet.
+        ['CONSENT-05', 'inconclusive', 'pagehide-capture-unavailable'],
+      ]);
+      expect(checks.flatMap((c) => c.diagnostics)).not.toContain('SCAN-BOTMODE');
+    });
+
+    it('through the collector: a widget that never opens is flagged on B only, nothing is clicked, CONSENT-04 and 05 say it was not opened', async () => {
+      const { cmp, plan, checks, facts, click } = await throughCollector(
+        `${SITE}/not-opened.html`,
+        SHORT_WAIT_MS,
+      );
+
+      const firstScreen = facts('B').find((f) => f.moment === 'first-screen');
+      expect(firstScreen?.firstLayer.dialogNotOpened).toBe(true);
+      // The scanner's own User-Agent is no crawler for CCM19: the dialog stayed closed for another reason, not named.
+      expect(cmp?.phases.flatMap((x) => x.facts.flatMap((f) => f.botSignals))).toEqual([]);
+      // Phase A measures without waiting for the banner: the same closed widget, not called unopened there.
+      expect(
+        facts('A').map((f) => [f.firstLayer.bannerPresent, f.firstLayer.dialogNotOpened]),
+      ).toContainEqual([true, undefined]);
+      expect(facts('A').filter((f) => f.firstLayer.dialogNotOpened !== undefined)).toEqual([]);
+      expect(plan?.click.B).toMatchObject({ target: null });
+      expect(click).toMatchObject({ clicked: false });
+      expect(checks.map((c) => [c.id, c.status, c.reason, c.observations, c.diagnostics])).toEqual([
+        ['CONSENT-03', 'inconclusive', 'insufficient-pages', [], []],
+        ['CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened', [], []],
+        ['CONSENT-05', 'inconclusive', 'cmp-dialog-not-opened', [], []],
+      ]);
     });
   },
 );
