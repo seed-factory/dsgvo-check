@@ -23,6 +23,7 @@
         "hops": [
           {
             "url": "http://www.example.test/",
+            "status": 200,
             "bodyBytes": 20000,
             "bodyKind": "html",
             "hasForm": false,
@@ -73,6 +74,7 @@
         "outcome": "ok",
         "hop": {
           "url": "http://www.example.test/kontakt/",
+          "status": 200,
           "bodyBytes": 524288,
           "bodyTruncated": true,
           "bodyKind": "html",

@@ -14,6 +14,7 @@
         "hops": [
           {
             "url": "http://www.example.de/",
+            "status": 200,
             "bodyBytes": 300,
             "bodyKind": "html",
             "hasForm": false,

@@ -165,36 +165,36 @@ describe('HDR-01 security headers', () => {
     it.each([
       [
         'truncated, but frame-ancestors seen in the full value: no anti-framing finding',
-        cut({ truncated: true, frameAncestors: { present: true, restricts: true, sources: ["'self'"] } }),
         [],
+        cut({ truncated: true, frameAncestors: { present: true, restricts: true, sources: ["'self'"] } }),
       ],
       [
         'truncated, directive absent in the full value: the finding stays (complete knowledge)',
-        cut({ truncated: true, frameAncestors: { present: false, restricts: false, sources: [] } }),
         ['anti-framing-missing'],
+        cut({ truncated: true, frameAncestors: { present: false, restricts: false, sources: [] } }),
       ],
       [
         'counterexample: a complete CSP without the directive still gives the finding',
-        { name: 'content-security-policy', value: "default-src 'self'" },
         ['anti-framing-missing'],
+        { name: 'content-security-policy', value: "default-src 'self'" },
       ],
-      ['exactly the limit, complete, no directive', stored(MAX_HEADER_VALUE), ['anti-framing-missing']],
+      ['exactly the limit, complete, no directive', ['anti-framing-missing'], stored(MAX_HEADER_VALUE)],
       [
         `counterexample: ${MAX_HEADER_VALUE - 1} characters without the directive give the same finding`,
-        stored(MAX_HEADER_VALUE - 1),
         ['anti-framing-missing'],
+        stored(MAX_HEADER_VALUE - 1),
       ],
       [
         `counterexample: ${MAX_HEADER_VALUE + 1} characters without the directive give the same finding`,
-        stored(MAX_HEADER_VALUE + 1),
         ['anti-framing-missing'],
+        stored(MAX_HEADER_VALUE + 1),
       ],
       [
         'counterexample: exactly the limit with the directive at the end: no finding',
-        stored(MAX_HEADER_VALUE, "; frame-ancestors 'self'"),
         [],
+        stored(MAX_HEADER_VALUE, "; frame-ancestors 'self'"),
       ],
-    ])('%s → %j, completed without a limitation', (_label, csp, variants) => {
+    ])('%s → %j, completed without a limitation', (_label, variants, csp) => {
       const r = run(csp);
       expect(variantsOf(r)).toEqual(variants);
       expect(r.status).toBe('completed');
@@ -377,14 +377,18 @@ describe('HDR-01 security headers', () => {
   });
 
   it.each([
-    ['answered 503 (headers of an error page are not evaluated)', { status: 503 }, 'start-page-status'],
-    ['counterexample: answered 429 without a challenge signature', { status: 429 }, 'start-page-status'],
+    ['answered 503 (headers of an error page are not evaluated)', 'start-page-status', { status: 503 }],
+    [
+      'answered 429 without a challenge signature (counterexample: not blocked)',
+      'start-page-status',
+      { status: 429 },
+    ],
     [
       'has an invalid certificate (likely a hoster default page)',
-      { tlsAuthorized: false, tlsAuthorizationError: 'ERR_TLS_CERT_ALTNAME_INVALID' },
       'tls-invalid',
+      { tlsAuthorized: false, tlsAuthorizationError: 'ERR_TLS_CERT_ALTNAME_INVALID' },
     ],
-  ] as const)('inconclusive: the start page %s → %s', (_label, p, reason) => {
+  ] as const)('inconclusive: the start page %s → %s', (_label, reason, p) => {
     expect(runCheck(hdr01, snap([start([], p)]))).toMatchObject({ status: 'inconclusive', reason });
   });
 

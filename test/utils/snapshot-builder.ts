@@ -483,6 +483,9 @@ export function fixtureFiles(module: string, checkId: string): string[] {
  * A field left out takes the default of the factory above: of the snapshot (makeSnapshot), and in `http` and
  * `browser` of every chain, hop, document, twin hop, phase, page and DOM. A chain that ended `ok` without `final`
  * ends on its last hop, and a page belongs to the phase it is listed in. `derived` is recomputed unless given.
+ * So a JSON fixture cannot leave one of these fields absent, as an older snapshot without `evaluable` or hop
+ * `headers` would: such a case is built in the test with the factories. A value that decides the case, such as
+ * the 200 of an http:// hop that serves content, is written out even when it equals the default.
  */
 export function loadFixture(module: string, checkId: string, file: string): SnapshotFixture {
   const full = path.join(fixtureDir(module, checkId), file);

@@ -24,6 +24,7 @@
         "hops": [
           {
             "url": "http://www.example.test/",
+            "status": 200,
             "bodyBytes": 20000,
             "bodyKind": "html",
             "hasForm": false,
@@ -64,6 +65,7 @@
         "outcome": "ok",
         "hop": {
           "url": "http://www.example.test/2025/02/beitrag/",
+          "status": 200,
           "bodyBytes": 91000,
           "bodyKind": "html",
           "hasForm": true,

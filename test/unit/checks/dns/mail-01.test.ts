@@ -33,9 +33,9 @@ describe('MAIL-01 DMARC: warning variants', () => {
   // Without rua the policy-none text does not claim that reports are requested, and a second weak-option item
   // would repeat its first step: policy-none names the missing rua itself.
   it.each([
-    ['with rua', `v=DMARC1; p=none; ${RUA}`, 'no'],
-    ['without rua', 'v=DMARC1; p=none', 'yes'],
-  ])('p=none %s → only policy-none (noRua %s)', (_label, record, noRua) => {
+    ['with rua', 'no', `v=DMARC1; p=none; ${RUA}`],
+    ['without rua', 'yes', 'v=DMARC1; p=none'],
+  ])('p=none %s → only policy-none (noRua %s)', (_label, noRua, record) => {
     const r = run(site([record]));
     expect(variantsOf(r)).toEqual(['policy-none']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ noRua });
@@ -125,14 +125,14 @@ describe('MAIL-01 Null MX (RFC 7505)', () => {
     site(dmarc, { 'MX example.de': ['0 .'], ...extra });
 
   it.each([
-    ['no DMARC (not warning record-not-found)', nullMx('NXDOMAIN'), 'missing'],
-    ['p=none (and no policy-none)', nullMx(['v=DMARC1; p=none']), 'none'],
+    ['no DMARC (not warning record-not-found)', 'missing', nullMx('NXDOMAIN')],
+    ['p=none (and no policy-none)', 'none', nullMx(['v=DMARC1; p=none'])],
     [
       "only a PSD p=reject, which is not the domain's own policy",
-      nullMx('NXDOMAIN', { 'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'] }),
       'missing',
+      nullMx('NXDOMAIN', { 'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'] }),
     ],
-  ])('a Null-MX domain with %s → only info weak-option (Null MX, policy %s)', (_label, spec, policy) => {
+  ])('a Null-MX domain with %s → only info weak-option (Null MX, policy %s)', (_label, policy, spec) => {
     const r = run(spec);
     expect(variantsOf(r)).toEqual(['weak-option']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy });

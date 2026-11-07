@@ -30,15 +30,15 @@ describe('MAIL-02 SPF: warning variants', () => {
   it.each([
     [
       'two v=spf1 records',
-      ['v=spf1 -all', 'v=spf1 include:_spf.google.com ~all'],
       'record-invalid',
+      ['v=spf1 -all', 'v=spf1 include:_spf.google.com ~all'],
       { reason: 'multiple-records', count: 2 },
     ],
-    ['a syntax error (permerror)', ['v=spf1 ip4:192.0.2.300 -all'], 'record-invalid', { reason: 'syntax' }],
-    ['+all', ['v=spf1 +all'], 'permissive-qualifier', { qualifier: '+all' }],
-    ['?all', ['v=spf1 ip4:192.0.2.1 ?all'], 'permissive-qualifier', { qualifier: '?all' }],
-    ['no all at all', ['v=spf1 ip4:192.0.2.1'], 'permissive-qualifier', { qualifier: 'none' }],
-  ])('%s → %s', (_label, records, variant, params) => {
+    ['a syntax error (permerror)', 'record-invalid', ['v=spf1 ip4:192.0.2.300 -all'], { reason: 'syntax' }],
+    ['+all', 'permissive-qualifier', ['v=spf1 +all'], { qualifier: '+all' }],
+    ['?all', 'permissive-qualifier', ['v=spf1 ip4:192.0.2.1 ?all'], { qualifier: '?all' }],
+    ['no all at all', 'permissive-qualifier', ['v=spf1 ip4:192.0.2.1'], { qualifier: 'none' }],
+  ])('%s → %s', (_label, variant, records, params) => {
     const r = run(site(records));
     expect(variantsOf(r)).toEqual([variant]);
     expect(observationsOf(r)[0]?.params).toMatchObject(params);
@@ -158,14 +158,14 @@ describe('MAIL-02 errors', () => {
   });
 
   it.each([
-    ['~all while the DMARC lookup failed (matrix undecidable)', site(['v=spf1 ~all'], 'SERVFAIL'), 'error'],
-    ['-all while the DMARC lookup failed (still decidable)', site(['v=spf1 -all'], 'SERVFAIL'), 'completed'],
+    ['~all while the DMARC lookup failed (matrix undecidable)', 'error', site(['v=spf1 ~all'], 'SERVFAIL')],
+    ['-all while the DMARC lookup failed (still decidable)', 'completed', site(['v=spf1 -all'], 'SERVFAIL')],
     [
       'the redirect target failed (effective all unknown)',
-      site(['v=spf1 redirect=_spf.example.net'], REJECT, { 'TXT _spf.example.net': 'SERVFAIL' }),
       'error',
+      site(['v=spf1 redirect=_spf.example.net'], REJECT, { 'TXT _spf.example.net': 'SERVFAIL' }),
     ],
-  ])('%s → %s', (_label, spec, status) => {
+  ])('%s → %s', (_label, status, spec) => {
     expect(run(spec).status).toBe(status);
   });
 

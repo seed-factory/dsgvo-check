@@ -898,8 +898,11 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
   const formOf = (r: ReturnType<typeof runCheck>) =>
     observationsOf(r).find((o) => o.variant === 'form-on-http-page');
 
-  /** The answers that decide the http:// address of a page alike, however the page was found. */
-  function answersDecideAlike(build: typeof twin) {
+  /**
+   * The answers that decide the http:// address of a page alike, however the page was found: `build` makes its
+   * twin, and `page` is the https page that a limitation names.
+   */
+  function answersDecideAlike(build: typeof twin, page: string) {
     it.each<[string, Partial<HttpHop>]>([
       [
         'the address redirects to https',
@@ -918,7 +921,7 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
       const timedOut = build(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } });
       const r = runCheck(tls01, withTwins([timedOut]));
       expect(r.status).toBe('partial');
-      expect(r.outcome?.limitations).toEqual([`http-form-twin-undecided:${timedOut.page}`]);
+      expect(r.outcome?.limitations).toEqual([`http-form-twin-undecided:${page}`]);
       expect(variantsOf(r)).toEqual(['no-redirect']);
     });
   }
@@ -970,7 +973,7 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
     });
   });
 
-  answersDecideAlike(twin);
+  answersDecideAlike(twin, 'https://www.example.test/post-1/');
 
   it.each<[string, HttpTwin]>([
     [
@@ -1156,7 +1159,7 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
       );
     });
 
-    answersDecideAlike(permalinkTwin);
+    answersDecideAlike(permalinkTwin, LINKED);
 
     it('more permalinks than the budget leave the result complete: they are not known to carry a form', () => {
       const r = runCheck(
