@@ -190,6 +190,9 @@ describeCmpScenarios(
 
         expect(adapter.rejectsViaSettings).toBe(true);
         expect(opener?.target?.name).toBe('Cookie-Einstellungen');
+        // The layer's container shows at once, its panel only fades in a moment later: the controls are read once
+        // they show and stand still, not while they are still transparent.
+        expect(layer?.buttons.every((b) => b.actionableAtFirstScreen)).toBe(true);
         expect(layer).toMatchObject({
           opened: true,
           containerUnambiguous: true,

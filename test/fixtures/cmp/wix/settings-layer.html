@@ -6,7 +6,8 @@
   (test/integration/cmp/adapters/wix-captured-markup.test.ts), so that a hook only the simulator renders cannot pass for
   one of the vendor.
   Kept from the vendor: tags, data-hook values, roles, the nesting, the order of the categories, the state of their
-  switches, which elements show and which are only visually hidden, the labels of the controls and the title of the
+  switches, which elements show and which are only visually hidden, the layout of the layer (a container over the
+  whole viewport, the panel centred in it), the labels of the controls and the title of the
   layer. Replaced: hashed class names by neutral ones, category titles and descriptions by generic ones, the styles by
   a few rules that show and hide the same elements. The first layer holds only the controls the scan read there; it stays open behind the
   layer.
@@ -22,9 +23,10 @@
     gap: 8px; padding: 12px 56px 12px 24px; background: #fff; box-shadow: 0 -2px 8px rgba(0, 0, 0, .2); }
   .banner-button { padding: 10px 16px; border: 1px solid #116dff; background: #fff; color: #116dff; font: inherit; }
   .banner-close { position: absolute; right: 8px; top: 8px; padding: 4px 8px; border: 0; background: none; font: inherit; }
-  .settings { position: fixed; top: 50%; left: 50%; z-index: 100000; width: 560px; max-height: 90vh; overflow: auto;
-    transform: translate(-50%, -50%); background: #fff; box-shadow: 0 2px 16px rgba(0, 0, 0, .3); }
-  .dialog { position: relative; padding: 16px 24px; }
+  .settings { position: fixed; inset: 0; z-index: 100000; background: rgba(0, 0, 0, .4); }
+  .dialog { position: absolute; top: 50%; left: 50%; box-sizing: border-box; width: 560px; max-height: 90vh;
+    overflow: auto; padding: 16px 24px; transform: translate(-50%, -50%); background: #fff;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, .3); }
   .dialog-title { margin: 0 0 8px; font-size: 18px; }
   .dialog-close { position: absolute; right: 8px; top: 8px; padding: 4px 8px; border: 0; background: none; font: inherit; }
   .section { display: grid; grid-template-columns: 1fr auto; column-gap: 16px; margin: 10px 0; }

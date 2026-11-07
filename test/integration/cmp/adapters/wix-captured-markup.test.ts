@@ -276,7 +276,8 @@ describe('Wix selectors against the markup captured from the vendor banner', () 
 
     const vendorLayer = await outline(vendor.getByRole('dialog'));
     expect(vendorLayer.length).toBeGreaterThan(10);
-    expect(await outline(sim.getByRole('dialog'))).toEqual(vendorLayer);
+    // As the vendor's, the panel fades in a moment after the layer shows.
+    await expect.poll(() => outline(sim.getByRole('dialog')), { timeout: CMP_WAIT_MS }).toEqual(vendorLayer);
     expect(await outline(sim.getByRole('region'))).toEqual(
       expect.arrayContaining([expect.stringMatching(/^div hook=consent-banner-root role=region shown$/)]),
     );

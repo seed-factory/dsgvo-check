@@ -106,7 +106,12 @@ const browser = z.strictObject({
   phaseBHardCapMs: int(12_000, 'Phase B (reject): longest stay on a page; quiet not reached is recorded.', 0),
   phaseCMinDwellMs: int(4_000, 'Phase C (accept): shortest stay on a page before it can count as quiet.', 0),
   phaseCHardCapMs: int(12_000, 'Phase C (accept): longest stay on a page; quiet not reached is recorded.', 0),
-  requestLimit: int(2_000, 'Requests recorded per scan; further ones are only counted.', 100, 100_000),
+  requestLimit: int(
+    4_000,
+    'Requests recorded per scan, over all phases; past it further ones are only counted, and only the reload that checks a reject still runs: no further page or phase, so a later phase may not run at all. A page with an embedded map alone can record a few hundred.',
+    100,
+    100_000,
+  ),
   maxControlPages: int(
     2,
     'Pages of phase A that phases B and C visit again after the reject or accept click (control pages); 0 visits only the start page.',
