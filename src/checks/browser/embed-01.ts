@@ -1,7 +1,7 @@
 /**
  * EMBED-01: fonts from third-party servers loaded before consent or after the reject: font services of the catalog and
- * font files of other third-party hosts the site loads, and the fonts that the frame of an embedded map, player or
- * widget loads from a font service. Self-hosted fonts are first party. A frame's fonts stay a request of the embed and
+ * font files of other third-party hosts the site loads, and the fonts that the frame of an embedded map or video
+ * player loads from a font service. Self-hosted fonts are first party. A frame's fonts stay a request of the embed and
  * get their own finding per font service and embed, beside the site's own fonts of the same service.
  */
 import {
@@ -15,7 +15,7 @@ import {
 } from '../../core/api.ts';
 import type { RequestRecord } from '../../core/snapshot/browser.ts';
 import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
-import { frameFont, resourceName } from './embed-frame.ts';
+import { FRAME_FONT_EMBEDS, frameFont, resourceName } from './embed-frame.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
@@ -96,18 +96,37 @@ function withoutLoad(g: Group): 'hint' | 'attempt' | 'hint-and-attempt' {
   return g.attempted.length > 0 ? 'hint-and-attempt' : 'hint';
 }
 
+interface Context {
+  records: Map<string, RequestRecord>;
+  pageOf: (r: RequestRecord) => string;
+  derived: DerivedSection;
+  banner: BannerState;
+  reject: RejectFacts;
+  routing: CheckContext['routing'];
+  /** Names of the embeds whose frame loaded fonts of a font service, by the font service. */
+  frameEmbeds: Map<string, string[]>;
+}
+
+/**
+ * The embeds whose frame loaded fonts of the service of a `preconnect-only` finding: its "no completed download"
+ * covers the requests outside those frames only, and its text names the frames that did download them.
+ */
+function embedFonts(g: Group, x: Context) {
+  const names = (g.serviceId && x.frameEmbeds.get(g.serviceId)) || [];
+  return {
+    embedFrameFonts: names.length > 0,
+    embedServices: names.join(', ') || null,
+    embedCount: names.length,
+  };
+}
+
 /**
  * `fonts-loaded` when a font arrived; otherwise the attempts and hints alone make a `preconnect-only` finding. Only a
  * load states its moment and shows the requests after the reject with its proof. The attempts of a `preconnect-only`
  * finding are listed once each, as a failed attempt fetched nothing after the reject, so places stay for its hints.
  */
-function fontObservation(
-  g: Group,
-  records: Map<string, RequestRecord>,
-  derived: DerivedSection,
-  banner: BannerState,
-  reject: RejectFacts,
-): Observation {
+function fontObservation(g: Group, x: Context): Observation {
+  const { records, derived, reject } = x;
   const loaded = g.loaded.length > 0;
   const reqs = loaded ? g.loaded : g.attempted;
   const items = reqs.flatMap((c) => {
@@ -144,9 +163,9 @@ function fontObservation(
       service: serviceName(derived, g.serviceId, g.etld1),
       pageCount: pages.length,
       ...(moment ?? { afterReject: reqs.some((c) => c.timing === 'after-reject') }),
-      bannerFound: banner,
+      bannerFound: x.banner,
       fontService: g.fontService,
-      ...(loaded ? {} : { observed: withoutLoad(g) }),
+      ...(loaded ? {} : { observed: withoutLoad(g), ...embedFonts(g, x) }),
     },
     ...serviceFields(derived, g.serviceId),
   };
@@ -160,17 +179,40 @@ interface FrameFontGroup {
   loaded: ClassifiedRequest[];
 }
 
+/** A request of an embed's frame that delivered fonts of a font service before the accept, in a frame of any embed. */
+const frameFontLoad = (c: ClassifiedRequest): boolean =>
+  frameFont(c) &&
+  c.delivered === true &&
+  c.phase !== 'C' &&
+  c.timing !== 'after-accept' &&
+  !!c.resourceServiceId &&
+  !!c.frameServiceId;
+
+/** Names of the embeds whose frame loaded fonts of each font service, ordered by name. */
+function embedsByFontService(
+  loads: readonly ClassifiedRequest[],
+  derived: DerivedSection,
+): Map<string, string[]> {
+  const ids = new Map<string, Set<string>>();
+  for (const c of loads) {
+    const font = c.resourceServiceId as string;
+    ids.set(font, (ids.get(font) ?? new Set()).add(c.frameServiceId as string));
+  }
+  return new Map(
+    [...ids].map(([font, embeds]) => [font, sortedUniq([...embeds].map((id) => serviceName(derived, id)))]),
+  );
+}
+
 /**
- * Fonts that embeds' frames loaded from a font service before the accept, per font service and embed. Only delivered
+ * The fonts of the frames of maps and video players (`FRAME_FONT_EMBEDS`), per font service and embed. Only delivered
  * requests count, as in the embed's own finding that names the same fonts.
  */
-function groupFrameFonts(derived: DerivedSection): Map<string, FrameFontGroup> {
+function groupFrameFonts(loads: readonly ClassifiedRequest[]): Map<string, FrameFontGroup> {
   const groups = new Map<string, FrameFontGroup>();
-  for (const c of derived.requests) {
-    if (!frameFont(c) || !c.delivered || c.phase === 'C' || c.timing === 'after-accept') continue;
-    const fontServiceId = c.resourceServiceId;
-    const embedServiceId = c.frameServiceId;
-    if (!fontServiceId || !embedServiceId) continue;
+  for (const c of loads) {
+    if (!FRAME_FONT_EMBEDS.has(c.category)) continue;
+    const fontServiceId = c.resourceServiceId as string;
+    const embedServiceId = c.frameServiceId as string;
 
     const subject = subjects.embedResource(fontServiceId, embedServiceId);
     let g = groups.get(subject);
@@ -183,16 +225,7 @@ function groupFrameFonts(derived: DerivedSection): Map<string, FrameFontGroup> {
   return groups;
 }
 
-interface FrameContext {
-  records: Map<string, RequestRecord>;
-  pageOf: (r: RequestRecord) => string;
-  derived: DerivedSection;
-  banner: BannerState;
-  reject: RejectFacts;
-  routing: CheckContext['routing'];
-}
-
-/** The finding of the check that owns the embed (EMBED-02 for a map, EMBED-03 for a player), where one is routed. */
+/** The finding of the check that owns the embed (EMBED-02 for a map, EMBED-03 for a player). */
 function embedLink(g: FrameFontGroup, routing: CheckContext['routing']): RelatedRef[] {
   const owner = routing[g.embedCategory];
   if (!owner || owner === ID) return [];
@@ -201,9 +234,10 @@ function embedLink(g: FrameFontGroup, routing: CheckContext['routing']): Related
 
 /**
  * The fonts of one embed's frame from one font service, with the moment of the loads as `fonts-loaded` states it. The
- * moment and the pages count the page of the frame's document; the evidence shows each request as recorded.
+ * moment and the pages count the page of the frame's document, as EMBED-03 and PRIV-02 do: a late request of the frame
+ * recorded with the next page belongs to the page that showed the embed. The evidence shows each request as recorded.
  */
-function frameFontObservation(g: FrameFontGroup, x: FrameContext): Observation {
+function frameFontObservation(g: FrameFontGroup, x: Context): Observation {
   const items = g.loaded.flatMap((c) => {
     const r = x.records.get(c.requestId);
     return r ? [{ r, c }] : [];
@@ -253,23 +287,23 @@ export const embed01 = defineCheck({
     }
 
     const records = requestIndex(browser);
-    const banner = bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
-    const reject = rejectFacts(browser, cmp);
-    const frame: FrameContext = {
+    const frameLoads = derived.requests.filter(frameFontLoad);
+    const x: Context = {
       records,
       pageOf: pageIndex(browser),
       derived,
-      banner,
-      reject,
+      banner: bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages),
+      reject: rejectFacts(browser, cmp),
       routing: ctx.routing,
+      frameEmbeds: embedsByFontService(frameLoads, derived),
     };
     const observations = [
       ...[...groupFontUse(derived, records).values()]
         .sort((a, b) => a.subject.localeCompare(b.subject))
-        .map((g) => fontObservation(g, records, derived, banner, reject)),
-      ...[...groupFrameFonts(derived).values()]
+        .map((g) => fontObservation(g, x)),
+      ...[...groupFrameFonts(frameLoads).values()]
         .sort((a, b) => a.subject.localeCompare(b.subject))
-        .map((g) => frameFontObservation(g, frame)),
+        .map((g) => frameFontObservation(g, x)),
     ];
 
     return throttleAware(

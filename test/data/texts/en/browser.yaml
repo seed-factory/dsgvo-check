@@ -299,11 +299,15 @@ messages:
       where every optional category was already switched off.} other {}}
   EMBED-01.preconnect-only:
     title: >-
-      {observed, select, hint {Only a connection hint to a font service: {service}} attempt {Unfinished font request:
-      {service}} other {Connection hint or unfinished font request: {service}}}
+      {observed, select, hint {{embedFrameFonts, select, true {Only a connection hint from the site to a font service}
+      other {Only a connection hint to a font service}}: {service}} attempt {Unfinished font request: {service}} other
+      {Connection hint or unfinished font request: {service}}}
     body: >-
-      Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was observed; no
-      completed download of font files was found.
+      Only a connection hint (preconnect/dns-prefetch) or an unfinished request to {service} was
+      observed{embedFrameFonts, select, true { outside the frames of embedded services} other {}}; no completed
+      download of font files was found{embedFrameFonts, select, true { there} other {}}.{embedFrameFonts, select, true
+      { {embedCount, plural, one {The frame of {embedServices}} other {The frames of {embedServices}}}, however, loaded
+      font files or stylesheets of {service}; those requests are not part of this finding.} other {}}
   EMBED-01.fonts-in-embed-frame:
     title: >-
       {moment, select, before-and-after-reject {External fonts loaded by an embed, also after {rejectConfirmed,

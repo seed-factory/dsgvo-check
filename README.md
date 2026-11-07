@@ -737,10 +737,16 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   Ablehnen bestätigt. Als „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der
   CMP gilt: Das Banner erscheint dort nicht wieder. Schriften, die ein Kartenrahmen oder ein Videoplayer lädt, nennen
   EMBED-02 und EMBED-03 mit. EMBED-01 meldet sie zusätzlich als eigenen Befund `fonts-in-embed-frame` je Schriftdienst
-  und Einbettung (etwa Google Fonts im Rahmen von Google Maps), mit denselben Angaben zum Zeitpunkt und mit einem Link
-  auf den Befund der Einbettung; Schriften, die die Seite selbst lädt, bleiben `fonts-loaded`. Gezählt werden
-  abgeschlossene Abrufe von Schriftdiensten des Dienstekatalogs, auch im Rahmen von Widgets und CAPTCHAs; Schriftdateien
-  anderer Hosts im Rahmen zählen EMBED-02 und EMBED-03 als Anfragen an Hilfshosts.
+  und Einbettung (etwa Google Fonts im Rahmen von Google Maps), mit Angaben zum Zeitpunkt wie bei `fonts-loaded` und
+  mit einem Link auf den Befund der Einbettung; Schriften, die die Seite selbst lädt, bleiben `fonts-loaded`. Gezählt
+  werden abgeschlossene Abrufe von Schriftdiensten des Dienstekatalogs; Schriftdateien anderer Hosts im Rahmen zählen
+  EMBED-02 und EMBED-03 als Anfragen an Hilfshosts. Die Seite einer Anfrage im Rahmen ist wie bei EMBED-03 die Seite,
+  auf der das Dokument des Rahmens geladen wurde; EMBED-02 zählt eine späte Anfrage des Kartenrahmens dagegen für die
+  Seite, mit der sie aufgezeichnet wurde, sodass Seitenzahl und Zeitpunkt beider Befunde dann abweichen können.
+  Schriften im Rahmen von CAPTCHAs, Widgets, Bewertungen, Chats und Social-Media-Plugins ergeben keinen eigenen Befund,
+  weil deren Prüfungen (EMBED-04, EMBED-05) nicht Teil des Prototyps sind. Ohne abgeschlossenen Abruf der Website
+  selbst bleibt es bei `preconnect-only`; hat der Rahmen einer Einbettung Schriften desselben Dienstes geladen, sagt
+  der Text, dass sich die Feststellung auf Abrufe außerhalb der Rahmen bezieht, und nennt die Einbettung.
 - **Videos (EMBED-03)** werden je Einbettung gemeldet: Was ein Player-Rahmen lädt, gehört zu dessen Dienst, auch die
   Vorschaubilder und Videodaten von YouTube, die ein Player von youtube-nocookie.com abruft; ein Vorschaubild auf der
   Seite selbst bleibt beim Dienst, von dem es stammt. Als Vorschaubild gilt ein Bild nur mit der Signatur des

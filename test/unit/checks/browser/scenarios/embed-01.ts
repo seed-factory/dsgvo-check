@@ -35,6 +35,18 @@ export const inMapFrame = (
     ...p,
   });
 
+export const CAPTCHA_FRAME = 'https://www.google.com/recaptcha/api2/anchor?k=[redacted]';
+export const WIDGET_FRAME = 'https://calendly.com/acme/30min';
+
+/** The frame `A-<name>` of an embed in phase A: its document, then the Google Fonts file the frame loads. */
+export const frameWithFont = (name: string, frameUrl: string, pageUrl = CONTACT): RequestRecord[] => {
+  const frame = { pageUrl, isMainFrame: false, frameId: `A-${name}`, frameUrl };
+  return [
+    req(`A-${name}-1`, frameUrl, { ...frame, isNavigation: true, resourceType: 'document' }),
+    req(`A-${name}-2`, FRAME_FONT, { ...frame, resourceType: 'font' }),
+  ];
+};
+
 /** The map document of the frame, then the Google Fonts stylesheet and font file the frame loads. */
 export const mapWithFonts = (prefix: string, p: Partial<RequestRecord> = {}): RequestRecord[] => [
   inMapFrame(`${prefix}-1`, MAP_EMBED, 'document', { isNavigation: true, ...p }),
@@ -183,6 +195,23 @@ export const variantScenarios: Scenario[] = [
               inMapFrame('A-1', MAP_EMBED, 'document', { isNavigation: true }),
               inMapFrame('A-2', 'https://maps.googleapis.com/maps/vt?pb=[redacted]', 'image'),
               inMapFrame('A-3', 'https://helper.unknown-host.example/t.js', 'script'),
+            ],
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'clean-captcha-and-widget-frame-fonts.json',
+    description:
+      'Counterexample: the reCAPTCHA frame on Kontakt and a Calendly frame on the start page load Google Fonts; no check of the prototype reports CAPTCHAs and widgets (EMBED-04, EMBED-05), so their frames get no finding that could name the embed',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              ...frameWithFont('captcha', CAPTCHA_FRAME),
+              ...frameWithFont('widget', WIDGET_FRAME, START),
             ],
           }),
         ],

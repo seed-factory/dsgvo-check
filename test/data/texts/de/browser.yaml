@@ -305,12 +305,17 @@ messages:
       {}}
   EMBED-01.preconnect-only:
     title: >-
-      {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
+      {observed, select, hint {{embedFrameFonts, select, true {Nur Verbindungsvorbereitung der Website zu einem
+      Schriftdienst} other {Nur Verbindungsvorbereitung zu einem Schriftdienst}}: {service}} attempt {Nicht
       abgeschlossener Schriftabruf: {service}} other {Verbindungsvorbereitung oder nicht abgeschlossener Schriftabruf:
       {service}}}
     body: >-
-      Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
-      Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
+      Zu {service} wurde {embedFrameFonts, select, true {außerhalb der Rahmen eingebetteter Dienste } other {}}nur
+      eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener Abruf beobachtet; ein
+      abgeschlossener Abruf von Schriftdateien wurde {embedFrameFonts, select, true {dort } other {}}nicht
+      festgestellt.{embedFrameFonts, select, true { {embedCount, plural, one {Der Rahmen von {embedServices} lud}
+      other {Die Rahmen von {embedServices} luden}} dagegen Schriftdateien oder Stylesheets von {service}; diese
+      Abrufe sind nicht Teil dieses Befunds.} other {}}
   EMBED-01.fonts-in-embed-frame:
     title: >-
       {moment, select, before-and-after-reject {Externe Schriftarten von einer Einbettung geladen, auch nach

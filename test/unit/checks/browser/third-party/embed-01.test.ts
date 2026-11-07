@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../../src/checks/browser/embed-01.ts';
+import { embed02 } from '../../../../../src/checks/browser/embed-02.ts';
 import { MAX_EVIDENCE } from '../../../../../src/checks/browser/evidence.ts';
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
@@ -19,7 +20,15 @@ import {
   settingsRejectCmp,
   site,
 } from '../helpers.ts';
-import { FRAME_CSS, FRAME_FONT, inMapFrame, MAP_EMBED, mapWithFonts } from '../scenarios/embed-01.ts';
+import {
+  CAPTCHA_FRAME,
+  FRAME_CSS,
+  FRAME_FONT,
+  frameWithFont,
+  inMapFrame,
+  MAP_EMBED,
+  mapWithFonts,
+} from '../scenarios/embed-01.ts';
 import { SCENARIOS, VARIANT_SCENARIOS } from '../scenarios/index.ts';
 import { AFTER_CLICK, expectMoment, momentCases, rejectPhase } from './reject-moment.ts';
 
@@ -295,6 +304,7 @@ describe("EMBED-01 fonts of an embed's frame", () => {
   it.each([
     ['an embed frame that loads no font', 'clean-map-frame-without-fonts.json'],
     ['a map frame whose fonts load only after the accept', 'clean-map-frame-fonts-after-accept.json'],
+    ['the fonts of a reCAPTCHA and a Calendly frame', 'clean-captcha-and-widget-frame-fonts.json'],
   ])('counterexample: %s gives no finding', (_name, file) => {
     expect(variantsOf(runCheck(embed01, frameScenario(file)))).toEqual([]);
   });
@@ -354,53 +364,29 @@ describe("EMBED-01 fonts of an embed's frame", () => {
     ]);
   });
 
-  it('the fonts of a reCAPTCHA frame are a finding too, linked to the check its category is routed to', () => {
-    const captcha = {
-      frameId: 'A-captcha',
-      isMainFrame: false,
-      frameUrl: 'https://www.google.com/recaptcha/api2/anchor?k=[redacted]',
-    };
-    const [o, ...more] = observationsOf(
-      runCheck(
-        embed01,
-        site({
-          phases: [
-            phase('A', {
-              requests: [
-                req('a', captcha.frameUrl, { ...captcha, isNavigation: true, resourceType: 'document' }),
-                req('b', FRAME_FONT, { ...captcha, resourceType: 'font' }),
-              ],
-            }),
+  it("a frame's late font request counts for the page of the frame's document; the map's finding, where it was recorded", () => {
+    const snapshot = site({
+      phases: [
+        phase('A', {
+          requests: [
+            inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
+            frameFont('b', { pageUrl: IMPRESSUM }),
           ],
         }),
-      ),
-    );
-    expect(more).toEqual([]);
-    expect(o).toMatchObject({
-      variant: 'fonts-in-embed-frame',
-      subject: 'google-fonts@google-recaptcha',
-      params: { service: 'Google Fonts', embedService: 'Google reCAPTCHA' },
-      related: [{ checkId: 'EMBED-04', subject: 'google-recaptcha', relation: 'embedded-in' }],
+      ],
     });
-  });
-
-  it("a frame's late font request counts for the page its frame's document was loaded on", () => {
-    const [o] = observationsOf(
-      runCheck(
-        embed01,
-        site({
-          phases: [
-            phase('A', {
-              requests: [
-                inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
-                frameFont('b', { pageUrl: IMPRESSUM }),
-              ],
-            }),
-          ],
-        }),
-      ),
-    );
-    expect(o).toMatchObject({ variant: 'fonts-in-embed-frame', pages: [CONTACT] });
+    const [fonts] = observationsOf(runCheck(embed01, snapshot));
+    expect(fonts).toMatchObject({
+      variant: 'fonts-in-embed-frame',
+      pages: [CONTACT],
+      params: { pageCount: 1 },
+    });
+    const [map] = observationsOf(runCheck(embed02, snapshot));
+    expect(map).toMatchObject({
+      variant: 'maps-loaded',
+      pages: [CONTACT, IMPRESSUM].sort(),
+      params: { pageCount: 2, frameFontRequestCount: 1 },
+    });
   });
 
   it.each(
@@ -499,13 +485,84 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
       site({ phases: [phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)] })] }),
     );
     const [o] = observationsOf(r);
-    expect(o).toMatchObject({ variant: 'preconnect-only', subject: 'google-fonts' });
+    expect(o).toMatchObject({
+      variant: 'preconnect-only',
+      subject: 'google-fonts',
+      params: { embedFrameFonts: false, embedServices: null, embedCount: 0 },
+    });
     expect(o?.evidence[0]).toMatchObject({
       type: 'link',
       href: 'https://fonts.gstatic.com/',
       text: 'rel=preconnect',
     });
+    expect(renderMessage(loadTexts('de'), 'EMBED-01.preconnect-only', o!.params).body).toBe(
+      'Zu Google Fonts wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht ' +
+        'abgeschlossener Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.',
+    );
   });
+
+  const player = {
+    frameId: 'A-player',
+    isMainFrame: false,
+    frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
+  };
+  /** The frames that load Google Fonts beside the hint, the variants, and the embeds the hint's text names. */
+  const FRAME_CASES: Array<[string, RequestRecord[], string[], string, number]> = [
+    ['the map frame', mapWithFonts('A'), ['preconnect-only', 'fonts-in-embed-frame'], 'Google Maps', 1],
+    [
+      'the map frame and a player frame',
+      [
+        ...mapWithFonts('A'),
+        req('P-1', player.frameUrl, { ...player, isNavigation: true, resourceType: 'document' }),
+        req('P-2', FRAME_FONT, { ...player, resourceType: 'font' }),
+      ],
+      ['preconnect-only', 'fonts-in-embed-frame', 'fonts-in-embed-frame'],
+      'Google Maps, YouTube (youtube-nocookie.com)',
+      2,
+    ],
+    [
+      'a reCAPTCHA frame',
+      frameWithFont('captcha', CAPTCHA_FRAME),
+      ['preconnect-only'],
+      'Google reCAPTCHA',
+      1,
+    ],
+  ];
+
+  it.each(FRAME_CASES)(
+    "a preconnect of the site beside the fonts that %s downloads: the hint's text is about the site and names the frames",
+    (_name, requests, variants, embedServices, embedCount) => {
+      const pages = [hintedStart, ...defaultPages('A').slice(1)];
+      const found = observationsOf(runCheck(embed01, site({ phases: [phase('A', { pages, requests })] })));
+      expect(found.map((o) => o.variant)).toEqual(variants);
+      const [o] = found;
+      expect(o).toMatchObject({
+        subject: 'google-fonts',
+        params: { observed: 'hint', embedFrameFonts: true, embedServices, embedCount },
+      });
+
+      const de = renderMessage(loadTexts('de'), 'EMBED-01.preconnect-only', o!.params);
+      const en = renderMessage(loadTexts('en'), 'EMBED-01.preconnect-only', o!.params);
+      expect(de.title).toBe('Nur Verbindungsvorbereitung der Website zu einem Schriftdienst: Google Fonts');
+      expect(en.title).toBe('Only a connection hint from the site to a font service: Google Fonts');
+      const frames =
+        embedCount === 1
+          ? [`Der Rahmen von ${embedServices} lud`, `The frame of ${embedServices}, however,`]
+          : [`Die Rahmen von ${embedServices} luden`, `The frames of ${embedServices}, however,`];
+      expect(de.body).toBe(
+        'Zu Google Fonts wurde außerhalb der Rahmen eingebetteter Dienste nur eine Verbindungsvorbereitung ' +
+          '(preconnect/dns-prefetch) oder ein nicht abgeschlossener Abruf beobachtet; ein abgeschlossener Abruf ' +
+          `von Schriftdateien wurde dort nicht festgestellt. ${frames[0]} dagegen Schriftdateien oder Stylesheets ` +
+          'von Google Fonts; diese Abrufe sind nicht Teil dieses Befunds.',
+      );
+      expect(en.body).toBe(
+        'Only a connection hint (preconnect/dns-prefetch) or an unfinished request to Google Fonts was observed ' +
+          'outside the frames of embedded services; no completed download of font files was found there. ' +
+          `${frames[1]} loaded font files or stylesheets of Google Fonts; those requests are not part of this ` +
+          'finding.',
+      );
+    },
+  );
 
   it('counterexample: a link to a font service with another rel than a connection hint is ignored', () => {
     const start = page(START, 'start', 'A', {
