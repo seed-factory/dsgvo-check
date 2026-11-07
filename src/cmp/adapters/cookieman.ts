@@ -4,8 +4,10 @@
  * (`answerCookie`), which lists the accepted groups. Only one boolean per group leaves the page.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { readerInput } from '../adapters-file.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { categoryFlags, flag, readerResult } from './read.ts';
 
 interface CookiemanRead {
   present: boolean;
@@ -96,11 +98,23 @@ function readCookieman({ answerCookie, groupsSource }: CookiemanArgs): Cookieman
   };
 }
 
-const read = (page: Page) =>
-  page.evaluate(readCookieman, {
-    answerCookie: readerInput('cookieman', 'answerCookie'),
-    groupsSource: readerInput('cookieman', 'groupsSource'),
-  });
+/** The reader's answer; the group names come from the page's markup, the stored state keeps only names (`foldCategories`). */
+const CookiemanAnswer = z.object({
+  present: flag,
+  configured: flag,
+  source: z.enum(['api', 'cookie']).catch('cookie'),
+  answered: flag,
+  categories: categoryFlags,
+});
+
+const read = async (page: Page): Promise<CookiemanRead> =>
+  readerResult(
+    CookiemanAnswer,
+    await page.evaluate(readCookieman, {
+      answerCookie: readerInput('cookieman', 'answerCookie'),
+      groupsSource: readerInput('cookieman', 'groupsSource'),
+    }),
+  );
 
 export const cookieman = defineAdapter({
   id: 'cookieman',

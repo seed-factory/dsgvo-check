@@ -1,6 +1,13 @@
 /** Loads the adapter data from test/data/cmp (collector side; CONSENT-04 gets the same through `ctx.data.cmp`). */
 import { loadSection } from '../core/data/load.ts';
-import { type AdapterData, adaptersSection, probeSection, type ReaderInput } from './adapters-data.ts';
+import {
+  type AdapterData,
+  adaptersSection,
+  type PAGE_VALUE_SETTINGS,
+  type PageValueSetting,
+  probeSection,
+  type ReaderInput,
+} from './adapters-data.ts';
 import type { KnownCmpId } from './types.ts';
 
 export const loadAdapterData = (dataDir?: string) => loadSection(adaptersSection, dataDir);
@@ -19,4 +26,12 @@ export function readerInput(id: KnownCmpId, key: 'groupsSource'): NonNullable<Ad
 export function readerInput(id: KnownCmpId, key: 'closedDialog'): NonNullable<AdapterData['closedDialog']>;
 export function readerInput(id: KnownCmpId, key: ReaderInput) {
   return adapterData(id)[key];
+}
+
+/** The vendor's own values of a setting its reader takes from the page (adapters.yaml `pageValues`). */
+export function pageValuesOf<Id extends keyof typeof PAGE_VALUE_SETTINGS>(
+  id: Id,
+  setting: PageValueSetting<Id>,
+): readonly string[] {
+  return adapterData(id).pageValues?.[setting] ?? [];
 }

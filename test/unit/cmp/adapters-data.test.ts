@@ -78,6 +78,8 @@ describe('adapter data', () => {
   it.each([
     ['borlabs', 'botUserAgent'],
     ['borlabs', 'optionalGroups'],
+    ['cookiebot', 'pageValues'],
+    ['complianz', 'pageValues'],
     ['ccm19', 'essentialEmbeddings'],
     ['ccm19', 'closedDialog'],
     ['real-cookie-banner', 'botUserAgent'],
@@ -89,6 +91,31 @@ describe('adapter data', () => {
   ])('%s needs "%s" for its page reader', (id, key) => {
     const broken = withAdapters((all) => delete all[id]?.[key]);
     expect(() => adaptersSection.parse(broken)).toThrow(new RegExp(`adapters\\.${id}\\.${key}: ${id} needs`));
+  });
+
+  // A value the page chose for a vendor setting is stored only as one of these, so each is a short token.
+  it('the vendor values of page settings: Complianz regions and consent types, Cookiebot blocking modes', () => {
+    expect(data.complianz.pageValues).toMatchObject({
+      region: expect.arrayContaining(['eu', 'us', 'uk', 'ca', 'other']),
+      consenttype: expect.arrayContaining(['optin', 'optout']),
+    });
+    expect(data.cookiebot.pageValues?.blockingMode).toEqual(expect.arrayContaining(['auto', 'manual']));
+  });
+
+  it.each([
+    [
+      'complianz without the values of a setting its reader takes',
+      'complianz',
+      { region: ['eu'] },
+      /complianz needs the values of "consenttype"/,
+    ],
+    ['a value that is no short token', 'cookiebot', { blockingMode: ['auto?x=1'] }, /short lowercase token/],
+    ['a setting without values', 'cookiebot', { blockingMode: [] }, /blockingMode/],
+  ])('page values: %s is a data error', (_case, id, values, message) => {
+    const broken = withAdapters((all) => {
+      (all[id] as Record<string, unknown>).pageValues = values;
+    });
+    expect(() => adaptersSection.parse(broken)).toThrow(message);
   });
 
   // A Shopware reject is confirmed by the absence of these names, so the list holds the permission cookies of Shopware

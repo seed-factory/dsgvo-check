@@ -8,7 +8,7 @@
  */
 import type { Box } from '../../core/snapshot/common.ts';
 import type { DAnimation, DElement, DNode, DQueryRoot, DShadowRoot, DStyle, DWindow } from './dom.ts';
-import type { ProbeArgs, ProbeResult, RawBlocking, RawButton } from './probe-types.ts';
+import type { BlockingMethod, ProbeArgs, ProbeResult, RawBlocking, RawButton } from './probe-types.ts';
 
 export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const w = globalThis as unknown as DWindow;
@@ -270,9 +270,76 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return clean(el.getAttribute('title') ?? '');
   };
 
+  /**
+   * The rules for names (`args.names`); a pattern that does not compile makes nothing a name. The Node side applies the
+   * same rules again, since the page can change what this code returns.
+   */
+  const compileRule = (p: { source: string; flags: string }): RegExp | null => {
+    try {
+      return new RegExp(p.source, p.flags);
+    } catch {
+      return null;
+    }
+  };
+  const nameCharsRe = compileRule(args.names.chars);
+  const notNameRes = args.names.notName.map(compileRule);
+  const tagNameRe = compileRule(args.names.tag);
+  const idLike = args.names.idLike;
+  const otherDigitRe = compileRule(idLike.otherDigit);
+  const separatorRe = compileRule(idLike.separator);
+  const compactRes = idLike.compact.map(compileRule);
+  const plainRes = idLike.plain.map(compileRule);
+  const tokenRe = compileRule(idLike.token);
+  const tokenSplitRe = compileRule(idLike.tokenSplit);
+  const wordRe = compileRule(idLike.word);
+  const wordsWithGroupRe = compileRule(idLike.wordsWithGroup);
+
+  /** The steps of `hasIdLikeRun` in page-names.ts; a rule that does not compile makes every value ID-like. */
+  const hasIdLikeRun = (v: string): boolean => {
+    if (!otherDigitRe || !separatorRe || !tokenRe || !tokenSplitRe || !wordRe || !wordsWithGroupRe)
+      return true;
+    if (!compactRes.every((re) => re !== null) || !plainRes.every((re) => re !== null)) return true;
+    const n = v.normalize('NFKC').replace(otherDigitRe, '0');
+    const compact = n.replace(separatorRe, '');
+    if (compactRes.some((re) => re?.test(compact)) || plainRes.some((re) => re?.test(n))) return true;
+    return (n.match(tokenRe) ?? []).some((run) => {
+      const rest = run.split(tokenSplitRe).filter((part) => !wordRe.test(part));
+      return rest.length > 1 || !rest.every((part) => wordsWithGroupRe.test(part));
+    });
+  };
+
+  const hasNameSyntax = (v: string): boolean =>
+    v.length > 0 &&
+    v.length <= args.names.maxLength &&
+    nameCharsRe?.test(v) === true &&
+    notNameRes.every((re) => re !== null && !re.test(v));
+
+  /**
+   * A value a stored selector may carry. The page chooses ids, classes and attribute values, so one with query or
+   * address syntax, whitespace, an invisible or look-alike character or a run that looks like an ID or a token is left
+   * out of the selector.
+   */
+  const isNameLike = (v: string): boolean =>
+    hasNameSyntax(v) && hasNameSyntax(v.normalize('NFKC')) && !hasIdLikeRun(v);
+
+  const UNKNOWN_TAG = 'unknown';
+  /** The element's tag name when it reads as one (`button`, `uc-button`); the HTML parser takes almost any name. */
+  const tagOf = (el: DElement): string => {
+    const t = el.tagName.toLowerCase();
+    return t.length <= args.names.tag.maxLength && tagNameRe?.test(t) && !hasIdLikeRun(t) ? t : UNKNOWN_TAG;
+  };
+  /** The tag as a CSS type selector; null for one that is no tag name or holds a `.`, which CSS reads as a class. */
+  const selectorTag = (el: DElement): string | null => {
+    const t = tagOf(el);
+    return t !== UNKNOWN_TAG && /^[a-z][a-z0-9_-]*$/.test(t) ? t : null;
+  };
+
+  const ariaRoles = new Set(args.names.roles);
+  /** The first token of `role` that names a role, as the browser reads it; else the element's implicit role. */
   const roleOf = (el: DElement): string => {
-    const explicit = (el.getAttribute('role') ?? '').trim().split(/\s+/)[0];
-    if (explicit) return explicit.toLowerCase();
+    for (const token of (el.getAttribute('role') ?? '').trim().toLowerCase().split(/\s+/)) {
+      if (ariaRoles.has(token)) return token;
+    }
 
     const tag = el.tagName.toLowerCase();
     if (tag === 'button' || tag === 'summary') return 'button';
@@ -485,31 +552,30 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const esc = (v: string): string => (w.CSS?.escape ? w.CSS.escape(v) : v.replace(/[^\w-]/g, '\\$&'));
 
-  /** A value with an "@" may be an address: no selector is built from it, since selectors are stored in the snapshot. */
-  const isPlain = (v: string): boolean => !v.includes('@');
-
-  /** A selector attribute value longer than this is not used to build a selector. */
-  const MAX_SELECTOR_VALUE_LENGTH = 80;
-
-  /** Selectors from the id, the configured attributes and the class list, most specific first. */
+  /**
+   * Selectors from the id, the configured attributes and the class list, most specific first, only from values that are
+   * names (`isNameLike`). An element whose tag is no CSS type name gets no tag-qualified selector.
+   */
   const attributeSelectors = (el: DElement): string[] => {
-    const tag = el.tagName.toLowerCase();
     const tries: string[] = [];
 
-    if (el.id && isPlain(el.id)) tries.push(`#${esc(el.id)}`);
+    if (el.id && isNameLike(el.id)) tries.push(`#${esc(el.id)}`);
+
+    const tag = selectorTag(el);
+    if (!tag) return tries;
 
     for (const attr of args.selectorAttributes) {
       const v = el.getAttribute(attr);
-      if (v !== null && v.length < MAX_SELECTOR_VALUE_LENGTH && isPlain(v) && !/[\n\r"\\]/.test(v))
-        tries.push(`${tag}[${attr}="${v}"]`);
+      // A presence attribute (Borlabs `data-cookie-refuse`) has an empty value, which carries nothing.
+      if (v !== null && (v === '' || isNameLike(v))) tries.push(`${tag}[${attr}="${v}"]`);
     }
 
-    // A class token with an address is left out (the others may still be unique), else the structural path is used.
+    // A class token that is no name is left out (the others may still be unique), else the structural path is used.
     // HTML whitespace, not JS `\s`: a token with a no-break space and an address is one token to the browser.
     const cls = (el.getAttribute('class') ?? '')
       .split(/[ \t\n\f\r]+/)
       .filter(Boolean)
-      .filter(isPlain);
+      .filter(isNameLike);
     if (cls.length > 0) tries.push(`${tag}.${cls.map(esc).join('.')}`);
 
     return tries;
@@ -517,12 +583,15 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const MAX_SELECTOR_PATH_DEPTH = 40;
 
-  /** `tag:nth-child(n)` segments up to the nearest ancestor with a unique id (or the root of this tree). */
+  /**
+   * `tag:nth-child(n)` segments up to the nearest ancestor with a unique id that is a name (or the root of this tree);
+   * `*` for a tag that is no CSS type name.
+   */
   const structuralPath = (el: DElement, count: (sel: string) => number): string => {
     const segs: string[] = [];
     let cur: DElement | null = el;
     for (let i = 0; cur && i < MAX_SELECTOR_PATH_DEPTH; i++) {
-      if (cur.id && isPlain(cur.id) && count(`#${esc(cur.id)}`) === 1) {
+      if (cur.id && isNameLike(cur.id) && count(`#${esc(cur.id)}`) === 1) {
         segs.unshift(`#${esc(cur.id)}`);
         break;
       }
@@ -538,7 +607,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
           break;
         }
       }
-      segs.unshift(`${cur.tagName.toLowerCase()}:nth-child(${idx})`);
+      segs.unshift(`${selectorTag(cur) ?? '*'}:nth-child(${idx})`);
 
       if (!isElement(parentNode)) break;
       cur = parentNode;
@@ -1013,7 +1082,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return {
       role: roleOf(el),
       name: accName(el),
-      tag: el.tagName.toLowerCase(),
+      tag: tagOf(el),
       vendorRole,
       box,
       rendered,
@@ -1166,7 +1235,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const TALL_PAGE_MARGIN_PX = 40;
 
   /** `locked` is false for an overflow-hidden page that is not taller than the viewport (nothing to scroll anyway). */
-  const scrollLockOf = (): { locked: boolean; method: string } | null => {
+  const scrollLockOf = (): { locked: boolean; method: BlockingMethod } | null => {
     const html = doc.documentElement;
     const body = doc.body;
 
@@ -1200,7 +1269,7 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     visible: boolean,
     underOverlay: (hit: DElement) => boolean,
   ): RawBlocking => {
-    const method: string[] = [];
+    const method: BlockingMethod[] = [];
     let overlay = false;
     let inert = false;
 

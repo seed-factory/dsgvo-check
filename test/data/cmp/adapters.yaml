@@ -22,7 +22,8 @@
 # vendorRoles selector → button kind by the vendor's own markup (corroborates or backs up the visible label)
 # Reader inputs used by one adapter only: optionalGroups, botUserAgent, essentialEmbeddings, answerCookie (name of the
 # cookie that records the visitor's answer; its value never leaves the page), groupsSource (element and attribute
-# with the site's own consent groups, configuration and no visitor data).
+# with the site's own consent groups, configuration and no visitor data), pageValues (per setting a reader takes from
+# the page's own configuration, the values the vendor has; the facts store any other value as `other`).
 # dialogBotUserAgent {pattern, flags, label}: the vendor's own crawler test, for which it keeps its dialog closed, copied
 #   from the vendor's script with its flags. A dialog still closed after the wait for the banner (`dialogNotOpened`) on a
 #   page whose User-Agent matches gets a bot signal that names `label`; the checks then report `cmp-bot-user-agent`.
@@ -82,6 +83,9 @@ adapters:
         - { selector: "#CybotCookiebotDialogBodyLevelButtonCustomize", role: settings }
         - { selector: "#CybotCookiebotDialogBodyButtonDetails", role: settings }
         - { selector: "#CybotCookiebotBannerCloseButtonE2E", role: close }
+    # `data-blockingmode` of the Cookiebot script tag, compared in lowercase.
+    pageValues:
+      blockingMode: [auto, manual, none]
 
   complianz:
     name: Complianz
@@ -109,6 +113,10 @@ adapters:
         - { selector: ".cmplz-manage-options", role: settings }
         - { selector: ".cmplz-save-preferences", role: save }
         - { selector: ".cmplz-close", role: close }
+    # The regions and consent types of the plugin's `complianz` object. Any region but `eu` is its special branch.
+    pageValues:
+      region: [eu, us, uk, ca, au, za, br, other]
+      consenttype: [optin, optout, optinstats]
 
   usercentrics:
     name: Usercentrics

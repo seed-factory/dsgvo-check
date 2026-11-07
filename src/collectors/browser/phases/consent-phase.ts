@@ -4,6 +4,7 @@
 // without any reject is rejected in B through the settings layer when the adapter describes one: the click moment is
 // then the save, so what loads between opening the settings and saving them counts as before the reject.
 import type { Page } from 'playwright-core';
+import { isClickError } from '../../../cmp/click-errors.ts';
 import type { ClickOutcome, CmpAdapter, CmpButton, CmpFacts } from '../../../cmp/types.ts';
 import type { ClickPlan, ClickPlanTarget, ClickRecord, PageRole } from '../../../core/snapshot/browser.ts';
 import type { SanitizedUrl } from '../../../core/snapshot/common.ts';
@@ -13,7 +14,7 @@ import { inputEventsInPage } from '../in-page/input.ts';
 import { navigate } from '../pages/navigate.ts';
 import { navigationErrorCode, type VisitResult, type VisitSpec, valueWithin } from '../pages/visit.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
-import { errorText, sleep, withTimeout } from '../util.ts';
+import { pageCallFailure, sleep, withTimeout } from '../util.ts';
 import { bannerScreenshot } from './screenshot.ts';
 
 /** Upper bound of reading the press times of one frame; the CMP call timeout applies when it is shorter. */
@@ -192,7 +193,7 @@ async function rejectViaSettings(
     return null;
   }
   const layer = await s.cmp.openSettings(s.page, adapter, open, url, cmpWaitMs(c));
-  if (layer) s.cmpFacts.settings = layer;
+  if (layer) s.cmpFacts.settings = withKnownError(layer);
   const choice = layer ? await s.cmp.settingsSave(layer, url) : null;
   const save = choice?.target ? planTarget(choice.target, adapter.id) : null;
   plan.settings = {
@@ -305,7 +306,9 @@ async function act(
   const clickedAt = pressedAt ?? armedAt;
 
   s.cmpFacts.click = {
-    ...(outcome ?? { action, clicked: false, button: null, error: 'cmp-call-failed' }),
+    ...(outcome
+      ? withKnownError(outcome)
+      : { action, clicked: false, button: null, error: 'cmp-call-failed' }),
     ...(path ? { path } : {}),
   };
   s.record.click = clickRecord(adapter.id, action, outcome, pageUrl, clickedAt, pressedAt);
@@ -322,7 +325,18 @@ async function act(
   return true;
 }
 
-function clickRecord(
+/** An adapter's error as stored: a code of click-errors.ts, else none. */
+const knownError = (error: string | undefined): string | undefined =>
+  error !== undefined && isClickError(error) ? error : undefined;
+
+/** A click outcome or a settings layer with its error only as a known code. */
+export function withKnownError<T extends { error?: string }>(x: T): T {
+  const { error, ...rest } = x;
+  const kept = knownError(error);
+  return { ...rest, ...(kept !== undefined ? { error: kept } : {}) } as T;
+}
+
+export function clickRecord(
   cmpId: string,
   action: 'reject' | 'accept',
   outcome: ClickOutcome | null,
@@ -331,6 +345,7 @@ function clickRecord(
   pressedAt: number | null,
 ): ClickRecord {
   const clicked = outcome?.clicked ?? false;
+  const error = outcome ? knownError(outcome.error) : 'cmp-call-failed';
   return {
     action,
     cmpId,
@@ -339,7 +354,7 @@ function clickRecord(
     ...(clicked ? { clickedAtSource: pressedAt !== null ? 'input-event' : 'adapter-call' } : {}),
     pageUrl,
     success: clicked,
-    ...(outcome?.error ? { error: outcome.error } : outcome ? {} : { error: 'cmp-call-failed' }),
+    ...(error ? { error } : {}),
   };
 }
 
@@ -383,7 +398,11 @@ async function controlPages(c: BrowserCollection, s: Session, adapter: CmpAdapte
   }
 }
 
-/** Epoch ms of the first trusted press at or after `after` in any frame (in-page hook), or null. */
+/**
+ * Epoch ms of the first trusted press at or after `after` in any frame (in-page hook), or null. The page can edit the
+ * hook's log, so only a finite number between `after` and now counts as a press: a string would compare as a number
+ * and become the stored click moment.
+ */
 async function pressTime(c: BrowserCollection, page: Page, after: number): Promise<number | null> {
   const readTimeoutMs = Math.min(PRESS_READ_TIMEOUT_MS, c.timing.cmpCallTimeoutMs);
   let best: number | null = null;
@@ -392,9 +411,13 @@ async function pressTime(c: BrowserCollection, page: Page, after: number): Promi
       frame.evaluate(inputEventsInPage),
       readTimeoutMs,
       c.ctx.signal,
-      [] as number[],
+      [] as unknown[],
     );
-    for (const t of times) if (t >= after && (best === null || t < best)) best = t;
+    const now = Date.now();
+    for (const t of Array.isArray(times) ? times : []) {
+      if (typeof t !== 'number' || !Number.isFinite(t) || t < after || t > now) continue;
+      if (best === null || t < best) best = t;
+    }
   }
   return best;
 }
@@ -428,7 +451,8 @@ async function screenshot(
       noteScreenshotSkipped(s, pageUrl, shot.skipped);
     }
   } catch (err) {
-    noteScreenshotSkipped(s, pageUrl, `error: ${errorText(err).slice(0, SCREENSHOT_ERROR_MAX_CHARS)}`);
+    // The banner box is read in the page: only the kind of failure is kept, see pageCallFailure.
+    noteScreenshotSkipped(s, pageUrl, `error: ${pageCallFailure(err).slice(0, SCREENSHOT_ERROR_MAX_CHARS)}`);
   }
 }
 

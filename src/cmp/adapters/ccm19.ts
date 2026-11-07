@@ -4,9 +4,11 @@
  * disabled controls and opens it later; a widget it never opens is reported as `dialogNotOpened`.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { readerInput } from '../adapters-file.ts';
 import type { CategoryState, ConsentStateFact } from '../types.ts';
 import { defineAdapter } from './base.ts';
+import { flag, readerResult } from './read.ts';
 
 interface Ccm19Input {
   essentialEmbeddings: string[];
@@ -100,11 +102,22 @@ function readCcm19(input: Ccm19Input): Ccm19Read {
   };
 }
 
-const read = (page: Page) =>
-  page.evaluate(readCcm19, {
-    essentialEmbeddings: readerInput('ccm19', 'essentialEmbeddings'),
-    closedDialog: readerInput('ccm19', 'closedDialog'),
-  });
+const Ccm19Answer = z.object({
+  present: flag,
+  ready: flag,
+  stored: flag,
+  embeddings: z.enum(['denied', 'granted', 'partial', 'unknown']).nullable().catch(null),
+  closed: flag,
+});
+
+const read = async (page: Page): Promise<Ccm19Read> =>
+  readerResult(
+    Ccm19Answer,
+    await page.evaluate(readCcm19, {
+      essentialEmbeddings: readerInput('ccm19', 'essentialEmbeddings'),
+      closedDialog: readerInput('ccm19', 'closedDialog'),
+    }),
+  );
 
 export const ccm19 = defineAdapter({
   id: 'ccm19',

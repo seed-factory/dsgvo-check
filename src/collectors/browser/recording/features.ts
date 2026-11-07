@@ -1,9 +1,11 @@
 // Request features extracted BEFORE redaction: identifier parameter names, event type, Consent Mode signals. Identifier
 // values are returned only for in-memory correlation and must never reach snapshot, report or logs.
 
+import { setCookieName } from '../../../core/redaction/headers.ts';
 import { safeDecode } from '../../../core/url/email.ts';
 import { QUERY_VALUE_RULES, sanitizeUrl } from '../../../core/url/url.ts';
 import { REQUEST_QUERY_ALLOWLIST } from '../config.ts';
+import { isConsentSignal, isEventName } from '../page-values.ts';
 import { loadIdentifierRules } from '../rules.ts';
 
 export interface RequestFeatures {
@@ -79,14 +81,19 @@ export function extractRequestFeatures(url: string, postData: string | null): Re
         names.add(rawKey);
         values.push(value);
       }
-      if (eventType === undefined && rules.eventParams.includes(key) && value) {
-        eventType = value.slice(0, MAX_SIGNAL_CHARS);
+      // Any page can send these parameters to any host: only an event name and the Consent Mode forms are kept.
+      if (eventType === undefined && rules.eventParams.includes(key) && isEventName(value)) {
+        eventType = value;
       }
       if (hitType === undefined && key === 't' && parsed && QUERY_VALUE_RULES.t?.(value, parsed)) {
         hitType = value.slice(0, MAX_SIGNAL_CHARS);
       }
-      if (rules.consentModeParams.includes(key) && value && consent[key] === undefined) {
-        consent[key] = value.slice(0, MAX_SIGNAL_CHARS);
+      if (
+        rules.consentModeParams.includes(key) &&
+        consent[key] === undefined &&
+        isConsentSignal(key, value)
+      ) {
+        consent[key] = value;
       }
     }
   }
@@ -128,14 +135,11 @@ export function parseSetCookies(headers: readonly string[]): SetCookieAttrs[] {
   const out: SetCookieAttrs[] = [];
   for (const h of headers) {
     for (const line of h.split('\n')) {
-      const [pair = '', ...attrs] = line.split(';');
-      const eq = pair.indexOf('=');
-      if (eq <= 0) continue;
-      const name = pair.slice(0, eq).trim();
-      if (!name) continue;
+      const name = setCookieName(line);
+      if (name === null) continue;
 
       const c: SetCookieAttrs = { name, partitioned: false };
-      for (const a of attrs) {
+      for (const a of line.split(';').slice(1)) {
         const i = a.indexOf('=');
         const key = (i < 0 ? a : a.slice(0, i)).trim().toLowerCase();
         const val = i < 0 ? '' : a.slice(i + 1).trim();

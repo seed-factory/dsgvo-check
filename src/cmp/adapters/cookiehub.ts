@@ -3,7 +3,9 @@
  * UI. Geo and bot signals are not known.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { categoryFlags, flag, maybeFlag, readerResult } from './read.ts';
 
 interface CookiehubRead {
   present: boolean;
@@ -46,7 +48,16 @@ function readCookiehub(): CookiehubRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readCookiehub);
+const CookiehubAnswer = z.object({
+  present: flag,
+  ready: flag,
+  answered: maybeFlag,
+  categories: categoryFlags,
+  cookiePresent: flag,
+});
+
+const read = async (page: Page): Promise<CookiehubRead> =>
+  readerResult(CookiehubAnswer, await page.evaluate(readCookiehub));
 
 export const cookiehub = defineAdapter({
   id: 'cookiehub',

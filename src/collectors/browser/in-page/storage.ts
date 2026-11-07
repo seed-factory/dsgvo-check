@@ -1,7 +1,8 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: in-page code runs in Chromium; tsconfig has no DOM lib
 // biome-ignore-all lint/complexity/useOptionalChain: keep in-page code plain and defensive
 // Cookie and Web Storage reads and init-script hooks, evaluated INSIDE the page (self-contained). They return names,
-// lengths, places and times, never cookie or storage values.
+// lengths, places and times, never cookie or storage values; only `storageValuesInPage` reads values, which the
+// collector keeps in memory to take them out of page text and never stores.
 
 declare const window: any;
 declare const location: any;
@@ -45,6 +46,29 @@ export async function storageInPage(arg: { maxKeys: number }): Promise<RawStorag
     }
   } catch {
     // opaque origin
+  }
+  return out;
+}
+
+/** Values of this frame's Web Storage, each cut at `maxChars`: in memory only, to take them out of page text. */
+export function storageValuesInPage(arg: { maxKeys: number; maxChars: number }): string[] {
+  const out: string[] = [];
+  const read = (s: any) => {
+    for (let i = 0, n = 0; i < s.length && n < arg.maxKeys; i++, n++) {
+      const k = s.key(i);
+      const v = k === null ? null : s.getItem(k);
+      if (typeof v === 'string' && v !== '') out.push(v.slice(0, arg.maxChars));
+    }
+  };
+  try {
+    read(localStorage);
+  } catch {
+    // storage blocked for this frame
+  }
+  try {
+    read(sessionStorage);
+  } catch {
+    // storage blocked for this frame
   }
   return out;
 }

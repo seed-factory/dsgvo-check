@@ -8,13 +8,14 @@ import type { BrowserPhase } from '../../../core/snapshot/common.ts';
 import { parseUrl, registrableDomain } from '../../../core/url/url.ts';
 import {
   cookieWritesInPage,
-  type RawStorage,
   storageInPage,
+  storageValuesInPage,
   storageWritesInPage,
 } from '../in-page/storage.ts';
+import { fields, isCookieName, isHostname, list, storedCookiePath } from '../page-values.ts';
 import { TimeoutError } from '../util.ts';
 import { sanitizeRequestUrl } from './features.ts';
-import { type SetCookieOrigin, settleWithin } from './recorder.ts';
+import { cookieDomainVerdict, type SetCookieOrigin, settleWithin } from './recorder.ts';
 
 export interface Moment {
   phase: BrowserPhase;
@@ -53,6 +54,10 @@ export interface JarOptions {
 const DEFAULT_EVAL_TIMEOUT_MS = 1_000;
 /** Storage keys read per frame; the rest is not needed to name the origin's storage use. */
 const MAX_STORAGE_KEYS = 200;
+/** Longest storage key or IndexedDB name kept, as the page code cuts them. */
+const MAX_STORAGE_NAME = 200;
+/** A storage value is searched in page text only up to this length: a consent ID sits at the start of its entry. */
+const MAX_STORAGE_VALUE_CHARS = 4_096;
 const SECONDS_PER_DAY = 86_400;
 
 type LoggedWrite = ScriptWrite & { t: number };
@@ -61,12 +66,65 @@ interface StoredWrite extends ScriptWrite {
   m: Moment;
   documentHost?: string;
   domainAttr?: string;
+  /** A `Domain=` the document may not set: the browser ignored the write. */
+  rejected?: true;
 }
 
 const normalizeDomain = (d: string | null | undefined): string | undefined => {
   const v = d?.trim().replace(/^\./, '').toLowerCase();
   return v ? v : undefined;
 };
+
+/** A host of the cookie-write log: absent, or a host name once normalized; `false` for anything else. */
+function loggedHost(v: unknown): string | null | false {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'string') return false;
+  const host = normalizeDomain(v);
+  return host === undefined ? null : isHostname(host) ? host : false;
+}
+
+/**
+ * An entry of the in-page cookie-write log as the hook writes it, else null. The page can push to the log and change
+ * its entries, so each field is checked here: the name as a cookie name, the hosts as host names, the script as an
+ * http(s) URL, the time as a number. An entry that fails is ignored.
+ */
+function checkedWrite(v: unknown): LoggedWrite | null {
+  const w = fields(v);
+  const host = loggedHost(w.host);
+  const domain = loggedHost(w.domain);
+  if (host === false || domain === false || !isCookieName(w.name)) return null;
+  if (typeof w.t !== 'number' || !Number.isFinite(w.t) || typeof w.deletion !== 'boolean') return null;
+  const script = typeof w.script === 'string' && parseUrl(w.script, undefined, true) ? w.script : null;
+  return { name: w.name, t: w.t, script, deletion: w.deletion, host, domain };
+}
+
+/** An entry of the in-page storage-write log, else null (the page can edit that log too). */
+function checkedStorageWrite(v: unknown): { type: string; key: string; t: number } | null {
+  const w = fields(v);
+  const typeOk = w.type === 'localStorage' || w.type === 'sessionStorage';
+  if (!typeOk || typeof w.key !== 'string' || typeof w.t !== 'number' || !Number.isFinite(w.t)) return null;
+  return { type: w.type as string, key: w.key.slice(0, MAX_STORAGE_NAME), t: w.t };
+}
+
+/** Storage keys and IndexedDB names: strings only, cut like the page code cuts them. */
+const storageNames = (v: unknown): string[] =>
+  list(v)
+    .slice(0, MAX_STORAGE_KEYS)
+    .filter((n): n is string => typeof n === 'string' && n !== '')
+    .map((n) => n.slice(0, MAX_STORAGE_NAME));
+
+/** Storage entries with their value length: a length only as a safe integer of at least 0. */
+const storageEntries = (v: unknown): Array<{ key: string; length?: number }> =>
+  list(v)
+    .slice(0, MAX_STORAGE_KEYS)
+    .map(fields)
+    .filter((e) => typeof e.key === 'string')
+    .map((e) => ({
+      key: (e.key as string).slice(0, MAX_STORAGE_NAME),
+      ...(typeof e.length === 'number' && Number.isSafeInteger(e.length) && e.length >= 0
+        ? { length: e.length }
+        : {}),
+    }));
 
 /** Iframes created by script use the origin of their creator. */
 const INHERITS_ORIGIN = /^about:(?:blank|srcdoc)(?:[#?].*)?$/i;
@@ -83,10 +141,32 @@ function documentHostOf(frame: Frame): string | undefined {
   return undefined;
 }
 
+/**
+ * Where a script write lands, or null for an entry the hook did not write. The document is the frame as Node sees it:
+ * the page can write any host into its log, so an entry that names another host is not the hook's. A `Domain=` counts
+ * only when the document may set it (RFC 6265 5.3). A write with one it may not set wrote nothing and is placed on the
+ * document, as a refused `Set-Cookie` is placed on its response host, so a domain the page made up is never stored.
+ * Without a document host the write is not placed: a `Domain=` cannot be checked against it.
+ */
+function placeWrite(
+  raw: LoggedWrite,
+  frameHost: string | undefined,
+): Pick<StoredWrite, 'documentHost' | 'domainAttr' | 'rejected'> | null {
+  const logged = normalizeDomain(raw.host);
+  if (logged !== undefined && logged !== frameHost) return null;
+  if (frameHost === undefined) return {};
+  const domain = normalizeDomain(raw.domain);
+  const verdict = cookieDomainVerdict(frameHost, domain);
+  if (verdict === 'domain' && domain) return { documentHost: frameHost, domainAttr: domain };
+  if (verdict === 'rejected') return { documentHost: frameHost, rejected: true };
+  return { documentHost: frameHost };
+}
+
 const writeDomain = (w: StoredWrite): string | undefined => w.domainAttr ?? w.documentHost;
 
 /** A document cannot set cookies for a foreign domain; a write of unknown context cannot be verified. */
 function scriptCanSet(w: StoredWrite, domain: string): boolean {
+  if (w.rejected) return false;
   if (w.domainAttr) return w.domainAttr === domain;
   const host = w.documentHost;
   return host !== undefined && (host === domain || host.endsWith(`.${domain}`));
@@ -117,7 +197,7 @@ export function mapCookie(
     name: c.name,
     domain,
     firstParty: isFirstParty(domain, target.etld1, target.host),
-    path: c.path || '/',
+    path: storedCookiePath(c.path || '/'),
     partitionKey: c.partitionKey ?? null,
     secure: c.secure,
     httpOnly: c.httpOnly,
@@ -148,8 +228,9 @@ function cleanSetter(
   return s.setterUrl ? { ...s, setterUrl: sanitizeRequestUrl(s.setterUrl) } : s;
 }
 
-const cookieKey = (r: Pick<CookieRecord, 'name' | 'domain' | 'path' | 'partitionKey' | 'state'>) =>
-  `${r.name}|${r.domain}|${r.path}|${r.partitionKey ?? ''}|${r.state}`;
+/** The path in the key is the raw one: two paths that are both stored as `[redacted]` stay two cookies. */
+const cookieKey = (r: Pick<CookieRecord, 'name' | 'domain' | 'partitionKey' | 'state'>, rawPath: string) =>
+  `${r.name}|${r.domain}|${rawPath}|${r.partitionKey ?? ''}|${r.state}`;
 
 const AFTER = '|after-click';
 
@@ -203,22 +284,47 @@ export class JarTracker {
       seen.add(domainOf);
       this.jarDomains.set(c.name, seen);
 
-      this.addCookie(mapCookie(c, m, this.target, nowSec, this.setterOf(c)), m);
+      this.addCookie(mapCookie(c, m, this.target, nowSec, this.setterOf(c)), m, c.path || '/');
     }
 
     await this.readStorage(page, m, dead);
     return cookies.map((c) => c.value);
   }
 
+  /**
+   * Values of every cookie of the context and of the Web Storage of the page's frames, for taking them out of page
+   * text that is about to be stored (legal documents). The caller must not keep or log them.
+   */
+  async secretValues(context: BrowserContext, page: Page): Promise<string[]> {
+    const out: string[] = [];
+    for (const c of (await this.bounded(context.cookies(), 'jar.cookies')) ?? []) out.push(c.value);
+
+    const dead = new Set<Frame>();
+    const seenOrigins = new Set<string>();
+    for (const frame of page.frames()) {
+      const origin = httpOrigin(frame.url());
+      if (origin === undefined || seenOrigins.has(origin)) continue;
+      seenOrigins.add(origin);
+      const values = await this.bounded(
+        frame.evaluate(storageValuesInPage, { maxKeys: MAX_STORAGE_KEYS, maxChars: MAX_STORAGE_VALUE_CHARS }),
+        'jar.storage-values',
+        frame,
+        dead,
+      );
+      for (const v of list(values)) if (typeof v === 'string') out.push(v.slice(0, MAX_STORAGE_VALUE_CHARS));
+    }
+    return out;
+  }
+
   /** A key seen before gets a second record only when a write follows the click. */
-  private addCookie(rec: CookieRecord, m: Moment): void {
-    const key = cookieKey(rec);
+  private addCookie(rec: CookieRecord, m: Moment, rawPath: string): void {
+    const key = cookieKey(rec, rawPath);
     if (!this.cookieKeys.has(key)) {
       this.cookieKeys.add(key);
       this.cookies.push(rec);
     } else if (
       m.afterClick &&
-      this.writtenAfterClick(rec.name, rec.domain, rec.path, rec.partitionKey !== null) &&
+      this.writtenAfterClick(rec.name, rec.domain, rawPath, rec.partitionKey !== null) &&
       !this.cookieKeys.has(key + AFTER)
     ) {
       this.cookieKeys.add(key + AFTER);
@@ -234,11 +340,14 @@ export class JarTracker {
 
   private attemptScriptWrites(): void {
     for (const [key, w] of this.scriptWrites) {
-      if (w.deletion || this.jarHas(w.name, (d) => scriptCanSet(w, d))) continue;
-
-      // Unknown document and no Domain=: cannot be placed on a domain.
+      // Unknown document: cannot be placed on a domain.
       const domain = writeDomain(w);
-      if (!domain) continue;
+      if (w.deletion || !domain) continue;
+      // A refused write set nothing: like a refused `Set-Cookie`, it is an attempt unless the jar has the name there.
+      const inJar = w.rejected
+        ? this.jarHas(w.name, (d) => d === domain)
+        : this.jarHas(w.name, (d) => scriptCanSet(w, d));
+      if (inJar) continue;
 
       const where = {
         domain,
@@ -292,11 +401,13 @@ export class JarTracker {
     m: Moment,
     suffix = '',
   ): void {
+    const rawPath = where.path ?? '/';
     const rec: CookieRecord = {
       name,
       domain: where.domain,
       firstParty: isFirstParty(where.domain, this.target.etld1, this.target.host),
-      path: where.path ?? '/',
+      // A `Set-Cookie` of any response chooses the path, also one the browser refused.
+      path: storedCookiePath(rawPath),
       partitionKey: null,
       secure: false,
       httpOnly: false,
@@ -317,7 +428,7 @@ export class JarTracker {
       ...momentIds(m),
     };
 
-    const key = cookieKey(rec) + suffix;
+    const key = cookieKey(rec, rawPath) + suffix;
     if (this.cookieKeys.has(key)) return;
     this.cookieKeys.add(key);
     this.cookies.push(rec);
@@ -366,23 +477,20 @@ export class JarTracker {
       if (!logged) continue;
 
       const frameHost = documentHostOf(frame);
-      for (const raw of logged as LoggedWrite[]) this.rememberScriptWrite(raw, frameHost, m);
+      for (const entry of list(logged)) {
+        const raw = checkedWrite(entry);
+        if (raw) this.rememberScriptWrite(raw, frameHost, m);
+      }
     }
   }
 
   private rememberScriptWrite(raw: LoggedWrite, frameHost: string | undefined, m: Moment): void {
-    const documentHost = normalizeDomain(raw.host) ?? frameHost;
-    const domainAttr = normalizeDomain(raw.domain);
-    const w: StoredWrite = {
-      name: raw.name,
-      script: raw.script,
-      deletion: raw.deletion,
-      m,
-      ...(documentHost ? { documentHost } : {}),
-      ...(domainAttr ? { domainAttr } : {}),
-    };
+    const place = placeWrite(raw, frameHost);
+    if (!place) return;
+    const w: StoredWrite = { name: raw.name, script: raw.script, deletion: raw.deletion, m, ...place };
 
-    const key = `${w.name}|${writeDomain(w) ?? ''}`;
+    // A refused write must not take the key of a write that set the cookie on the document.
+    const key = `${w.name}|${writeDomain(w) ?? ''}${w.rejected ? '|rejected' : ''}`;
     if (!this.scriptWrites.has(key)) this.scriptWrites.set(key, w);
     if (
       this.clickAt !== null &&
@@ -397,41 +505,45 @@ export class JarTracker {
     const seenOrigins = new Set<string>();
     for (const frame of page.frames()) {
       if (dead.has(frame)) continue;
-      const url = frame.url();
-      if (!/^https?:/.test(url)) continue;
-      const origin = parseUrl(url)?.origin;
+      const origin = httpOrigin(frame.url());
       if (origin === undefined) continue;
       if (seenOrigins.has(origin)) continue;
       seenOrigins.add(origin);
 
-      await this.readFrameStorage(frame, m, dead);
+      await this.readFrameStorage(frame, origin, m, dead);
     }
   }
 
-  private async readFrameStorage(frame: Frame, m: Moment, dead: Set<Frame>): Promise<void> {
-    const raw: RawStorage | null = await this.bounded(
+  // `origin` is the frame's, computed in Node: the page answers in its own world and can make `location.origin` read
+  // as any string. A frame whose answer names another origin is skipped, as an opaque (sandboxed) one always was.
+  private async readFrameStorage(frame: Frame, origin: string, m: Moment, dead: Set<Frame>): Promise<void> {
+    const answer = await this.bounded(
       frame.evaluate(storageInPage, { maxKeys: MAX_STORAGE_KEYS }),
       'jar.storage',
       frame,
       dead,
     );
-    if (!raw) return;
-    const host = hostOf(raw.origin);
-    if (!host) return; // opaque origin (sandboxed frame): no storage of its own
+    if (!answer) return;
+    const raw = fields(answer);
+    const host = hostOf(origin);
+    if (raw.origin !== origin || !host) return;
 
-    const writes =
-      (await this.bounded(frame.evaluate(storageWritesInPage), 'jar.storage-writes', frame, dead)) ?? [];
-    for (const w of writes) {
-      const k = `${w.type}|${raw.origin}|${w.key}`;
+    const writes = list(
+      await this.bounded(frame.evaluate(storageWritesInPage), 'jar.storage-writes', frame, dead),
+    );
+    for (const entry of writes) {
+      const w = checkedStorageWrite(entry);
+      if (!w) continue;
+      const k = `${w.type}|${origin}|${w.key}`;
       if (w.t > (this.storageWriteAt.get(k) ?? Number.NEGATIVE_INFINITY)) this.storageWriteAt.set(k, w.t);
     }
 
     const firstParty = isFirstParty(host, this.target.etld1, this.target.host);
     const add = (storageType: StorageRecord['storageType'], key: string, length?: number) =>
-      this.addStorage(m, { storageType, origin: raw.origin, key, firstParty, length });
-    for (const e of raw.local) add('localStorage', e.key, e.length);
-    for (const e of raw.session) add('sessionStorage', e.key, e.length);
-    for (const name of raw.idb) add('indexedDB', name);
+      this.addStorage(m, { storageType, origin, key, firstParty, length });
+    for (const e of storageEntries(raw.local)) add('localStorage', e.key, e.length);
+    for (const e of storageEntries(raw.session)) add('sessionStorage', e.key, e.length);
+    for (const name of storageNames(raw.idb)) add('indexedDB', name);
   }
 
   /** A key seen before gets a second record only when its last write is after the click. */
@@ -473,4 +585,9 @@ export class JarTracker {
 
 function hostOf(url: string): string | undefined {
   return parseUrl(url)?.hostname.toLowerCase();
+}
+
+/** The origin of an http(s) frame URL, as Node parses it. */
+function httpOrigin(url: string): string | undefined {
+  return /^https?:/.test(url) ? parseUrl(url)?.origin : undefined;
 }

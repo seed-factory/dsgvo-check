@@ -11,6 +11,8 @@ const Selector = z.string().min(1);
 const Names = z.array(z.string().min(1)).default([]);
 /** A cookie name as RFC 6265 allows it (a token): no `=`, no blank, no separator. */
 const CookieName = z.string().regex(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/, 'not a cookie name');
+/** A value of a vendor's own setting as the facts store it: a short lowercase token. */
+const PageValueToken = z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/, 'not a short lowercase token');
 
 const DetectSchema = z.strictObject({
   globals: Names,
@@ -117,6 +119,13 @@ const AdapterSchema = z
     /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
     closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
     /**
+     * The values a setting of the vendor can have, per setting a reader takes from the page (Complianz `region`): the
+     * facts store a value outside the list as `other`, never as the page wrote it.
+     */
+    pageValues: z
+      .record(z.string().regex(/^[a-z][A-Za-z]*$/, 'not a setting name'), z.array(PageValueToken).min(1))
+      .optional(),
+    /**
      * A dialog left closed (`dialogNotOpened`) for a page whose User-Agent matches this test is the vendor's bot branch:
      * the facts get a bot signal that names the test. Adapters without it never test a User-Agent for that.
      */
@@ -146,17 +155,28 @@ export type ReaderInput =
   | 'answerCookie'
   | 'consentCookies'
   | 'groupsSource'
-  | 'closedDialog';
+  | 'closedDialog'
+  | 'pageValues';
 
 /** The page readers of these adapters cannot work without the input (an empty bot pattern would match every browser). */
 const READER_INPUTS: Partial<Record<KnownCmpId, readonly ReaderInput[]>> = {
   borlabs: ['botUserAgent', 'optionalGroups'],
+  cookiebot: ['pageValues'],
+  complianz: ['pageValues'],
   ccm19: ['essentialEmbeddings', 'closedDialog'],
   'real-cookie-banner': ['botUserAgent'],
   shopware: ['answerCookie', 'consentCookies'],
   wix: ['optionalGroups'],
   cookieman: ['answerCookie', 'groupsSource'],
 };
+
+/** The settings whose values these adapters' readers take from the page (`pageValues`). */
+export const PAGE_VALUE_SETTINGS = {
+  cookiebot: ['blockingMode'],
+  complianz: ['region', 'consenttype'],
+} as const satisfies Partial<Record<KnownCmpId, readonly string[]>>;
+export type PageValueSetting<Id extends keyof typeof PAGE_VALUE_SETTINGS> =
+  (typeof PAGE_VALUE_SETTINGS)[Id][number];
 
 const missing = (value: unknown): boolean =>
   value === undefined || ((typeof value === 'string' || Array.isArray(value)) && value.length === 0);
@@ -178,6 +198,18 @@ export const adaptersSection = dataSection(
         for (const key of inputs ?? []) {
           if (missing(adapter[key])) {
             ctx.addIssue({ code: 'custom', path: [id, key], message: `${id} needs "${key}"` });
+          }
+        }
+      }
+      for (const [id, settings] of Object.entries(PAGE_VALUE_SETTINGS)) {
+        const values = all[id as KnownCmpId].pageValues;
+        for (const setting of settings) {
+          if (values && !values[setting]) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [id, 'pageValues', setting],
+              message: `${id} needs the values of "${setting}"`,
+            });
           }
         }
       }

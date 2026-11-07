@@ -1,4 +1,5 @@
 /** Pure helpers for CMP recognition (`high` needs ≥ 2 independent signals) and consent-state verdicts. */
+import { hasIdLikeRun } from '../core/redaction/page-names.ts';
 import type { CmpDetection, Confidence, ConsentStateFact } from './types.ts';
 
 export const SIGNAL_KINDS = ['global', 'script', 'dom', 'stored'] as const;
@@ -61,11 +62,23 @@ export const NOT_DETECTED: CmpDetection = {
   signals: [],
 };
 
-/** A dotted version; a bare integer is a cache-busting counter or timestamp, not a version. */
-export const VERSION_PATTERN = /^\d{1,4}(\.\d+){1,3}$/;
+/**
+ * A dotted version of two to four groups of at most six digits; a bare integer is a cache-busting counter or timestamp,
+ * not a version.
+ */
+export const VERSION_PATTERN = /^\d{1,4}(?:\.\d{1,6}){1,3}$/;
+
+/**
+ * The page sets the version global and the `?ver=` of its scripts, so a version is also no ID-like run: six digits in
+ * a group or eight digits in all are a client id of the form of a `_ga` cookie, a phone number or an IP address rather
+ * than a version.
+ */
+function isVersion(v: string): boolean {
+  return VERSION_PATTERN.test(v) && !hasIdLikeRun(v);
+}
 
 export function cleanVersion(v: string | undefined): string | null {
-  return v !== undefined && VERSION_PATTERN.test(v) ? v : null;
+  return v !== undefined && isVersion(v) ? v : null;
 }
 
 /** WordPress-style `?ver=1.2.3` (or `v=`) from a script URL; a timestamp is no version. */
@@ -74,7 +87,7 @@ export function versionFromUrl(url: string | undefined): string | null {
   try {
     const u = new URL(url);
     const v = u.searchParams.get('ver') ?? u.searchParams.get('v');
-    return v && VERSION_PATTERN.test(v) ? v : null;
+    return v && isVersion(v) ? v : null;
   } catch {
     return null;
   }

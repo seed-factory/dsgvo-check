@@ -11,6 +11,7 @@ import type { ScreenshotRecord } from '../../../core/snapshot/browser.ts';
 import type { Box, BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.ts';
 import { VIEWPORT } from '../config.ts';
 import { bannerBoxInPage } from '../in-page/dom.ts';
+import { box, fields } from '../page-values.ts';
 import { loadDomPatterns } from '../rules.ts';
 import { sha256Hex } from '../util.ts';
 
@@ -18,6 +19,14 @@ export type ShotResult = { record: ScreenshotRecord } | { skipped: string };
 
 /** JPEG qualities tried in order until the image fits `maxBytes`. */
 const JPEG_QUALITIES = [70, 50, 35] as const;
+
+/** What `bannerBoxInPage` answers besides a box; the reason becomes the message of a skipped screenshot. */
+const IN_PAGE_REASONS: ReadonlySet<string> = new Set([
+  'ok',
+  'no-element-at-buttons',
+  'no-unique-container',
+  'container-off-screen',
+]);
 
 /** From the CMP facts when measured, else from the button positions. */
 export async function bannerBox(page: Page, facts: CmpFacts): Promise<{ box: Box | null; reason: string }> {
@@ -32,7 +41,18 @@ export async function bannerBox(page: Page, facts: CmpFacts): Promise<{ box: Box
     }))
     .filter((p) => p.x >= 0 && p.y >= 0 && p.x < VIEWPORT.width && p.y < VIEWPORT.height);
   if (points.length === 0) return { box: null, reason: 'no-visible-buttons' };
-  return page.evaluate(bannerBoxInPage, { points, bannerNames: loadDomPatterns().page.bannerNames });
+  // Measured in the page's own world, whose script can replace `Math` or `getBoundingClientRect`: a box of numbers and
+  // a reason of the closed set, else no box.
+  const answer = fields(
+    await page.evaluate(bannerBoxInPage, { points, bannerNames: loadDomPatterns().page.bannerNames }),
+  );
+  const reason =
+    typeof answer.reason === 'string' && IN_PAGE_REASONS.has(answer.reason) ? answer.reason : null;
+  const measured = box(answer.box);
+  if (reason !== null && reason !== 'ok') return { box: null, reason };
+  return reason === 'ok' && measured
+    ? { box: measured, reason }
+    : { box: null, reason: 'container-unreadable' };
 }
 
 // The part of the container inside the viewport in whole CSS pixels, or null: this is what `page.screenshot({ clip })`

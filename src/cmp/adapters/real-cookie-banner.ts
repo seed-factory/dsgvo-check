@@ -3,8 +3,10 @@
  * options object (`isAcceptAllForBots`, `groups`) is read defensively.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { readerInput } from '../adapters-file.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { categoryFlags, flag, maybeFlag, readerResult } from './read.ts';
 
 interface RcbRead {
   present: boolean;
@@ -79,7 +81,19 @@ function readRcb(botUserAgent: string): RcbRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readRcb, readerInput('real-cookie-banner', 'botUserAgent'));
+/** The reader's answer; the group slugs and ids are the page's, the stored state keeps only names (`foldCategories`). */
+const RcbAnswer = z.object({
+  present: flag,
+  cookiePresent: flag,
+  categories: categoryFlags,
+  acceptAllForBots: maybeFlag,
+  respectDnt: maybeFlag,
+  uaBot: flag,
+  bannerVisible: flag,
+});
+
+const read = async (page: Page): Promise<RcbRead> =>
+  readerResult(RcbAnswer, await page.evaluate(readRcb, readerInput('real-cookie-banner', 'botUserAgent')));
 
 const botBranch = (r: RcbRead) =>
   r.acceptAllForBots === true && r.uaBot && r.cookiePresent && !r.bannerVisible;

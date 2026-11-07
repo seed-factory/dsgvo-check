@@ -1,4 +1,5 @@
 /** Arguments and raw result of `cmpPageProbe`, shared by the probe and its Node side (measure.ts). */
+import type { PagePattern } from '../../core/redaction/page-names.ts';
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
 import type { BannerCandidateFact, SettingsGroupFact } from '../types.ts';
 
@@ -8,6 +9,32 @@ export interface KindPhrases {
   reject: string[];
   settings: string[];
   save: string[];
+}
+
+/**
+ * The rules for the page values the probe puts into a selector or a button fact, as data (src/core/redaction/page-names.ts):
+ * the probe applies them so that it picks a selector the Node side keeps, and the Node side applies them again.
+ */
+export interface ProbeNameRules {
+  maxLength: number;
+  /** A name, as written and in NFKC, consists of these characters. */
+  chars: PagePattern;
+  /** A value one of these matches, as written or in NFKC, is no name. */
+  notName: readonly PagePattern[];
+  /** Runs that make a value no name, applied in the steps of `hasIdLikeRun`. */
+  idLike: {
+    otherDigit: PagePattern;
+    separator: PagePattern;
+    compact: readonly PagePattern[];
+    plain: readonly PagePattern[];
+    token: PagePattern;
+    tokenSplit: PagePattern;
+    word: PagePattern;
+    wordsWithGroup: PagePattern;
+  };
+  tag: PagePattern & { maxLength: number };
+  /** The roles a `role` token may name; the first listed token counts, else the implicit role of the element. */
+  roles: readonly string[];
 }
 
 export interface ProbeArgs {
@@ -23,6 +50,7 @@ export interface ProbeArgs {
   maxButtons: number;
   /** Attribute names a button selector may be built from, in order (test/data/cmp/probe.yaml). */
   selectorAttributes: string[];
+  names: ProbeNameRules;
   /**
    * Phrases per lexicon class. A non-modal candidate needs a control with one of them; inside a header/footer landmark
    * or with a single consent keyword, an accept or reject one.
@@ -71,12 +99,25 @@ export interface RawButton {
   href: string | null;
 }
 
+/** How the probe found the page blocked (`BlockingFacts.method`). */
+export const BLOCKING_METHODS = [
+  'overlay-selector',
+  'dialog-modal',
+  'grid-hit-test',
+  'overlay-grid',
+  'overflow-hidden',
+  'overflow-hidden-short-page',
+  'body-position-fixed',
+  'inert-attr',
+] as const;
+export type BlockingMethod = (typeof BLOCKING_METHODS)[number];
+
 export interface RawBlocking {
   overlay: boolean;
   scrollLock: boolean;
   inert: boolean;
   coveredRatio: number | null;
-  method: string[];
+  method: BlockingMethod[];
   ariaModal: boolean;
 }
 

@@ -4,22 +4,28 @@
  * reports the fonts of those frames as its own finding, as fonts from a third-party server.
  */
 import type { EvidenceInput } from '../../core/api.ts';
-import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
+import type { ClassifiedRequest, DerivedSection, RequestKind, ServiceCategory } from '../../derive/types.ts';
 import { MAX_EVIDENCE, type RequestItem, requestEvidence, requestEvidenceByMoment } from './evidence.ts';
-import { fontLoadKind } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceName } from './services.ts';
 
 /** Fonts and helper hosts the embed's frame loaded: derive attributes them to the embed, not to the site. */
 export const frameResource = (c: ClassifiedRequest): boolean => c.source === 'embed-frame';
 
+/** Kinds of a font service's request that show a frame loaded a font: the stylesheet or the font file itself. */
+const FRAME_FONT_KINDS: ReadonlySet<RequestKind> = new Set(['stylesheet', 'font']);
+
 /**
- * A font the embed's frame loaded from a font service of the catalog: its stylesheet or font file, not its usage hit,
- * by the same kinds as a font of the site. It stays a request of the embed: the site cannot serve the fonts of a
- * third-party frame itself, only load the embed after consent.
+ * A font the embed's frame loaded from a font service of the catalog: its stylesheet or font file. Unlike on the
+ * site, a script or other request of the font service alone (a kit loader, a usage hit) does not count: in a
+ * third-party frame nothing else shows that a font was loaded, and the warning may fail a pipeline. It stays a request
+ * of the embed: the site cannot serve the fonts of a third-party frame itself, only load the embed after consent.
  */
 export const frameFont = (c: ClassifiedRequest): boolean =>
-  frameResource(c) && c.resourceCategory === 'fonts' && fontLoadKind(c.resourceKind);
+  frameResource(c) &&
+  c.resourceCategory === 'fonts' &&
+  c.resourceKind !== undefined &&
+  FRAME_FONT_KINDS.has(c.resourceKind);
 
 /** A request of the embed's frame to a host of no catalog service; a font service's usage hit is none. */
 const frameHelper = (c: ClassifiedRequest): boolean => frameResource(c) && !c.resourceServiceId;

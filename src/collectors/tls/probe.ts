@@ -5,10 +5,12 @@
 import { X509Certificate } from 'node:crypto';
 import { isIP, type Socket } from 'node:net';
 import tls, { type DetailedPeerCertificate, type TLSSocket } from 'node:tls';
+import { redactText } from '../../core/redaction/redact.ts';
 import { errorMessage } from '../../core/runtime/errors.ts';
 import type { CollectorContext } from '../../core/snapshot/collector.ts';
 import { detectTrustStore } from '../../core/snapshot/index.ts';
 import type { CertificateInfo, TlsEndpoint } from '../../core/snapshot/tls.ts';
+import { hasAddressMarker, REDACTED } from '../../core/url/email.ts';
 import { defaultHttpPort } from '../../core/url/url.ts';
 import { authorizationErrorCode, routeToPublic } from '../http/connection.ts';
 import { DNS_ERROR_CODES, ProbeError } from '../http/errors.ts';
@@ -24,12 +26,118 @@ const MAX_CHAIN_LENGTH = 10;
 /** HTTP/1.1 only, like the HTTP client. */
 const ALPN_PROTOCOLS = ['http/1.1'];
 
+/** `[redacted]@domain` as `redactText` writes a masked address. */
+const ADDRESS_MASK = /\[redacted\]@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*/gu;
+
+/**
+ * A name value that shows an `@` (also escaped, percent-encoded or without a dotted domain) as the domain of its last
+ * address, `[redacted]` when no address is read from it; null when it shows none. Only the mask is kept: a local part
+ * may hold characters that end it in free text (`"`, `,`), so text around a mask could still be part of it.
+ */
+function maskedName(plain: string): string | null {
+  if (!hasAddressMarker(plain)) return null;
+  return redactText(plain).match(ADDRESS_MASK)?.at(-1) ?? REDACTED;
+}
+
+/** RFC 4514 escapes as Node writes them in a DN: `\` before a special character, `\HH` for a control character. */
+const DN_ESCAPE = /\\(?:([0-9a-f]{2})|([\s\S]))/gi;
+
+const unescapedDn = (value: string) =>
+  value.replace(DN_ESCAPE, (_m, hex: string | undefined, char: string | undefined) =>
+    hex === undefined ? (char ?? '') : String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+
+/** A query in a name value, up to the next blank: Node's escapes (`\"`, `\<`) end none. */
+const NAME_QUERY = /\?\S+/g;
+/** A fragment glued to the text before it, up to the next blank. */
+const NAME_FRAGMENT = /(?<=\S)#\S+/g;
+
+/**
+ * A name value without an address, as Node writes it: URLs and `mailto:` values redacted as in free text, then every
+ * query, also of a relative URL or one of another scheme, cut to `?[redacted]` and every fragment dropped. `\#` at the
+ * start is Node's escape of a leading `#`, no fragment.
+ */
+function redactedNameValue(value: string): string {
+  return redactText(value)
+    .replace(NAME_QUERY, `?${REDACTED}`)
+    .replace(NAME_FRAGMENT, (fragment, at: number, text: string) =>
+      at === 1 && text[0] === '\\' ? fragment : '',
+    );
+}
+
+/** One `type=value` attribute; a value with an address is stored as `maskedName` reads it, any other redacted as written. */
+function redactedAttribute(attribute: string): string {
+  const eq = attribute.indexOf('=');
+  const value = attribute.slice(eq + 1);
+  return `${attribute.slice(0, eq + 1)}${maskedName(unescapedDn(value)) ?? redactedNameValue(value)}`;
+}
+
+/**
+ * A distinguished name on one line, as Node writes it: one RDN per line, the attributes of a multi-valued one joined
+ * by ` + ` (a `+` in a value is escaped). An attribute value with an address keeps only its domain, one with a URL
+ * no query or fragment.
+ */
 function dn(value: string | undefined): string {
   return (value ?? '')
     .split('\n')
     .map((p) => p.trim())
     .filter(Boolean)
+    .map((rdn) => rdn.split(' + ').map(redactedAttribute).join(' + '))
     .join(', ');
+}
+
+const DNS_PREFIX = 'DNS:';
+const IP_PREFIX = 'IP Address:';
+
+/** A host name as a `DNS:` entry holds one: labels of letters, digits, `-` and `_`, a leading `*.`, a trailing dot. */
+const DNS_HOST = /^(?:\*\.)?[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.?$/u;
+
+/**
+ * A `DNS:` name is any text the owner chose: one with an address keeps only its domain, read from the JSON string Node
+ * writes for a value with `,` or `"`; one that is no host name (a URL, a path, a query) is `[redacted]`.
+ */
+function redactedDnsName(entry: string): string {
+  const value = entry.slice(DNS_PREFIX.length);
+  let plain = value;
+  if (value.startsWith('"')) {
+    try {
+      plain = String(JSON.parse(value));
+    } catch {
+      // not the JSON string Node writes: the text as it is
+    }
+  }
+  const masked = maskedName(plain);
+  if (masked !== null) return `${DNS_PREFIX}${masked}`;
+  return DNS_HOST.test(plain) ? entry : `${DNS_PREFIX}${REDACTED}`;
+}
+
+/**
+ * The `DNS:` and `IP Address:` entries of Node's `subjectAltName` list, the ones the name check reads; e-mail
+ * addresses, URIs and other names are not stored. Node writes a value that holds `,` or `"` as a JSON string, so the
+ * list is split outside quotes only: text inside a quoted URI is no entry of its own.
+ */
+function hostAltNames(list: string | undefined): string[] {
+  const s = list ?? '';
+  const out: string[] = [];
+  let start = 0;
+  let quoted = false;
+  for (let i = 0; i <= s.length; i++) {
+    const c = s[i];
+    if (quoted) {
+      if (c === '\\') i++;
+      else if (c === '"') quoted = false;
+      continue;
+    }
+    if (c === '"') {
+      quoted = true;
+    } else if (c === ',' || c === undefined) {
+      const entry = s.slice(start, i).trim();
+      if (entry.startsWith(DNS_PREFIX)) out.push(redactedDnsName(entry));
+      else if (entry.startsWith(IP_PREFIX)) out.push(entry);
+      start = i + 1;
+    }
+  }
+  return out;
 }
 
 function keyInfo(x: X509Certificate): { keyType?: string; keyBits?: number } {
@@ -51,10 +159,7 @@ export function certificateInfo(x: X509Certificate): CertificateInfo {
   return {
     subject: dn(x.subject),
     issuer: dn(x.issuer),
-    subjectAltNames: (x.subjectAltName ?? '')
-      .split(/,\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean),
+    subjectAltNames: hostAltNames(x.subjectAltName),
     notBefore: x.validFromDate.toISOString(),
     notAfter: x.validToDate.toISOString(),
     serialNumber: x.serialNumber,

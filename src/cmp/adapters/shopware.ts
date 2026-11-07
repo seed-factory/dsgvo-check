@@ -6,8 +6,10 @@
  * (`known-flags-absent`), which does not rule out a plugin's own cookie.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { adapterData, readerInput } from '../adapters-file.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { flag, readerResult } from './read.ts';
 
 interface ShopwareRead {
   storefront: boolean;
@@ -42,12 +44,27 @@ function readShopware({ storefrontGlobals, answerCookie, consentCookies }: Shopw
   };
 }
 
-const read = (page: Page) =>
-  page.evaluate(readShopware, {
-    storefrontGlobals: adapterData('shopware').detect.globals,
-    answerCookie: readerInput('shopware', 'answerCookie'),
-    consentCookies: readerInput('shopware', 'consentCookies'),
-  });
+const ShopwareAnswer = z.object({
+  storefront: flag,
+  answered: flag,
+  present: z.record(z.string(), flag).catch({}),
+});
+
+/** The reader's answer, with presence only for the listed permission cookies. */
+async function read(page: Page): Promise<ShopwareRead> {
+  const consentCookies = readerInput('shopware', 'consentCookies');
+  const r = readerResult(
+    ShopwareAnswer,
+    await page.evaluate(readShopware, {
+      storefrontGlobals: adapterData('shopware').detect.globals,
+      answerCookie: readerInput('shopware', 'answerCookie'),
+      consentCookies,
+    }),
+  );
+  const present: Record<string, boolean> = {};
+  for (const name of consentCookies) present[name] = r.present[name] === true;
+  return { ...r, present };
+}
 
 export const shopware = defineAdapter({
   id: 'shopware',

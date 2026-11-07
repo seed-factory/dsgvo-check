@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../../src/checks/http/hdr-01.ts';
+import { snapshotHeaders } from '../../../../src/collectors/http/response-head.ts';
 import { MAX_HEADER_VALUE, storedHeaderRecord } from '../../../../src/core/redaction/headers.ts';
 import type { DocumentResponse } from '../../../../src/core/snapshot/http.ts';
 import type { HeaderRecord } from '../../../../src/core/snapshot/index.ts';
@@ -113,6 +114,48 @@ describe('HDR-01 security headers', () => {
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual([]);
   });
+
+  it.each([
+    [
+      'an address and a relative URL with a query',
+      'ALLOW-FROM zq7max@example.test',
+      "default-src 'self'; report-uri /csp-report?visitor=zq7alice",
+      'ALLOW-FROM [redacted]@example.test',
+      "default-src 'self'; report-uri https://www.example.de/csp-report?visitor=[redacted]",
+    ],
+    [
+      'a query value with a comma, a URL with a quote and an address glued to it',
+      'ALLOW-FROM /embed?ids=12,zq7tail',
+      "default-src 'self'; report-uri https://r.example.test/csp\"zq7carol@mail.example https://r.example.test/x'?visitor=zq7query",
+      'ALLOW-FROM https://www.example.de/embed?ids=[redacted]',
+      "default-src 'self'; report-uri https://r.example.test https://r.example.test",
+    ],
+  ])(
+    'headers as the collector stores them, %s: the evidence holds no visitor value, the verdict is that of the values as sent',
+    (_label, xfo, csp, storedXfo, storedCsp) => {
+      const sent = {
+        'strict-transport-security': 'max-age=31536000; includeSubDomains',
+        'x-frame-options': xfo,
+        'content-security-policy': csp,
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'strict-origin-when-cross-origin',
+        'permissions-policy': 'geolocation=(self "wss://ws.example.test/x?token=zq7abc")',
+      };
+      const asSent = runCheck(
+        hdr01,
+        snap([start(Object.entries(sent).map(([name, value]) => ({ name, value })))]),
+      );
+      const stored = runCheck(hdr01, snap([start(snapshotHeaders(sent, 'https://www.example.de/').headers)]));
+
+      expect(findingsOf(stored)).toEqual(['anti-framing-missing:anti-framing']);
+      expect(findingsOf(stored)).toEqual(findingsOf(asSent));
+      expect(observationsOf(stored)[0]?.evidence).toMatchObject([
+        { name: 'x-frame-options', value: storedXfo },
+        { name: 'content-security-policy', value: storedCsp },
+      ]);
+      expect(JSON.stringify(stored)).not.toContain('zq7');
+    },
+  );
 
   it('counterexample: frame-ancestors only in a meta CSP does not count', () => {
     const r = runCheck(

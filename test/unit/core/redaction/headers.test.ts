@@ -1,8 +1,11 @@
 /**
  * The header normalizer: a CSP over the stored limit is cut, so facts the checks need (`frame-ancestors`) are derived
- * from the complete value before the cut and stored next to it.
+ * from the complete value before the cut and stored next to it. Kept values hold no visitor data (URLs with a query,
+ * addresses, `mailto:`), and of `Set-Cookie` only the name of a named cookie is kept.
  */
 import { describe, expect, it } from 'vitest';
+import { splitSetCookieNames } from '../../../../src/collectors/browser/recording/features.ts';
+import { snapshotHeaders } from '../../../../src/collectors/http/response-head.ts';
 import {
   cspFrameAncestors,
   MAX_HEADER_VALUE,
@@ -390,6 +393,148 @@ describe('the stored CSP value', () => {
     );
   });
 
+  const UUID = '3f2b9c1e-7d4a-4e8f-9b6c-0a1d2e3f4a5b';
+
+  it.each([
+    [
+      'a path-relative report-uri with a query',
+      `default-src 'self'; report-uri /csp-report?source%5Buuid%5D=${UUID}&visitor=zq7alice`,
+      "default-src 'self'; report-uri https://www.example.test/csp-report?source%5Buuid%5D=[redacted]&visitor=[redacted]",
+    ],
+    [
+      'a network-path report-uri',
+      'report-uri //r.example.test/csp?visitor=zq7alice',
+      'report-uri https://r.example.test/csp?visitor=[redacted]',
+    ],
+    [
+      'an address in a relative path',
+      'report-uri /r/zq7alice@mail.invalid',
+      'report-uri https://www.example.test/r/[redacted]@mail.invalid',
+    ],
+    [
+      'an address encoded twice in a relative path',
+      'report-uri /r/zq7alice%2540mail.invalid',
+      'report-uri https://www.example.test/r/[redacted]@mail.invalid',
+    ],
+    [
+      'a dot segment that the parser resolves away',
+      'report-uri /r/zq7alice%2540mail.invalid/../csp',
+      'report-uri https://www.example.test/r/csp',
+    ],
+    [
+      'an address encoded twice in a backslash path',
+      'report-uri \\\\r.example.test\\r\\zq7alice%2540mail.invalid',
+      'report-uri https://r.example.test/r/[redacted]@mail.invalid',
+    ],
+    [
+      'an @ the sanitizer reads as no address (no dot)',
+      "default-src 'self'; report-uri /u/zq7carol@intranet",
+      "default-src 'self'; report-uri [redacted]",
+    ],
+    [
+      'an encoded @ the sanitizer reads as no address',
+      'report-uri /r/zq7alice%40intranet',
+      'report-uri [redacted]',
+    ],
+    [
+      'an @ without a dot after it in a network path',
+      'report-uri //r.example.test/u/zq7alice@intranet',
+      'report-uri [redacted]',
+    ],
+    ['an @ with nothing after it', 'report-uri /~zq7alice@', 'report-uri [redacted]'],
+    ['a fragment of a relative URL', 'report-uri /csp#zq7alice', 'report-uri /csp'],
+    ['a relative URL without a slash', 'report-uri csp?u=zq7alice', 'report-uri csp'],
+    [
+      'an address encoded twice in a relative URL without a slash',
+      'report-uri csp/zq7carol%2540mail.invalid',
+      'report-uri csp',
+    ],
+    [
+      'an address encoded twice after a dot segment',
+      'report-uri ../r/zq7alice%2540mail.invalid',
+      'report-uri [redacted]',
+    ],
+    [
+      'an address encoded twice as the whole token',
+      'report-uri zq7alice%2540mail.invalid',
+      'report-uri [redacted]',
+    ],
+    [
+      'an address in the (at) form in a relative URL',
+      'report-uri r/zq7alice(at)mail.invalid',
+      'report-uri r',
+    ],
+    ['a quoted local part with a blank', 'report-uri "zq7 alice"@mail.invalid', 'report-uri mail.invalid'],
+    [
+      'a host source with a query and no path',
+      'connect-src a.example.test?u=zq7alice',
+      'connect-src a.example.test',
+    ],
+    [
+      'a quote and an address glued to an http(s) URL',
+      "default-src 'self'; report-uri https://r.example.test/csp\"zq7carol@mail.example",
+      "default-src 'self'; report-uri https://r.example.test",
+    ],
+    [
+      'an apostrophe before a query',
+      "report-uri https://r.example.test/x'?visitor=zq7query",
+      'report-uri https://r.example.test',
+    ],
+    [
+      'an apostrophe before a path with a query',
+      "report-uri https://r.example.test/x'/r?token=zq7secret",
+      'report-uri https://r.example.test',
+    ],
+    [
+      'an address in angle brackets glued to an http(s) URL',
+      'report-uri https://r.example.test/x<zq7alice@mail.example>',
+      'report-uri https://r.example.test',
+    ],
+    [
+      'a comma in the query of a relative URL',
+      'report-uri /r?u=a,zq7tail',
+      'report-uri https://www.example.test/r?u=[redacted]',
+    ],
+    [
+      'a comma in the query of an http(s) URL',
+      'report-uri https://r.example.test/r?u=a,zq7tail',
+      'report-uri https://r.example.test/r?u=[redacted]',
+    ],
+  ])('%s: the token is resolved or cut, no visitor data is stored', (_label, value, expected) => {
+    for (const name of [CSP, 'content-security-policy-report-only']) {
+      const rec = storedHeaderRecord(name, value, BASE, sanitizeUrl);
+      expect(rec.value).toBe(expected);
+      expect(JSON.stringify(rec)).not.toMatch(new RegExp(`zq7|${UUID}`));
+    }
+  });
+
+  it.each([
+    'report-uri /csp-report',
+    'report-uri /csp-report?v=2',
+    'report-uri //r.example.test/csp',
+    "default-src 'self'; report-uri /a/b.php; report-to csp-endpoint",
+    'report-uri csp/report',
+    'report-uri ../csp-report',
+    "script-src 'self' https://cdn.example.test/npm/@scope/pkg@1.2.3/",
+    "report-uri /csp-report?v=2, frame-ancestors 'none'",
+  ])('counterexample: a URL without visitor data stays as written: %s', (value) => {
+    expect(stored(value)).toBe(value);
+  });
+
+  it('frame-ancestors is read from the policy as sent, next to a relative report-uri', () => {
+    const rec = storedHeaderRecord(
+      CSP,
+      "frame-ancestors 'self'; report-uri /csp?visitor=zq7alice",
+      BASE,
+      sanitizeUrl,
+    );
+    expect(rec).toEqual({
+      name: CSP,
+      value: "frame-ancestors 'self'; report-uri https://www.example.test/csp?visitor=[redacted]",
+      frameAncestors: { present: true, restricts: true, sources: ["'self'"] },
+    });
+  });
+
   it('counterexample: other headers are unchanged (allowlisted values, everything else redacted)', () => {
     const [pp, trace, xfo] = snapshotHeaderRecords(
       [
@@ -402,6 +547,243 @@ describe('the stored CSP value', () => {
     expect(pp?.value).toBe('camera=(self "https://a.example/x"), geolocation=()');
     expect(trace?.value).toBe('[redacted]');
     expect(xfo?.value).toBe('SAMEORIGIN');
+  });
+});
+
+describe('the stored Link value: text outside the targets is reduced too', () => {
+  const stored = (value: string) => storedHeaderRecord('link', value, BASE, sanitizeUrl).value;
+
+  it.each([
+    [
+      'a URL after a closed target',
+      '</a.css>; rel=preload, https://cdn.example.test/p?uid=zq7alice123',
+      '<https://www.example.test/a.css>; rel=preload, https://cdn.example.test/p?uid=[redacted]',
+    ],
+    [
+      'an unclosed target',
+      '<https://open.example.test/?token=zq7abc',
+      '<https://open.example.test/?token=[redacted]',
+    ],
+    [
+      'an unclosed relative target after a closed one',
+      '</a.css>; rel=preload, </p?uid=zq7alice',
+      '<https://www.example.test/a.css>; rel=preload, <https://www.example.test/p?uid=[redacted]',
+    ],
+    [
+      'a relative URL in a parameter',
+      '</a.css>; rel=preload; anchor="/p?uid=zq7alice"',
+      '<https://www.example.test/a.css>; rel=preload; anchor="https://www.example.test/p?uid=[redacted]"',
+    ],
+    [
+      'an address in a parameter',
+      '</a.css>; rel=author; title="zq7alice@mail.invalid"',
+      '<https://www.example.test/a.css>; rel=author; title="[redacted]@mail.invalid"',
+    ],
+    [
+      'a percent-encoded address in an extended parameter (RFC 8187)',
+      "</team/max>; rel=author; title*=UTF-8''zq7max.mustermann%40example.test",
+      "<https://www.example.test/team/max>; rel=author; title*=UTF-8''[redacted]",
+    ],
+    [
+      'an encoded address in a relative URL in a parameter',
+      '</a.css>; rel=preload; anchor="/u/zq7alice%40mail.invalid"',
+      '<https://www.example.test/a.css>; rel=preload; anchor="https://www.example.test/u/[redacted]@mail.invalid"',
+    ],
+    [
+      'a comma in the query of a relative URL in a parameter',
+      '</a.css>; rel=preload; anchor="/p?ids=1,zq7tail"',
+      '<https://www.example.test/a.css>; rel=preload; anchor="https://www.example.test/p?ids=[redacted]"',
+    ],
+    [
+      'a fragment in a parameter',
+      '</a.css>; rel=preload; anchor="#access_token=zq7anchor"',
+      '<https://www.example.test/a.css>; rel=preload; anchor=""',
+    ],
+    [
+      'a query glued to a closing bracket',
+      '<https://a.example.test/x>; rel=x; foo=(bar)?u=zq7secret',
+      '<https://a.example.test/x>; rel=x; foo=(bar)https://www.example.test/?u=[redacted]',
+    ],
+  ])('%s', (_label, value, expected) => {
+    expect(stored(value)).toBe(expected);
+  });
+
+  it.each([
+    '<https://fonts.example.test/>; rel=preconnect',
+    '<https://www.example.test/a.css>; rel="preload"; as=style, <https://www.example.test/b.js>; rel=modulepreload',
+    '<https://fonts.example.test/>; rel=preconnect; crossorigin',
+    "<https://www.example.test/team/max>; rel=author; title*=UTF-8''Gesch%C3%A4ftsf%C3%BChrung",
+    '<https://www.example.test/a.css>; rel=preload; anchor="/de/"',
+    '<https://www.example.test/fonts/a.woff2>; rel=preload; as=font; type=font/woff2; crossorigin',
+    '<https://www.example.test/p/3>; rel=next,<https://www.example.test/p/1>; rel=prev',
+  ])('counterexample: an ordinary Link value is stored as sent: %s', (value) => {
+    expect(stored(value)).toBe(value);
+  });
+});
+
+describe('the other kept values: addresses masked, URLs with a query sanitized', () => {
+  it.each([
+    ['x-frame-options', 'ALLOW-FROM zq7max.mustermann@example.test', 'ALLOW-FROM [redacted]@example.test'],
+    ['content-language', 'mailto:zq7max.mustermann@example.test', 'mailto:[redacted]@example.test'],
+    [
+      'x-xss-protection',
+      '1; mode=block; report=/xss-report?u=zq7alice',
+      '1; mode=block; report=https://www.example.test/xss-report?u=[redacted]',
+    ],
+    [
+      'permissions-policy',
+      'geolocation=(self "wss://ws.example.test/x?token=zq7abc")',
+      'geolocation=(self "wss://ws.example.test/x?token=[redacted]")',
+    ],
+    [
+      'strict-transport-security',
+      'max-age=31536000; report-uri="//r.example.test/hsts?u=zq7alice"',
+      'max-age=31536000; report-uri="https://r.example.test/hsts?u=[redacted]"',
+    ],
+    ['referrer-policy', 'no-referrer, zq7alice(at)mail.invalid', 'no-referrer, [redacted]@mail.invalid'],
+    [
+      'x-frame-options',
+      'ALLOW-FROM /embed/zq7alice%40mail.invalid',
+      'ALLOW-FROM https://www.example.test/embed/[redacted]@mail.invalid',
+    ],
+    [
+      'x-xss-protection',
+      '1; mode=block; report=/xss/zq7bob%40mail.invalid',
+      '1; mode=block; report=https://www.example.test/xss/[redacted]@mail.invalid',
+    ],
+    [
+      'x-xss-protection',
+      '1; mode=block; report=wss://r.example.test/r/zq7alice%40mail.invalid',
+      '1; mode=block; report=wss://r.example.test/r/[redacted]@mail.invalid',
+    ],
+    [
+      'permissions-policy',
+      'geolocation=(self "//maps.example.test/u/zq7dave%40mail.invalid")',
+      'geolocation=(self "https://maps.example.test/u/[redacted]@mail.invalid")',
+    ],
+    ['x-frame-options', 'ALLOW-FROM /u/zq7carol@intranet', 'ALLOW-FROM [redacted]'],
+    ['x-frame-options', 'ALLOW-FROM zq7carol@intranet', 'ALLOW-FROM [redacted]'],
+    ['x-frame-options', 'ALLOW-FROM zq7alice%2540mail.invalid', 'ALLOW-FROM [redacted]'],
+    ['content-language', 'de-DE, zq7alice%40mail.invalid', 'de-DE, [redacted]'],
+    [
+      'x-frame-options',
+      'ALLOW-FROM /embed?ids=12,zq7tail',
+      'ALLOW-FROM https://www.example.test/embed?ids=[redacted]',
+    ],
+    [
+      'x-xss-protection',
+      '1; mode=block; report=/xss-report?q=O(zq7tail)',
+      '1; mode=block; report=https://www.example.test/xss-report?q=[redacted]',
+    ],
+    [
+      'x-xss-protection',
+      "1; mode=block; report=/r?u=abc'zq7tail",
+      '1; mode=block; report=https://www.example.test/r?u=[redacted]',
+    ],
+    [
+      'x-xss-protection',
+      '1; mode=block; report=https://r.example.test/r?u=abc,zq7tail',
+      '1; mode=block; report=https://r.example.test/r?u=[redacted]',
+    ],
+    [
+      'x-xss-protection',
+      "1; mode=block; report=https://r.example.test/r?u=abc'zq7tail",
+      '1; mode=block; report=https://r.example.test/r?u=[redacted]',
+    ],
+    [
+      'x-xss-protection',
+      "1; mode=block; report=https://r.example.test/r#a'zq7tail",
+      '1; mode=block; report=https://r.example.test/r',
+    ],
+    [
+      'permissions-policy',
+      'geolocation=(self "wss://ws.example.test/x?token=a"zq7tail")',
+      'geolocation=(self "wss://ws.example.test/x?token=[redacted]")',
+    ],
+    [
+      'permissions-policy',
+      'geolocation=(self)?u=zq7secret',
+      'geolocation=(self)https://www.example.test/?u=[redacted]',
+    ],
+    ['x-frame-options', 'ALLOW-FROM (x)?u=zq7secret', 'ALLOW-FROM (x)https://www.example.test/?u=[redacted]'],
+    ['x-frame-options', 'ALLOW-FROM <x>?u=zq7secret', 'ALLOW-FROM <x>https://www.example.test/?u=[redacted]'],
+  ])('%s: %s', (name, value, expected) => {
+    for (const rec of [
+      storedHeaderRecord(name, value, BASE, sanitizeUrl),
+      ...snapshotHeaderRecords([{ name, value }], BASE),
+    ]) {
+      expect(rec.value).toBe(expected);
+      expect(JSON.stringify(rec)).not.toContain('zq7');
+    }
+  });
+
+  it.each([
+    ['x-frame-options', 'DENY'],
+    ['x-frame-options', 'SAMEORIGIN'],
+    ['x-frame-options', 'ALLOW-FROM https://a.example.test/'],
+    ['strict-transport-security', 'max-age=31536000; includeSubDomains; preload'],
+    ['x-content-type-options', 'nosniff'],
+    ['x-xss-protection', '1; mode=block'],
+    ['x-xss-protection', '1; mode=block; report=/xss-report'],
+    ['referrer-policy', 'strict-origin-when-cross-origin'],
+    ['referrer-policy', 'no-referrer, strict-origin-when-cross-origin'],
+    ['permissions-policy', 'camera=(), microphone=(), geolocation=()'],
+    ['permissions-policy', 'geolocation=(self "https://maps.example.test/embed")'],
+    ['permissions-policy', 'geolocation=(self "//maps.example.test/embed"), fullscreen=*'],
+    ['permissions-policy', 'geolocation=(self "wss://ws.example.test/x?v=2"), camera=()'],
+    ['x-xss-protection', '1; mode=block; report=/xss-report?v=2'],
+    ['cross-origin-opener-policy', 'same-origin; report-to="coop"'],
+    ['cross-origin-embedder-policy', 'require-corp'],
+    ['cross-origin-resource-policy', 'same-site'],
+    ['content-type', 'text/html; charset=utf-8'],
+    ['content-type', 'multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW'],
+    ['content-type', 'application/ld+json; profile=urn:example:profile'],
+    ['content-language', 'de-DE'],
+    ['content-language', 'de-DE, en'],
+    ['retry-after', '120'],
+    ['retry-after', 'Fri, 30 Oct 2026 12:00:10 GMT'],
+  ])('counterexample: %s %j is stored as sent', (name, value) => {
+    expect(storedHeaderRecord(name, value, BASE, sanitizeUrl).value).toBe(value);
+  });
+
+  it('counterexample: an origin without a path is stored as the URL sanitizer writes it', () => {
+    expect(
+      storedHeaderRecord(
+        'permissions-policy',
+        'geolocation=(self "https://maps.example.test")',
+        BASE,
+        sanitizeUrl,
+      ).value,
+    ).toBe('geolocation=(self "https://maps.example.test/")');
+  });
+});
+
+describe('Set-Cookie: only the name of a named cookie, by one rule for the HTTP collector and the browser', () => {
+  it.each([
+    [
+      'a pair without "=" is a nameless cookie: its text is the value',
+      '8f3a2c9d1e7b4a6f0c5d2e8b; Path=/; HttpOnly',
+      null,
+    ],
+    ['a pair without "=" and without attributes', 'zq7value', null],
+    ['an empty name', '=zq7value; Path=/', null],
+    ['an empty name after blanks', '  = zq7value', null],
+    ['counterexample: a named cookie keeps its name', 'sid=x; Path=/', 'sid'],
+    ['counterexample: blanks around the name', ' plain = zq7value ; HttpOnly', 'plain'],
+    ['counterexample: "=" in the value', 'a=zq7b=c', 'a'],
+    ['counterexample: an empty value', '__Host-id=; Secure; Path=/', '__Host-id'],
+  ])('%s', (_label, line, name) => {
+    const expected = name === null ? [] : [name];
+    const http = snapshotHeaders({ 'Set-Cookie': [line] });
+    expect(http.setCookieNames).toEqual(expected);
+    expect(splitSetCookieNames([line])).toEqual(expected);
+    expect(JSON.stringify(http)).not.toMatch(/zq7|8f3a2c9d/);
+  });
+
+  it('the names of several cookies of one response, in order', () => {
+    const lines = ['8f3a2c9d1e7b4a6f0c5d2e8b; Path=/', 'sid=zq7a; Path=/', '_pref=zq7b'];
+    expect(snapshotHeaders({ 'Set-Cookie': lines }).setCookieNames).toEqual(['sid', '_pref']);
+    expect(splitSetCookieNames([lines.join('\n')])).toEqual(['sid', '_pref']);
   });
 });
 

@@ -1,7 +1,11 @@
 /** Complianz (WordPress). Bot detection uses the read-only `cmplz_is_bot()` / `cmplz_is_speedbot()` calls. */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
+import { pageValuesOf } from '../adapters-file.ts';
+import { cleanVersion } from '../detection.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { categoryFlags, flag, maybeFlag, OTHER_VALUE, pageText, pageValue, readerResult } from './read.ts';
 
 interface ComplianzRead {
   present: boolean;
@@ -95,7 +99,32 @@ function readComplianz(): ComplianzRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readComplianz);
+const ComplianzAnswer = z.object({
+  present: flag,
+  apiCategories: categoryFlags.nullable().catch(null),
+  cookieCategories: categoryFlags,
+  anyCategoryCookie: flag,
+  bannerDismissed: flag,
+  region: pageText,
+  consentType: pageText,
+  version: pageText,
+  isBot: maybeFlag,
+  isSpeedbot: maybeFlag,
+});
+
+/**
+ * The reader's answer with region and consent type as the plugin's own values (adapters.yaml `pageValues`, any other is
+ * `other`) and the version only as a version: the page writes the `complianz` object, and they reach the facts.
+ */
+async function read(page: Page): Promise<ComplianzRead> {
+  const r = readerResult(ComplianzAnswer, await page.evaluate(readComplianz));
+  return {
+    ...r,
+    region: pageValue(r.region, pageValuesOf('complianz', 'region')),
+    consentType: pageValue(r.consentType, pageValuesOf('complianz', 'consenttype')),
+    version: cleanVersion(r.version ?? undefined),
+  };
+}
 
 export const complianz = defineAdapter({
   id: 'complianz',
@@ -135,7 +164,9 @@ export const complianz = defineAdapter({
           {
             cmpId: 'complianz',
             signal: `complianz:region=${r.region}`,
-            ...(r.consentType ? { detail: `consenttype=${r.consentType}` } : {}),
+            ...(r.consentType && r.consentType !== OTHER_VALUE
+              ? { detail: `consenttype=${r.consentType}` }
+              : {}),
           },
         ]
       : [];

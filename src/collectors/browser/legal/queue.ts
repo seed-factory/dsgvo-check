@@ -23,7 +23,7 @@ import {
 } from '../pages/pages.ts';
 import { navigationErrorCode, type VisitResult } from '../pages/visit.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
-import { errorText, withTimeout } from '../util.ts';
+import { pageCallFailure, withTimeout } from '../util.ts';
 import { extractDocument, pdfDocument } from './documents.ts';
 
 /** Per scan: pages tried after a legal link led to a page of the wrong type (≤ 3 GET). */
@@ -428,25 +428,34 @@ async function extractBounded(
   r: VisitResult,
   page: { kind: LegalKind; url: SanitizedUrl; via: DocumentRecord['foundVia']; status: number | null },
 ): Promise<DocumentRecord | null> {
+  const context = {
+    id: `doc-${page.kind}-${c.documents.documents.length + 1}`,
+    kind: page.kind,
+    phase: 'A' as const,
+    url: page.url,
+    foundVia: page.via,
+    status: page.status,
+    contentType: r.contentType,
+    siteDomain: c.scope.etld1,
+  };
+  // The values of the visitor's cookies and storage, to take them out of the text; dropped once the text is read.
+  const read = async (): Promise<DocumentRecord> => {
+    const pdf = /application\/pdf/i.test(r.contentType);
+    const secrets = pdf ? [] : await s.jar.secretValues(s.browser.context, s.page);
+    try {
+      return await extractDocument(s.page, context, secrets);
+    } finally {
+      secrets.length = 0;
+    }
+  };
   try {
     // A page that does not answer must not hold the phase: the read is bounded like every other in-page call.
-    return await withTimeout(
-      extractDocument(s.page, {
-        id: `doc-${page.kind}-${c.documents.documents.length + 1}`,
-        kind: page.kind,
-        phase: 'A',
-        url: page.url,
-        foundVia: page.via,
-        status: page.status,
-        contentType: r.contentType,
-      }),
-      c.timing.cmpCallTimeoutMs,
-      'document extraction',
-    );
+    return await withTimeout(read(), c.timing.cmpCallTimeoutMs, 'document extraction');
   } catch (err) {
     s.record.errors.push({
       code: 'document-extract-failed',
-      message: errorText(err).slice(0, 300),
+      // documentInPage runs in the page: only the kind of failure is kept, see pageCallFailure.
+      message: pageCallFailure(err),
       phase: 'A',
       url: page.url,
     });

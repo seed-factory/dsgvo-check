@@ -7,6 +7,7 @@ import type { RevealFacts } from '../../../core/snapshot/browser.ts';
 import type { Viewport } from '../../../core/snapshot/common.ts';
 import type { PhaseTiming } from '../config.ts';
 import { type RawScrollFacts, scrollFactsInPage } from '../in-page/dom.ts';
+import { fields } from '../page-values.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
 import type { NetworkRecorder } from '../recording/recorder.ts';
 import { TimeoutError, withTimeout } from '../util.ts';
@@ -84,6 +85,18 @@ export interface RevealResult {
   restored: boolean;
 }
 
+/**
+ * The measurement in the shape the page code promises: it runs in the page's own world, whose script can replace
+ * `Math` or `getComputedStyle`. A height that is no finite number is no measurement.
+ */
+async function measure(page: Page): Promise<RawScrollFacts> {
+  const f = fields(await page.evaluate(scrollFactsInPage));
+  if (typeof f.heightPx !== 'number' || !Number.isFinite(f.heightPx))
+    throw new Error('document height unreadable');
+  const scrollY = typeof f.scrollY === 'number' && Number.isFinite(f.scrollY) ? f.scrollY : 0;
+  return { heightPx: f.heightPx, scrollY, locked: f.locked === true };
+}
+
 // Our own words only: a page can throw anything from its scripts (also a cookie value), and Playwright passes the text
 // of a page exception on.
 const failure = (what: string, err: unknown): string =>
@@ -107,7 +120,7 @@ async function restore(i: RevealInput): Promise<string | undefined> {
 export async function revealBelowFold(i: RevealInput): Promise<RevealResult> {
   let measured: RawScrollFacts;
   try {
-    measured = await withTimeout(i.page.evaluate(scrollFactsInPage), i.callTimeoutMs, 'document height');
+    measured = await withTimeout(measure(i.page), i.callTimeoutMs, 'document height');
   } catch (err) {
     return {
       facts: { outcome: 'failed', documentHeightPx: null },
@@ -144,11 +157,7 @@ export async function revealBelowFold(i: RevealInput): Promise<RevealResult> {
     i.signal,
   );
   // Measured again before the restore: a page sized by the viewport shrinks back with it.
-  const heightDuringPx = await withTimeout(
-    i.page.evaluate(scrollFactsInPage),
-    i.callTimeoutMs,
-    'document height',
-  ).then(
+  const heightDuringPx = await withTimeout(measure(i.page), i.callTimeoutMs, 'document height').then(
     (f) => f.heightPx,
     () => null,
   );

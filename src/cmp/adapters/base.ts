@@ -4,10 +4,12 @@
  * target on exactly one element.
  */
 import type { Page } from 'playwright-core';
+import { isCategoryKey, isStoredName } from '../../core/redaction/page-names.ts';
 import { sanitizeUrl } from '../../core/url/url.ts';
 import { type AdapterData, supportedVersionsOf } from '../adapters-data.ts';
 import { adapterData } from '../adapters-file.ts';
 import { classifyFirstLayer } from '../classify.ts';
+import { type ClickError, clickFailure, noTarget, reloadFailure } from '../click-errors.ts';
 import {
   cleanVersion,
   confidenceFromSignals,
@@ -48,9 +50,18 @@ const VERIFY_TIMEOUT_MS = 8000;
 
 const WAIT_STEP_MS = 200;
 
-/** Error texts in the facts keep the first line of the message, cut to this length. */
-const CLICK_ERROR_MAX_LENGTH = 160;
-const RELOAD_ERROR_MAX_LENGTH = 120;
+/** Category keys past this many are folded into `other` too. */
+const MAX_CATEGORY_KEYS = 32;
+
+/** The category under which the states of keys that are no names are kept. */
+export const OTHER_CATEGORY = 'other';
+
+const CATEGORY_STATES: ReadonlySet<unknown> = new Set<CategoryState>([
+  'denied',
+  'granted',
+  'partial',
+  'unknown',
+]);
 
 export type ConfigValue = string | number | boolean | null;
 
@@ -102,6 +113,47 @@ function detectArgsOf(d: AdapterData['detect']): DetectArgs {
   };
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * The detection probe's answer as the Node side takes it. The probe runs in the page, which can change what it returns:
+ * a global, script or selector counts only when it is the vendor's own (adapters.yaml), a cookie or storage name only
+ * when it is a name (`isStoredName`: the probe splits `document.cookie` with built-ins the page can replace, so a
+ * `name=value` pair may come back as a name) and the vendor's pattern matches it here. Version strings and script URLs
+ * are read for a version only.
+ */
+function detectRawOf(raw: unknown, d: AdapterData['detect']): DetectRaw {
+  const r = isRecord(raw) ? raw : {};
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : [];
+  const among = (v: unknown, known: readonly string[]) => strings(v).filter((x) => known.includes(x));
+  const named = (v: unknown, patterns: readonly string[]) => {
+    const res = patterns.map((p) => new RegExp(p));
+    return strings(v).filter((n) => isStoredName(n) && res.some((re) => re.test(n)));
+  };
+
+  const versions: Record<string, string> = {};
+  if (isRecord(r.versions)) {
+    for (const path of d.versionGlobals) {
+      const v = Object.hasOwn(r.versions, path) ? r.versions[path] : undefined;
+      if (typeof v === 'string') versions[path] = v;
+    }
+  }
+  return {
+    globals: among(r.globals, d.globals),
+    versions,
+    scripts: among(
+      r.scripts,
+      d.scripts.map((s) => s.label),
+    ),
+    scriptUrls: strings(r.scriptUrls).slice(0, d.scripts.length),
+    dom: among(r.dom, d.dom),
+    cookies: named(r.cookies, d.cookies),
+    storage: named(r.storage, d.storage),
+  };
+}
+
 /** The version the vendor reports about itself, else `?ver=` of its script, else the first matching rule. */
 function versionOf(raw: DetectRaw, d: AdapterData): string | null {
   for (const path of d.detect.versionGlobals) {
@@ -130,6 +182,30 @@ export function toCategoryStates(map: Record<string, boolean | null>): Record<st
   return out;
 }
 
+/**
+ * The categories with only names as keys (`isCategoryKey`). The page chooses the keys (a group slug, a key in the value
+ * of its consent cookie), so any other key, and any past the first `MAX_CATEGORY_KEYS`, is folded into one `other`. Its
+ * state is that of the folded ones when they agree, else `partial`: a verdict over all categories stays the same. A
+ * value that is no state is `unknown`.
+ */
+export function foldCategories(categories: Readonly<Record<string, unknown>>): Record<string, CategoryState> {
+  const out: Record<string, CategoryState> = {};
+  const folded = new Set<CategoryState>();
+  let kept = 0;
+  for (const [key, value] of Object.entries(categories)) {
+    const state = CATEGORY_STATES.has(value) ? (value as CategoryState) : 'unknown';
+    if (key !== OTHER_CATEGORY && kept < MAX_CATEGORY_KEYS && isCategoryKey(key)) {
+      out[key] = state;
+      kept++;
+    } else {
+      folded.add(state);
+    }
+  }
+  const [only, ...more] = folded;
+  if (only !== undefined) out[OTHER_CATEGORY] = more.length === 0 ? only : 'partial';
+  return out;
+}
+
 export function decisionMethod(m: string | null | undefined): 'explicit' | 'implied' | 'unknown' {
   return m === 'explicit' || m === 'implied' ? m : 'unknown';
 }
@@ -143,18 +219,19 @@ async function safe<T>(p: Promise<T> | undefined, fallback: T): Promise<T> {
   }
 }
 
+/** The TCF CMP id is a 12-bit field. */
+const MAX_TCF_CMP_ID = 4095;
+
+/**
+ * `tcf:gdprApplies=false` from the TCF ping. The page provides `__tcfapi` and even the `Promise` the ping answers with,
+ * so only an exact answer counts, and the CMP id only as a number the field can hold.
+ */
 export async function tcfGeoSignals(page: Page): Promise<GeoSignal[]> {
-  const r = await safe(page.evaluate(tcfPingProbe), { present: false, gdprApplies: null, cmpId: null });
-  if (r.present && r.gdprApplies === false) {
-    return [
-      {
-        cmpId: 'tcf',
-        signal: 'tcf:gdprApplies=false',
-        ...(r.cmpId !== null ? { detail: `cmpId=${r.cmpId}` } : {}),
-      },
-    ];
-  }
-  return [];
+  const r: unknown = await safe(page.evaluate(tcfPingProbe), null);
+  if (!isRecord(r) || r.present !== true || r.gdprApplies !== false) return [];
+  const id = r.cmpId;
+  const known = typeof id === 'number' && Number.isInteger(id) && id > 0 && id <= MAX_TCF_CMP_ID;
+  return [{ cmpId: 'tcf', signal: 'tcf:gdprApplies=false', ...(known ? { detail: `cmpId=${id}` } : {}) }];
 }
 
 /** Click one element by its selector: exactly one match, `locator.click()` with actionability checks, no `force`. */
@@ -162,7 +239,7 @@ export async function clickButton(
   page: Page,
   button: Pick<CmpButton, 'selector'>,
   timeoutMs = CLICK_TIMEOUT_MS,
-): Promise<{ clicked: boolean; error?: string }> {
+): Promise<{ clicked: boolean; error?: ClickError }> {
   if (!button.selector) return { clicked: false, error: 'no-selector' };
 
   const locator = page.locator(button.selector);
@@ -178,8 +255,7 @@ export async function clickButton(
     await locator.click({ timeout: timeoutMs });
     return { clicked: true };
   } catch (err) {
-    const msg = (err as Error).message.split('\n')[0] ?? 'error';
-    return { clicked: false, error: `click-failed: ${msg.slice(0, CLICK_ERROR_MAX_LENGTH)}` };
+    return { clicked: false, error: clickFailure(err) };
   }
 }
 
@@ -242,8 +318,9 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
 
     async detect(page): Promise<CmpDetection | null> {
       const vendor = data();
-      const raw = await safe(page.evaluate(cmpDetectProbe, detectArgsOf(vendor.detect)), null);
-      if (!raw) return null;
+      const answer: unknown = await safe(page.evaluate(cmpDetectProbe, detectArgsOf(vendor.detect)), null);
+      if (!answer) return null;
+      const raw = detectRawOf(answer, vendor.detect);
       const signals = [
         ...raw.globals.map((g) => `global:${g}`),
         ...raw.scripts.map((s) => `script:${s}`),
@@ -299,7 +376,14 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
       };
     },
 
-    state: (page) => safe(spec.readState(page), []),
+    // Every state passes here, those `verify` compares included: category keys come from the page.
+    state: (page) =>
+      safe(
+        spec
+          .readState(page)
+          .then((states) => states.map((s) => ({ ...s, categories: foldCategories(s.categories) }))),
+        [],
+      ),
 
     async geoSignals(page) {
       const [own, tcf] = await Promise.all([safe(spec.readGeo?.(page), []), tcfGeoSignals(page)]);
@@ -394,12 +478,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
         ...(again.ok ? {} : { reason: `after-reload:${again.reason ?? 'not-confirmed'}` }),
       };
     } catch (err) {
-      const msg = (err as Error).message.split('\n')[0] ?? '';
-      return {
-        persisted: null,
-        state: [],
-        reason: `reload-failed: ${msg.slice(0, RELOAD_ERROR_MAX_LENGTH)}`,
-      };
+      return { persisted: null, state: [], reason: reloadFailure(err) };
     }
   }
 
@@ -414,7 +493,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     timeoutMs: number,
   ): Promise<SettingsLayerFacts> {
     const layer = data().settingsLayer;
-    const closed = (error?: string): SettingsLayerFacts => ({
+    const closed = (error?: ClickError): SettingsLayerFacts => ({
       takenAt: new Date().toISOString(),
       opened: false,
       ...(error ? { error } : {}),
@@ -481,7 +560,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     target: ClickTarget | null,
     timeoutMs?: number,
   ): Promise<ClickOutcome> {
-    if (!target) return { action, clicked: false, button: null, error: `no-unambiguous-${action}` };
+    if (!target) return { action, clicked: false, button: null, error: noTarget(action) };
     const before = await adapter.state(page);
     const document = await documentOrigin(page);
     const res = await clickButton(page, target, timeoutMs);
@@ -509,13 +588,12 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     opts: ActOptions = {},
   ): Promise<ClickOutcome> {
     if (opts.target !== undefined) return execute(page, action, opts.target, opts.timeoutMs);
-    if (!opts.facts) return { action, clicked: false, button: null, error: 'no-target' };
+    if (!opts.facts) return { action, clicked: false, button: null, error: 'no-target' satisfies ClickError };
     const cls = classifyFirstLayer(opts.facts, opts.lexicon ?? loadLexicon(), {
       blockingCoveredRatio: opts.blockingCoveredRatio,
     });
     const target = (action === 'reject' ? cls.targets?.reject : cls.targets?.accept) ?? null;
-    if (!target)
-      return { action, clicked: false, button: null, error: `no-unambiguous-${action}:${cls.variant}` };
+    if (!target) return { action, clicked: false, button: null, error: noTarget(action, cls.variant) };
     return execute(page, action, target, opts.timeoutMs);
   }
 

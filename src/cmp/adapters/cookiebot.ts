@@ -1,7 +1,10 @@
 /** Cookiebot (Usercentrics A/S); selectors from the vendor's public DOM ids, read-only API access. */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
+import { pageValuesOf } from '../adapters-file.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { decisionMethod, defineAdapter, toCategoryStates as toCategories } from './base.ts';
+import { categoryFlags, flag, maybeFlag, pageText, pageValue, readerResult } from './read.ts';
 
 interface CookiebotRead {
   apiPresent: boolean;
@@ -98,7 +101,42 @@ function readCookiebot(): CookiebotRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readCookiebot);
+const CookiebotAnswer = z.object({
+  apiPresent: flag,
+  apiLoaded: flag,
+  hasResponse: maybeFlag,
+  method: pageText,
+  categories: categoryFlags,
+  isOutOfRegion: maybeFlag,
+  gdprApplies: maybeFlag,
+  spider: maybeFlag,
+  cookiePresent: flag,
+  cookieOutOfRegion: flag,
+  cookieCategories: categoryFlags,
+  cookieMethod: pageText,
+  blockingMode: pageText,
+});
+
+/** `explicit` or `implied`, the methods `decisionMethod` knows; null for anything else the page wrote. */
+const knownMethod = (m: string | null): string | null => {
+  const method = decisionMethod(m);
+  return method === 'unknown' ? null : method;
+};
+
+/**
+ * The reader's answer with the consent methods out of `decisionMethod` and the blocking mode as one of Cookiebot's own
+ * values (adapters.yaml `pageValues`, any other is `other`): the page writes the `Cookiebot` object and the script tag,
+ * and they reach the config facts.
+ */
+async function read(page: Page): Promise<CookiebotRead> {
+  const r = readerResult(CookiebotAnswer, await page.evaluate(readCookiebot));
+  return {
+    ...r,
+    method: knownMethod(r.method),
+    cookieMethod: knownMethod(r.cookieMethod),
+    blockingMode: pageValue(r.blockingMode?.toLowerCase() ?? null, pageValuesOf('cookiebot', 'blockingMode')),
+  };
+}
 
 export const cookiebot = defineAdapter({
   id: 'cookiebot',

@@ -83,6 +83,38 @@ describe('the names of <meta http-equiv> are bounded when they are stored', () =
     expect(JSON.stringify(out)).not.toContain('zq7');
   });
 
+  it('the values of kept meta tags lose relative URLs with a query and addresses, like the response headers', () => {
+    const html = [
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; report-uri /csp?visitor=zq7alice">',
+      '<meta http-equiv="X-Frame-Options" content="ALLOW-FROM zq7max@example.test">',
+      '<meta http-equiv="Link" content="</a.css>; rel=preload, https://cdn.example.test/p?uid=zq7alice">',
+      '<meta http-equiv="Content-Language" content="mailto:zq7max@example.test">',
+    ].join('');
+    expect(storedMetaHttpEquiv(extractMeta(html).httpEquiv, BASE)).toEqual([
+      {
+        name: 'content-security-policy',
+        value: "default-src 'self'; report-uri http://www.example.test/csp?visitor=[redacted]",
+      },
+      { name: 'x-frame-options', value: 'ALLOW-FROM [redacted]@example.test' },
+      {
+        name: 'link',
+        value: '<http://www.example.test/a.css>; rel=preload, https://cdn.example.test/p?uid=[redacted]',
+      },
+      { name: 'content-language', value: 'mailto:[redacted]@example.test' },
+    ]);
+  });
+
+  it('a query value with a comma and a quote glued to a CSP URL do not keep the text after them', () => {
+    const html = [
+      '<meta http-equiv="X-Frame-Options" content="ALLOW-FROM /embed?ref=a,zq7tail">',
+      `<meta http-equiv="Content-Security-Policy" content='report-uri https://r.example.test/csp"zq7meta@mail.example'>`,
+    ].join('');
+    expect(storedMetaHttpEquiv(extractMeta(html).httpEquiv, BASE)).toEqual([
+      { name: 'x-frame-options', value: 'ALLOW-FROM http://www.example.test/embed?ref=[redacted]' },
+      { name: 'content-security-policy', value: 'report-uri https://r.example.test' },
+    ]);
+  });
+
   it('a meta tag named like a product header is no response header: its value stays redacted, without product facts', () => {
     const html = [
       '<meta http-equiv="X-Powered-By" content="PHP/7.2.34">',

@@ -9,9 +9,8 @@ import type { ClassifiedRequest, RequestKind, ServiceCategory } from '../../deri
 const FONT_LOAD_KINDS: ReadonlySet<RequestKind> = new Set(['stylesheet', 'font', 'library', 'resource']);
 
 /**
- * A request of a font service that loads a font, by its kind for that service: `kind` of the site's own request,
- * `resourceKind` of a request in an embed's frame. Both paths of EMBED-01 and the frame fonts of EMBED-02 and
- * EMBED-03 count the same requests.
+ * A request of the site to a font service that loads a font, by its kind for that service. Inside an embed's frame the
+ * narrower `frameFont` of embed-frame.ts applies.
  */
 export const fontLoadKind = (kind: RequestKind | undefined): boolean =>
   FONT_LOAD_KINDS.has(kind ?? 'resource');

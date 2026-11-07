@@ -1,8 +1,10 @@
 /** Borlabs Cookie (WordPress) v2 and v3; recognition, selectors and the bot pattern are in test/data/cmp/adapters.yaml. */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { readerInput } from '../adapters-file.ts';
 import type { ConsentStateFact } from '../types.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { flag, maybeFlag, readerResult } from './read.ts';
 
 interface BorlabsRead {
   hasGlobal: boolean;
@@ -87,7 +89,25 @@ function readBorlabs(botUserAgent: string): BorlabsRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readBorlabs, readerInput('borlabs', 'botUserAgent'));
+const BorlabsAnswer = z.object({
+  hasGlobal: flag,
+  cookiePresent: flag,
+  // Keys of the consent cookie's value: the stored state keeps only names among them (`foldCategories`).
+  groups: z
+    .array(z.unknown())
+    .catch([])
+    .transform((g) => g.filter((x): x is string => typeof x === 'string')),
+  geoIp: maybeFlag,
+  cookiesForBots: maybeFlag,
+  hideOnThisPage: maybeFlag,
+  afterInteraction: maybeFlag,
+  respectDnt: maybeFlag,
+  bannerVisible: flag,
+  uaBot: flag,
+});
+
+const read = async (page: Page): Promise<BorlabsRead> =>
+  readerResult(BorlabsAnswer, await page.evaluate(readBorlabs, readerInput('borlabs', 'botUserAgent')));
 
 export const borlabs = defineAdapter({
   id: 'borlabs',

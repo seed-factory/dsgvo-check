@@ -311,6 +311,16 @@ describe("EMBED-01 fonts of an embed's frame", () => {
     expect(variantsOf(runCheck(embed01, frameScenario(file)))).toEqual([]);
   });
 
+  it('counterexample: a map frame whose only font-service request is the kit script of Adobe Fonts gives no frame finding', () => {
+    const document = inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true });
+    const kitScript = inMapFrame('b', 'https://use.typekit.net/abc1234.js', 'script');
+    const snapshot = site({ phases: [phase('A', { requests: [document, kitScript] })] });
+
+    expect(variantsOf(runCheck(embed01, snapshot))).toEqual([]);
+    const [map] = observationsOf(runCheck(embed02, snapshot));
+    expect(map?.params).toMatchObject({ frameFontServices: null, frameFontRequestCount: 0 });
+  });
+
   it("the map's finding names the same frame fonts: the usage hit beside an Adobe Fonts kit is no font and no helper host", () => {
     const kit = inMapFrame('b', 'https://use.typekit.net/abc1234.css', 'stylesheet');
     const usage = inMapFrame('c', TYPEKIT_USAGE, 'stylesheet');

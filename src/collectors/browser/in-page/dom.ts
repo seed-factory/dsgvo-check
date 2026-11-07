@@ -89,11 +89,11 @@ export interface FormRules {
 export function domFactsInPage(arg: {
   maxLinks: number;
   maxScripts: number;
+  maxPlaceholders: number;
   patterns: DomPatterns;
   forms: FormRules;
 }): RawDomFacts {
   const MAX_SHADOW_DEPTH = 8;
-  const MAX_PLACEHOLDERS = 20;
   const LINK_PROBE_CHARS = 600;
   const TEXT_SAMPLE_CHARS = 4000;
   // Tags that can hold the short text of a two-click placeholder.
@@ -350,7 +350,7 @@ export function domFactsInPage(arg: {
       metaRefresh = String(el.getAttribute('content') || '');
     }
 
-    if (placeholders.length < MAX_PLACEHOLDERS && tag !== 'script' && tag !== 'style') {
+    if (placeholders.length < arg.maxPlaceholders && tag !== 'script' && tag !== 'style') {
       const found = readPlaceholder(el, tag);
       if (found && !placeholders.some((p) => p.text === found.text && p.kind === found.kind)) {
         placeholders.push(found);

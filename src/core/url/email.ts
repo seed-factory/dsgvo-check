@@ -180,3 +180,38 @@ export function containsAddress(text: string): boolean {
   }
   return maskEmails(current) !== current;
 }
+
+/**
+ * An `@` or an `(at)` / `[at]` marker in `text`, written out or percent-encoded (up to three rounds), whatever follows
+ * it: also where `containsAddress` sees no address (`alice@intranet`, `/~alice@`).
+ */
+export function hasAddressMarker(text: string): boolean {
+  let current = text;
+  for (let round = 0; round < 3; round++) {
+    if (mayHoldAddress(current)) return true;
+    const next = decodeLenient(current);
+    if (next === current) return false;
+    current = next;
+  }
+  return mayHoldAddress(current);
+}
+
+/** A word that may hold an address: an `@`, a percent escape of one, or an `(at)` / `[at]` marker. */
+const MAY_BE_ADDRESS_WORD = /[@%([]/;
+
+/**
+ * Where the addresses of `text` are, for code that must leave them whole to `maskEmails` and the URL redaction: every
+ * whitespace-delimited word that holds one, also percent-encoded (`containsAddress`), and the `(at)` and `[at]` forms,
+ * which may hold blanks. Spans `[start, end)`, sorted by start; they may overlap.
+ */
+export function addressSpans(text: string): Array<readonly [number, number]> {
+  const spans: Array<readonly [number, number]> = [];
+  if (!MAY_BE_ADDRESS_WORD.test(text)) return spans;
+  for (const m of text.matchAll(/\S+/g)) {
+    if (MAY_BE_ADDRESS_WORD.test(m[0]) && containsAddress(m[0])) spans.push([m.index, m.index + m[0].length]);
+  }
+  if (MAY_BE_OBFUSCATED.test(text)) {
+    for (const m of text.matchAll(OBFUSCATED_RE)) spans.push([m.index, m.index + m[0].length]);
+  }
+  return spans.sort((a, b) => a[0] - b[0]);
+}

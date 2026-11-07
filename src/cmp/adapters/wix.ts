@@ -3,8 +3,10 @@
  * has not answered, Wix reports its default policy (`defaultPolicy: true`). Essential processing is always on.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import { readerInput } from '../adapters-file.ts';
 import { defineAdapter, toCategoryStates } from './base.ts';
+import { categoryFlags, flag, maybeFlag, readerResult } from './read.ts';
 
 interface WixRead {
   present: boolean;
@@ -48,7 +50,15 @@ function readWix(optionalGroups: string[]): WixRead {
   };
 }
 
-const read = (page: Page) => page.evaluate(readWix, readerInput('wix', 'optionalGroups'));
+const WixAnswer = z.object({
+  present: flag,
+  ready: flag,
+  defaultPolicy: maybeFlag,
+  categories: categoryFlags,
+});
+
+const read = async (page: Page): Promise<WixRead> =>
+  readerResult(WixAnswer, await page.evaluate(readWix, readerInput('wix', 'optionalGroups')));
 
 export const wix = defineAdapter({
   id: 'wix',

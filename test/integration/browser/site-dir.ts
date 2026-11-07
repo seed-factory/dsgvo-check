@@ -44,12 +44,14 @@ type BrowserOf<B> = B extends true ? { browser: TestBrowser; tab: Page } : unkno
 export type SiteUnderTest<C, B> = { server: FixtureServer } & RunOf<C> & BrowserOf<B>;
 
 /**
- * For the tests of the enclosing suite: serves `files` as www.example.test (`routes` answer first), then collects
- * phase A once and launches a test browser if asked to; closes and removes all of it afterwards.
+ * For the tests of the enclosing suite: serves `files` as `host` (www.example.test unless given; `routes` answer
+ * first), then collects phase A once from its start page and launches a test browser if asked to; closes and removes
+ * all of it afterwards.
  */
 export function useSite<C extends true | CollectOptions | undefined = undefined, B extends boolean = false>(
   files: Record<string, string>,
   opts: {
+    host?: string;
     routes?: RouteSpec[];
     /** Phase A from the start page: `true` with the defaults of `collect`, or its options. */
     collect?: C;
@@ -60,8 +62,11 @@ export function useSite<C extends true | CollectOptions | undefined = undefined,
   let dir: SiteDir | undefined;
   beforeAll(async () => {
     dir = writeSite(files);
-    site.server = await startFixtureServer({ hosts: { 'www.example.test': dir.root }, routes: opts.routes });
-    if (opts.collect) site.run = await collect(site.server, opts.collect === true ? {} : opts.collect);
+    const host = opts.host ?? 'www.example.test';
+    site.server = await startFixtureServer({ hosts: { [host]: dir.root }, routes: opts.routes });
+    const start = { url: `https://${host}/` };
+    if (opts.collect)
+      site.run = await collect(site.server, opts.collect === true ? start : { ...start, ...opts.collect });
     if (opts.browser) {
       site.browser = await launchTestBrowser(site.server);
       site.tab = await site.browser.context.newPage();

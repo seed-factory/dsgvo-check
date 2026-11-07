@@ -691,10 +691,25 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   Domain maskiert. Den Text des Einwilligungsbanners, den PRIV-01 braucht, speichert der Scan nicht: Der Collector
   durchsucht ihn im Speicher nach Namen und Schreibweisen des Dienstekatalogs und behält nur die Treffer, je Dienst
   dessen Kennung und die Schreibweise aus dem Katalog. Einwilligungs-IDs, UIDs oder TC-Strings, die das Banner neben den
-  Diensten anzeigt, gelangen so in keiner Form in Snapshot, Bericht oder Logs. Von Headern wie `Server` und
-  `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre
-  Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten
-  Scans räumt der nächste Scan auf.
+  Diensten anzeigt, gelangen so in keiner Form in Snapshot, Bericht oder Logs. Aus Markup und Konfiguration des Banners
+  übernimmt der Scanner nur Namen: Ids, Klassen und Attributwerte mit Query, Adresse, URL, Leerzeichen, unsichtbaren
+  Zeichen (Nullbreitenzeichen, Richtungszeichen), Vollbreitenzeichen wie `＠` oder einer Folge wie eine Kennung kommen
+  weder in den Klick-Selektor noch in den Snapshot; dieselbe Regel gilt für kurze Werte der Seite außerhalb des Banners
+  (Linkschemata, Skripttypen, Ereignisnamen, Cookie-Pfade). Als Kennung gelten sechs Ziffern in Folge oder acht
+  insgesamt, eine Hex-Folge ab acht Zeichen mit Ziffern und Buchstaben oder ab 16 Zeichen mit Ziffer, auch durch Punkte,
+  Bindestriche oder unsichtbare Zeichen getrennt, eine Base64-Folge ab 16 Zeichen mit zwei Ziffern, eine UUID und eine
+  Folge aus Base64-Zeichen, `-` und `_` ab 20 Zeichen mit Ziffer. Diese bleibt ein Name, wenn ihre Teile zwischen `-`
+  und `_` Wörter sind und höchstens ein Teil eine kurze Gruppe aus Buchstaben oder Ziffern ist oder auf sie endet
+  (`CybotCookiebotBannerCloseButtonE2E`, `ch2-open-settings-btn`). Auch ein echter Name mit einer solchen Folge
+  (`post-123456`, `ConsentBanner2024`) gilt nicht als Name; der Klick-Selektor nutzt dann ein anderes Merkmal oder den
+  Pfad im Dokument. Nicht erkannt werden eine Base64-Folge, die Punkte in kurze Stücke teilen, und Buchstaben anderer
+  Schriften, die wie lateinische aussehen (ein kyrillisches `с` in einem Hex-Hash). Einwilligungskategorien mit
+  Schlüsseln, die keine Namen sind, erscheinen zusammengefasst als `other`, ebenso Werte von Anbieter-Einstellungen, die
+  der Anbieter nicht kennt (etwa eine Complianz-Region). Eine CMP-Version bleibt nur aus zwei bis vier Zahlengruppen mit
+  höchstens fünf Ziffern je Gruppe und zusammen weniger als acht Ziffern erhalten. Cookie- und Storage-Namen der
+  CMP-Erkennung bleiben nur als Namen ohne `=` und `;` erhalten. Von Headern wie `Server` und `X-Powered-By` bleiben nur
+  Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies
+  der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2

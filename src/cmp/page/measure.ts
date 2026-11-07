@@ -2,6 +2,7 @@
 import type { ElementHandle, Frame, Page } from 'playwright-core';
 import { LEGAL_KINDS, type LegalLexicon, matchLegalLink } from '../../collectors/browser/legal/lexicon.ts';
 import { loadLegalLexicon } from '../../collectors/browser/legal/lexicon-file.ts';
+import { ARIA_ROLES, NAME_RULES } from '../../core/redaction/page-names.ts';
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
 import { parseUrl, sanitizeUrl } from '../../core/url/url.ts';
 import { loadProbeData } from '../adapters-file.ts';
@@ -16,7 +17,11 @@ import type {
   CmpLexicon,
 } from '../types.ts';
 import { cmpPageProbe } from './probe.ts';
-import type { KindPhrases, ProbeArgs, ProbeResult, RawButton } from './probe-types.ts';
+import { parseProbeResult } from './probe-result.ts';
+import type { KindPhrases, ProbeArgs, ProbeNameRules, ProbeResult, RawButton } from './probe-types.ts';
+
+/** The rules of src/core/redaction/page-names.ts, as the probe gets them. */
+export const PROBE_NAME_RULES: ProbeNameRules = { ...NAME_RULES, roles: ARIA_ROLES };
 
 export interface BannerSpec {
   containers: readonly string[];
@@ -96,6 +101,7 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
     frameMode: false,
     maxButtons: MAX_BUTTONS,
     selectorAttributes: probeData.selectorAttributes,
+    names: PROBE_NAME_RULES,
     kindPhrases: phrases.kinds,
     paidPhrases: phrases.paid,
     acknowledgePhrases: phrases.acknowledge,
@@ -106,8 +112,9 @@ function probeArgs(lexicon: CmpLexicon, p: Partial<ProbeArgs>): ProbeArgs {
   };
 }
 
+/** The probe's result as the Node side reads it: the probe runs in the page, see probe-result.ts. */
 export async function runProbe(target: Page | Frame, args: ProbeArgs): Promise<ProbeResult> {
-  return target.evaluate(cmpPageProbe, args);
+  return parseProbeResult(await target.evaluate(cmpPageProbe, args), args);
 }
 
 function absoluteHref(href: string | null, base: string): string | null {
@@ -329,6 +336,20 @@ interface IFrameLayout {
   top: number;
 }
 
+/** Finite numbers only: the layout is read in the page, which can make it return anything. */
+function finiteLayout(l: IFrameLayout | null): IFrameLayout | null {
+  if (!l || typeof l !== 'object' || typeof l.box !== 'object' || l.box === null) return null;
+  const values = [l.box.x, l.box.y, l.box.width, l.box.height, l.width, l.height, l.left, l.top];
+  if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+  return {
+    box: { x: l.box.x, y: l.box.y, width: l.box.width, height: l.box.height },
+    width: l.width,
+    height: l.height,
+    left: l.left,
+    top: l.top,
+  };
+}
+
 /** The layout of an iframe element in its document; null when it is not rendered or cannot be read. */
 async function iframeLayout(frameEl: ElementHandle): Promise<IFrameLayout | null> {
   return frameEl
@@ -347,7 +368,7 @@ async function iframeLayout(frameEl: ElementHandle): Promise<IFrameLayout | null
         top: iframe.clientTop + (Number.parseFloat(style.paddingTop) || 0),
       };
     })
-    .catch(() => null);
+    .then(finiteLayout, () => null);
 }
 
 /**

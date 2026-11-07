@@ -8,9 +8,10 @@ import type { BrowserTiming, PhaseTiming } from '../config.ts';
 import { sanitizeRequestUrl, splitSetCookieNames } from '../recording/features.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
 import { type NetworkRecorder, settleWithin } from '../recording/recorder.ts';
-import { errorText, TimeoutError, truncate, withTimeout } from '../util.ts';
+import { errorText, pageCallFailure, TimeoutError, truncate, withTimeout } from '../util.ts';
 import { detectChallenge } from './challenge.ts';
 import { collectDom } from './dom-facts.ts';
+import { chromiumNetError } from './net-errors.ts';
 import type { CandidateLink, LegalKind } from './pages.ts';
 
 export interface VisitInput {
@@ -88,16 +89,28 @@ function firstLine(s: string): string {
   return truncate(s.split('\n')[0] ?? s, 300);
 }
 
+/** The net error at the start of Playwright's message of a failed `goto`/`reload`, or the collector's own `net::<code>`. */
+const NET_ERROR = /^(?:(?:page|frame)\.(?:goto|reload): )?net::(ERR_[A-Z0-9_]+)(?=$|[\s;])/;
+/** Playwright names both URLs; the second one is where the page sent itself. */
+const INTERRUPTED =
+  /^(?:page|frame)\.(?:goto|reload): Navigation to ".*" is interrupted by another navigation to/s;
+
+// The code of a failed navigation, from the start of the message only and only as one of Chromium's net errors: the
+// rest of the message can name a URL the page chose (`… interrupted by another navigation to "/?x=net::ERR_…"`).
 export function navigationErrorCode(message: string): string {
-  const m = /net::(ERR_[A-Z0-9_]+)/.exec(message);
-  if (m) return m[1] as string;
+  const m = NET_ERROR.exec(message);
+  if (m) return chromiumNetError(m[1] as string) ?? 'navigation-error';
+  if (INTERRUPTED.test(message)) return 'navigation-interrupted';
   if (/Timeout .*exceeded|timed out/i.test(message)) return 'timeout';
   if (/Download is starting/i.test(message)) return 'download';
   return 'navigation-error';
 }
 
-function errorCodeOfErrorPage(title: string, text: string): string | null {
-  return /\b(ERR_[A-Z0-9_]+)\b/.exec(`${title}\n${text}`)?.[1] ?? null;
+/** The code Chromium's own error page (`chrome-error://`) shows; any other document is the page's own text. */
+function errorCodeOfErrorPage(finalUrl: string, title: string, text: string): string {
+  if (!finalUrl.startsWith('chrome-error://')) return 'ERR_FAILED';
+  const code = /\b(ERR_[A-Z0-9_]+)\b/.exec(`${title}\n${text}`)?.[1];
+  return (code && chromiumNetError(code)) ?? 'ERR_FAILED';
 }
 
 /** Awaits response metadata within the page budget; on a cut the fallback is used and the limitation recorded. */
@@ -219,14 +232,15 @@ async function readContent(
       content.scripts = r.raw.scripts.map((x) => x.src).filter(Boolean);
       content.domError = undefined;
     } catch (err) {
-      const domError = firstLine(errorText(err));
+      // collectDom runs in the page: only the kind of failure is kept (see pageCallFailure); the raw text only decides.
+      const domError = pageCallFailure(err);
       content.domError = domError;
       if (err instanceof TimeoutError) {
         limitations.push({ code: 'dom-collect-timeout', message: domError });
         break;
       }
       // The page navigated itself (JS/meta redirect) while we read it: wait for the new document once.
-      if (!/context was destroyed|navigat/i.test(domError)) break;
+      if (!/context was destroyed|navigat/i.test(firstLine(errorText(err)))) break;
       await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs }).catch(() => undefined);
     }
   }
@@ -283,9 +297,9 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   // Read after the DOM: a JS/meta redirect during the quiet window changes the final URL.
   let rawFinalUrl = error ? s.rawUrl : i.page.url();
   if (!error && !/^https?:/i.test(rawFinalUrl)) {
-    // The browser ended on its own error page (`chrome-error://`) or left http(s): a failed navigation, nothing read
-    // from the page belongs to the site.
-    error = `net::${errorCodeOfErrorPage(content.title, content.text) ?? 'ERR_FAILED'}`;
+    // The browser ended on its own error page (`chrome-error://`) or left http(s) (a `blob:` or `data:` document the
+    // page opened): a failed navigation, nothing read from the page belongs to the site.
+    error = `net::${errorCodeOfErrorPage(rawFinalUrl, content.title, content.text)}`;
     rawFinalUrl = s.rawUrl;
     content = { ...emptyContent(), domError: content.domError };
   }

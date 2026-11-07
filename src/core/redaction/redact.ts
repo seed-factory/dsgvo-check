@@ -64,7 +64,7 @@ function splitTrailingPunctuation(token: string): { core: string; tail: string }
 }
 
 /** A `.` or `..` segment (also `%2e`, or after a backslash): the URL parser resolves it, so the parsed form hides what the text held. */
-const DOT_SEGMENT = /[/\\](?:\.|%2e){1,2}(?=[/\\?#]|$)/i;
+export const DOT_SEGMENT = /[/\\](?:\.|%2e){1,2}(?=[/\\?#]|$)/i;
 
 function redactUrlToken(core: string, allowlist: ReadonlySet<string>): string {
   const sanitized = sanitizeUrl(core, allowlist);

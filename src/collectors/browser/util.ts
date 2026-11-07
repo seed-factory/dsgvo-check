@@ -65,3 +65,43 @@ export const ERROR_MESSAGE_MAX_CHARS = 300;
 export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/** Failures of Playwright and the browser a call into the page can meet, by the fixed text they are reported with. */
+const PAGE_CALL_FAILURES = [
+  [/Timeout \d+ ?ms exceeded/i, 'timed out'],
+  [/Execution context was destroyed/i, 'execution context destroyed'],
+  [/Target page, context or browser has been closed|Target closed|page closed/i, 'page closed'],
+  [/frame (?:was|got) detached/i, 'frame detached'],
+] as const;
+const PAGE_CALL_FAILED = 'evaluation failed';
+
+/** The kinds `pageCallFailure` names a failure by, besides `evaluation failed` for any other one. */
+export type PageCallFailureKind = (typeof PAGE_CALL_FAILURES)[number][1];
+export const PAGE_CALL_FAILURE_KINDS: readonly PageCallFailureKind[] = PAGE_CALL_FAILURES.map(
+  ([, kind]) => kind,
+);
+
+/**
+ * The kind of a failed call into the page (CMP adapters, the cookie and storage reads), never the error's own text:
+ * an error the page throws there may carry its data, a consent ID or a cookie or storage value, which must not reach
+ * the snapshot or the logs.
+ */
+export function pageCallFailure(err: unknown): string {
+  if (err instanceof TimeoutError) return err.message;
+  const text = errorText(err);
+  return PAGE_CALL_FAILURES.find(([re]) => re.test(text))?.[1] ?? PAGE_CALL_FAILED;
+}
+
+/** The prefix Playwright gives the errors of its calls into the page or its handles. */
+const PAGE_API_ERROR = /^(?:page|frame|locator|elementHandle|jsHandle|worker)\.[A-Za-z$]+:/;
+
+/**
+ * An exception that ended a phase: the kind of failure when it came from a call into the page (see pageCallFailure),
+ * else the first line of the scanner's own error, which carries no page data and is what debugging needs.
+ */
+export function phaseFailure(err: unknown): string {
+  const text = errorText(err);
+  if (!(err instanceof Error) || err instanceof TimeoutError || PAGE_API_ERROR.test(text))
+    return pageCallFailure(err);
+  return text.split('\n')[0] ?? '';
+}

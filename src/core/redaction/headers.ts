@@ -1,12 +1,14 @@
 /**
- * Response headers as stored in snapshots and evidence, one normalizer for the HTTP collector and the browser: no
- * `Set-Cookie`, URLs resolved and sanitized, values only for security and technical headers, others by name (`[redacted]`).
- * Product headers keep their value redacted too and carry only the product/version pairs read from it.
+ * Response headers as stored in snapshots and evidence, one normalizer for the HTTP collector and the browser: of
+ * `Set-Cookie` only the cookie name, URLs resolved and sanitized, addresses masked, values only for security and
+ * technical headers, others by name (`[redacted]`). Product headers keep their value redacted too and carry only the
+ * product/version pairs read from it.
  */
 
 import type { FrameAncestorsFact, HeaderRecord, ProductVersion } from '../snapshot/common.ts';
-import { REDACTED } from '../url/email.ts';
+import { hasAddressMarker, maskObfuscatedEmails, QUOTED_LOCAL, REDACTED } from '../url/email.ts';
 import { sanitizeUrl } from '../url/url.ts';
+import { DOT_SEGMENT, redactText } from './redact.ts';
 
 export const MAX_HEADER_VALUE = 2048;
 
@@ -41,14 +43,130 @@ function absoluteSanitized(raw: string, base: string, sanitize: UrlSanitizer): s
   }
 }
 
-/** Every absolute http(s) URL inside a header value, sanitized (CSP `report-uri`, `Report-To` JSON). */
-function sanitizeUrlsIn(value: string, base: string, sanitize: UrlSanitizer): string {
-  return value.replace(/https?:\/\/[^\s"'<>;,]+/gi, (u) => absoluteSanitized(u, base, sanitize));
+/** An absolute http(s) URL inside a header value; it ends at a blank, a quote, an angle bracket, `;` or `,`. */
+const HTTP_URL = /https?:\/\/[^\s"'<>;,]+/gi;
+
+const BLANK = /\s/;
+
+/**
+ * Where the URL that `pattern` found at `start`..`end` ends. The patterns stop at characters a query or a fragment may
+ * hold (`?ids=1,2`, `?q=O(x)`, `?u=a'b`), so the text glued to a URL with a query or fragment is part of it, up to a
+ * blank, `;` or a comma before a blank or at the end. A URL after a quote ends at the closing quote: the same quote
+ * before a blank, `;`, `,`, `)` or the end.
+ */
+function urlEnd(text: string, start: number, end: number): number {
+  if (!/[?#]/.test(text.slice(start, end))) return end;
+  const before = text[start - 1];
+  const quote = before === '"' || before === "'" ? before : null;
+  for (let i = end; i < text.length; i++) {
+    const c = text[i] as string;
+    const next = text[i + 1];
+    const beforeBlank = next === undefined || BLANK.test(next);
+    if (BLANK.test(c) || c === ';' || (c === ',' && beforeBlank)) return i;
+    if (c === quote && (beforeBlank || next === ';' || next === ',' || next === ')')) return i;
+  }
+  return text.length;
 }
 
 /**
- * Resolves and sanitizes the `<…>` targets of a `Link` value, text outside them stays. One `indexOf` pass: a `[^>]*`
- * expression would scan to the end from every `<` of an untrusted value without `>` (`<meta http-equiv>`, up to 64 KiB).
+ * `text` with every match of `pattern`, taken up to `urlEnd`, passed to `url` and the text between passed to
+ * `between`. One pass: text a URL took in is not matched again.
+ */
+function replaceUrls(
+  text: string,
+  pattern: RegExp,
+  url: (match: string) => string,
+  between: (text: string) => string,
+): string {
+  const scan = new RegExp(pattern);
+  let out = '';
+  let last = 0;
+  for (let m = scan.exec(text); m !== null; m = scan.exec(text)) {
+    const end = urlEnd(text, m.index, m.index + m[0].length);
+    out += between(text.slice(last, m.index)) + url(text.slice(m.index, end));
+    last = end;
+    scan.lastIndex = end;
+  }
+  return out + between(text.slice(last));
+}
+
+/** What the URL sanitizer leaves of an address it masked. */
+const ADDRESS_MASK = `${REDACTED}@`;
+/** The quoted local part of an address with its `@` (`"alice smith"@`). */
+const QUOTED_ADDRESS = new RegExp(`${QUOTED_LOCAL}@`, 'g');
+
+/**
+ * A URL that the http(s) pass does not reach (`/r?u=…`, `//host/r?u=…`, `wss://host/x?token=…`), resolved against
+ * `base` and sanitized. When that redacts nothing the token stays as written, without its fragment; not when it has a
+ * dot segment, which the parser resolves away together with the text before it. An `@` the sanitizer does not read as
+ * an address (`/u/alice@intranet`, `/~alice@`) makes the whole token `[redacted]`; a token that does not parse keeps
+ * no query. A token that is only a fragment is dropped.
+ */
+function referenceSanitized(token: string, base: string, sanitize: UrlSanitizer): string {
+  const written = token.replace(/#.*$/s, '');
+  if (written === '') return '';
+  let stored: string;
+  try {
+    const href = new URL(written, base).href;
+    const sanitized = sanitize(href);
+    stored = sanitized === href && !DOT_SEGMENT.test(`/${written}`) ? written : sanitized;
+  } catch {
+    stored = written.replace(/\?.*$/s, `?${REDACTED}`);
+  }
+  return hasAddressMarker(stored.replaceAll(ADDRESS_MASK, '')) ? REDACTED : stored;
+}
+
+/**
+ * A URL in the text between http(s) URLs: relative (`/r`, `//host/r`, `\\host\r`, `#frag`), of another scheme
+ * (`wss://…`, `mailto:…`) or with a query (`report=/r?u=…`, `a.example?u=…`, `(self)?u=…`). It starts after a blank,
+ * quote, bracket, list separator or `=` and ends at the next of them other than `=`, or as `urlEnd` reads it.
+ */
+const REFERENCE =
+  /(?<=^|[\s"'()<>,;=])(?:[/\\#][^\s"'()<>,;]*|[a-z][a-z0-9+.-]*:[^\s"'()<>,;]+|[^\s"'()<>,;=?]*\?[^\s"'()<>,;]+)/gi;
+
+/** A word of the text between URLs; `'` ends it too, so the value of an RFC 8187 parameter is a word of its own. */
+const WORD = /[^\s"'()<>,;=]+/g;
+
+/**
+ * Text without a URL: addresses and `mailto:` values masked; a word that still shows an `@`, also percent-encoded
+ * (`alice%40mail.example`, `alice@intranet`), is `[redacted]`.
+ */
+function redactPlainText(text: string): string {
+  return redactText(text).replace(WORD, (word) =>
+    hasAddressMarker(word.replaceAll(ADDRESS_MASK, '')) ? REDACTED : word,
+  );
+}
+
+/**
+ * Text without an http(s) URL: the URLs in it resolved and sanitized, the rest as plain text. The `(at)` form is masked
+ * first, as it reaches over the `(` that ends a URL (`/r/alice(at)mail.example`).
+ */
+function redactBetweenUrls(text: string, base: string, sanitize: UrlSanitizer): string {
+  return replaceUrls(
+    maskObfuscatedEmails(text),
+    REFERENCE,
+    (ref) => referenceSanitized(ref, base, sanitize),
+    redactPlainText,
+  );
+}
+
+/**
+ * Free text of a kept header value: http(s) URLs through the collector's sanitizer, the text between them reduced on
+ * its own. Free-text redaction over the whole value would read `;k=v` after a URL as a path parameter of it.
+ */
+function redactValueText(value: string, base: string, sanitize: UrlSanitizer): string {
+  return replaceUrls(
+    value,
+    HTTP_URL,
+    (u) => absoluteSanitized(u, base, sanitize),
+    (text) => redactBetweenUrls(text, base, sanitize),
+  );
+}
+
+/**
+ * Resolves and sanitizes the `<…>` targets of a `Link` value; the text outside them (parameters, an unclosed target) is
+ * reduced as free text. One `indexOf` pass: a `[^>]*` expression would scan to the end from every `<` of an untrusted
+ * value without `>` (`<meta http-equiv>`, up to 64 KiB).
  */
 function sanitizeLinkTargets(value: string, base: string, sanitize: UrlSanitizer): string {
   let out = '';
@@ -56,10 +174,11 @@ function sanitizeLinkTargets(value: string, base: string, sanitize: UrlSanitizer
   for (let open = value.indexOf('<'); open >= 0; open = value.indexOf('<', pos)) {
     const close = value.indexOf('>', open + 1);
     if (close < 0) break;
-    out += `${value.slice(pos, open)}<${absoluteSanitized(value.slice(open + 1, close), base, sanitize)}>`;
+    const target = absoluteSanitized(value.slice(open + 1, close), base, sanitize);
+    out += `${redactValueText(value.slice(pos, open), base, sanitize)}<${target}>`;
     pos = close + 1;
   }
-  return out + value.slice(pos);
+  return out + redactValueText(value.slice(pos), base, sanitize);
 }
 
 /** Line terminators of JavaScript, which `.` does not match: no refresh address may hold one. */
@@ -151,17 +270,41 @@ function safeCspSource(source: string): string {
 const SOURCE_WITH_PATH =
   /^(?:(?:\*\.)?[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+|\[[0-9a-f:.]+\])(?::(?:\d{1,5}|\*))?\//iu;
 
-/** A non-`http(s)` token that carries user info, an address or a path (`portal.invalid/users/…`, `wss://api.invalid/x?user=…`). */
+/**
+ * A non-`http(s)` token that carries user info, an address, a query, a fragment or a path (`portal.invalid/users/…`,
+ * `wss://api.invalid/x?user=…`, `a.example?user=…`); an `@` or `(at)` counts also encoded and without a dotted domain.
+ */
 function isPersonalSource(token: string): boolean {
-  if (/^https?:\/\//i.test(token)) return false;
-  if (/@|%40/i.test(token)) return true;
+  if (/[?#]/.test(token) || hasAddressMarker(token)) return true;
   if (token.includes('://')) return /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*[/?#]/i.test(token);
   return SOURCE_WITH_PATH.test(token);
 }
 
-/** Reduces CSP tokens that are no `http(s)://` URL but carry user info, an address or a path; the URL sanitizer handles the `http(s)://` ones. */
-function sanitizeSchemelessSources(value: string): string {
-  return value.replace(/[^\s;,]+/g, (token) => (isPersonalSource(token) ? safeCspSource(token) : token));
+/** A CSP token; one with a query or fragment also takes the text after a comma glued to it (`urlEnd`). */
+const CSP_TOKEN = /[^\s;,]+/g;
+
+/**
+ * One CSP token: an `http(s)` URL through the collector's sanitizer as a whole, cut to its source when it holds a quote
+ * or an angle bracket (the URL would end there and leave the rest of the token as written); a relative URL
+ * (`report-uri /r?u=…`, `//host/r?u=…`, `\\host\r`) resolved and sanitized; a token with user info, an address, a
+ * query or a path cut to its source.
+ */
+function sanitizedCspToken(token: string, base: string, sanitize: UrlSanitizer): string {
+  if (/^https?:\/\//i.test(token)) {
+    return /["'<>]/.test(token) ? safeCspSource(token) : absoluteSanitized(token, base, sanitize);
+  }
+  if (/^[/\\]/.test(token)) return referenceSanitized(token, base, sanitize);
+  return isPersonalSource(token) ? safeCspSource(token) : token;
+}
+
+function sanitizeCspTokens(value: string, base: string, sanitize: UrlSanitizer): string {
+  // a quoted local part may hold blanks, which end a token: its first word would stay as a token of its own
+  return replaceUrls(
+    value.replace(QUOTED_ADDRESS, ADDRESS_MASK),
+    CSP_TOKEN,
+    (token) => sanitizedCspToken(token, base, sanitize),
+    (separators) => separators,
+  );
 }
 
 /**
@@ -335,10 +478,14 @@ export function productVersionsOf(name: string, value: string): ProductVersion[]
   return out;
 }
 
-/** URL headers have their URLs sanitized, value headers their embedded URLs, every other header loses its value. */
+/**
+ * URL headers have their URLs sanitized, CSP its sources reduced, other value headers their URLs and addresses; every
+ * other header loses its value.
+ */
 function sanitizedHeaderValue(name: string, value: string, base: string, sanitize: UrlSanitizer): string {
   if (URL_HEADERS.has(name)) return sanitizeUrlHeader(name, value, base, sanitize);
-  if (VALUE_HEADERS.has(name)) return sanitizeUrlsIn(value, base, sanitize);
+  if (CSP_HEADERS.has(name)) return sanitizeCspTokens(value, base, sanitize);
+  if (VALUE_HEADERS.has(name)) return redactValueText(value, base, sanitize);
   return REDACTED;
 }
 
@@ -354,8 +501,7 @@ export function storedHeaderRecord(
 ): HeaderRecord {
   const n = name.toLowerCase();
   const csp = CSP_HEADERS.has(n);
-  const sanitized = sanitizedHeaderValue(n, value, base, sanitize);
-  const full = csp ? sanitizeSchemelessSources(sanitized) : sanitized;
+  const full = sanitizedHeaderValue(n, value, base, sanitize);
 
   const truncated = full.length > MAX_HEADER_VALUE;
   const record: HeaderRecord = { name: n, value: truncated ? full.slice(0, MAX_HEADER_VALUE) : full };
@@ -369,6 +515,19 @@ export function storedHeaderRecord(
   // also when empty: it tells a value without a version from an older snapshot that did not read the value
   if (PRODUCT_HEADERS.has(n)) record.productVersions = productVersionsOf(n, value);
   return record;
+}
+
+/**
+ * The name of the cookie a `Set-Cookie` line sets, null for a nameless one: the one rule of the HTTP collector and the
+ * browser. A pair without `=` has an empty name and its whole text as the value (RFC 6265bis §5.6), so that text is
+ * never taken for a name.
+ */
+export function setCookieName(line: string): string | null {
+  const semicolon = line.indexOf(';');
+  const pair = semicolon < 0 ? line : line.slice(0, semicolon);
+  const eq = pair.indexOf('=');
+  const name = eq < 0 ? '' : pair.slice(0, eq).trim();
+  return name === '' ? null : name;
 }
 
 /** Header records of a response; `sanitize` is the collector's URL sanitizer, `base` the response URL for relative values. */

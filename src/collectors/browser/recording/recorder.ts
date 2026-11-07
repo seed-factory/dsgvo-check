@@ -6,6 +6,7 @@ import type { RequestRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase } from '../../../core/snapshot/common.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
 import { LONG_LIVED_RESOURCE_TYPES } from '../config.ts';
+import { requestMethod } from '../page-values.ts';
 import { loadIdentifierRules } from '../rules.ts';
 import { truncate } from '../util.ts';
 import {
@@ -441,7 +442,8 @@ export class NetworkRecorder implements ActivitySource {
       isMainFrame,
       url: sanitizeRequestUrl(raw),
       host: hostnameOf(raw),
-      method: r.method(),
+      // `fetch` takes any token as a method from the page's script.
+      method: requestMethod(r.method()),
       resourceType: r.resourceType(),
       tStartMs: this.relative(),
       tRef: this.tRef,

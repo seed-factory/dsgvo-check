@@ -3,8 +3,10 @@
  * `getConsentDetails()` is read defensively.
  */
 import type { Page } from 'playwright-core';
+import { z } from 'zod';
 import type { CategoryState } from '../types.ts';
 import { defineAdapter } from './base.ts';
+import { flag, maybeFlag, readerResult } from './read.ts';
 
 interface UsercentricsRead {
   v3: boolean;
@@ -153,7 +155,24 @@ async function readUsercentrics(): Promise<UsercentricsRead> {
   return { v3: !!v3Api, v2: !!v2Api, ...state };
 }
 
-const read = (page: Page) => page.evaluate(readUsercentrics);
+/**
+ * The reader's answer in the shape it builds. The category ids come from the page's API; the stored state keeps only
+ * names among them (`foldCategories`), so a custom category with a UUID-like id is kept as `other`.
+ */
+const UsercentricsAnswer = z.object({
+  v3: flag,
+  v2: flag,
+  initialized: flag,
+  categories: z
+    .record(z.string(), z.enum(['denied', 'granted', 'partial', 'unknown']).catch('unknown'))
+    .catch({}),
+  responded: z.union([z.boolean(), z.literal('unknown')]).catch('unknown'),
+  method: z.enum(['explicit', 'implied', 'unknown']).catch('unknown'),
+  consentRequired: maybeFlag,
+});
+
+const read = async (page: Page): Promise<UsercentricsRead> =>
+  readerResult(UsercentricsAnswer, await page.evaluate(readUsercentrics));
 
 export const usercentrics = defineAdapter({
   id: 'usercentrics',

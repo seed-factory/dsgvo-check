@@ -1,15 +1,11 @@
 // The head of a response as the snapshot keeps it: headers through the core normalizer shared with the browser, cookie
 // names without values, and the few fields the collector reads itself.
 import type { Dispatcher } from 'undici';
-import { snapshotHeaderRecords } from '../../core/redaction/headers.ts';
+import { setCookieName, snapshotHeaderRecords } from '../../core/redaction/headers.ts';
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 
 /** Only the cookie names of this header reach the snapshot, never the values. */
 const SET_COOKIE = 'set-cookie';
-
-function cookieName(setCookie: string): string {
-  return (setCookie.split(';')[0] ?? '').split('=')[0]?.trim() ?? '';
-}
 
 // Header records for the snapshot via the core normalizer shared with the browser: no Set-Cookie values (names only),
 // URL headers resolved against `base` (the response URL) and sanitized.
@@ -32,8 +28,8 @@ export function snapshotHeaders(
 
     for (const v of Array.isArray(value) ? value : [value]) {
       if (n === SET_COOKIE) {
-        const c = cookieName(v);
-        if (c) setCookieNames.push(c);
+        const c = setCookieName(v);
+        if (c !== null) setCookieNames.push(c);
         continue;
       }
       flat.push({ name: n, value: v });

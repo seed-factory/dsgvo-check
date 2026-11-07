@@ -19,9 +19,10 @@ import { CMP_DIALOG_TEXT_MAX_CHARS, type CmpDialogMentions } from '../../core/sn
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
 import { dialogMentionsOf } from './dialog-mentions.ts';
 import { sanitizeRequestUrl } from './recording/features.ts';
-import { ERROR_MESSAGE_MAX_CHARS, errorText, redactFreeText, withTimeout } from './util.ts';
+import { pageCallFailure, redactFreeText, withTimeout } from './util.ts';
 
 export type Detected = { adapter: CmpAdapter | null; detection: CmpDetection };
+
 export type ClickTargets = { reject: CmpButton | null; accept: CmpButton | null };
 
 export interface CmpApi {
@@ -169,7 +170,8 @@ export class CmpBridge {
     } catch (err) {
       onError?.();
       const code = `cmp-${what}-failed`;
-      const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
+      // The adapters' code runs in the page: only the kind of failure is kept, see pageCallFailure.
+      const message = pageCallFailure(err);
       // The same failure on every page is reported once per phase.
       if (!this.errors.some((e) => e.code === code && e.message === message)) {
         this.errors.push({ code, message, phase: this.phase, url });

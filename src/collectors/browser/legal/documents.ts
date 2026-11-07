@@ -1,14 +1,18 @@
 // Legal documents: text of Impressum / Datenschutzerklärung by sections with provenance, without clicks and independent
 // of the consent outcome. PDF → `complete: false`; same-origin frames are included, other frames only reported.
 import type { Page } from 'playwright-core';
+import { languagePrefix } from '../../../core/redaction/page-names.ts';
 import type { DocumentKind, DocumentPart, DocumentRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase, SanitizedUrl } from '../../../core/snapshot/common.ts';
+import { parseUrl } from '../../../core/url/url.ts';
 import { type DocumentPatterns, documentInPage, type RawDocument } from '../in-page/document.ts';
+import { count, fields, flag, list, str } from '../page-values.ts';
 import { sanitizeRequestUrl } from '../recording/features.ts';
 import { loadDomPatterns } from '../rules.ts';
 import { normalizeText, redactFreeText, sha256Hex } from '../util.ts';
 import { isNotFoundText, type LegalLexicon, markerLanguages } from './lexicon.ts';
 import { loadLegalLexicon } from './lexicon-file.ts';
+import { type ValueScrubber, valueScrubber } from './scrub.ts';
 
 const MAX_CHARS = 400_000;
 /** Below this length a page without a marker is a soft-404; above it, unconfirmed. */
@@ -56,9 +60,9 @@ export function judgeDocument(
 
 // The markers' language decides, not the `lang` attribute (a Portuguese policy with `lang="en"`). German or English
 // markers keep a de/en attribute and override another one; foreign markers name their language; without markers the
-// attribute stays. PRIV-01 evaluates only de and en.
+// attribute stays. PRIV-01 evaluates only de and en. The page writes the attribute: only its language tag is kept.
 export function documentLang(attr: string | null, languages: readonly string[]): string | null {
-  const a = attr ? attr.toLowerCase() : null;
+  const a = languagePrefix(attr)?.toLowerCase() ?? null;
   const native = languages.filter((l) => l === 'de' || l === 'en');
   if (native.length > 0) {
     if (a && /^(de|en)\b/.test(a)) return a;
@@ -83,18 +87,76 @@ export interface DocumentContext {
   foundVia: DocumentRecord['foundVia'];
   status: number | null;
   contentType: string;
+  /**
+   * The registrable domain of the scan. With the document's own host, it names the site whose addresses the visitor's
+   * values may hold (Borlabs' `domainPath`): the labels of its domain are no values to take out of the text.
+   */
+  siteDomain?: string | null;
 }
 
-function partsOf(raw: RawDocument, sourceUrl: string, prefix: string, frameUrl?: string): DocumentPart[] {
+const PART_ORIGINS: ReadonlySet<string> = new Set(['visible', 'expandable', 'hidden-irrelevant']);
+const PART_PLACES: ReadonlySet<string> = new Set(['content', 'chrome']);
+
+/**
+ * The answer of `documentInPage` in the shape the page code promises. It runs in the page's main world, which can
+ * replace the globals it calls (`Array.prototype.push`), so every field is checked: strings, an origin and a place of
+ * the closed sets (a part of another origin counts as hidden), counts as safe integers, flags only when `true`.
+ */
+export function checkedRawDocument(v: unknown): RawDocument {
+  const d = fields(v);
+  const places = fields(d.headingPlaces);
+  const strings = (x: unknown) => list(x).filter((t): t is string => typeof t === 'string');
+  return {
+    lang: str(d.lang),
+    title: str(d.title),
+    h1: str(d.h1),
+    headingPlaces: { chrome: strings(places.chrome), content: strings(places.content) },
+    parts: list(d.parts).map((x) => {
+      const p = fields(x);
+      const origin =
+        typeof p.origin === 'string' && PART_ORIGINS.has(p.origin) ? p.origin : 'hidden-irrelevant';
+      const place = typeof p.place === 'string' && PART_PLACES.has(p.place) ? p.place : undefined;
+      return {
+        section: str(p.section),
+        text: str(p.text),
+        origin: origin as RawDocument['parts'][number]['origin'],
+        ...(place ? { place: place as 'content' | 'chrome' } : {}),
+      };
+    }),
+    expandablesFound: count(d.expandablesFound),
+    expandablesWithContent: count(d.expandablesWithContent),
+    expandablesIgnored: count(d.expandablesIgnored),
+    textLength: count(d.textLength),
+    truncated: flag(d.truncated),
+  };
+}
+
+/**
+ * Page text as stored and hashed: the values of the visitor's cookies and storage outside addresses, then addresses and
+ * queries masked, then the values again. The first pass sees a value as the page wrote it, before the redaction
+ * rewrites a link into the form the URL parser gives it (a lower-case host, `%7B`, punycode); it leaves addresses to
+ * the mask, which would no longer see the local part of `max.mustermann@[redacted].de`. The second pass finds values
+ * in the parser's form and in what the mask left of an address.
+ */
+export const storedText = (text: string, scrub: ValueScrubber): string =>
+  scrub(redactFreeText(scrub.outsideAddresses(normalizeText(text))));
+
+function partsOf(
+  raw: RawDocument,
+  scrub: ValueScrubber,
+  sourceUrl: string,
+  prefix: string,
+  frameUrl?: string,
+): DocumentPart[] {
   let i = 0;
   return (
     raw.parts
       // E-mail addresses, mailto: values and URL queries are masked before the text is hashed or stored.
-      .map((p) => ({ ...p, text: redactFreeText(normalizeText(p.text)) }))
+      .map((p) => ({ ...p, text: storedText(p.text, scrub) }))
       .filter((p) => p.text.length > 0)
       .map((p) => ({
         id: `${prefix}-${++i}`,
-        ...(p.section ? { section: redactFreeText(normalizeText(p.section)) } : {}),
+        ...(p.section ? { section: storedText(p.section, scrub) } : {}),
         text: p.text,
         // Hidden text stays hidden-irrelevant inside a frame too; the frame itself is recorded in `frameUrl`.
         origin: p.origin === 'hidden-irrelevant' ? 'hidden-irrelevant' : frameUrl ? 'frame' : p.origin,
@@ -151,9 +213,13 @@ function originOf(url: string): string | null {
   }
 }
 
-function noteHeadingPlaces(read: ReadDocument, places: RawDocument['headingPlaces']): void {
-  for (const t of places?.chrome ?? []) read.chromeHeads.add(redactFreeText(normalizeText(t)));
-  for (const t of places?.content ?? []) read.contentHeads.add(redactFreeText(normalizeText(t)));
+function noteHeadingPlaces(
+  read: ReadDocument,
+  places: RawDocument['headingPlaces'],
+  scrub: ValueScrubber,
+): void {
+  for (const t of places?.chrome ?? []) read.chromeHeads.add(storedText(t, scrub));
+  for (const t of places?.content ?? []) read.contentHeads.add(storedText(t, scrub));
 }
 
 async function readParts(
@@ -162,9 +228,10 @@ async function readParts(
   main: RawDocument,
   finalUrl: SanitizedUrl,
   patterns: DocumentPatterns,
+  scrub: ValueScrubber,
 ): Promise<ReadDocument> {
   const read: ReadDocument = {
-    parts: partsOf(main, finalUrl, `${c.id}-p`),
+    parts: partsOf(main, scrub, finalUrl, `${c.id}-p`),
     chromeHeads: new Set(),
     contentHeads: new Set(),
     truncated: main.truncated,
@@ -175,7 +242,7 @@ async function readParts(
     foreignFrames: 0,
     unreadableFrames: 0,
   };
-  noteHeadingPlaces(read, main.headingPlaces);
+  noteHeadingPlaces(read, main.headingPlaces, scrub);
 
   const pageOrigin = originOf(page.url());
   for (const frame of page.frames()) {
@@ -189,18 +256,19 @@ async function readParts(
       continue;
     }
 
-    const fr = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }).catch(() => null);
-    if (!fr) {
+    const answer = await frame.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }).catch(() => null);
+    if (!answer) {
       read.unreadableFrames++;
       continue;
     }
+    const fr = checkedRawDocument(answer);
     read.framesIncluded++;
-    noteHeadingPlaces(read, fr.headingPlaces);
+    noteHeadingPlaces(read, fr.headingPlaces, scrub);
     read.truncated ||= fr.truncated;
     read.expandablesFound += fr.expandablesFound;
     read.expandablesWithContent += fr.expandablesWithContent;
     read.parts.push(
-      ...partsOf(fr, finalUrl, `${c.id}-f${read.framesIncluded}`, sanitizeRequestUrl(frame.url())),
+      ...partsOf(fr, scrub, finalUrl, `${c.id}-f${read.framesIncluded}`, sanitizeRequestUrl(frame.url())),
     );
   }
   return read;
@@ -226,16 +294,27 @@ function documentErrors(p: {
   return errors;
 }
 
+/**
+ * `secrets`: values of the visitor's cookies and Web Storage at the time of the read, in memory only. A policy can
+ * print them (a consent ID in a cookie declaration, a script writing `document.cookie` into the Impressum), and no
+ * free-text redaction tells such an ID from a word, so they are taken out of the text before it is stored or hashed.
+ */
 export async function extractDocument(
   page: Page,
   c: DocumentContext & { id: string },
+  secrets: readonly string[] = [],
 ): Promise<DocumentRecord> {
   const finalUrl = sanitizeRequestUrl(page.url());
   if (/application\/pdf/i.test(c.contentType)) return { ...pdfDocument(c), finalUrl };
 
   const patterns = loadDomPatterns().document;
-  const main = await page.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns });
-  const read = await readParts(page, c, main, finalUrl, patterns);
+  const host = parseUrl(page.url())?.hostname;
+  const scrub = valueScrubber(
+    secrets,
+    [host, c.siteDomain].filter((h): h is string => !!h),
+  );
+  const main = checkedRawDocument(await page.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }));
+  const read = await readParts(page, c, main, finalUrl, patterns, scrub);
   const { parts } = read;
 
   const fullText = parts.map((p) => p.text).join('\n');

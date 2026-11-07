@@ -37,6 +37,18 @@ describeCmpScenarios(
       expect((await adapter.reject(page, { facts, ...DEFAULT_CLASSIFY })).clicked).toBe(false);
     });
 
+    it("the vendor's close button keeps its own id as the click selector", async () => {
+      const { page, adapter } = await env.openRecognized(
+        'https://www.cookiebot.test/close-button.html',
+        'cookiebot',
+      );
+      const facts = await extract(page, adapter, 'first-screen');
+      expect(facts.firstLayer.buttons.find((b) => b.vendorRole === 'close')).toMatchObject({
+        role: 'button',
+        selector: '#CybotCookiebotBannerCloseButtonE2E',
+      });
+    });
+
     it('geo branch: out of region → isOutOfRegion, CookieConsent=-1, gdprApplies=false and TCF ping', async () => {
       const { page, adapter } = await env.openRecognized('https://www.cookiebot.test/geo.html', 'cookiebot');
       const facts = await extract(page, adapter, 'first-screen');

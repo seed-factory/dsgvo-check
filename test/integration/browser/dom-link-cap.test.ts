@@ -127,6 +127,7 @@ describe('domFactsInPage with a small cap', () => {
     const raw = await site.tab.evaluate(domFactsInPage, {
       maxLinks: 10,
       maxScripts: 5,
+      maxPlaceholders: 20,
       patterns: loadDomPatterns().page,
       forms: formRules(),
     });

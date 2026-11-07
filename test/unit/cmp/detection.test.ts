@@ -1,6 +1,7 @@
 /** Recognition confidence (≥ 2 independent signal kinds), version helpers and the state verdict (CONSENT-05). */
 import { describe, expect, it } from 'vitest';
 import {
+  cleanVersion,
   confidenceFromSignals,
   majorSupported,
   originAfterClick,
@@ -105,6 +106,27 @@ describe('version helpers', () => {
     expect(versionFromUrl('https://x.test/c.js?ver=7.5')).toBe('7.5');
     expect(versionFromUrl('https://x.test/c.js?v=2.2.67')).toBe('2.2.67');
   });
+
+  it.each([
+    ['a client id in the format of a _ga cookie', '1.2.1234567890.1700000000'],
+    ['a phone number', '49.15112345678'],
+    ['a phone number in short groups', '0151.123.4567'],
+    ['an IP address', '203.0.113.42'],
+    ['a group of seven digits', '1.1234567'],
+    ['an overlong dotted run', `1.${'4915112345678'.repeat(20)}`],
+    ['five groups', '1.2.3.4.5'],
+  ])('%s is no version: %j', (_case, v) => {
+    expect(cleanVersion(v)).toBeNull();
+    expect(versionFromUrl(`https://x.test/c.js?ver=${v}`)).toBeNull();
+  });
+
+  it.each(['7.1.0', '2.2.67', '1.871.0', '3.2.1.4', '2024.1.15', '4.0.12345'])(
+    'counterexample: %s is a version',
+    (v) => {
+      expect(cleanVersion(v)).toBe(v);
+      expect(versionFromUrl(`https://x.test/c.js?ver=${v}`)).toBe(v);
+    },
+  );
 
   it('major ranges: known in range, known out of range, unknown', () => {
     expect(majorSupported('3.2.1', [2, 3])).toBe(true);
