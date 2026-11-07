@@ -27,11 +27,7 @@ import {
   TEST_SANDBOX,
   waitUntil,
 } from '../helpers.ts';
-import { FOOTER, html } from '../site-dir.ts';
-
-/** Shorter than the shared LOREM: these policies only need to be long enough to count as one. */
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen. ';
+import { FOOTER, html, LOREM } from '../site-dir.ts';
 
 const PAGES: Record<string, string> = {
   '/': html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>${FOOTER}`),

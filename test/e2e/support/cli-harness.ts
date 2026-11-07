@@ -70,6 +70,18 @@ function fixtureRoutes(): RouteSpec[] {
     routes.push(redirectAll(`www.${domain}`, 'http', home));
   }
   routes.push({ host: ANALYTICS_HOST, path: '/g/collect', status: 204 });
+  // The tracker start page also sets a session cookie over HTTP, so the leak checks cover a Set-Cookie value, not
+  // only the values analytics.js writes in the page.
+  routes.push({
+    host: 'www.tracker-shop.test',
+    scheme: 'https',
+    path: '/',
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'set-cookie': `shop_session=${SECRET_MARKER}-SESSION-4711; Path=/; Secure; HttpOnly; SameSite=Lax`,
+    },
+    body: readFileSync(path.join(SITES, 'tracker/www/index.html'), 'utf8'),
+  });
   return routes;
 }
 

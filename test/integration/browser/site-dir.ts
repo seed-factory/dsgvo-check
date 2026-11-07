@@ -32,30 +32,36 @@ export function writeSite(files: Record<string, string>): SiteDir {
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-/** What `useSite` holds once the `beforeAll` of its suite has run. */
-export interface SiteUnderTest {
-  server: FixtureServer;
-  /** Phase A from the start page, with the `collect` options of `useSite`. */
-  run: CollectRun;
-  /** A test browser on the server and one page of it, with `browser: true`. */
-  browser: TestBrowser;
-  tab: Page;
-}
+type CollectOptions = NonNullable<Parameters<typeof collect>[1]>;
+
+type RunOf<C> = C extends undefined ? unknown : { run: CollectRun };
+type BrowserOf<B> = B extends true ? { browser: TestBrowser; tab: Page } : unknown;
+
+/**
+ * What `useSite` holds once the `beforeAll` of its suite has run. `run` exists only with `collect`, `browser` and
+ * `tab` only with `browser: true`, so a suite that forgot the option fails to compile instead of reading `undefined`.
+ */
+export type SiteUnderTest<C, B> = { server: FixtureServer } & RunOf<C> & BrowserOf<B>;
 
 /**
  * For the tests of the enclosing suite: serves `files` as www.example.test (`routes` answer first), then collects
  * phase A once and launches a test browser if asked to; closes and removes all of it afterwards.
  */
-export function useSite(
+export function useSite<C extends true | CollectOptions | undefined = undefined, B extends boolean = false>(
   files: Record<string, string>,
-  opts: { routes?: RouteSpec[]; collect?: Parameters<typeof collect>[1]; browser?: boolean } = {},
-): SiteUnderTest {
-  const site = {} as SiteUnderTest;
+  opts: {
+    routes?: RouteSpec[];
+    /** Phase A from the start page: `true` with the defaults of `collect`, or its options. */
+    collect?: C;
+    browser?: B;
+  } = {},
+): SiteUnderTest<C, B> {
+  const site: { server?: FixtureServer; run?: CollectRun; browser?: TestBrowser; tab?: Page } = {};
   let dir: SiteDir | undefined;
   beforeAll(async () => {
     dir = writeSite(files);
     site.server = await startFixtureServer({ hosts: { 'www.example.test': dir.root }, routes: opts.routes });
-    if (opts.collect) site.run = await collect(site.server, opts.collect);
+    if (opts.collect) site.run = await collect(site.server, opts.collect === true ? {} : opts.collect);
     if (opts.browser) {
       site.browser = await launchTestBrowser(site.server);
       site.tab = await site.browser.context.newPage();
@@ -66,7 +72,7 @@ export function useSite(
     await site.server?.close();
     dir?.cleanup();
   });
-  return site;
+  return site as SiteUnderTest<C, B>;
 }
 
 export function page(body: string, head = ''): string {

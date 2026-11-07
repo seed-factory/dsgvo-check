@@ -185,7 +185,7 @@ describe('a page with a section as tall as the viewport above its content', () =
       'karte/index.html': html('<p>Karte</p>'),
       ...LEGAL_PAGES,
     },
-    { collect: {} },
+    { collect: true },
   );
 
   it('is recorded as not shown to its end, like a page taller than the cap', () => {
@@ -221,7 +221,7 @@ describe('a host that throttles what the reveal loads', () => {
           body: 'busy',
         },
       ],
-      collect: {},
+      collect: true,
     },
   );
 
@@ -252,7 +252,7 @@ describe('a page that scrolled itself before the reveal', () => {
       ),
       ...LEGAL_PAGES,
     },
-    { collect: {} },
+    { collect: true },
   );
 
   it('is left as it is, and no scroll reaches it', () => {
