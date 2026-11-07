@@ -13,7 +13,7 @@ import {
   moment,
   START,
   target,
-} from './fakes.ts';
+} from '../fakes.ts';
 
 describe('JarTracker: a Set-Cookie after the click marks only the cookie it can be', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

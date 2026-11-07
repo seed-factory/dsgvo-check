@@ -4,7 +4,7 @@ import type { BrowserContext } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { JarTracker, type Moment } from '../../../../../src/collectors/browser/recording/jar.ts';
 import type { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
-import { fakeContext, fakePage, fakeRecorder, fakeRequest, fakeResponse, jarCookie } from './fakes.ts';
+import { fakeContext, fakePage, fakeRecorder, fakeRequest, fakeResponse, jarCookie } from '../fakes.ts';
 
 const target = { etld1: 'example.test', host: 'www.example.test' };
 const START = 'https://www.example.test/';

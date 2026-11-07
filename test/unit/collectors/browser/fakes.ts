@@ -1,18 +1,20 @@
 /**
- * Fakes of Playwright pages, frames, contexts, requests and responses for the pure (no browser) tests of the
- * recorder and the jar: a page answers the in-page reads by function name, a recorder is fed `Set-Cookie` lines.
+ * Fakes of Playwright pages, frames, contexts, requests and responses for the pure (no browser) tests of the browser
+ * collector: the network recorder (`recording/`), the cookie jar (`cookies/`) and the collector steps that drive a
+ * recorder (`reveal-step`, `robustness`). A page answers the in-page reads by function name, a request carries its
+ * frame, navigation flag and redirect source, a recorder is fed responses with `Set-Cookie` lines.
  */
 import { EventEmitter } from 'node:events';
 import type { BrowserContext, Cookie, Page, Request, Response } from 'playwright-core';
-import { JarTracker, type Moment } from '../../../../../src/collectors/browser/recording/jar.ts';
+import { JarTracker, type Moment } from '../../../../src/collectors/browser/recording/jar.ts';
 import {
   NetworkRecorder,
   type RecorderOptions,
   type RequestCounter,
   type ScanClock,
   type SetCookieOrigin,
-} from '../../../../../src/collectors/browser/recording/recorder.ts';
-import type { BrowserPhase } from '../../../../../src/core/snapshot/common.ts';
+} from '../../../../src/collectors/browser/recording/recorder.ts';
+import type { BrowserPhase } from '../../../../src/core/snapshot/common.ts';
 
 export const target = { etld1: 'example.de', host: 'www.example.de' };
 export const START = 'https://www.example.de/';

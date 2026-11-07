@@ -18,7 +18,7 @@ import {
   recorded,
   START,
   target,
-} from '../cookies/fakes.ts';
+} from '../fakes.ts';
 
 describe('NetworkRecorder: response metadata that never settles is bounded', () => {
   const never = () => new Promise<never>(() => undefined);

@@ -49,7 +49,11 @@ describe('scan — invalid certificate on the target', () => {
     const spy = spyBrowser();
     const result = await scan(
       opts({
-        collectors: { ...withBrowser, browser: spy.browser, tls: refusedTls() },
+        collectors: {
+          ...withBrowser,
+          browser: spy.browser,
+          tls: refusedTls({ authorizationError: 'CERT_HAS_EXPIRED' }),
+        },
         registry: new CheckRegistry([browserCheck, tlsCheck]),
       }),
     );
@@ -76,7 +80,11 @@ describe('scan — invalid certificate on the target', () => {
     const result = await scan(
       opts({
         url: 'https://www.example.de:8443/',
-        collectors: { ...withBrowser, browser: spy.browser, tls: refusedTls({ port: 8443 }) },
+        collectors: {
+          ...withBrowser,
+          browser: spy.browser,
+          tls: refusedTls({ port: 8443, authorizationError: 'CERT_HAS_EXPIRED' }),
+        },
         registry: new CheckRegistry([browserCheck, tlsCheck]),
       }),
     );

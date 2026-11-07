@@ -5,7 +5,7 @@
 import type { Request, Response } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { REQUEST_FEATURES_VERSION } from '../../../../../src/collectors/browser/recording/features.ts';
-import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../cookies/fakes.ts';
+import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../fakes.ts';
 
 const setup = (clock?: () => number) => fakeRecorder({ phase: 'B', clock });
 const response = (req: Request, status: number) => fakeResponse(req, [], { status: () => status });

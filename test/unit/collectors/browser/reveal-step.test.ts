@@ -13,7 +13,7 @@ import type { PageVisit, PhaseRecord } from '../../../../src/core/snapshot/brows
 import type { CollectorContext } from '../../../../src/core/snapshot/collector.ts';
 import { parseTarget } from '../../../../src/core/url/url.ts';
 import { makePage, makeSnapshot } from '../../../utils/snapshot-builder.ts';
-import { fakeRecorder, fakeRequest, fakeResponse } from './cookies/fakes.ts';
+import { fakeRecorder, fakeRequest, fakeResponse } from './fakes.ts';
 
 const SECRET = 'PRIVATE_COOKIE_VALUE_42';
 const KONTAKT = 'https://www.example.test/kontakt/';

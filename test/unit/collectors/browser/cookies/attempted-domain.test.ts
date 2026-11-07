@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { JarTracker } from '../../../../../src/collectors/browser/recording/jar.ts';
-import { jarCookie, jarOf, moment, recorded, START } from './fakes.ts';
+import { jarCookie, jarOf, moment, recorded, START } from '../fakes.ts';
 
 describe('JarTracker: domain of an attempted script cookie', () => {
   const write = (o: Record<string, unknown> = {}) => ({

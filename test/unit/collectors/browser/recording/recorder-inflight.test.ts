@@ -3,7 +3,7 @@
  * page must not hold the next page until HARD_CAP, and stay in the records unchanged. Fake Playwright objects.
  */
 import { describe, expect, it } from 'vitest';
-import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../cookies/fakes.ts';
+import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../fakes.ts';
 
 const setup = () => ({ ...fakeRecorder({ etld1: 'example.test' }), main: frame() });
 

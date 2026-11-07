@@ -50,7 +50,7 @@ describe('checks that lack data because the deadline cut the browser collection 
   const run = (check: Parameters<typeof executeCheck>[0], snapshot: ReturnType<typeof partial>) =>
     executeCheck(check, snapshot, checkContext({ dataDirs: check.data ?? [] }), { timedOut: true });
 
-  it('phase B missing → CONSENT-05 error/timeout (old: inconclusive phase-b-missing)', () => {
+  it('phase B never started (no record) → CONSENT-05 error/timeout, limitation deadline:phase-b-missing', () => {
     const r = run(consent05, partial([makePhase('A', { pages: [startVisit()] })]));
     expect(r).toMatchObject({ status: 'error', reason: 'timeout', outcome: null });
     expect(r.limitations).toEqual(['deadline:phase-b-missing']);

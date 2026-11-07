@@ -62,7 +62,7 @@ describe('scan — DNS stage of the further mail domains', () => {
         collectors: {
           ...withBrowser,
           http: redirectedHttp,
-          tls: refusedTls(),
+          tls: refusedTls({ authorizationError: 'CERT_HAS_EXPIRED' }),
           dns: firstStage,
           browser: async () => {
             calls.push('browser');

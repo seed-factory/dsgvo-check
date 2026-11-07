@@ -10,7 +10,7 @@ import {
 import type { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
 import { defaultNetworkConfig, type ResolvedAddress } from '../../../../src/core/url/net.ts';
 import { FAST_TIMING } from '../../../integration/browser/helpers.ts';
-import { fakeRecorder, fakeRequest, fakeResponse } from './cookies/fakes.ts';
+import { fakeRecorder, fakeRequest, fakeResponse } from './fakes.ts';
 
 const never = <T>() => new Promise<T>(() => {});
 

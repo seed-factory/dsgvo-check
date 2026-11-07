@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parseSetCookies } from '../../../../../src/collectors/browser/recording/features.ts';
-import { jarCookie, jarOf, moment, recorded, START } from './fakes.ts';
+import { jarCookie, jarOf, moment, recorded, START } from '../fakes.ts';
 
 describe('parseSetCookies: attributes without values', () => {
   it('name, Domain, Path and Partitioned; the value never appears in the result', () => {

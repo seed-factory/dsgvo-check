@@ -143,16 +143,12 @@ export function opts(over: Partial<ScanOptions> = {}): ScanOptions {
   };
 }
 
-/** A TLS collector whose probe of the target was refused: CERT_HAS_EXPIRED unless `over` says otherwise. */
+/** A TLS collector whose probe of the target was refused with `authorizationError`, the refusal under test. */
 export const refusedTls =
-  (over: Partial<TlsEndpoint> = {}): Collectors['tls'] =>
+  (over: Partial<TlsEndpoint> & Pick<TlsEndpoint, 'authorizationError'>): Collectors['tls'] =>
   async () => ({
     status: 'ok',
-    sections: {
-      tls: makeTls({
-        endpoints: [makeTlsEndpoint({ authorized: false, authorizationError: 'CERT_HAS_EXPIRED', ...over })],
-      }),
-    },
+    sections: { tls: makeTls({ endpoints: [makeTlsEndpoint({ authorized: false, ...over })] }) },
   });
 
 // A target with a refused certificate whose plain-http address redirects to another host.
