@@ -266,9 +266,11 @@ adapters:
     optionalGroups: [functional, analytics, advertising]
     # The layer "Cookie-Einstellungen" opens. When the first layer has no reject, phase B saves it as the reject, but
     # only while every switch the visitor can change is off: switches are never toggled (src/cmp/settings-layer.ts).
+    # The selectors follow the vendor's markup (test/fixtures/cmp/wix/settings-layer.html): the layer is a dialog of its
+    # own while the first layer stays open, and each category's switch is a visually hidden checkbox in a shown toggle.
     settingsLayer:
-      containers: ['[data-hook="consent-banner-settings-modal"]']
-      groups: 'input[type="checkbox"], [role="switch"]'
+      containers: ['[data-hook="consent-banner-settings-container"]']
+      groups: '[data-hook="consent-banner-section-toggle-input"]'
       # Wix shows one locked switch that is on, for the essential processing; a second one would hold a category on.
       essentialGroups: 1
       vendorRoles:

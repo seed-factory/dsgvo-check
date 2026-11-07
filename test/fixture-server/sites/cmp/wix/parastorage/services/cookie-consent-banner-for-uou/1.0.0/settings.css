@@ -1,2 +1,2 @@
 /* Stylesheet of the simulated settings layer, loaded when the layer opens. */
-[data-hook="consent-banner-settings-modal"] h2 { font-weight: 600; }
+[data-hook="consent-banner-settings-container"] h2 { font-weight: 600; }
