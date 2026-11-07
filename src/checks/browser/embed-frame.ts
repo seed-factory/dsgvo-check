@@ -6,6 +6,7 @@
 import type { EvidenceInput } from '../../core/api.ts';
 import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
 import { MAX_EVIDENCE, type RequestItem, requestEvidence, requestEvidenceByMoment } from './evidence.ts';
+import { fontLoadKind } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceName } from './services.ts';
 
@@ -13,11 +14,15 @@ import { serviceName } from './services.ts';
 export const frameResource = (c: ClassifiedRequest): boolean => c.source === 'embed-frame';
 
 /**
- * A font the embed's frame loaded from a font service of the catalog. It stays a request of the embed: the site
- * cannot serve the fonts of a third-party frame itself, only load the embed after consent.
+ * A font the embed's frame loaded from a font service of the catalog: its stylesheet or font file, not its usage hit,
+ * by the same kinds as a font of the site. It stays a request of the embed: the site cannot serve the fonts of a
+ * third-party frame itself, only load the embed after consent.
  */
 export const frameFont = (c: ClassifiedRequest): boolean =>
-  frameResource(c) && c.resourceCategory === 'fonts';
+  frameResource(c) && c.resourceCategory === 'fonts' && fontLoadKind(c.resourceKind);
+
+/** A request of the embed's frame to a host of no catalog service; a font service's usage hit is none. */
+const frameHelper = (c: ClassifiedRequest): boolean => frameResource(c) && !c.resourceServiceId;
 
 /**
  * Embed categories whose finding names the fonts of the frame: EMBED-02 counts every request of a map, EMBED-03 of a
@@ -41,7 +46,7 @@ export function frameParams(reqs: readonly ClassifiedRequest[], derived: Derived
     frameResourceCount: reqs.filter(frameResource).length,
     frameFontServices: sortedUniq(fonts.map((c) => resourceName(derived, c))).join(', ') || null,
     frameFontRequestCount: fonts.length,
-    frameHelperCount: reqs.filter((c) => frameResource(c) && !frameFont(c)).length,
+    frameHelperCount: reqs.filter(frameHelper).length,
   };
 }
 

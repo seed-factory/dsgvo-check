@@ -28,6 +28,7 @@ import {
   inMapFrame,
   MAP_EMBED,
   mapWithFonts,
+  TYPEKIT_USAGE,
 } from '../scenarios/embed-01.ts';
 import { SCENARIOS, VARIANT_SCENARIOS } from '../scenarios/index.ts';
 import { AFTER_CLICK, expectMoment, momentCases, rejectPhase } from './reject-moment.ts';
@@ -305,8 +306,43 @@ describe("EMBED-01 fonts of an embed's frame", () => {
     ['an embed frame that loads no font', 'clean-map-frame-without-fonts.json'],
     ['a map frame whose fonts load only after the accept', 'clean-map-frame-fonts-after-accept.json'],
     ['the fonts of a reCAPTCHA and a Calendly frame', 'clean-captcha-and-widget-frame-fonts.json'],
+    ["a map frame that only calls Adobe Fonts' usage counter", 'clean-map-frame-typekit-usage-hit.json'],
   ])('counterexample: %s gives no finding', (_name, file) => {
     expect(variantsOf(runCheck(embed01, frameScenario(file)))).toEqual([]);
+  });
+
+  it("the map's finding names the same frame fonts: the usage hit beside an Adobe Fonts kit is no font and no helper host", () => {
+    const kit = inMapFrame('b', 'https://use.typekit.net/abc1234.css', 'stylesheet');
+    const usage = inMapFrame('c', TYPEKIT_USAGE, 'stylesheet');
+    const document = inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true });
+    const snapshot = site({ phases: [phase('A', { requests: [document, kit, usage] })] });
+
+    const [fonts, ...more] = observationsOf(runCheck(embed01, snapshot));
+    expect(more).toEqual([]);
+    expect(fonts).toMatchObject({
+      variant: 'fonts-in-embed-frame',
+      subject: 'adobe-fonts@google-maps',
+      params: { service: 'Adobe Fonts', embedService: 'Google Maps', requestCount: 1 },
+    });
+    expect(fonts?.evidence.map((e) => e.type === 'request' && e.url)).toEqual([kit.url]);
+
+    const [map] = observationsOf(runCheck(embed02, snapshot));
+    expect(map?.params).toMatchObject({
+      frameFontServices: 'Adobe Fonts',
+      frameFontRequestCount: 1,
+      frameHelperCount: 0,
+      frameResourceCount: 2,
+    });
+
+    const [onlyUsage] = observationsOf(
+      runCheck(embed02, frameScenario('clean-map-frame-typekit-usage-hit.json')),
+    );
+    expect(onlyUsage?.params).toMatchObject({
+      frameFontServices: null,
+      frameFontRequestCount: 0,
+      frameHelperCount: 0,
+      frameResourceCount: 1,
+    });
   });
 
   it('counterexample: an unfinished font request of the frame is no load and no connection hint of the site', () => {

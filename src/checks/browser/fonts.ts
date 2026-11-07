@@ -1,6 +1,20 @@
-/** Font files from third-party servers: EMBED-01 reports them, so CONSENT-01 leaves them out. */
+/**
+ * Fonts from third-party servers: which requests of a font service load a font, and the font files of other hosts.
+ * EMBED-01 reports them, so CONSENT-01 leaves those files out.
+ */
 import type { RequestRecord } from '../../core/snapshot/browser.ts';
-import type { ClassifiedRequest, ServiceCategory } from '../../derive/types.ts';
+import type { ClassifiedRequest, RequestKind, ServiceCategory } from '../../derive/types.ts';
+
+/** Request kinds of a font service that fetch a file; a usage `hit` (p.typekit.net) is no font load. */
+const FONT_LOAD_KINDS: ReadonlySet<RequestKind> = new Set(['stylesheet', 'font', 'library', 'resource']);
+
+/**
+ * A request of a font service that loads a font, by its kind for that service: `kind` of the site's own request,
+ * `resourceKind` of a request in an embed's frame. Both paths of EMBED-01 and the frame fonts of EMBED-02 and
+ * EMBED-03 count the same requests.
+ */
+export const fontLoadKind = (kind: RequestKind | undefined): boolean =>
+  FONT_LOAD_KINDS.has(kind ?? 'resource');
 
 /**
  * Categories whose font files EMBED-01 reports besides the font services: hosts outside the catalog and widgets that

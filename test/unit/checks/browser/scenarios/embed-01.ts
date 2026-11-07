@@ -18,6 +18,8 @@ import { crawlerTestSignal, type Scenario } from './shared.ts';
 export const MAP_EMBED = 'https://www.google.com/maps/embed?pb=[redacted]';
 export const FRAME_CSS = 'https://fonts.googleapis.com/css?family=Roboto:300,400,500';
 export const FRAME_FONT = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2';
+/** Adobe Fonts' usage counter as the collector stores it: the catalog marks it as a `hit`, no font load. */
+export const TYPEKIT_USAGE = 'https://p.typekit.net/p.css?s=[redacted]';
 
 /** A request of the Google Maps frame on Kontakt; the frame id names its phase, as the collector records it. */
 export const inMapFrame = (
@@ -195,6 +197,23 @@ export const variantScenarios: Scenario[] = [
               inMapFrame('A-1', MAP_EMBED, 'document', { isNavigation: true }),
               inMapFrame('A-2', 'https://maps.googleapis.com/maps/vt?pb=[redacted]', 'image'),
               inMapFrame('A-3', 'https://helper.unknown-host.example/t.js', 'script'),
+            ],
+          }),
+        ],
+      }),
+  },
+  {
+    file: 'clean-map-frame-typekit-usage-hit.json',
+    description:
+      "Counterexample: the map frame on Kontakt only calls Adobe Fonts' usage counter p.typekit.net, which the catalog marks as a hit and loads no font; the map is EMBED-02, EMBED-01 has nothing to report",
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              inMapFrame('A-1', MAP_EMBED, 'document', { isNavigation: true }),
+              inMapFrame('A-2', TYPEKIT_USAGE, 'stylesheet'),
             ],
           }),
         ],
