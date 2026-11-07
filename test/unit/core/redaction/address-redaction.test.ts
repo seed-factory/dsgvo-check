@@ -6,30 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { maskEmails, maskMailto, redactText } from '../../../../src/core/redaction/redact.ts';
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
-
-const MARK = 'zq7marker';
-const D = 'example.invalid';
-
-/** mulberry32: the same sequence on every run, no extra dependency. */
-const random = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
-
-/** Both functions are idempotent: the output of the first pass is a fixed point. */
-function expectStable(input: string): string {
-  const once = redactText(input);
-  expect(redactText(once), `redactText(redactText(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
-
-function expectStableUrl(input: string): string {
-  const once = sanitizeUrl(input);
-  expect(sanitizeUrl(once), `sanitizeUrl(sanitizeUrl(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
+import {
+  D,
+  expectStableText as expectStable,
+  expectStable as expectStableUrl,
+  MARK,
+  random,
+} from '../url/redaction-helpers.ts';
 
 describe('the whole local part goes, whatever characters it has', () => {
   const specials = [

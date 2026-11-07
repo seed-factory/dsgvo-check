@@ -6,12 +6,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../../src/core/data/load.ts';
-import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
 import { renderConsole } from '../../../../src/reporters/console.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
 import { renderSummary } from '../../../../src/reporters/summary.ts';
 import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
+import { reporterContext } from '../../../utils/report/reporter-inputs.ts';
 import { REPO_ROOT } from '../../../utils/snapshot-builder.ts';
 
 /** Verdict wording that is blocked everywhere. */
@@ -22,11 +21,11 @@ const STOP_WORDS = [
   /unzulässig|unzulaessig/i,
   /dsgvo-konform|dsgvokonform|datenschutzkonform|rechtskonform|gesetzeskonform/i,
   /gesetzwidrig|illegal/i,
-  // en
-  /\bviolat(es|ed|ion|ing)\b/i,
-  /\bunlawful\b/i,
-  /\bnon-?compliant\b|\bgdpr-compliant\b/i,
-  /\bin breach\b|\bbreaches\b/i,
+  // en: every form of the word, "violate" and "unlawfully" included
+  /violat/i,
+  /unlawful/i,
+  /non-?compliant|\bgdpr-compliant\b/i,
+  /in breach|\bbreaches\b/i,
 ];
 
 /** Phrases that state a consent, necessity, absence or obligation verdict, with a label for the failure message. */
@@ -103,6 +102,8 @@ describe('stop words in test/data/texts', () => {
       'rechtswidrig',
       'nicht DSGVO-konform',
       'violates GDPR',
+      'may violate the GDPR',
+      'processed unlawfully',
       'non-compliant',
     ]) {
       expect(
@@ -136,17 +137,10 @@ describe('stop words in test/data/texts', () => {
 });
 
 describe('stop words in rendered reports', () => {
-  const ctx = (lang: 'de' | 'en'): ReporterContext => ({
-    texts: loadTexts(lang),
-    lang,
-    outDir: '/nonexistent-out',
-    color: false,
-  });
-
   it.each(['de', 'en'] as const)('%s: HTML, console and Job Summary of the sample reports', (lang) => {
     for (const report of [sampleFullReport(), sampleFailedReport()]) {
       for (const render of [renderHtml, renderConsole, renderSummary]) {
-        expect(hits(render(report, ctx(lang)))).toEqual([]);
+        expect(hits(render(report, reporterContext(lang)))).toEqual([]);
       }
     }
   });

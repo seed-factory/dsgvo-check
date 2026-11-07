@@ -6,13 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { redactText } from '../../../../src/core/redaction/redact.ts';
 import { containsAddress, REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
-import { D, expectStable, MARK, random } from './redaction-helpers.ts';
-
-function expectStableText(input: string): string {
-  const once = redactText(input);
-  expect(redactText(once), `redactText(redactText(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
+import { D, expectStable, expectStableText, MARK, random } from './redaction-helpers.ts';
 
 describe('e-mail addresses in a path segment', () => {
   it.each([

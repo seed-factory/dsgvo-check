@@ -3,29 +3,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { newRunId, parseRunnerArgs } from '../../../scripts/canary/args.ts';
-import type { SiteMeta } from '../../../scripts/canary/results.ts';
+import { type SiteMeta, siteRef } from '../../../scripts/canary/results.ts';
 import { reanalyzeRun, runCanary, runPool } from '../../../scripts/canary/runner.ts';
 import { apiScanner, type SiteJob, type SiteScanner } from '../../../scripts/canary/scanners.ts';
-import { type CanarySite, parseSites } from '../../../scripts/canary/sites.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
 import { fakeCollectors, publicLookup } from '../../utils/scan-harness.ts';
 import { FIXED_NOW } from '../../utils/snapshot-builder.ts';
-
-function sites(n: number): CanarySite[] {
-  const raw = Array.from({ length: n }, (_, i) => ({
-    id: `de-s${i}`,
-    url: `https://www.s${i}.de/`,
-    region: 'de',
-    country: 'DE',
-    sector: 'media',
-    sizeClass: 'medium',
-    expectedCmp: 'unknown',
-    selectionReason: 'Branchenmix',
-    publicReference: null,
-  }));
-  return parseSites(JSON.stringify({ version: 1, sites: raw }), { expectedCount: null });
-}
+import { runOptions, sites } from './runner-inputs.ts';
 
 const tmp = () => mkdtempSync(path.join(tmpdir(), 'canary-run-'));
 const readMeta = (runDir: string, id: string): SiteMeta =>
@@ -190,26 +175,13 @@ describe('parseRunnerArgs', () => {
 });
 
 describe('runCanary', () => {
-  const base = (resultsDir: string, list: CanarySite[]) => ({
-    sites: list,
-    resultsDir,
-    runId: 'run-a',
-    concurrency: 2,
-    pauseMs: 10,
-    timeoutMs: 1000,
-    watchdogReserveMs: 1000,
-    retryErrors: false,
-    engine: 'api' as const,
-    sitesFile: 'canary/sites.yaml',
-  });
-
   it('scans in corpus order with bounded concurrency and writes meta.json per site', async () => {
     const dir = tmp();
     const list = sites(5);
     const fake = fakeScanner({ failIds: ['de-s3'] });
     const sleeps: number[] = [];
 
-    const res = await runCanary(base(dir, list), {
+    const res = await runCanary(runOptions(dir, list), {
       scanner: fake.scanner,
       sleep: async (ms) => {
         sleeps.push(ms);
@@ -248,20 +220,20 @@ describe('runCanary', () => {
 
     // first run: one site throws
     const first = fakeScanner({ throwIds: ['de-s1'] });
-    await runCanary(base(dir, list), quiet(first.scanner));
+    await runCanary(runOptions(dir, list), quiet(first.scanner));
     const err = readMeta(path.join(dir, 'run-a'), 'de-s1');
     expect(err.error).toMatchObject({ code: 'runner-exception' });
     expect(err.exitCode).toBeNull();
 
     // second run: everything is finished or recorded, so nothing is scanned
     const second = fakeScanner();
-    const res = await runCanary(base(dir, list), quiet(second.scanner));
+    const res = await runCanary(runOptions(dir, list), quiet(second.scanner));
     expect(second.started).toEqual([]);
     expect(res).toMatchObject({ planned: 3, scanned: 0, skipped: 3 });
 
     // third run: retryErrors picks up only the failed site
     const third = fakeScanner();
-    await runCanary({ ...base(dir, list), retryErrors: true }, quiet(third.scanner));
+    await runCanary(runOptions(dir, list, { retryErrors: true }), quiet(third.scanner));
     expect(third.started).toEqual(['de-s1']);
     expect(readMeta(path.join(dir, 'run-a'), 'de-s1').error).toBeNull();
   });
@@ -278,7 +250,7 @@ describe('runCanary', () => {
       return new Promise(() => {});
     };
 
-    await runCanary({ ...base(dir, list), timeoutMs: 5, watchdogReserveMs: 5 }, quiet(scanner));
+    await runCanary(runOptions(dir, list, { timeoutMs: 5, watchdogReserveMs: 5 }), quiet(scanner));
 
     const runDir = path.join(dir, 'run-a');
     expect(readMeta(runDir, 'de-s0').error).toMatchObject({ code: 'report-missing' });
@@ -306,18 +278,14 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
     const list = sites(1);
 
     await runCanary(
-      {
-        sites: list,
-        resultsDir: dir,
+      runOptions(dir, list, {
         runId: 'live',
         concurrency: 1,
         pauseMs: 0,
         timeoutMs: 30_000,
         watchdogReserveMs: 5_000,
-        retryErrors: false,
-        engine: 'api',
         sitesFile: 'x',
-      },
+      }),
       quiet(apiScanner(apiOptions(overrides))),
     );
 
@@ -366,15 +334,7 @@ describe('API scanner (offline: fake collectors, empty registry)', () => {
       metaVersion: 1,
       runId: 'src',
       mode: 'scan',
-      site: {
-        id: 'de-s0',
-        url: 'https://www.s0.de/',
-        region: 'de',
-        country: 'DE',
-        sector: 'media',
-        sizeClass: 'medium',
-        expectedCmp: 'unknown',
-      },
+      site: siteRef(sites(1)[0]!),
       exitCode: 2,
       scanStatus: 'failed',
       durationMs: 1234,

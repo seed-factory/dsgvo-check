@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadTexts } from '../../../src/core/data/load.ts';
 import { templateParams, uiText } from '../../../src/core/data/messages.ts';
-import type { ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { FullReport, MessageParams, Report } from '../../../src/core/report/schema.ts';
 import { renderConsole } from '../../../src/reporters/console.ts';
 import { DISCLAIMER_KEYS, disclaimerParagraphs, disclaimerText } from '../../../src/reporters/disclaimer.ts';
@@ -13,13 +12,7 @@ import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { renderSummary } from '../../../src/reporters/summary.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
-
-const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => ({
-  texts: loadTexts(lang),
-  lang,
-  outDir: '/nonexistent-out',
-  color: false,
-});
+import { reporterContext as ctx } from '../../utils/report/reporter-inputs.ts';
 
 const para = (key: string, params: MessageParams = {}, lang: 'de' | 'en' = 'de') =>
   uiText(loadTexts(lang), key, params);
