@@ -1,0 +1,774 @@
+// Browser collection: phase A (≤ maxPages, no interaction), phase B (observe the start page, reject via the adapter,
+// verify, reload, up to `browser.maxControlPages` control pages), phase C (accept, same control pages), each in a fresh
+// persistent profile. Fatal start-page conditions go into `fatal`. The phases live in `phase-a.ts` and
+// `consent-phase.ts` and share the `BrowserCollection` state, so its members are not private.
+import type { BrowserContext, BrowserType, Page } from 'playwright-core';
+import type { CmpAdapter, CmpFacts, CmpPhaseFacts, CmpSection } from '../../cmp/types.ts';
+import { browserUserAgent } from '../../core/runtime/user-agent.ts';
+import type {
+  BrowserPlan,
+  BrowserSection,
+  DocumentsSection,
+  PhaseRecord,
+  PlannedPage,
+  ScreenshotRecord,
+} from '../../core/snapshot/browser.ts';
+import type {
+  BrowserSections,
+  CollectorContext,
+  CollectorResult,
+  FatalSignal,
+} from '../../core/snapshot/collector.ts';
+import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
+import type { ProbeRecord } from '../../core/snapshot/http.ts';
+import type { DiagnosticInput } from '../../core/snapshot/index.ts';
+import { registrableDomain } from '../../core/url/url.ts';
+import { type CmpApi, CmpBridge } from './cmp-bridge.ts';
+import {
+  BASE_KNOWN_GAPS,
+  BROWSER_CHANNEL,
+  type BrowserTiming,
+  browserTiming,
+  LOCALE,
+  TIMEZONE,
+  VIEWPORT,
+} from './config.ts';
+import { inputHookInit } from './in-page/input.ts';
+import { cookieHookInit, storageHookInit } from './in-page/storage.ts';
+import {
+  classifyLaunchError,
+  type EngineProbe,
+  launchPhase,
+  type PhaseBrowser,
+  probeEngine,
+} from './launch/launch.ts';
+import { removeStaleProfiles } from './launch/profile.ts';
+import { type GuardHandle, type GuardVerdict, installSsrfGuard, type LookupError } from './launch/ssrf.ts';
+import { linkDocuments } from './legal/queue.ts';
+import {
+  type BlockedPage,
+  blockedDiagnostic,
+  checkThrottleResponses,
+  privateBlockedDiagnostic,
+} from './pages/navigate.ts';
+import type { ControlChoice } from './pages/pages.ts';
+import { revealBelowFold, revealDwellMs } from './pages/reveal.ts';
+import { type VisitResult, valueWithin } from './pages/visit.ts';
+import { phaseB, phaseC } from './phases/consent-phase.ts';
+import { phaseA } from './phases/phase-a.ts';
+import { sanitizeRequestUrl } from './recording/features.ts';
+import { JarTracker, type Moment } from './recording/jar.ts';
+import {
+  localScanClock,
+  NetworkRecorder,
+  type RequestCounter,
+  type ScanClock,
+} from './recording/recorder.ts';
+import { ERROR_MESSAGE_MAX_CHARS, errorText, pageCallFailure, phaseFailure, sleep } from './util.ts';
+
+/** How long sealing a phase waits for response handlers that are still running. */
+const FLUSH_BUDGET_MS = 2_000;
+/** The outer timer ends after the flush's own budget, so it only catches a flush that hangs. */
+const FLUSH_GRACE_MS = 250;
+// The orderly shutdown (browser closed, profile removed) takes milliseconds, at most about FLUSH_BUDGET_MS +
+// CLOSE_BUDGET_MS; after that the collector hands over what it has, before the orchestrator gives up (10 s).
+const ABORT_ORDERLY_MS = 5_500;
+/** Order of the phases in the snapshot. */
+const PHASE_ORDER: readonly BrowserPhase[] = ['A', 'B', 'C'];
+/** Reasons that name an unfinished phase; `cmp-not-recognized` is normal and not among them. */
+const UNFINISHED_PHASE_REASONS: ReadonlySet<string> = new Set([
+  'time-budget',
+  'throttled',
+  'request-cap',
+  'timeout',
+  'viewport-not-restored',
+]);
+
+const byPhaseOrder = (a: { phase: BrowserPhase }, b: { phase: BrowserPhase }): number =>
+  PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase);
+
+export interface BrowserCollectorDeps {
+  cmp: CmpApi;
+  /** Replaces the timings of `ctx.config.browser` (tests run the same algorithm faster). */
+  timing?: BrowserTiming;
+  chromium: BrowserType;
+  phases: readonly BrowserPhase[];
+  /** Replaces `ctx.config.browser.requestLimit`. */
+  requestLimit?: number;
+  executablePath?: string;
+  closeBudgetMs?: number;
+  abortOrderlyMs?: number;
+  lookupBackoffMs?: readonly number[];
+}
+
+export interface Session {
+  phase: BrowserPhase;
+  browser: PhaseBrowser;
+  page: Page;
+  recorder: NetworkRecorder;
+  jar: JarTracker;
+  cmp: CmpBridge;
+  guard: GuardHandle;
+  record: PhaseRecord;
+  cmpFacts: CmpPhaseFacts;
+  t0: number;
+  sealing?: Promise<void>;
+  /**
+   * The first-screen viewport could not be set again after a reveal: the phase visits no further page, whose first
+   * screen would be measured in the enlarged one.
+   */
+  viewportLost?: true;
+}
+
+export interface AVisit {
+  raw: string;
+  result: VisitResult;
+  source: PlannedPage['source'];
+}
+
+export type PhaseAOutcome =
+  | { kind: 'ok' }
+  | { kind: 'fatal'; fatal: FatalSignal }
+  | { kind: 'tls-blocked' }
+  | { kind: 'fallback-failed'; error: CollectorError };
+
+/** Where phase A starts: the target, or the start page the orchestrator chose (`ctx.entry`); raw URL. */
+export interface StartTarget {
+  url: string;
+  host: string;
+  etld1: string | null;
+  /** The redirect target of a refused certificate: a failing start page there ends the browser, not the scan. */
+  fallback: boolean;
+}
+
+function startTargetOf(ctx: CollectorContext): StartTarget {
+  if (!ctx.entry)
+    return { url: ctx.target.url, host: ctx.target.host, etld1: ctx.target.etld1, fallback: false };
+  const host = new URL(ctx.entry.url).hostname.toLowerCase();
+  return { url: ctx.entry.url, host, etld1: registrableDomain(host), fallback: true };
+}
+
+/** Without frames the jar reads cookies only (PDF viewer, error pages: nothing to read in-page). */
+function withoutFrames(page: Page): Page {
+  return new Proxy(page, { get: (t, p) => (p === 'frames' ? () => [] : Reflect.get(t, p, t)) });
+}
+
+export class BrowserCollection {
+  readonly counter: RequestCounter;
+  private engine: EngineProbe | null = null;
+  private userAgent = '';
+  current: PhaseBrowser | null = null;
+  lastNavigationEnd = 0;
+  readonly phases: PhaseRecord[] = [];
+  readonly plan: BrowserPlan = { pages: [], controlPages: [], click: {} };
+  readonly documents: DocumentsSection = { documents: [], attempts: [] };
+  readonly cmpSection: CmpSection = { phases: [] };
+  /**
+   * The dialog is read once per scan: on the first screen of phase A where an adapter first qualified. A failed read is
+   * not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
+   */
+  private dialogRead = false;
+  readonly screenshots: ScreenshotRecord[] = [];
+  private readonly errors: CollectorError[] = [];
+  readonly diagnostics: DiagnosticInput[] = [];
+  readonly probes: ProbeRecord[] = [];
+  private readonly knownGaps = new Set<string>(BASE_KNOWN_GAPS);
+  guard = { enabled: false, blocked: 0 };
+  private guardScope: GuardHandle['scope'];
+  readonly guardVerdicts: GuardVerdict[] = [];
+  /** A successful repeat of the same navigation made good: no document is missing. */
+  readonly guardRecovered: GuardVerdict[] = [];
+  /** In memory only: tells a redirect from a non-public start host. */
+  readonly guardBlockedHosts = new Set<string>();
+  throttled = false;
+  startRaw = '';
+  scope = { finalHost: '', etld1: null as string | null };
+  readonly aVisits: AVisit[] = [];
+  control: ControlChoice[] = [];
+  cmpRecognized: boolean | null = null;
+  stoppedEarly: string | null = null;
+  /** The open phase session, for the hand-over after an abort. */
+  session: Session | null = null;
+  readonly blockedPages: BlockedPage[] = [];
+  readonly lookupErrors: Array<LookupError & { atMs: number }> = [];
+
+  readonly ctx: CollectorContext;
+  readonly deps: BrowserCollectorDeps;
+  readonly timing: BrowserTiming;
+  readonly start: StartTarget;
+  private readonly clock: ScanClock;
+
+  constructor(ctx: CollectorContext, deps: BrowserCollectorDeps) {
+    this.ctx = ctx;
+    this.deps = deps;
+    this.start = startTargetOf(ctx);
+    this.timing = deps.timing ?? browserTiming(ctx.config.browser);
+    this.counter = {
+      limit: deps.requestLimit ?? ctx.config.browser.requestLimit,
+      issued: 0,
+      truncated: false,
+    };
+    this.clock = ctx.clock ?? localScanClock();
+  }
+
+  async run(): Promise<CollectorResult<BrowserSections>> {
+    const signal = this.ctx.signal;
+
+    // Abort closes the running phase browser at once; every later close() awaits the same cleanup.
+    let onAbort: () => void = () => undefined;
+    const aborted = new Promise<'aborted'>((resolve) => {
+      onAbort = () => {
+        void this.current?.close();
+        resolve('aborted');
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    });
+
+    const body = this.runBody();
+    body.catch(() => undefined);
+    try {
+      const first = await Promise.race([body, aborted]);
+      if (first !== 'aborted') return first;
+
+      const orderly = await valueWithin(
+        body,
+        this.deps.abortOrderlyMs ?? ABORT_ORDERLY_MS,
+        new AbortController().signal,
+        null,
+      );
+      return orderly.value ?? (await this.handover());
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private async runBody(): Promise<CollectorResult<BrowserSections>> {
+    try {
+      this.removeStaleProfilesQuietly();
+
+      const cfg = this.launchConfig();
+      try {
+        this.engine = await probeEngine(cfg);
+      } catch (err) {
+        return this.launchFailure(err);
+      }
+      this.userAgent = browserUserAgent(this.engine.rawUserAgent);
+
+      let a: PhaseAOutcome;
+      try {
+        a = await phaseA(this);
+      } catch (err) {
+        return this.phaseAFailure(err);
+      }
+      // A failure caused by the abort is not a fatal of the site.
+      if (this.ctx.signal.aborted) return this.abortedResult();
+      if (a.kind === 'tls-blocked') return { status: 'skipped', reason: 'tls-blocked', sections: {} };
+      if (a.kind === 'fallback-failed') {
+        return { status: 'skipped', reason: 'tls-fallback-failed', sections: {}, error: a.error };
+      }
+      if (a.kind === 'fatal') return { ...this.result('error'), fatal: a.fatal, reason: a.fatal.code };
+
+      if (this.deps.phases.includes('B')) await this.runPhase('B', () => phaseB(this));
+      if (this.deps.phases.includes('C')) await this.runPhase('C', () => phaseC(this));
+      if (this.ctx.signal.aborted) return this.abortedResult();
+
+      return this.result(this.isPartial() ? 'partial' : 'ok');
+    } finally {
+      await this.current?.close();
+    }
+  }
+
+  // Profiles of killed scans hold cookies of the scanned site: remove them first.
+  private removeStaleProfilesQuietly(): void {
+    try {
+      const removed = removeStaleProfiles();
+      if (removed.length > 0) this.ctx.log.info(`removed ${removed.length} stale browser profile(s)`);
+    } catch {
+      // housekeeping only
+    }
+  }
+
+  private launchFailure(err: unknown): CollectorResult<BrowserSections> {
+    if (this.ctx.signal.aborted) return this.abortedResult();
+
+    const fatal = classifyLaunchError(err, this.ctx.options.sandbox);
+    this.ctx.log.error(`browser launch failed: ${errorText(err).split('\n')[0]}`);
+    return {
+      status: 'error',
+      reason: fatal.code,
+      sections: {},
+      error: { code: fatal.code, message: errorText(err).split('\n')[0] ?? fatal.code },
+      fatal,
+    };
+  }
+
+  private phaseAFailure(err: unknown): CollectorResult<BrowserSections> {
+    if (this.ctx.signal.aborted) return this.abortedResult();
+
+    const message = phaseFailure(err).slice(0, ERROR_MESSAGE_MAX_CHARS);
+    this.ctx.log.error(`browser phase A failed: ${message}`);
+    return {
+      status: 'error',
+      reason: 'exception',
+      sections: {},
+      error: { code: 'phase-a-failed', message },
+    };
+  }
+
+  /** The collection delivered less than planned; an abort is handled before this is asked. */
+  private isPartial(): boolean {
+    return (
+      this.counter.truncated ||
+      this.stoppedEarly !== null ||
+      this.phases.some(
+        (p) =>
+          p.status === 'failed' ||
+          p.reason === 'time-budget' ||
+          p.reason === 'request-cap' ||
+          p.reason === 'throttled' ||
+          p.reason === 'viewport-not-restored',
+      )
+    );
+  }
+
+  // Nothing is delivered before the start page was visited (the orchestrator reports SCAN-TIMEOUT); afterwards the
+  // collected data is kept and phases that did not run are marked skipped by the deadline.
+  private abortedResult(): CollectorResult<BrowserSections> {
+    if (!this.startRaw || !this.engine) return { status: 'error', reason: 'timeout', sections: {} };
+    for (const phase of this.deps.phases) {
+      if (!this.phases.some((p) => p.phase === phase)) {
+        this.phases.push(this.skippedPhase(phase, 'skipped', 'timeout'));
+      }
+    }
+    return { ...this.result('partial'), reason: 'timeout' };
+  }
+
+  // The orderly shutdown did not finish in time: hand over what the phases hold now. The orderly flow may still run in
+  // the background, so the sections are a copy.
+  private async handover(): Promise<CollectorResult<BrowserSections>> {
+    this.ctx.log.warn(
+      'browser collector: shutdown after the abort timed out, handing over the collected facts',
+    );
+    const s = this.session;
+    if (s && this.current === s.browser) await this.sealPhase(s);
+    return structuredClone(this.abortedResult());
+  }
+
+  private launchConfig() {
+    return {
+      chromium: this.deps.chromium,
+      sandbox: this.ctx.options.sandbox,
+      network: this.ctx.network,
+      timeoutMs: this.ctx.config.browser.launchTimeoutMs,
+      ...(this.deps.executablePath ? { executablePath: this.deps.executablePath } : {}),
+      ...(this.deps.closeBudgetMs !== undefined ? { closeBudgetMs: this.deps.closeBudgetMs } : {}),
+      log: this.ctx.log,
+    };
+  }
+
+  timeLeft(): boolean {
+    return !this.ctx.signal.aborted && Date.now() < this.ctx.deadline - this.timing.deadlineReserveMs;
+  }
+
+  // Only the local reserve before the global deadline (`timeout`) is `time-budget` and marks the collector stopped
+  // early.
+  cutByTime(record: PhaseRecord): void {
+    record.status = 'partial';
+    if (this.ctx.signal.aborted) record.reason = 'timeout';
+    else {
+      record.reason = 'time-budget';
+      this.stoppedEarly ??= 'time-budget';
+    }
+  }
+
+  async pace(): Promise<void> {
+    const wait = this.lastNavigationEnd + this.timing.navigationPauseMs - Date.now();
+    await sleep(wait, this.ctx.signal);
+  }
+
+  async openPhase(phase: BrowserPhase): Promise<Session> {
+    if (this.ctx.signal.aborted) throw new Error('aborted');
+
+    const browser = await launchPhase(this.launchConfig(), this.userAgent);
+    this.current = browser;
+    if (this.ctx.signal.aborted) {
+      await browser.close();
+      throw new Error('aborted');
+    }
+
+    const etld1 = this.scope.etld1 ?? this.start.etld1;
+    const recorder = this.attachRecorder(phase, etld1, browser.context);
+    await browser.context.addInitScript(cookieHookInit);
+    await browser.context.addInitScript(storageHookInit);
+    await browser.context.addInitScript(inputHookInit);
+    const page = browser.context.pages()[0] ?? (await browser.context.newPage());
+    const guard = await this.installGuard(browser.context, recorder);
+
+    const record = this.startedPhaseRecord(phase);
+    const host = this.scope.finalHost || this.start.host;
+    const session: Session = {
+      phase,
+      browser,
+      page,
+      recorder,
+      jar: this.newJar(recorder, { etld1, host }, record),
+      cmp: new CmpBridge(this.deps.cmp, this.timing.cmpCallTimeoutMs, record.errors, phase, {
+        blockingCoveredRatio: this.ctx.config.cmp.blockingCoveredRatio,
+      }),
+      guard,
+      record,
+      cmpFacts: { phase, facts: [] },
+      t0: performance.now(),
+    };
+    this.session = session;
+    return session;
+  }
+
+  private attachRecorder(
+    phase: BrowserPhase,
+    etld1: string | null,
+    context: BrowserContext,
+  ): NetworkRecorder {
+    const recorder = new NetworkRecorder(
+      phase,
+      etld1,
+      this.counter,
+      this.ctx.network.proxy !== null,
+      this.clock,
+      { signal: this.ctx.signal, metaTimeoutMs: this.ctx.config.browser.responseMetaTimeoutMs },
+    );
+    recorder.attach(context);
+    return recorder;
+  }
+
+  private async installGuard(context: BrowserContext, recorder: NetworkRecorder): Promise<GuardHandle> {
+    const guard = await installSsrfGuard(
+      context,
+      this.ctx.network,
+      (url, verdict) => this.onGuardBlocked(recorder, url, verdict),
+      {
+        onLookupError: (e) => this.lookupErrors.push({ ...e, atMs: Math.max(0, Math.round(this.clock())) }),
+        ...(this.deps.lookupBackoffMs ? { backoffMs: this.deps.lookupBackoffMs } : {}),
+      },
+    );
+    this.guard.enabled = guard.enabled;
+    if (guard.scope) this.guardScope = guard.scope;
+    return guard;
+  }
+
+  private onGuardBlocked(recorder: NetworkRecorder, url: string, verdict: GuardVerdict): void {
+    recorder.flagGuardBlocked(url);
+    this.guard.blocked++;
+    this.guardVerdicts.push(verdict);
+    try {
+      this.guardBlockedHosts.add(new URL(url).hostname.toLowerCase());
+    } catch {
+      // not a URL: no host to record
+    }
+  }
+
+  private startedPhaseRecord(phase: BrowserPhase): PhaseRecord {
+    return {
+      phase,
+      status: 'completed',
+      startedAt: this.ctx.now().toISOString(),
+      durationMs: 0,
+      profile: 'persistent-tmp',
+      pages: [],
+      requests: [],
+      cookies: [],
+      storage: [],
+      errors: [],
+    };
+  }
+
+  /** A read that ran out of time becomes a phase error. */
+  newJar(
+    recorder: NetworkRecorder,
+    target: { etld1: string | null; host: string },
+    record: PhaseRecord,
+  ): JarTracker {
+    return new JarTracker(target, recorder.setCookieOrigins, {
+      signal: this.ctx.signal,
+      evalTimeoutMs: this.ctx.config.browser.storageReadTimeoutMs,
+      onError: (what, err) => {
+        const code = 'in-page-read-timeout';
+        // One entry per kind of read is enough; a PDF-heavy site would repeat it for every page.
+        if (record.errors.some((e) => e.code === code && e.message.startsWith(what))) return;
+        record.errors.push({
+          code,
+          message: `${what}: ${pageCallFailure(err)}`.slice(0, ERROR_MESSAGE_MAX_CHARS),
+          phase: record.phase,
+        });
+      },
+    });
+  }
+
+  moment(s: Session, pageUrl: SanitizedUrl): Moment {
+    const ref = s.recorder.reference;
+    const actionId = s.recorder.actionId;
+    return {
+      phase: s.phase,
+      pageUrl,
+      tMs: Math.max(0, Math.round(performance.now() - ref.at)),
+      tRef: ref.tRef,
+      afterClick: s.recorder.isAfterClick,
+      atMs: s.recorder.now(),
+      ...(s.recorder.navigationId ? { navigationId: s.recorder.navigationId } : {}),
+      ...(actionId ? { actionId } : {}),
+    };
+  }
+
+  async flushRecorder(s: Session): Promise<void> {
+    await valueWithin(
+      s.recorder.flush({ timeoutMs: FLUSH_BUDGET_MS, signal: this.ctx.signal }),
+      FLUSH_BUDGET_MS + FLUSH_GRACE_MS,
+      this.ctx.signal,
+      true,
+    );
+  }
+
+  // Recorder and jar facts go into the phase record. Once per session, whoever asks first (the phase or the abort
+  // hand-over); needs no working browser.
+  private sealPhase(s: Session): Promise<void> {
+    s.sealing ??= (async () => {
+      await this.flushRecorder(s);
+      s.jar.finalize(this.moment(s, s.record.pages.at(-1)?.finalUrl ?? sanitizeRequestUrl(this.startRaw)));
+      s.recorder.dispose();
+
+      s.record.requests = s.recorder.records;
+      s.record.cookies = s.jar.cookies;
+      s.record.storage = s.jar.storage;
+      s.record.durationMs = Math.round(performance.now() - s.t0);
+
+      if (s.recorder.dropped > 0 && s.record.status === 'completed') {
+        s.record.status = 'partial';
+        s.record.reason = 'request-cap';
+      }
+      if (this.ctx.signal.aborted && s.record.status === 'completed') {
+        s.record.status = 'partial';
+        s.record.reason = 'timeout';
+      }
+
+      this.cmpSection.phases.push(s.cmpFacts);
+      this.phases.push(s.record);
+    })();
+    return s.sealing;
+  }
+
+  async closePhase(s: Session): Promise<void> {
+    await this.sealPhase(s);
+    await s.browser.close();
+    if (this.current === s.browser) this.current = null;
+    if (this.session === s) this.session = null;
+  }
+
+  /** An exception marks the phase failed but keeps everything collected so far. */
+  private async runPhase(phase: 'B' | 'C', fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      const message = phaseFailure(err).slice(0, ERROR_MESSAGE_MAX_CHARS);
+      this.ctx.log.warn(`phase ${phase} failed: ${message}`);
+
+      const existing = this.phases.find((p) => p.phase === phase);
+      const error = { code: 'phase-failed', message, phase };
+      if (existing) {
+        existing.status = 'failed';
+        existing.errors.push(error);
+      } else {
+        this.phases.push(this.skippedPhase(phase, 'failed', 'exception', [error]));
+      }
+
+      await this.current?.close();
+      this.current = null;
+      this.session = null;
+    }
+  }
+
+  skippedPhase(
+    phase: BrowserPhase,
+    status: PhaseRecord['status'],
+    reason: string,
+    errors: CollectorError[] = [],
+  ): PhaseRecord {
+    return {
+      phase,
+      status,
+      reason,
+      startedAt: this.ctx.now().toISOString(),
+      durationMs: 0,
+      profile: 'persistent-tmp',
+      pages: [],
+      requests: [],
+      cookies: [],
+      storage: [],
+      errors,
+    };
+  }
+
+  // A page that is no readable HTML document (PDF viewer, error page, failed DOM read) gets cookies from the jar only:
+  // in-page reads and CMP calls would wait for frames that never answer.
+  async afterPage(
+    s: Session,
+    r: VisitResult,
+    cmpMoment: CmpFacts['moment'] | null,
+    adapter: CmpAdapter | null = null,
+  ): Promise<CmpFacts | null> {
+    // Facts are attributed to the page as shown (final URL), like its requests.
+    const pageUrl = r.visit.finalUrl;
+    const readable = !r.error && r.visit.dom !== null;
+
+    const values = await s.jar.snapshot(
+      s.browser.context,
+      readable ? s.page : withoutFrames(s.page),
+      this.moment(s, pageUrl),
+    );
+    s.recorder.correlate(values);
+    values.length = 0;
+    if (!cmpMoment || !readable) return null;
+
+    let a = adapter;
+    if (s.phase === 'A') a = (await s.cmp.detect(s.page, pageUrl))?.adapter ?? null;
+    const facts = await s.cmp.extract(s.page, a, cmpMoment, pageUrl);
+    if (facts) s.cmpFacts.facts.push(facts);
+    if (facts && a && s.phase === 'A' && cmpMoment === 'first-screen')
+      await this.readDialogMentions(s, a, facts);
+    return facts;
+  }
+
+  /**
+   * The catalog services the dialog names, its collapsed details included (PRIV-01 compares them with the policy):
+   * only where the CMP's own adapter recognised it with confidence `high` and its container is in the page, never what
+   * the generic heuristic found. Read in phase A, before the scan clicks anything; its text is not kept.
+   */
+  private async readDialogMentions(s: Session, adapter: CmpAdapter, facts: CmpFacts): Promise<void> {
+    const d = facts.detection;
+    const qualifies =
+      d.method === 'adapter' &&
+      d.cmpId === adapter.id &&
+      d.recognitionConfidence === 'high' &&
+      facts.firstLayer.bannerPresent;
+    if (this.dialogRead || !qualifies) return;
+    this.dialogRead = true;
+    const read = await s.cmp.dialogMentions(s.page, adapter, d.version, facts.pageUrl);
+    if (read === 'failed') this.cmpSection.dialogMentionsFailed = true;
+    else if (read !== 'absent') this.cmpSection.dialogMentions = read;
+  }
+
+  /**
+   * Shows the content below the first screen of the page `r` that is still open: after its first-screen facts, before
+   * the next navigation or click. Cookies and storage that appear meanwhile are taken for this page.
+   */
+  async reveal(s: Session, r: VisitResult): Promise<void> {
+    const dwellMs = revealDwellMs(this.ctx.config.browser.revealDwellMs, this.timing.phases[s.phase]);
+    if (dwellMs === 0 || r.error || !r.visit.evaluable || r.visit.dom === null || s.viewportLost) return;
+    // Like a navigation: no new requests to a throttling host, past the request limit or into the deadline reserve.
+    if (this.throttled || this.counter.truncated || !this.timeLeft()) return;
+
+    const pageUrl = r.visit.finalUrl;
+    const out = await revealBelowFold({
+      page: s.page,
+      recorder: s.recorder,
+      viewport: VIEWPORT,
+      dwellMs,
+      maxHeightPx: this.ctx.config.browser.revealMaxHeightPx,
+      quietWindowMs: this.timing.quietWindowMs,
+      maxInflight: this.timing.maxInflight,
+      callTimeoutMs: this.timing.cmpCallTimeoutMs,
+      signal: this.ctx.signal,
+    });
+    r.visit.reveal = out.facts;
+    if (out.error)
+      s.record.errors.push({ code: 'reveal-failed', message: out.error, phase: s.phase, url: pageUrl });
+    if (!out.restored) {
+      s.viewportLost = true;
+      s.record.status = 'partial';
+      s.record.reason = 'viewport-not-restored';
+    }
+    if (out.facts.outcome !== 'revealed') return;
+
+    // Bounded like the page's own wait (`visitPage`): a handler still running keeps its own budget and is not
+    // abandoned, so a late `Set-Cookie` of what the reveal loaded is still recorded.
+    await valueWithin(s.recorder.flush({ signal: this.ctx.signal }), FLUSH_BUDGET_MS, this.ctx.signal, true);
+    const values = await s.jar.snapshot(s.browser.context, s.page, this.moment(s, pageUrl));
+    s.recorder.correlate(values);
+    values.length = 0;
+    // What the larger viewport loaded counts like the page's own requests: a host that throttled them gets no next
+    // navigation.
+    checkThrottleResponses(this, s, r.visit.url);
+  }
+
+  /** A phase that shows only the first screen of its pages. */
+  private revealOff(): boolean {
+    return this.deps.phases.some(
+      (p) => revealDwellMs(this.ctx.config.browser.revealDwellMs, this.timing.phases[p]) === 0,
+    );
+  }
+
+  /** Reason of the first unfinished phase. */
+  private partialReason(): string | undefined {
+    const phases = [...this.phases].sort(byPhaseOrder);
+    for (const p of phases) {
+      if (p.status === 'failed') return `phase-failed:${p.phase}`;
+      if (p.reason && UNFINISHED_PHASE_REASONS.has(p.reason)) return p.reason;
+    }
+    if (this.counter.truncated) return 'request-cap';
+    return this.stoppedEarly ?? undefined;
+  }
+
+  private result(status: 'ok' | 'partial' | 'error'): CollectorResult<BrowserSections> {
+    if (this.guard.enabled) this.knownGaps.add('ssrf-guard-subresources-unchecked');
+    if (this.guardScope === 'page') this.knownGaps.add('ssrf-guard-popups-unchecked');
+    if (this.revealOff()) this.knownGaps.add('below-fold-not-revealed');
+
+    const diagnostics = [
+      ...this.diagnostics,
+      ...[privateBlockedDiagnostic(this), blockedDiagnostic(this)].filter((d) => d !== null),
+    ];
+    const reason = status === 'partial' ? this.partialReason() : undefined;
+
+    linkDocuments(this.phases, this.documents);
+    this.phases.sort(byPhaseOrder);
+    this.cmpSection.phases.sort(byPhaseOrder);
+
+    return {
+      status,
+      ...(reason ? { reason } : {}),
+      sections: {
+        browser: this.browserSection(),
+        documents: this.documents,
+        cmp: this.cmpSection,
+        plan: this.plan,
+        ...(this.startRaw ? { finalUrl: this.startRaw } : {}),
+      },
+      ...(diagnostics.length > 0 ? { diagnostics } : {}),
+      ...(this.probes.length > 0 ? { probes: this.probes } : {}),
+    };
+  }
+
+  private browserSection(): BrowserSection {
+    const engine = this.engine as EngineProbe;
+    return {
+      engine: {
+        name: 'chromium',
+        channel: BROWSER_CHANNEL,
+        version: engine.version,
+        headless: 'new',
+        userAgent: this.userAgent,
+        sandbox: engine.sandbox,
+        disabledFeatures: engine.disabledFeatures,
+      },
+      viewport: VIEWPORT,
+      locale: LOCALE,
+      timezoneId: TIMEZONE,
+      phases: this.phases,
+      requestCap: { ...this.counter },
+      guard: { ...this.guard },
+      screenshots: this.screenshots,
+      knownGaps: [...this.knownGaps].sort(),
+      errors: this.errors,
+    };
+  }
+}

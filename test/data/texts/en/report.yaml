@@ -1,0 +1,440 @@
+# Labels of the HTML report and the GitHub Job Summary; user-facing strings belong in test/data/.
+# Draft texts ("Textentwurf") until reviewed.
+draft: true
+ui:
+  report.doc.title: dsgvo-check – report for {target}
+  report.doc.heading: dsgvo-check – report
+  report.doc.scanMeta: "Scan on {date} UTC{hasRegion, select, true { · region of the network egress: {region}} other {}}"
+  report.nav.label: Contents
+  report.section.overview: At a glance
+  report.section.actions: What to do
+  report.section.services: Observed services
+  report.section.summary: Summary
+  report.section.findings: Findings
+  report.section.diagnostics: Diagnostics
+  report.section.environment: Measurement environment
+  report.section.coverage: Coverage
+  report.section.notice: Notes on this report
+  report.meta.target: Target
+  report.meta.finalUrl: URL after redirects
+  report.meta.startedAt: Started (UTC)
+  report.meta.duration: Duration
+  # Only for a re-evaluated snapshot: start and duration above are those of the capture.
+  report.meta.evaluatedAt: Re-evaluated (UTC)
+  report.meta.seconds: "{seconds, number} s"
+  report.meta.version: Version
+  report.meta.ruleset: Ruleset
+  report.meta.rulesetValue: "{profile} {version}, legal status as of {rechtsstand}"
+  report.meta.failOn: Threshold (--fail-on)
+  report.meta.schemaVersion: Report schema
+  report.status.complete: Scan complete
+  report.status.partial: Scan partially completed
+  report.status.failed: Scan not performed
+  report.summary.exitCode: Exit code
+  report.summary.exitReasons: Reasons
+  report.summary.none: none
+  report.summary.counts: Findings by severity
+  report.summary.checkErrors: Check errors
+  report.summary.inconclusive: Inconclusive
+  report.summary.suppressed: Suppressed
+  report.summary.failure: "The scan was not performed: {message} ({code})"
+  report.summary.sandboxOff: The Chromium sandbox was disabled (--sandbox off).
+  report.summary.checkErrorsWithThreshold: "In addition to the findings, checks failed: {checks}. Their results are missing from the report."
+  report.summary.more: "… and {count} more findings. Full list: report.json or report.html."
+  report.summary.column.severity: Severity
+  report.summary.column.check: Check
+  report.summary.column.finding: Finding
+  report.summary.column.pages: Pages
+  report.summary.files: "Full report: report.json and report.html in the artifact."
+  # Counts of the findings in "What to do"; `items`: its points when similar findings share one, else 0.
+  report.overview.findings: "{critical, plural, =0 {No critical findings were observed.} one {One critical finding was observed.} other {# critical findings were observed.}}{warning, plural, =0 {} one { One finding should be checked.} other { # findings should be checked.}}{info, plural, =0 {} one { There is also one note for information.} other { There are also # notes for information.}}{items, plural, =0 {} one { Similar findings are combined into one point below.} other { Similar findings are combined into # points below.}}"
+  # The rows of the table of observed services, which are findings too; `table` is the heading of the table.
+  report.overview.services: '{count, plural, one {One observed service is} other {# observed services are}} listed in the table "{table}".'
+  report.overview.failed: The scan was not performed, so there are no observations.
+  # `gaps`: the scan ran to its end, but some checks gave no conclusive result (the next sentences say which).
+  # `ran`: every check has a result, some only for a part (the next sentence says which and why).
+  report.overview.scan: "{state, select, complete {The scan was completed.} gaps {The scan ran to the end, but not every check has a conclusive result.} ran {The scan ran to the end.} other {The scan was only partly performed; not all pages or checks could be evaluated.}}"
+  # Checks without a conclusive result, grouped by `cause`; `checks` lists their ids. `protection` signal: the
+  # redirect target of a refused certificate answered with bot or WAF protection, whose signal labels are `signals`.
+  report.overview.open: >-
+    {count, plural, one {One check} other {# checks}} ({checks}) {cause, select, tls-blocked {{count, plural, one
+    {was} other {were}} not run: the certificate of the website was not accepted as valid, so the browser did not
+    visit the website.} tls-fallback-failed {{count, plural, one {was} other {were}} not run: the certificate of
+    the website was not accepted as valid, and {protection, select, signal {the target of its HTTP redirect answered
+    with the signal of a bot or WAF protection ({signals}); the browser did not receive an evaluable page there.}
+    other {the browser did not receive an evaluable page on the target of its HTTP redirect.}}} geo {{count, plural, one {is} other {are}} inconclusive: the consent banner reported a
+    location outside the EEA and may behave differently towards visitors from the EEA.} bot {{count, plural, one {is}
+    other {are}} inconclusive: the consent banner treated the scan as automated traffic.} reject {{count, plural, one
+    {is} other {are}} inconclusive: the rejection in the consent banner could not be triggered or confirmed.} timeout
+    {{count, plural, one {was} other {were}} not completed because of the time limit.} error {{count, plural, one
+    {was} other {were}} not completed because of an error.} other {{count, plural, one {has} other {have}} no
+    conclusive result{hasReasons, select, true {: {reasons}.} other {; the full report gives the reasons.}}}}
+  # Checks that reported findings but could not evaluate everything; `titles` are the items of their findings.
+  report.overview.partly: >-
+    {count, plural, one {One check was} other {# checks were}} evaluated only in part{hasReasons, select, true {:
+    {reasons}} other {}}. The findings shown, "{titles}", still apply.
+  report.overview.pagesEvaluated: "{reason} ({evaluated} of {observed} pages evaluated)"
+  report.overview.banner: >-
+    {state, select, recognized {The consent banner was recognised.} firstLayerAmbiguous {The consent banner was
+    recognised, but its first layer could not be classified unambiguously; checks that depend on it are not
+    conclusively evaluated and should be checked manually.} notRecognized {The consent banner was not
+    recognised; checks that depend on it are not conclusively evaluated and should be checked manually.} notFound {No
+    consent banner was found on the pages checked; rejection and acceptance were therefore not checked.} notVisible {A
+    consent banner is present in the page, but was not shown visibly during the scan; checks that depend on it are not
+    conclusively evaluated and should be checked manually.} dialogNotOpened {{accepted, select, true {A consent banner
+    is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled);
+    rejection was therefore not checked.} other {A consent banner is present in the page source but was not opened
+    for the scanner (controls disabled); rejection and acceptance were therefore not checked.}}} dialogNotOpenedBot {A
+    consent banner is present in the page source but was not opened for the scanner{accepted, select, true { in the
+    visit with rejection} other {}}: the banner treats browsers whose User-Agent matches its pattern for
+    crawlers{hasTest, select, true { ({test})} other {}} as bots and does not open its banner for them, and the
+    scanner's User-Agent matches this pattern. A visitor with a normal browser may see the banner. The checks that
+    depend on it ({checks}) are inconclusive; {accepted, select, true {rejection was not checked.} other {rejection and
+    acceptance were not checked.}}} other {}}
+  report.overview.region: >-
+    The region from which the scan ran is not known. Websites can show consent banners and services differently
+    depending on the visitor's region; the consent findings apply to this measurement environment and may differ for
+    visitors from the EEA.
+  report.overview.redirect: >-
+    The given address redirects to {host}. For a complete picture, this address should be scanned directly as well.
+  # The browser checks ran on the target of the plain-http redirect (`entryHost`) because the certificate of `host` was
+  # refused; `finalHost` is where the browser's start page ended.
+  report.overview.tlsFallback: >-
+    The certificate of the given address {host} was not accepted as valid. Its plain-http address redirects to
+    {entryHost}, whose certificate was accepted as valid; the browser checks refer to {finalHost}.
+  report.actions.covers: "{findings, plural, one {# finding} other {# findings}}{pages, plural, =0 {} one {, # page} other {, # pages}}"
+  # Tail of a list of differing values that names only the first ones.
+  report.list.more: "{count, plural, other {and # more}}"
+  # "What to do" without an item although the report has findings: inventory rows and suppressed findings.
+  report.actions.none: >-
+    No finding calls for a step.{services, plural, =0 {} one { The observed service is listed in the table “Observed
+    services”.} other { The # observed services are listed in the table “Observed services”.}}{suppressed, plural, =0 {}
+    one { One finding is suppressed.} other { # findings are suppressed.}} This does not confirm that requirements are
+    met.
+  report.actions.briefNote: Similar findings are combined into one point. The details are in the full report.
+  report.services.name: Service
+  report.services.beforeInteraction: Before any interaction
+  report.services.afterReject: After rejection
+  report.services.afterAccept: After acceptance
+  report.services.stage.loaded: loaded
+  report.services.stage.initialised: initialised
+  report.services.stage.event-sent: event sent
+  report.services.stage.not-checked: not checked
+  report.services.stage.none: not found
+  report.services.note: '"Not checked" stands for a timing at which no interaction with the consent banner took place.'
+  report.services.acceptUnverified: The acceptance in the consent banner was clicked, but not confirmed by the banner (acceptance not confirmed); the column "After acceptance" is therefore of limited value.
+  # Identical items among the evidence shown, which is an excerpt of what was observed.
+  report.evidence.occurrences: "{count}× in the excerpt"
+  report.evidence.pages: Pages
+  report.evidence.phases: Phases
+  report.severity.critical: Critical
+  report.severity.warning: Warning
+  report.severity.info: Info
+  report.findings.none: No findings observed. This does not confirm that requirements are met.
+  report.findings.unavailable: No findings because the scan was not performed.
+  report.findings.groupService: "Service: {service}"
+  report.findings.groupOther: Not assigned to a service
+  report.finding.confidence: Confidence of the finding
+  report.confidence.high: high
+  report.confidence.medium: medium – please review manually
+  report.confidence.low: low – please review manually
+  report.finding.pages: Pages
+  report.finding.phases: Phases
+  # `outcome` of the banner click of the phase: `not-clicked` (a further visit without that click), `unverified`, or
+  # empty when the click took place or the report predates the click outcome.
+  report.phase: >-
+    {phase, select, A {A (before any interaction)} B {B ({outcome, select, before-click {first screen, before the
+    rejection} not-clicked {repeat visit, no rejection made} unverified {after rejection, not confirmed by the banner}
+    other {after rejection}})} C {C ({outcome, select, before-click {first screen, before the acceptance} not-clicked
+    {repeat visit, no acceptance made} unverified {after acceptance, not confirmed by the banner} other {after
+    acceptance}})} http {HTTP fetch} dns {DNS query} tls {TLS connection} other {{phase}}}
+  report.phaseShort: >-
+    {phase, select, B {{outcome, select, before-click {B (before the click)} not-clicked {B (no rejection)} unverified
+    {B (rejection not confirmed)} other {B}}} C {{outcome, select, before-click {C (before the click)} not-clicked {C
+    (no acceptance)} unverified {C (acceptance not confirmed)} other {C}}} other {{phase}}}
+  report.finding.trigger: Trigger
+  report.finding.replicated: Observed again
+  report.finding.provider: Provider
+  report.finding.parent: Parent company
+  report.finding.dpf: Data Privacy Framework
+  report.finding.dpfValue: "{name}: {listed, select, true {listed} false {not listed} other {not checked}}{hasDate, select, true { (as of {checkedAt})} other {}}"
+  report.finding.classification: Matched via
+  # `source` is the code of the finding, `cmp` the adapter of `adapter:<cmp>`.
+  report.finding.classificationValue: "{source, select, catalog {service catalogue} check {check rule} heuristic {recognition by features} adapter {CMP adapter {cmp}} none {not matched to a service} other {{source}}}{hasVersion, select, true { ({version})} other {}}"
+  report.finding.related: Related findings
+  report.finding.relatedValue: "{check}{hasTitle, select, true {: {title}} other {}}{relation, select, same-service { (same service)} dmarc-policy { (DMARC policy)} embedded-in { (embedded service whose frame sent the requests)} related {} other { ({relation})}}"
+  report.finding.fingerprint: Fingerprint
+  report.finding.evidence: Evidence ({count})
+  report.finding.evidenceTruncated: More evidence only in the JSON report.
+  report.finding.evidenceSample: "Excerpt: {shown} of {total} observed requests."
+  report.finding.evidenceMissing: Evidence {id} is not included in the report.
+  report.finding.legalNote: "Legal background for {check}"
+  report.finding.legalStatus: "Classification: {status}"
+  report.finding.legalUnreviewed: draft text, not yet legally reviewed
+  report.legal.authority-consensus: consistent view of the supervisory authorities
+  report.legal.court-first-instance: first-instance case law
+  report.legal.court-appellate: appellate case law
+  report.legal.contested: contested
+  report.legal.technical: technical note
+  report.evidence.otherScreenshots: Other screenshots
+  report.screenshot.alt: Screenshot of the consent banner (first screen)
+  report.screenshot.missing: "Screenshot not embedded ({reason}): {path}"
+  report.diagnostics.none: No diagnostics.
+  report.diagnostics.affects: Affected checks
+  report.env.userAgentHttp: User agent (HTTP)
+  report.env.userAgentBrowser: User agent (browser)
+  report.env.browser: Browser
+  report.env.browserValue: "{engine} {version} · {channel, select, chromium {Chrome for Testing} chrome {Google Chrome} other {channel {channel}}} · {headless, select, new {without a window (headless mode)} shell {without a window (headless shell)} other {headless {headless}}}"
+  report.env.sandbox: Chromium sandbox
+  report.env.sandboxValue: "mode {mode, select, require {required} off {off} container {container} other {{mode}}} · active: {active}"
+  report.env.profile: Browser profile
+  report.env.profileValue: "{profile, select, persistent-tmp {a fresh, empty profile in a temporary directory for each phase} other {{profile}}}"
+  report.env.viewport: Viewport
+  report.env.locale: Locale
+  report.env.timezone: Time zone
+  report.env.egress: Network egress
+  report.env.egressValue: "{mode, select, proxy {through a proxy} other {direct}} · region {region}{hasSource, select, true { ({source})} other {}}"
+  report.env.region: "{region, select, asserted {{asserted, select, eea {EEA} de {Germany} other {{asserted}}} according to the user} other {not determined}}"
+  report.env.disabledFeatures: Disabled Chromium features
+  report.env.quic: QUIC
+  report.env.quicValue: "{quic, select, disabled {disabled} enabled {enabled} other {{quic}}}"
+  report.env.knownGaps: Known observation gaps
+  report.env.knownGap: >-
+    {gap, select, pagehide-beacons {Requests sent when leaving a page are not fully captured}
+    preconnect-without-request {Connections without a request (preconnect) are not captured}
+    third-party-storage-partitioning-disabled {Partitioning of third-party storage is disabled in the browser}
+    expandables-not-clicked {Expandable content is not clicked} blocked-cookies-not-recorded {Cookies rejected by
+    the browser are not recorded} ssrf-guard-subresources-unchecked {Embedded resources are not checked against
+    internal addresses} ssrf-guard-popups-unchecked {Pop-ups are not checked against internal addresses}
+    phase-a-prime-not-implemented {Phase A′ is not implemented in the prototype} phase-m-not-implemented {Phase M is
+    not implemented in the prototype} egress-proxy-not-implemented {Network egress through a proxy in the target
+    region is not implemented in the prototype} below-fold-not-revealed {Content below the first screen is not
+    shown} other {{gap}}}
+  report.env.requests: Requests issued
+  report.env.settings: Settings that differ from the defaults
+  report.env.requestsValue: navigations {navigations} · HTTP probes {probes} · DNS {dns} · TLS {tls}
+  report.env.phaseC: Phase C (acceptance in the banner)
+  report.env.phaseCValue: >-
+    {state, select, failed {Attempted, but the acceptance could not be triggered.} other {Discloses the scanning
+    machine's IP address to the third parties whose resources the website loads after acceptance.{state, select,
+    unverified { The banner did not confirm the acceptance.} other {}}}}
+  report.env.node: Node.js
+  report.env.platform: Platform
+  report.env.unavailable: not available
+  report.env.datasets: Datasets and attribution
+  report.env.datasetValue: "{name} {version} · license {license}"
+  report.coverage.pages: Pages
+  report.coverage.totals: "Pages: planned {planned} · observed {observed} · evaluable {evaluated}"
+  report.coverage.url: URL
+  report.coverage.role: Role
+  report.coverage.planned: planned
+  report.coverage.observed: observed
+  report.coverage.evaluated: evaluable
+  report.coverage.phases: Phases
+  report.coverage.reason: Reason
+  report.coverage.collectors: Collectors
+  report.coverage.collector: Collector
+  report.coverage.status: Status
+  report.coverage.duration: Duration
+  report.coverage.consentActions: "Clicks in the consent banner: {actions}"
+  report.coverage.consentActionsNoBanner: "Clicks in the consent banner: none, as no consent banner was found"
+  report.coverage.consentAction: "{action, select, reject {reject click{path, select, settings { via the settings} other {}}} other {accept click}} {clicked, select, true {triggered{verified, select, true { and confirmed} false {, not confirmed} other {}}} other {not triggered}}"
+  report.coverage.browserRequests: "Browser requests: {issued} of at most {limit}{truncated, select, true { (list truncated)} other {}}"
+  report.coverage.checks: Checks
+  report.coverage.check: Check
+  report.coverage.checkCoverage: Coverage
+  report.coverage.limitations: Limitations
+  report.coverage.unavailable: No coverage data because the scan was not performed.
+  report.checkStatus.completed: completed
+  report.checkStatus.partial: partial
+  report.checkStatus.inconclusive: inconclusive
+  report.checkStatus.not_applicable: not applicable
+  report.checkStatus.skipped: skipped
+  report.checkStatus.error: error
+  report.checkCoverage.value: planned {planned} · observed {observed} · evaluated {evaluated}
+  report.checkCoverage.note: >-
+    {code, select, allowlist {{count, plural, =0 {no observed entry on the allowlist (version {version})} one {#
+    entry on the allowlist (version {version}), therefore not assessed} other {# entries on the allowlist (version
+    {version}), therefore not assessed}}} error-page-probes {{count, plural, one {# page} other {# pages}} recognised as
+    an error page and not evaluated} negation-not-parsed {negations in the text are not recognised; a negated mention
+    also counts as a mention} other {}}
+  report.checkLimitation: >-
+    {code, select, banner-open {Expandable sections not opened because the banner was open} reject-unverified
+    {Rejection not confirmed by the banner} consent-frame-unresolved {Frame of the consent banner not attributed}
+    lexicon-unavailable {Word list for banner buttons not available} lexicon-changed-since-scan {Word list for banner
+    buttons changed since the scan} request-cap-truncated {Requests beyond the recording limit not recorded}
+    csp-truncated {Content-Security-Policy recorded only in part} contact-page-not-evaluable {Contact page not
+    evaluable} video-page-not-evaluable {Page with videos not evaluable} video-embed-not-loaded {Video frame on
+    the page without a request, not loaded} buttons-truncated {Not all buttons of the banner recorded} geometry-unsettled {Position and size of
+    the banner not measured stably} final-host-not-probed {Final host of the redirect not probed}
+    preconnect-not-observable {Connections without a request (preconnect) not observable}
+    embed-navigation-excluded {Requests after acceptance on pages with a map or video service in the main document
+    not counted} pagehide-capture-unavailable {Requests sent when leaving a page not captured} reject-not-in-effect
+    {Pages after the rejection not evaluated where the consent banner showed again or no answer was stored}
+    accept-not-in-effect {Pages after the acceptance not evaluated where the consent banner showed again or no
+    answer was stored} settings-control-not-found {Rejection via the settings not attempted: no unambiguous
+    settings control on the first layer} settings-not-opened {Rejection via the settings not triggered: settings not
+    shown after the click} settings-layer-ambiguous {Rejection via the settings not triggered: settings not measured
+    unambiguously} settings-groups-unreadable {Rejection via the settings not triggered: category switches not
+    readable} preselected-groups {Rejection via the settings not triggered: optional categories already switched on
+    there, switches are not changed} settings-save-not-found {Rejection via the settings not triggered: no
+    unambiguous save control} settings-save-failed {Rejection via the settings not triggered: the click on the save
+    control failed} first-layer-not-visible {First
+    layer of the banner not visible} spf-include-unresolved {SPF include not fully resolved} mx-unknown {MX record
+    could not be determined} throttled {The server throttled requests} status {Start page answered with HTTP
+    {detail}} document-blocked {Page blocked by bot protection: {detail}} document-unavailable {Page not
+    available: {detail}} missing {Raw data missing: {detail}} deadline {Time limit reached: {detail}}
+    impressum-links-truncated {Not all links to the legal notice evaluated} privacy-links-truncated {Not all links
+    to the privacy policy evaluated} impressum-search-incomplete {Search for the legal notice incomplete: {detail}}
+    privacy-search-incomplete {Search for the privacy policy incomplete: {detail}} impressum-target-not-evaluable
+    {Link target of the legal notice not evaluable} privacy-target-not-evaluable {Link target of the privacy policy
+    not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
+    privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further privacy
+    notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} cmp-dialog-truncated {Text
+    of the consent banner searched only up to the reading limit} cmp-dialog-unread {Text of the consent banner not
+    searched: reading it failed} reveal-height-capped {Lower
+    part of a long page not shown: the window height is capped, or the page grew with the window} page-links-not-observed {Links of the pages not observed
+    because the browser did not run or no page was evaluable} http-form-not-inspected {Forms of {detail} not read in
+    full (response cut, not readable or replaced by bot protection)} http-form-twin-undecided {http address of {detail} without a usable answer}
+    http-form-twins-capped {http addresses of further pages with a form not requested (limit
+    DSGVO_CHECK_HTTP_FORM_TWIN_PAGES)} http-form-twins-not-collected {http addresses of the pages with a form not
+    requested in this run} values-not-stored {Versions in some headers not stored in
+    the snapshot (older snapshot)} mail-domain-unresolved {DNS lookups for {detail} without a conclusive answer}
+    mail-domain-mx-unknown {MX record of {detail} could not be determined} mail-domain-spf-incomplete {SPF include of
+    {detail} not fully resolved} mail-domains-capped {Further e-mail domains from the Impressum not queried (limit
+    DSGVO_CHECK_DNS_MAX_MAIL_DOMAINS)} mail-domains-not-collected {E-mail domains from the Impressum not collected in
+    this run} dkim-selectors-unresolved {Not every DKIM selector answered conclusively} mail-domain-dkim-key-unparsable
+    {DKIM key of {detail} not readable} mail-domain-dkim-key-revoked {DKIM key of {detail} withdrawn}
+    impressum-not-found {Legal notice not found, not searched} privacy-not-found {Privacy policy not found, not
+    searched} impressum-pdf {Legal notice only as PDF, not searched} privacy-pdf {Privacy policy only as PDF, not
+    searched} impressum-unsupported-format {Legal notice in an unsupported format, not searched}
+    privacy-unsupported-format {Privacy policy in an unsupported format, not searched} impressum-language-unsupported
+    {Legal notice in a language other than German or English, not searched} privacy-language-unsupported {Privacy
+    policy in a language other than German or English, not searched} impressum-incomplete {Legal notice not read
+    completely, only the text read was searched} privacy-incomplete {Privacy policy not read completely, only the text
+    read was searched} other {}}
+  # Reasons of a check, a page or a collector without a full result; `detail` is the part after the colon. Empty for a
+  # code the texts do not know, which the report then shows as it is.
+  report.reason: >-
+    {code, select, tls-blocked {certificate not accepted as valid, website not visited} tls-fallback-failed
+    {certificate not accepted as valid, target of the HTTP redirect not evaluable} not-selected {not selected
+    (--checks)} not-required {not needed by any selected check} not-run {not run} not-collected {raw data not
+    collected} collector-skipped {collection of raw data skipped} collector-error {error while collecting raw data
+    ({detail})} timeout {time limit reached} time-budget {remaining scan time not sufficient} request-cap {request
+    capture limit reached} viewport-not-restored {window size not restored after showing the whole page} exception
+    {error during evaluation} start-page-status {start page answered with an error
+    status} start-page-unavailable {start page not available} start-page-not-evaluable {start page not evaluable}
+    no-banner {no consent banner found} cmp-not-observed {consent banner not observed} banner-not-recognized {consent
+    banner not recognised} cmp-not-supported {consent banner recognised, but not supported} first-layer-not-visible
+    {first layer of the consent banner not visible} unknown-classification {first layer of the consent banner not
+    classified} phase-b-missing {visit with rejection in the consent banner not carried out} phase-c-missing {visit
+    with acceptance in the consent banner not carried out} no-reject-click {rejection in the consent banner not
+    triggered} reject-not-confirmed {rejection not confirmed by the consent banner} pagehide-capture-unavailable
+    {requests sent when leaving a page are not captured} geo {consent banner reports a location outside the EEA}
+    bot-mode {consent banner treated the scan as automated traffic} throttled {server throttled requests}
+    no-network-observation {no network observation} no-pre-consent-observation {no observation before any interaction}
+    privacy-policy-not-found {privacy policy not found} pdf-not-evaluated {privacy policy only as a PDF, not
+    evaluated} unsupported-format {format not supported} language-unsupported {language not supported}
+    document-incomplete {document not read completely} no-evaluable-pages {no evaluable page} insufficient-pages {too
+    few evaluable pages} legal-targets-not-evaluable {link targets not evaluable} contact-page-not-evaluable {contact
+    page not evaluable} video-page-not-evaluable {page with videos not evaluable} consent-frame-unresolved {frame of the consent banner not attributed}
+    banner-candidate-unrecognized {consent banner observed but not recognised}
+    banner-undetermined {whether a consent banner was shown could not be determined} claim-ambiguous {privacy policy
+    statement not unambiguous: with a reservation, in text not displayed, together with the external load in one
+    sentence, in a sentence on several services or in a sentence too long} cmp-dialog-not-opened {consent banner not
+    opened for the scanner} cmp-bot-user-agent {consent banner not opened for the scanner: its User-Agent matches the
+    banner's crawler pattern} no-https {no HTTPS}
+    tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
+    could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
+    multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}
+    challenge {bot protection page} http {HTTP {detail}} navigation-failed {navigation failed ({detail})}
+    dom-unavailable {page structure not readable} not-html {not HTML} values-not-stored {versions in the headers not
+    stored in the snapshot (older snapshot)} dkim-not-collected {DKIM selectors not queried in this run} key-unparsable
+    {DKIM key not readable} dns-budget-exhausted {DNS query budget used up} null-mx {domain accepts no e-mail (Null MX)}
+    no-mail-records {neither MX nor SPF record found} key-revoked {DKIM key withdrawn (empty p=)} dkim-selectors-capped
+    {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} no-documents {neither a
+    legal notice nor a privacy policy found as readable text} other {}}
+  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} http-form-permalink {http address of a linked post with a form} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
+  report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
+  report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
+  report.evidence.field: >-
+    {key, select, url {URL} fetch {Fetch} identifier {Identifier} event {Event} consentSignal {Consent Mode signal}
+    frameUrl {Frame} initiator {Initiated by} connectedIp {IP address} phase {Phase} page {Page} name {Name} domain
+    {Domain} path {Path} partitionKey {Partition} attributes {Attributes} lifetime {Lifetime} length {Length} setBy
+    {Set by} state {State} storageType {Storage type} origin {Origin} key {Key} firstParty {Own domain} present
+    {Present} value {Value} qname {Query} qtype {Type} rcode {Response code} records {Records} resolver {Resolver}
+    treeWalk {DNS tree walk} host {Host} port {Port} ip {IP address} family {IP version} protocol {Protocol} cipher
+    {Cipher} issuer {Issuer} subject {Subject} san {Alternative names (SAN)} notBefore {Valid from} notAfter {Valid
+    until} lifetimeDays {Lifetime (days)} chainComplete {Chain complete} hostnameMatches {Name matches the host}
+    authorizationError {Verification error} trustStore {Trust store} cmpId {CMP} version {Version}
+    recognitionConfidence {Confidence of the banner recognition} buttons {Buttons} blocking {Blocking} viewport
+    {Viewport} click {Click} source {Source} ready {Readiness} categories {Categories} scope {Scope} kind {Kind} lang
+    {Language} parts {Parts} complete {Complete} errors {Errors} sha256 {SHA-256} manifest {Extent read} documentId
+    {Document} section {Section} quote {Quote} matchLevel {Match} negation {Negation} claim {Statement} status {HTTP
+    status} role {Role} formAction {Form target} evaluable {Evaluable} reason {Reason} startUrl {Start URL} hops {Steps} outcome {Outcome}
+    href {Target} text {Link text} target {Link target} region {Part of the page} visible {Visible} method {Method} resourceType {Resource} result {Response}
+    delivery {Delivery} provenance {Source of the response} features {Features} candidate {Banner-like box} other
+    {{key}}}
+  report.evidence.fetch: >-
+    {method} · {resourceType, select, document {document} stylesheet {stylesheet} script {script} font {font} image
+    {image} xhr {XHR} fetch {fetch} ping {ping} media {media} websocket {WebSocket} manifest {manifest} other
+    {{resourceType}}} · {result, select, response {response {status}} failed {failed ({error})} aborted {aborted}
+    other {no response}}{delivery, select, blocked-by-browser { · blocked by the browser} attempted { · only
+    attempted} other {}}{provenance, select, service-worker { · through the service worker} http-cache { · from the
+    HTTP cache} memory-cache { · from the memory cache} other {}}
+  report.evidence.identifier: >-
+    {kind, select, stored-match {persistent (matched with a stored cookie or storage entry)} sent-cookie {persistent
+    (cookie sent along, per the service catalogue)} persistent-param {persistent (parameter per the service
+    catalogue)} user-supplied {user or click identifier} per-load {only shown for this page load} none {none
+    detected} other {{kind}}}{hasParam, select, true { – {param}} other {}}
+  report.evidence.button: "“{name}” · {kind, select, accept {accept} reject {reject} settings {settings} save {save choice} close {close} later {later} hide {hide} link {link} other {other button}} · {visible, select, true {{actionable, select, true {visible and usable on the first screen} other {visible on the first screen, not usable}}} other {not on the first screen}}{hasContrast, select, true { · contrast {contrast, number}} other {}}"
+  # A banner-like box the heuristic did not take as a banner: why not, and its features; `controls` lists the
+  # `report.evidence.controlKind` words.
+  report.evidence.candidate: "not counted as a banner: {reason, select, page-section {in a header or footer without accept or reject} keywords {one consent word without a banner name and without accept or reject} no-control {no button from the word list} other {{reason}}} · consent words: {keywordHits} · buttons: {hasControls, select, true {{controls}} other {none}} · {cookieWording, select, true {names cookies} other {names no cookies}}{fixed, select, true { · fixed position} other {}}{dialog, select, true { · dialog} other {}}{named, select, true { · banner name} other {}}"
+  report.evidence.controlKind: "{kind, select, accept {accept} reject {reject} settings {settings} save {save choice} other {other button}}"
+  report.evidence.manifest: "{parts} parts · {chars, number} characters · expandable sections: {opened} of {found} opened · frames: {frames} · linked pages: {linked}{truncated, select, true { · truncated} other {}}"
+  # Coded values of evidence fields by `field`; empty for a value the texts do not know, which is then shown as it is.
+  report.evidence.value: >-
+    {field, select, source {{value, select, api {banner interface} cookie {banner cookie} tcf {TCF interface} other {}}}
+    ready {{value, select, stub {placeholder} loading {loading} ready {ready} other {}}} origin {{value, select, default
+    {default} stored {stored choice} action {choice in the banner} special-branch {special case of the banner} other
+    {}}} state {{value, select, denied {denied} granted {granted} partial {partial} unknown {unknown} other {}}}
+    matchLevel {{value, select, named {service name} company {company name} domain {domain} category {category
+    description} term {dictionary term} none {no match} other {}}} negation {{value, select, none {none} negated
+    {negated} ambiguous {ambiguous} other {}}} claim {{value, select, self-hosted {embedded locally} no-connection
+    {no connection to external servers} consent-gated {loaded only after consent} other {}}} part {{value, select,
+    visible {visible text} expandable {expandable section} frame {frame} linked {linked page} hidden-irrelevant
+    {hidden text} other {}}} region {{value, select, header {header} nav {navigation} main {main content} footer
+    {footer} banner {consent banner area} aside {sidebar} other {other part}}} other {}}
+  report.evidence.ip: "{value}{origin, select, resolvedLocally { (resolved locally)} upstream { (reported by the proxy)} other {}}"
+  report.evidence.firstPartyDomain: own domain
+  report.evidence.cookieState: "{state, select, attempted {setting attempted} accepted {accepted by the browser} rejected {rejected by the browser} sent {sent with a request} other {{state}}}"
+  report.evidence.lifetime: "{kind, select, session {session} other {persistent{hasDays, select, true {, {days, number} days} other {}}}}"
+  report.evidence.setBy: "{setter, select, http-response {HTTP response} script {script} other {unknown}}{hasHost, select, true { from {host}} other {}}"
+  report.evidence.pageLine: "{hasStatus, select, true {HTTP {status}} other {no status}}{evaluable, select, true { · evaluable} false { · not evaluable{hasReason, select, true {: {reason}} other {}}} other {}}{hasPhase, select, true { · phase {phase}} other {}}{hasFormAction, select, true { · form sends to {formAction}} other {}}"
+  report.evidence.linkVisibility: "{visible, select, true {visible} other {not visible}}"
+  report.evidence.headerLine: "{present, select, true {present{hasValue, select, true {: {value}} other {}}} other {not present}}"
+  # The notice section in groups, each paragraph under a label: `key` is the paragraph key without `disclaimer.`
+  # (`nature` for the base text), plus `rechtsstand` and `draft`.
+  report.notice.group: >-
+    {group, select, report {What this report is} scan {Conditions of this scan} other {{group}}}
+  report.notice.label: >-
+    {key, select, nature {Nature of the report} noFinding {No finding} dependence {Influencing factors} usage
+    {Intended use} rechtsstand {Legal status of the ruleset} draft {Text status} egressUnknown {Region}
+    egressAsserted {Region} proxy {Proxy} phaseC {Consent in the banner} phaseCFailed {Consent in the banner}
+    botOrGeo {Bot or region detection} bannerNotRecognized {Consent banner} incomplete {Completeness} sandboxOff
+    {Browser sandbox} data {Stored values} screenshots {Screenshots} other {{key}}}
+  report.notice.draft: Draft text – the wording has not yet been legally reviewed.
+  report.footer.generated: Generated by dsgvo-check {version}. This file loads no external resources and contains no JavaScript.
+  report.yes: yes
+  report.no: no
+  report.unknown: unknown
+  report.pdf.skipped: "PDF could not be created."
+  report.pdf.footer: "Passive observations; no legal advice."
+  report.pdf.page: Page
+  report.cli.description: Reissue a saved JSON report
+  report.cli.formats: "Output formats: console,json,html,summary,pdf (PDF on request only)"
+  report.cli.detail: "Level of detail of HTML and PDF: full (with evidence) or brief (short, in plain words)"
+  report.cli.language: "Report language: de|en"
+  report.cli.output: Output directory
+  report.cli.invalid: The JSON report or report options are invalid or unsupported.

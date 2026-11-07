@@ -1,0 +1,71 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version from package.json, released as v<version>.
+        required: true
+permissions: {}
+concurrency:
+  group: release
+  cancel-in-progress: false
+env:
+  IMAGE: ghcr.io/seed-factory/dsgvo-check
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  COREPACK_VERSION: 0.36.0
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: corepack
+        run: npm install --global "corepack@${COREPACK_VERSION}"
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Validate release version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release.ts
+      - name: Build image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build --tag dsgvo-check:release --build-arg VERSION="$VERSION" --build-arg REVISION="$GITHUB_SHA" .
+      - name: End-to-end in Docker
+        run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
+        env:
+          DSGVO_E2E_IMAGE: dsgvo-check:release
+      - name: Push versioned image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker tag dsgvo-check:release "$IMAGE:$VERSION"
+          docker push --quiet "$IMAGE:$VERSION"
+          docker logout ghcr.io
+      - name: Tag release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "dsgvo-check v$VERSION"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c http.extraheader="AUTHORIZATION: basic $auth" push origin "refs/tags/v$VERSION"
+          node .github/scripts/release.ts summary

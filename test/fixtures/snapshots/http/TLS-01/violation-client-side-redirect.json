@@ -1,0 +1,45 @@
+{
+  "$description": "http answers with a small page that redirects to https via meta refresh only",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "client-side-redirect-only"
+    ]
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-http",
+        "startUrl": "http://www.example.de/",
+        "hops": [
+          {
+            "url": "http://www.example.de/",
+            "status": 200,
+            "bodyBytes": 300,
+            "bodyKind": "html",
+            "hasForm": false,
+            "clientRedirect": {
+              "kind": "meta",
+              "url": "https://www.example.de/"
+            }
+          }
+        ]
+      },
+      {
+        "id": "chain-https",
+        "startUrl": "https://www.example.de/",
+        "hops": [
+          {
+            "url": "https://www.example.de/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ]
+      }
+    ],
+    "requestsIssued": 2
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "$description": "A link to http://www.example.test/produkte; http of www redirects with 301 to https of the same host, whose answers carry no HSTS header",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "internal-http-link-upgraded"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-www-http",
+        "hops": [
+          {
+            "status": 301,
+            "url": "http://www.example.test/",
+            "location": "https://www.example.test/"
+          },
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "http://www.example.test/"
+      },
+      {
+        "id": "chain-www-https",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "https://www.example.test/"
+      },
+      {
+        "id": "chain-apex-http",
+        "hostVariant": "apex",
+        "outcome": "connection-refused",
+        "startUrl": "http://example.test/",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED"
+        }
+      }
+    ],
+    "requestsIssued": 3
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "dom": {
+              "links": [
+                {
+                  "href": "http://www.example.test/produkte",
+                  "hrefKind": "http",
+                  "region": "main",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Produkte",
+                  "sameSite": true
+                }
+              ]
+            },
+            "url": "https://www.example.test/"
+          }
+        ]
+      }
+    ]
+  }
+}

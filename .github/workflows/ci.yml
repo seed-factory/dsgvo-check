@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  COREPACK_VERSION: 0.36.0
+  # Parallel test files: the reference runner has 4 vCPU and 16 GB; a repository variable overrides it.
+  DSGVO_TEST_WORKERS: ${{ vars.DSGVO_TEST_WORKERS || '4' }}
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      # Node 26 no longer bundles corepack, which runs the pnpm version pinned in package.json.
+      - name: corepack
+        run: |
+          npm install --global "corepack@${COREPACK_VERSION}"
+          corepack pnpm --version
+
+      - name: pnpm store path
+        id: pnpm-store
+        run: echo "dir=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('.node-version', 'pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Install Chromium (Chrome for Testing, new headless)
+        run: node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
+      - name: Allow unprivileged user namespaces for the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - run: corepack pnpm typecheck
+      - run: corepack pnpm lint
+      - run: corepack pnpm test:unit
+      - name: Integration (real Chromium with its sandbox, local servers, fake DNS)
+        run: corepack pnpm test:integration
+        env:
+          DSGVO_CHECK_TEST_SANDBOX: require
+      - run: corepack pnpm build
+      - name: Reissue sample report
+        run: node dist/cli.js report test/fixtures/reports/sample-full.report.json --format html,pdf --out report-preview
+      - uses: actions/upload-artifact@v7
+        with:
+          name: offline-html-pdf-report
+          path: report-preview/
+          retention-days: 14
+
+      - name: End-to-end (built CLI against local fixture sites)
+        run: corepack pnpm test:e2e
+        env:
+          DSGVO_E2E_SKIP_BUILD: "1"
+          DSGVO_E2E_STRICT: "1"
+      - name: Packed CLI
+        run: node .github/scripts/verify-cli.ts
+
+  docker:
+    name: docker image and action
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: corepack
+        run: npm install --global "corepack@${COREPACK_VERSION}"
+      - name: Package version
+        id: version
+        run: node .github/scripts/version.ts
+      - name: Build image (no push)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build --tag dsgvo-check:ci --build-arg VERSION="$VERSION" --build-arg REVISION="$GITHUB_SHA" .
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: End-to-end in Docker (exit codes, hardened flags, container sandbox mode)
+        run: corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts
+        env:
+          DSGVO_E2E_IMAGE: dsgvo-check:ci
+
+      - name: Action (uses ./) against a host that cannot be resolved
+        id: action
+        uses: ./
+        continue-on-error: true
+        with:
+          url: https://does-not-exist.invalid/
+          image: dsgvo-check:ci
+          format: console,json,html
+          out: dsgvo-check-action
+          upload-artifact: "false"
+
+      - name: Check Action outputs
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          EXIT_CODE: ${{ steps.action.outputs.exit-code }}
+          JSON_PATH: ${{ steps.action.outputs.json-path }}
+          HTML_PATH: ${{ steps.action.outputs.html-path }}
+        run: node .github/scripts/verify-action.ts

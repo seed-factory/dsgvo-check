@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Cookie-Leiste mit verborgener Partnerliste im selben Container</title>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #ccc;padding:16px;z-index:50;overflow:hidden}
+.bar button{padding:8px 14px;margin-right:8px}
+.collapsed{max-height:0;overflow:hidden;margin:0}
+.translated{position:absolute;left:0;top:0;width:100%;transform:translateX(200%)}</style>
+</head>
+<body>
+<main><h1>Beispiel Shop</h1><p>Willkommen.</p></main>
+<script>
+  // The second layer (300 partners, far more text than a banner shows) sits in the banner container; ?list=… hides it
+  // by a collapsed box, a closed <details> or a shift out of the clipping banner.
+  var how = new URLSearchParams(location.search).get('list') || 'collapsed';
+  var items = '';
+  for (var i = 1; i <= 300; i++) items += '<li>Partner ' + i + ' GmbH – Zwecke: Messung, Personalisierung</li>';
+  var list = how === 'details'
+    ? '<details><summary>Partner anzeigen</summary><ul>' + items + '</ul></details>'
+    : '<ul class="' + how + '">' + items + '</ul>';
+  document.body.insertAdjacentHTML('beforeend', '<div class="bar"><p>Wir und unsere Partner verwenden Cookies.</p>' +
+    '<button type="button">Alle akzeptieren</button><button type="button">Ablehnen</button>' +
+    '<button type="button">Einstellungen</button>' + list + '</div>');
+</script>
+</body>
+</html>

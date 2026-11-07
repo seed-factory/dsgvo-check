@@ -1,0 +1,327 @@
+/**
+ * CONSENT-05: tracking after a technically confirmed reject. The reject is confirmed by CMP state only, never by
+ * network silence (`verify`, our click's state, a persisted reject after reload); else `reject-not-confirmed`. A control
+ * page where the reject is not in effect (`pagesWithoutDecision`) is no page after the reject: what it sends or stores
+ * is left out, and so is the page from the evaluated ones (`reject-not-in-effect`).
+ */
+import type { ClickOutcome, CmpSection } from '../../cmp/types.ts';
+import {
+  type CheckOutcome,
+  defineCheck,
+  type EvidenceInput,
+  isCookieHeld,
+  type Observation,
+  type ScanPlan,
+  subjects,
+} from '../../core/api.ts';
+import type { BrowserSection, RequestRecord } from '../../core/snapshot/browser.ts';
+import type {
+  ClassifiedCookie,
+  ClassifiedRequest,
+  ClassifiedStorage,
+  DerivedSection,
+} from '../../derive/types.ts';
+import { cookieEvidence, distinctRequestEvidence, MAX_EVIDENCE, storageEvidence } from './evidence.ts';
+import { sortedUniq } from './lists.ts';
+import { type RejectPath, rejectPath } from './reject-moment.ts';
+import { serviceFields, serviceName, TRACKING_CATEGORIES } from './services.ts';
+import {
+  allCmpFacts,
+  bannerFound,
+  bannerUndetermined,
+  confirmedReject,
+  consentSignals,
+  DECISION_NOT_IN_EFFECT,
+  dialogNotOpenedOutcome,
+  pagesWithoutDecision,
+  persistentIdentifier,
+  signalOutcome,
+  stateEvidence,
+  unrecognizedBanner,
+} from './signals.ts';
+import { classifiedCookies, classifiedStorage, phaseRecord, requestIndex } from './snapshot.ts';
+
+const ID = 'CONSENT-05';
+
+/** Strongest first; one finding per service. */
+const RANK = ['tracking-after-reject', 'cookieless-ping-after-reject', 'connect-only-after-reject'] as const;
+type Variant = (typeof RANK)[number];
+
+interface Group {
+  subject: string;
+  variant: Variant;
+  /** `tracking-after-reject` branch: a request with a persistent identifier or an accepted storage write. */
+  kind: 'request' | 'storage';
+  serviceId: string | null;
+  etld1: string | null;
+  category: string;
+  pages: Set<string>;
+  /** Tracking hits; their evidence is the distinct requests among them. */
+  requests: Array<{ r: RequestRecord; c: ClassifiedRequest }>;
+  /** Storage writes, at most `MAX_EVIDENCE`. */
+  evidence: EvidenceInput[];
+  names: Set<string>;
+  consentModeDenied: boolean;
+}
+
+/** A persistent identifier as in CONSENT-01; a cookieless, per-load or anonymous hit → warning. */
+const requestVariant = (c: ClassifiedRequest): Variant =>
+  persistentIdentifier(c) ? 'tracking-after-reject' : 'cookieless-ping-after-reject';
+
+type Groups = Map<string, Group>;
+
+/**
+ * The group of a service or third party. A stronger variant replaces a weaker one; at the same strength a request
+ * replaces a storage write as the kind.
+ */
+function groupFor(
+  groups: Groups,
+  variant: Variant,
+  kind: Group['kind'],
+  cls: ClassifiedRequest | ClassifiedCookie | ClassifiedStorage,
+  etld1: string | null,
+): Group {
+  const subject = subjects.service(cls.serviceId, etld1);
+  const g = groups.get(subject);
+  if (!g) {
+    const created: Group = {
+      subject,
+      variant,
+      kind,
+      serviceId: cls.serviceId,
+      etld1,
+      category: cls.category,
+      pages: new Set(),
+      requests: [],
+      evidence: [],
+      names: new Set(),
+      consentModeDenied: false,
+    };
+    groups.set(subject, created);
+    return created;
+  }
+
+  if (RANK.indexOf(variant) < RANK.indexOf(g.variant)) {
+    g.variant = variant;
+    g.kind = kind;
+  } else if (variant === g.variant && kind === 'request') {
+    g.kind = kind;
+  }
+  return g;
+}
+
+/** Tracking hits delivered after the reject, on the pages where it is in effect. */
+function addRequestHits(
+  groups: Groups,
+  derived: DerivedSection,
+  records: Map<string, RequestRecord>,
+  withoutReject: ReadonlySet<string>,
+): void {
+  for (const c of derived.requests) {
+    if (c.phase !== 'B' || c.timing !== 'after-reject') continue;
+    if (!TRACKING_CATEGORIES.has(c.category) || !c.delivered || c.kind !== 'hit') continue;
+    const r = records.get(c.requestId);
+    if (!r || withoutReject.has(r.pageUrl)) continue;
+
+    const g = groupFor(groups, requestVariant(c), 'request', c, c.etld1);
+    g.pages.add(r.pageUrl);
+    if (c.cookieless) g.consentModeDenied = true;
+    g.requests.push({ r, c });
+  }
+}
+
+/** Tracking cookies and storage entries written after the reject, on the pages where it is in effect. */
+function addStorageWrites(
+  groups: Groups,
+  browser: BrowserSection,
+  derived: DerivedSection,
+  withoutReject: ReadonlySet<string>,
+): void {
+  const stored = [
+    ...classifiedCookies(browser, derived).map((x) => ({
+      ...x,
+      name: x.record.name,
+      ev: cookieEvidence(x.record),
+    })),
+    ...classifiedStorage(browser, derived).map((x) => ({
+      ...x,
+      name: x.record.key,
+      ev: storageEvidence(x.record),
+    })),
+  ];
+
+  for (const s of stored) {
+    if (s.record.phase !== 'B' || s.cls.timing !== 'after-reject' || !s.cls.tracking) continue;
+    if (withoutReject.has(s.record.pageUrl)) continue;
+    // Only a write the browser accepted is a storage event; attempts and rejected Set-Cookies are not.
+    if ('state' in s.record && !isCookieHeld(s.record.state)) continue;
+
+    const g = groupFor(groups, 'tracking-after-reject', 'storage', s.cls, s.cls.etld1 ?? null);
+    g.pages.add(s.record.pageUrl);
+    g.names.add(s.name);
+    if (g.evidence.length < MAX_EVIDENCE) g.evidence.push(s.ev);
+  }
+}
+
+/** Storage writes keep this many evidence places next to many requests, so the excerpt still shows them. */
+const STORAGE_EVIDENCE_PLACES = 3;
+
+/** The distinct requests first, then the storage writes, at most `MAX_EVIDENCE` of both; the reject proof always. */
+function groupEvidence(g: Group, rejectEvidence: EvidenceInput[]): EvidenceInput[] {
+  const writes = g.evidence.slice(0, STORAGE_EVIDENCE_PLACES);
+  const requests = distinctRequestEvidence(g.requests, MAX_EVIDENCE - writes.length);
+  return [...requests, ...g.evidence.slice(0, MAX_EVIDENCE - requests.length), ...rejectEvidence];
+}
+
+/** A group with requests and storage writes of a persistent identifier names both in its text. */
+const groupKind = (g: Group): 'request' | 'storage' | 'both' =>
+  g.variant === 'tracking-after-reject' && g.kind === 'request' && g.names.size > 0 ? 'both' : g.kind;
+
+/**
+ * Requests with a persistent identifier first, otherwise in their order. They make the group `tracking-after-reject`,
+ * so the host the text names and the capped evidence come from them, not from a cookieless hit of the same service.
+ */
+const persistentFirst = (requests: Group['requests']): Group['requests'] =>
+  [...requests].sort((a, b) => Number(persistentIdentifier(b.c)) - Number(persistentIdentifier(a.c)));
+
+function groupObservations(
+  groups: Groups,
+  derived: DerivedSection,
+  rejectEvidence: EvidenceInput[],
+  path: RejectPath,
+): Observation[] {
+  return [...groups.values()]
+    .sort((a, b) => a.subject.localeCompare(b.subject))
+    .map((g) => ({ ...g, requests: persistentFirst(g.requests) }))
+    .map((g) => ({
+      checkId: ID,
+      variant: g.variant,
+      confidence: 'high',
+      subject: g.subject,
+      category: g.category,
+      phases: ['B'],
+      pages: [...g.pages].sort(),
+      evidence: groupEvidence(g, rejectEvidence),
+      params: {
+        kind: groupKind(g),
+        service: serviceName(derived, g.serviceId, g.etld1),
+        name: sortedUniq(g.names).join(', ') || null,
+        host: g.requests[0]?.c.host ?? null,
+        pageCount: g.pages.size,
+        consentModeDenied: g.consentModeDenied,
+        requestCount: g.requests.length,
+        rejectPath: path,
+      },
+      ...serviceFields(derived, g.serviceId),
+    }));
+}
+
+/**
+ * Why phase B pressed nothing in the settings layer of a first layer without reject, as a limitation of the open
+ * outcome: the reason of `plan.click.B.settings`, or a save core chose whose click did not go through. None when the
+ * settings layer was not tried.
+ */
+function settingsNotPressed(plan: ScanPlan, click: ClickOutcome | undefined): string[] {
+  const reason = plan.browser?.click.B?.settings?.reason;
+  if (reason) return [reason];
+  return click?.path === 'settings' && !click.clicked ? ['settings-save-failed'] : [];
+}
+
+/**
+ * The reject is a basis for the evaluation only when phase B ran, our click rejected and the CMP state confirms it;
+ * otherwise the outcome says why not.
+ */
+function rejectBasis(
+  browser: BrowserSection,
+  cmp: CmpSection,
+  plan: ScanPlan,
+  minCandidatePages: number,
+):
+  | { outcome: CheckOutcome }
+  | { phaseB: NonNullable<ReturnType<typeof phaseRecord>>; rejectEvidence: EvidenceInput[] } {
+  const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
+  if (signal) return { outcome: signal };
+  const notOpened = dialogNotOpenedOutcome(cmp);
+  if (notOpened) return { outcome: notOpened };
+  // No banner on any page: there is no reject to evaluate, as CONSENT-04 reports for the dialog. A banner observed but
+  // not recognised was not clicked, so the reject is open, not absent; so is it where the banner stays undetermined.
+  if (allCmpFacts(cmp).length > 0 && !bannerFound(cmp, browser, minCandidatePages)) {
+    const outcome: CheckOutcome = unrecognizedBanner(cmp, browser, minCandidatePages)
+      ? { status: 'inconclusive', reason: 'banner-not-recognized', observations: [] }
+      : bannerUndetermined(cmp, browser, minCandidatePages)
+        ? { status: 'inconclusive', reason: 'banner-undetermined', observations: [] }
+        : { status: 'not_applicable', reason: 'no-banner', observations: [] };
+    return { outcome };
+  }
+
+  const phaseB = phaseRecord(browser, 'B');
+  if (!phaseB || phaseB.status === 'skipped') {
+    return {
+      outcome: { status: 'inconclusive', reason: phaseB?.reason ?? 'phase-b-missing', observations: [] },
+    };
+  }
+
+  const cmpB = cmp.phases.find((p) => p.phase === 'B');
+  const click = cmpB?.click;
+  if (click?.action !== 'reject' || !click.clicked) {
+    const limitations = settingsNotPressed(plan, click);
+    return {
+      outcome: {
+        status: 'inconclusive',
+        reason: 'no-reject-click',
+        observations: [],
+        ...(limitations.length > 0 ? { limitations } : {}),
+      },
+    };
+  }
+
+  const confirmed = confirmedReject(cmpB);
+  if (!confirmed)
+    return { outcome: { status: 'inconclusive', reason: 'reject-not-confirmed', observations: [] } };
+
+  const rejectEvidence = [
+    stateEvidence(confirmed.action, phaseB.click?.pageUrl ?? null),
+    stateEvidence(confirmed.stored, phaseB.pages.find((p) => p.reload)?.finalUrl ?? null),
+  ];
+  return { phaseB, rejectEvidence };
+}
+
+export const consent05 = defineCheck({
+  id: ID,
+  module: 'browser',
+  requires: ['browser', 'cmp', 'derived', 'plan'],
+  // `connect-only-after-reject` needs the proxy CONNECT log (in-process egress proxy, not in the prototype).
+  variants: RANK.map((variant) => ({ variant, variantGroup: 'after-reject' })),
+  run({ browser, cmp, derived, plan }, ctx) {
+    const basis = rejectBasis(browser, cmp, plan, ctx.thresholds.cmp.minCandidatePages);
+    if ('outcome' in basis) return basis.outcome;
+    const { phaseB, rejectEvidence } = basis;
+
+    const withoutReject = new Set(pagesWithoutDecision(browser, cmp, 'B'));
+    const groups: Groups = new Map();
+    addRequestHits(groups, derived, requestIndex(browser), withoutReject);
+    addStorageWrites(groups, browser, derived, withoutReject);
+    const observations = groupObservations(groups, derived, rejectEvidence, rejectPath(cmp));
+
+    const afterPages = phaseB.pages.filter((p) => p.reload || p.role !== 'start' || p.order > 0);
+    const coverage = {
+      observed: phaseB.pages.length,
+      evaluated: afterPages.filter((p) => p.evaluable && !withoutReject.has(p.finalUrl || p.url)).length,
+    };
+    const notInEffect = withoutReject.size > 0 ? [DECISION_NOT_IN_EFFECT.B] : [];
+
+    // Without the page-exit capture the evaluation after the reject is not conclusive, even with findings; they still gate.
+    if (browser.knownGaps.includes('pagehide-beacons')) {
+      return {
+        status: 'inconclusive',
+        reason: 'pagehide-capture-unavailable',
+        observations,
+        limitations: ['pagehide-capture-unavailable', ...notInEffect],
+        coverage,
+      };
+    }
+    // Pages left out make the result partial: a page without the reject is neither a finding nor clean.
+    const status = notInEffect.length > 0 ? 'partial' : 'completed';
+    return { status, observations, limitations: notInEffect, coverage };
+  },
+});

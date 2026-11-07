@@ -1,0 +1,6 @@
+{
+  "$description": "Handshake on the target timed out",
+  "$expect": { "status": "inconclusive", "variants": [], "reason": "handshake-inconclusive" },
+  "tls": { "endpoints": [ { "id": "tls-target", "hostVariant": "target", "host": "www.example.de", "port": 443, "servername": "www.example.de", "ip": "203.0.113.10", "family": 4, "outcome": "timeout", "protocol": null, "cipher": null, "authorized": false, "authorizationError": null, "hostnameMatches": null, "chainComplete": null, "trustStore": "node-bundled", "chain": [], "observedAt": "2026-10-30T12:00:00.000Z" } ], "errors": [] },
+  "http": { "userAgent": "dsgvo-check/test", "chains": [], "documents": [], "requestsIssued": 0, "throttled": false, "errors": [] }
+}

@@ -1,0 +1,218 @@
+/**
+ * Every YAML file of the data directories that hold lists and vocabularies (cmp, browser, http, dns, legal) belongs to a
+ * schema, and a bad file stops with a message that names the directory and the key.
+ */
+import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import { claimsSection } from '../../../../src/checks/browser/policy-claims.ts';
+import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
+import { legalSections } from '../../../../src/collectors/browser/legal/sections.ts';
+import { browserSections } from '../../../../src/collectors/browser/rules.ts';
+import { dnsSections } from '../../../../src/collectors/dns/rules.ts';
+import { httpSections } from '../../../../src/collectors/http/rules.ts';
+import { DataError, DEFAULT_DATA_DIR, loadDataDir, loadSection } from '../../../../src/core/data/load.ts';
+import type { DataSection } from '../../../../src/core/data/parse.ts';
+
+/** Directories with a section schema per top-level key; `own` lists keys read by a loader of their own (lexicons). */
+const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own: readonly string[] }> = [
+  { dir: 'cmp', sections: cmpSections, own: ['lexicon'] },
+  { dir: 'browser', sections: browserSections, own: [] },
+  { dir: 'http', sections: httpSections, own: [] },
+  { dir: 'dns', sections: dnsSections, own: [] },
+  { dir: 'legal', sections: [...legalSections, claimsSection], own: ['legal'] },
+];
+
+/** Directories whose files have dedicated loaders and tests (ruleset, texts, services, routing, report template). */
+const OTHER = ['ruleset', 'texts', 'services', 'report'];
+
+const yamlFiles = (dir: string) =>
+  readdirSync(path.join(DEFAULT_DATA_DIR, dir)).filter((f) => f.endsWith('.yaml'));
+
+const topKeys = (dir: string, file: string): string[] =>
+  Object.keys((parseYaml(readFileSync(path.join(DEFAULT_DATA_DIR, dir, file), 'utf8')) ?? {}) as object);
+
+function dataDirCopy(dir: string, file: string, edit: (text: string) => string): string {
+  const root = mkdtempSync(path.join(tmpdir(), 'sections-'));
+  cpSync(path.join(DEFAULT_DATA_DIR, dir), path.join(root, dir), { recursive: true });
+  const target = path.join(root, dir, file);
+  writeFileSync(target, edit(readFileSync(target, 'utf8')));
+  return root;
+}
+
+describe('data directories', () => {
+  it('every directory under test/data has a schema owner', () => {
+    const dirs = readdirSync(DEFAULT_DATA_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(dirs.sort()).toEqual([...DIRS.map((d) => d.dir), ...OTHER].sort());
+  });
+
+  describe.each(DIRS)('test/data/$dir', ({ dir, sections, own }) => {
+    it('every file key is owned by a schema and every schema key has exactly one file', () => {
+      const owned = [...sections.map((s) => s.key), ...own];
+      const found = yamlFiles(dir).flatMap((file) => topKeys(dir, file).map((key) => `${file}:${key}`));
+      expect(found.filter((f) => !owned.includes(f.split(':')[1] as string))).toEqual([]);
+      for (const key of owned) {
+        expect(
+          found.filter((f) => f.endsWith(`:${key}`)),
+          key,
+        ).toHaveLength(1);
+      }
+    });
+
+    it('loads and validates', () => {
+      const merged = loadDataDir(dir);
+      for (const section of sections) expect(() => section.parse(merged), section.key).not.toThrow();
+    });
+  });
+});
+
+describe('a broken data file is reported with its directory and key', () => {
+  const byKey = (dir: string, key: string) =>
+    (DIRS.find((d) => d.dir === dir)?.sections.find((s) => s.key === key) ?? null) as DataSection<unknown>;
+
+  it('a regular expression that does not compile', () => {
+    const root = dataDirCopy('browser', 'challenges.yaml', (t) => t.replace('"^just a moment"', '"^(just"'));
+    expect(() => loadSection(byKey('browser', 'challenges'), root)).toThrow(
+      /test\/data\/browser: challenges\.titles\.0\.pattern: invalid regular expression/,
+    );
+  });
+
+  it('an unknown field, a typo is not silently ignored', () => {
+    const root = dataDirCopy('browser', 'pages.yaml', (t) => t.replace('extraGroups:', 'extraGroup:'));
+    expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(DataError);
+    expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(/pages\./);
+  });
+
+  it('a locale prefix that is no language code', () => {
+    const root = dataDirCopy('browser', 'pages.yaml', (t) =>
+      t.replace(/(localePrefixes:\s*\[\s*)de,/, '$1de-de,'),
+    );
+    expect(() => loadSection(byKey('browser', 'pages'), root)).toThrow(
+      /test\/data\/browser: pages\.languages\.localePrefixes\.0: /,
+    );
+  });
+
+  it('a name that must be lower case', () => {
+    const root = dataDirCopy('browser', 'identifiers.yaml', (t) =>
+      t.replace('    - gclid\n', '    - GCLID\n'),
+    );
+    expect(() => loadSection(byKey('browser', 'identifiers'), root)).toThrow(
+      /identifiers\.params\.\d+: must be lower case/,
+    );
+  });
+
+  it('a kind of provider details without phrases', () => {
+    const root = dataDirCopy('legal', 'provider-details.yaml', (t) =>
+      t.replace(/ {4}statement:\n {6}de: \[[^\]]*\]\n {6}en: \[[^\]]*\]\n/, '    statement: {}\n'),
+    );
+    expect(() => loadSection(byKey('legal', 'providerDetails'), root)).toThrow(
+      /test\/data\/legal: providerDetails\.groups\.statement: at least one language/,
+    );
+  });
+
+  it('a kind of provider details that the threshold does not know', () => {
+    const root = dataDirCopy('legal', 'provider-details.yaml', (t) =>
+      t.replace('    statement:', '    statements:'),
+    );
+    expect(() => loadSection(byKey('legal', 'providerDetails'), root)).toThrow(DataError);
+  });
+
+  it('a statement pattern that is no lower-case phrase names the kind, the language and the place', () => {
+    const root = dataDirCopy('legal', 'claims.yaml', (t) =>
+      t.replace('- [lokal installiert]', '- [Lokal-installiert]'),
+    );
+    expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(
+      /test\/data\/legal: claims\.kinds\.self-hosted\.de\.patterns\.0\.0: lower-case words/,
+    );
+  });
+
+  it('a category the catalog does not know is named with its key', () => {
+    const root = dataDirCopy('legal', 'claims.yaml', (t) =>
+      t.replace('  topics:\n    fonts:', '  topics:\n    schriften:'),
+    );
+    expect(() => loadSection(byKey('legal', 'claims'), root)).toThrow(/test\/data\/legal: claims\.topics/);
+  });
+
+  it.each([
+    [
+      'a successor that occurs inside its own term, so no mention could count',
+      'successors: [DDG, Digitale-Dienste-Gesetz*]',
+      'successors: [TMG, DDG]',
+      /outdatedReferences\.references\.0\.successors: successor "TMG" occurs inside the term "TMG"/,
+    ],
+    [
+      'a historical cue that occurs inside a term',
+      '        ehemals,\n',
+      '        ehemals,\n        alt,\n',
+      /outdatedReferences\.references\.6\.terms: historical cue "alt" occurs inside the term "BDSG alt"/,
+    ],
+    [
+      'an invalidated framework without its ruling',
+      'ruling: C-311/18 (Schrems II)',
+      'ruling: null',
+      /outdatedReferences\.references\.3\.ruling: an invalidated reference names its ruling/,
+    ],
+    [
+      'two spellings that normalise alike',
+      'terms: [TMG, Telemediengesetz*, Telemedien-Gesetz*]',
+      'terms: [TMG, Telemediengesetz*, Telemedien Gesetz*, Telemedien-Gesetz*]',
+      /outdatedReferences\.references\.0\.terms\.3: Telemedien-Gesetz\*: normalises like another term/,
+    ],
+    [
+      'a date not written YYYY-MM-DD',
+      'since: "2024-05-14"',
+      'since: "14.05.2024"',
+      /\.since: a date written YYYY-MM-DD/,
+    ],
+  ])('outdated references: %s is refused', (_label, from, to, message) => {
+    const root = dataDirCopy('legal', 'outdated-references.yaml', (t) => {
+      expect(t).toContain(from);
+      return t.replace(from, to);
+    });
+    expect(() => loadSection(byKey('legal', 'outdatedReferences'), root)).toThrow(message);
+  });
+
+  it('a free-mail entry that is no domain name (a URL or an address) is refused', () => {
+    const root = dataDirCopy('dns', 'mail-domains.yaml', (t) =>
+      t.replace('    - gmx.de\n', '    - mail@gmx.de\n'),
+    );
+    expect(() => loadSection(byKey('dns', 'mailDomains'), root)).toThrow(
+      /test\/data\/dns: mailDomains\.freeMail\.\d+: must be a domain name/,
+    );
+  });
+
+  it.each([
+    [
+      'a selector that is a full DNS name',
+      'selectors: [selector1, selector2]',
+      'selectors: [selector1._domainkey.x]',
+      /dkim\.providers\.0\.selectors\.0: must be a DKIM selector/,
+    ],
+    [
+      'a second provider with the same id',
+      'id: google-workspace',
+      'id: microsoft-365',
+      /dkim\.providers: provider ids must be unique/,
+    ],
+    ['a provider without the fixed flag', '      fixed: false\n', '', /dkim\.providers\.1\.fixed/],
+  ])('DKIM data: %s is refused', (_label, from, to, message) => {
+    const root = dataDirCopy('dns', 'dkim.yaml', (t) => t.replace(from, to));
+    expect(() => loadSection(byKey('dns', 'dkim'), root)).toThrow(message);
+  });
+
+  it('a missing section names the key it expected', () => {
+    const root = dataDirCopy('http', 'html.yaml', (t) => t.replace(/^html:/m, 'htmx:'));
+    expect(() => loadSection(byKey('http', 'html'), root)).toThrow(
+      /test\/data\/http: section "html:" is missing/,
+    );
+  });
+
+  it('an invalid YAML file names the file', () => {
+    const root = dataDirCopy('http', 'html.yaml', () => 'html: [unclosed');
+    expect(() => loadDataDir('http', root)).toThrow(/html\.yaml: invalid YAML/);
+  });
+});

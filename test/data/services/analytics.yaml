@@ -1,0 +1,610 @@
+# Analytics, session recording, tag managers, monitoring. Format: see _catalog.yaml.
+services:
+  - id: google-analytics
+    name: Google Analytics
+    category: analytics
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    consentStorage: analytics
+    domains: [google-analytics.com, analytics.google.com, stats.g.doubleclick.net]
+    signatures:
+      - id: ga4-collect
+        hosts: [google-analytics.com, analytics.google.com, stats.g.doubleclick.net]
+        anyHost: true
+        path: "/g/collect$"
+        kind: hit
+        stage: event-sent
+        identifierParams: [cid, uid]
+      - id: gtag-ga4
+        hosts: [googletagmanager.com]
+        anyHost: true
+        path: "/gtag/js$"
+        query: { id: "^G-" }
+        kind: library
+        stage: loaded
+      - id: analytics-js
+        hosts: [google-analytics.com]
+        path: '^/(analytics|ga|urchin)\.js$'
+        kind: library
+        stage: loaded
+      - id: ua-collect
+        hosts: [google-analytics.com, stats.g.doubleclick.net]
+        path: "^/(r/|j/)?collect$"
+        kind: hit
+        stage: event-sent
+        identifierParams: [cid, uid]
+      # Audience hit of the advertising features, sent to the country domain of Google search the visitor is served.
+      - id: ga-audiences
+        hostPatterns: ['^www\.google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$']
+        path: "^/ads/ga-audiences$"
+        kind: hit
+        stage: event-sent
+        identifierParams: [cid, uid]
+    cookies: [_ga, _ga_*, _gid, _gac_*, __utma, __utmz]
+    otherCookies: [_gat, _gat_*, __utmb, __utmc, __utmt]
+    aliasesDe: [Google Analytics, Google Analytics 4, GA4, Universal Analytics]
+    aliasesEn: [Google Analytics]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: google-tag-manager
+    name: Google Tag Manager
+    category: tag-manager
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [googletagmanager.com]
+    signatures:
+      - id: gtm-js
+        hosts: [googletagmanager.com]
+        anyHost: true
+        path: '/gtm\.js$'
+        query: { id: "^GTM-" }
+        kind: library
+        stage: loaded
+      - id: gtm-noscript
+        hosts: [googletagmanager.com]
+        path: '^/ns\.html$'
+        kind: embed
+        stage: loaded
+      - id: gtag-google-tag
+        hosts: [googletagmanager.com]
+        anyHost: true
+        path: "/gtag/js$"
+        query: { id: "^GT-" }
+        kind: library
+        stage: loaded
+    # "Tagmanager" written as one word is a common German spelling of the product name.
+    aliasesDe: [Google Tag Manager, Google-Tag-Manager, Google Tagmanager, Google Tag]
+    aliasesEn: [Google Tag Manager, Google Tag]
+    companyAliases: [Google Ireland Ltd, Google Ireland Ltd.]
+
+  - id: matomo
+    name: Matomo
+    category: analytics
+    policyRelevance: required
+    # Self-hosted or agency-hosted Matomo/Piwik is detected by path; the operator is not known from the catalog.
+    selfHostable: true
+    signatures:
+      - id: tracker-js
+        anyHost: true
+        path: '/(matomo|piwik)\.js$'
+        kind: library
+        stage: loaded
+      - id: tracker-hit
+        anyHost: true
+        path: '/(matomo|piwik)\.php$'
+        kind: hit
+        stage: event-sent
+        identifierParams: [_id, uid, cid]
+      - id: tag-manager-container
+        anyHost: true
+        path: '/js/container_[A-Za-z0-9]+\.js$'
+        kind: library
+        stage: loaded
+    cookies: [_pk_id.*, _pk_ref.*, _pk_cvar.*, _pk_hsr.*]
+    otherCookies: [_pk_ses.*, _pk_testcookie.*]
+    aliasesDe: [Matomo, Piwik]
+    aliasesEn: [Matomo, Piwik]
+
+  - id: matomo-cloud
+    name: Matomo Cloud
+    category: analytics
+    policyRelevance: required
+    provider: { name: InnoCraft Ltd, country: NZ }
+    domains: [matomo.cloud, innocraft.cloud]
+    signatures:
+      - id: tracker-js
+        hosts: [matomo.cloud, innocraft.cloud]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: tracker-hit
+        hosts: [matomo.cloud, innocraft.cloud]
+        path: '/(matomo|piwik)\.php$'
+        kind: hit
+        stage: event-sent
+        identifierParams: [_id, uid, cid]
+    aliasesDe: [Matomo Cloud, Matomo]
+    aliasesEn: [Matomo Cloud, Matomo]
+    companyAliases: [InnoCraft]
+
+  - id: etracker
+    name: etracker Analytics
+    category: analytics
+    policyRelevance: required
+    provider: { name: etracker GmbH, country: DE }
+    domains: [etracker.com, etracker.de, etracker.net]
+    signatures:
+      - id: loader
+        hosts: [code.etracker.com]
+        path: "^/"
+        kind: library
+        stage: loaded
+    aliasesDe: [etracker]
+    aliasesEn: [etracker]
+
+  - id: adobe-analytics
+    name: Adobe Analytics
+    category: analytics
+    policyRelevance: required
+    provider: { name: Adobe Systems Software Ireland Limited, country: IE }
+    parent: { name: Adobe Inc., country: US }
+    dpfEntity: { name: Adobe Inc. }
+    domains: [omtrdc.net, 2o7.net, demdex.net]
+    signatures:
+      - id: beacon
+        hosts: [omtrdc.net, 2o7.net]
+        path: "^/b/ss/"
+        kind: hit
+        stage: event-sent
+      # Audience Manager id sync: the visitor id sits in the path (`/ibs:dpid=…&dpuuid=…`), read before redaction.
+      - id: ibs-sync
+        hosts: [demdex.net]
+        path: "^/ibs:"
+        kind: hit
+        stage: loaded
+        identifierParams: [dpuuid]
+      # Experience Edge consent call: a service request, not an analytics hit.
+      - id: edge-privacy
+        hosts: [demdex.net]
+        path: "^/ee/v1/privacy/"
+        kind: resource
+        stage: loaded
+    cookies: [s_vi, s_ecid, AMCV_*, s_fid, demdex@demdex.net]
+    otherCookies: [s_cc, s_sq, AMCVS_*]
+    aliasesDe: [Adobe Analytics, Adobe Experience Cloud, Adobe Audience Manager]
+    aliasesEn: [Adobe Analytics, Adobe Experience Cloud]
+
+  - id: adobe-experience-platform-tags
+    name: Adobe Experience Platform Tags
+    category: tag-manager
+    policyRelevance: required
+    provider: { name: Adobe Systems Software Ireland Limited, country: IE }
+    parent: { name: Adobe Inc., country: US }
+    dpfEntity: { name: Adobe Inc. }
+    domains: [adobedtm.com]
+    aliasesDe: [Adobe Experience Platform Tags, Adobe Launch, Adobe Dynamic Tag Management]
+    aliasesEn: [Adobe Experience Platform Tags, Adobe Launch]
+
+  - id: plausible
+    name: Plausible Analytics
+    category: analytics
+    policyRelevance: required
+    provider: { name: Plausible Insights OÜ, country: EE }
+    domains: [plausible.io]
+    signatures:
+      - id: script
+        hosts: [plausible.io]
+        path: "^/js/"
+        kind: library
+        stage: loaded
+      - id: event
+        hosts: [plausible.io]
+        path: "^/api/event$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Plausible Analytics, Plausible Insights]
+    aliasesEn: [Plausible Analytics, Plausible Insights]
+
+  - id: cloudflare-web-analytics
+    name: Cloudflare Web Analytics
+    category: analytics
+    policyRelevance: required
+    parent: { name: "Cloudflare, Inc.", country: US }
+    dpfEntity: { name: "Cloudflare, Inc." }
+    domains: [cloudflareinsights.com]
+    signatures:
+      - id: beacon-js
+        hosts: [static.cloudflareinsights.com]
+        path: "^/beacon"
+        kind: library
+        stage: loaded
+      - id: rum
+        hosts: [cloudflareinsights.com]
+        anyHost: true
+        path: "^/cdn-cgi/rum$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Cloudflare Web Analytics, Cloudflare Insights, Cloudflare Browser Insights]
+    aliasesEn: [Cloudflare Web Analytics, Cloudflare Insights]
+
+  - id: jetpack-stats
+    name: Jetpack Stats
+    category: analytics
+    policyRelevance: required
+    parent: { name: Automattic Inc., country: US }
+    domains: [stats.wp.com, pixel.wp.com]
+    signatures:
+      - id: script
+        hosts: [stats.wp.com]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: pixel
+        hosts: [pixel.wp.com]
+        path: '^/g\.gif$'
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Jetpack, WordPress.com Stats, WordPress Stats]
+    aliasesEn: [Jetpack, WordPress.com Stats]
+
+  - id: yandex-metrica
+    name: Yandex Metrica
+    category: analytics
+    policyRelevance: required
+    domains: [mc.yandex.ru, mc.yandex.com, mc.webvisor.org]
+    cookies: [_ym_uid, _ym_d]
+    otherCookies: [_ym_isad, _ym_visorc]
+    aliasesDe: [Yandex Metrica, Yandex.Metrica, Yandex Metrika]
+    aliasesEn: [Yandex Metrica, Yandex.Metrica]
+
+  - id: hubspot
+    name: HubSpot
+    category: analytics
+    policyRelevance: required
+    parent: { name: "HubSpot, Inc.", country: US }
+    dpfEntity: { name: "HubSpot, Inc." }
+    domains:
+      - hs-scripts.com
+      - hs-analytics.net
+      - hscollectedforms.net
+      - hs-banner.com
+      - hubspot.com
+      - hsforms.com
+      - hsforms.net
+      - hubapi.com
+      - usemessages.com
+    signatures:
+      - id: tracking-pixel
+        hosts: [hubspot.com, hs-analytics.net]
+        path: '^/__ptq\.gif$'
+        kind: hit
+        stage: event-sent
+      # CMS tools menu, CTA, embed counter and live chat calls: service requests, not analytics hits.
+      - id: service-calls
+        hosts: [hubspot.com]
+        path: "^/(content-tools-menu|ctas|embed/v3|livechat-public)/"
+        kind: resource
+        stage: loaded
+    cookies: [__hstc, hubspotutk, __hssc]
+    otherCookies: [__hssrc]
+    aliasesDe: [HubSpot]
+    aliasesEn: [HubSpot]
+
+  - id: hotjar
+    name: Hotjar
+    category: session-recording
+    policyRelevance: required
+    provider: { name: Hotjar Ltd, country: MT }
+    parent: { name: Contentsquare SAS, country: FR }
+    domains: [hotjar.com, hotjar.io]
+    signatures:
+      - id: loader
+        hosts: [static.hotjar.com]
+        path: "^/c/hotjar-"
+        kind: library
+        stage: loaded
+      - id: modules
+        hosts: [script.hotjar.com, vars.hotjar.com]
+        path: "^/"
+        kind: config
+        stage: initialised
+      - id: ingest
+        hosts: [in.hotjar.com, ws.hotjar.com, content.hotjar.io, metrics.hotjar.io, ws.hotjar.io]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    cookies: [_hjSessionUser_*, _hjSession_*, _hjid]
+    otherCookies:
+      [
+        _hjFirstSeen,
+        _hjIncludedInSessionSample*,
+        _hjAbsoluteSessionInProgress,
+        _hjTLDTest,
+        _hjLocalStorageTest,
+        _hjSessionStorageTest,
+      ]
+    aliasesDe: [Hotjar]
+    aliasesEn: [Hotjar]
+
+  - id: microsoft-clarity
+    name: Microsoft Clarity
+    category: session-recording
+    policyRelevance: required
+    parent: { name: Microsoft Corporation, country: US }
+    dpfEntity: { name: Microsoft Corporation }
+    domains: [clarity.ms]
+    signatures:
+      - id: tag
+        hosts: [clarity.ms]
+        path: "^/(tag|s)/"
+        kind: library
+        stage: loaded
+      - id: collect
+        hosts: [clarity.ms]
+        path: "^/collect"
+        kind: hit
+        stage: event-sent
+    cookies: [_clck, _clsk, CLID@clarity.ms]
+    aliasesDe: [Microsoft Clarity, Clarity]
+    aliasesEn: [Microsoft Clarity]
+
+  # Sentry is a trade name of Functional Software, Inc., which operates the service itself (no group parent).
+  - id: sentry
+    name: Sentry
+    category: monitoring
+    policyRelevance: required
+    provider: { name: "Functional Software, Inc.", country: US }
+    dpfEntity: { name: "Functional Software, Inc." }
+    domains: [sentry.io, sentry-cdn.com]
+    signatures:
+      - id: sdk
+        hosts: [sentry-cdn.com]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: ingest
+        hosts: [sentry.io]
+        path: "/api/[0-9]+/(envelope|store)/?$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Sentry]
+    aliasesEn: [Sentry]
+    companyAliases: [Functional Software]
+
+  # Performance and error logging the Wix platform adds to every Wix site.
+  - id: wix-monitoring
+    name: Wix Monitoring
+    category: monitoring
+    policyRelevance: optional
+    domains: [frog.wix.com, panorama.wixapps.net]
+    aliasesDe: [Wix]
+    aliasesEn: [Wix]
+    companyAliases: [Wix.com Ltd, Wix.com Ltd.]
+
+  - id: new-relic
+    name: New Relic Browser
+    category: monitoring
+    policyRelevance: required
+    parent: { name: "New Relic, Inc.", country: US }
+    domains: [nr-data.net, newrelic.com]
+    signatures:
+      - id: agent
+        hosts: [js-agent.newrelic.com]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: beacon
+        hosts: [nr-data.net]
+        path: "^/"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [New Relic]
+    aliasesEn: [New Relic]
+
+  # measurement and tag management
+  # Same rules as ads.yaml: observed endpoints, no provider claim without vendor documentation.
+  - id: scorecardresearch
+    name: ScorecardResearch (comScore)
+    category: analytics
+    policyRelevance: required
+    domains: [scorecardresearch.com]
+    signatures:
+      - id: beacon-js
+        hosts: [scorecardresearch.com]
+        path: '/beacon\.js$'
+        kind: library
+        stage: loaded
+      - id: beacon
+        hosts: [scorecardresearch.com]
+        path: "^/b$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [ScorecardResearch, comScore]
+    aliasesEn: [ScorecardResearch, comScore]
+
+  # The domains also cover identity, experience, checkout and REST hosts of the vendor. A domain-only match
+  # classifies the request, but an xhr/fetch/image/ping without a signature becomes a `hit` in derive.
+  # CONSENT-01 reads that as `cookieless-ping` and TRACK-01 as "event sent". Therefore every service
+  # endpoint of the vendor (Piano ID, experience, checkout, REST) is a `resource` signature, EU and non-EU host alike;
+  # the domains stay broad so that PRIV-01 still names the service.
+  - id: piano
+    name: Piano (Cxense)
+    category: analytics
+    policyRelevance: required
+    domains: [piano.io, cxense.com]
+    signatures:
+      - id: sdk
+        hosts: [cdn.piano.io, cdn-eu.piano.io]
+        path: '^/api/tinypass\.min\.js$'
+        kind: library
+        stage: loaded
+      - id: cxense-script
+        hosts: [cdn.cxense.com]
+        path: '^/cx\.js$'
+        kind: library
+        stage: loaded
+      - id: engagement
+        hosts: [c2.piano.io, c2-eu.piano.io]
+        path: "^/page/track/engagement$"
+        kind: hit
+        stage: event-sent
+      - id: experience-and-checkout
+        hosts:
+          - c2.piano.io
+          - c2-eu.piano.io
+          - experience.piano.io
+          - experience-eu.piano.io
+          - buy.piano.io
+          - buy-eu.piano.io
+        path: "^/(xbuilder/experience/|checkout/|showtemplate/|api/v3/anon/template/)"
+        kind: resource
+      - id: identity
+        hosts: [id.piano.io, id-eu.piano.io, id-au.piano.io, id-ap.piano.io]
+        path: "^/(id/)?api/v1/"
+        kind: resource
+      - id: rest-api
+        hosts: [api.piano.io, api-eu.piano.io, api-au.piano.io, api-ap.piano.io]
+        path: "^/api/v3/"
+        kind: resource
+    aliasesDe: [Piano, Cxense]
+    aliasesEn: [Piano, Cxense]
+
+  - id: tealium
+    name: Tealium
+    category: tag-manager
+    policyRelevance: required
+    domains: [tiqcdn.com, tealiumiq.com]
+    cookies: [utag_main]
+    signatures:
+      - id: utag
+        hosts: [tags.tiqcdn.com, tags-eu.tiqcdn.com]
+        path: '^/utag/[^/]+/[^/]+/[^/]+/utag[^/]*\.js$'
+        kind: library
+        stage: loaded
+      - id: collect
+        hosts: [collect.tealiumiq.com]
+        path: "^/event$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Tealium]
+    aliasesEn: [Tealium]
+
+  - id: chartbeat
+    name: Chartbeat
+    category: analytics
+    policyRelevance: required
+    domains: [chartbeat.com, chartbeat.net]
+    cookies: [_cb, _chartbeat2]
+    storageKeys: [_cb, _chartbeat2]
+    signatures:
+      - id: script
+        hosts: [static.chartbeat.com]
+        path: '^/js/chartbeat(_mab|_video)?\.js$'
+        kind: library
+        stage: loaded
+      - id: ping
+        hosts: [ping.chartbeat.net, mabping.chartbeat.net]
+        path: "^/ping"
+        kind: hit
+        stage: event-sent
+      - id: headline-strategy
+        hosts: [mab.chartbeat.com]
+        path: "^/mab_strategy/"
+        kind: resource
+    aliasesDe: [Chartbeat]
+    aliasesEn: [Chartbeat]
+
+  - id: optimizely
+    name: Optimizely
+    category: analytics
+    policyRelevance: required
+    domains: [optimizely.com]
+    signatures:
+      - id: datafile
+        hosts: [cdn.optimizely.com]
+        path: "^/datafiles/"
+        kind: config
+        stage: initialised
+      - id: client-script
+        hosts: [cdn.optimizely.com]
+        path: '^/public/[^/]+/s/[^/]+\.js$'
+        kind: library
+        stage: loaded
+      - id: events
+        hosts: [logx.optimizely.com]
+        path: "^/v[0-9]+/events$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Optimizely]
+    aliasesEn: [Optimizely]
+
+  - id: piwik-pro
+    name: Piwik PRO
+    category: analytics
+    policyRelevance: required
+    domains: [piwik.pro]
+    signatures:
+      - id: tracker-js
+        hosts: [piwik.pro]
+        path: '^/ppms\.js$'
+        kind: library
+        stage: loaded
+      - id: tracker-hit
+        hosts: [piwik.pro]
+        path: '^/ppms\.php$'
+        kind: hit
+        stage: event-sent
+      - id: container
+        hosts: [containers.piwik.pro]
+        path: '\.js$'
+        kind: library
+        stage: loaded
+      - id: privacy-widgets
+        hosts: [piwik.pro]
+        path: 'privacy-widgets\.json$'
+        kind: resource
+        stage: loaded
+    aliasesDe: [Piwik PRO]
+    aliasesEn: [Piwik PRO]
+
+  - id: nielsen
+    name: Nielsen
+    category: analytics
+    policyRelevance: required
+    domains: [imrworldwide.com]
+    signatures:
+      - id: sdk
+        hosts: [cdn-gl.imrworldwide.com]
+        path: "^/novms/js/"
+        kind: library
+        stage: loaded
+      - id: measurement
+        hosts: [secure-sw.imrworldwide.com]
+        path: "^/cgi-bin/gn$"
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Nielsen]
+    aliasesEn: [Nielsen]
+
+  - id: siteimprove
+    name: Siteimprove Analytics
+    category: analytics
+    policyRelevance: required
+    domains: [siteimproveanalytics.com, siteimproveanalytics.io]
+    signatures:
+      - id: siteanalyze
+        hosts: [siteimproveanalytics.com]
+        path: '^/js/siteanalyze_[0-9]+\.js$'
+        kind: library
+        stage: loaded
+      - id: image
+        hosts: [siteimproveanalytics.io]
+        path: '^/image\.aspx$'
+        kind: hit
+        stage: event-sent
+    aliasesDe: [Siteimprove]
+    aliasesEn: [Siteimprove]

@@ -1,0 +1,481 @@
+# Statements of a privacy policy about how the site embeds a service, read sentence by sentence (PRIV-02 via
+# `data: ['legal']`, schema `claimsSection` in src/checks/browser/policy-claims.ts).
+#
+# Matching: a sentence is normalised like PRIV-01 (NFKC, lower case, ä→ae ö→oe ü→ue ß→ss, everything that is not a
+# letter or digit becomes a space) and split into words. A phrase matches where its words follow each other; a word
+# ending in `*` may continue ("server*" matches "servern"). A pattern is a list of phrases that must all occur in the
+# sentence, in any order; an entry that is itself a list holds phrases of which one must occur. Phrases are written in
+# lower case, umlauts allowed, words separated by one space.
+# The German and the English words apply to every sentence: the `lang` attribute of a page is not reliable.
+#
+# Per kind:
+#   scope         `unconditional`: the statement holds at any time, so every load of the service from the site's own
+#                 frames contradicts it; `until-consent`: it holds until consent, so only loads before an interaction
+#                 and after a confirmed reject do. PRIV-02 holds `no-connection` about a map or a video until consent:
+#                 such an embed shows nothing without its connection
+#   categories    catalog categories the statement can be about; a sentence naming a service of another category is
+#                 no statement of this kind
+#   patterns      the statement itself (one pattern of the list is enough)
+#   reversals     phrases before or among the words of the statement that turn it around ("nicht lokal"): no
+#                 statement, unless a word of `negationEnds` stands between ("nicht auf dem Server von Google, sondern
+#                 lokal"); so does a word of `negations` up to three words before a pattern that holds no negation
+#                 itself ("are not installed locally")
+#   hedges        phrases that make the sentence a condition or a possibility ("sofern", "kann"): not evaluated
+#   limits        phrases that restrict a statement to some services, pages or another time ("einige", "früher"):
+#                 not evaluated; unlike a hedge they leave a disclosure in the same sentence one (optional)
+#   disclosures   sentences that describe the connection of the same service to an outside source (see `external`),
+#                 without a hedge, without a negation up to three words around the matched words and outside the words
+#                 of a statement ("von unserem eigenen Server geladen"); next to the statement the same document then
+#                 describes both variants, which is reported for manual review. A sentence that states a statement
+#                 and also describes it so holds both variants: not evaluated, and it counts as a disclosure; one that
+#                 denies the connection ("keine Verbindung") describes none
+claims:
+  version: "2026.11.2"
+
+  # Abbreviations whose dot ends no sentence (a single letter, "z. B.", and a number of up to three digits, "5.",
+  # never end one either).
+  abbreviations:
+    de:
+      [
+        abs,
+        art,
+        bspw,
+        bzw,
+        ca,
+        co,
+        dr,
+        evtl,
+        ff,
+        gem,
+        ggf,
+        ggfs,
+        inc,
+        inkl,
+        lit,
+        ltd,
+        max,
+        min,
+        mind,
+        nr,
+        prof,
+        sog,
+        str,
+        tel,
+        vgl,
+        ziff,
+        zzgl,
+      ]
+    en: [approx, co, dr, eg, ie, inc, ltd, mr, ms, no, para, sec, vs]
+
+  # Words that make a statement about a category ("alle Schriftarten") cover every observed service of it.
+  quantifiers:
+    de: [alle, sämtliche, ausschließlich, nur, jegliche]
+    en: [all, only, exclusively]
+
+  # A negation next to the words of a statement or a disclosure turns it around ("nicht erst nach Ihrer Einwilligung
+  # geladen", "lädt die Schriften nicht von Google").
+  negations:
+    de: [nicht, kein, keine, keinen, keiner, keinem, keines, weder, nie, niemals]
+    en: [not, no, never, neither, nor, none]
+  # A negation that adds rather than denies ("nicht nur … sondern auch").
+  notNegating:
+    de: [nicht nur, nicht allein, nicht bloß]
+    en: [not only, not just, not merely]
+  # A negation before one of these words denies what stands before it, not what follows ("nicht extern, sondern
+  # lokal").
+  negationEnds:
+    de: [sondern]
+    en: [but]
+
+  # Reservations that make a sentence of any kind not evaluated ("Wir garantieren nicht, dass …").
+  hedges:
+    de:
+      [
+        garantieren nicht,
+        nicht garantieren,
+        gewährleisten nicht,
+        nicht gewährleisten,
+        keine garantie,
+        keine gewähr,
+      ]
+    en: [not guarantee, cannot guarantee, no guarantee]
+
+  # A disclosure needs an outside source in the sentence: one of these words or the company of the service outside
+  # its product name ("von Google", not "Google Fonts"). "Ihr Browser lädt die Schriften von unserem Webserver" is
+  # none.
+  external:
+    de: [extern*, dritt*, fremd*]
+    en: [external*, third part*]
+
+  # Sentences that report what a user-side tool, a wish of the visitor or a rule says rather than what the site does
+  # ("Das Add-on meldet Google Analytics, dass keine Daten übermittelt werden dürfen"): no statement and no disclosure
+  # of any kind.
+  exclusions:
+    de:
+      [
+        add on,
+        addon,
+        browser plugin,
+        browser erweiterung,
+        opt out,
+        deaktivierungs*,
+        dürfen,
+        sollen,
+        sollte,
+        sollten,
+        möchten,
+      ]
+    en: [add on, addon, browser plugin, browser extension, opt out, should, must not, wish, do not want]
+
+  # Words that name the kind of content in a sentence without naming a service ("Die Schriften sind lokal
+  # eingebunden"): a sentence with one of them is only about services of that category.
+  topics:
+    fonts:
+      de:
+        [
+          font,
+          fonts,
+          webfont,
+          webfonts,
+          web fonts,
+          schrift,
+          schriften,
+          schriftart,
+          schriftarten,
+          schriftdatei*,
+          web schriftarten,
+        ]
+      en: [font, fonts, webfont, webfonts, web fonts, typeface*]
+    maps:
+      de: [karte, karten, kartendienst*, landkarte*, stadtplan*, anfahrtskarte*, kartenmaterial]
+      en: [map, maps, map service*]
+    video:
+      de: [video, videos, videoplattform*, videodienst*]
+      en: [video, videos, video platform*]
+    captcha:
+      de: [captcha, spamschutz, spam schutz]
+      en: [captcha, spam protection]
+    chat:
+      de: [chat, chats, chatbot*, live chat]
+      en: [chat, chats, chatbot*, live chat]
+
+  kinds:
+    self-hosted:
+      scope: unconditional
+      categories: [fonts, maps, video, captcha, widget, chat, reviews, social, cdn]
+      de:
+        patterns:
+          - [lokal installiert]
+          - [lokal eingebunden]
+          - [lokal gehostet*]
+          - [lokal bereitgestellt]
+          - [lokal ausgeliefert]
+          - [lokal geladen]
+          - [lokales hosting]
+          - [lokal auf unserem server*]
+          - [auf unserem eigenen server*]
+          - [auf unseren eigenen server*]
+          - [von unserem eigenen server*]
+          - [von unseren eigenen server*]
+          - [von unserem server*, lädt]
+          - [von unserem server*, geladen]
+          - [von unseren server*, lädt]
+          - [von unseren server*, geladen]
+          - [selbst gehostet*]
+          - [self hosted]
+        # "nicht auf dem eigenen Webserver lokal installiert" and "Es ist nicht so, dass …" put the negation further
+        # away than the negation window.
+        reversals:
+          [
+            nicht lokal,
+            nicht mehr lokal,
+            nicht auf unserem,
+            nicht auf unseren,
+            nicht auf dem,
+            nicht auf einem,
+            nicht von unserem,
+            nicht von unseren,
+            nicht so dass,
+            statt lokal,
+            anstatt lokal,
+            nicht selbst gehostet*,
+          ]
+        hedges:
+          [
+            sofern,
+            soweit,
+            falls,
+            wenn,
+            kann,
+            können,
+            ggf,
+            gegebenenfalls,
+            eventuell,
+            möglicherweise,
+            teilweise,
+            zum teil,
+            überwiegend,
+            grundsätzlich,
+            in der regel,
+            bis,
+            erst,
+            noch,
+            sobald,
+            jedoch,
+            aber,
+            allerdings,
+            dennoch,
+            trotzdem,
+          ]
+        # Some fonts, some pages, a time other than now: no statement about the site as it was scanned.
+        limits:
+          [
+            einig*,
+            manche,
+            andere,
+            weitere,
+            außer,
+            mit ausnahme,
+            ausgenommen,
+            früher,
+            künftig,
+            zukünftig,
+            demnächst,
+            ob,
+          ]
+        disclosures:
+          - [browser, lädt]
+          - [verbindung, server* von]
+          - [verbindung zu den server*]
+          - [ip adresse, übertragen]
+          - [ip adresse, übermittelt]
+          - [kenntnis, ip adresse]
+          - [server*, geladen]
+          - [server*, laden]
+      en:
+        patterns:
+          - [hosted locally]
+          - [locally hosted]
+          - [installed locally]
+          - [locally installed]
+          - [loaded locally]
+          - [self hosted]
+          - [from our own server*]
+          - [on our own server*]
+          - [from our server*, load*]
+        reversals:
+          [
+            not hosted locally,
+            not locally,
+            no longer hosted locally,
+            not self hosted,
+            instead of locally,
+            not on the,
+            it is not the case,
+          ]
+        hedges:
+          [
+            if,
+            unless,
+            where,
+            may,
+            might,
+            can,
+            could,
+            partly,
+            partially,
+            generally,
+            usually,
+            until,
+            before,
+            once,
+            as soon as,
+            however,
+            but,
+            nevertheless,
+          ]
+        limits: [some, other, except, previously, formerly, in future, in the future, whether]
+        disclosures:
+          - [browser, loads]
+          - [connect*, server* of]
+          - [connection to, server*]
+          - [ip address, transmitted]
+          - [ip address, sent to]
+    no-connection:
+      scope: unconditional
+      categories: [fonts, maps, video, captcha, widget, chat, reviews, social, cdn]
+      de:
+        patterns:
+          - [keine verbindung]
+          - [verbindung, nicht statt]
+          - [verbindung, nicht hergestellt]
+          - [verbindung, nicht aufgebaut]
+          - [kein kontakt, server*]
+          - [keine daten, übertragen]
+          - [keine daten, übermittelt]
+          - [keine personenbezogenen daten, übertragen]
+          - [keine personenbezogenen daten, übermittelt]
+        # Data "an uns" is no connection to the service.
+        reversals: [an uns]
+        hedges:
+          [
+            sofern,
+            soweit,
+            falls,
+            wenn,
+            kann,
+            können,
+            ggf,
+            gegebenenfalls,
+            eventuell,
+            möglicherweise,
+            grundsätzlich,
+            in der regel,
+            bis,
+            bevor,
+            solange,
+            erst,
+            noch,
+            sobald,
+            jedoch,
+            aber,
+            allerdings,
+            dennoch,
+            trotzdem,
+            ohne ihre,
+            ohne deine,
+            vor ihrer,
+            vor deiner,
+            vorher,
+            zunächst,
+            standardmäßig,
+          ]
+        # What the provider says, or only data of a kind whose scope is a legal question.
+        limits: [laut, nach angaben, identifizierung]
+        disclosures:
+          - [browser, lädt]
+          - [verbindung, server* von]
+          - [verbindung zu den server*]
+          - [ip adresse, übertragen]
+          - [ip adresse, übermittelt]
+          - [kenntnis, ip adresse]
+          - [server*, geladen]
+          - [server*, laden]
+      en:
+        patterns:
+          - [no connection]
+          - [connection, not established]
+          - [connection, is not made]
+          - [connection, does not take place]
+          - [does not connect]
+          - [no data, transmitted]
+          - [no data, sent to]
+          - [no personal data, transmitted]
+        reversals: [to us]
+        hedges:
+          [
+            if,
+            unless,
+            where,
+            may,
+            might,
+            can,
+            could,
+            generally,
+            usually,
+            until,
+            before,
+            without your,
+            prior to,
+            once,
+            as soon as,
+            however,
+            but,
+            nevertheless,
+            beforehand,
+            initially,
+            by default,
+          ]
+        limits: [according to, identif*]
+        disclosures:
+          - [browser, loads]
+          - [connect*, server* of]
+          - [connection to, server*]
+          - [ip address, transmitted]
+          - [ip address, sent to]
+    consent-gated:
+      scope: until-consent
+      categories: [fonts, maps, video, captcha, widget, chat, reviews, social]
+      de:
+        patterns:
+          - [erst, nach ihrer einwilligung, geladen]
+          - [erst, nach ihrer zustimmung, geladen]
+          # Consent or a click alone is no statement about loading: "Cookies werden erst gesetzt, wenn Sie zustimmen",
+          # "Die Wiedergabe startet erst, wenn Sie klicken".
+          - [
+              erst,
+              wenn sie,
+              [zustimm*, zugestimmt, einwillig*, eingewilligt, klicken],
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
+          - [
+              erst,
+              sobald sie,
+              [zustimm*, einwillig*, klick*],
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
+          - [
+              erst nach einem klick,
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
+          - [bis sie, zustimm*, keine verbindung]
+          - [ohne ihre einwilligung, keine verbindung]
+          - [ohne ihre einwilligung, nicht geladen]
+          - [ohne ihre zustimmung, nicht geladen]
+          - [zwei klick*]
+          - [2 klick*]
+        reversals: []
+        hedges:
+          [sofern, soweit, falls, kann, können, ggf, gegebenenfalls, eventuell, möglicherweise, teilweise]
+        disclosures: []
+      en:
+        patterns:
+          - [only, after, your consent, load*]
+          - [[only once you, only when you], consent*, [load*, connect*, embedded, transmitted, transferred]]
+          - [only, after you, click*, [load*, connect*, embedded, transmitted, transferred]]
+          - [two click*]
+          - [without your consent, no connection]
+          - [not loaded, without your consent]
+        reversals: []
+        hedges: [may, might, can, could, partly]
+        disclosures: []

@@ -1,0 +1,32 @@
+version: 1
+sites:
+  - id: de-example-media
+    url: https://media.invalid/
+    region: de
+    country: DE
+    sector: media
+    sizeClass: large
+    expectedCmp: unknown
+    cmpSignal: null
+    selectionReason: "öffentlich dokumentierter Fall: Fiktives Beispiel – https://example.invalid/case"
+    publicReference: https://example.invalid/case
+  - id: at-example-retail
+    url: https://retail.invalid/
+    region: eu
+    country: AT
+    sector: retail
+    sizeClass: small-business
+    expectedCmp: none
+    cmpSignal: "Fiktives Beispiel ohne CMP-Marker"
+    selectionReason: "Fiktives Beispiel: Einzelhandel"
+    publicReference: null
+  - id: us-example-service
+    url: https://service.invalid/
+    region: non-eu
+    country: US
+    sector: technology
+    sizeClass: medium
+    expectedCmp: other
+    cmpSignal: "Fiktives Beispiel mit eigenem Banner"
+    selectionReason: "Fiktives Beispiel: Technik"
+    publicReference: null

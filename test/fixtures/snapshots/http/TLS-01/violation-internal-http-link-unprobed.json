@@ -1,0 +1,112 @@
+{
+  "$description": "A visible nav link \"Startseite\" written as HTTP://work.example.test/ (the browser stores it lower-cased); the scan probed only www and the apex, so whether work.example.test redirects is unknown",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "internal-http-link"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-www-http",
+        "hops": [
+          {
+            "status": 301,
+            "url": "http://www.example.test/",
+            "location": "https://www.example.test/"
+          },
+          {
+            "headers": [
+              {
+                "name": "strict-transport-security",
+                "value": "max-age=31536000"
+              }
+            ],
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "http://www.example.test/"
+      },
+      {
+        "id": "chain-www-https",
+        "hops": [
+          {
+            "headers": [
+              {
+                "name": "strict-transport-security",
+                "value": "max-age=31536000"
+              }
+            ],
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "https://www.example.test/"
+      },
+      {
+        "id": "chain-apex-http",
+        "hostVariant": "apex",
+        "outcome": "connection-refused",
+        "startUrl": "http://example.test/",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED"
+        }
+      }
+    ],
+    "requestsIssued": 3
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "dom": {
+              "links": [
+                {
+                  "href": "http://work.example.test/",
+                  "hrefKind": "http",
+                  "region": "nav",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Startseite",
+                  "sameSite": true
+                },
+                {
+                  "href": "https://www.example.test/impressum",
+                  "hrefKind": "https",
+                  "region": "footer",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "text": "Impressum",
+                  "sameSite": true
+                }
+              ]
+            },
+            "url": "https://www.example.test/"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,106 @@
+# Ruleset de-2026, module browser. Per (checkId, variant): default severity and CRM catalog code.
+# Draft until signed off by the customer (_profile.yaml). The confidence cap applies on top (medium ≤ warning,
+# low ≤ info). `locked: true` marks levels that overrides must not raise (banner not recognised, CMP not supported;
+# AGENTS.md rule 5); enforcement belongs to core.
+# crm: code from specs/dsgvo-check_katalog-proverok.md or explicit null, JSON report only. null: "Banner nicht
+# erkannt" / "CMP nicht unterstützt" and info variants that only record a weaker technical signal the catalog
+# finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect only, unresolved link,
+# category-only or ambiguous text, a policy statement next to its own counterpart, non-identifier storage, consent
+# cookie UID, CONNECT only, Pur-Abo). These stay null until the customer maps them.
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
+checks:
+  CONSENT-01:
+    gating: true
+    variants:
+      tracking-completed: { severity: critical, crm: T1_TRACKER_BEFORE_CONSENT }
+      library-loaded: { severity: warning, crm: T1_TRACKER_BEFORE_CONSENT }
+      first-party-proxy: { severity: warning, crm: T1_TRACKER_BEFORE_CONSENT }
+      cookieless-ping: { severity: warning, crm: T1_TRACKER_BEFORE_CONSENT }
+      third-party-resource: { severity: info, crm: null }
+      unknown-host: { severity: info, crm: null }
+      request-not-completed: { severity: info, crm: null }
+  CONSENT-02:
+    gating: true
+    variants:
+      tracking-identifier-stored: { severity: critical, crm: T1_TRACKER_BEFORE_CONSENT }
+      unknown-third-party-persistent: { severity: warning, crm: T1_TRACKER_BEFORE_CONSENT }
+      unknown-first-party-persistent: { severity: info, crm: null }
+      cmp-cookie-with-uid: { severity: info, crm: null }
+      storage-rejected-or-attempted: { severity: info, crm: null }
+  CONSENT-03:
+    gating: true
+    variants:
+      no-banner-strong-tracking: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
+      no-banner-consent-services: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+  CONSENT-04:
+    gating: true
+    variants:
+      blocking-no-reject: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
+      close-means-accept: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
+      reject-not-actionable: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      reject-ineffective: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      consent-without-action: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      reject-as-link: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
+      nonblocking-no-reject: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
+      no-choice-at-first-layer: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
+      pur-abo: { severity: info, crm: null }
+      banner-not-recognized: { severity: info, gating: false, locked: true, crm: null }
+      cmp-not-supported: { severity: info, gating: false, locked: true, crm: null }
+  CONSENT-05:
+    gating: true
+    variants:
+      tracking-after-reject: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
+      cookieless-ping-after-reject: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      connect-only-after-reject: { severity: info, crm: null }
+  TRACK-01:
+    # Inventory: the gating level belongs to the related CONSENT finding.
+    gating: false
+    variants:
+      # ⚠ catalog code for the info inventory, to be confirmed by the customer.
+      service-inventory: { severity: info, crm: T1_TRACKER_BEFORE_CONSENT }
+  EMBED-01:
+    gating: true
+    variants:
+      fonts-loaded: { severity: warning, crm: T1_FONTS_EXTERNAL }
+      preconnect-only: { severity: info, crm: null }
+      # Fonts an embed's frame loads from a font service: the customer counts them as fonts from third-party servers.
+      fonts-in-embed-frame: { severity: warning, crm: T1_FONTS_EXTERNAL }
+  EMBED-02:
+    gating: true
+    variants:
+      maps-loaded: { severity: warning, crm: T1_MAPS_BEFORE_CONSENT }
+  EMBED-03:
+    gating: true
+    variants:
+      # The catalog files video under the code of maps loaded before consent.
+      video-loaded: { severity: warning, crm: T1_MAPS_BEFORE_CONSENT }
+  LEGAL-01:
+    gating: true
+    variants:
+      document-not-found: { severity: critical, crm: T1_OTHER }
+      links-broken: { severity: critical, crm: T1_OTHER }
+      provider-details-without-link: { severity: warning, crm: T1_OTHER }
+      link-missing-on-some-pages: { severity: warning, crm: T1_OTHER }
+      reachable-via-intermediate: { severity: warning, crm: T1_OTHER }
+      footer-covered-by-banner: { severity: warning, crm: T1_OTHER }
+      unresolved: { severity: info, crm: null }
+  LEGAL-02:
+    gating: true
+    variants:
+      # The catalog has no code for a designation of a former legal situation.
+      outdated-reference: { severity: info, crm: null }
+  PRIV-01:
+    gating: true
+    variants:
+      not-named: { severity: warning, crm: T3_LEGAL_DOCS_MISMATCH }
+      category-only: { severity: info, crm: null }
+      ambiguous-match: { severity: info, crm: null }
+      # No privacy document names the service, the consent dialog of the site does (its collapsed service details).
+      named-in-cmp-only: { severity: info, crm: null }
+  PRIV-02:
+    gating: true
+    variants:
+      contradiction-replicated: { severity: critical, crm: T1_MISLEADING_CLAIM }
+      contradiction-single: { severity: warning, crm: T1_MISLEADING_CLAIM }
+      # The policy also describes the connection, or only failed requests and connection hints were observed.
+      wording-to-review: { severity: info, crm: null }

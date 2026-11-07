@@ -1,0 +1,36 @@
+# Ruleset de-2026, module http. Per (checkId, variant): default severity and CRM catalog code (or explicit null,
+# JSON report only). T3 codes stay at most `warning` (test). Confidence caps apply on top (medium ≤ warning,
+# low ≤ info). Catalog: HDR-01 → T3_NO_SECURITY_HEADERS, TLS-01/TLS-02 → T1_UNENCRYPTED.
+# TLS-01.redirect-chain-detail has no code: https is reached, only the redirect path is unusual (no "unencrypted" case).
+# TLS-01.internal-http-link-upgraded has none either: the host redirects to https, only the first request is plain http.
+# HDR-02 is a P2 check of the catalog, which gives no code for it: version-header has none.
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
+checks:
+  HDR-01:
+    gating: true
+    variants:
+      hsts-missing: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      anti-framing-missing: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      referrer-policy-permissive: { severity: warning, crm: T3_NO_SECURITY_HEADERS }
+      header-missing: { severity: info, crm: T3_NO_SECURITY_HEADERS }
+  HDR-02:
+    gating: true
+    variants:
+      version-header: { severity: info, crm: null }
+  TLS-01:
+    gating: true
+    variants:
+      https-unavailable: { severity: critical, crm: T1_UNENCRYPTED }
+      form-on-http-page: { severity: critical, crm: T1_UNENCRYPTED }
+      no-redirect: { severity: warning, crm: T1_UNENCRYPTED }
+      client-side-redirect-only: { severity: warning, crm: T1_UNENCRYPTED }
+      redirect-chain-detail: { severity: info, crm: null }
+      internal-http-link: { severity: warning, crm: T1_UNENCRYPTED }
+      internal-http-link-upgraded: { severity: info, crm: null }
+  TLS-02:
+    gating: true
+    variants:
+      certificate-invalid: { severity: critical, crm: T1_UNENCRYPTED }
+      chain-incomplete: { severity: warning, crm: T1_UNENCRYPTED }
+      certificate-expiring: { severity: warning, crm: T1_UNENCRYPTED }
+      certificate-expiry-approaching: { severity: info, crm: T1_UNENCRYPTED }

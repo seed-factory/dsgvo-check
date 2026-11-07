@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Real-Cookie-Banner-Simulator: ohne Ablehnen, blockierend</title>
+<script>
+  var realCookieBanner = {
+    isAcceptAllForBots: true,
+    isRespectDoNotTrack: false,
+    groups: [
+      { id: 11, slug: 'essenziell', isEssential: true },
+      { id: 12, slug: 'funktional' },
+      { id: 13, slug: 'statistik' },
+      { id: 14, slug: 'marketing' }
+    ],
+    sim: { reject: false }
+  };
+</script>
+<script src="/wp-content/plugins/real-cookie-banner/public/dist/banner.lite.js?ver=5.1.0" defer></script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Blog</h1><p>Willkommen.</p></main>
+</body>
+</html>

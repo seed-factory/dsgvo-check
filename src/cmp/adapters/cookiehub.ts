@@ -1,0 +1,70 @@
+/**
+ * CookieHub. Only read-only API calls: `denyAll()` and the like are never used, since CookieHub forbids bypassing the
+ * UI. Geo and bot signals are not known.
+ */
+import type { Page } from 'playwright-core';
+import { defineAdapter, toCategoryStates } from './base.ts';
+
+interface CookiehubRead {
+  present: boolean;
+  ready: boolean;
+  answered: boolean | null;
+  categories: Record<string, boolean | null>;
+  cookiePresent: boolean;
+}
+
+/** In-page, self-contained. */
+function readCookiehub(): CookiehubRead {
+  const w = globalThis as unknown as {
+    cookiehub?: { hasAnswered?: () => unknown; hasConsented?: (c: string) => unknown };
+    document: { cookie: string };
+  };
+  const ch = w.cookiehub;
+  const CATEGORIES = ['preferences', 'analytics', 'marketing'];
+
+  const call = (f: () => unknown): boolean | null => {
+    try {
+      const v = f();
+      return typeof v === 'boolean' ? v : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const answered = typeof ch?.hasAnswered === 'function' ? call(() => ch.hasAnswered?.()) : null;
+  const categories: Record<string, boolean | null> = {};
+  if (typeof ch?.hasConsented === 'function') {
+    for (const c of CATEGORIES) categories[c] = call(() => ch.hasConsented?.(c));
+  }
+
+  return {
+    present: !!ch,
+    ready: answered !== null,
+    answered,
+    categories,
+    cookiePresent: w.document.cookie.split(';').some((c) => c.trim().startsWith('cookiehub=')),
+  };
+}
+
+const read = (page: Page) => page.evaluate(readCookiehub);
+
+export const cookiehub = defineAdapter({
+  id: 'cookiehub',
+  // `hasConsented(category)` answers per name; the categories of the installation cannot be listed.
+  categoriesUnlisted: true,
+  async readState(page) {
+    const r = await read(page);
+    if (!r.present) return [];
+
+    return [
+      {
+        source: 'api',
+        ready: r.ready ? 'ready' : 'loading',
+        categories: toCategoryStates(r.categories),
+        origin: r.answered ? 'stored' : 'default',
+        decision: { responded: r.answered ?? 'unknown', method: r.answered ? 'explicit' : 'unknown' },
+      },
+    ];
+  },
+  isReady: async (page) => (await read(page)).ready,
+});

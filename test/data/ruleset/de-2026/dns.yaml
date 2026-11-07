@@ -1,0 +1,31 @@
+# Ruleset de-2026, module dns. Per (checkId, variant): default severity and CRM catalog code (or explicit null,
+# JSON report only). T3 codes stay at warning or below (test). MAIL-02 follows the DMARC matrix of BSI TR-03182.
+# Variants that describe missing or weak spoofing protection map to the catalog code; hygiene hints (deprecated
+# ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings stay null until the customer
+# maps them. MAIL-03 selectors-not-found keeps the catalog code: the catalog row describes exactly that case
+# ("not found on any of the common selectors").
+# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
+checks:
+  MAIL-01:
+    gating: true
+    variants:
+      record-not-found: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      policy-none: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      record-invalid: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      weak-option: { severity: info, crm: T3_MAIL_UNPROTECTED }
+      legacy-pct: { severity: info, crm: T3_MAIL_UNPROTECTED }
+  MAIL-02:
+    gating: true
+    variants:
+      record-not-found: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      permissive-qualifier: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      record-invalid: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      softfail-without-enforcement: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      softfail-with-enforcement: { severity: info, crm: null }
+      ptr-mechanism: { severity: info, crm: null }
+  MAIL-03:
+    gating: true
+    variants:
+      key-too-short: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      given-selector-missing: { severity: warning, crm: T3_MAIL_UNPROTECTED }
+      selectors-not-found: { severity: info, crm: T3_MAIL_UNPROTECTED }
