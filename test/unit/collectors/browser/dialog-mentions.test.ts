@@ -194,6 +194,48 @@ describe('CmpBridge.dialogMentions', () => {
     expect(errors.map((e) => e.code)).toEqual(['cmp-dialog-mentions-failed']);
   });
 
+  // The adapters' code runs in the page: an error the page throws there may carry its own data.
+  it.each([
+    [
+      'an error the page throws with its own data',
+      new Error('Consent ID zqxkbmwf-tpdhvrcy; _ga=GA1.2.3.4'),
+      'evaluation failed',
+    ],
+    [
+      'a destroyed execution context',
+      new Error('page.evaluate: Execution context was destroyed'),
+      'execution context destroyed',
+    ],
+    [
+      'a closed page',
+      new Error('page.evaluate: Target page, context or browser has been closed'),
+      'page closed',
+    ],
+    ["Playwright's own timeout", new Error('page.evaluate: Timeout 3000ms exceeded.'), 'timed out'],
+  ])(
+    'a failed CMP call keeps the kind of failure, never the error text: %s',
+    async (_name, error, message) => {
+      const errors: CollectorError[] = [];
+      const api = {
+        dialogText: async () => {
+          throw error;
+        },
+      } as unknown as CmpApi;
+      const bridge = new CmpBridge(api, 1_000, errors, 'A', DEFAULT_CLASSIFY);
+      expect(await bridge.dialogMentions(page, borlabs, null, url)).toBe('failed');
+      expect(errors).toEqual([{ code: 'cmp-dialog-mentions-failed', message, phase: 'A', url }]);
+      expect(JSON.stringify(errors)).not.toMatch(/zqx|_ga|GA1/);
+    },
+  );
+
+  it('a call that runs out of time names the call and the time limit', async () => {
+    const errors: CollectorError[] = [];
+    const api = { dialogText: () => new Promise(() => {}) } as unknown as CmpApi;
+    const bridge = new CmpBridge(api, 20, errors, 'A', DEFAULT_CLASSIFY);
+    expect(await bridge.dialogMentions(page, borlabs, null, url)).toBe('failed');
+    expect(errors.map((e) => e.message)).toEqual(['cmp.dialog-mentions timed out after 20 ms']);
+  });
+
   it('a record that does not fit the snapshot schema counts as failed, and is not stored', async () => {
     const api = { dialogText: async () => ({ text: DIALOG, truncated: false }) } as unknown as CmpApi;
     const unnamed = { id: 'borlabs', name: '' } as CmpAdapter;

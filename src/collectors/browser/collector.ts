@@ -64,7 +64,7 @@ import {
   type RequestCounter,
   type ScanClock,
 } from './recording/recorder.ts';
-import { ERROR_MESSAGE_MAX_CHARS, errorText, sleep } from './util.ts';
+import { ERROR_MESSAGE_MAX_CHARS, errorText, pageCallFailure, sleep } from './util.ts';
 
 /** How long sealing a phase waits for response handlers that are still running. */
 const FLUSH_BUDGET_MS = 2_000;
@@ -498,7 +498,7 @@ export class BrowserCollection {
         if (record.errors.some((e) => e.code === code && e.message.startsWith(what))) return;
         record.errors.push({
           code,
-          message: `${what}: ${errorText(err)}`.slice(0, ERROR_MESSAGE_MAX_CHARS),
+          message: `${what}: ${pageCallFailure(err)}`.slice(0, ERROR_MESSAGE_MAX_CHARS),
           phase: record.phase,
         });
       },
