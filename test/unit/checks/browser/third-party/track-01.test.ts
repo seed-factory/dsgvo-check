@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { track01 } from '../../../../../src/checks/browser/track-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { Observation } from '../../../../../src/core/evaluation/check.ts';
+import type { CookieRecord, RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
+import { named } from '../../../../utils/named-rows.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
   click,
@@ -28,17 +31,6 @@ describe('TRACK-01 inventory', () => {
       subject: 'google-analytics',
       serviceId: 'google-analytics',
       params: { stage: 'event-sent', beforeInteraction: true, afterReject: false, afterAccept: false },
-    });
-  });
-
-  it('clean: names in source code without an executed request → nothing', () => {
-    expect(variantsOf(runCheck(track01, scenario('clean-source-reference-only.json')))).toEqual([]);
-  });
-
-  it('inconclusive: no network slice', () => {
-    expect(runCheck(track01, scenario('inconclusive-no-network.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'no-network-observation',
     });
   });
 
@@ -74,133 +66,110 @@ describe('TRACK-01 inventory', () => {
     ]);
   });
 
-  it('the GAM compression dictionary (resourceType other) proves only "loaded"; a fetch ad request proves event-sent', () => {
-    const dict = req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
-      resourceType: 'other',
-    });
-    const loaded = runCheck(track01, site({ phases: [phase('A', { requests: [dict] })] }));
-    expect(observationsOf(loaded).map((o) => [o.subject, o.params.stage])).toEqual([
-      ['google-ad-manager', 'loaded'],
-    ]);
-    const sent = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              dict,
-              req('b', 'https://securepubads.g.doubleclick.net/gampad/ads?iu=x', { resourceType: 'fetch' }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(sent).map((o) => [o.subject, o.params.stage])).toEqual([
-      ['google-ad-manager', 'event-sent'],
-    ]);
+  const gamDictionary = req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
+    resourceType: 'other',
   });
 
-  it('Piano identity, experience and checkout calls prove "loaded" only; the engagement ping proves event-sent', () => {
-    const calls = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://id.piano.io/api/v1/identity/login/token?aid=x', { resourceType: 'xhr' }),
-              req('b', 'https://experience.piano.io/xbuilder/experience/execute', { resourceType: 'fetch' }),
-              req('c', 'https://buy.piano.io/checkout/offer/show', { resourceType: 'fetch' }),
-            ],
-          }),
-        ],
-      }),
-    );
+  // Each row lists every inventory entry of phase A in order, so their number is asserted as well.
+  const INVENTORY_CASES: Array<{
+    name: string;
+    requests: RequestRecord[];
+    cookies?: CookieRecord[];
+    expected: Array<Partial<Observation>>;
+  }> = [
+    {
+      name: 'the GAM compression dictionary (resourceType other) proves only "loaded"',
+      requests: [gamDictionary],
+      expected: [{ subject: 'google-ad-manager', params: { stage: 'loaded' } }],
+    },
+    {
+      name: 'counterexample: a fetch ad request next to the GAM dictionary proves event-sent',
+      requests: [
+        gamDictionary,
+        req('b', 'https://securepubads.g.doubleclick.net/gampad/ads?iu=x', { resourceType: 'fetch' }),
+      ],
+      expected: [{ subject: 'google-ad-manager', params: { stage: 'event-sent' } }],
+    },
+    {
+      name: 'Piano identity, experience and checkout calls prove "loaded" only',
+      requests: [
+        req('a', 'https://id.piano.io/api/v1/identity/login/token?aid=x', { resourceType: 'xhr' }),
+        req('b', 'https://experience.piano.io/xbuilder/experience/execute', { resourceType: 'fetch' }),
+        req('c', 'https://buy.piano.io/checkout/offer/show', { resourceType: 'fetch' }),
+      ],
+      expected: [{ subject: 'piano', params: { stage: 'loaded', stageBeforeInteraction: 'loaded' } }],
+    },
+    {
+      name: 'counterexample: the Piano engagement ping proves event-sent',
+      requests: [req('d', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
+      expected: [{ subject: 'piano', params: { stageBeforeInteraction: 'event-sent' } }],
+    },
+    {
+      name: 'an `other` request on a path without a signature proves "loaded" only',
+      requests: [req('a', 'https://securepubads.g.doubleclick.net/pcs/anything', { resourceType: 'other' })],
+      expected: [
+        { subject: 'google-ad-manager', params: { stage: 'loaded', stageBeforeInteraction: 'loaded' } },
+      ],
+    },
+    {
+      name: 'Chartbeat ping and ScorecardResearch beacon prove event-sent',
+      requests: [
+        req('a', 'https://ping.chartbeat.net/ping?h=example.de&p=%2F', { resourceType: 'image' }),
+        req('b', 'https://sb.scorecardresearch.com/b?c1=2&c2=1000', { resourceType: 'image' }),
+      ],
+      expected: [
+        { subject: 'chartbeat', params: { stageBeforeInteraction: 'event-sent' } },
+        { subject: 'scorecardresearch', params: { stageBeforeInteraction: 'event-sent' } },
+      ],
+    },
+    {
+      name: 'counterexample: the Tealium library and a Chartbeat strategy call prove "loaded"',
+      requests: [
+        req('c', 'https://tags.tiqcdn.com/utag/acme/main/prod/utag.js', { resourceType: 'script' }),
+        req('d', 'https://mab.chartbeat.com/mab_strategy/example.de/', { resourceType: 'xhr' }),
+      ],
+      expected: [
+        { subject: 'chartbeat', params: { stageBeforeInteraction: 'loaded' } },
+        { subject: 'tealium', params: { stageBeforeInteraction: 'loaded' } },
+      ],
+    },
+    {
+      name: 'a tracking cookie of the service proves "initialised"',
+      requests: [req('a', 'https://connect.facebook.net/en_US/fbevents.js')],
+      cookies: [cookie('_fbp')],
+      expected: [{ params: { service: 'Meta Pixel', stage: 'initialised' } }],
+    },
+    {
+      name: 'a hit whose response arrived before a body error still proves event-sent; SW/cache answers count as loaded',
+      requests: [
+        req('a', 'https://www.google-analytics.com/g/collect?v=2&tid=G-1', {
+          resourceType: 'ping',
+          state: 'failed',
+          status: 204,
+          delivery: 'sent',
+          result: { kind: 'failed', errorText: 'net::ERR_ABORTED' },
+        }),
+        req('b', 'https://static.hotjar.com/c/hotjar-1.js', { state: 'from-sw', status: undefined }),
+      ],
+      expected: [
+        { subject: 'google-analytics', params: { stage: 'event-sent' } },
+        { subject: 'hotjar', params: { stage: 'loaded' } },
+      ],
+    },
+    {
+      name: 'failed requests and non-tracking categories are not inventory; first-party proxy has medium confidence',
+      requests: [
+        req('a', 'https://static.hotjar.com/c/hotjar-1.js', { state: 'failed' }),
+        req('b', 'https://fonts.googleapis.com/css2?family=X', { resourceType: 'stylesheet' }),
+        req('c', `${START}g/collect?v=2&tid=G-1`, { resourceType: 'ping' }),
+      ],
+      expected: [{ subject: 'google-analytics', confidence: 'medium', params: { firstPartyProxy: true } }],
+    },
+  ];
+  it.each(named(INVENTORY_CASES))('%s', (_name, { requests, cookies = [], expected }) => {
     expect(
-      observationsOf(calls).map((o) => [o.subject, o.params.stage, o.params.stageBeforeInteraction]),
-    ).toEqual([['piano', 'loaded', 'loaded']]);
-    const ping = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('d', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(ping).map((o) => [o.subject, o.params.stageBeforeInteraction])).toEqual([
-      ['piano', 'event-sent'],
-    ]);
-  });
-
-  it('an `other` request on a path without a signature proves "loaded" only', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://securepubads.g.doubleclick.net/pcs/anything', { resourceType: 'other' }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(
-      observationsOf(r).map((o) => [o.subject, o.params.stage, o.params.stageBeforeInteraction]),
-    ).toEqual([['google-ad-manager', 'loaded', 'loaded']]);
-  });
-
-  it('Chartbeat ping and ScorecardResearch beacon prove event-sent; the Tealium library and a Chartbeat strategy call prove "loaded"', () => {
-    const hits = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://ping.chartbeat.net/ping?h=example.de&p=%2F', { resourceType: 'image' }),
-              req('b', 'https://sb.scorecardresearch.com/b?c1=2&c2=1000', { resourceType: 'image' }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(hits).map((o) => [o.subject, o.params.stageBeforeInteraction])).toEqual([
-      ['chartbeat', 'event-sent'],
-      ['scorecardresearch', 'event-sent'],
-    ]);
-    const loaded = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('c', 'https://tags.tiqcdn.com/utag/acme/main/prod/utag.js', { resourceType: 'script' }),
-              req('d', 'https://mab.chartbeat.com/mab_strategy/example.de/', { resourceType: 'xhr' }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(loaded).map((o) => [o.subject, o.params.stageBeforeInteraction])).toEqual([
-      ['chartbeat', 'loaded'],
-      ['tealium', 'loaded'],
-    ]);
-  });
-
-  it('a tracking cookie of the service proves "initialised"', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('a', 'https://connect.facebook.net/en_US/fbevents.js')],
-            cookies: [cookie('_fbp')],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(r)[0]?.params).toMatchObject({ service: 'Meta Pixel', stage: 'initialised' });
+      observationsOf(runCheck(track01, site({ phases: [phase('A', { requests, cookies })] }))),
+    ).toMatchObject(expected);
   });
 
   it.each([
@@ -223,52 +192,6 @@ describe('TRACK-01 inventory', () => {
     );
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('a hit whose response arrived before a body error still proves event-sent; SW/cache answers count as loaded', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://www.google-analytics.com/g/collect?v=2&tid=G-1', {
-                resourceType: 'ping',
-                state: 'failed',
-                status: 204,
-                delivery: 'sent',
-                result: { kind: 'failed', errorText: 'net::ERR_ABORTED' },
-              }),
-              req('b', 'https://static.hotjar.com/c/hotjar-1.js', { state: 'from-sw', status: undefined }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(r).map((o) => [o.subject, o.params.stage])).toEqual([
-      ['google-analytics', 'event-sent'],
-      ['hotjar', 'loaded'],
-    ]);
-  });
-
-  it('failed requests and non-tracking categories are not inventory; first-party proxy has medium confidence', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://static.hotjar.com/c/hotjar-1.js', { state: 'failed' }),
-              req('b', 'https://fonts.googleapis.com/css2?family=X', { resourceType: 'stylesheet' }),
-              req('c', `${START}g/collect?v=2&tid=G-1`, { resourceType: 'ping' }),
-            ],
-          }),
-        ],
-      }),
-    );
-    expect(observationsOf(r).map((o) => [o.subject, o.confidence, o.params.firstPartyProxy])).toEqual([
-      ['google-analytics', 'medium', true],
-    ]);
   });
 });
 

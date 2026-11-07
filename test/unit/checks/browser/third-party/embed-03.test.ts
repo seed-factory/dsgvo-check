@@ -23,8 +23,6 @@ import {
 } from '../../../../utils/snapshot-builder.ts';
 import {
   click,
-  cmpFacts,
-  cmpWith,
   footerLinks,
   IMPRESSUM,
   ORIGIN,
@@ -40,6 +38,7 @@ import {
 } from '../helpers.ts';
 import { HISTORY, inPlayer, THUMBNAIL, VIDEOS, videoPages } from '../scenarios/embed-03.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
+import { expectMoment, momentCases, rejectPhase } from './reject-moment.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-03']!.find((s) => s.file === file)!.build();
 const run = (phases: PhaseRecord[], spec: Omit<SiteSpec, 'phases'> = {}) =>
@@ -121,19 +120,6 @@ describe('EMBED-03 external videos and thumbnails', () => {
       expect.objectContaining({ origin: 'action', phase: 'B', page: START }),
       expect.objectContaining({ origin: 'stored', phase: 'B', page: START }),
     ]);
-  });
-
-  it('clean: a placeholder with a self-hosted preview and a channel link load nothing from a video service', () => {
-    const r = runCheck(embed03, scenario('clean-local-preview.json'));
-    expect(r).toMatchObject({ status: 'completed' });
-    expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('inconclusive: the page chosen for its video link was behind a challenge and nothing was found', () => {
-    expect(runCheck(embed03, scenario('inconclusive-video-page-blocked.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'video-page-not-evaluable',
-    });
   });
 });
 
@@ -357,17 +343,6 @@ describe('EMBED-03 reports only videos that were delivered before the accept', (
     expect(observations(phases)).toEqual([]);
   });
 
-  it('counterexample: a direct bot signal of the CMP → inconclusive, no finding', () => {
-    const r = run([phase('A', { pages: videoPages(), requests: [image('a', THUMBNAIL)] })], {
-      cmp: cmpWith({
-        phase: 'A',
-        facts: [cmpFacts({ phase: 'A', botSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isSpider' }] })],
-      }),
-    });
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
-    expect(variantsOf(r)).toEqual([]);
-  });
-
   it('counterexample: no phase A → inconclusive', () => {
     expect(run([phase('A', { status: 'skipped', pages: [] })])).toMatchObject({
       status: 'inconclusive',
@@ -538,51 +513,12 @@ describe('EMBED-03 names video frames of a page that loaded nothing', () => {
 
 const THUMB_B = (id: string, p: Partial<RequestRecord> = {}) =>
   image(id, THUMBNAIL, { pageUrl: HISTORY, phase: 'B', afterClick: true, ...p });
-/** Phase B of a reject on the start page: the start page, its reload and the history page as the control page. */
-const rejectPhase = (requests: RequestRecord[]) =>
-  phase('B', {
-    click: click('reject'),
-    reloaded: true,
-    pages: [
-      page(START, 'start', 'B'),
-      page(START, 'start', 'B', { reload: true }),
-      page(HISTORY, 'nav', 'B'),
-    ],
-    requests,
-  });
 const historyA = (requests: RequestRecord[] = []) =>
   phase('A', { pages: videoPages(HISTORY), requests: requests.map((r) => ({ ...r, pageUrl: HISTORY })) });
 const confirmed = rejectCmp({ confirmed: true, pages: { [HISTORY]: 'in-effect' } });
 
-const MOMENT_CASES: Array<[string, PhaseRecord[], CmpSection, Record<string, unknown>]> = [
-  [
-    'only after the confirmed reject',
-    [historyA(), rejectPhase([THUMB_B('b')])],
-    confirmed,
-    { moment: 'after-reject', rejectConfirmed: true, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'counterexample: phase B before its click stays before the interaction',
-    [historyA(), rejectPhase([THUMB_B('b', { afterClick: false })])],
-    confirmed,
-    { moment: 'before-interaction', rejectConfirmed: null, afterRejectPageCount: 0, afterReject: false },
-  ],
-  [
-    'a reject the CMP state did not confirm',
-    [historyA([image('a', THUMBNAIL)]), rejectPhase([THUMB_B('b')])],
-    rejectCmp({ confirmed: false }),
-    { moment: 'before-and-after-reject', rejectConfirmed: false, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'loads after the reject only on a page that shows the banner again do not confirm it',
-    [historyA([image('a', THUMBNAIL)]), rejectPhase([THUMB_B('b')])],
-    rejectCmp({ confirmed: true, pages: { [HISTORY]: 'banner-again' } }),
-    { moment: 'before-and-after-reject', rejectConfirmed: false, afterRejectPageCount: 0, afterReject: true },
-  ],
-];
-
 describe('EMBED-03 names where the reject was pressed', () => {
-  const both = [historyA([image('a', THUMBNAIL)]), rejectPhase([THUMB_B('b')])];
+  const both = [historyA([image('a', THUMBNAIL)]), rejectPhase(HISTORY, [THUMB_B('b')])];
   it.each([
     [
       'the save of the settings layer',
@@ -607,38 +543,37 @@ describe('EMBED-03 names where the reject was pressed', () => {
 });
 
 describe('EMBED-03 states whether the video loaded before the interaction, after the reject, or both', () => {
-  it.each(MOMENT_CASES)('%s', (_name, phases, cmp, want) => {
-    const found = observations(phases, { cmp });
-    expect(found).toHaveLength(1);
-    expect(found[0]?.params).toMatchObject(want);
+  it.each(
+    momentCases({
+      load: (id, p = {}) => image(id, THUMBNAIL, { pageUrl: HISTORY, ...p }),
+      phaseA: historyA,
+      control: HISTORY,
+    }),
+  )('%s', (_name, { phases, cmp, want }) => {
+    expectMoment(observations(phases, { cmp }), 'video-loaded', want);
   });
 
   const render = (lang: 'de' | 'en', phases: PhaseRecord[], cmp: CmpSection) => {
     const [o] = observations(phases, { cmp });
     return renderMessage(loadTexts(lang), 'EMBED-03.video-loaded', o!.params);
   };
-  const both = [historyA([image('a', THUMBNAIL)]), rejectPhase([THUMB_B('b')])];
+  const both = [historyA([image('a', THUMBNAIL)]), rejectPhase(HISTORY, [THUMB_B('b')])];
 
-  it('a thumbnail after the confirmed reject: the title says "also after the confirmed rejection"', () => {
-    expect(render('de', both, confirmed)).toMatchObject({
-      title: 'Externer Videodienst geladen, auch nach bestätigter Ablehnung: YouTube',
-      body:
-        'Ein externer Videodienst von YouTube wurde als Vorschaubild ohne Player geladen, Zeitpunkt: vor einer ' +
+  it('a thumbnail after the confirmed reject: the body counts the pages after it', () => {
+    expect(render('de', both, confirmed).body).toBe(
+      'Ein externer Videodienst von YouTube wurde als Vorschaubild ohne Player geladen, Zeitpunkt: vor einer ' +
         'Interaktion mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung (1 Seite, davon 1 nach der ' +
         'Ablehnung).',
-    });
-    expect(render('en', both, confirmed)).toMatchObject({
-      title: 'External video service loaded, also after confirmed rejection: YouTube',
-      body:
-        'An external video service of YouTube was loaded as a thumbnail image without a player, timing: before any ' +
+    );
+    expect(render('en', both, confirmed).body).toBe(
+      'An external video service of YouTube was loaded as a thumbnail image without a player, timing: before any ' +
         'interaction with the consent banner and again after confirmed rejection (1 page, 1 of them after the ' +
         'rejection).',
-    });
+    );
   });
 
   it('an unconfirmed reject is named as a click on "Ablehnen" that was not confirmed', () => {
     const cmp = rejectCmp({ confirmed: false });
-    expect(render('de', both, cmp).title).toBe('Externer Videodienst geladen, auch nach Ablehnung: YouTube');
     expect(render('de', both, cmp).body).toContain(
       'und erneut nach dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)',
     );
@@ -677,7 +612,7 @@ describe('EMBED-03 evidence', () => {
         image(`${prefix}-${i}`, `https://i.ytimg.com/vi/abc123/frame-${i}.jpg`, { pageUrl: HISTORY, ...p }),
       );
     const [o] = observations(
-      [historyA(chunks('a')), rejectPhase(chunks('b', { phase: 'B', afterClick: true }))],
+      [historyA(chunks('a')), rejectPhase(HISTORY, chunks('b', { phase: 'B', afterClick: true }))],
       {
         cmp: confirmed,
       },

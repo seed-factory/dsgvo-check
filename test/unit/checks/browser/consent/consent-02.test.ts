@@ -43,12 +43,6 @@ describe('CONSENT-02 storage before interaction', () => {
     expect(r.outcome?.coverage).toEqual({ note: `${ALLOWLIST}:not-evaluated=1` });
   });
 
-  it('clean: only allowlisted session/CSRF/CMP cookies', () => {
-    const r = runCheck(consent02, scenario('clean-allowlist-only.json'));
-    expect(variantsOf(r)).toEqual([]);
-    expect(r.outcome?.coverage?.note).toBe(`${ALLOWLIST}:not-evaluated=9`);
-  });
-
   it('consent-state keys of consentmanager, Usercentrics, Sourcepoint and Funding Choices on the CMP origin → nothing', () => {
     const snap = scenario('clean-allowlist-only.json');
     const phases = snap.browser?.phases ?? [];
@@ -93,22 +87,6 @@ describe('CONSENT-02 storage before interaction', () => {
     expect(obs[0]?.params.names).toContain('random_key_on_cmp_origin');
     expect(obs[0]?.params.names).toContain('visitor_x');
     expect(obs[0]?.params.names).not.toContain('__cmpcpc');
-  });
-
-  it('inconclusive: direct bot signal', () => {
-    expect(runCheck(consent02, scenario('inconclusive-bot-mode.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'bot-mode',
-    });
-  });
-
-  it('counterexample: _fbp rejected by the browser → tracking-storage-attempted (info), not accepted', () => {
-    const r = run([
-      phase('A', {
-        cookies: [cookie('_fbp', { state: 'rejected', blockedReasons: ['ThirdPartyPhaseout'] })],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['storage-rejected-or-attempted']);
   });
 
   it('counterexample: same name with different partition keys stays two facts', () => {

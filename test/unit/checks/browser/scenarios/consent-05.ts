@@ -12,6 +12,7 @@ import {
   IMPRESSUM,
   noBannerCmp,
   phase,
+  rejectCmp,
   req,
   SHOP_HOST,
   settingsClick,
@@ -20,7 +21,7 @@ import {
   site,
   unopenedDialogCmp,
 } from '../helpers.ts';
-import { confirmedReject, crawlerTestSignal, ga, type Scenario } from './shared.ts';
+import { crawlerTestSignal, ga, type Scenario } from './shared.ts';
 
 /** Shopware's permission cookies, named by the adapter: none present after "Nur technisch notwendige". */
 const SHOPWARE_DENIED = {
@@ -177,9 +178,9 @@ const settingsScenarios: Scenario[] = [
   },
 ];
 
-/** The confirmed reject of `confirmedReject`, plus the facts read on the control pages. */
+/** `rejectCmp({ confirmed: true })` plus the facts read on the control pages. */
 const rejectWithControlPages = (control: CmpFacts[]) => {
-  const cmp = confirmedReject();
+  const cmp = rejectCmp({ confirmed: true });
   const b = cmp.phases[0]!;
   return cmpWith({ ...b, facts: [...b.facts, ...control] });
 };
@@ -323,7 +324,7 @@ export const scenarios: Scenario[] = [
             requests: [ga.hit('B-1', { phase: 'B', afterClick: true, tRef: 'click', tStartMs: 2_500 })],
           }),
         ],
-        cmp: confirmedReject(),
+        cmp: rejectCmp({ confirmed: true }),
       }),
   },
   {
@@ -348,7 +349,7 @@ export const scenarios: Scenario[] = [
             ],
           }),
         ],
-        cmp: confirmedReject(),
+        cmp: rejectCmp({ confirmed: true }),
       }),
   },
   {
@@ -412,7 +413,7 @@ export const variantScenarios: Scenario[] = [
             ],
           }),
         ],
-        cmp: confirmedReject(),
+        cmp: rejectCmp({ confirmed: true }),
       }),
   },
 ];

@@ -12,6 +12,7 @@ import {
   cmpFacts,
   cmpWith,
   defaultDocuments,
+  firstLayer,
   footerLinks,
   IMPRESSUM,
   PRIVACY,
@@ -297,15 +298,7 @@ export const variantScenarios: Scenario[] = [
           phase: 'B',
           facts: [
             cmpFacts({
-              firstLayer: {
-                bannerPresent: true,
-                bannerVisible: true,
-                buttons: [],
-                purAbo: false,
-                closeMeansAccept: null,
-                coversFooter: true,
-                legalLinks: [],
-              },
+              firstLayer: firstLayer({ coversFooter: true, legalLinks: [] }),
             }),
           ],
         }),

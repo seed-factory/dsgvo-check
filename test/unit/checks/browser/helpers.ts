@@ -5,6 +5,7 @@
 import type {
   BannerCandidateFact,
   CmpFacts,
+  CmpFirstLayer,
   CmpPhaseFacts,
   CmpSection,
   ConsentStateFact,
@@ -156,6 +157,16 @@ export function cmpFacts(p: Partial<CmpFacts> = {}): CmpFacts {
   });
 }
 
+/** The first layer of a banner in the page: visible and without controls unless `p` says otherwise. */
+export const firstLayer = (p: Partial<CmpFirstLayer> = {}): CmpFirstLayer => ({
+  bannerPresent: true,
+  bannerVisible: true,
+  buttons: [],
+  purAbo: false,
+  closeMeansAccept: null,
+  ...p,
+});
+
 /** A control of a dialog that was rendered into the page but not opened: no box, disabled, second layer. */
 const closedControl = (name: string, kind: 'accept' | 'reject' | 'settings') => ({
   role: 'button',
@@ -192,21 +203,18 @@ export function unopenedDialogFacts(p: Partial<CmpFacts> = {}, notOpened = true)
       recognitionConfidence: 'high',
       signals: ['global:CCM', 'dom:#ccm-widget'],
     },
-    firstLayer: {
-      bannerPresent: true,
+    firstLayer: firstLayer({
       bannerVisible: false,
       buttons: [
         closedControl('Alle akzeptieren', 'accept'),
         closedControl('Einstellungen', 'settings'),
         closedControl('Ablehnen', 'reject'),
       ],
-      purAbo: false,
-      closeMeansAccept: null,
       textLength: 0,
       containerBox: null,
       containerUnambiguous: true,
       ...(notOpened ? { dialogNotOpened: true } : {}),
-    },
+    }),
     state: [
       {
         source: 'api',
@@ -245,13 +253,7 @@ export function controlPageFacts(pageUrl: string, ph: 'B' | 'C', inEffect: boole
     phase: ph,
     pageUrl,
     moment: 'control-page',
-    firstLayer: {
-      bannerPresent: true,
-      bannerVisible: !inEffect,
-      buttons: [],
-      purAbo: false,
-      closeMeansAccept: null,
-    },
+    firstLayer: firstLayer({ bannerVisible: !inEffect }),
     state: [
       inEffect
         ? {
@@ -320,13 +322,7 @@ export function rejectCmp(o: {
       pageUrl,
       moment: 'control-page',
       state: effect === 'in-effect' ? [deniedState('stored')] : [],
-      firstLayer: {
-        bannerPresent: true,
-        bannerVisible: effect === 'banner-again',
-        buttons: [],
-        purAbo: false,
-        closeMeansAccept: null,
-      },
+      firstLayer: firstLayer({ bannerVisible: effect === 'banner-again' }),
     }),
   );
   return cmpWith({
@@ -392,13 +388,9 @@ export function settingsRejectCmp(o: { pressed?: boolean; confirmed?: boolean } 
   };
   const first = cmpFacts({
     detection: wix,
-    firstLayer: {
-      bannerPresent: true,
-      bannerVisible: true,
+    firstLayer: firstLayer({
       buttons: [barControl('Cookie-Einstellungen', 'settings'), barControl('Zustimmen', 'accept')],
-      purAbo: false,
-      closeMeansAccept: null,
-    },
+    }),
     blocking: { overlay: false, scrollLock: false, inert: false, coveredRatio: 0.15, method: [] },
     state: [{ ...wixDenied('default'), decision: { responded: false, method: 'unknown' } }],
   });
@@ -508,14 +500,7 @@ export function candidateCmp(
         phase: 'A',
         pageUrl,
         moment: 'first-screen',
-        firstLayer: {
-          bannerPresent: false,
-          bannerVisible: false,
-          buttons: [],
-          purAbo: false,
-          closeMeansAccept: null,
-          bannerCandidate: candidate,
-        },
+        firstLayer: firstLayer({ bannerPresent: false, bannerVisible: false, bannerCandidate: candidate }),
       }),
     ),
   });

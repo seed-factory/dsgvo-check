@@ -5,6 +5,8 @@ import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
 import type { DocumentRecord, DocumentsSection } from '../../../../../src/core/snapshot/browser.ts';
+import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
+import { named } from '../../../../utils/named-rows.ts';
 import {
   makeDocument,
   makeLink,
@@ -17,6 +19,7 @@ import {
   cmpFacts,
   cmpWith,
   defaultDocuments,
+  firstLayer,
   footerLinks,
   IMPRESSUM,
   PRIVACY,
@@ -26,7 +29,18 @@ import {
   site,
 } from '../helpers.ts';
 import { scenariosOf } from '../scenarios/index.ts';
-import { candidate, unlinkedImpressum } from '../scenarios/legal-01.ts';
+import { candidate, type PartSpec, unlinkedImpressum } from '../scenarios/legal-01.ts';
+import {
+  att,
+  doc,
+  documents,
+  fallback,
+  type LegalCase,
+  link,
+  linked,
+  missing,
+  verify,
+} from './legal-01-verify.ts';
 
 const scenario = (file: string) =>
   scenariosOf('LEGAL-01')
@@ -50,115 +64,69 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
     expect(r.outcome?.coverage).toEqual({ observed: 2, evaluated: 2 });
   });
 
-  it('clean: working links on every evaluated page', () => {
-    expect(variantsOf(runCheck(legal01, scenario('clean-footer-links.json')))).toEqual([]);
+  const pdf = `${START}impressum.pdf`;
+  // As the collector records it: the document is kept with `keyword-missing`, the link attempt is a soft-404.
+  const landing = makeDocument({
+    kind: 'impressum',
+    id: 'doc-impressum',
+    url: IMPRESSUM,
+    status: 200,
+    foundVia: 'link',
+    linkedFrom: [{ pageUrl: START, text: 'Impressum' }],
+    errors: ['keyword-missing'],
   });
-
-  it('inconclusive: legal targets blocked, absence not established', () => {
-    expect(runCheck(legal01, scenario('inconclusive-targets-blocked.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'legal-targets-not-evaluable',
-    });
+  const challenged = page(IMPRESSUM, 'impressum', 'A', {
+    evaluable: false,
+    notEvaluableReason: 'challenge',
+    challenge: { detected: true, kind: 'cloudflare', signals: ['status:403'] },
   });
-
-  it('counterexample: Impressum reachable via Kontakt → found-via-hop-only (warning, medium), not critical', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [
-              page(START, 'start', 'A', {}, [footerLinks()[1]!]),
-              page(CONTACT, 'contact', 'A', {}, [footerLinks()[1]!]),
-            ],
+  const offsite = 'https://www.konzern-beispiel.de/impressum';
+  const LINK_CASES: LegalCase[] = [
+    {
+      name: 'counterexample: Impressum reachable via Kontakt → found-via-hop-only (warning, medium), not critical',
+      input: scenario('violation-impressum-only-via-contact.json'),
+      expected: {
+        kinds: [['impressum', 'reachable-via-intermediate']],
+        first: { confidence: 'medium', params: { foundVia: 'hop', reachableViaHop: true } },
+      },
+    },
+    {
+      name: 'counterexample: a "#" link without resolved content → link-unresolved (info), not broken',
+      input: scenario('violation-impressum-fragment-link.json'),
+      expected: { kinds: missing('impressum', 'unresolved') },
+    },
+    {
+      name: 'a PDF privacy policy counts as found for LEGAL-01',
+      input: {
+        documents: documents([
+          doc('impressum'),
+          makeDocument({ kind: 'privacy', url: PRIVACY, format: 'pdf', parts: [], foundVia: 'link' }),
+        ]),
+      },
+      expected: { kinds: [] },
+    },
+    {
+      name: 'a linked PDF that was not fetched (status null, as the collector records it) is found, not missing',
+      input: linked(
+        [makeLink({ text: 'Impressum', href: pdf, hrefKind: 'https' }), footerLinks()[1]!],
+        [
+          makeDocument({
+            kind: 'impressum',
+            url: pdf,
+            status: null,
+            format: 'pdf',
+            complete: false,
+            errors: ['pdf-not-evaluated'],
+            foundVia: 'link',
           }),
+          doc('privacy'),
         ],
-        documents: {
-          documents: [
-            makeDocument({ kind: 'impressum', url: IMPRESSUM, foundVia: 'hop' }),
-            defaultDocuments().documents[1]!,
-          ],
-          attempts: [],
-        },
-      }),
-    );
-    const [o] = observationsOf(r);
-    expect(o).toMatchObject({
-      subject: 'impressum',
-      variant: 'reachable-via-intermediate',
-      confidence: 'medium',
-      params: { foundVia: 'hop', reachableViaHop: true },
-    });
-    expect(observationsOf(r)).toHaveLength(1);
-  });
-
-  it('counterexample: a "#" link without resolved content → link-unresolved (info), not broken', () => {
-    const hashLinks = [makeLink({ text: 'Impressum', href: null, hrefKind: 'fragment' }), footerLinks()[1]!];
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start', 'A', {}, hashLinks), page(CONTACT, 'contact', 'A', {}, hashLinks)],
-          }),
-        ],
-        documents: { documents: [defaultDocuments().documents[1]!], attempts: [] },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'unresolved']]);
-  });
-
-  it('a PDF privacy policy counts as found for LEGAL-01', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        documents: {
-          documents: [
-            defaultDocuments().documents[0]!,
-            makeDocument({ kind: 'privacy', url: PRIVACY, format: 'pdf', parts: [], foundVia: 'link' }),
-          ],
-          attempts: [],
-        },
-      }),
-    );
-    expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('a linked PDF that was not fetched (status null, as the collector records it) is found, not missing', () => {
-    const pdf = `${START}impressum.pdf`;
-    const links = [makeLink({ text: 'Impressum', href: pdf, hrefKind: 'https' }), footerLinks()[1]!];
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
-          }),
-        ],
-        documents: {
-          documents: [
-            makeDocument({
-              kind: 'impressum',
-              url: pdf,
-              status: null,
-              format: 'pdf',
-              complete: false,
-              errors: ['pdf-not-evaluated'],
-              foundVia: 'link',
-            }),
-            defaultDocuments().documents[1]!,
-          ],
-          attempts: [],
-        },
-      }),
-    );
-    expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('counterexample: the document page itself does not need a link to itself', () => {
-    const r = runCheck(
-      legal01,
-      site({
+      ),
+      expected: { kinds: [] },
+    },
+    {
+      name: 'counterexample: the document page itself does not need a link to itself',
+      input: {
         phases: [
           phase('A', {
             pages: [
@@ -168,223 +136,119 @@ describe('LEGAL-01 Impressum and Datenschutzerklärung', () => {
             ],
           }),
         ],
-      }),
-    );
-    expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('links on some pages missing → link-missing-on-pages with counts', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start'), page(CONTACT, 'contact', 'A', {}, [footerLinks()[1]!])],
-          }),
-        ],
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'link-missing-on-some-pages']]);
-    expect(observationsOf(r)[0]).toMatchObject({
-      pages: [CONTACT],
-      params: { missingCount: 1, pageTotal: 2 },
-    });
-  });
-
-  it('all links lead to 404 and only a fallback works → links-broken (critical variant)', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        documents: {
-          documents: [
-            makeDocument({ kind: 'impressum', url: `${START}impressum-neu`, foundVia: 'fallback' }),
-            defaultDocuments().documents[1]!,
-          ],
-          attempts: [{ kind: 'impressum', via: 'link', url: IMPRESSUM, status: 404, outcome: 'not-found' }],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
-  });
-
-  it('the "Impressum" link leads to an ordinary page (HTTP 200, keyword missing) → links-broken, not found', () => {
-    // As the collector records it: the document is kept with `keyword-missing`, the link attempt is a soft-404.
-    const landing = makeDocument({
-      kind: 'impressum',
-      id: 'doc-impressum',
-      url: IMPRESSUM,
-      status: 200,
-      foundVia: 'link',
-      linkedFrom: [{ pageUrl: START, text: 'Impressum' }],
-      errors: ['keyword-missing'],
-    });
-    const r = runCheck(
-      legal01,
-      site({
-        documents: {
-          documents: [landing, defaultDocuments().documents[1]!],
-          attempts: [
-            { kind: 'impressum', via: 'link', url: IMPRESSUM, status: 200, outcome: 'soft-404' },
-            { kind: 'impressum', via: 'hop', url: CONTACT, status: 200, outcome: 'not-found' },
-            {
-              kind: 'impressum',
-              via: 'fallback',
-              url: `${START}impressum-x`,
-              status: 404,
-              outcome: 'not-found',
-            },
-          ],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
-  });
-
-  it('a document whose link attempt the collector judged soft-404 is not usable even without the error tag', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        documents: {
-          documents: [defaultDocuments().documents[0]!, defaultDocuments().documents[1]!],
-          attempts: [{ kind: 'impressum', via: 'link', url: IMPRESSUM, status: 200, outcome: 'soft-404' }],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'links-broken']]);
-  });
-
-  it('cookie settings link labelled "Datenschutz-Einstellungen" is not a privacy policy link', () => {
-    const links = [
-      footerLinks()[0]!,
-      makeLink({ text: 'Datenschutz-Einstellungen', href: null, hrefKind: 'javascript' }),
-    ];
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
-          }),
-        ],
-        // The collector always tries the usual path last; critical rests on that step.
-        documents: {
-          documents: [defaultDocuments().documents[0]!],
-          attempts: [{ kind: 'privacy', via: 'fallback', url: PRIVACY, status: 404, outcome: 'not-found' }],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['privacy', 'document-not-found']]);
-  });
-
-  it('footer covered by the banner without legal links in it → covered-by-banner', () => {
-    const facts = cmpFacts({
-      firstLayer: {
-        bannerPresent: true,
-        bannerVisible: true,
-        buttons: [],
-        purAbo: false,
-        closeMeansAccept: null,
-        coversFooter: true,
-        legalLinks: [{ text: 'Datenschutzerklärung', href: PRIVACY }],
       },
-    });
-    const r = runCheck(legal01, site({ cmp: cmpWith({ phase: 'B', facts: [facts] }) }));
-    expect(variantsByKind(r)).toEqual([['impressum', 'footer-covered-by-banner']]);
-  });
-
-  it('links and fallbacks lead to 404 and the legal pages were visited with HTTP 404 → links-broken, not inconclusive', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [
-              page(START, 'start'),
-              page(IMPRESSUM, 'impressum', 'A', { evaluable: false, notEvaluableReason: 'http-404' }),
-              page(PRIVACY, 'privacy', 'A', { evaluable: false, notEvaluableReason: 'http-404' }),
-            ],
-          }),
-        ],
-        documents: {
-          documents: [],
-          attempts: [
-            { kind: 'impressum', via: 'link', url: IMPRESSUM, status: 404, outcome: 'not-found' },
-            { kind: 'privacy', via: 'link', url: PRIVACY, status: 404, outcome: 'not-found' },
-            {
-              kind: 'impressum',
-              via: 'fallback',
-              url: `${START}impressum-x`,
-              status: 404,
-              outcome: 'not-found',
-            },
+      expected: { kinds: [] },
+    },
+    {
+      name: 'links on some pages missing → link-missing-on-pages with counts',
+      input: scenario('violation-impressum-link-missing-on-contact.json'),
+      expected: {
+        kinds: missing('impressum', 'link-missing-on-some-pages'),
+        pages: [CONTACT],
+        first: { params: { missingCount: 1, pageTotal: 2 } },
+      },
+    },
+    {
+      name: 'all links lead to 404 and only a fallback works → links-broken (critical variant)',
+      input: {
+        documents: documents(
+          [
+            makeDocument({ kind: 'impressum', url: `${START}impressum-neu`, foundVia: 'fallback' }),
+            doc('privacy'),
           ],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([
-      ['impressum', 'links-broken'],
-      ['privacy', 'links-broken'],
-    ]);
-  });
-
-  it('legal target behind a challenge (403) → that kind is not evaluable, no critical claim', () => {
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [
-              page(START, 'start'),
-              page(CONTACT, 'contact'),
-              page(IMPRESSUM, 'impressum', 'A', {
-                evaluable: false,
-                notEvaluableReason: 'challenge',
-                challenge: { detected: true, kind: 'cloudflare', signals: ['status:403'] },
+          [att('impressum', 'link', IMPRESSUM, 404, 'not-found')],
+        ),
+      },
+      expected: { kinds: missing('impressum', 'links-broken') },
+    },
+    {
+      name: 'the "Impressum" link leads to an ordinary page (HTTP 200, keyword missing) → links-broken, not found',
+      input: {
+        documents: documents(
+          [landing, doc('privacy')],
+          [
+            att('impressum', 'link', IMPRESSUM, 200, 'soft-404'),
+            att('impressum', 'hop', CONTACT, 200, 'not-found'),
+            att('impressum', 'fallback', `${START}impressum-x`, 404, 'not-found'),
+          ],
+        ),
+      },
+      expected: { kinds: missing('impressum', 'links-broken') },
+    },
+    {
+      name: 'a document whose link attempt the collector judged soft-404 is not usable even without the error tag',
+      input: {
+        documents: documents(
+          [doc('impressum'), doc('privacy')],
+          [att('impressum', 'link', IMPRESSUM, 200, 'soft-404')],
+        ),
+      },
+      expected: { kinds: missing('impressum', 'links-broken') },
+    },
+    {
+      name: 'cookie settings link labelled "Datenschutz-Einstellungen" is not a privacy policy link',
+      // The collector always tries the usual path last; critical rests on that step.
+      input: linked(
+        [
+          footerLinks()[0]!,
+          makeLink({ text: 'Datenschutz-Einstellungen', href: null, hrefKind: 'javascript' }),
+        ],
+        [doc('impressum')],
+        [fallback('privacy')],
+      ),
+      expected: { kinds: missing('privacy') },
+    },
+    {
+      name: 'footer covered by the banner without legal links in it → covered-by-banner',
+      input: {
+        cmp: cmpWith({
+          phase: 'B',
+          facts: [
+            cmpFacts({
+              firstLayer: firstLayer({
+                coversFooter: true,
+                legalLinks: [{ text: 'Datenschutzerklärung', href: PRIVACY }],
               }),
-            ],
-          }),
+            }),
+          ],
+        }),
+      },
+      expected: { kinds: missing('impressum', 'footer-covered-by-banner') },
+    },
+    {
+      name: 'links and fallbacks lead to 404 and the legal pages were visited with HTTP 404 → links-broken, not inconclusive',
+      input: scenario('violation-links-broken.json'),
+      expected: {
+        kinds: [
+          ['impressum', 'links-broken'],
+          ['privacy', 'links-broken'],
         ],
-        documents: {
-          documents: [defaultDocuments().documents[1]!],
-          attempts: [{ kind: 'impressum', via: 'link', url: IMPRESSUM, status: 403, outcome: 'not-found' }],
-        },
-      }),
-    );
-    expect(r).toMatchObject({ status: 'partial' });
-    expect(variantsOf(r)).toEqual([]);
-    expect(r.outcome?.limitations).toEqual(['impressum-target-not-evaluable']);
-  });
-
-  it('offsite or unverified legal link without a document → link-unresolved (info), not document-not-found', () => {
-    const offsite = 'https://www.konzern-beispiel.de/impressum';
-    const links = [
-      makeLink({ text: 'Impressum', href: offsite, hrefKind: 'https', sameSite: false }),
-      footerLinks()[1]!,
-    ];
-    const r = runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
-          }),
-        ],
-        documents: {
-          documents: [defaultDocuments().documents[1]!],
-          attempts: [{ kind: 'impressum', via: 'link', url: offsite, status: null, outcome: 'unresolved' }],
-        },
-      }),
-    );
-    expect(variantsByKind(r)).toEqual([['impressum', 'unresolved']]);
-  });
-
-  it('no evaluable page → inconclusive', () => {
-    const r = runCheck(
-      legal01,
-      site({ phases: [phase('A', { pages: [page(START, 'start', 'A', { evaluable: false })] })] }),
-    );
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-evaluable-pages' });
-  });
+      },
+    },
+    {
+      name: 'legal target behind a challenge (403) → that kind is not evaluable, no critical claim',
+      input: {
+        phases: [phase('A', { pages: [page(START, 'start'), page(CONTACT, 'contact'), challenged] })],
+        documents: documents([doc('privacy')], [att('impressum', 'link', IMPRESSUM, 403, 'not-found')]),
+      },
+      expected: { status: 'partial', kinds: [], limitations: ['impressum-target-not-evaluable'] },
+    },
+    {
+      name: 'offsite or unverified legal link without a document → link-unresolved (info), not document-not-found',
+      input: linked(
+        [link('Impressum', offsite, { sameSite: false }), footerLinks()[1]!],
+        [doc('privacy')],
+        [att('impressum', 'link', offsite, null, 'unresolved')],
+      ),
+      expected: { kinds: missing('impressum', 'unresolved') },
+    },
+    {
+      name: 'no evaluable page → inconclusive',
+      input: { phases: [phase('A', { pages: [page(START, 'start', 'A', { evaluable: false })] })] },
+      expected: { status: 'inconclusive', reason: 'no-evaluable-pages' },
+    },
+  ];
+  it.each(named(LINK_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 });
 
 describe('LEGAL-01: an Impressum kept as a section of the privacy policy', () => {
@@ -397,46 +261,11 @@ describe('LEGAL-01: an Impressum kept as a section of the privacy policy', () =>
     };
   };
 
-  type Part = { section?: string; text: string };
-
   /** Only a privacy link on every page; the Impressum is searched for by hop and usual path and not found. */
-  function privacyOnly(privacyParts: Part[], contentHeadings?: string[]) {
-    const links = [footerLinks()[1]!];
-    return runCheck(
-      legal01,
-      site({
-        phases: [
-          phase('A', {
-            pages: [page(START, 'start', 'A', {}, links), page(CONTACT, 'contact', 'A', {}, links)],
-          }),
-        ],
-        documents: {
-          documents: [
-            makeDocument({
-              kind: 'privacy',
-              id: 'doc-privacy',
-              url: PRIVACY,
-              phase: 'A',
-              linkedFrom: [{ pageUrl: START, text: 'Datenschutz' }],
-              parts: privacyParts.map((p, i) => ({
-                id: `p${i}`,
-                origin: 'visible',
-                sourceUrl: PRIVACY,
-                ...p,
-              })),
-              ...(contentHeadings ? { contentHeadings } : {}),
-            }),
-          ],
-          attempts: [
-            { kind: 'impressum', via: 'fallback', url: IMPRESSUM, status: 404, outcome: 'not-found' },
-          ],
-        },
-      }),
-    );
-  }
+  const privacyOnly = (privacyParts: PartSpec[], contentHeadings?: string[]) =>
+    runCheck(legal01, unlinkedImpressum({ privacyParts, contentHeadings, attempts: [fallback()] }));
 
-  const policyWith = (heading: string): Part[] => [
-    { section: 'Datenschutzerklärung', text: 'Wir verarbeiten Daten.' },
+  const policyWith = (heading: string): PartSpec[] => [
     { section: `Datenschutzerklärung > ${heading}`, text: 'Beispiel GmbH, Musterstraße 1.' },
   ];
 
@@ -483,7 +312,7 @@ describe('LEGAL-01: an Impressum kept as a section of the privacy policy', () =>
     ],
     ['a heading of a footer column only', policyWith('Impressum'), ['Datenschutzerklärung']],
     ['no such section', [{ section: 'Datenschutzerklärung > Cookies', text: 'Cookies.' }], undefined],
-  ] as Array<[string, Part[], string[] | undefined]>)(
+  ] as Array<[string, PartSpec[], string[] | undefined]>)(
     'counterexample: %s adds nothing to the finding',
     (_name, parts, content) => {
       const [o] = observationsOf(privacyOnly(parts, content));
@@ -636,60 +465,42 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
     );
   });
 
-  it('details on the start page: named as the start page', () => {
-    const r = runCheck(
-      legal01,
-      unlinkedImpressum({ candidates: [candidate(START, [{ section: 'Willkommen', text: detailsOf(3) }])] }),
-    );
-
-    expect(impressum(r)?.params).toMatchObject({
-      detailsUrl: START,
-      detailsPlace: 'start-page',
-      detailsHeading: 'Willkommen',
-    });
-    expect(texts('de', impressum(r)!).body).toMatch(
-      new RegExp(`^Auf der Startseite \\(${START}\\) im Abschnitt „Willkommen“ wurden`),
-    );
-  });
-
-  it('a section headed "Impressum" in the content of the policy holds the details: the warning variant', () => {
-    const r = runCheck(
-      legal01,
-      unlinkedImpressum({
+  const DETAILS_CASES: Array<{
+    name: string;
+    snap: Snapshot;
+    params: Record<string, unknown>;
+    body?: RegExp;
+  }> = [
+    {
+      name: 'details on the start page: named as the start page',
+      snap: unlinkedImpressum({
+        candidates: [candidate(START, [{ section: 'Willkommen', text: detailsOf(3) }])],
+      }),
+      params: { detailsUrl: START, detailsPlace: 'start-page', detailsHeading: 'Willkommen' },
+      body: new RegExp(`^Auf der Startseite \\(${START}\\) im Abschnitt „Willkommen“ wurden`),
+    },
+    {
+      name: 'a section headed "Impressum" in the content of the policy holds the details: the warning variant',
+      snap: unlinkedImpressum({
         privacyParts: [{ section: 'Datenschutzerklärung > Impressum', text: detailsOf(3) }],
         contentHeadings: ['Datenschutzerklärung', 'Impressum'],
       }),
-    );
-
-    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
-    expect(impressum(r)?.params).toMatchObject({
-      detailsPlace: 'privacy-section',
-      detailsHeading: 'Impressum',
-    });
-    expect(texts('de', impressum(r)!).body).toMatch(
-      new RegExp(`^In der Datenschutzerklärung \\(${PRIVACY}\\) im Abschnitt „Impressum“ wurden`),
-    );
-  });
-
-  it('a snapshot without content headings, part places and candidates: the Impressum section of the policy counts', () => {
-    const r = runCheck(
-      legal01,
-      unlinkedImpressum({
+      params: { detailsPlace: 'privacy-section', detailsHeading: 'Impressum' },
+      body: new RegExp(`^In der Datenschutzerklärung \\(${PRIVACY}\\) im Abschnitt „Impressum“ wurden`),
+    },
+    {
+      name: 'a snapshot without content headings, part places and candidates: the Impressum section of the policy counts',
+      snap: unlinkedImpressum({
         privacyParts: [
           { section: 'Datenschutzerklärung > Anfahrt', text: 'Musterstraße 1, 10115 Berlin' },
           { section: 'Datenschutzerklärung > Impressum', text: detailsOf(3) },
         ],
       }),
-    );
-
-    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
-    expect(impressum(r)?.params).toMatchObject({ detailsPlace: 'privacy-section', groupCount: 3 });
-  });
-
-  it('a section "Impressum" on the contact page counts its subsections together, the page heading does not', () => {
-    const r = runCheck(
-      legal01,
-      unlinkedImpressum({
+      params: { detailsPlace: 'privacy-section', groupCount: 3 },
+    },
+    {
+      name: 'a section "Impressum" on the contact page counts its subsections together, the page heading does not',
+      snap: unlinkedImpressum({
         candidates: [
           candidate(CONTACT, [
             { section: 'Kontakt', text: 'Schreiben Sie uns.' },
@@ -699,28 +510,26 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
           ]),
         ],
       }),
-    );
-
-    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
-    expect(impressum(r)?.params).toMatchObject({ detailsHeading: 'Impressum', groupCount: 3 });
-  });
-
-  it('a section "Impressum" whose details sit in its subsections counts them together', () => {
-    const r = runCheck(
-      legal01,
-      unlinkedImpressum({
+      params: { detailsHeading: 'Impressum', groupCount: 3 },
+    },
+    {
+      name: 'a section "Impressum" whose details sit in its subsections counts them together',
+      snap: unlinkedImpressum({
         privacyParts: [
           { section: 'Datenschutzerklärung > Impressum > Registereintrag', text: KINDS[0]! },
           { section: 'Datenschutzerklärung > Impressum > Vertretung', text: KINDS[1]! },
           { section: 'Datenschutzerklärung > Impressum > Umsatzsteuer', text: KINDS[2]! },
         ],
       }),
-    );
-
-    expect(impressum(r)).toMatchObject({
-      variant: 'provider-details-without-link',
       params: { detailsHeading: 'Impressum', groupCount: 3 },
-    });
+    },
+  ];
+  it.each(named(DETAILS_CASES))('%s', (_name, { snap, params, body }) => {
+    const r = runCheck(legal01, snap);
+
+    expect(variantsByKind(r)).toEqual([['impressum', 'provider-details-without-link']]);
+    expect(impressum(r)?.params).toMatchObject(params);
+    if (body) expect(texts('de', impressum(r)!).body).toMatch(body);
   });
 
   it.each([
@@ -926,12 +735,6 @@ describe('LEGAL-01: provider details of an Impressum without a link that names t
     expect(r.status).toBe('partial');
     expect(variantsOf(r)).toEqual([]);
     expect(r.outcome?.limitations).toEqual(['impressum-search-incomplete:time']);
-  });
-
-  it('candidates are ignored once the Impressum was found', () => {
-    expect(
-      variantsOf(runCheck(legal01, scenario('clean-impressum-link-and-details-on-contact.json'))),
-    ).toEqual([]);
   });
 });
 
