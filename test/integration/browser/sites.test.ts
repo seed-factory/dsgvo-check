@@ -9,11 +9,10 @@ import { embed03 } from '../../../src/checks/browser/embed-03.ts';
 import { loadRouting, loadRuleset, loadTexts } from '../../../src/core/data/load.ts';
 import { renderMessage } from '../../../src/core/data/messages.ts';
 import { assess } from '../../../src/core/evaluation/assess.ts';
-import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { makeSnapshot, observationsOf, runCheck, withDerived } from '../../utils/snapshot-builder.ts';
+import { observationsOf, runCheck } from '../../utils/snapshot-builder.ts';
 import { stubCmpApi } from './consent/stub-cmp.ts';
-import { type CollectRun, collect, persisted } from './helpers.ts';
+import { type CollectRun, collect, persisted, snapshotOf } from './helpers.ts';
 
 /** One phase A collection of the fixture site `browser/<name>`, shared by the tests in `fn`. */
 function site(name: string, fn: (get: () => { run: CollectRun; server: FixtureServer }) => void) {
@@ -323,19 +322,6 @@ describe('video (stub CMP, phases A and B)', () => {
   });
 
   const phase = (p: 'A' | 'B') => run.result.sections.browser?.phases.find((x) => x.phase === p);
-  /** The collected sections as a snapshot with `derived`, to run the checks over a real collection. */
-  const snapshotOf = (): Snapshot => {
-    const s = run.result.sections;
-    return withDerived(
-      makeSnapshot({
-        target: run.ctx.target,
-        ...(s.browser ? { browser: s.browser } : {}),
-        ...(s.documents ? { documents: s.documents } : {}),
-        cmp: s.cmp ?? { phases: [] },
-        plan: { browser: s.plan ?? null, probes: [] },
-      }),
-    );
-  };
 
   it('plans the video page by its keyword and the history page, and rechecks both after the reject', () => {
     const plan = run.result.sections.plan;
@@ -372,7 +358,7 @@ describe('video (stub CMP, phases A and B)', () => {
   });
 
   it('EMBED-03 over the collection: the thumbnail as YouTube, the players as youtube-nocookie, both after the confirmed reject', () => {
-    const snapshot = snapshotOf();
+    const snapshot = snapshotOf(run);
     const found = observationsOf(runCheck(embed03, snapshot));
     expect(
       found.map((o) => [
@@ -399,7 +385,7 @@ describe('video (stub CMP, phases A and B)', () => {
   });
 
   it('the report links the players to their stored entries and holds no value', () => {
-    const snapshot = snapshotOf();
+    const snapshot = snapshotOf(run);
     const checks = [consent01, consent02, embed03];
     const out = assess({
       checks,

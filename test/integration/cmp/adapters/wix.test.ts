@@ -12,7 +12,7 @@ import {
   loadLexicon,
   waitForBanner,
 } from '../../../../src/cmp/index.ts';
-import type { ClickTarget, CmpAdapter, CmpButton } from '../../../../src/cmp/types.ts';
+import type { ClickTarget, CmpButton } from '../../../../src/cmp/types.ts';
 import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized, requestsSince } from '../helpers.ts';
 
@@ -65,9 +65,7 @@ describeCmpScenarios(
   (env) => {
     it('dataToThirdParty stays on before any answer and after the reject: the default grants no category, the reject is confirmed as all denied after the reload', async () => {
       const since = Date.now();
-      const { page } = await env.open('https://www.wix.test/');
-      const adapter = await recognized(page, 'wix');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized('https://www.wix.test/', 'wix', { banner: true });
       expect(await platformPolicy(page)).toEqual({ defaultPolicy: true, dataToThirdParty: true });
       // No granted category in the default state, so nothing for consent-without-action.
       expect(await adapter.state(page)).toEqual([
@@ -111,9 +109,7 @@ describeCmpScenarios(
 
     it('accept grants every optional category and loads the local tracker', async () => {
       const since = Date.now();
-      const { page } = await env.open('https://www.wix.test/');
-      const adapter = await recognized(page, 'wix');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized('https://www.wix.test/', 'wix', { banner: true });
 
       expect((await decideAndAct(page, adapter, 'accept')).click.clicked).toBe(true);
 
@@ -126,9 +122,7 @@ describeCmpScenarios(
     });
 
     it('never stores the cookie value: the facts hold the policy categories only', async () => {
-      const { page } = await env.open('https://www.wix.test/');
-      const adapter = await recognized(page, 'wix');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized('https://www.wix.test/', 'wix', { banner: true });
       expect((await decideAndAct(page, adapter, 'accept')).click.clicked).toBe(true);
 
       const facts = await adapter.extract(page, 'after-click');
@@ -137,8 +131,7 @@ describeCmpScenarios(
     });
 
     it('counterexample: a first layer with "Zustimmen" and × alone has no reject; the × is never clicked as one', async () => {
-      const { page } = await env.open('https://www.wix.test/close-only.html');
-      const adapter = await recognized(page, 'wix');
+      const { page, adapter } = await env.openRecognized('https://www.wix.test/close-only.html', 'wix');
       expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -173,8 +166,7 @@ describeCmpScenarios(
     describe('the reject through the settings layer of a first layer without one', () => {
       /** The first screen of `url`, the opener core chose on it and, when there is one, the layer it opened. */
       async function settingsOf(url: string) {
-        const { page } = await env.open(url);
-        const adapter: CmpAdapter = await recognized(page, 'wix');
+        const { page, adapter } = await env.openRecognized(url, 'wix');
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
         const first = await extract(page, adapter, 'first-screen', { phase: 'B' });
         const opener = chooseSettingsOpener(first, loadLexicon(), DEFAULT_CLASSIFY);
@@ -300,9 +292,7 @@ describeCmpScenarios(
     });
 
     it('the description under aria-hidden, the policy link, settings as span[role=button] and × are measured', async () => {
-      const { page } = await env.open('https://www.wix.test/');
-      const adapter = await recognized(page, 'wix');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized('https://www.wix.test/', 'wix', { banner: true });
 
       const facts = await extract(page, adapter, 'first-screen');
 

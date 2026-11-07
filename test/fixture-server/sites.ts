@@ -24,6 +24,23 @@ const fontFiles: Record<string, Record<string, string>> = {
   },
 };
 
+/**
+ * `pages` of another docroot served as `host`'s own, with and without the trailing slash as a directory would be, so
+ * that sites with the same pages keep one copy of them.
+ */
+const sharedPages = (host: string, docroot: string, pages: string[]): RouteSpec[] =>
+  pages.map((page) => ({
+    host,
+    path: `^/${page}/?$`,
+    pathRegex: true,
+    headers: html,
+    file: `${docroot}/${page}/index.html`,
+  }));
+
+/** The Impressum and privacy policy of browser/clean, which the other small browser sites share. */
+export const cleanLegalPages = (host = 'www.example.test'): RouteSpec[] =>
+  sharedPages(host, 'browser/clean/www', ['impressum', 'datenschutz']);
+
 /** How long the Shopware simulator's offcanvas takes to answer, so its "accept all" records the answer this late. */
 export const SHOPWARE_ACCEPT_DELAY_MS = 1_500;
 
@@ -49,7 +66,7 @@ export const SITES: Record<string, SiteConfig> = {
       'fonts.googleapis.com': 'fonts',
       'fonts.gstatic.com': 'gstatic',
     },
-    routes: [gaCollect],
+    routes: [gaCollect, ...cleanLegalPages()],
     fileHeaders: {
       'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
       'google/maps/embed': html,
@@ -74,6 +91,7 @@ export const SITES: Record<string, SiteConfig> = {
         },
         body: '',
       },
+      ...cleanLegalPages(),
     ],
     fileHeaders: {
       'www/index.html': {
@@ -129,6 +147,7 @@ export const SITES: Record<string, SiteConfig> = {
   },
   'browser/fonts': {
     hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
+    routes: cleanLegalPages(),
     fileHeaders: fontFiles,
   },
   // The policy states the Google Fonts are local; every page loads them from Google (PRIV-02).
@@ -152,7 +171,7 @@ export const SITES: Record<string, SiteConfig> = {
   },
   'browser/ga4': {
     hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
-    routes: [gaCollect],
+    routes: [gaCollect, ...cleanLegalPages()],
     fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
   },
   // A map far below the first screen of Kontakt whose frame loads a Google font, a page taller than the largest reveal,
@@ -176,6 +195,7 @@ export const SITES: Record<string, SiteConfig> = {
   },
   'browser/maps': {
     hosts: { 'www.example.test': 'www', 'www.google.com': 'google' },
+    routes: cleanLegalPages(),
     fileHeaders: { 'google/maps/embed': html },
   },
   'browser/no-legal': { hosts: { 'www.example.test': 'www' } },
@@ -207,7 +227,7 @@ export const SITES: Record<string, SiteConfig> = {
       },
     },
   },
-  'browser/selection': { hosts: { 'www.example.test': 'www' } },
+  'browser/selection': { hosts: { 'www.example.test': 'www' }, routes: cleanLegalPages() },
   'browser/ssrf': {
     hosts: {
       'www.example.test': 'www',
@@ -223,6 +243,7 @@ export const SITES: Record<string, SiteConfig> = {
         status: 302,
         headers: { location: 'http://169.254.169.254/latest/meta-data/' },
       },
+      ...cleanLegalPages(),
     ],
   },
   'browser/throttle': {
@@ -262,7 +283,14 @@ export const SITES: Record<string, SiteConfig> = {
   'cmp/cookieman': { hosts: { 'www.cookieman.test': 'www', 'stats.cookieman.test': 'stats' } },
   'cmp/generic': { hosts: { 'www.generic.test': 'www', 'consent.unknown-cmp.test': 'frame' } },
   'cmp/real-cookie-banner': { hosts: { 'www.rcb.test': 'www' } },
-  'cmp/shops': { hosts: { 'www.animated-shop.test': 'animated', 'www.vendors-shop.test': 'vendors' } },
+  'cmp/shops': {
+    hosts: { 'www.animated-shop.test': 'animated', 'www.vendors-shop.test': 'vendors' },
+    routes: sharedPages('www.vendors-shop.test', 'cmp/shops/animated', [
+      'impressum',
+      'kontakt',
+      'datenschutz',
+    ]),
+  },
   'cmp/shopware': {
     hosts: { 'www.shopware.test': 'www', 'stats.shopware.test': 'stats' },
     routes: shopwareStorefront('www.shopware.test').filter((r) => r.path === '/cookie/offcanvas'),

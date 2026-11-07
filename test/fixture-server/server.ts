@@ -386,34 +386,3 @@ export async function startFixtureServer(opts: FixtureServerOptions = {}): Promi
     },
   };
 }
-
-/** Handler factory: respond with Set-Cookie headers (cookies are the test's own fake values). */
-export function setCookieHandler(
-  match: Pick<DynamicHandler, 'host' | 'path' | 'scheme'>,
-  cookies: string[],
-  body = 'ok',
-  contentType = 'text/plain',
-): DynamicHandler {
-  return {
-    ...match,
-    handle: (_req, res) => {
-      res.writeHead(200, { 'set-cookie': cookies, 'content-type': contentType });
-      res.end(body);
-    },
-  };
-}
-
-/** Handler factory: redirect to `location` (absolute URL or a function of the request URL). */
-export function redirectHandler(
-  match: Pick<DynamicHandler, 'host' | 'path' | 'scheme'>,
-  location: string | ((url: URL) => string),
-  status = 301,
-): DynamicHandler {
-  return {
-    ...match,
-    handle: (_req, res, ctx) => {
-      res.writeHead(status, { location: typeof location === 'string' ? location : location(ctx.url) });
-      res.end();
-    },
-  };
-}

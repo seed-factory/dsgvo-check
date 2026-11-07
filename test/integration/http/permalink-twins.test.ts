@@ -5,7 +5,7 @@
  * browser records the permalink, the step requests the post's http:// address once with GET, and TLS-01 reports the
  * form as critical, saying why the address was requested. Nothing is submitted; field values reach no output.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import { loadTexts } from '../../../src/core/data/load.ts';
@@ -15,11 +15,10 @@ import { createLogger } from '../../../src/core/runtime/logger.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { testDataDir } from '../../utils/scan-harness.ts';
 import { BROWSER_PROBE_CHECK, FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';
-import { page, type SiteDir, writeSite } from '../browser/site-dir.ts';
+import { page, useSite } from '../browser/site-dir.ts';
 
 const HOST = 'www.example.test';
 const SITE = `https://${HOST}/`;
@@ -39,17 +38,13 @@ const COMMENT_FORM =
   '<input type="email" name="email" value="fixture-mail-value"><input type="submit" value="Kommentar abschicken">' +
   '</form>';
 
-let server: FixtureServer;
-let site: SiteDir;
-let r: ScanResult;
-let report: FullReport;
 const lines: string[] = [];
 const dataDir = testDataDir({ ruleset: { 'TEST-01': { seen: 'info' } } });
+const legal = (title: string) => page(`<main><h1>${title}</h1><p>Beispiel GmbH, Musterstraße 1.</p></main>`);
 
-beforeAll(async () => {
-  const legal = (title: string) =>
-    page(`<main><h1>${title}</h1><p>Beispiel GmbH, Musterstraße 1.</p></main>`);
-  site = writeSite({
+// http:// and https:// of www serve the same files: http:// redirects nowhere. The apex serves nothing.
+const site = useSite(
+  {
     // A blog start page: the post title links the post, its date links it as the permalink.
     'index.html': page(`
       <header>${SEARCH_FORM}</header>
@@ -67,16 +62,16 @@ beforeAll(async () => {
     ),
     'impressum/index.html': legal('Impressum'),
     'datenschutz/index.html': legal('Datenschutzerklärung'),
-  });
-  // http:// and https:// of www serve the same files: http:// redirects nowhere. The apex serves nothing.
-  server = await startFixtureServer({
-    hosts: { [HOST]: site.root },
-    routes: [{ host: 'example.test', path: '/', status: 404, body: page('404') }],
-  });
+  },
+  { routes: [{ host: 'example.test', path: '/', status: 404, body: page('404') }] },
+);
+let r: ScanResult;
+let report: FullReport;
 
+beforeAll(async () => {
   r = await scan({
     url: SITE,
-    network: server.network(),
+    network: site.server.network(),
     registry: new CheckRegistry([tls01, BROWSER_PROBE_CHECK]),
     dataDir,
     log: createLogger('debug', (l) => lines.push(l)),
@@ -87,11 +82,6 @@ beforeAll(async () => {
   });
   if (r.report.scan.status === 'failed') throw new Error('expected a full report');
   report = r.report as FullReport;
-});
-
-afterAll(async () => {
-  await server?.close();
-  site?.cleanup();
 });
 
 describe('a blog post with a comment form over http that phase A does not visit', () => {
@@ -127,14 +117,14 @@ describe('a blog post with a comment form over http that phase A does not visit'
     expect(r.snapshot?.plan.probes.filter((p) => p.target === POST_HTTP)).toEqual([
       { kind: 'http', class: 'T', target: POST_HTTP, purpose: 'permalink-twin' },
     ]);
-    const post = server.requests.filter((q) => q.path === POST_PATH);
+    const post = site.server.requests.filter((q) => q.path === POST_PATH);
     expect(post.map((q) => `${q.method} ${q.scheme}`)).toEqual(['GET http']);
   });
 
   it('submits nothing: no request to the form action and no request other than GET', () => {
-    expect(server.requests.some((q) => q.path.includes('wp-comments-post'))).toBe(false);
-    expect(server.requests.filter((q) => q.method !== 'GET')).toEqual([]);
-    expect(server.unexpected).toEqual([]);
+    expect(site.server.requests.some((q) => q.path.includes('wp-comments-post'))).toBe(false);
+    expect(site.server.requests.filter((q) => q.method !== 'GET')).toEqual([]);
+    expect(site.server.unexpected).toEqual([]);
   });
 
   it('TLS-01: one critical finding on the post, naming where the form sends and why the address was requested', () => {

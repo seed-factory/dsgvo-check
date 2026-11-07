@@ -1,37 +1,8 @@
 /** A legal candidate already queued for another document kind does not consume its next candidate. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
+import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
 import { collect } from '../helpers.ts';
-
-type Res = Parameters<DynamicHandler['handle']>[1];
-
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
-
-const html = (title: string, body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-const send =
-  (body: string, status = 200) =>
-  (res: Res) => {
-    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(body);
-  };
-
-function site(host: string, routes: Record<string, (res: Res) => void>): DynamicHandler {
-  return {
-    host,
-    path: /.*/,
-    handle: (_req, res, ctx) => {
-      const route = routes[ctx.url.pathname];
-      if (route) return route(res);
-      send(html('404', '<h1>Nicht gefunden</h1>'), 404)(res);
-    },
-  };
-}
+import { html, LOREM, send, site } from '../site-dir.ts';
 
 const NEWS = html(
   'Aktuelles',

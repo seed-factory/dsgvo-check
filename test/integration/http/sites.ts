@@ -93,24 +93,11 @@ export const META_SITE: RouteSpec[] = [
   html('www.meta.test', 'https', '/', page('Start')),
 ];
 
-const tooMany = (host: string, scheme: 'http' | 'https', path: string) => ({
-  host,
-  scheme,
-  path,
-  status: 429,
-  headers: { 'retry-after': '60' },
-  body: '',
-});
-
 /**
- * busy.test — the target answers every request with 429 (Retry-After: 60); www.busy.test answers normally and
- * redirects to the target, so the target sees four different URLs and www stays healthy (per-host state).
+ * busy.test — www.busy.test answers normally and redirects to the target, so the target sees four different URLs and
+ * www stays healthy (per-host state). The target's 429 answers come from the overload handler of the test.
  */
 export const BUSY_SITE: RouteSpec[] = [
-  tooMany('busy.test', 'http', '/'),
-  tooMany('busy.test', 'https', '/'),
-  tooMany('busy.test', 'http', '/a'),
-  tooMany('busy.test', 'https', '/b'),
   redirect('www.busy.test', 'http', '/', 'http://busy.test/a'),
   redirect('www.busy.test', 'https', '/', 'https://busy.test/b'),
 ];

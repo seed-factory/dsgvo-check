@@ -12,29 +12,14 @@ import { sha256Hex } from '../../../../src/collectors/browser/util.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../src/core/data/messages.ts';
 import type { RequestRecord } from '../../../../src/core/snapshot/browser.ts';
-import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
 import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
-import { makeSnapshot, observationsOf, runCheck, withDerived } from '../../../utils/snapshot-builder.ts';
-import { type CollectRun, collect, TEST_SANDBOX } from '../helpers.ts';
+import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
+import { type CollectRun, collect, snapshotOf, TEST_SANDBOX } from '../helpers.ts';
 import { stubCmpApi } from './stub-cmp.ts';
 
 const KONTAKT = 'https://www.example.test/kontakt/';
 /** The tracking the stub banner loads after an accept; the map frame and its fonts are on other Google hosts. */
 const tracking = (r: RequestRecord) => /google-analytics|googletagmanager/.test(r.host);
-
-/** The collected sections as a snapshot with `derived`, to run a check over a real collection. */
-function snapshotOf(run: CollectRun): Snapshot {
-  const s = run.result.sections;
-  return withDerived(
-    makeSnapshot({
-      target: run.ctx.target,
-      ...(s.browser ? { browser: s.browser } : {}),
-      ...(s.documents ? { documents: s.documents } : {}),
-      cmp: s.cmp ?? { phases: [] },
-      plan: { browser: s.plan ?? null, probes: [] },
-    }),
-  );
-}
 
 describe('phases B and C with a recognized CMP (stub adapter)', () => {
   let server: FixtureServer;

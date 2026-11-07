@@ -1,4 +1,7 @@
-/** Generic heuristic: facts only; an unknown banner is `banner-not-recognized` (info), nothing is clicked. */
+/**
+ * Generic heuristic: facts only; an unknown banner (no adapter) in the main document, an open shadow DOM or a
+ * cross-origin iframe is `banner-not-recognized` (info), nothing is clicked.
+ */
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -20,6 +23,57 @@ describe('generic heuristic: recognition of unknown banners', () => {
   }
 
   const buttonKinds = (facts: CmpFacts) => facts.firstLayer.buttons.map((b) => b.kind).sort();
+
+  describe('where the unknown banner sits', () => {
+    it('main document: fixed bar with consent wording → heuristic facts, banner-not-recognized', async () => {
+      const { page } = await env.open('https://www.generic.test/');
+
+      const { adapter, detection } = await detectCmp(page);
+      expect(adapter).toBeNull();
+      expect(detection.method).toBe('heuristic');
+      expect(detection.recognitionConfidence).not.toBe('high');
+      expect(detection.signals).toContain('heuristic:fixed');
+
+      const facts = await extract(page, null, 'first-screen');
+      expect(facts.firstLayer.bannerVisible).toBe(true);
+      expect(buttonKinds(facts)).toEqual(['accept', 'settings']);
+      const cls = classifyFirstLayer(facts, lexicon);
+      expect(cls.variant).toBe('banner-not-recognized');
+      expect(cls.reasons).toEqual(['heuristic-only']);
+      expect(cls.targets).toEqual({ reject: null, accept: null });
+    });
+
+    it('open shadow DOM: modal dialog found through the shadow root', async () => {
+      const facts = await measure('shadow.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.signals).toContain('heuristic:dialog');
+      expect(facts.firstLayer.buttons.filter((b) => !b.inShadowDom).map((b) => b.name)).toEqual([]);
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+    });
+
+    it('cross-origin iframe: banner body inside the frame, geometry offset to the main viewport', async () => {
+      const facts = await measure('iframe.html');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.detection.frameUrl).toBe('https://consent.unknown-cmp.test/banner.html');
+      const accept = facts.firstLayer.buttons.find((b) => b.kind === 'accept');
+      expect(accept?.box?.y).toBeGreaterThan(768 - 180 - 1);
+      expect(facts.firstLayer.containerFixed).toBe(true);
+    });
+
+    it('no banner → method none, and the heuristic saw no candidate', async () => {
+      const { page } = await env.open('https://www.generic.test/none.html');
+
+      const { detection } = await detectCmp(page);
+      expect(detection.method).toBe('none');
+
+      const facts = await extract(page, null, 'first-screen');
+      expect(facts.firstLayer.bannerPresent).toBe(false);
+      expect(facts.firstLayer.bannerCandidate).toBeNull();
+      expect(classifyFirstLayer(facts, lexicon).reasons).toEqual(['no-banner-detected']);
+    });
+  });
 
   describe('visible consent-looking iframe whose content cannot be resolved', () => {
     it('full-viewport iframe titled "Consent window", content below the keyword threshold → unresolved candidate', async () => {
@@ -150,13 +204,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
       expect(facts.firstLayer.coveredFooterLinks ?? []).toEqual([]);
     });
 
-    it('counterexample: a fixed cookie bar with accept/reject is still recognized as before (info, no click)', async () => {
-      const facts = await measure('');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(classifyFirstLayer(facts, lexicon).targets).toEqual({ reject: null, accept: null });
-    });
-
     it('a fixed cookie bar with accept/reject placed inside <footer> (footer partial) is still found', async () => {
       const facts = await measure('bar-in-footer.html');
 
@@ -165,13 +212,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
       expect(facts.firstLayer.bannerVisible).toBe(true);
       expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
       expect(classifyFirstLayer(facts, lexicon).variant).toBe('banner-not-recognized');
-    });
-
-    it('the same bar inside a container with role contentinfo is still found', async () => {
-      const facts = await measure('bar-in-contentinfo.html');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
     });
 
     it('a static cookie region with accept/reject inside <header> is still found (heuristic:static)', async () => {
@@ -308,12 +348,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
       },
     );
 
-    it('a page without anything banner-shaped records that the heuristic saw no candidate', async () => {
-      const facts = await measure('none.html');
-
-      expect(facts.firstLayer.bannerCandidate).toBeNull();
-    });
-
     it('wording hidden from screen readers but shown on screen counts: a fixed bar with an aria-hidden description is found', async () => {
       const facts = await measure('aria-hidden-text.html');
 
@@ -321,13 +355,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
       const hits = facts.detection.signals.find((s) => s.startsWith('heuristic:keywords:'));
       expect(Number(hits?.split(':')[2])).toBeGreaterThanOrEqual(2);
       expect(buttonKinds(facts)).toEqual(['accept', 'settings']);
-    });
-
-    it('a fixed banner after more elements than the scan reads in document order is still found', async () => {
-      const facts = await measure('banner-after-long-body.html');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
     });
   });
 
@@ -354,28 +381,30 @@ describe('generic heuristic: recognition of unknown banners', () => {
       );
     });
 
-    it.each(['aside', 'complementary', 'banner', 'dialog-in-nav'])(
-      'a fixed cookie bar with reject and accept as landmark (%s) is found',
-      async (as) => {
-        const facts = await measure(`banner-in-landmark.html?as=${as}`);
+    it.each([
+      ['inside a container with role contentinfo', 'bar-in-contentinfo.html'],
+      ['as landmark (aside)', 'banner-in-landmark.html?as=aside'],
+      ['as landmark (complementary)', 'banner-in-landmark.html?as=complementary'],
+      ['as landmark (banner)', 'banner-in-landmark.html?as=banner'],
+      ['as landmark (dialog-in-nav)', 'banner-in-landmark.html?as=dialog-in-nav'],
+      ['after more elements than the scan reads in document order', 'banner-after-long-body.html'],
+      [
+        'floating one line high above the bottom edge, after more elements than the scan reads',
+        'floating-banner-after-long-body.html',
+      ],
+      ['whose control has a text blob as aria-label (counted by its visible label)', 'long-aria-label.html'],
+    ])('a fixed cookie bar with reject and accept %s is found', async (_name, file) => {
+      const facts = await measure(file);
 
-        expect(facts.detection.method).toBe('heuristic');
-        expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
-      },
-    );
+      expect(facts.detection.method).toBe('heuristic');
+      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+    });
 
     it('counterexample: a fixed aside with privacy links only is page chrome, no banner and no candidate', async () => {
       const facts = await measure('banner-in-landmark.html?as=links-in-aside');
 
       expect(facts.firstLayer.bannerPresent).toBe(false);
       expect(facts.firstLayer.bannerCandidate).toBeNull();
-    });
-
-    it('a one-line bar floating above the bottom edge, after more elements than the scan reads in document order, is found', async () => {
-      const facts = await measure('floating-banner-after-long-body.html');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
     });
 
     it.each([
@@ -391,13 +420,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
         expect(facts.detection.signals).toContain('heuristic:keywords:2');
       },
     );
-
-    it('a control whose aria-label is a text blob counts by its visible label', async () => {
-      const facts = await measure('long-aria-label.html');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
-    });
 
     it('control: a fixed bar with the cookie keyword, accept and reject, shown, is found', async () => {
       const facts = await measure('hidden-banner.html?hide=none');

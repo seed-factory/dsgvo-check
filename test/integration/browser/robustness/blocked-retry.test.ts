@@ -9,29 +9,22 @@ import {
   startFixtureServer,
 } from '../../../fixture-server/server.ts';
 import { type CollectRun, collect } from '../helpers.ts';
+import { FOOTER, html, LOREM, type Res } from '../site-dir.ts';
 
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
-
-const page = (title: string, body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-
-const FOOTER =
-  '<footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutzerklärung</a></footer>';
-const START = page('Start', `<main><h1>Start</h1></main>${FOOTER}`);
-const IMPRESSUM = page(
+const START = html('Start', `<main><h1>Start</h1></main>${FOOTER}`);
+const IMPRESSUM = html(
   'Impressum',
   '<main><h1>Impressum</h1><p>Angaben gemäß § 5 DDG: Beispiel GmbH, Musterstraße 1, 10115 Berlin. Vertreten durch die Geschäftsführung. Kontakt: info@example.test.</p></main>',
 );
-const POLICY = page(
+const POLICY = html(
   'Datenschutzerklärung',
   `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`,
 );
-const CHALLENGE = page('Just a moment...', '<p>Checking your browser before accessing the site.</p>');
+const CHALLENGE = html('Just a moment...', '<p>Checking your browser before accessing the site.</p>');
 
-type Answer = (res: Parameters<DynamicHandler['handle']>[1], n: number) => void;
+type Answer = (res: Res, n: number) => void;
 
-const html =
+const answer =
   (body: string, status = 200, extra: Record<string, string> = {}): Answer =>
   (res) => {
     res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', ...extra });
@@ -53,14 +46,14 @@ function site(host: string, privacy: (n: number) => Answer): DynamicHandler {
         privacyRequests.set(host, n);
         return privacy(n)(res, n);
       }
-      if (p === '/impressum/') return html(IMPRESSUM)(res, 0);
-      if (p === '/') return html(START)(res, 0);
-      return html(page('404', '<h1>Nicht gefunden</h1>'), 404)(res, 0);
+      if (p === '/impressum/') return answer(IMPRESSUM)(res, 0);
+      if (p === '/') return answer(START)(res, 0);
+      return answer(html('404', '<h1>Nicht gefunden</h1>'), 404)(res, 0);
     },
   };
 }
 
-const cloudflare503 = html(CHALLENGE, 503, { 'cf-mitigated': 'challenge' });
+const cloudflare503 = answer(CHALLENGE, 503, { 'cf-mitigated': 'challenge' });
 
 let server: FixtureServer;
 
@@ -68,7 +61,7 @@ beforeAll(async () => {
   server = await startFixtureServer({
     handlers: [
       // 503 with a challenge, then the policy.
-      site('recovers.example.test', (n) => (n === 1 ? cloudflare503 : html(POLICY))),
+      site('recovers.example.test', (n) => (n === 1 ? cloudflare503 : answer(POLICY))),
       // Control: 503 with a challenge twice.
       site('stays-blocked.example.test', () => cloudflare503),
       // Control: 503 with a challenge, then the connection is dropped on the repeat.
@@ -81,10 +74,12 @@ beforeAll(async () => {
       ),
       // Control: a plain 503 (no bot protection), then the policy.
       site('plain-503.example.test', (n) =>
-        n === 1 ? html(page('Wartung', '<p>Dienst vorübergehend nicht verfügbar.</p>'), 503) : html(POLICY),
+        n === 1
+          ? answer(html('Wartung', '<p>Dienst vorübergehend nicht verfügbar.</p>'), 503)
+          : answer(POLICY),
       ),
       // Control: a 403 challenge is not repeated (no overload status).
-      site('no-repeat.example.test', () => html(CHALLENGE, 403, { 'cf-mitigated': 'challenge' })),
+      site('no-repeat.example.test', () => answer(CHALLENGE, 403, { 'cf-mitigated': 'challenge' })),
     ],
   });
 });
