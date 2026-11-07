@@ -1,83 +1,21 @@
 /** Set-Cookie writes are attributed by request time and valid response-host/domain ownership.
  * A late click marker must update response origins; a foreign-domain claim cannot become a cookie setter. */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, Cookie, Page, Request, Response } from 'playwright-core';
+import type { BrowserContext } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { JarTracker, type Moment } from '../../../../../src/collectors/browser/recording/jar.ts';
-import { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
+import type { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
+import { fakeContext, fakePage, fakeRecorder, fakeRequest, fakeResponse, jarCookie } from '../fakes.ts';
 
 const target = { etld1: 'example.test', host: 'www.example.test' };
 const START = 'https://www.example.test/';
 const pre: Moment = { phase: 'B', pageUrl: START, tMs: 10, tRef: 'navigation', afterClick: false };
 const post: Moment = { ...pre, tRef: 'click', afterClick: true, tMs: 500 };
+const noFrames = fakePage([]);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type JarCookie = Pick<
-  Cookie,
-  'name' | 'value' | 'domain' | 'path' | 'expires' | 'httpOnly' | 'secure' | 'sameSite'
-> & { partitionKey?: string };
-
-const jarCookie = (name: string, domain: string, o: Partial<JarCookie> = {}): JarCookie => ({
-  name,
-  value: 'SECRET_VALUE',
-  domain,
-  path: '/',
-  expires: -1,
-  httpOnly: false,
-  secure: true,
-  sameSite: 'None',
-  ...o,
-});
-
-const fakeContext = (cookies: JarCookie[]): BrowserContext =>
-  ({ cookies: async () => cookies }) as unknown as BrowserContext;
-
-const fakePage = { frames: () => [] } as unknown as Page;
-
-function fakeRequest(url: string): Request {
-  const frame = { parentFrame: () => null, url: () => START };
-  return {
-    url: () => url,
-    postData: () => null,
-    serviceWorker: () => null,
-    frame: () => frame,
-    isNavigationRequest: () => false,
-    redirectedFrom: () => null,
-    method: () => 'GET',
-    resourceType: () => 'image',
-    failure: () => null,
-    allHeaders: async () => ({}),
-  } as unknown as Request;
-}
-
-function fakeResponse(req: Request, setCookie: string[]): Response {
-  return {
-    request: () => req,
-    status: () => 200,
-    fromServiceWorker: () => false,
-    headersArray: async () => setCookie.map((value) => ({ name: 'Set-Cookie', value })),
-    serverAddr: async () => ({ ipAddress: '93.184.215.14', port: 443 }),
-  } as unknown as Response;
-}
-
 /** A phase-B recorder that answers one request at a time, like the collector feeds it. */
-function liveRecorder() {
-  const ctx = new EventEmitter();
-  const counter = { limit: 2000, issued: 0, truncated: false };
-  const rec = new NetworkRecorder('B', target.etld1, counter, false);
-  rec.attach(ctx as unknown as BrowserContext);
-  rec.beginNavigation(START);
-  const send = async (url: string, lines: string[]) => {
-    const req = fakeRequest(url);
-    ctx.emit('request', req);
-    ctx.emit('response', fakeResponse(req, lines));
-    await rec.flush();
-  };
-  return { rec, send };
-}
-
-type Send = ReturnType<typeof liveRecorder>['send'];
+const liveRecorder = () => fakeRecorder({ phase: 'B', etld1: target.etld1, start: START });
 
 const flags = (jar: JarTracker, name: string, domain: string) =>
   jar.cookies.filter((c) => c.name === name && c.domain === domain).map((c) => c.afterClick);
@@ -85,14 +23,14 @@ const flags = (jar: JarTracker, name: string, domain: string) =>
 /** The jar as read before the press, with a pause so the press time lies after it. */
 async function jarBeforePress(rec: NetworkRecorder, context: BrowserContext) {
   const jar = new JarTracker(target, rec.setCookieOrigins);
-  await jar.snapshot(context, fakePage, pre);
+  await jar.snapshot(context, noFrames, pre);
   await sleep(5);
   return jar;
 }
 
 /** The press happens now; one request is answered after it and the jar is read again. */
 async function pressThenRespond(
-  { rec, send }: { rec: NetworkRecorder; send: Send },
+  { rec, send }: ReturnType<typeof liveRecorder>,
   jar: JarTracker,
   context: BrowserContext,
   url: string,
@@ -101,7 +39,7 @@ async function pressThenRespond(
   rec.markClickAt(performance.now());
   jar.markClick(Date.now());
   await send(url, setCookie);
-  await jar.snapshot(context, fakePage, post);
+  await jar.snapshot(context, noFrames, post);
 }
 
 describe('the late markClickAt re-times the Set-Cookie origins of the re-marked requests', () => {
@@ -123,7 +61,7 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
     expect(rec.isAfterClick).toBe(false);
     rec.markClickAt(pressAt);
     jar.markClick(Date.now() - 6);
-    await jar.snapshot(context, fakePage, post);
+    await jar.snapshot(context, noFrames, post);
 
     expect(rec.records.at(-1)).toMatchObject({ afterClick: true, tRef: 'click' });
     expect(flags(jar, '_ga', 'www.example.test')).toEqual([false, true]);
@@ -154,7 +92,7 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
     await send('https://tracker-a.test/q.gif', ['uid=5; Path=/other']);
     rec.markClickAt(pressAt);
     jar.markClick(Date.now() - 12);
-    await jar.snapshot(context, fakePage, post);
+    await jar.snapshot(context, noFrames, post);
 
     expect(flags(jar, 'uid', 'www.example.test')).toEqual([false]);
     expect(flags(jar, 'uid', 'tracker-a.test')).toEqual([false]);
@@ -162,13 +100,10 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
   });
 
   it('counterexample: a response to a request that started BEFORE the press is not a write after the click', async () => {
-    const ctx = new EventEmitter();
-    const rec = new NetworkRecorder('B', target.etld1, { limit: 2000, issued: 0, truncated: false }, false);
-    rec.attach(ctx as unknown as BrowserContext);
-    rec.beginNavigation(START);
+    const { ctx, rec } = liveRecorder();
     const jar = new JarTracker(target, rec.setCookieOrigins);
     const context = fakeContext([jarCookie('_ga', 'www.example.test')]);
-    await jar.snapshot(context, fakePage, pre);
+    await jar.snapshot(context, noFrames, pre);
 
     // The request starts, then the press happens, then the response of the earlier request is handled.
     const req = fakeRequest('https://www.example.test/slow.gif');
@@ -180,7 +115,7 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
     await rec.flush();
     rec.markClickAt(pressAt);
     jar.markClick(Date.now() - 6);
-    await jar.snapshot(context, fakePage, post);
+    await jar.snapshot(context, noFrames, post);
 
     expect(rec.records[0]?.afterClick).toBe(false);
     expect([...rec.setCookieOrigins.values()].map((o) => o.afterClick)).toEqual([undefined]);
@@ -192,7 +127,7 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
 
     rec.markClickAt(pressAt);
     jar.markClick(Date.now() - 1);
-    await jar.snapshot(context, fakePage, post);
+    await jar.snapshot(context, noFrames, post);
 
     expect(flags(jar, '_ga', 'www.example.test')).toEqual([false]);
   });
@@ -204,7 +139,7 @@ describe('the late markClickAt re-times the Set-Cookie origins of the re-marked 
     jar.markClick(Date.now() - 1);
     await sleep(5);
     await send('https://www.example.test/after.gif', ['_ga=V2; Path=/']);
-    await jar.snapshot(context, fakePage, post);
+    await jar.snapshot(context, noFrames, post);
 
     expect(flags(jar, '_ga', 'www.example.test')).toEqual([false, true]);
   });
@@ -248,7 +183,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send(FOREIGN, ['_ga=V2; Domain=www.example.test; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([jarCookie('_ga', 'www.example.test')]), fakePage, pre);
+    await jar.snapshot(fakeContext([jarCookie('_ga', 'www.example.test')]), noFrames, pre);
 
     expect(jar.cookies[0]).toMatchObject({ firstParty: true, setter: 'unknown' });
     expect(jar.cookies[0]?.setterHost).toBeUndefined();
@@ -277,7 +212,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
       await send(url, [`_ga=V2; Domain=${domain}; Path=/`]);
       const jar = new JarTracker(target, rec.setCookieOrigins);
 
-      await jar.snapshot(fakeContext([]), fakePage, pre);
+      await jar.snapshot(fakeContext([]), noFrames, pre);
       jar.finalize(pre);
 
       expect(jar.cookies.map((c) => [c.name, c.state, c.domain, c.setterHost])).toEqual([
@@ -292,7 +227,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send('https://www.example.test/own.gif', ['uid=2; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([jarCookie('uid', 'www.example.test')]), fakePage, pre);
+    await jar.snapshot(fakeContext([jarCookie('uid', 'www.example.test')]), noFrames, pre);
 
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'www.example.test' });
   });
@@ -302,7 +237,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send(FOREIGN, ['_ga=V2; Domain=www.example.test; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([]), fakePage, pre);
+    await jar.snapshot(fakeContext([]), noFrames, pre);
     jar.finalize(pre);
 
     expect(jar.cookies.map((c) => [c.name, c.state, c.domain, c.firstParty, c.setterHost])).toEqual([
@@ -332,7 +267,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send('https://tracker-a.test/p.gif', ['uid=1; Domain=tracker-a.test; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([jarCookie('uid', '.tracker-a.test')]), fakePage, pre);
+    await jar.snapshot(fakeContext([jarCookie('uid', '.tracker-a.test')]), noFrames, pre);
 
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'tracker-a.test' });
   });
@@ -342,7 +277,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send('https://test/p.gif', ['uid=1; Domain=test; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([jarCookie('uid', 'test')]), fakePage, pre);
+    await jar.snapshot(fakeContext([jarCookie('uid', 'test')]), noFrames, pre);
 
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'test' });
   });
@@ -352,7 +287,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     await send('https://203.0.113.7/p.gif', ['uid=1; Domain=203.0.113.7; Path=/']);
     const jar = new JarTracker(target, rec.setCookieOrigins);
 
-    await jar.snapshot(fakeContext([jarCookie('uid', '203.0.113.7')]), fakePage, pre);
+    await jar.snapshot(fakeContext([jarCookie('uid', '203.0.113.7')]), noFrames, pre);
 
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: '203.0.113.7' });
   });

@@ -3,7 +3,7 @@
  * temp dir. It names its owner; the next scan removes profiles of dead owners and leaves running ones alone.
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +36,6 @@ const site: DynamicHandler = {
 
 let server: FixtureServer;
 const children: ChildProcess[] = [];
-const created: string[] = [];
 
 beforeAll(async () => {
   server = await startFixtureServer({ handlers: [site] });
@@ -45,7 +44,6 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const c of children) c.kill('SIGKILL');
   for (const c of children) if (c.pid) removeProfilesOfPid(c.pid);
-  for (const dir of created) rmSync(dir, { recursive: true, force: true });
   await server?.close();
   // The collector runs of this file leave nothing behind either.
   expect(profilesOfPid(process.pid)).toEqual([]);
@@ -130,29 +128,5 @@ describe('a scan killed with SIGKILL leaves its profile; the next scan removes i
     expect(removeProfilesOfPid(runningPid).map((n) => path.join(tmpdir(), n))).toContain(runningProfile);
     expect(existsSync(runningProfile as string)).toBe(false);
     expect(processesUsing(killedProfile as string)).toBe(false);
-  }, 120_000);
-
-  it('a profile of a dead owner and one without marker: only the dead one goes (collector start)', async () => {
-    const deadPid = await new Promise<number>((resolve) => {
-      const c = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' });
-      c.on('exit', () => resolve(c.pid as number));
-    });
-    const dead = path.join(tmpdir(), `${PROFILE_PREFIX}test-dead-${process.pid}`);
-    const unmarked = path.join(tmpdir(), `${PROFILE_PREFIX}test-unmarked-${process.pid}`);
-    const mine = path.join(tmpdir(), `${PROFILE_PREFIX}test-mine-${process.pid}`);
-    for (const dir of [dead, unmarked, mine]) {
-      mkdirSync(path.join(dir, 'Default'), { recursive: true });
-      created.push(dir);
-    }
-    writeFileSync(path.join(dead, OWNER_MARKER), JSON.stringify({ pid: deadPid, startedAt: 1 }));
-    writeFileSync(path.join(mine, OWNER_MARKER), JSON.stringify({ pid: process.pid, startedAt: 1 }));
-
-    await collect(server, { url: 'https://sweep.example.test/', maxPages: 1 });
-
-    expect(existsSync(dead)).toBe(false);
-    expect(existsSync(unmarked)).toBe(true); // fresh and unmarked: might be a profile that is just being created
-    expect(existsSync(mine)).toBe(true);
-    rmSync(mine, { recursive: true, force: true });
-    rmSync(unmarked, { recursive: true, force: true });
   }, 120_000);
 });

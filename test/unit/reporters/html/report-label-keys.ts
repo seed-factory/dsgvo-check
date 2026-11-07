@@ -14,6 +14,7 @@ import {
 import { buildReportView } from '../../../../src/reporters/report-view.ts';
 import { renderSummary } from '../../../../src/reporters/summary.ts';
 import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
+import { consentClicks } from '../../../utils/report/reporter-inputs.ts';
 
 const source = (file: string) => readFileSync(new URL(`../../../../src/${file}`, import.meta.url), 'utf8');
 
@@ -141,10 +142,7 @@ export function usedReportLabelKeys(): string[] {
   front.evidence = [request, { ...request, id: 'ev-request-again', page: 'https://www.example.de/kontakt' }];
   front.findings[0]!.evidenceIds = front.evidence.map((e) => e.id);
   // An accept the banner did not confirm, its click outcomes and a start page that leads to another site.
-  front.scan.coverage.consentActions = [
-    { action: 'reject', clicked: true, verified: true },
-    { action: 'accept', clicked: true, verified: false },
-  ];
+  front.scan.coverage.consentActions = consentClicks({ reject: 'confirmed', accept: 'unconfirmed' });
   front.scan.finalUrl = 'https://www.example.com/';
   capture(front);
   capture(front, 'brief');

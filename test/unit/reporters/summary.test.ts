@@ -1,21 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { reporterLimits } from '../../../src/core/config/limits.ts';
-import { loadTexts } from '../../../src/core/data/load.ts';
 import type { ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { Finding } from '../../../src/core/report/schema.ts';
 import { renderSummary, SUMMARY_MAX_FINDINGS } from '../../../src/reporters/summary.ts';
 import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
+import { reporterContext, withTrackerHitMessage } from '../../utils/report/reporter-inputs.ts';
 
-const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => {
-  const texts = loadTexts(lang);
-  // A template with external params, so escaping of params is exercised.
-  texts.messages['CONSENT-01.tracker-hit'] = {
-    title: 'Tracker {service} auf {host} beobachtet',
-    body: 'Anfrage an {host} vor einer Einwilligung beobachtet.',
-    draft: true,
-  };
-  return { texts, lang, outDir: '/nonexistent-out', color: false };
-};
+const ctx = (lang: 'de' | 'en' = 'de'): ReporterContext => withTrackerHitMessage(reporterContext(lang));
 
 /** The sample report with `count` CONSENT-04 findings that differ only by their fingerprint. */
 function withManyFindings(count: number) {

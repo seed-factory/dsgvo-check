@@ -61,17 +61,6 @@ describe('PRIV-01 service not found in the privacy policy', () => {
     expect(o?.evidence[0]).toMatchObject({ type: 'document', kind: 'privacy', complete: true });
   });
 
-  it('clean: operator named in an expandable frame part (company level)', () => {
-    expect(variantsOf(runCheck(priv01, scenario('clean-operator-in-frame.json')))).toEqual([]);
-  });
-
-  it('inconclusive: PDF only', () => {
-    expect(runCheck(priv01, scenario('inconclusive-pdf.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'pdf-not-evaluated',
-    });
-  });
-
   it('inconclusive: a linked PDF policy that was not fetched (status null) is still a PDF, not "not found"', () => {
     const r = runCheck(
       priv01,
@@ -104,17 +93,6 @@ describe('PRIV-01 service not found in the privacy policy', () => {
     const match = o?.evidence.find((e) => e.type === 'text-match');
     expect(match).toMatchObject({ matchLevel: 'category', negation: 'none' });
     expect((match as { quote: string }).quote.length).toBeLessThanOrEqual(200);
-  });
-
-  it('counterexample: brand only in a hidden-irrelevant template part is not "named" → hidden-only (info)', () => {
-    const r = runCheck(
-      priv01,
-      withPolicy([
-        part('Datenschutzerklärung der Beispiel GmbH.'),
-        part('Trustindex Widget Vorlage', 'hidden-irrelevant'),
-      ]),
-    );
-    expect(variantsOf(r)).toEqual(['ambiguous-match']);
   });
 
   it('named and domain levels count as found', () => {

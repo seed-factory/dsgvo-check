@@ -3,19 +3,14 @@ import type { BrowserContext, BrowserType, Route } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
 import { reporterLimits } from '../../../../src/core/config/limits.ts';
 import { parseConfigInput } from '../../../../src/core/config/load.ts';
-import { loadTexts } from '../../../../src/core/data/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
 import { renderPdf } from '../../../../src/reporters/pdf.ts';
 import { sampleFullReport } from '../../../utils/report/fixtures.ts';
+import { reporterContext } from '../../../utils/report/reporter-inputs.ts';
 
-const ctx = (): ReporterContext => ({
-  texts: loadTexts('en'),
-  lang: 'en',
-  outDir: '/nonexistent-report-output',
-  color: false,
-});
+const ctx = (): ReporterContext => reporterContext('en', { outDir: '/nonexistent-report-output' });
 
 function browserDouble(failure?: Error) {
   let routeHandler: ((route: Route) => Promise<void>) | undefined;

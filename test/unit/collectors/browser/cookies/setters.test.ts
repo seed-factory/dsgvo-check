@@ -4,8 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parseSetCookies } from '../../../../../src/collectors/browser/recording/features.ts';
-import { JarTracker } from '../../../../../src/collectors/browser/recording/jar.ts';
-import { fakeContext, fakePage, jarCookie, moment, recorded, START, target } from './fakes.ts';
+import { jarCookie, jarOf, moment, recorded, START } from '../fakes.ts';
 
 describe('parseSetCookies: attributes without values', () => {
   it('name, Domain, Path and Partitioned; the value never appears in the result', () => {
@@ -75,17 +74,14 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
       ['https://gum.tracker-a.test/sync.gif', ['uid=A; Domain=tracker-a.test; Path=/']],
       ['https://tracker-b.test/sync.gif', ['uid=B; Path=/']],
     ]);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-    const page = fakePage([{ url: START, cookieWrites: [writeFrom('uid', 'https://cdn.script.test/t.js')] }]);
-
-    await jar.snapshot(
-      fakeContext([
+    const jar = await jarOf(
+      [{ url: START, cookieWrites: [writeFrom('uid', 'https://cdn.script.test/t.js')] }],
+      [
         jarCookie('uid', '.tracker-a.test'),
         jarCookie('uid', 'www.example.de'),
         jarCookie('uid', 'tracker-b.test'),
-      ]),
-      page,
-      moment,
+      ],
+      rec.setCookieOrigins,
     );
 
     const by = (domain: string) => jar.cookies.find((c) => c.name === 'uid' && c.domain === domain);
@@ -100,11 +96,10 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
 
   it('a first-party cookie is not attributed to a tracker response of the same name', async () => {
     const rec = await recorded([['https://tracker-a.test/sync.gif', ['cto_bundle=A; Path=/']]]);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-    await jar.snapshot(
-      fakeContext([jarCookie('cto_bundle', 'www.example.de')]),
-      fakePage([{ url: START }]),
-      moment,
+    const jar = await jarOf(
+      [{ url: START }],
+      [jarCookie('cto_bundle', 'www.example.de')],
+      rec.setCookieOrigins,
     );
     expect(jar.cookies[0]).toMatchObject({ firstParty: true, setter: 'unknown' });
     expect(jar.cookies[0]?.setterHost).toBeUndefined();
@@ -116,16 +111,12 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
       ['https://tracker-a.test/sync.gif', ['b=1; Path=/; Partitioned']],
       ['https://tracker-a.test/sync.gif', ['c=1; Path=/']],
     ]);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-    await jar.snapshot(
-      fakeContext([
-        jarCookie('a', 'tracker-a.test', { path: '/other' }),
-        jarCookie('b', 'tracker-a.test'),
-        jarCookie('c', 'tracker-a.test', { partitionKey: 'https://example.de' }),
-      ]),
-      fakePage([{ url: START }]),
-      moment,
-    );
+    const cookies = [
+      jarCookie('a', 'tracker-a.test', { path: '/other' }),
+      jarCookie('b', 'tracker-a.test'),
+      jarCookie('c', 'tracker-a.test', { partitionKey: 'https://example.de' }),
+    ];
+    const jar = await jarOf([{ url: START }], cookies, rec.setCookieOrigins);
     expect(jar.cookies.map((c) => [c.name, c.setter])).toEqual([
       ['a', 'unknown'],
       ['b', 'unknown'],
@@ -134,14 +125,11 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
   });
 
   it('a script on a tracker document cannot be the setter of a first-party cookie', async () => {
-    const jar = new JarTracker(target, new Map());
-    const page = fakePage([
-      {
-        url: 'https://widget.tracker-a.test/frame.html',
-        cookieWrites: [writeFrom('sid', 'https://widget.tracker-a.test/w.js')],
-      },
-    ]);
-    await jar.snapshot(fakeContext([jarCookie('sid', 'www.example.de')]), page, moment);
+    const frame = {
+      url: 'https://widget.tracker-a.test/frame.html',
+      cookieWrites: [writeFrom('sid', 'https://widget.tracker-a.test/w.js')],
+    };
+    const jar = await jarOf([frame], [jarCookie('sid', 'www.example.de')]);
     expect(jar.cookies[0]).toMatchObject({ firstParty: true, setter: 'unknown' });
   });
 
@@ -150,8 +138,7 @@ describe('JarTracker: the setter of a cookie must be able to set it', () => {
       ['https://tracker-a.test/sync.gif', ['uid=A; Path=/']],
       ['https://tracker-c.test/sync.gif', ['uid=C; Path=/']],
     ]);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-    await jar.snapshot(fakeContext([jarCookie('uid', 'tracker-a.test')]), fakePage([{ url: START }]), moment);
+    const jar = await jarOf([{ url: START }], [jarCookie('uid', 'tracker-a.test')], rec.setCookieOrigins);
     jar.finalize(moment);
     const uid = jar.cookies.filter((c) => c.name === 'uid');
     expect(uid.map((c) => [c.state, c.domain, c.setterHost])).toEqual([

@@ -46,32 +46,6 @@ describe('judgeDocument: markers in title, h1 and headings of the whole document
     expect(d.languages).toEqual([]);
   });
 
-  it('a substantive page without any marker is unconfirmed, not soft-404 and not found', () => {
-    expect(
-      judgeDocument('privacy', { title: 'Start', h1: 'Willkommen', sections: [], textLength: 5_000 }),
-    ).toBe('unconfirmed');
-  });
-
-  it('German and English markers (title, h1 or heading)', () => {
-    expect(
-      judgeDocument('privacy', { title: 'Datenschutzerklärung', h1: '', sections: [], textLength: 900 }),
-    ).toBe('ok');
-    expect(
-      judgeDocument('privacy', { title: 'x', h1: 'Privacy Policy', sections: [], textLength: 900 }),
-    ).toBe('ok');
-    expect(
-      judgeDocument('impressum', {
-        title: 'x',
-        h1: '',
-        sections: ['Angaben gemäß § 5 DDG'],
-        textLength: 400,
-      }),
-    ).toBe('ok');
-    expect(judgeDocument('impressum', { title: 'Legal Notice', h1: '', sections: [], textLength: 400 })).toBe(
-      'ok',
-    );
-  });
-
   it.each([
     ['fr', 'privacy', 'Politique de confidentialité'],
     ['es', 'privacy', 'Política de privacidad'],
@@ -100,45 +74,37 @@ describe('judgeDocument: markers in title, h1 and headings of the whole document
   });
 });
 
-describe('judgeDocument: counterexamples', () => {
-  it('a short page with 404 markers is soft-404', () => {
-    expect(
-      judgeDocument('privacy', { title: 'Seite nicht gefunden', h1: '', sections: [], textLength: 1 }),
-    ).toBe('soft-404');
-    expect(
-      judgeDocument('impressum', { title: 'Error 404', h1: 'Not Found', sections: [], textLength: 300 }),
-    ).toBe('soft-404');
-    expect(
-      judgeDocument('privacy', { title: 'Page introuvable', h1: '', sections: [], textLength: 200 }),
-    ).toBe('soft-404');
+describe('judgeDocument: a marker in title, h1 or a heading decides; without one, the length', () => {
+  const doc = (title: string, h1: string, textLength: number, sections: string[] = [], text?: string) => ({
+    title,
+    h1,
+    sections,
+    textLength,
+    ...(text === undefined ? {} : { text }),
   });
+  const footer = `Angaben gemäß § 5 DDG ${'Text. '.repeat(100)}`;
+  const blog = doc('Blog', 'Neuigkeiten', 9_000, ['Ein Artikel über Steuern']);
 
-  it('a nearly empty page without a marker is soft-404 (no recognisable content)', () => {
-    expect(judgeDocument('privacy', { title: 'Start', h1: '', sections: [], textLength: 20 })).toBe(
-      'soft-404',
-    );
-  });
-
-  it('a long error template with a 404 title is still soft-404', () => {
-    expect(
-      judgeDocument('privacy', {
-        title: '404 – Seite nicht gefunden',
-        h1: '',
-        sections: [],
-        textLength: 6_000,
-      }),
-    ).toBe('soft-404');
-  });
-
-  it('an unrelated page is never "ok"', () => {
-    expect(
-      judgeDocument('impressum', {
-        title: 'Blog',
-        h1: 'Neuigkeiten',
-        sections: ['Ein Artikel über Steuern'],
-        textLength: 9_000,
-      }),
-    ).not.toBe('ok');
+  it.each([
+    // German and English markers.
+    ['a German title', 'privacy', 'ok', doc('Datenschutzerklärung', '', 900)],
+    ['an English h1', 'privacy', 'ok', doc('x', 'Privacy Policy', 900)],
+    ['title and h1', 'impressum', 'ok', doc('Impressum', 'Impressum', 600)],
+    ['an English title', 'impressum', 'ok', doc('Legal Notice', '', 400)],
+    ['the statutory phrase as a heading', 'impressum', 'ok', doc('x', '', 400, ['Angaben gemäß § 5 DDG'])],
+    // In the body text alone the statutory phrase proves nothing (footer small print).
+    ['the phrase only in the body text', 'impressum', 'unconfirmed', doc('Kontakt', '', 700, [], footer)],
+    // A substantive page without a marker is neither found nor an error page.
+    ['no marker on a long page', 'privacy', 'unconfirmed', doc('Start', 'Willkommen', 5_000)],
+    ['an unrelated page', 'impressum', 'unconfirmed', blog],
+    // Counterexamples: 404 markers on a short page, a long error template, a page without recognisable content.
+    ['"Seite nicht gefunden" on a short page', 'privacy', 'soft-404', doc('Seite nicht gefunden', '', 1)],
+    ['"Error 404" and "Not Found", short page', 'impressum', 'soft-404', doc('Error 404', 'Not Found', 300)],
+    ['"Page introuvable" on a short page', 'privacy', 'soft-404', doc('Page introuvable', '', 200)],
+    ['a long error template, 404 title', 'privacy', 'soft-404', doc('404 – Seite nicht gefunden', '', 6_000)],
+    ['a nearly empty page without a marker', 'privacy', 'soft-404', doc('Start', '', 20)],
+  ] as const)('%s (%s) → %s', (_what, kind, verdict, d) => {
+    expect(judgeDocument(kind, d)).toBe(verdict);
   });
 });
 

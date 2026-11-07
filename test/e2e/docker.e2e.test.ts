@@ -154,8 +154,11 @@ describe.skipIf(!IMAGE)('docker image', () => {
     expect(readFileSync(path.join(out, 'summary.md'), 'utf8')).toMatch(/^## dsgvo-check/);
   });
 
-  /** Scans the tracker snapshot offline in the hardened container and checks what every exit code has in common. */
-  function scanSnapshot(failOn: string) {
+  /**
+   * Scans the tracker snapshot offline in the hardened container with `extra` arguments and checks what every exit code
+   * has in common.
+   */
+  function scanSnapshot(failOn: string, extra: string[] = []) {
     const input = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-snapshot-'));
     writeFileSync(path.join(input, 'snapshot.json'), trackerSnapshot());
     const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-docker-'));
@@ -168,6 +171,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
       '/in/snapshot.json',
       '--fail-on',
       failOn,
+      ...extra,
       '--out',
       '/out',
       '--format',
@@ -201,31 +205,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
   });
 
   it('the replayed scan records sandbox mode container in its options without SCAN-SANDBOX-OFF, also under --strict', () => {
-    const input = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-snapshot-'));
-    writeFileSync(path.join(input, 'snapshot.json'), trackerSnapshot());
-    const out = mkdtempSync(path.join(tmpdir(), 'dsgvo-e2e-docker-'));
-
-    const r = docker([
-      ...hardened(['--volume', `${out}:/out`, '--volume', `${input}:/in:ro`]),
-      image,
-      'https://www.example.de/',
-      '--from-snapshot',
-      '/in/snapshot.json',
-      '--assume-region',
-      'de',
-      '--strict',
-      '--fail-on',
-      'none',
-      '--out',
-      '/out',
-      '--format',
-      'console,json',
-    ]);
-
     // Other strict reasons (unverified results of the snapshot) may still give exit code 2; only the sandbox must not.
-    const report = readReport(path.join(out, 'report.json'));
-    expectValidReport(report);
-    expect(report.summary.exitCode).toBe(r.status);
+    const { r, report } = scanSnapshot('none', ['--assume-region', 'de', '--strict']);
+
     if (report.scan.status === 'failed') throw new Error('the scan failed');
     expect(report.scan.options?.sandbox).toBe('container');
     expect(report.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-SANDBOX-OFF');
@@ -332,6 +314,15 @@ describe.skipIf(!IMAGE)('docker image', () => {
       return { ...r, outputs, summary: readFileSync(summaryFile, 'utf8'), workspace };
     }
 
+    /** The step itself succeeded, gave the scan's exit `code` as its output and wrote a valid JSON report. */
+    function stepReport(r: ReturnType<typeof runStep>, code: number): Report {
+      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+      expect(r.outputs['exit-code']).toBe(String(code));
+      const report = readReport(r.outputs['json-path'] as string);
+      expectValidReport(report);
+      return report;
+    }
+
     /** Lines the step printed after its `::stop-commands::<token>` / `::<token>::` pair, i.e. the ones GitHub would act on. */
     function outputAfterResume(stdout: string): string[] {
       const lines = stdout.split(/\r?\n/);
@@ -347,13 +338,9 @@ describe.skipIf(!IMAGE)('docker image', () => {
     it('runs the hardened container, sets outputs and appends the Job Summary', () => {
       const r = runStep({});
 
-      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-      expect(r.outputs['exit-code']).toBe('2');
+      const report = stepReport(r, 2);
       expect(r.outputs['json-path']).toMatch(/dsgvo-check-report\/report\.json$/);
       expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
-
-      const report = readReport(r.outputs['json-path'] as string);
-      expectValidReport(report);
       expect(report.summary.exitReasons).toEqual(['invalid-input']);
       expect(report.disclaimer.lang).toBe('en');
 
@@ -379,11 +366,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
           { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
         );
 
-        expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-        expect(r.outputs['exit-code']).toBe(String(code));
-
-        const report = readReport(r.outputs['json-path'] as string);
-        expectValidReport(report);
+        const report = stepReport(r, code);
         expect(report.scan.status).not.toBe('failed');
         expect(report.summary.exitCode).toBe(code);
         expect(report.summary.exitReasons).toEqual(code === 1 ? ['threshold'] : []);
@@ -413,11 +396,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
       (inputs) => {
         const r = runStep(inputs);
 
-        expect(r.status, r.stderr).toBe(0);
-        expect(r.outputs['exit-code']).toBe('2');
-
-        const report = readReport(r.outputs['json-path'] as string);
-        expectValidReport(report);
+        const report = stepReport(r, 2);
         expect(report.scan.status).toBe('failed');
         expect(report.summary.exitCode).toBe(2);
         expect(report.summary.exitReasons).toContain('invalid-input');
@@ -439,14 +418,10 @@ describe.skipIf(!IMAGE)('docker image', () => {
         { 'dsgvo-check-report/snapshot.json': trackerSnapshot() },
       );
 
-      expect(r.status, r.stderr).toBe(0);
-      expect(r.outputs['exit-code']).toBe('1');
+      const report = stepReport(r, 1);
       expect(r.outputs['json-path']).toMatch(/dsgvo-check-report\/report\.json$/);
       expect(r.outputs['html-path']).toMatch(/dsgvo-check-report\/report\.html$/);
       expect(r.outputs['pdf-path']).toBe('');
-
-      const report = readReport(r.outputs['json-path'] as string);
-      expectValidReport(report);
       expect(report.scan.options?.failOn).toBe('warning');
       expect(report.summary.exitReasons).toEqual(['threshold']);
       expect(r.summary).toContain('Exit code **1**');
@@ -461,12 +436,8 @@ describe.skipIf(!IMAGE)('docker image', () => {
 
         const r = runStep({ DC_OUT: out });
 
-        expect(r.status, r.stderr).toBe(0);
-        expect(r.outputs['exit-code']).toBe('2');
+        const report = stepReport(r, 2);
         expect(path.dirname(r.outputs['json-path'] as string)).toBe(path.resolve(r.workspace, out));
-
-        const report = readReport(r.outputs['json-path'] as string);
-        expectValidReport(report);
         expect(report.summary.exitReasons).toEqual(['invalid-input']);
         expect(readFileSync(r.outputs['html-path'] as string, 'utf8')).toContain('dsgvo-check');
         expect(r.summary).toContain('Exit code **2**');
@@ -498,11 +469,7 @@ describe.skipIf(!IMAGE)('docker image', () => {
         },
       );
 
-      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-      expect(r.outputs['exit-code']).toBe('0');
-
-      const report = readReport(r.outputs['json-path'] as string);
-      expectValidReport(report);
+      const report = stepReport(r, 0);
       expect(findingCheckIds(report)).toContain('CONSENT-01');
       expect(r.summary).toContain('Exit code **0**');
       expect(outputAfterResume(r.stdout)).toEqual([]);

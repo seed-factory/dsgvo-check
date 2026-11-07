@@ -9,27 +9,22 @@ import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import type { TlsEndpoint } from '../../../src/core/snapshot/tls.ts';
 import { tlsFallbackEntry } from '../../../src/scan-collect.ts';
 import {
-  makeCert,
   makeChain,
-  makeHop,
   makeHttp,
   makeSnapshot,
   makeTarget,
   makeTls,
   makeTlsEndpoint,
 } from '../../utils/snapshot-builder.ts';
-
-const TARGET = 'https://broken.example.test/';
-const VIA = 'http://broken.example.test/';
-const RAW_FINAL = 'https://site.example.test/start?token=raw-fixture-7';
-const STORED_FINAL = 'https://site.example.test/start?token=[redacted]';
-
-/** An https hop as the HTTP collector stores it: Node's verdict of the connection. */
-const https = (url: string, status: number, over: Partial<HttpHop> = {}): HttpHop =>
-  makeHop({ url, status, tlsAuthorized: true, tlsAuthorizationError: null, ...over });
-
-const http = (url: string, status: number, location?: string): HttpHop =>
-  makeHop({ url, status, ...(location ? { location } : {}) });
+import {
+  brokenTarget,
+  httpHop as http,
+  httpsHop as https,
+  RAW_FINAL,
+  STORED_FINAL,
+  TARGET,
+  VIA,
+} from './fixtures.ts';
 
 const refused = { tlsAuthorized: false, tlsAuthorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT' };
 
@@ -48,14 +43,9 @@ function httpChain(hops: HttpHop[], over: Partial<RedirectChain> = {}): Redirect
 
 const REDIRECT = [http(VIA, 302, STORED_FINAL), https(STORED_FINAL, 200)];
 
-const brokenTarget = (host = 'broken.example.test'): TlsEndpoint =>
-  makeTlsEndpoint({
-    host,
-    authorized: false,
-    authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
-    hostnameMatches: false,
-    chain: [makeCert({ subject: 'CN=other.example.test', selfSigned: true })],
-  });
+/** The plain-http chain of the target: 302 to the other host, whose page answers `status`; `over` changes that hop. */
+const redirect = (status: number, over: Partial<HttpHop> = {}) =>
+  httpChain([http(VIA, 302, STORED_FINAL), https(STORED_FINAL, status, over)]);
 
 const siteEndpoint = (over: Partial<TlsEndpoint> = {}): TlsEndpoint =>
   makeTlsEndpoint({ host: 'site.example.test', role: 'final', ...over });
@@ -90,7 +80,7 @@ describe('tlsFallbackEntry — the redirect target of the plain-http address', (
     ['429 (a challenge the browser may pass)', 429],
     ['204', 204],
   ])('final status %s → entry', (_name, status) => {
-    const chains = [httpChain([http(VIA, 302, STORED_FINAL), https(STORED_FINAL, status)])];
+    const chains = [redirect(status)];
     expect(tlsFallbackEntry(snapshotWith({ chains }), handover(), 'http-redirect').entry).not.toBeNull();
   });
 
@@ -190,23 +180,14 @@ describe('tlsFallbackEntry — no entry, and why', () => {
     [
       'the verdict of an https hop is unknown (null, e.g. behind a proxy)',
       'invalid',
-      snapshotWith({
-        chains: [
-          httpChain([http(VIA, 302, STORED_FINAL), https(STORED_FINAL, 200, { tlsAuthorized: null })]),
-        ],
-      }),
+      snapshotWith({ chains: [redirect(200, { tlsAuthorized: null })] }),
       handover(),
     ],
     [
       'the certificate of the final host was refused on the hop',
       'invalid',
       snapshotWith({
-        chains: [
-          httpChain([
-            http(VIA, 302, STORED_FINAL),
-            https(STORED_FINAL, 200, { tlsAuthorized: false, tlsAuthorizationError: 'CERT_HAS_EXPIRED' }),
-          ]),
-        ],
+        chains: [redirect(200, { tlsAuthorized: false, tlsAuthorizationError: 'CERT_HAS_EXPIRED' })],
       }),
       handover(),
     ],
@@ -229,13 +210,7 @@ describe('tlsFallbackEntry — no entry, and why', () => {
       'invalid',
       snapshotWith({
         chains: [
-          httpChain([
-            http(VIA, 302, STORED_FINAL),
-            https(STORED_FINAL, 200, {
-              tlsAuthorized: false,
-              tlsAuthorizationError: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-            }),
-          ]),
+          redirect(200, { tlsAuthorized: false, tlsAuthorizationError: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }),
         ],
       }),
       handover(),
@@ -292,18 +267,8 @@ describe('tlsFallbackEntry — no entry, and why', () => {
       }),
       null,
     ],
-    [
-      'the page at the end answers 500',
-      'none',
-      snapshotWith({ chains: [httpChain([http(VIA, 302, STORED_FINAL), https(STORED_FINAL, 500)])] }),
-      handover(),
-    ],
-    [
-      'the page at the end answers 404',
-      'none',
-      snapshotWith({ chains: [httpChain([http(VIA, 302, STORED_FINAL), https(STORED_FINAL, 404)])] }),
-      handover(),
-    ],
+    ['the page at the end answers 500', 'none', snapshotWith({ chains: [redirect(500)] }), handover()],
+    ['the page at the end answers 404', 'none', snapshotWith({ chains: [redirect(404)] }), handover()],
     [
       'the target names an explicit port',
       'none',

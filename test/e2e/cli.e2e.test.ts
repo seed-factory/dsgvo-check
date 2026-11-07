@@ -97,6 +97,10 @@ describe('dsgvo-check CLI (dist) against local fixture sites', () => {
 
     const report = expectSafeReports(run) as FullReport;
     expect(env.server.unexpected).toEqual([]);
+    // The browser kept the HTTP cookie of the start page and sent it back, so the scan had its value to leak.
+    expect(env.server.requestsTo('www.tracker-shop.test').flatMap((r) => r.cookieNames)).toContain(
+      'shop_session',
+    );
     requirePipeline(report, ['CONSENT-01']);
     expect(run.code, `${run.stdout}\n${run.stderr}`).toBe(1);
     expect(report.summary.exitReasons).toContain('threshold');

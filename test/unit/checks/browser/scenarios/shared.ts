@@ -1,7 +1,7 @@
-import { BOT_USER_AGENT_SIGNAL, type BotSignal, type CmpSection } from '../../../../../src/cmp/types.ts';
+import { BOT_USER_AGENT_SIGNAL, type BotSignal } from '../../../../../src/cmp/types.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import type { FixtureExpect } from '../../../../utils/snapshot-builder.ts';
-import { cmpFacts, cmpWith, req } from '../helpers.ts';
+import { req } from '../helpers.ts';
 
 export const ORIGIN_IMG = 'https://www.example.de/wp-content/uploads';
 
@@ -30,30 +30,4 @@ export const ga = {
       eventType: 'page_view',
       ...p,
     }),
-};
-
-/** Reject confirmed by state: changed by our click (`action`), then read back after the reload. */
-export const confirmedReject = (): CmpSection => {
-  const denied = {
-    source: 'api',
-    ready: 'ready',
-    categories: { statistics: 'denied', marketing: 'denied' },
-    decision: { responded: true, method: 'explicit' },
-  } as const;
-  return cmpWith({
-    phase: 'B',
-    facts: [cmpFacts(), cmpFacts({ moment: 'after-reload', state: [{ ...denied, origin: 'stored' }] })],
-    click: {
-      action: 'reject',
-      clicked: true,
-      button: { name: 'Ablehnen', role: 'button', kind: 'reject', kindConfidence: 'high' },
-    },
-    verify: {
-      action: 'reject',
-      verified: true,
-      method: ['api:all-denied', 'persisted-after-reload'],
-      stateAfter: [{ ...denied, origin: 'action' }],
-      persistedAfterReload: true,
-    },
-  });
 };

@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../../src/checks/browser/legal-01.ts';
 import { matchLegalLink } from '../../../../../src/collectors/browser/legal/lexicon.ts';
 import { loadLegalLexicon } from '../../../../../src/collectors/browser/legal/lexicon-file.ts';
-import { type CandidateLink, findLegalLink } from '../../../../../src/collectors/browser/pages/pages.ts';
+import { findLegalLink } from '../../../../../src/collectors/browser/pages/pages.ts';
+import { link, scope, u } from '../../../../utils/candidate-links.ts';
 import { makeLink, observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
 import {
   defaultDocuments,
@@ -19,17 +20,6 @@ import {
 } from '../../../checks/browser/helpers.ts';
 
 const lex = loadLegalLexicon();
-const START = 'https://www.example.test/';
-const scope = { startRaw: START, finalHost: 'www.example.test', etld1: 'example.test' };
-let n = 0;
-const link = (p: Partial<CandidateLink> & { raw: string; text: string }): CandidateLink => ({
-  hrefKind: p.raw.startsWith('https:') ? 'https' : 'http',
-  region: 'footer',
-  visible: true,
-  order: n++,
-  ...p,
-});
-const u = (path: string) => `https://www.example.test${path}`;
 const privacy = (text: string, path: string) => matchLegalLink(lex, 'privacy', { text, path });
 
 describe('a false friend in the path does not hide a primary privacy key', () => {

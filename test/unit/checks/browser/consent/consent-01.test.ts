@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../../src/checks/browser/consent-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { Observation } from '../../../../../src/core/evaluation/check.ts';
 import type { RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
-import { observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
+import { named } from '../../../../utils/named-rows.ts';
+import { observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
 import type { SiteSpec } from '../helpers.ts';
 import {
   CONTACT,
@@ -52,51 +54,6 @@ describe('CONSENT-01 requests before interaction', () => {
     });
   });
 
-  it('clean: tracker only after accept (phase C) → nothing', () => {
-    expect(variantsOf(runCheck(consent01, scenario('clean-after-accept-only.json')))).toEqual([]);
-  });
-
-  it('inconclusive: direct bot signal → SCAN-BOTMODE diagnostic', () => {
-    const r = runCheck(consent01, scenario('inconclusive-bot-mode.json'));
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
-    expect(r.outcome?.diagnostics).toEqual([
-      { code: 'SCAN-BOTMODE', affects: ['CONSENT-01'], params: { signal: 'cookiebot:isSpider' } },
-    ]);
-  });
-
-  it('geo signal → inconclusive with SCAN-GEO', () => {
-    const r = run([phase('A', { requests: [req('a', 'https://connect.facebook.net/en_US/fbevents.js')] })], {
-      cmp: cmpWith({
-        phase: 'B',
-        facts: [cmpFacts({ geoSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isOutOfRegion' }] })],
-      }),
-    });
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'geo' });
-  });
-
-  it('counterexample: GTM library without a hit → library-loaded (warning), not a tracking hit', () => {
-    const r = run([
-      phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')] }),
-    ]);
-    expect(variantsOf(r)).toEqual(['library-loaded']);
-    expect(observationsOf(r)[0]).toMatchObject({ category: 'tag-manager', serviceId: 'google-tag-manager' });
-  });
-
-  it('counterexample: request blocked by CSP/browser → request-not-confirmed (info)', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://region1.google-analytics.com/g/collect?cid=[redacted]', {
-            state: 'blocked-by-browser',
-            identifierPresent: true,
-            status: undefined,
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['request-not-completed']);
-  });
-
   it('counterexample: only an unknown third-party domain → unknown-host (info), aggregated per eTLD+1', () => {
     const r = run([
       phase('A', {
@@ -117,185 +74,223 @@ describe('CONSENT-01 requests before interaction', () => {
     expect(obs[0]?.serviceId).toBeUndefined();
   });
 
-  it('cookieless Consent Mode ping → cookieless-ping (warning)', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]', {
-            resourceType: 'ping',
-            identifierPresent: true,
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['cookieless-ping']);
-  });
-
-  const gaHit = (id: string, p: Partial<Parameters<typeof req>[2]> = {}) =>
+  const gaHit = (id: string, p: Partial<RequestRecord> = {}) =>
     req(id, 'https://region1.google-analytics.com/g/collect?v=2&tid=G-1&cid=[redacted]&en=page_view', {
       resourceType: 'ping',
       ...p,
     });
+  const deniedPing = (p: Partial<RequestRecord> = {}) =>
+    req('a', 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]', {
+      resourceType: 'ping',
+      identifierPresent: true,
+      identifierNames: ['cid'],
+      ...p,
+    });
+  const gptJs = req('b', 'https://securepubads.g.doubleclick.net/tag/js/gpt.js');
+  const adManagerLibrary = [{ subject: 'google-ad-manager', variant: 'library-loaded' }];
 
-  it('GAM compression dictionary (resourceType other) and gpt.js → library-loaded, not cookieless-ping', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
-            resourceType: 'other',
-          }),
-          req('b', 'https://securepubads.g.doubleclick.net/tag/js/gpt.js'),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.subject, o.variant])).toEqual([
-      ['google-ad-manager', 'library-loaded'],
-    ]);
-  });
-
-  it('an `other` request on a path without a signature and gpt.js → library-loaded, not cookieless-ping', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://securepubads.g.doubleclick.net/pcs/anything', { resourceType: 'other' }),
-          req('b', 'https://securepubads.g.doubleclick.net/tag/js/gpt.js'),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.subject, o.variant])).toEqual([
-      ['google-ad-manager', 'library-loaded'],
-    ]);
-  });
-
-  it('counterexample: an ad request through fetch is still a hit (cookieless-ping without identifier)', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://securepubads.g.doubleclick.net/gampad/ads?iu=x', { resourceType: 'fetch' }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['cookieless-ping']);
-  });
-
-  it('Piano identity, experience and checkout calls over xhr/fetch (EU and non-EU hosts) → library-loaded, not cookieless-ping', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://id.piano.io/api/v1/identity/login/token?aid=x', { resourceType: 'xhr' }),
-          req('b', 'https://experience.piano.io/xbuilder/experience/execute?aid=x', {
-            resourceType: 'fetch',
-          }),
-          req('c', 'https://buy.piano.io/checkout/offer/show', { resourceType: 'fetch' }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.subject, o.variant, o.params.identifierKind])).toEqual([
-      ['piano', 'library-loaded', 'none'],
-    ]);
-  });
-
-  it('counterexample: the Piano engagement ping is still a hit (cookieless-ping without identifier)', () => {
-    const r = run([
-      phase('A', {
-        requests: [req('a', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['cookieless-ping']);
-  });
-
-  it('a Chartbeat ping or ScorecardResearch beacon before the interaction → cookieless-ping, not tracking-completed', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://ping.chartbeat.net/ping?h=example.de&p=%2F', { resourceType: 'image' }),
-          req('b', 'https://sb.scorecardresearch.com/b?c1=2&c2=1000', { resourceType: 'image' }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.subject, o.category, o.variant, o.params.identifierKind])).toEqual(
-      [
-        ['chartbeat', 'analytics', 'cookieless-ping', 'none'],
-        ['scorecardresearch', 'analytics', 'cookieless-ping', 'none'],
+  // Each row lists every observation of phase A in order, so their number is asserted as well.
+  const REQUEST_CASES: Array<{
+    name: string;
+    requests: RequestRecord[];
+    expected: Array<Partial<Observation>>;
+  }> = [
+    {
+      name: 'counterexample: GTM library without a hit → library-loaded (warning), not a tracking hit',
+      requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')],
+      expected: [{ variant: 'library-loaded', category: 'tag-manager', serviceId: 'google-tag-manager' }],
+    },
+    {
+      name: 'counterexample: request blocked by CSP/browser → request-not-confirmed (info)',
+      requests: [
+        req('a', 'https://region1.google-analytics.com/g/collect?cid=[redacted]', {
+          state: 'blocked-by-browser',
+          identifierPresent: true,
+          status: undefined,
+        }),
       ],
-    );
-  });
-
-  it('the Tealium library (utag.js) → library-loaded; a Chartbeat strategy call is no hit (counterexamples)', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://tags.tiqcdn.com/utag/acme/main/prod/utag.js', { resourceType: 'script' }),
-          req('b', 'https://mab.chartbeat.com/mab_strategy/example.de/', { resourceType: 'xhr' }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.subject, o.category, o.variant])).toEqual([
-      ['chartbeat', 'analytics', 'library-loaded'],
-      ['tealium', 'tag-manager', 'library-loaded'],
-    ]);
-  });
-
-  it('a GA4 hit issued by a service worker and answered by the network is tracking-completed, not request-not-completed', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          gaHit('a', {
-            fromServiceWorker: true,
-            state: 'completed',
-            delivery: 'sent',
-            result: { kind: 'response', status: 200 },
-            provenance: 'network',
-            matchesStoredIdentifier: true,
-            identifierPresent: true,
-            identifierNames: ['cid'],
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['tracking-completed']);
-  });
-
-  it('counterexample: the answer itself came from the service worker → request-not-completed', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          gaHit('a', {
-            fromServiceWorker: true,
-            state: 'from-sw',
-            provenance: 'service-worker',
-            matchesStoredIdentifier: true,
-            identifierPresent: true,
-            identifierNames: ['cid'],
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['request-not-completed']);
-  });
-
-  it('a redacted `cid` key with an empty value before redaction is no identifier → cookieless-ping', () => {
-    const r = run([phase('A', { requests: [gaHit('a', { identifierPresent: false })] })]);
-    expect(observationsOf(r).map((o) => [o.variant, o.params.identifierKind])).toEqual([
-      ['cookieless-ping', 'none'],
-    ]);
-  });
-
-  it('a per-load identifier (generic `uuid`, no stored match, no catalog param) → cookieless-ping (warning)', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://in.hotjar.com/api/v2/client', {
-            resourceType: 'xhr',
-            identifierPresent: true,
-            identifierNames: ['uuid'],
-          }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.variant, o.category, o.params.identifierKind])).toEqual([
-      ['cookieless-ping', 'session-recording', 'per-load'],
-    ]);
+      expected: [{ variant: 'request-not-completed' }],
+    },
+    {
+      name: 'GAM compression dictionary (resourceType other) and gpt.js → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
+          resourceType: 'other',
+        }),
+        gptJs,
+      ],
+      expected: adManagerLibrary,
+    },
+    {
+      name: 'an `other` request on a path without a signature and gpt.js → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/pcs/anything', { resourceType: 'other' }),
+        gptJs,
+      ],
+      expected: adManagerLibrary,
+    },
+    {
+      name: 'counterexample: an ad request through fetch is still a hit (cookieless-ping without identifier)',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/gampad/ads?iu=x', { resourceType: 'fetch' }),
+      ],
+      expected: [{ variant: 'cookieless-ping' }],
+    },
+    {
+      name: 'Piano identity, experience and checkout calls over xhr/fetch (EU and non-EU hosts) → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://id.piano.io/api/v1/identity/login/token?aid=x', { resourceType: 'xhr' }),
+        req('b', 'https://experience.piano.io/xbuilder/experience/execute?aid=x', { resourceType: 'fetch' }),
+        req('c', 'https://buy.piano.io/checkout/offer/show', { resourceType: 'fetch' }),
+      ],
+      expected: [{ subject: 'piano', variant: 'library-loaded', params: { identifierKind: 'none' } }],
+    },
+    {
+      name: 'counterexample: the Piano engagement ping is still a hit (cookieless-ping without identifier)',
+      requests: [req('a', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
+      expected: [{ variant: 'cookieless-ping' }],
+    },
+    {
+      name: 'a Chartbeat ping or ScorecardResearch beacon before the interaction → cookieless-ping, not tracking-completed',
+      requests: [
+        req('a', 'https://ping.chartbeat.net/ping?h=example.de&p=%2F', { resourceType: 'image' }),
+        req('b', 'https://sb.scorecardresearch.com/b?c1=2&c2=1000', { resourceType: 'image' }),
+      ],
+      expected: [
+        {
+          subject: 'chartbeat',
+          category: 'analytics',
+          variant: 'cookieless-ping',
+          params: { identifierKind: 'none' },
+        },
+        {
+          subject: 'scorecardresearch',
+          category: 'analytics',
+          variant: 'cookieless-ping',
+          params: { identifierKind: 'none' },
+        },
+      ],
+    },
+    {
+      name: 'the Tealium library (utag.js) → library-loaded; a Chartbeat strategy call is no hit (counterexamples)',
+      requests: [
+        req('a', 'https://tags.tiqcdn.com/utag/acme/main/prod/utag.js', { resourceType: 'script' }),
+        req('b', 'https://mab.chartbeat.com/mab_strategy/example.de/', { resourceType: 'xhr' }),
+      ],
+      expected: [
+        { subject: 'chartbeat', category: 'analytics', variant: 'library-loaded' },
+        { subject: 'tealium', category: 'tag-manager', variant: 'library-loaded' },
+      ],
+    },
+    {
+      name: 'a GA4 hit issued by a service worker and answered by the network is tracking-completed, not request-not-completed',
+      requests: [
+        gaHit('a', {
+          fromServiceWorker: true,
+          state: 'completed',
+          delivery: 'sent',
+          result: { kind: 'response', status: 200 },
+          provenance: 'network',
+          matchesStoredIdentifier: true,
+          identifierPresent: true,
+          identifierNames: ['cid'],
+        }),
+      ],
+      expected: [{ variant: 'tracking-completed' }],
+    },
+    {
+      name: 'counterexample: the answer itself came from the service worker → request-not-completed',
+      requests: [
+        gaHit('a', {
+          fromServiceWorker: true,
+          state: 'from-sw',
+          provenance: 'service-worker',
+          matchesStoredIdentifier: true,
+          identifierPresent: true,
+          identifierNames: ['cid'],
+        }),
+      ],
+      expected: [{ variant: 'request-not-completed' }],
+    },
+    {
+      name: 'a redacted `cid` key with an empty value before redaction is no identifier → cookieless-ping',
+      requests: [gaHit('a', { identifierPresent: false })],
+      expected: [{ variant: 'cookieless-ping', params: { identifierKind: 'none' } }],
+    },
+    {
+      name: 'a per-load identifier (generic `uuid`, no stored match, no catalog param) → cookieless-ping (warning)',
+      requests: [
+        req('a', 'https://in.hotjar.com/api/v2/client', {
+          resourceType: 'xhr',
+          identifierPresent: true,
+          identifierNames: ['uuid'],
+        }),
+      ],
+      expected: [
+        { variant: 'cookieless-ping', category: 'session-recording', params: { identifierKind: 'per-load' } },
+      ],
+    },
+    {
+      name: 'response headers received, then the body aborted (beacon on navigation) → still a completed hit',
+      requests: [
+        gaHit('a', {
+          identifierPresent: true,
+          identifierNames: ['cid'],
+          state: 'failed',
+          status: 204,
+          delivery: 'sent',
+          result: { kind: 'failed', errorText: 'net::ERR_ABORTED' },
+        }),
+      ],
+      expected: [{ variant: 'tracking-completed' }],
+    },
+    {
+      name: 'Consent Mode denied does not hide a stored identifier match → tracking-completed',
+      requests: [deniedPing({ matchesStoredIdentifier: true })],
+      expected: [
+        {
+          variant: 'tracking-completed',
+          params: { identifierKind: 'stored-match', consentModeDenied: true },
+        },
+      ],
+    },
+    {
+      name: 'counterexample: denied ping whose `cid` is only a catalog param (per-load in Consent Mode) → cookieless-ping',
+      requests: [deniedPing()],
+      expected: [{ variant: 'cookieless-ping', params: { consentModeDenied: true } }],
+    },
+    {
+      name: 'a main-frame navigation to a third party (redirect via CMP or SSO) is no request finding',
+      requests: [
+        req('a', 'https://consent.cookiebot.com/redirect', { resourceType: 'document', isNavigation: true }),
+        req('b', 'https://connect.facebook.net/en_US/fbevents.js', {
+          resourceType: 'document',
+          isNavigation: true,
+          isMainFrame: true,
+        }),
+      ],
+      expected: [],
+    },
+    {
+      name: 'first-party proxy (tag gateway) → first-party-proxy with medium confidence',
+      requests: [
+        req('a', `${START}metrics/g/collect?v=2&tid=G-1&cid=[redacted]`, { identifierPresent: true }),
+      ],
+      expected: [{ variant: 'first-party-proxy', confidence: 'medium', subject: 'google-analytics' }],
+    },
+    {
+      name: 'routing: fonts, maps and video belong to EMBED-* and are not reported here; first-party assets never',
+      requests: [
+        req('a', 'https://fonts.gstatic.com/s/x.woff2', { resourceType: 'font' }),
+        req('b', 'https://www.google.com/maps/embed?pb=[redacted]', { resourceType: 'document' }),
+        req('c', 'https://www.youtube-nocookie.com/embed/abc', { resourceType: 'document' }),
+        req('d', `${START}app.js`),
+      ],
+      expected: [],
+    },
+  ];
+  it.each(named(REQUEST_CASES))('%s', (_name, { requests, expected }) => {
+    expect(observationsOf(run([phase('A', { requests })]))).toMatchObject(expected);
   });
 
   it.each<[string, Partial<RequestRecord>]>([
@@ -306,59 +301,6 @@ describe('CONSENT-01 requests before interaction', () => {
     const r = run([phase('A', { requests: [gaHit('a', { identifierPresent: true, ...p })] })]);
     expect(observationsOf(r).map((o) => [o.variant, o.params.identifierKind])).toEqual([
       ['tracking-completed', kind],
-    ]);
-  });
-
-  it('response headers received, then the body aborted (beacon on navigation) → still a completed hit', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          gaHit('a', {
-            identifierPresent: true,
-            identifierNames: ['cid'],
-            state: 'failed',
-            status: 204,
-            delivery: 'sent',
-            result: { kind: 'failed', errorText: 'net::ERR_ABORTED' },
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual(['tracking-completed']);
-  });
-
-  it('Consent Mode denied does not hide a stored identifier match → tracking-completed', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]', {
-            resourceType: 'ping',
-            identifierPresent: true,
-            identifierNames: ['cid'],
-            matchesStoredIdentifier: true,
-          }),
-        ],
-      }),
-    ]);
-    expect(
-      observationsOf(r).map((o) => [o.variant, o.params.identifierKind, o.params.consentModeDenied]),
-    ).toEqual([['tracking-completed', 'stored-match', true]]);
-  });
-
-  it('counterexample: denied ping whose `cid` is only a catalog param (per-load in Consent Mode) → cookieless-ping', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]', {
-            resourceType: 'ping',
-            identifierPresent: true,
-            identifierNames: ['cid'],
-          }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r).map((o) => [o.variant, o.params.consentModeDenied])).toEqual([
-      ['cookieless-ping', true],
     ]);
   });
 
@@ -377,25 +319,6 @@ describe('CONSENT-01 requests before interaction', () => {
     },
   );
 
-  it('a main-frame navigation to a third party (redirect via CMP or SSO) is no request finding', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://consent.cookiebot.com/redirect', {
-            resourceType: 'document',
-            isNavigation: true,
-          }),
-          req('b', 'https://connect.facebook.net/en_US/fbevents.js', {
-            resourceType: 'document',
-            isNavigation: true,
-            isMainFrame: true,
-          }),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual([]);
-  });
-
   it('start page hit without an observed phase B → no `replicated` claim either way', () => {
     const r = run([
       phase('A', { requests: [gaHit('a', { identifierPresent: true, identifierNames: ['cid'] })] }),
@@ -404,35 +327,6 @@ describe('CONSENT-01 requests before interaction', () => {
     const [o] = observationsOf(r);
     expect(o?.variant).toBe('tracking-completed');
     expect(o?.replicated).toBeUndefined();
-  });
-
-  it('first-party proxy (tag gateway) → first-party-proxy with medium confidence', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', `${START}metrics/g/collect?v=2&tid=G-1&cid=[redacted]`, { identifierPresent: true }),
-        ],
-      }),
-    ]);
-    expect(observationsOf(r)[0]).toMatchObject({
-      variant: 'first-party-proxy',
-      confidence: 'medium',
-      subject: 'google-analytics',
-    });
-  });
-
-  it('routing: fonts, maps and video belong to EMBED-* and are not reported here; first-party assets never', () => {
-    const r = run([
-      phase('A', {
-        requests: [
-          req('a', 'https://fonts.gstatic.com/s/x.woff2', { resourceType: 'font' }),
-          req('b', 'https://www.google.com/maps/embed?pb=[redacted]', { resourceType: 'document' }),
-          req('c', 'https://www.youtube-nocookie.com/embed/abc', { resourceType: 'document' }),
-          req('d', `${START}app.js`),
-        ],
-      }),
-    ]);
-    expect(variantsOf(r)).toEqual([]);
   });
 
   it('requests after the click in B and in C are not "before interaction"; A not replicated in B → replicated: false', () => {

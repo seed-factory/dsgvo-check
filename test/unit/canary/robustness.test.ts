@@ -14,31 +14,10 @@ import {
   type SiteJob,
   type SiteScanner,
 } from '../../../scripts/canary/scanners.ts';
-import { parseSites } from '../../../scripts/canary/sites.ts';
 import { OWNER_MARKER, PROFILE_PREFIX } from '../../../src/collectors/browser/launch/profile.ts';
+import { runOptions, sites } from './runner-inputs.ts';
 
 afterEach(() => vi.unstubAllEnvs());
-
-const sites = () =>
-  parseSites(
-    JSON.stringify({
-      version: 1,
-      sites: [
-        {
-          id: 'de-s0',
-          url: 'https://www.s0.example/',
-          region: 'de',
-          country: 'DE',
-          sector: 'media',
-          sizeClass: 'medium',
-          expectedCmp: 'unknown',
-          selectionReason: 'Branchenmix',
-          publicReference: null,
-        },
-      ],
-    }),
-    { expectedCount: null },
-  );
 
 describe('run.json records the CA setting of the scanning process', () => {
   it('api engine: command-line flag, NODE_OPTIONS and NODE_USE_SYSTEM_CA all count', () => {
@@ -119,18 +98,7 @@ describe('run.json records the CA setting of the scanning process', () => {
     };
 
     await runCanary(
-      {
-        sites: sites(),
-        resultsDir: dir,
-        runId: 'run-ca',
-        concurrency: 1,
-        pauseMs: 0,
-        timeoutMs: 1000,
-        watchdogReserveMs: 1000,
-        retryErrors: false,
-        engine: 'api',
-        sitesFile: null,
-      },
+      runOptions(dir, sites(1), { runId: 'run-ca', concurrency: 1, pauseMs: 0, sitesFile: null }),
       { scanner, sleep: async () => {}, log: () => {} },
     );
 
@@ -183,7 +151,7 @@ setInterval(() => {}, 1000);
     const jobDir = path.join(root, 'job');
     mkdirSync(jobDir);
     const job: SiteJob = {
-      site: sites()[0] as never,
+      site: sites(1)[0] as never,
       mode: 'scan',
       dir: jobDir,
       reportPath: path.join(jobDir, 'report.json'),

@@ -136,47 +136,38 @@ describe('a start page that redirects to another domain', () => {
     }
   }, 60_000);
 
-  it('with an invalid certificate on the scanned host the browser starts on the redirect target, which is checked', async () => {
+  /** The scan when the certificate of the scanned host is invalid: the redirect target is checked all the same. */
+  async function scanWithInvalidCertificate(config: ScanOptions['config'] = {}): Promise<ScanResult> {
     const server = await startFixtureServer({
       sites: ['pipeline/mail-redirect'],
       tls: { 'www.example.test': 'self-signed' },
     });
     try {
       dns.setZone(zone);
-      const result = await scanWith(server, dns, ['MAIL-01', 'MAIL-02', 'TLS-02', 'LEGAL-01']);
-
-      expect(result.snapshot?.collection.browser?.status).not.toBe('skipped');
-      expect(result.snapshot?.target.finalHost).toBe('www.example-final.test');
+      const result = await scanWith(server, dns, ['MAIL-01', 'MAIL-02', 'TLS-02', 'LEGAL-01'], config);
       expect(dns.requests).toContain('TXT _dmarc.www.example-final.test');
       expect(mailFindings(result.report as FullReport)).toEqual([
         'MAIL-01.record-not-found:final:example-final.test',
       ]);
+      return result;
     } finally {
       await server.close();
     }
+  }
+
+  it('with an invalid certificate on the scanned host the browser starts on the redirect target, which is checked', async () => {
+    const result = await scanWithInvalidCertificate();
+
+    expect(result.snapshot?.collection.browser?.status).not.toBe('skipped');
+    expect(result.snapshot?.target.finalHost).toBe('www.example-final.test');
   }, 60_000);
 
   it('with an invalid certificate on the scanned host and the fallback off (browser not started) the redirect target is still checked', async () => {
-    const server = await startFixtureServer({
-      sites: ['pipeline/mail-redirect'],
-      tls: { 'www.example.test': 'self-signed' },
-    });
-    try {
-      dns.setZone(zone);
-      const result = await scanWith(server, dns, ['MAIL-01', 'MAIL-02', 'TLS-02', 'LEGAL-01'], {
-        scan: { tlsFallback: 'off' },
-      });
+    const result = await scanWithInvalidCertificate({ scan: { tlsFallback: 'off' } });
 
-      expect(result.snapshot?.collection.browser).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
-      expect(dns.requests).toContain('TXT _dmarc.www.example-final.test');
-      expect(mailFindings(result.report as FullReport)).toEqual([
-        'MAIL-01.record-not-found:final:example-final.test',
-      ]);
-      // No Impressum was read: the report says the mail domains of the Impressum were not collected.
-      const mail01 = (result.report as FullReport).checks.find((c) => c.id === 'MAIL-01');
-      expect(mail01?.limitations).toContain('mail-domains-not-collected');
-    } finally {
-      await server.close();
-    }
+    expect(result.snapshot?.collection.browser).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
+    // No Impressum was read: the report says the mail domains of the Impressum were not collected.
+    const mail01 = (result.report as FullReport).checks.find((c) => c.id === 'MAIL-01');
+    expect(mail01?.limitations).toContain('mail-domains-not-collected');
   }, 60_000);
 });

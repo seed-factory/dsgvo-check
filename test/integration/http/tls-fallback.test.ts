@@ -14,6 +14,7 @@ import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
 import { type FixtureServer, SITES_DIR, startFixtureServer } from '../../fixture-server/server.ts';
+import { cleanLegalPages } from '../../fixture-server/sites.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { testDataDir } from '../../utils/scan-harness.ts';
 import { stubCmpApi } from '../browser/consent/stub-cmp.ts';
@@ -50,6 +51,7 @@ beforeAll(async () => {
       'expired-site.example.test': 'expired',
     },
     routes: [
+      ...cleanLegalPages('site.example.test'),
       redirect('broken.example.test', `https://site.example.test/?token=${RAW_TOKEN}`),
       redirect('broken-private.example.test', 'https://intranet.example.test/'),
       redirect('broken-expired.example.test', 'https://expired-site.example.test/'),

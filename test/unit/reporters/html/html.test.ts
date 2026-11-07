@@ -21,18 +21,11 @@ import { buildReportView, findingText } from '../../../../src/reporters/report-v
 import { escapeHtml } from '../../../../src/reporters/template.ts';
 import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
 import { cspOf, htmlSafetyProblems, tagsOf } from '../../../utils/report/html-safety.ts';
+import { reporterContext, withTrackerHitMessage } from '../../../utils/report/reporter-inputs.ts';
 import { reportLabelKeys, usedReportLabelKeys } from './report-label-keys.ts';
 
-const ctx = (lang: 'de' | 'en' = 'de', outDir = '/nonexistent-out'): ReporterContext => {
-  const texts = loadTexts(lang);
-  // A template with external params, so escaping of params is exercised (browser texts may include external parameters).
-  texts.messages['CONSENT-01.tracker-hit'] = {
-    title: 'Tracker {service} auf {host} beobachtet',
-    body: 'Anfrage an {host} vor einer Einwilligung beobachtet.',
-    draft: true,
-  };
-  return { texts, lang, outDir, color: false };
-};
+const ctx = (lang: 'de' | 'en' = 'de', outDir = '/nonexistent-out'): ReporterContext =>
+  withTrackerHitMessage(reporterContext(lang, { outDir }));
 
 const fp = (n: number) => `sha256:${n.toString(16).padStart(64, '0')}`;
 
@@ -405,39 +398,25 @@ describe('HTML report: sections and content', () => {
 });
 
 describe('HTML report: grouping by service', () => {
-  const finding = (n: number, p: Partial<Finding>): Finding => ({
-    ...sampleFullReport().findings[1]!,
-    fingerprint: fp(n),
-    evidenceIds: [],
-    related: [],
-    ...p,
-  });
+  /** A finding of the check and variant its message id names, without evidence. */
+  const finding = (
+    n: number,
+    messageId: string,
+    severity: Finding['severity'],
+    serviceId?: string,
+  ): Finding => {
+    const [checkId, variant] = messageId.split('.') as [string, string];
+    const base = { ...sampleFullReport().findings[1]!, fingerprint: fp(n), evidenceIds: [], related: [] };
+    return { ...base, checkId, variant, messageId, severity, ...(serviceId ? { serviceId } : {}) };
+  };
 
   it('groups findings by serviceId, strongest group first, unassigned last', () => {
     const r = sampleFullReport();
     r.findings = [
-      finding(10, { checkId: 'CONSENT-04', variant: 'banner-not-recognized', severity: 'info' }),
-      finding(11, {
-        checkId: 'EMBED-01',
-        variant: 'fonts-loaded',
-        messageId: 'EMBED-01.fonts-loaded',
-        severity: 'warning',
-        serviceId: 'google-fonts',
-      }),
-      finding(12, {
-        checkId: 'TRACK-01',
-        variant: 'inventory',
-        messageId: 'TRACK-01.inventory',
-        severity: 'info',
-        serviceId: 'google-analytics-4',
-      }),
-      finding(13, {
-        checkId: 'CONSENT-01',
-        variant: 'tracker-hit',
-        messageId: 'CONSENT-01.tracker-hit',
-        severity: 'critical',
-        serviceId: 'google-analytics-4',
-      }),
+      finding(10, 'CONSENT-04.banner-not-recognized', 'info'),
+      finding(11, 'EMBED-01.fonts-loaded', 'warning', 'google-fonts'),
+      finding(12, 'TRACK-01.inventory', 'info', 'google-analytics-4'),
+      finding(13, 'CONSENT-01.tracker-hit', 'critical', 'google-analytics-4'),
     ];
     const html = renderHtml(r, ctx());
 
@@ -641,22 +620,9 @@ describe('HTML report: settings that differ from the defaults', () => {
   });
 });
 
+// Stop words in these labels are blocked by stopwords.test.ts, which reads every text file the labels come from.
 describe('report labels', () => {
-  const STOP = [
-    /verstößt|verstoß/i,
-    /rechtswidrig/i,
-    /unzulässig/i,
-    /dsgvo-konform/i,
-    /datenschutzkonform/i,
-    /rechtskonform/i,
-    /illegal/i,
-    /violat/i,
-    /unlawful/i,
-    /non-compliant/i,
-    /in breach/i,
-  ];
-
-  it('every label key exists in de and en data with the same parameters and no stop words', () => {
+  it('every label key exists in de and en data with the same parameters', () => {
     const params = (t: string) => templateParams(t).sort();
     const de = loadTexts('de').ui;
     const en = loadTexts('en').ui;
@@ -675,10 +641,6 @@ describe('report labels', () => {
       expect(e, `en ${key}`).toBeTypeOf('string');
 
       expect(params(e as string), key).toEqual(params(d as string));
-      for (const re of STOP) {
-        expect(d, key).not.toMatch(re);
-        expect(e, key).not.toMatch(re);
-      }
     }
   });
 

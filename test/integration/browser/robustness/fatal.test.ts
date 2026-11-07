@@ -58,7 +58,7 @@ describe('fatal start-page conditions', () => {
     });
 
     expect(run.result.fatal).toBeUndefined();
-    expect(run.result.status).toBe('partial');
+    expect(run.result).toMatchObject({ status: 'partial', reason: 'throttled' });
     expect(run.result.diagnostics?.map((d) => d.code)).toContain('SCAN-THROTTLED');
     expect(run.result.sections.browser?.phases.map((p) => [p.phase, p.status, p.reason])).toEqual([
       ['A', 'partial', 'throttled'],

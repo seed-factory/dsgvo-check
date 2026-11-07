@@ -9,8 +9,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Report } from '../../../src/core/report/schema.ts';
 import { type FixtureServer, type RouteSpec, startFixtureServer } from '../../fixture-server/server.ts';
+import { type FakeDnsServer, type FakeZone, startFakeDns } from '../../integration/dns/dns-server.ts';
 import { REPO_ROOT } from '../../utils/snapshot-builder.ts';
-import { type FakeDnsServer, startFakeDns } from './dns-server.ts';
 import type { E2eNetworkConfig } from './network-hook.ts';
 
 /** Built CLI; `DSGVO_E2E_CLI` points to another build (e.g. an installed package) and skips the build step. */
@@ -70,19 +70,37 @@ function fixtureRoutes(): RouteSpec[] {
     routes.push(redirectAll(`www.${domain}`, 'http', home));
   }
   routes.push({ host: ANALYTICS_HOST, path: '/g/collect', status: 204 });
+  // The tracker start page also sets a session cookie over HTTP, so the leak checks cover a Set-Cookie value, not
+  // only the values analytics.js writes in the page.
+  routes.push({
+    host: 'www.tracker-shop.test',
+    scheme: 'https',
+    path: '/',
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'set-cookie': `shop_session=${SECRET_MARKER}-SESSION-4711; Path=/; Secure; HttpOnly; SameSite=Lax`,
+    },
+    body: readFileSync(path.join(SITES, 'tracker/www/index.html'), 'utf8'),
+  });
   return routes;
 }
 
-/** Mail records the DNS checks read: the fixture domains neither send nor accept mail (SPF -all, DMARC reject, null MX). */
+/**
+ * Mail records the DNS checks read: the fixture domains neither send nor accept mail (SPF -all, DMARC reject, null MX).
+ * The site names resolve to loopback, where the fixture server listens; every other name is NXDOMAIN.
+ */
 function startFixtureDns(): Promise<FakeDnsServer> {
-  const mail = (domain: string) => ({
-    [`_dmarc.${domain}`]: [`v=DMARC1; p=reject; rua=mailto:dmarc@${domain}`],
-    [domain]: ['v=spf1 -all'],
+  const mail = (domain: string): FakeZone => ({
+    [`TXT _dmarc.${domain}`]: [`v=DMARC1; p=reject; rua=mailto:dmarc@${domain}`],
+    [`TXT ${domain}`]: ['v=spf1 -all'],
+    [`MX ${domain}`]: ['0 .'],
+    [`A ${domain}`]: ['127.0.0.1'],
+    [`A www.${domain}`]: ['127.0.0.1'],
   });
   return startFakeDns({
-    txt: { ...mail('clean-shop.test'), ...mail('tracker-shop.test') },
-    mx: { 'clean-shop.test': [[0, '.']], 'tracker-shop.test': [[0, '.']] },
-    names: ['www.clean-shop.test', 'www.tracker-shop.test', ANALYTICS_HOST],
+    ...mail('clean-shop.test'),
+    ...mail('tracker-shop.test'),
+    [`A ${ANALYTICS_HOST}`]: ['127.0.0.1'],
   });
 }
 
@@ -97,7 +115,7 @@ export async function startE2eEnvironment(): Promise<E2eEnvironment> {
     hosts: [...Object.keys(FIXTURE_HOSTS), ...SHOP_DOMAINS],
     browserArgs: server.browserArgs(),
     caPem: [server.pki.caPem],
-    dnsServers: [dns.address],
+    dnsServers: [dns.server],
   };
 
   return {

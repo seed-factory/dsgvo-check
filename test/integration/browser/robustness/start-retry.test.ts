@@ -11,9 +11,7 @@ import {
   startFixtureServer,
 } from '../../../fixture-server/server.ts';
 import { type CollectRun, collect, FAST_TIMING } from '../helpers.ts';
-
-const html = (title: string, body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
+import { html } from '../site-dir.ts';
 
 type Attempt = 'stall' | 'silent' | 503 | 'ok';
 type Respond = (req: IncomingMessage, res: ServerResponse) => void;

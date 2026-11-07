@@ -16,52 +16,24 @@
     "finalHost": "www.example.test"
   },
   "http": {
-    "userAgent": "dsgvo-check/test",
     "chains": [
       {
         "id": "chain-www-http",
-        "hostVariant": "target",
-        "host": "www.example.test",
-        "scheme": "http",
         "hops": [
           {
-            "status": 200,
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 20,
-            "requestedAt": "2026-10-30T12:00:00.000Z",
             "url": "http://www.example.test/",
+            "status": 200,
             "bodyBytes": 50000,
             "bodyKind": "html",
             "hasForm": false
           }
         ],
-        "final": {
-          "status": 200,
-          "headers": [],
-          "setCookieNames": [],
-          "durationMs": 20,
-          "requestedAt": "2026-10-30T12:00:00.000Z",
-          "url": "http://www.example.test/",
-          "bodyBytes": 50000,
-          "bodyKind": "html",
-          "hasForm": false
-        },
-        "outcome": "ok",
         "startUrl": "http://www.example.test/"
       },
       {
         "id": "chain-www-https",
-        "hostVariant": "target",
-        "host": "www.example.test",
-        "scheme": "https",
         "hops": [
           {
-            "status": 200,
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 20,
-            "requestedAt": "2026-10-30T12:00:00.000Z",
             "url": "https://www.example.test/",
             "bodyBytes": 20000,
             "bodyKind": "html",
@@ -70,29 +42,11 @@
             "tlsProtocol": "TLSv1.3"
           }
         ],
-        "final": {
-          "status": 200,
-          "headers": [],
-          "setCookieNames": [],
-          "durationMs": 20,
-          "requestedAt": "2026-10-30T12:00:00.000Z",
-          "url": "https://www.example.test/",
-          "bodyBytes": 20000,
-          "bodyKind": "html",
-          "tlsAuthorized": true,
-          "tlsAuthorizationError": null,
-          "tlsProtocol": "TLSv1.3"
-        },
-        "outcome": "ok",
         "startUrl": "https://www.example.test/"
       },
       {
         "id": "chain-apex-http",
         "hostVariant": "apex",
-        "host": "example.test",
-        "scheme": "http",
-        "hops": [],
-        "final": null,
         "outcome": "connection-refused",
         "startUrl": "http://example.test/",
         "error": {
@@ -101,10 +55,7 @@
         }
       }
     ],
-    "documents": [],
-    "requestsIssued": 3,
-    "throttled": false,
-    "errors": []
+    "requestsIssued": 3
   },
   "collection": {
     "browser": {

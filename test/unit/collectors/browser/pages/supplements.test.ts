@@ -7,18 +7,7 @@ import {
   pageKey,
   privacySupplements,
 } from '../../../../../src/collectors/browser/pages/pages.ts';
-
-const START = 'https://www.example.test/';
-const u = (path: string) => `https://www.example.test${path}`;
-let n = 0;
-const link = (p: Partial<CandidateLink> & { raw: string; text: string }): CandidateLink => ({
-  hrefKind: p.raw.startsWith('https:') ? 'https' : 'http',
-  region: 'footer',
-  visible: true,
-  order: n++,
-  ...p,
-});
-const scope = { startRaw: START, finalHost: 'www.example.test', etld1: 'example.test' };
+import { link, START, scope, u } from '../../../../utils/candidate-links.ts';
 
 /** The supplements beside the policy the links lead to, as `selectPages` would have chosen it. */
 function supplements(links: CandidateLink[], max = 1, start = START, lang?: string) {

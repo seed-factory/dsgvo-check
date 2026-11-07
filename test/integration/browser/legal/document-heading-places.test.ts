@@ -2,30 +2,20 @@
  * Which headings confirm the type of a fetched legal page: only those of the content, not of navigation, aside, footer,
  * page-level header or hidden elements (one chrome/content classifier also serves the manifest). Real Chromium.
  */
-import type { Page } from 'playwright-core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { extractDocument } from '../../../../src/collectors/browser/legal/documents.ts';
 import type { DocumentKind } from '../../../../src/core/snapshot/browser.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
-import { launchTestBrowser, type TestBrowser } from '../../../utils/browser.ts';
-import { type SiteDir, writeSite } from '../site-dir.ts';
+import { html, LOREM, useSite } from '../site-dir.ts';
 
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
 const BODY_TEXT = `<p>${LOREM.repeat(6)}</p>`;
 
-let server: FixtureServer;
-let site: SiteDir;
-let browser: TestBrowser;
-let tab: Page;
 const files: Record<string, string> = {};
 let seq = 0;
 
 /** Registers a page and returns its path. */
 function add(body: string, title = 'Muster GmbH'): string {
   const name = `p${++seq}`;
-  files[`${name}/index.html`] =
-    `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
+  files[`${name}/index.html`] = html(title, body);
   return `/${name}/`;
 }
 
@@ -211,22 +201,11 @@ for (const [name, open, close, where] of H1_WRAPPERS) {
       : add(`${open}<h1>Impressum</h1>${close}<main><h2>Leistungen</h2>${IMPRESSUM_BODY}</main>`);
 }
 
-beforeAll(async () => {
-  site = writeSite(files);
-  server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
-  browser = await launchTestBrowser(server);
-  tab = await browser.context.newPage();
-});
-
-afterAll(async () => {
-  await browser?.close();
-  await server?.close();
-  site?.cleanup();
-});
+const site = useSite(files, { browser: true });
 
 async function extract(path: string, kind: DocumentKind) {
-  await tab.goto(`https://www.example.test${path}`);
-  return extractDocument(tab, {
+  await site.tab.goto(`https://www.example.test${path}`);
+  return extractDocument(site.tab, {
     id: `doc-${kind}-1`,
     kind,
     phase: 'A',

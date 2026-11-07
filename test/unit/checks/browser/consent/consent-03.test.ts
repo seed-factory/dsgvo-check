@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { consent03 } from '../../../../../src/checks/browser/consent-03.ts';
-import type { CmpFacts } from '../../../../../src/cmp/types.ts';
+import type { CmpFirstLayer } from '../../../../../src/cmp/types.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { makeCmpFacts, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
-import { cmpFacts, cmpWith, cookie, defaultPages, phase, req, START, site, storage } from '../helpers.ts';
+import {
+  cmpFacts,
+  cmpWith,
+  cookie,
+  defaultPages,
+  firstLayer,
+  phase,
+  req,
+  START,
+  site,
+  storage,
+} from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
 const scenario = (file: string) => SCENARIOS['CONSENT-03']!.find((s) => s.file === file)!.build();
@@ -14,6 +25,22 @@ const gaHit = (id = 'a', p: Partial<Parameters<typeof req>[2]> = {}) =>
     identifierPresent: true,
     identifierNames: ['cid'],
     ...p,
+  });
+
+/** Phase A facts of a banner the generic heuristic found, with no CMP behind it. */
+const heuristicCandidate = (signals: string[], p: Partial<CmpFirstLayer> = {}) =>
+  makeCmpFacts({
+    phase: 'A',
+    pageUrl: START,
+    detection: {
+      cmpId: null,
+      method: 'heuristic',
+      version: null,
+      versionSupported: null,
+      recognitionConfidence: 'low',
+      signals,
+    },
+    firstLayer: firstLayer(p),
   });
 
 describe('CONSENT-03 no consent dialog', () => {
@@ -28,52 +55,12 @@ describe('CONSENT-03 no consent dialog', () => {
     expect(o?.evidence.some((e) => e.type === 'page')).toBe(true);
   });
 
-  it('clean: only fonts and CDN → not CONSENT-03', () => {
-    expect(variantsOf(runCheck(consent03, scenario('clean-fonts-only.json')))).toEqual([]);
-  });
-
-  it('inconclusive: direct geo signal → SCAN-GEO', () => {
-    const r = runCheck(consent03, scenario('inconclusive-geo.json'));
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'geo' });
-    expect(r.outcome?.diagnostics?.[0]).toMatchObject({ code: 'SCAN-GEO', affects: ['CONSENT-03'] });
-  });
-
   it('region not asserted → warning variant even with strong tracking', () => {
     const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] }));
     expect(observationsOf(r)[0]).toMatchObject({
       variant: 'no-banner-consent-services',
       params: { regionAsserted: false },
     });
-  });
-
-  it('counterexample: a heuristic banner candidate is CONSENT-04 territory, not "no banner"', () => {
-    const cmp = cmpWith({
-      phase: 'A',
-      facts: [
-        makeCmpFacts({
-          phase: 'A',
-          pageUrl: START,
-          detection: {
-            cmpId: null,
-            method: 'heuristic',
-            version: null,
-            versionSupported: null,
-            recognitionConfidence: 'low',
-            signals: ['heuristic:dialog'],
-          },
-          firstLayer: {
-            bannerPresent: true,
-            bannerVisible: true,
-            buttons: [],
-            purAbo: false,
-            closeMeansAccept: null,
-          },
-        }),
-      ],
-    });
-    expect(
-      variantsOf(runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })], cmp }))),
-    ).toEqual([]);
   });
 
   it('a recognised CMP anywhere means a banner exists', () => {
@@ -213,64 +200,22 @@ describe('CONSENT-03 no consent dialog', () => {
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-observed' });
   });
 
-  // banners found by the extended heuristic (other languages, static notice) are CONSENT-04 territory.
-  it.each(['heuristic:static', 'heuristic:fixed'])(
-    'counterexample: a heuristic candidate with signal %s is a banner, not "no banner"',
-    (signal) => {
-      const cmp = cmpWith({
-        phase: 'A',
-        facts: [
-          makeCmpFacts({
-            phase: 'A',
-            pageUrl: START,
-            detection: {
-              cmpId: null,
-              method: 'heuristic',
-              version: null,
-              versionSupported: null,
-              recognitionConfidence: 'low',
-              signals: [signal, 'heuristic:keywords:2'],
-            },
-            firstLayer: {
-              bannerPresent: true,
-              bannerVisible: true,
-              buttons: [],
-              purAbo: false,
-              closeMeansAccept: null,
-            },
-          }),
-        ],
-      });
-      const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })], cmp }));
-      expect(r).toMatchObject({ status: 'completed' });
-      expect(variantsOf(r)).toEqual([]);
-    },
-  );
+  // banners found by the heuristic, the extended one included (other languages, static notice), are CONSENT-04 territory.
+  it.each<[string, string[]]>([
+    ['heuristic:dialog', []],
+    ['heuristic:static', ['heuristic:keywords:2']],
+    ['heuristic:fixed', ['heuristic:keywords:2']],
+  ])('counterexample: a heuristic candidate with signal %s is a banner, not "no banner"', (signal, more) => {
+    const cmp = cmpWith({ phase: 'A', facts: [heuristicCandidate([signal, ...more])] });
+    const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })], cmp }));
+    expect(r).toMatchObject({ status: 'completed' });
+    expect(variantsOf(r)).toEqual([]);
+  });
 
   // a visible consent-looking iframe whose content could not be resolved limits the "no banner" conclusion.
   describe('unresolved consent iframe', () => {
-    const frameCandidate = (p: Partial<CmpFacts['firstLayer']> = {}) =>
-      makeCmpFacts({
-        phase: 'A',
-        pageUrl: START,
-        detection: {
-          cmpId: null,
-          method: 'heuristic',
-          version: null,
-          versionSupported: null,
-          recognitionConfidence: 'low',
-          signals: ['heuristic:frame-candidate'],
-        },
-        firstLayer: {
-          bannerPresent: true,
-          bannerVisible: true,
-          buttons: [],
-          purAbo: false,
-          closeMeansAccept: null,
-          consentFrameUnresolved: true,
-          ...p,
-        },
-      });
+    const frameCandidate = () =>
+      heuristicCandidate(['heuristic:frame-candidate'], { consentFrameUnresolved: true });
 
     it('tracking before interaction and an unresolved consent frame: inconclusive, no no-banner finding', () => {
       const r = runCheck(

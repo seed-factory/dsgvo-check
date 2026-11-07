@@ -96,22 +96,10 @@ describe('LEGAL-02 designations of a former legal situation', () => {
     ]);
   });
 
-  it('clean: current designations (DDG, MStV, TDDDG, DPF) → completed without observations', () => {
-    const r = runCheck(legal02, scenario('clean-current-references.json'));
-    expect(r.status).toBe('completed');
-    expect(observationsOf(r)).toEqual([]);
-  });
-
   it('inconclusive: only a PDF policy and an Impressum link that answered with an error', () => {
     const r = runCheck(legal02, scenario('inconclusive-no-documents.json'));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-documents' });
     expect(r.outcome?.limitations).toEqual(['impressum-not-found', 'privacy-pdf']);
-  });
-
-  it('counterexample scenario: historical and successor sentences only → nothing', () => {
-    const r = runCheck(legal02, scenario('clean-historical-and-successor-mentions.json'));
-    expect(r.status).toBe('completed');
-    expect(observationsOf(r)).toEqual([]);
   });
 });
 

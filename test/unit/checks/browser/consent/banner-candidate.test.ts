@@ -23,6 +23,7 @@ import {
   candidateCmp,
   cmpFacts,
   cmpWith,
+  firstLayer,
   IMPRESSUM,
   noBannerCmp,
   PRIVACY,
@@ -259,10 +260,7 @@ describe('a banner observed but not recognised', () => {
 });
 
 /** Phase A facts on every page: a banner the heuristic took on `found`, nothing banner-like on the others. */
-function heuristicCmp(
-  found: readonly string[],
-  firstLayer: Partial<CmpFacts['firstLayer']> = {},
-): CmpSection {
+function heuristicCmp(found: readonly string[], layer: Partial<CmpFacts['firstLayer']> = {}): CmpSection {
   return cmpWith({
     phase: 'A',
     facts: [START, IMPRESSUM, PRIVACY, CONTACT].map((pageUrl) =>
@@ -279,27 +277,13 @@ function heuristicCmp(
               recognitionConfidence: 'medium',
               signals: ['heuristic:fixed', 'heuristic:keywords:3', 'heuristic:controls:4'],
             },
-            firstLayer: {
-              bannerPresent: true,
-              bannerVisible: true,
-              buttons: [],
-              purAbo: false,
-              closeMeansAccept: null,
-              ...firstLayer,
-            },
+            firstLayer: firstLayer(layer),
           })
         : makeCmpFacts({
             phase: 'A',
             pageUrl,
             moment: 'first-screen',
-            firstLayer: {
-              bannerPresent: false,
-              bannerVisible: false,
-              buttons: [],
-              purAbo: false,
-              closeMeansAccept: null,
-              bannerCandidate: null,
-            },
+            firstLayer: firstLayer({ bannerPresent: false, bannerVisible: false, bannerCandidate: null }),
           }),
     ),
   });

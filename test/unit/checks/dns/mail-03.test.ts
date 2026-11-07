@@ -11,7 +11,14 @@ import { assess } from '../../../../src/core/evaluation/assess.ts';
 import type { DkimPlanEntry, MailDomainTarget } from '../../../../src/core/snapshot/dns.ts';
 import { observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
 import { dkimRecord, rsaKey } from './dkim-keys.ts';
-import { dnsSnapshot, type ZoneEntry, type ZoneSpec } from './zone.ts';
+import {
+  contactDomain,
+  dnsSnapshot,
+  IMPRESSUM,
+  IMPRESSUM_STAGE,
+  type ZoneEntry,
+  type ZoneSpec,
+} from './zone.ts';
 
 const COMMON = ['default', 'dkim', 'mail', 's1', 's2', 'k1', 'key1'];
 
@@ -265,18 +272,19 @@ describe('MAIL-03: unknown answers never become a missing key', () => {
   });
 });
 
-const IMPRESSUM = 'https://www.example.de/impressum/';
-const contact = (domain: string, over: Partial<MailDomainTarget> = {}): MailDomainTarget => ({
-  domain,
-  host: domain,
-  orgDomain: domain,
-  roles: ['contact'],
-  sources: [{ kind: 'impressum-text', url: IMPRESSUM }],
-  status: 'checked',
-  budget: { limit: 30, used: 10 },
-  ...over,
-});
-const STAGE = { contacts: 'impressum' as const, durationMs: 3 };
+/** An Impressum address domain that used 10 of its 30 queries. */
+const contact = (domain: string, over: Partial<MailDomainTarget> = {}) =>
+  contactDomain(domain, { budget: { limit: 30, used: 10 }, ...over });
+
+/** MAIL-03 on the scanned domain and one further mail domain: their zones and plans together. */
+const runWithFurther = (spec: ZoneSpec, dkimPlan: DkimPlanEntry[], further = contact('example-mail.de')) =>
+  runCheck(mail03, dnsSnapshot(spec, { dkimPlan, mailDomains: [further], mailDomainStage: IMPRESSUM_STAGE }));
+
+/** The scanned domain with its own mail server and a key of 2048 bits on `default`. */
+const SITE_SIGNED = {
+  ...mail('example.de', false),
+  ...selectors(SITE_OWN, { default: [dkimRecord(rsaKey(2048))] }),
+};
 
 describe('MAIL-03 on the further mail domains', () => {
   const CONTACT_M365 = plan('example-mail.de', M365_GIVEN);
@@ -288,12 +296,7 @@ describe('MAIL-03 on the further mail domains', () => {
       ...mail('example-mail.de', true),
       ...selectors(CONTACT_M365),
     };
-    const snap = dnsSnapshot(spec, {
-      dkimPlan: [...SITE_M365, ...CONTACT_M365],
-      mailDomains: [contact('example-mail.de')],
-      mailDomainStage: STAGE,
-    });
-    const r = runCheck(mail03, snap);
+    const r = runWithFurther(spec, [...SITE_M365, ...CONTACT_M365]);
     const obs = observationsOf(r);
     expect(obs.map((o) => [o.variant, o.subject, o.params.scope, o.params.domain])).toEqual([
       ['given-selector-missing', 'dkim', 'site', 'example.de'],
@@ -316,20 +319,16 @@ describe('MAIL-03 on the further mail domains', () => {
 
   it('the redirect target is evaluated under @final', () => {
     const finalPlan = plan('example.net', []);
-    const snap = dnsSnapshot(
+    const r = runWithFurther(
       {
-        ...mail('example.de', false),
-        ...selectors(SITE_OWN, { default: [dkimRecord(rsaKey(2048))] }),
+        ...SITE_SIGNED,
         ...mail('example.net', false),
         ...selectors(finalPlan, { 'default@example.net': [dkimRecord(rsaKey(512))] }),
       },
-      {
-        dkimPlan: [...SITE_OWN, ...finalPlan],
-        mailDomains: [{ ...contact('example.net'), host: 'www.example.net', roles: ['final'], sources: [] }],
-        mailDomainStage: STAGE,
-      },
+      [...SITE_OWN, ...finalPlan],
+      { ...contact('example.net'), host: 'www.example.net', roles: ['final'], sources: [] },
     );
-    expect(observationsOf(runCheck(mail03, snap)).map((o) => [o.subject, o.params.scope])).toEqual([
+    expect(observationsOf(r).map((o) => [o.subject, o.params.scope])).toEqual([
       ['dkim:default@final', 'final'],
     ]);
   });
@@ -342,13 +341,10 @@ describe('MAIL-03 on the further mail domains', () => {
       ...mail('example-mail.de', false),
       ...selectors(contactPlan.slice(0, 2)),
     };
-    const r = runCheck(
-      mail03,
-      dnsSnapshot(spec, {
-        dkimPlan: [...SITE_OWN, ...contactPlan],
-        mailDomains: [contact('example-mail.de', { status: 'partial', reason: 'dns-budget-exhausted' })],
-        mailDomainStage: STAGE,
-      }),
+    const r = runWithFurther(
+      spec,
+      [...SITE_OWN, ...contactPlan],
+      contact('example-mail.de', { status: 'partial', reason: 'dns-budget-exhausted' }),
     );
     expect(r.status).toBe('partial');
     expect(r.outcome?.limitations).toEqual(['mail-domain-unresolved:example-mail.de']);
@@ -359,21 +355,13 @@ describe('MAIL-03 on the further mail domains', () => {
 
   it('an unparsable key on a further domain is a limitation that names it', () => {
     const contactPlan = plan('example-mail.de', []);
-    const r = runCheck(
-      mail03,
-      dnsSnapshot(
-        {
-          ...mail('example.de', false),
-          ...selectors(SITE_OWN, { default: [dkimRecord(rsaKey(2048))] }),
-          ...mail('example-mail.de', false),
-          ...selectors(contactPlan, { 'mail@example-mail.de': ['v=DKIM1; k=rsa; p=AAAA'] }),
-        },
-        {
-          dkimPlan: [...SITE_OWN, ...contactPlan],
-          mailDomains: [contact('example-mail.de')],
-          mailDomainStage: STAGE,
-        },
-      ),
+    const r = runWithFurther(
+      {
+        ...SITE_SIGNED,
+        ...mail('example-mail.de', false),
+        ...selectors(contactPlan, { 'mail@example-mail.de': ['v=DKIM1; k=rsa; p=AAAA'] }),
+      },
+      [...SITE_OWN, ...contactPlan],
     );
     expect(r.status).toBe('partial');
     expect(r.outcome?.limitations).toEqual(['mail-domain-dkim-key-unparsable:example-mail.de']);
@@ -381,21 +369,13 @@ describe('MAIL-03 on the further mail domains', () => {
 
   it('a withdrawn key on a further domain is a limitation that names it', () => {
     const contactPlan = plan('example-mail.de', M365_GIVEN);
-    const r = runCheck(
-      mail03,
-      dnsSnapshot(
-        {
-          ...mail('example.de', false),
-          ...selectors(SITE_OWN, { default: [dkimRecord(rsaKey(2048))] }),
-          ...mail('example-mail.de', true),
-          ...selectors(contactPlan, { 'selector1@example-mail.de': ['v=DKIM1; p='] }),
-        },
-        {
-          dkimPlan: [...SITE_OWN, ...contactPlan],
-          mailDomains: [contact('example-mail.de')],
-          mailDomainStage: STAGE,
-        },
-      ),
+    const r = runWithFurther(
+      {
+        ...SITE_SIGNED,
+        ...mail('example-mail.de', true),
+        ...selectors(contactPlan, { 'selector1@example-mail.de': ['v=DKIM1; p='] }),
+      },
+      [...SITE_OWN, ...contactPlan],
     );
     expect(r.status).toBe('partial');
     expect(r.outcome?.limitations).toEqual(['mail-domain-dkim-key-revoked:example-mail.de']);
@@ -404,17 +384,14 @@ describe('MAIL-03 on the further mail domains', () => {
 
   it('a scanned domain with Null MX does not hide the findings of an Impressum address domain', () => {
     const contactPlan = plan('example-mail.de', M365_GIVEN);
-    const r = runCheck(
-      mail03,
-      dnsSnapshot(
-        {
-          'MX example.de': ['0 .'],
-          'TXT example.de': ['v=spf1 -all'],
-          ...mail('example-mail.de', true),
-          ...selectors(contactPlan),
-        },
-        { dkimPlan: contactPlan, mailDomains: [contact('example-mail.de')], mailDomainStage: STAGE },
-      ),
+    const r = runWithFurther(
+      {
+        'MX example.de': ['0 .'],
+        'TXT example.de': ['v=spf1 -all'],
+        ...mail('example-mail.de', true),
+        ...selectors(contactPlan),
+      },
+      contactPlan,
     );
     expect(r.status).toBe('completed');
     expect(observationsOf(r).map((o) => o.subject)).toEqual(['dkim@contact:example-mail.de']);

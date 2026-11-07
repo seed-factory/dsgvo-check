@@ -1,14 +1,16 @@
 /**
  * `<meta>` facts of the start document come from real markup, not inert elements (`<template>`, `<noscript>`), and are
- * reduced like a response header (URLs sanitized, unlisted values `[redacted]`, no cookies). Markers start with `zq7`.
+ * reduced like a response header (URLs sanitized, unlisted values `[redacted]`, no cookies). An inert refresh is no
+ * redirect for TLS-01 either. Markers start with `zq7`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
+import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
 import { MAX_HEADER_VALUE } from '../../../src/core/redaction/headers.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { makeSnapshot, makeTarget, runCheck } from '../../utils/snapshot-builder.ts';
+import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, withRoutes } from './helpers.ts';
 import { GOOD_HEADERS, page } from './sites.ts';
 
@@ -83,6 +85,14 @@ beforeAll(async () => {
           ...Array.from({ length: 800 }, (_, i) => `<meta http-equiv="h${i}-yyyyy" content="v">`),
         ].join(''),
       ),
+      // The only refresh is inert: it sits inside the outer template, after the closing tag of the inner one.
+      {
+        ...httpPage(
+          'www.nestedtpl.test',
+          '<template><template></template><meta http-equiv="refresh" content="0; url=https://www.nestedtpl.test/next"></template>',
+        ),
+        headers: GOOD_HEADERS,
+      },
       {
         host: 'www.metagood.test',
         scheme: 'http' as const,
@@ -101,6 +111,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server?.close();
+});
+
+afterEach(() => {
+  expect(server.unexpected).toEqual([]);
 });
 
 async function collectHttpOnly(host: string): Promise<HttpSection> {
@@ -132,7 +146,6 @@ describe('the meta values of the document are stored reduced', () => {
     expect(by('x-ua-compatible')?.value).toBe('[redacted]');
     // the referrer keeps its policy keyword, the rest is dropped
     expect(doc?.metaReferrer).toBe('no-referrer');
-    expect(server.unexpected).toEqual([]);
   });
 
   it('HDR-01 still reads the meta CSP as a hint and the referrer policy of the meta tag', async () => {
@@ -149,7 +162,6 @@ describe('the meta values of the document are stored reduced', () => {
     const doc = start(http);
     expect(doc?.metaReferrer).toBe('origin');
     expect(doc?.metaHttpEquiv.map((m) => m.name)).toEqual(['x-ua-compatible']);
-    expect(server.unexpected).toEqual([]);
   });
 });
 
@@ -163,7 +175,6 @@ describe('inert meta tags are no facts of the document', () => {
     const variants = (r.outcome?.observations ?? []).map((o) => `${o.variant}:${o.subject}`);
     // no CSP anywhere: the missing header is reported, the inert meta does not hide it
     expect(variants).toContain('header-missing:content-security-policy');
-    expect(server.unexpected).toEqual([]);
   });
 
   it('counterexample: the same tags outside any inert element are the facts of the document', async () => {
@@ -174,7 +185,19 @@ describe('inert meta tags are no facts of the document', () => {
     const r = runCheck(hdr01, makeSnapshot({ target: makeTarget('http://www.metareal.test/'), http }));
     const variants = (r.outcome?.observations ?? []).map((o) => o.variant);
     expect(variants).toContain('referrer-policy-permissive');
-    expect(server.unexpected).toEqual([]);
+  });
+
+  it('TLS-01: a refresh inside nested templates of the http page is no redirect, https refused → https-unavailable', async () => {
+    const http = await collectHttpOnly('www.nestedtpl.test');
+    const hop = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'http')?.final;
+    expect(hop).toMatchObject({ status: 200, bodyKind: 'html' });
+    expect(hop?.clientRedirect).toBeUndefined();
+    const https = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'https');
+    expect(https).toMatchObject({ outcome: 'connection-refused', hops: [] });
+
+    const result = runCheck(tls01, makeSnapshot({ target: makeTarget('http://www.nestedtpl.test/'), http }));
+    expect(variantsOf(result)).toEqual(['https-unavailable']);
+    expect(result.outcome?.observations[0]?.params).toMatchObject({ reason: 'unavailable' });
   });
 });
 
@@ -207,7 +230,6 @@ describe('large meta values of the start document are read in linear time', () =
     const refresh = start(http)?.metaHttpEquiv.find((m) => m.name === 'refresh');
     expect(refresh?.value.startsWith('0; url=http://www.metaredos-refresh.test/x%20%20')).toBe(true);
     expect(refresh?.truncated).toBe(true);
-    expect(server.unexpected).toEqual([]);
   });
 
   it('a link of 56 000 opening brackets: stored cut and flagged, the loop is not held up', async () => {
@@ -216,7 +238,6 @@ describe('large meta values of the start document are read in linear time', () =
     const link = start(http)?.metaHttpEquiv.find((m) => m.name === 'link');
     expect(link?.truncated).toBe(true);
     expect(link?.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
-    expect(server.unexpected).toEqual([]);
   });
 
   it('a referrer of 28 000 tokens: the loop is not held up, the keyword is kept and the filler is not', async () => {
@@ -224,14 +245,12 @@ describe('large meta values of the start document are read in linear time', () =
     expect(stallMs).toBeLessThan(STALL_LIMIT_MS);
     // Unrecognized `a` tokens must not enlarge the stored policy or hide its last recognized keyword.
     expect(start(http)?.metaReferrer).toBe('no-referrer');
-    expect(server.unexpected).toEqual([]);
   });
 
   it('a referrer of 56 KB without any keyword stores nothing, so the snapshot does not grow with the tag', async () => {
     const http = await collectHttpOnly('www.metareferrer-junk.test');
     expect(start(http)?.metaReferrer).toBeNull();
     expect(JSON.stringify(http).length).toBeLessThan(20_000);
-    expect(server.unexpected).toEqual([]);
   });
 
   it('a referrer of 54 KB of keywords stores the last eight, and HDR-01 reads the policy in force', async () => {
@@ -247,7 +266,6 @@ describe('large meta values of the start document are read in linear time', () =
     // the policy in force is `origin`: neither a permissive one nor a missing one
     expect(variants).not.toContain('header-missing:referrer-policy');
     expect(variants.some((v) => v.startsWith('referrer-policy-permissive'))).toBe(false);
-    expect(server.unexpected).toEqual([]);
   });
 
   it('ignores invalid http-equiv names and bounds the stored records', async () => {
@@ -258,7 +276,6 @@ describe('large meta values of the start document are read in linear time', () =
     expect(JSON.stringify(http).length).toBeLessThan(20_000);
     // the record the check reads is still the first one
     expect(doc?.metaHttpEquiv[0]?.name).toBe('content-security-policy');
-    expect(server.unexpected).toEqual([]);
   });
 
   it('counterexample: a refresh of the same shape and ordinary size is read as before', async () => {

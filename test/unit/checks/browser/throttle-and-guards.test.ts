@@ -13,7 +13,7 @@ import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
 import { track01 } from '../../../../src/checks/browser/track-01.ts';
 import type { AnyCheck } from '../../../../src/core/evaluation/check.ts';
 import { runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
-import { CONTACT, click, cookie, defaultPages, page, phase, req, START, site } from './helpers.ts';
+import { CONTACT, cookie, defaultPages, page, phase, req, START, site } from './helpers.ts';
 
 const THROTTLE_CHECKS: Array<[string, AnyCheck]> = [
   ['CONSENT-01', consent01],
@@ -76,46 +76,6 @@ describe('guard conditions without a counterexample so far', () => {
     expect(variantsOf(runCheck(consent02, snap))).toEqual(['storage-rejected-or-attempted']);
     const sent = site({ phases: [phase('A', { cookies: [cookie('_ga', { state: 'sent' })] })] });
     expect(variantsOf(runCheck(consent02, sent))).toEqual(['tracking-identifier-stored']);
-  });
-
-  it('EMBED-01: fonts loaded only after accept are no finding', () => {
-    const snap = site({
-      phases: [
-        phase('A'),
-        phase('C', {
-          click: click('accept'),
-          requests: [
-            req('c1', 'https://fonts.gstatic.com/s/roboto/v30/x.woff2', {
-              phase: 'C',
-              resourceType: 'font',
-              afterClick: true,
-              tRef: 'click',
-            }),
-          ],
-        }),
-      ],
-    });
-    expect(variantsOf(runCheck(embed01, snap))).toEqual([]);
-  });
-
-  it('EMBED-01: a preconnect hint alone is info, a dns-prefetch on another rel is ignored', () => {
-    const hint = (rel: string) =>
-      site({
-        phases: [
-          phase('A', {
-            pages: [
-              page(START, 'start', 'A', {
-                dom: {
-                  ...defaultPages()[0]!.dom!,
-                  linkRels: [{ rel, href: 'https://fonts.gstatic.com/', source: 'dom' }],
-                },
-              }),
-            ],
-          }),
-        ],
-      });
-    expect(variantsOf(runCheck(embed01, hint('preconnect')))).toEqual(['preconnect-only']);
-    expect(variantsOf(runCheck(embed01, hint('stylesheet')))).toEqual([]);
   });
 
   it('EMBED-02: maps on the start page are found even when the contact page could not be evaluated', () => {

@@ -5,36 +5,21 @@
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Lookup } from '../../../../src/core/url/net.ts';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
+import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect } from '../helpers.ts';
+import { html, send, site } from '../site-dir.ts';
 
 const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
-const html = (body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Start</title></head><body>${body}</body></html>`;
 
-const site = (host: string): DynamicHandler => ({
-  host,
-  path: /.*/,
-  handle: (_req, res, ctx) => {
-    if (ctx.url.pathname === '/') {
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(html('<main><h1>Start</h1></main>'));
-      return;
-    }
-    res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(html('<h1>Nicht gefunden</h1>'));
-  },
-});
+const START = { '/': send(html('Start', '<main><h1>Start</h1></main>')) };
 
 let server: FixtureServer;
 
 beforeAll(async () => {
-  server = await startFixtureServer({ handlers: [site('flaky.example.test'), site('gone.example.test')] });
+  server = await startFixtureServer({
+    handlers: [site('flaky.example.test', START), site('gone.example.test', START)],
+  });
 });
 
 afterAll(async () => {

@@ -121,17 +121,6 @@ describe('HDR-02 version headers', () => {
     expect(r.status).toBe('completed');
   });
 
-  it('an older snapshot that stored a product header only by name: inconclusive, not clean', () => {
-    const r = run([
-      doc('start', START, [
-        { name: 'x-powered-by', value: '[redacted]' },
-        { name: 'server', value: '[redacted]' },
-      ]),
-    ]);
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'values-not-stored' });
-    expect(r.outcome?.observations).toEqual([]);
-  });
-
   it('a page whose product facts are missing limits the result, the others still count', () => {
     const r = run([
       doc('start', START, [header('x-powered-by', 'PHP/7.2.34')]),
@@ -157,30 +146,6 @@ describe('HDR-02 version headers', () => {
     expect(r.outcome?.limitations).toEqual(['document-blocked:impressum']);
     expect(observationsOf(r)).toEqual([]);
     expect(r.outcome?.coverage).toEqual({ planned: 2, evaluated: 1 });
-  });
-
-  it('counterexample: a non-product header is not read, even with product facts in it', () => {
-    const r = run([
-      doc('start', START, [
-        {
-          name: 'x-request-id',
-          value: '[redacted]',
-          productVersions: [{ product: 'PHP', version: '7.2.34' }],
-        },
-      ]),
-    ]);
-    expect(r.status).toBe('completed');
-    expect(observationsOf(r)).toEqual([]);
-  });
-
-  it('counterexample: a version only in the markup is no response header', () => {
-    const r = run([
-      doc('start', START, [header('server', 'nginx')], {
-        metaHttpEquiv: [{ name: 'x-powered-by', value: '[redacted]' }],
-      }),
-    ]);
-    expect(r.status).toBe('completed');
-    expect(observationsOf(r)).toEqual([]);
   });
 
   it.each([

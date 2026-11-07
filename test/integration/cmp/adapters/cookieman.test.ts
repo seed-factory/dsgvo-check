@@ -1,24 +1,18 @@
 /** cookieman (TYPO3) adapter against the own simulator, including its `CookieConsent` cookie shared with Cookiebot. */
 import { describe, expect, it } from 'vitest';
-import { detectCmp, extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { detectCmp, extract, loadLexicon } from '../../../../src/cmp/index.ts';
 import { classifyFirstLayer } from '../../../utils/classify.ts';
-import {
-  CMP_WAIT_MS,
-  decideAndAct,
-  describeCmpScenarios,
-  recognized,
-  requestsSince,
-  useCmpServer,
-} from '../helpers.ts';
+import { decideAndAct, describeCmpScenarios, recognized, requestsSince, useCmpServer } from '../helpers.ts';
 
+const SITE = 'https://www.cookieman.test';
 const TRACKER = 'stats.cookieman.test';
 
 describeCmpScenarios(
   {
     id: 'cookieman',
     site: 'cmp/cookieman',
-    okUrl: 'https://www.cookieman.test/',
-    blockingUrl: 'https://www.cookieman.test/blocking.html',
+    okUrl: `${SITE}/`,
+    blockingUrl: `${SITE}/blocking.html`,
     version: null,
     rejectName: /^Deny all cookies$/,
     acceptName: /^Accept all cookies$/,
@@ -26,9 +20,7 @@ describeCmpScenarios(
   (env) => {
     it('groups from the site configuration: the fixed group is left out, marketing denied, then stored', async () => {
       const since = Date.now();
-      const { page } = await env.open('https://www.cookieman.test/');
-      const adapter = await recognized(page, 'cookieman');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized(`${SITE}/`, 'cookieman', { banner: true });
       expect(await adapter.state(page)).toEqual([
         {
           source: 'api',
@@ -58,9 +50,7 @@ describeCmpScenarios(
 
     it('accept grants marketing and loads the local tracker', async () => {
       const since = Date.now();
-      const { page } = await env.open('https://www.cookieman.test/');
-      const adapter = await recognized(page, 'cookieman');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized(`${SITE}/`, 'cookieman', { banner: true });
 
       expect((await decideAndAct(page, adapter, 'accept')).click.clicked).toBe(true);
 
@@ -69,9 +59,7 @@ describeCmpScenarios(
     });
 
     it('never stores the cookie value: only one boolean per group leaves the page', async () => {
-      const { page } = await env.open('https://www.cookieman.test/');
-      const adapter = await recognized(page, 'cookieman');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized(`${SITE}/`, 'cookieman', { banner: true });
       expect((await decideAndAct(page, adapter, 'accept')).click.clicked).toBe(true);
 
       const facts = await adapter.extract(page, 'after-click');
@@ -80,9 +68,7 @@ describeCmpScenarios(
     });
 
     it('deny and accept also carry data-cookieman-save, yet they are reject and accept; save stays hidden', async () => {
-      const { page } = await env.open('https://www.cookieman.test/de.html');
-      const adapter = await recognized(page, 'cookieman');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await env.openRecognized(`${SITE}/de.html`, 'cookieman', { banner: true });
 
       const facts = await extract(page, adapter, 'first-screen');
 
@@ -110,7 +96,7 @@ describe('cookieman and the CookieConsent cookie of Cookiebot', () => {
   const env = useCmpServer(['cmp/cookieman']);
 
   it('the cookieman markup outranks a Cookiebot signal that is only the CookieConsent cookie', async () => {
-    const { page } = await env.open('https://www.cookieman.test/markup-only.html');
+    const { page } = await env.open(`${SITE}/markup-only.html`);
 
     const { adapter, detection } = await detectCmp(page);
 
@@ -119,7 +105,7 @@ describe('cookieman and the CookieConsent cookie of Cookiebot', () => {
   });
 
   it('counterexample: a CookieConsent cookie without cookieman is no cookieman', async () => {
-    const { page } = await env.open('https://www.cookieman.test/cookie-only.html');
+    const { page } = await env.open(`${SITE}/cookie-only.html`);
 
     const { adapter, detection } = await detectCmp(page);
 

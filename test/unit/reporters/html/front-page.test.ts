@@ -1,29 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import type { ReportDetail, ReporterContext } from '../../../../src/core/report/reporter.ts';
-import type { Evidence, Finding, FullReport } from '../../../../src/core/report/schema.ts';
+import type { CheckResult, Evidence, Finding, FullReport } from '../../../../src/core/report/schema.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
 import { buildReportView } from '../../../../src/reporters/report-view.ts';
 import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
+import {
+  checkResult as check,
+  consentClicks,
+  reporterContext,
+} from '../../../utils/report/reporter-inputs.ts';
 
 const ctx = (detail: ReportDetail = 'full', lang: 'de' | 'en' = 'de'): ReporterContext => {
-  const texts = loadTexts(lang);
+  const c = reporterContext(lang, { detail });
   // A message that names a single entry in its title, shared by several findings.
-  texts.messages['TEST-01.entry'] = { title: 'Eintrag {name} gefunden', body: '{name}', draft: true };
-  texts.actions['TEST-01.entry'] = 'Prüfen Sie den Eintrag.';
+  c.texts.messages['TEST-01.entry'] = { title: 'Eintrag {name} gefunden', body: '{name}', draft: true };
+  c.texts.actions['TEST-01.entry'] = 'Prüfen Sie den Eintrag.';
   // A message and an action that use every kind of param a grouped item aggregates.
-  texts.messages['TEST-02.counted'] = {
+  c.texts.messages['TEST-02.counted'] = {
     title: '{kind, select, cookie {Cookie} request {Anfrage} other {Eintrag}} {name} auf {pageCount} Seiten',
     body: '{name}',
     draft: true,
   };
-  texts.actions['TEST-02.counted'] =
+  c.texts.actions['TEST-02.counted'] =
     'Prüfen Sie {name} ({count} Stück, {host}){mode, select, true { sofort} other {}}.';
-  return { texts, lang, outDir: '/nonexistent-out', color: false, detail };
+  return c;
 };
 
 const fp = (n: number) => `sha256:${n.toString(16).padStart(64, '0')}`;
 
+// The base finding has no text of its own, so a finding without one is worded by the data texts of its message.
 const finding = (n: number, over: Partial<Finding>): Finding => ({
   ...sampleFullReport().findings[1]!,
   fingerprint: fp(n),
@@ -33,23 +39,22 @@ const finding = (n: number, over: Partial<Finding>): Finding => ({
   ...over,
 });
 
+/** A finding of the check and variant its message id names. */
+const findingOf = (
+  n: number,
+  messageId: string,
+  severity: Finding['severity'],
+  over: Partial<Finding> = {},
+): Finding => {
+  const [checkId, variant] = messageId.split('.') as [string, string];
+  return finding(n, { checkId, variant, messageId, severity, ...over });
+};
+
 const entry = (n: number, name: string, page = 'https://www.example.de/'): Finding =>
-  finding(100 + n, {
-    checkId: 'TEST-01',
-    variant: 'entry',
-    messageId: 'TEST-01.entry',
-    severity: 'info',
-    params: { name },
-    pages: [page],
-    text: undefined,
-  });
+  findingOf(100 + n, 'TEST-01.entry', 'info', { params: { name }, pages: [page] });
 
 const inventory = (n: number, service: string, stages: [string, string, string]): Finding =>
-  finding(200 + n, {
-    checkId: 'TRACK-01',
-    variant: 'service-inventory',
-    messageId: 'TRACK-01.service-inventory',
-    severity: 'info',
+  findingOf(200 + n, 'TRACK-01.service-inventory', 'info', {
     serviceId: service.toLowerCase(),
     params: {
       service,
@@ -57,8 +62,11 @@ const inventory = (n: number, service: string, stages: [string, string, string])
       stageAfterReject: stages[1],
       stageAfterAccept: stages[2],
     },
-    text: undefined,
   });
+
+const COMPLETE = 'Der Scan wurde vollständig durchgeführt.';
+const RAN_WITH_OPEN_CHECKS =
+  'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.';
 
 function reportWith(findings: Finding[]): FullReport {
   const r = sampleFullReport();
@@ -92,13 +100,7 @@ describe('the first page', () => {
 
   it('describes the counts, the scan, the checks without a result, the banner and the region in plain sentences', () => {
     const r = reportWith([
-      finding(1, {
-        checkId: 'CONSENT-01',
-        variant: 'tracking-completed',
-        severity: 'critical',
-        messageId: 'CONSENT-01.tracking-completed',
-        text: undefined,
-      }),
+      findingOf(1, 'CONSENT-01.tracking-completed', 'critical'),
       entry(2, 'a'),
       entry(3, 'b'),
     ]);
@@ -128,24 +130,14 @@ describe('the first page', () => {
   });
 
   it('says so when there is nothing critical and when the banner was not recognized', () => {
-    const r = reportWith([
-      finding(1, {
-        checkId: 'CONSENT-04',
-        variant: 'banner-not-recognized',
-        messageId: 'CONSENT-04.banner-not-recognized',
-        severity: 'info',
-        text: undefined,
-      }),
-    ]);
+    const r = reportWith([findingOf(1, 'CONSENT-04.banner-not-recognized', 'info')]);
     const sentences = buildReportView(r, ctx()).overview;
 
     expect(sentences[0]).toBe(
       'Es wurden keine kritischen Befunde beobachtet. Dazu kommt ein Hinweis zur Information.',
     );
     // CONSENT-04 is inconclusive and MAIL-01 failed: the scan ran, but not every check has a result
-    expect(sentences[1]).toBe(
-      'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
-    );
+    expect(sentences[1]).toBe(RAN_WITH_OPEN_CHECKS);
     expect(sentences[2]).toBe('Eine Prüfung (MAIL-01) wurde wegen eines Fehlers nicht abgeschlossen.');
     expect(sentences[3]).toMatch(/nicht erkannt.*manuell/);
     expect(sentences.join(' ')).not.toContain('CONSENT-04');
@@ -205,21 +197,18 @@ describe('the action list', () => {
   it('lists critical before warning before info, and the most severe finding sets the level of an entry', () => {
     const { actions } = view([
       entry(1, 'a'),
-      finding(2, { severity: 'warning', messageId: 'HDR-01.header-missing', text: undefined }),
-      finding(3, { severity: 'critical', messageId: 'CONSENT-01.tracking-completed', text: undefined }),
+      finding(2, { severity: 'warning', messageId: 'HDR-01.header-missing' }),
+      finding(3, { severity: 'critical', messageId: 'CONSENT-01.tracking-completed' }),
       { ...entry(4, 'b'), severity: 'warning' },
     ]);
 
-    expect(actions.map((a) => a.severity)).toEqual(
-      ['critical', 'warning', 'warning', 'info'].slice(0, actions.length),
-    );
     expect(actions.map((a) => a.severity)).toEqual(['critical', 'warning', 'warning']);
     expect(actions.at(0)!.severityLabel).toBe('Kritisch');
   });
 
   it('shows the action texts of the data files and leaves the line out when a message has none', () => {
     const { actions } = view([
-      finding(1, { severity: 'critical', messageId: 'CONSENT-01.tracking-completed', text: undefined }),
+      finding(1, { severity: 'critical', messageId: 'CONSENT-01.tracking-completed' }),
       finding(2, {
         severity: 'info',
         messageId: 'UNKNOWN-01.nothing',
@@ -339,10 +328,7 @@ describe('the table of observed services', () => {
       { ...r.checks[0]!, id: 'CONSENT-04', status: 'completed', reason: null },
       { ...r.checks[0]!, id: 'HDR-01', module: 'http', status: 'inconclusive', reason: 'start-page-status' },
     ];
-    r.scan.coverage.consentActions = [
-      { action: 'reject', clicked: true, verified: true },
-      { action: 'accept', clicked: true, verified: false },
-    ];
+    r.scan.coverage.consentActions = consentClicks({ reject: 'confirmed', accept: 'unconfirmed' });
     const { serviceNotes } = buildReportView(r, ctx());
 
     expect(serviceNotes).toEqual([
@@ -471,22 +457,8 @@ describe('repeated requests in the evidence', () => {
 describe('the legal background', () => {
   it('names the check it belongs to', () => {
     const r = reportWith([
-      finding(1, {
-        checkId: 'LEGAL-01',
-        variant: 'footer-covered-by-banner',
-        messageId: 'LEGAL-01.footer-covered-by-banner',
-        severity: 'warning',
-        legalNoteId: 'LEGAL-01',
-        text: undefined,
-      }),
-      finding(2, {
-        checkId: 'CONSENT-01',
-        variant: 'tracking-completed',
-        messageId: 'CONSENT-01.tracking-completed',
-        severity: 'critical',
-        legalNoteId: 'CONSENT-01',
-        text: undefined,
-      }),
+      findingOf(1, 'LEGAL-01.footer-covered-by-banner', 'warning', { legalNoteId: 'LEGAL-01' }),
+      findingOf(2, 'CONSENT-01.tracking-completed', 'critical', { legalNoteId: 'CONSENT-01' }),
     ]);
     const html = renderHtml(r, ctx());
 
@@ -498,14 +470,7 @@ describe('the legal background', () => {
   it('shows the note of LEGAL-01 under LEGAL-01 and the one of CONSENT-01 under CONSENT-01', () => {
     const c = ctx();
     const r = reportWith([
-      finding(1, {
-        checkId: 'LEGAL-01',
-        variant: 'footer-covered-by-banner',
-        messageId: 'LEGAL-01.footer-covered-by-banner',
-        severity: 'warning',
-        legalNoteId: 'LEGAL-01',
-        text: undefined,
-      }),
+      findingOf(1, 'LEGAL-01.footer-covered-by-banner', 'warning', { legalNoteId: 'LEGAL-01' }),
     ]);
     const html = renderHtml(r, c);
     const note = c.texts.legalNotes['LEGAL-01']!.text;
@@ -529,14 +494,9 @@ describe('the legal background', () => {
 
   it('is shown once per note, under the first finding that cites it', () => {
     const note = (n: number) =>
-      finding(n, {
-        checkId: 'CONSENT-01',
-        variant: 'tracking-completed',
-        messageId: 'CONSENT-01.tracking-completed',
-        severity: 'critical',
+      findingOf(n, 'CONSENT-01.tracking-completed', 'critical', {
         legalNoteId: 'CONSENT-01',
         serviceId: `service-${n}`,
-        text: undefined,
       });
     const html = renderHtml(reportWith([note(1), note(2), note(3)]), ctx());
 
@@ -545,14 +505,7 @@ describe('the legal background', () => {
 
   it('labels the status of the note as its classification, not as a source', () => {
     const r = reportWith([
-      finding(1, {
-        checkId: 'CONSENT-01',
-        variant: 'tracking-completed',
-        messageId: 'CONSENT-01.tracking-completed',
-        severity: 'critical',
-        legalNoteId: 'CONSENT-01',
-        text: undefined,
-      }),
+      findingOf(1, 'CONSENT-01.tracking-completed', 'critical', { legalNoteId: 'CONSENT-01' }),
     ]);
 
     expect(renderHtml(r, ctx())).toMatch(/<p class="muted">Einordnung: /);
@@ -562,17 +515,7 @@ describe('the legal background', () => {
 });
 
 describe('the overview: checks without a result', () => {
-  type Check = FullReport['checks'][number];
-  const check = (id: string, status: Check['status'], reason: string | null, module = 'browser'): Check => ({
-    id,
-    module,
-    status,
-    reason,
-    limitations: [],
-    coverage: null,
-    durationMs: 1,
-  });
-  const overview = (checks: Check[], findings: Finding[] = [], lang: 'de' | 'en' = 'de') => {
+  const overview = (checks: CheckResult[], findings: Finding[] = [], lang: 'de' | 'en' = 'de') => {
     const r = reportWith(findings);
     r.checks = checks;
     return buildReportView(r, ctx('brief', lang)).overview;
@@ -581,11 +524,11 @@ describe('the overview: checks without a result', () => {
   it('says the scan was complete only when every check has a result', () => {
     expect(
       overview([check('CONSENT-01', 'completed', null), check('HDR-01', 'not_applicable', 'no-https')]),
-    ).toContain('Der Scan wurde vollständig durchgeführt.');
+    ).toContain(COMPLETE);
     // checks left out with --checks were not asked for
     expect(
       overview([check('CONSENT-01', 'completed', null), check('HDR-01', 'skipped', 'not-selected')]),
-    ).toContain('Der Scan wurde vollständig durchgeführt.');
+    ).toContain(COMPLETE);
   });
 
   it('names the browser checks an invalid certificate kept from running', () => {
@@ -596,10 +539,8 @@ describe('the overview: checks without a result', () => {
       check('TLS-02', 'completed', null, 'http'),
     ]);
 
-    expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
-    expect(sentences).toContain(
-      'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
-    );
+    expect(sentences).not.toContain(COMPLETE);
+    expect(sentences).toContain(RAN_WITH_OPEN_CHECKS);
     expect(sentences).toContain(
       '2 Prüfungen (CONSENT-01, PRIV-01) wurden nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, deshalb hat der Browser die Website nicht aufgerufen.',
     );
@@ -639,9 +580,7 @@ describe('the overview: checks without a result', () => {
   ])('describes the banner state %s', (_state, consent04, sentence) => {
     const sentences = overview([consent04, check('CONSENT-05', 'inconclusive', 'no-reject-click')]);
     expect(sentences.some((s) => sentence.test(s))).toBe(true);
-    expect(sentences).toContain(
-      'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
-    );
+    expect(sentences).toContain(RAN_WITH_OPEN_CHECKS);
   });
 
   describe('a consent dialog the CMP did not open for the scanner', () => {
@@ -669,7 +608,7 @@ describe('the overview: checks without a result', () => {
         expect(sentences.join(' ')).not.toMatch(/nicht sichtbar angezeigt|not shown visibly/);
         // The banner sentence explains the open checks; they are not listed again under "no conclusive result".
         expect(sentences.join(' ')).not.toMatch(/CONSENT-0[345]/);
-        expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+        expect(sentences).not.toContain(COMPLETE);
       },
     );
 
@@ -694,10 +633,7 @@ describe('the overview: checks without a result', () => {
       (lang, text, denied) => {
         const r = reportWith([]);
         r.checks = unopenedChecks();
-        r.scan.coverage.consentActions = [
-          { action: 'reject', clicked: false, verified: null },
-          { action: 'accept', clicked: true, verified: true },
-        ];
+        r.scan.coverage.consentActions = consentClicks({ reject: 'not-clicked', accept: 'confirmed' });
 
         const sentences = buildReportView(r, ctx('brief', lang)).overview;
 
@@ -709,10 +645,7 @@ describe('the overview: checks without a result', () => {
     it('an accept that was not clicked keeps both open', () => {
       const r = reportWith([]);
       r.checks = unopenedChecks();
-      r.scan.coverage.consentActions = [
-        { action: 'reject', clicked: false, verified: null },
-        { action: 'accept', clicked: false, verified: null },
-      ];
+      r.scan.coverage.consentActions = consentClicks({ reject: 'not-clicked', accept: 'not-clicked' });
 
       expect(buildReportView(r, ctx('brief')).overview.join(' ')).toMatch(
         /Ablehnung und Zustimmung wurden daher nicht geprüft/,
@@ -721,13 +654,7 @@ describe('the overview: checks without a result', () => {
   });
 
   describe('a banner observed but not recognised', () => {
-    const notRecognized = finding(1, {
-      checkId: 'CONSENT-04',
-      variant: 'banner-not-recognized',
-      messageId: 'CONSENT-04.banner-not-recognized',
-      severity: 'info',
-      text: undefined,
-    });
+    const notRecognized = findingOf(1, 'CONSENT-04.banner-not-recognized', 'info');
     const candidateChecks = () => [
       check('CONSENT-03', 'inconclusive', 'banner-candidate-unrecognized'),
       check('CONSENT-04', 'inconclusive', 'banner-not-recognized'),
@@ -737,10 +664,8 @@ describe('the overview: checks without a result', () => {
     it('the reject and the accept stay open: the scan is not called complete, the banner sentence says why', () => {
       const sentences = overview(candidateChecks(), [notRecognized]);
 
-      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
-      expect(sentences).toContain(
-        'Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.',
-      );
+      expect(sentences).not.toContain(COMPLETE);
+      expect(sentences).toContain(RAN_WITH_OPEN_CHECKS);
       expect(sentences.join(' ')).toMatch(/Das Einwilligungsbanner wurde nicht erkannt; .* manuell geprüft/);
       expect(sentences.join(' ')).not.toMatch(/CONSENT-0[345]|kein Einwilligungsbanner gefunden/);
     });
@@ -748,7 +673,7 @@ describe('the overview: checks without a result', () => {
     it('without CONSENT-04 in the report, CONSENT-03 alone still says the banner was not recognised', () => {
       const sentences = overview([check('CONSENT-03', 'inconclusive', 'banner-candidate-unrecognized')]);
 
-      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences).not.toContain(COMPLETE);
       expect(sentences.join(' ')).toMatch(/Das Einwilligungsbanner wurde nicht erkannt/);
     });
 
@@ -759,33 +684,28 @@ describe('the overview: checks without a result', () => {
         check('CONSENT-05', 'inconclusive', 'banner-undetermined'),
       ]);
 
-      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences).not.toContain(COMPLETE);
       expect(sentences.join(' ')).not.toMatch(/nicht erkannt|kein Einwilligungsbanner gefunden/);
     });
 
     it('a not recognised banner is never "complete", even when every check reported a result', () => {
       const sentences = overview([check('CONSENT-04', 'completed', null)], [notRecognized]);
 
-      expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+      expect(sentences).not.toContain(COMPLETE);
     });
   });
 
   it('a banner an adapter recognised whose first layer could not be read is named recognised, its checks stay open', () => {
-    const ambiguous = finding(1, {
-      checkId: 'CONSENT-04',
-      variant: 'banner-not-recognized',
-      messageId: 'CONSENT-04.banner-not-recognized',
-      severity: 'info',
+    const ambiguous = findingOf(1, 'CONSENT-04.banner-not-recognized', 'info', {
       params: {
         cmp: 'cookieman',
         reasons: 'ambiguous-first-layer:blocking-no-reject',
         bannerRecognized: true,
       },
-      text: undefined,
     });
     const sentences = overview([check('CONSENT-04', 'inconclusive', 'banner-not-recognized')], [ambiguous]);
 
-    expect(sentences).not.toContain('Der Scan wurde vollständig durchgeführt.');
+    expect(sentences).not.toContain(COMPLETE);
     expect(sentences.join(' ')).toMatch(
       /Das Einwilligungsbanner wurde erkannt, seine erste Ebene aber nicht eindeutig eingeordnet; .* manuell geprüft/,
     );
@@ -808,13 +728,8 @@ describe('the overview: checks without a result', () => {
   ] as const)(
     'a first layer without a reject is a warning about a recognised banner, never a banner called missing (%s)',
     (lang, counts, recognised, missing) => {
-      const noReject = finding(1, {
-        checkId: 'CONSENT-04',
-        variant: 'nonblocking-no-reject',
-        messageId: 'CONSENT-04.nonblocking-no-reject',
-        severity: 'warning',
+      const noReject = findingOf(1, 'CONSENT-04.nonblocking-no-reject', 'warning', {
         params: { cmp: 'wix' },
-        text: undefined,
       });
       const sentences = overview(
         [
@@ -846,14 +761,7 @@ describe('the overview: checks without a result', () => {
     ['inconclusive', 'banner-not-recognized', [{ cmp: 'wix', bannerRecognized: true }]],
   ] as const)('CONSENT-04 %s (%s) never gives the sentence of a missing banner', (status, reason, params) => {
     const findings = params.map((p, i) =>
-      finding(10 + i, {
-        checkId: 'CONSENT-04',
-        variant: 'banner-not-recognized',
-        messageId: 'CONSENT-04.banner-not-recognized',
-        severity: 'info',
-        params: p,
-        text: undefined,
-      }),
+      findingOf(10 + i, 'CONSENT-04.banner-not-recognized', 'info', { params: p }),
     );
     const checks = [
       check('CONSENT-04', status, reason),
@@ -885,13 +793,8 @@ describe('the overview: checks without a result', () => {
       ...check('CONSENT-05', 'inconclusive', 'pagehide-capture-unavailable'),
       coverage: { observed: 4, evaluated: 3 },
     };
-    const afterReject = finding(1, {
-      checkId: 'CONSENT-05',
-      variant: 'tracking-after-reject',
-      messageId: 'CONSENT-05.tracking-after-reject',
-      severity: 'critical',
+    const afterReject = findingOf(1, 'CONSENT-05.tracking-after-reject', 'critical', {
       params: { kind: 'request', service: 'Example Analytics', host: 'a.example', pageCount: 1 },
-      text: undefined,
     });
     const r = reportWith([
       afterReject,
@@ -955,13 +858,7 @@ describe('the overview: checks without a result', () => {
 });
 
 describe('the overview: region and redirect', () => {
-  const consent = finding(1, {
-    checkId: 'CONSENT-01',
-    variant: 'tracking-completed',
-    messageId: 'CONSENT-01.tracking-completed',
-    severity: 'critical',
-    text: undefined,
-  });
+  const consent = findingOf(1, 'CONSENT-01.tracking-completed', 'critical');
   const REGION = /^Die Region, aus der der Scan lief, ist nicht bekannt/;
   const sentences = (r: FullReport) => buildReportView(r, ctx('brief')).overview;
 
@@ -1035,21 +932,8 @@ describe('the overview: region and redirect', () => {
 });
 
 describe('the action list: params of grouped findings', () => {
-  const counted = (
-    n: number,
-    params: Finding['params'],
-    pages: string[],
-    severity: Finding['severity'] = 'info',
-  ) =>
-    finding(300 + n, {
-      checkId: 'TEST-02',
-      variant: 'counted',
-      messageId: 'TEST-02.counted',
-      severity,
-      params,
-      pages,
-      text: undefined,
-    });
+  const counted = (n: number, params: Finding['params'], pages: string[]) =>
+    findingOf(300 + n, 'TEST-02.counted', 'info', { params, pages });
   const PAGE = (p: string) => `https://www.example.de/${p}`;
 
   it('keeps shared values, adds up differing numbers, lists other values and counts distinct pages', () => {
@@ -1080,46 +964,11 @@ describe('the action list: params of grouped findings', () => {
 
   it('orders by severity, then data protection before transport security and mail, then by the pages covered', () => {
     const r = reportWith([
-      finding(1, {
-        checkId: 'MAIL-01',
-        variant: 'policy-none',
-        messageId: 'MAIL-01.policy-none',
-        severity: 'warning',
-        pages: [],
-        text: undefined,
-      }),
-      finding(2, {
-        checkId: 'HDR-01',
-        variant: 'hsts-missing',
-        messageId: 'HDR-01.hsts-missing',
-        severity: 'warning',
-        pages: [PAGE('a')],
-        text: undefined,
-      }),
-      finding(3, {
-        checkId: 'PRIV-01',
-        variant: 'not-named',
-        messageId: 'PRIV-01.not-named',
-        severity: 'warning',
-        pages: [PAGE('a')],
-        text: undefined,
-      }),
-      finding(4, {
-        checkId: 'EMBED-01',
-        variant: 'fonts-loaded',
-        messageId: 'EMBED-01.fonts-loaded',
-        severity: 'warning',
-        pages: [PAGE('a'), PAGE('b')],
-        text: undefined,
-      }),
-      finding(5, {
-        checkId: 'TLS-02',
-        variant: 'certificate-invalid',
-        messageId: 'TLS-02.certificate-invalid',
-        severity: 'critical',
-        pages: [],
-        text: undefined,
-      }),
+      findingOf(1, 'MAIL-01.policy-none', 'warning', { pages: [] }),
+      findingOf(2, 'HDR-01.hsts-missing', 'warning', { pages: [PAGE('a')] }),
+      findingOf(3, 'PRIV-01.not-named', 'warning', { pages: [PAGE('a')] }),
+      findingOf(4, 'EMBED-01.fonts-loaded', 'warning', { pages: [PAGE('a'), PAGE('b')] }),
+      findingOf(5, 'TLS-02.certificate-invalid', 'critical', { pages: [] }),
     ]);
     r.checks = [
       ['MAIL-01', 'dns'],
@@ -1140,15 +989,10 @@ describe('the action list: params of grouped findings', () => {
 
 describe('the action list: mail findings of several domains', () => {
   const mail = (n: number, domain: string, scope: string, variant = 'record-not-found') =>
-    finding(300 + n, {
-      checkId: 'MAIL-01',
-      variant,
-      messageId: `MAIL-01.${variant}`,
-      severity: 'warning',
+    findingOf(300 + n, `MAIL-01.${variant}`, 'warning', {
       subject: scope === 'site' ? 'dmarc' : `dmarc@contact:${domain}`,
       pages: [],
       params: { domain, mailDomain: domain, scope, inherited: 'none' },
-      text: undefined,
     });
   const withDnsChecks = (r: FullReport) => {
     r.checks = [{ ...r.checks[0]!, id: 'MAIL-01', module: 'dns' }];
@@ -1359,15 +1203,7 @@ describe('the full report in words', () => {
   it.each(['de', 'en'] as const)('words every reason a check can end with (%s)', (lang) => {
     const r = sampleFullReport();
     const id = (n: number) => `TEST-${String(n).padStart(2, '0')}`;
-    r.checks = CHECK_REASONS.map((reason, n) => ({
-      id: id(n),
-      module: 'browser',
-      status: 'inconclusive',
-      reason,
-      limitations: [],
-      coverage: null,
-      durationMs: 1,
-    }));
+    r.checks = CHECK_REASONS.map((reason, n) => check(id(n), 'inconclusive', reason));
     const shown = new Map(buildReportView(r, ctx('full', lang)).checks!.map((c) => [c.id, c.reason]));
 
     expect(CHECK_REASONS.filter((reason, n) => shown.get(id(n)) === reason)).toEqual([]);
@@ -1384,13 +1220,9 @@ describe('the full report in words', () => {
       const r = sampleFullReport();
       r.checks = [
         {
-          id: 'CONSENT-05',
-          module: 'browser',
-          status: 'partial',
-          reason: null,
+          ...check('CONSENT-05', 'partial', null),
           limitations: [code],
           coverage: { observed: 4, evaluated: 2 },
-          durationMs: 1,
         },
       ];
       const [shown] = buildReportView(r, ctx('full', lang)).checks!;
@@ -1410,10 +1242,7 @@ describe('the full report in words', () => {
     const r = sampleFullReport();
     r.findings[0]!.phases = ['A', 'B', 'C'];
     r.scan.coverage.pages[0]!.phases = ['A', 'B', 'C'];
-    r.scan.coverage.consentActions = [
-      { action: 'reject', clicked: false, verified: null },
-      { action: 'accept', clicked: false, verified: null },
-    ];
+    r.scan.coverage.consentActions = consentClicks({ reject: 'not-clicked', accept: 'not-clicked' });
     const failed = html(r);
     expect(failed).toContain(
       'A (vor einer Interaktion), B (erneuter Besuch, keine Ablehnung ausgelöst), C (erneuter Besuch, keine Annahme ausgelöst)',
@@ -1424,10 +1253,7 @@ describe('the full report in words', () => {
       'B (repeat visit, no rejection made), C (repeat visit, no acceptance made)',
     );
 
-    r.scan.coverage.consentActions = [
-      { action: 'reject', clicked: true, verified: true },
-      { action: 'accept', clicked: true, verified: false },
-    ];
+    r.scan.coverage.consentActions = consentClicks({ reject: 'confirmed', accept: 'unconfirmed' });
     const unconfirmed = html(r);
     expect(unconfirmed).toContain('B (nach Ablehnung), C (nach Zustimmung, vom Banner nicht bestätigt)');
     expect(unconfirmed).toContain('<td>A, B, C (Annahme nicht bestätigt)</td>');
@@ -1458,10 +1284,7 @@ describe('the full report in words', () => {
 
   it('shows the outcome of the banner clicks in the coverage', () => {
     const r = sampleFullReport();
-    r.scan.coverage.consentActions = [
-      { action: 'reject', clicked: true, verified: true },
-      { action: 'accept', clicked: false, verified: null },
-    ];
+    r.scan.coverage.consentActions = consentClicks({ reject: 'confirmed', accept: 'not-clicked' });
     expect(html(r)).toContain(
       'Klicks im Einwilligungsbanner: Ablehnen ausgelöst und bestätigt; Annehmen nicht ausgelöst',
     );

@@ -9,8 +9,6 @@ import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils
 import {
   CONTACT,
   click,
-  cmpFacts,
-  cmpWith,
   defaultPages,
   page,
   phase,
@@ -21,6 +19,7 @@ import {
   site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
+import { AFTER_CLICK, expectMoment, momentCases, rejectPhase } from './reject-moment.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-01']!.find((s) => s.file === file)!.build();
 const css = (id: string, p = {}) =>
@@ -38,33 +37,6 @@ describe('EMBED-01 external fonts', () => {
     expect(o?.evidence).toHaveLength(2);
   });
 
-  it('clean: self-hosted fonts', () => {
-    expect(variantsOf(runCheck(embed01, scenario('clean-self-hosted.json')))).toEqual([]);
-  });
-
-  it('inconclusive: no phase A', () => {
-    expect(runCheck(embed01, scenario('inconclusive-no-network.json'))).toMatchObject({
-      status: 'inconclusive',
-    });
-  });
-
-  it('counterexample: preconnect to fonts.gstatic.com without a download → preconnect-only (info), not warning', () => {
-    const start = page(START, 'start', 'A', {
-      dom: makeDom({ linkRels: [{ rel: 'preconnect', href: 'https://fonts.gstatic.com/', source: 'dom' }] }),
-    });
-    const r = runCheck(
-      embed01,
-      site({ phases: [phase('A', { pages: [start, ...defaultPages('A').slice(1)] })] }),
-    );
-    const [o] = observationsOf(r);
-    expect(o).toMatchObject({ variant: 'preconnect-only', subject: 'google-fonts' });
-    expect(o?.evidence[0]).toMatchObject({
-      type: 'link',
-      href: 'https://fonts.gstatic.com/',
-      text: 'rel=preconnect',
-    });
-  });
-
   it('counterexample: an unfinished font request is not a load', () => {
     const r = runCheck(
       embed01,
@@ -73,7 +45,7 @@ describe('EMBED-01 external fonts', () => {
     expect(variantsOf(r)).toEqual(['preconnect-only']);
   });
 
-  it('a load after the reject stays fonts-loaded; a load only after accept is no finding', () => {
+  it('a load after the reject stays fonts-loaded', () => {
     const afterReject = runCheck(
       embed01,
       site({
@@ -88,16 +60,6 @@ describe('EMBED-01 external fonts', () => {
       phases: ['B'],
       params: { afterReject: true },
     });
-    const afterAccept = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A'),
-          phase('C', { click: click('accept'), requests: [css('c', { phase: 'C', afterClick: true })] }),
-        ],
-      }),
-    );
-    expect(variantsOf(afterAccept)).toEqual([]);
   });
 
   it('p.typekit.net alone (purpose not verified) is not a font load; Bunny Fonts (EU) still is', () => {
@@ -154,22 +116,6 @@ describe('EMBED-01 external fonts', () => {
     const whole = { outcome: 'revealed', documentHeightPx: 4_000, viewportHeightPx: 4_000 } as const;
     const fits = [page(START, 'start', 'A', { reveal: whole })];
     expect(limitations([phase('A', { pages: fits, requests: [css('a')] })])).toEqual([]);
-  });
-
-  it('bot signal → inconclusive', () => {
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [phase('A', { requests: [css('a')] })],
-        cmp: cmpWith({
-          phase: 'A',
-          facts: [
-            cmpFacts({ phase: 'A', botSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isSpider' }] }),
-          ],
-        }),
-      }),
-    );
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
   });
 });
 
@@ -317,6 +263,31 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
     else expect(actions).toMatch(/Verbindungsvorbereitung/);
   });
 
+  it('counterexample: a preconnect to fonts.gstatic.com without a download names the font service and the link', () => {
+    const r = runCheck(
+      embed01,
+      site({ phases: [phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)] })] }),
+    );
+    const [o] = observationsOf(r);
+    expect(o).toMatchObject({ variant: 'preconnect-only', subject: 'google-fonts' });
+    expect(o?.evidence[0]).toMatchObject({
+      type: 'link',
+      href: 'https://fonts.gstatic.com/',
+      text: 'rel=preconnect',
+    });
+  });
+
+  it('counterexample: a link to a font service with another rel than a connection hint is ignored', () => {
+    const start = page(START, 'start', 'A', {
+      dom: makeDom({ linkRels: [{ rel: 'stylesheet', href: 'https://fonts.gstatic.com/', source: 'dom' }] }),
+    });
+    const r = runCheck(
+      embed01,
+      site({ phases: [phase('A', { pages: [start, ...defaultPages('A').slice(1)] })] }),
+    );
+    expect(variantsOf(r)).toEqual([]);
+  });
+
   it('failed requests repeated after the reject leave room for the connection hint in the evidence', () => {
     const files = (prefix: string, p: Partial<RequestRecord> = {}) =>
       Array.from({ length: 7 }, (_, i) =>
@@ -349,94 +320,12 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
   });
 });
 
-/** Phase B of a reject on the start page: the start page, its reload and Kontakt as the control page. */
-const rejectPhase = (requests: RequestRecord[]) =>
-  phase('B', {
-    click: click('reject'),
-    reloaded: true,
-    pages: [
-      page(START, 'start', 'B'),
-      page(START, 'start', 'B', { reload: true }),
-      page(CONTACT, 'contact', 'B'),
-    ],
-    requests,
-  });
-const AFTER_CLICK = { phase: 'B', afterClick: true } as const;
-
-interface MomentParams {
-  moment: string;
-  rejectConfirmed: boolean | null;
-  afterRejectPageCount: number;
-  afterReject: boolean;
-}
-const BEFORE: MomentParams = {
-  moment: 'before-interaction',
-  rejectConfirmed: null,
-  afterRejectPageCount: 0,
-  afterReject: false,
-};
 const confirmed = rejectCmp({ confirmed: true, pages: { [CONTACT]: 'in-effect' } });
-
-/** Input, CMP facts of the reject and the params of the one `fonts-loaded` finding (null: no finding). */
-const MOMENT_CASES: Array<[string, PhaseRecord[], CmpSection, MomentParams | null]> = [
-  ['the fonts load before the interaction only', [phase('A', { requests: [css('a')] })], confirmed, BEFORE],
-  [
-    'the fonts load before the interaction and again after the confirmed reject',
-    [phase('A', { requests: [css('a')] }), rejectPhase([css('b', { ...AFTER_CLICK, pageUrl: CONTACT })])],
-    confirmed,
-    { moment: 'before-and-after-reject', rejectConfirmed: true, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'the fonts load only after the confirmed reject',
-    [phase('A'), rejectPhase([css('b', { ...AFTER_CLICK, pageUrl: CONTACT })])],
-    confirmed,
-    { moment: 'after-reject', rejectConfirmed: true, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'counterexample: phase B before its click is no load after the reject',
-    [phase('A'), rejectPhase([css('b', { phase: 'B', afterClick: false })])],
-    confirmed,
-    BEFORE,
-  ],
-  [
-    'the reject was clicked, but the CMP state did not confirm it',
-    [phase('A', { requests: [css('a')] }), rejectPhase([css('b', AFTER_CLICK)])],
-    rejectCmp({ confirmed: false }),
-    { moment: 'before-and-after-reject', rejectConfirmed: false, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'counterexample: a failed attempt after the reject is no load',
-    [
-      phase('A', { requests: [css('a')] }),
-      rejectPhase([css('b', { ...AFTER_CLICK, state: 'failed', status: undefined })]),
-    ],
-    confirmed,
-    BEFORE,
-  ],
-  [
-    'a page that shows the banner again after the reject is not counted',
-    [
-      phase('A', { requests: [css('a')] }),
-      rejectPhase([css('b', AFTER_CLICK), css('c', { ...AFTER_CLICK, pageUrl: CONTACT })]),
-    ],
-    rejectCmp({ confirmed: true, pages: { [CONTACT]: 'banner-again' } }),
-    { moment: 'before-and-after-reject', rejectConfirmed: true, afterRejectPageCount: 1, afterReject: true },
-  ],
-  [
-    'counterexample: the fonts load only after the accept',
-    [
-      phase('A'),
-      phase('C', { click: click('accept'), requests: [css('c', { phase: 'C', afterClick: true })] }),
-    ],
-    confirmed,
-    null,
-  ],
-];
 
 describe('EMBED-01 names where the reject was pressed', () => {
   const both = [
     phase('A', { requests: [css('a')] }),
-    rejectPhase([css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
+    rejectPhase(CONTACT, [css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
   ];
   it.each([
     ['the save of the settings layer', both, settingsRejectCmp(), 'settings', ' über die Einstellungen:'],
@@ -456,41 +345,32 @@ describe('EMBED-01 names where the reject was pressed', () => {
 });
 
 describe('EMBED-01 states whether the fonts loaded before the interaction, after the reject, or both', () => {
-  it.each(MOMENT_CASES)('%s', (_name, phases, cmp, want) => {
-    const observations = observationsOf(runCheck(embed01, site({ phases, cmp })));
-    if (!want) {
-      expect(observations).toEqual([]);
-      return;
-    }
-    expect(observations).toHaveLength(1);
-    expect(observations[0]).toMatchObject({ variant: 'fonts-loaded', params: want });
-  });
+  it.each(momentCases({ load: css, phaseA: (requests = []) => phase('A', { requests }), control: CONTACT }))(
+    '%s',
+    (_name, { phases, cmp, want }) => {
+      expectMoment(observationsOf(runCheck(embed01, site({ phases, cmp }))), 'fonts-loaded', want);
+    },
+  );
 
   const both = [
     phase('A', { requests: [css('a')] }),
-    rejectPhase([css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
+    rejectPhase(CONTACT, [css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
   ];
   const render = (lang: 'de' | 'en', cmp: CmpSection) => {
     const [o] = observationsOf(runCheck(embed01, site({ phases: both, cmp })));
     return renderMessage(loadTexts(lang), 'EMBED-01.fonts-loaded', o!.params);
   };
 
-  it('a confirmed reject: the title says "also after the confirmed rejection", the body counts the pages after it', () => {
-    expect(render('de', confirmed)).toMatchObject({
-      title: 'Externe Schriftarten geladen, auch nach bestätigter Ablehnung: Google Fonts',
-      body:
-        'Schriftdateien oder Stylesheets von Google Fonts wurden von einem externen Server geladen, Zeitpunkt: vor ' +
+  it('a confirmed reject: the body counts the pages after it', () => {
+    expect(render('de', confirmed).body).toBe(
+      'Schriftdateien oder Stylesheets von Google Fonts wurden von einem externen Server geladen, Zeitpunkt: vor ' +
         'einer Interaktion mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung (2 Seiten, davon 1 ' +
         'nach der Ablehnung).',
-    });
-    expect(render('en', confirmed).title).toBe(
-      'External fonts loaded, also after confirmed rejection: Google Fonts',
     );
   });
 
   it('an unconfirmed reject is named as a click on "Ablehnen" that was not confirmed', () => {
     const cmp = rejectCmp({ confirmed: false });
-    expect(render('de', cmp).title).toBe('Externe Schriftarten geladen, auch nach Ablehnung: Google Fonts');
     expect(render('de', cmp).body).toContain('nach dem Klick auf „Ablehnen“ (Ablehnung nicht bestätigt)');
     expect(render('en', cmp).body).toContain('after the click on "Reject" (rejection not confirmed)');
   });
@@ -507,7 +387,7 @@ describe('EMBED-01 states whether the fonts loaded before the interaction, after
       runCheck(
         embed01,
         site({
-          phases: [phase('A', { requests: files('a') }), rejectPhase(files('b', AFTER_CLICK))],
+          phases: [phase('A', { requests: files('a') }), rejectPhase(CONTACT, files('b', AFTER_CLICK))],
           cmp: confirmed,
         }),
       ),

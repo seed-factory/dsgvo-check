@@ -47,14 +47,25 @@ export function useCmpServer(sites: string[]) {
   afterAll(async () => {
     await ctx.server?.close();
   });
+  const open = async (url: string, ua?: string): Promise<Session> => {
+    const s = await openSession(ctx.server, url, ua);
+    ctx.sessions.push(s);
+    return s;
+  };
   return {
     get server() {
       return ctx.server;
     },
-    async open(url: string, ua?: string): Promise<Session> {
-      const s = await openSession(ctx.server, url, ua);
-      ctx.sessions.push(s);
-      return s;
+    open,
+    /**
+     * Opens `url` and expects `id` to be recognized; with `banner` it also waits for the banner, whether it appeared is
+     * checked by the tests that care.
+     */
+    async openRecognized(url: string, id: KnownCmpId, opts: { ua?: string; banner?: boolean } = {}) {
+      const { page } = await open(url, opts.ua);
+      const adapter = await recognized(page, id);
+      if (opts.banner) await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      return { page, adapter };
     },
   };
 }
@@ -142,21 +153,8 @@ export function describeCmpScenarios(
     const env = useCmpServer([s.site]);
     const lexicon = loadLexicon();
 
-    /** Opens `url`, waits until the CMP is recognized; the banner itself is not awaited yet. */
-    async function openRecognized(url: string) {
-      const { page } = await env.open(url);
-      return { page, adapter: await recognized(page, s.id) };
-    }
-
-    /** Opens `url` and waits for the banner; whether it appeared is checked by the scenarios that care. */
-    async function openWithBanner(url: string) {
-      const opened = await openRecognized(url);
-      await waitForBanner(opened.page, opened.adapter, { timeoutMs: CMP_WAIT_MS });
-      return opened;
-    }
-
     it('recognizes the CMP with high confidence and measures a first layer with a reject → ok', async () => {
-      const { page, adapter } = await openRecognized(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id);
       expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -185,7 +183,7 @@ export function describeCmpScenarios(
     });
 
     it('reject: clicks only the unambiguous reject, the banner closes, the state is read before and after the reload', async () => {
-      const { page, adapter } = await openWithBanner(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
 
       const { click } = await decideAndAct(page, adapter, 'reject');
 
@@ -204,7 +202,7 @@ export function describeCmpScenarios(
     const blockingUrl = s.blockingUrl;
     if (blockingUrl) {
       it('blocking variant without reject on the first layer → blocking-no-reject, nothing is clicked', async () => {
-        const { page, adapter } = await openRecognized(blockingUrl);
+        const { page, adapter } = await env.openRecognized(blockingUrl, s.id);
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
         const facts = await extract(page, adapter, 'first-screen');
@@ -218,7 +216,7 @@ export function describeCmpScenarios(
     const nonblockingUrl = s.nonblockingNoRejectUrl;
     if (nonblockingUrl) {
       it('bar without reject on the first layer → nonblocking-no-reject, nothing is clicked', async () => {
-        const { page, adapter } = await openRecognized(nonblockingUrl);
+        const { page, adapter } = await env.openRecognized(nonblockingUrl, s.id);
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
         const facts = await extract(page, adapter, 'first-screen');
@@ -230,7 +228,7 @@ export function describeCmpScenarios(
     }
 
     it('accept: clicks accept, then reads the state again after the reload', async () => {
-      const { page, adapter } = await openWithBanner(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
 
       const { click } = await decideAndAct(page, adapter, 'accept');
 
@@ -241,7 +239,7 @@ export function describeCmpScenarios(
 
     // The adapter executes the target core chose and decides nothing itself.
     it('act(page, action, target) clicks exactly the target chosen by classifyFirstLayer', async () => {
-      const { page, adapter } = await openWithBanner(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
       const facts = await extract(page, adapter, 'first-screen');
       const target = classifyFirstLayer(facts, lexicon).targets?.reject ?? null;
       expect(target).not.toBeNull();
@@ -259,7 +257,7 @@ export function describeCmpScenarios(
     });
 
     it('a null target from core is not overridden by a decision of the adapter', async () => {
-      const { page, adapter } = await openWithBanner(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
       const facts = await extract(page, adapter, 'first-screen');
       // The default lexicon would pick a reject here; core's decision (here: none) must win.
       expect(classifyFirstLayer(facts, lexicon).targets?.reject).not.toBeNull();
@@ -273,7 +271,7 @@ export function describeCmpScenarios(
     });
 
     it('without facts and without a target the adapter does not measure and click on its own', async () => {
-      const { page, adapter } = await openWithBanner(s.okUrl);
+      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
 
       const click = await adapter.reject(page);
 

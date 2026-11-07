@@ -10,18 +10,9 @@ import {
   startFixtureServer,
 } from '../../../fixture-server/server.ts';
 import { collect, FAST_TIMING } from '../helpers.ts';
+import { FOOTER, html, LOREM } from '../site-dir.ts';
 
 const HARD_CAP_MS = FAST_TIMING.phases.A.hardCapMs;
-
-function html(title: string, body: string): string {
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-}
-
-const FOOTER =
-  '<footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutzerklärung</a></footer>';
-
-const POLICY_TEXT =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
 
 const send = (res: ServerResponse, body: string) => {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -50,7 +41,7 @@ function hangingSite(host: string, startBody: string): DynamicHandler {
             res,
             html(
               'Datenschutzerklärung',
-              `<main><h1>Datenschutzerklärung</h1><p>${POLICY_TEXT.repeat(4)}</p></main>`,
+              `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`,
             ),
           );
         case '/frame-content/':

@@ -3,11 +3,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../../src/core/data/load.ts';
 import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
 import { normalizeTemplateLayout, renderHtml } from '../../../../src/reporters/html.ts';
 import { sampleFullReport } from '../../../utils/report/fixtures.ts';
 import { cspOf } from '../../../utils/report/html-safety.ts';
+import { reporterContext } from '../../../utils/report/reporter-inputs.ts';
 
 describe('template layout', () => {
   it.each([
@@ -66,13 +66,7 @@ describe('template layout', () => {
 });
 
 describe('template layout in the HTML reporter', () => {
-  const ctx = (dataDir?: string): ReporterContext => ({
-    texts: loadTexts('de'),
-    lang: 'de',
-    outDir: '/nonexistent-out',
-    color: false,
-    ...(dataDir ? { dataDir } : {}),
-  });
+  const ctx = (dataDir?: string): ReporterContext => reporterContext('de', dataDir ? { dataDir } : {});
 
   it('hashes the folded style, and keeps only the line breaks written as {{nl}}', () => {
     const dataDir = mkdtempSync(path.join(tmpdir(), 'report-layout-'));

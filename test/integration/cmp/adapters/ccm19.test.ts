@@ -48,8 +48,7 @@ describeCmpScenarios(
   },
   (env) => {
     it('a dialog that never opens: flagged after the wait, no click target, nothing clicked', async () => {
-      const { page } = await env.open(`${SITE}/not-opened.html`);
-      const adapter = await recognized(page, 'ccm19');
+      const { page, adapter } = await env.openRecognized(`${SITE}/not-opened.html`, 'ccm19');
       expect(await waitForBanner(page, adapter, { timeoutMs: SHORT_WAIT_MS })).toBe(false);
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -73,8 +72,7 @@ describeCmpScenarios(
     });
 
     it("a crawler's User-Agent matches CCM19's crawler test: the widget stays closed, the bot signal says why", async () => {
-      const { page } = await env.open(`${SITE}/`, CRAWLER_FORM_UA);
-      const adapter = await recognized(page, 'ccm19');
+      const { page, adapter } = await env.openRecognized(`${SITE}/`, 'ccm19', { ua: CRAWLER_FORM_UA });
       expect(await waitForBanner(page, adapter, { timeoutMs: SHORT_WAIT_MS })).toBe(false);
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -94,8 +92,7 @@ describeCmpScenarios(
     ])(
       'counterexample: the same page opens its widget for %s, without a bot signal',
       async (_name, userAgent) => {
-        const { page } = await env.open(`${SITE}/`, userAgent);
-        const adapter = await recognized(page, 'ccm19');
+        const { page, adapter } = await env.openRecognized(`${SITE}/`, 'ccm19', { ua: userAgent });
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
         const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -107,8 +104,7 @@ describeCmpScenarios(
     );
 
     it('without the wait for the banner the same widget is not called unopened', async () => {
-      const { page } = await env.open(`${SITE}/not-opened.html`);
-      const adapter = await recognized(page, 'ccm19');
+      const { page, adapter } = await env.openRecognized(`${SITE}/not-opened.html`, 'ccm19');
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'A' });
 
@@ -117,8 +113,7 @@ describeCmpScenarios(
     });
 
     it('counterexample: the hidden widget of a visitor who answered is answered, not unopened', async () => {
-      const { page } = await env.open(`${SITE}/answered.html`);
-      const adapter = await recognized(page, 'ccm19');
+      const { page, adapter } = await env.openRecognized(`${SITE}/answered.html`, 'ccm19');
       expect(await waitForBanner(page, adapter, { timeoutMs: SHORT_WAIT_MS })).toBe(false);
 
       const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
@@ -144,8 +139,7 @@ describeCmpScenarios(
     });
 
     it('the settings role is given to the settings button only, not to the language select or other controls', async () => {
-      const { page } = await env.open(`${SITE}/`);
-      const adapter = await recognized(page, 'ccm19');
+      const { page, adapter } = await env.openRecognized(`${SITE}/`, 'ccm19');
       expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
       const matched = await page
