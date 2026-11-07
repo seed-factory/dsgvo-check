@@ -688,11 +688,13 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   nicht die Erlaubnis des Website-Betreibers.
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
-  Domain maskiert. Im Text des Einwilligungsbanners, den der Snapshot für PRIV-01 aufbewahrt, ersetzt der Collector
-  Einwilligungs-IDs, UIDs, TC-Strings und ähnliche Kennungen vor dem Schreiben durch `[redacted]`, auch wenn
-  unsichtbare Zeichen eine Kennung oder Adresse teilen. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt
-  und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der
-  Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Domain maskiert. Den Text des Einwilligungsbanners, den PRIV-01 braucht, speichert der Scan nicht: Der Collector
+  durchsucht ihn im Speicher nach Namen und Schreibweisen des Dienstekatalogs und behält nur die Treffer, je Dienst
+  dessen Kennung und die Schreibweise aus dem Katalog. Einwilligungs-IDs, UIDs oder TC-Strings, die das Banner neben den
+  Diensten anzeigt, gelangen so in keiner Form in Snapshot, Bericht oder Logs. Von Headern wie `Server` und
+  `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre
+  Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten
+  Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
@@ -768,9 +770,11 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   Schreibweise des Dienstekatalogs (etwa die eingeklappten „Cookie-Details“ von Borlabs Cookie), meldet PRIV-01 statt
   `not-named` oder `category-only` die Variante `named-in-cmp-only` (`info`). Gelesen wird der Text des Banners einmal
   in Phase A ohne Klick, auf der ersten Seite, auf der ein eigener Adapter das Banner sicher erkennt (nie die
-  allgemeine Heuristik), höchstens 100 000 Zeichen. Firmenname, Domain oder Kategorie im Banner zählen nicht als
-  Nennung. Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist,
-  und `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
+  allgemeine Heuristik), höchstens 100 000 Zeichen. Der Collector sucht darin wie PRIV-01 in der Datenschutzerklärung
+  und speichert nur die gefundenen Dienste mit der Schreibweise aus dem Katalog, keinen Text des Banners; der Befund
+  nennt diese Schreibweise. Firmenname, Domain oder Kategorie im Banner zählen nicht als Nennung.
+  Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist, und
+  `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
   [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
   lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder

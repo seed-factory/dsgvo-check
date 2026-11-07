@@ -1,6 +1,6 @@
 /** CMP facts and the adapter contract. */
 import type { Page } from 'playwright-core';
-import type { CmpDialogText } from '../core/snapshot/cmp-dialog.ts';
+import type { CmpDialogMentions } from '../core/snapshot/cmp-dialog.ts';
 import type {
   Box,
   BrowserPhase,
@@ -299,17 +299,18 @@ export interface CmpPhaseFacts {
 export interface CmpSection {
   phases: CmpPhaseFacts[];
   /**
-   * The whole text of the consent dialog, read once in phase A where an own adapter recognised its CMP with confidence
-   * `high`. Absent when none did, the read failed, and in older snapshots.
+   * The catalog services the consent dialog names, found in its text once in phase A where an own adapter recognised
+   * its CMP with confidence `high`; the text itself is not kept. Absent when none did, the read failed, and in older
+   * snapshots.
    */
-  dialogText?: CmpDialogText;
-  /** The dialog qualified for that read, but its text could not be read or stored; PRIV-01 names it as a limitation. */
-  dialogTextFailed?: true;
+  dialogMentions?: CmpDialogMentions;
+  /** The dialog qualified for that read, but its text could not be read or matched; PRIV-01 names it as a limitation. */
+  dialogMentionsFailed?: true;
 }
 
 /**
- * Text of the adapter's banner container as the page holds it, hidden and collapsed parts included; not redacted yet.
- * `truncated`: the page side cut it at the limit it was given.
+ * Text of the adapter's banner container as the page holds it, hidden and collapsed parts included. The collector only
+ * searches it in memory; it is never stored. `truncated`: the page side cut it at the limit it was given.
  */
 export interface RawDialogText {
   text: string;

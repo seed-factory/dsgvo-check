@@ -21,4 +21,5 @@ export { maskEmails, maskMailto, redactText } from './redaction/redact.ts';
 export type { Confidence, MessageParams, Severity } from './report/schema.ts';
 export { isCookieHeld, isHttpHref } from './snapshot/browser.ts';
 export type * from './snapshot/index.ts';
+export { containsTerm, firstTermIn, normalizeText, serviceNameTerms } from './text/search.ts';
 export { isSameSite, parseUrl, registrableDomain, sanitizeUrl } from './url/url.ts';

@@ -1,6 +1,7 @@
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
+import { dialogMentionsOf } from '../../../../../src/collectors/browser/dialog-mentions.ts';
 import type { DocumentRecord } from '../../../../../src/core/snapshot/browser.ts';
-import type { CmpDialogText } from '../../../../../src/core/snapshot/cmp-dialog.ts';
+import type { CmpDialogMentions } from '../../../../../src/core/snapshot/cmp-dialog.ts';
 import { makeDocument } from '../../../../utils/snapshot-builder.ts';
 import {
   defaultDocuments,
@@ -139,8 +140,8 @@ const withNotice = (withTranslation: boolean, documents: DocumentRecord[]) =>
   });
 
 /**
- * The text of a Borlabs Cookie dialog as the collector stores it: the first layer, then the collapsed Cookie-Details
- * that list each service with provider and purpose, and the visitor's UID redacted.
+ * The text of a Borlabs Cookie dialog as the page holds it: the first layer, then the collapsed Cookie-Details that
+ * list each service with provider and purpose, and the visitor's UID.
  */
 export const BORLABS_DIALOG_TEXT =
   'Datenschutzeinstellungen Wir nutzen Cookies auf unserer Website. Alle akzeptieren Nur essenzielle Cookies ' +
@@ -148,30 +149,26 @@ export const BORLABS_DIALOG_TEXT =
   'Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland Zweck Cookie von Google zur Steuerung der ' +
   'erweiterten Script- und Ereignisbehandlung. Datenschutzerklärung https://policies.google.com/privacy Cookie Name ' +
   '_ga,_gat,_gid Cookie Laufzeit 2 Jahre Name Google AdWords Anbieter Google Ireland Limited Zweck ' +
-  'Conversion-Tracking und Remarketing Cookie Laufzeit 3 Monate Einwilligungs-ID (UID): [redacted]';
+  'Conversion-Tracking und Remarketing Cookie Laufzeit 3 Monate Einwilligungs-ID (UID): ' +
+  'zqxabcde-fghijklm-nopqrstu-vwxyzabc';
 
 /** A dialog that lists Google services by provider, domain and category, but not the Google Tag Manager by name. */
 const DIALOG_WITHOUT_GTM =
   'Datenschutzeinstellungen Alle akzeptieren Nur essenzielle Cookies akzeptieren Cookie-Details Statistik Name ' +
   'Google Analytics Anbieter Google Ireland Limited Zweck Tag-Management und Statistik, Skript von ' +
-  'www.googletagmanager.com Einwilligungs-ID (UID): [redacted]';
+  'www.googletagmanager.com Einwilligungs-ID (UID): zqxabcde-fghijklm-nopqrstu-vwxyzabc';
 
-export function borlabsDialog(text: string, p: Partial<CmpDialogText> = {}): CmpSection {
-  return {
-    ...noBannerCmp(),
-    dialogText: {
-      id: 'cmp-dialog',
-      cmpId: 'borlabs',
-      cmpName: 'Borlabs Cookie',
-      version: '3.2.1',
-      phase: 'A',
-      pageUrl: START,
-      takenAt: '2026-11-01T10:00:00.000Z',
-      text,
-      truncated: false,
-      ...p,
-    },
-  };
+const BORLABS = { id: 'borlabs', name: 'Borlabs Cookie' } as const;
+
+/**
+ * The CMP section of a Borlabs Cookie site with the record the collector makes of the dialog `text`: the catalog
+ * services it names, found by the collector's own search, and none of the text.
+ */
+export function borlabsDialog(text: string, p: Partial<CmpDialogMentions> = {}): CmpSection {
+  const source = { adapter: BORLABS, version: '3.2.1', pageUrl: START, takenAt: '2026-11-01T10:00:00.000Z' };
+  const mentions = dialogMentionsOf({ text, truncated: false }, source);
+  if (!mentions) throw new Error('the dialog record does not fit the snapshot schema');
+  return { ...noBannerCmp(), dialogMentions: { ...mentions, ...p } };
 }
 
 const gtmLoaded = () =>
@@ -298,7 +295,7 @@ export const variantScenarios: Scenario[] = [
       }),
   },
   {
-    file: 'violation-cmp-text-without-the-service.json',
+    file: 'violation-cmp-dialog-names-provider-domain-category.json',
     description:
       'Google Tag Manager is loaded; the Borlabs dialog names its provider, its domain and its category, not the service',
     expect: { status: 'completed', variants: ['not-named'] },
@@ -309,6 +306,6 @@ export const variantScenarios: Scenario[] = [
     description:
       'Google Tag Manager is loaded; no privacy document names it, and the Borlabs dialog qualified but its text could not be read',
     expect: { status: 'partial', variants: ['not-named'] },
-    build: () => site({ phases: [gtmLoaded()], cmp: { ...noBannerCmp(), dialogTextFailed: true } }),
+    build: () => site({ phases: [gtmLoaded()], cmp: { ...noBannerCmp(), dialogMentionsFailed: true } }),
   },
 ];

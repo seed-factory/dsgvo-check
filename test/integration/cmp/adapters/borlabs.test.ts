@@ -77,7 +77,7 @@ describeCmpScenarios(
       expect(read?.text).toMatch(/^Datenschutzeinstellungen Wir nutzen Cookies/);
       expect(read?.text).toContain('Cookie-Details Name Google Tag Manager Anbieter Google Ireland Limited');
       expect(read?.text).toContain('Name Google AdWords');
-      // The page side does not redact: the UID is there; the collector replaces it before anything is stored.
+      // The page side reads the text as it is, the UID included; the collector keeps only the catalog services it names.
       expect(read?.text).toMatch(/Ihre Einwilligungs-ID \(UID\): zqx[a-z]{5}(-[a-z]{8}){3}$/);
       const details = await page.locator('.brlbs-cmpnt-cookie-details').evaluate((el) => el.style.display);
       expect(details).toBe('none');

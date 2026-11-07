@@ -3,7 +3,7 @@
  * PRIV-02), and the privacy policy the policy checks read: its HTML documents, their text normalised for word search,
  * and the evidence of what was read.
  */
-import type { EvidenceInput } from '../../core/api.ts';
+import { type EvidenceInput, normalizeText } from '../../core/api.ts';
 import type { DocumentPart, DocumentRecord, DocumentsSection } from '../../core/snapshot/browser.ts';
 import { sortedUniq } from './lists.ts';
 
@@ -35,22 +35,6 @@ export function usableDocument(d: DocumentRecord, attempts: DocumentsSection['at
   if (judgedNot) return false;
   if (d.status === null) return d.format === 'pdf';
   return d.status >= 200 && d.status < 300;
-}
-
-/** NFKC, case, ä/ae, ß/ss, soft hyphen, diacritics; punctuation and hyphens → spaces. */
-export function normalizeText(s: string): string {
-  return ` ${s
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/\u00AD/g, '')
-    .replace(/ä/g, 'ae')
-    .replace(/ö/g, 'oe')
-    .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()} `;
 }
 
 /**

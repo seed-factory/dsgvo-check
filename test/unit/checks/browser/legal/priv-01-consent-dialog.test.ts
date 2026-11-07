@@ -1,8 +1,9 @@
 /**
- * PRIV-01 and the text of the consent dialog: a service no privacy document names, but that the dialog of a CMP its own
- * adapter recognised names by name or alias (its collapsed service details), is `named-in-cmp-only` (info) instead of
- * `not-named` or `category-only`. Company, domain and category in the dialog do not count; without dialog text the
- * check works as before.
+ * PRIV-01 and the consent dialog: a service no privacy document names, but that the dialog of a CMP its own adapter
+ * recognised names by name or alias (its collapsed service details), is `named-in-cmp-only` (info) instead of
+ * `not-named` or `category-only`. The dialog records are made by the collector's own search of the dialog text, so
+ * that the check sees what a scan stores: the catalog term that matched, no text. Company, domain and category in the
+ * dialog do not count; without dialog mentions the check works as before.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,6 +68,10 @@ const verdicts = (r: ReturnType<typeof runCheck>) =>
 const of = (r: ReturnType<typeof runCheck>, subject: string) =>
   observationsOf(r).find((o) => o.subject === subject);
 
+const translate = req('tr', 'https://translate.googleapis.com/translate_a/element.js?cb=init', {
+  resourceType: 'script',
+});
+
 describe('PRIV-01 services the consent dialog names', () => {
   it('Tag Manager and AdWords in the Cookie-Details, Analytics in no text → named-in-cmp-only twice, not-named once', () => {
     expect(verdicts(run())).toEqual([
@@ -76,21 +81,19 @@ describe('PRIV-01 services the consent dialog names', () => {
     ]);
   });
 
-  it('the finding names the CMP and quotes the passage of the dialog; medium like not-named, same fingerprint group', () => {
+  it('the finding names the CMP and the catalog term that matched; medium like not-named, same fingerprint group', () => {
     const o = of(run(), 'google-tag-manager');
     expect(o).toMatchObject({
       confidence: 'medium',
       params: {
         service: 'Google Tag Manager',
         cmp: 'Borlabs Cookie',
+        cmpTerm: 'Google Tag Manager',
         categoryOnly: false,
         policyUrl: PRIVACY,
       },
     });
-    const quote = o?.params.cmpQuote as string;
-    expect(quote).toContain('Name Google Tag Manager Anbieter Google Ireland Limited');
-    expect(quote.length).toBeLessThanOrEqual(122);
-    expect(quote).toMatch(/^….*…$/);
+    expect(of(run(), 'google-ads')?.params.cmpTerm).toBe('Google AdWords');
     expect(variantGroupOf(priv01, 'named-in-cmp-only')).toBe(variantGroupOf(priv01, 'not-named'));
 
     const cmp = o?.evidence.find((e) => e.type === 'cmp');
@@ -101,40 +104,60 @@ describe('PRIV-01 services the consent dialog names', () => {
       recognitionConfidence: 'high',
       page: START,
     });
-    expect(match).toMatchObject({ documentId: 'cmp-dialog', matchLevel: 'named', negation: 'none', quote });
+    expect(match).toEqual({
+      type: 'text-match',
+      documentId: 'cmp-dialog',
+      section: null,
+      quote: 'Google Tag Manager',
+      matchLevel: 'named',
+      negation: 'none',
+      phase: 'A',
+      page: START,
+    });
     for (const ev of o?.evidence ?? [])
       expect(() => EvidenceSchema.parse({ id: 'ev-1', ...ev })).not.toThrow();
   });
 
-  it('a name the dialog writes with hyphens is quoted where it stands', () => {
-    const text = `${'Wir nutzen Cookies. '.repeat(10)}Name Google-Tag-Manager Anbieter Google Ireland Limited`;
-    const quote = of(run({ dialog: text }), 'google-tag-manager')?.params.cmpQuote as string;
-    expect(quote).toContain('Google-Tag-Manager');
-    expect(quote.startsWith('…')).toBe(true);
-  });
-
-  it('a name that begins a longer one is quoted where it stands alone: Google Ads after Google AdSense', () => {
-    const adsense =
-      'Cookie-Details Name Google AdSense Anbieter Google Ireland Limited Zweck Anzeigen auf der Website. ' +
-      'Weitere Informationen zu den Cookies von Google AdSense finden Sie in der Datenschutzerklärung von Google. ';
-    const text = `${adsense}Name Google Ads Anbieter Google Ireland Limited Zweck Conversion-Tracking`;
-    const o = of(run({ dialog: text, requests: [ads] }), 'google-ads');
-    expect(o?.variant).toBe('named-in-cmp-only');
-    expect(o?.params.cmpQuote).toContain('Name Google Ads Anbieter');
-    expect(o?.params.cmpQuote).not.toContain('AdSense Anbieter');
+  it('nothing of the dialog text beyond the catalog terms reaches the observations', () => {
+    const json = JSON.stringify(observationsOf(run()));
+    for (const text of ['zqx', 'Gordon House', 'Ereignisbehandlung', 'Einwilligungs-ID', 'Cookie Laufzeit'])
+      expect(json).not.toContain(text);
   });
 
   it.each([
-    ['with umlauts spelled out', 'Google Uebersetzer'],
-    ['with the umlaut as a letter and a combining mark', 'Google U\u0308bersetzer'],
-  ])('a name the dialog writes %s is quoted where it stands', (_, name) => {
-    const translate = req('tr', 'https://translate.googleapis.com/translate_a/element.js?cb=init', {
-      resourceType: 'script',
-    });
-    const text = `${'Wir nutzen Cookies. '.repeat(10)}Name ${name} Anbieter Google Ireland Limited`;
-    const o = of(run({ dialog: text, requests: [translate] }), 'google-translate');
-    expect(o?.variant).toBe('named-in-cmp-only');
-    expect(o?.params.cmpQuote).toContain(`Name ${name} Anbieter`);
+    ['with hyphens', 'Name Google-Tag-Manager Anbieter', [gtm], 'google-tag-manager', 'Google Tag Manager'],
+    [
+      'after Google AdSense',
+      'Name Google AdSense Anbieter Google. Name Google Ads Anbieter',
+      [ads],
+      'google-ads',
+      'Google Ads',
+    ],
+    [
+      'with umlauts spelled out',
+      'Name Google Uebersetzer Anbieter',
+      [translate],
+      'google-translate',
+      'Google Übersetzer',
+    ],
+    [
+      'with a combining mark',
+      'Name Google U\u0308bersetzer Anbieter',
+      [translate],
+      'google-translate',
+      'Google Übersetzer',
+    ],
+  ])(
+    'a name the dialog writes %s is found; the term is the catalog spelling',
+    (_, text, requests, subject, term) => {
+      const o = of(run({ dialog: `Cookie-Details ${text}`, requests }), subject);
+      expect(o).toMatchObject({ variant: 'named-in-cmp-only', params: { cmpTerm: term } });
+    },
+  );
+
+  it('a name that only begins a longer one is no mention: Google Ads in Google AdSense', () => {
+    const text = 'Cookie-Details Name Google AdSense Anbieter Google Ireland Limited';
+    expect(of(run({ dialog: text, requests: [ads] }), 'google-ads')?.variant).toBe('not-named');
   });
 
   it.each([
@@ -143,6 +166,17 @@ describe('PRIV-01 services the consent dialog names', () => {
     ['its category', 'Cookie-Details Tag-Manager Tag Management'],
   ])('counterexample: a dialog that names only %s leaves the Tag Manager not-named', (_, text) => {
     expect(of(run({ dialog: text }), 'google-tag-manager')?.variant).toBe('not-named');
+  });
+
+  it('a term that is not one of the service names (an edited record) is no mention', () => {
+    const cmp = borlabsDialog(BORLABS_DIALOG_TEXT);
+    cmp.dialogMentions!.services = [{ serviceId: 'google-tag-manager', term: 'zqxabcde-fghijklm' }];
+    const r = runCheck(
+      priv01,
+      site({ phases: [phase('A', { requests: [gtm] })], documents: withPolicy([]), cmp }),
+    );
+    expect(verdicts(r)).toEqual([['google-tag-manager', 'not-named']]);
+    expect(JSON.stringify(observationsOf(r))).not.toContain('zqx');
   });
 
   it('a policy that describes only the category: named-in-cmp-only, the category passage stays in the evidence', () => {
@@ -167,7 +201,7 @@ describe('PRIV-01 services the consent dialog names', () => {
     expect(of(r, 'google-tag-manager')?.variant).toBe('ambiguous-match');
   });
 
-  it('without dialog text the verdicts are those of the policy alone', () => {
+  it('without dialog mentions the verdicts are those of the policy alone', () => {
     expect(verdicts(run({ dialog: null }))).toEqual([
       ['google-ads', 'not-named'],
       ['google-analytics', 'not-named'],
@@ -195,7 +229,7 @@ describe('PRIV-01 services the consent dialog names', () => {
         site({
           phases: [phase('A', { requests: [gtm] })],
           documents: withPolicy(parts),
-          cmp: { ...noBannerCmp(), dialogTextFailed: true },
+          cmp: { ...noBannerCmp(), dialogMentionsFailed: true },
         }),
       );
     const unread = failed([]);
@@ -208,18 +242,29 @@ describe('PRIV-01 services the consent dialog names', () => {
     expect(named.outcome?.limitations ?? []).toEqual([]);
   });
 
-  it.each(['de', 'en'] as const)('%s: title and body name the service, the CMP and the quote', (lang) => {
+  it.each(['de', 'en'] as const)(
+    '%s: title and body name the service, the CMP and the catalog term',
+    (lang) => {
+      const o = of(run(), 'google-ads')!;
+      const m = renderMessage(loadTexts(lang), 'PRIV-01.named-in-cmp-only', o.params);
+      expect(m.title).toContain('Google Ads');
+      expect(m.title).toContain('(Borlabs Cookie)');
+      expect(m.body).toContain('Google AdWords');
+      expect(m.body).toContain(PRIVACY);
+      expect(`${m.title} ${m.body}`).not.toMatch(/[{}]/);
+    },
+  );
+
+  it('de: the title states the facts in the agreed wording', () => {
     const o = of(run(), 'google-tag-manager')!;
-    const m = renderMessage(loadTexts(lang), 'PRIV-01.named-in-cmp-only', o.params);
-    expect(m.title).toContain('Google Tag Manager');
-    expect(m.title).toContain('(Borlabs Cookie)');
-    expect(m.body).toContain(o.params.cmpQuote as string);
-    expect(m.body).toContain(PRIVACY);
-    expect(`${m.title} ${m.body}`).not.toMatch(/[{}]/);
+    expect(renderMessage(loadTexts('de'), 'PRIV-01.named-in-cmp-only', o.params).title).toBe(
+      'Nicht gefunden in der Datenschutzerklärung, in den Angaben des Einwilligungsbanners (Borlabs Cookie) genannt: ' +
+        'Google Tag Manager',
+    );
   });
 });
 
-describe('PRIV-01 dialog text of a saved snapshot', () => {
+describe('PRIV-01 dialog mentions of a saved snapshot', () => {
   let dir = '';
   beforeAll(() => {
     dir = mkdtempSync(path.join(tmpdir(), 'priv01-dialog-'));
@@ -228,9 +273,9 @@ describe('PRIV-01 dialog text of a saved snapshot', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  const replay = async (dialogText: unknown) => {
-    const snap = site({ phases: [phase('A', { requests: [gtm] })], cmp: borlabsDialog(BORLABS_DIALOG_TEXT) });
-    const saved = { ...toSavedSnapshot(snap), cmp: { ...snap.cmp, dialogText } };
+  const replay = async (cmp: Record<string, unknown>) => {
+    const snap = site({ phases: [phase('A', { requests: [gtm] })] });
+    const saved = { ...toSavedSnapshot(snap), cmp: { ...noBannerCmp(), ...cmp } };
     const file = path.join(dir, `${Math.random().toString(36).slice(2)}.json`);
     writeFileSync(file, JSON.stringify(saved));
     const { report, snapshot } = await scan({
@@ -239,25 +284,46 @@ describe('PRIV-01 dialog text of a saved snapshot', () => {
       now: () => FIXED_NOW,
       log: silentLogger,
     });
-    return { findings: report.findings ?? [], dialogText: snapshot?.cmp?.dialogText };
-  };
-
-  it('a consent ID that an edited file holds next to the name is redacted on reading; the finding stays', async () => {
-    const edited = {
-      ...borlabsDialog(BORLABS_DIALOG_TEXT).dialogText,
-      text: 'Cookie-Details Name Google Tag Manager Ihre Einwilligungs-ID: zq7Kp2Xr9Lm4Qa8Zt1Wn6Yb3 Anbieter Google',
+    return {
+      findings: report.findings ?? [],
+      cmp: snapshot?.cmp,
+      json: JSON.stringify({ report, snapshot }),
     };
-    const { findings, dialogText } = await replay(edited);
-    expect(findings.map((f) => f.variant)).toEqual(['named-in-cmp-only']);
-    expect(findings[0]?.params.cmpQuote).toContain('Einwilligungs-ID: [redacted]');
-    expect(JSON.stringify(findings)).not.toContain('zq7');
-    expect(dialogText?.text).not.toContain('zq7');
+  };
+  const mentions = () => borlabsDialog(BORLABS_DIALOG_TEXT).dialogMentions!;
+
+  it('mentions in the shape of the schema are read: the finding is that of the scan', async () => {
+    const { findings, cmp } = await replay({ dialogMentions: mentions() });
+    expect(findings.map((f) => [f.variant, f.params.cmpTerm])).toEqual([
+      ['named-in-cmp-only', 'Google Tag Manager'],
+    ]);
+    expect(cmp?.dialogMentions).toEqual(mentions());
   });
 
-  it('dialog text that does not fit the schema is dropped: the verdict is that of the policy alone', async () => {
-    const wrong = { ...borlabsDialog(BORLABS_DIALOG_TEXT).dialogText, cmpId: 'unknown-cmp' };
-    const { findings, dialogText } = await replay(wrong);
+  it.each([
+    ['an unknown CMP', { ...mentions(), cmpId: 'unknown-cmp' }],
+    ['a field the collector does not write', { ...mentions(), text: 'Ihre Einwilligungs-ID: zqxkpxrlmqa' }],
+    [
+      'a mention with a field of its own',
+      {
+        ...mentions(),
+        services: [{ serviceId: 'google-tag-manager', term: 'Google Tag Manager', quote: 'zqx' }],
+      },
+    ],
+  ])('mentions with %s are dropped: the verdict is that of the policy alone', async (_, edited) => {
+    const { findings, cmp, json } = await replay({ dialogMentions: edited });
     expect(findings.map((f) => f.variant)).toEqual(['not-named']);
-    expect(dialogText).toBeUndefined();
+    expect(cmp?.dialogMentions).toBeUndefined();
+    expect(json).not.toContain('zqx');
+  });
+
+  it('page text that a file holds under another key of the CMP section is not carried on', async () => {
+    const { findings, cmp, json } = await replay({
+      bannerText: { text: 'Name Google Tag Manager Ihre Einwilligungs-ID: zqxkpxrlmqa' },
+      dialogMentionsFailed: true,
+    });
+    expect(Object.keys(cmp ?? {}).sort()).toEqual(['dialogMentionsFailed', 'phases']);
+    expect(findings.map((f) => f.variant)).toEqual(['not-named']);
+    expect(json).not.toContain('zqx');
   });
 });

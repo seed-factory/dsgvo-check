@@ -497,16 +497,17 @@ messages:
       der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
       zuordenbaren Textteil gefunden. Bitte manuell prüfen.
   PRIV-01.named-in-cmp-only:
-    title: "Nicht gefunden in der Datenschutzerklärung, genannt in den Angaben des Einwilligungsbanners ({cmp}): {service}"
+    title: "Nicht gefunden in der Datenschutzerklärung, in den Angaben des Einwilligungsbanners ({cmp}) genannt: {service}"
     body: >-
       Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl}{documentCount, plural, =0 {} =1 {} other { und
       der weiteren Datenschutzhinweise der Website (durchsucht: {policyUrls})}} ({partCount, plural, one {# Abschnitt}
       other {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht
       vollständig}}) wurde {service} nicht gefunden{categoryOnly, select, true {, nur eine Beschreibung der Kategorie}
-      other {}}. Die Angaben des Einwilligungsbanners ({cmp}), ohne Klick und mit eingeklappten Details gelesen, nennen
-      {service}: „{cmpQuote}“. Firmenname, Domain oder Kategorie im Banner wurden nicht als Nennung gezählt. Der Dienst
-      wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im Text wurden nicht
-      ausgewertet.
+      other {}}. In den Angaben des Einwilligungsbanners ({cmp}), ohne Klick und mit eingeklappten Details gelesen,
+      wurde {service} unter der Bezeichnung „{cmpTerm}“ des Dienstekatalogs gefunden. Der Text des Banners wird nicht
+      gespeichert, nur der gefundene Dienst. Firmenname, Domain oder Kategorie im Banner wurden nicht als Nennung
+      gezählt. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im
+      Text wurden nicht ausgewertet.
 
   # PRIV-02
   PRIV-02.contradiction-replicated:

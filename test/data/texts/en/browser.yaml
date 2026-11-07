@@ -483,8 +483,9 @@ messages:
       In the evaluated text of the privacy policy at {policyUrl}{documentCount, plural, =0 {} =1 {} other { and of the
       site's further privacy notices (searched: {policyUrls})}} ({partCount, plural, one {# section} other {#
       sections}}; completeness per manifest: {complete, select, true {complete} other {not complete}}) {service} was
-      not found{categoryOnly, select, true {, only a description of its category} other {}}. The information of the
-      consent banner ({cmp}), read without a click and with its collapsed details, names {service}: “{cmpQuote}”. A
+      not found{categoryOnly, select, true {, only a description of its category} other {}}. In the information of
+      the consent banner ({cmp}), read without a click and with its collapsed details, {service} was found under the
+      service catalogue's designation “{cmpTerm}”. The text of the banner is not stored, only the service found. A
       company name, domain or category in the banner was not counted as a mention. The service was observed on
       {pageCount, plural, one {# page} other {# pages}}. Negations in the text were not evaluated.
 

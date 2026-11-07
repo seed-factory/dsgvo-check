@@ -1,6 +1,7 @@
 /** Own service catalog (Apache-2.0): test/data/services/*.yaml compiled into a pure matcher, loaded once per data dir. */
 import { z } from 'zod';
 import { DataError, DEFAULT_DATA_DIR, loadDataDir } from '../core/data/load.ts';
+import { dataSection } from '../core/data/parse.ts';
 import type { RequestKind, ServiceCategory, ServiceInfo, TrackingStage } from './types.ts';
 
 const CATEGORIES = [
@@ -172,6 +173,12 @@ const CatalogFileSchema = z
       .strict(),
   })
   .strict();
+
+/**
+ * The services of the catalog alone, for a collector that searches page text for their names (`loadSection`): the same
+ * schema as in the whole catalog.
+ */
+export const servicesSection = dataSection('services', 'services', z.array(ServiceSchema));
 
 export type ServiceEntry = z.infer<typeof ServiceSchema>;
 export type SignatureEntry = z.infer<typeof SignatureSchema>;
