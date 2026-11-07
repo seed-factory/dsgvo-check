@@ -34,17 +34,15 @@ function ep(p: Partial<TlsEndpoint> = {}, left = 200, age = 165): TlsEndpoint {
 const snap = (...endpoints: TlsEndpoint[]) => makeSnapshot({ tls: makeTls({ endpoints }), http: makeHttp() });
 const run = (...endpoints: TlsEndpoint[]) => runCheck(tls02, snap(...endpoints));
 
+/** An endpoint whose certificate Node rejected with `error`. */
+const rejected = (error: string, p: Partial<TlsEndpoint> = {}, left?: number, age?: number) =>
+  ep({ authorized: false, authorizationError: error, ...p }, left, age);
+
 describe('TLS-02 certificate', () => {
   it('does not report an incomplete chain when the trust store authorized it', () => {
     expect(variantsOf(run(ep({ authorized: true, chainComplete: false, authorizationError: null })))).toEqual(
       [],
     );
-  });
-
-  it('clean: valid, trusted, long enough', () => {
-    const r = run(ep());
-    expect(r.status).toBe('completed');
-    expect(variantsOf(r)).toEqual([]);
   });
 
   it('violation (critical): expired → certificate-invalid', () => {
@@ -88,22 +86,41 @@ describe('TLS-02 certificate', () => {
     });
   });
 
-  it('expiry is also derived from the dates when Node reports another error first (one finding)', () => {
-    const r = run(ep({ authorized: false, authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT' }, -3, 30));
-    expect(observationsOf(r)).toHaveLength(1);
-    expect(observationsOf(r)[0]).toMatchObject({
-      variant: 'certificate-invalid',
-      params: { reason: 'expired', reasons: 'expired,self-signed', expired: 'yes', selfSigned: 'yes' },
-    });
-  });
-
-  it('not yet valid (notBefore in the future) → certificate-invalid (not-yet-valid)', () => {
-    const r = run(ep({ authorized: false, authorizationError: 'CERT_NOT_YET_VALID' }, 200, -5));
-    expect(variantsOf(r)).toEqual(['certificate-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'not-yet-valid', notYetValid: 'yes' });
-    // Derived from the dates as well, when Node reports another error first.
-    const other = run(ep({ authorized: false, authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT' }, 200, -5));
-    expect(observationsOf(other)[0]?.params).toMatchObject({ notYetValid: 'yes', selfSigned: 'yes' });
+  it.each([
+    [
+      'expired while Node reports another error first (derived from the dates)',
+      rejected('DEPTH_ZERO_SELF_SIGNED_CERT', {}, -3, 30),
+      { reason: 'expired', reasons: 'expired,self-signed', expired: 'yes', selfSigned: 'yes' },
+    ],
+    [
+      'not yet valid (notBefore in the future)',
+      rejected('CERT_NOT_YET_VALID', {}, 200, -5),
+      { reason: 'not-yet-valid', notYetValid: 'yes' },
+    ],
+    [
+      'not yet valid while Node reports another error first (derived from the dates)',
+      rejected('DEPTH_ZERO_SELF_SIGNED_CERT', {}, 200, -5),
+      { notYetValid: 'yes', selfSigned: 'yes' },
+    ],
+    [
+      'self-signed and wrong name (Node does not check the name, our own checkHost does)',
+      rejected('DEPTH_ZERO_SELF_SIGNED_CERT', { hostnameMatches: false }),
+      { reasons: 'name-mismatch,self-signed', nameMismatch: 'yes', selfSigned: 'yes' },
+    ],
+    [
+      'unknown root',
+      rejected('SELF_SIGNED_CERT_IN_CHAIN'),
+      { reason: 'untrusted-root', untrustedRoot: 'yes' },
+    ],
+    [
+      'unknown Node verification error (other error)',
+      rejected('CERT_SIGNATURE_FAILURE'),
+      { reason: 'invalid', otherError: 'yes', error: 'CERT_SIGNATURE_FAILURE' },
+    ],
+  ])('violation (critical): %s → one certificate-invalid', (_label, endpoint, params) => {
+    const r = run(endpoint);
+    expect(observationsOf(r).map((o) => o.variant)).toEqual(['certificate-invalid']);
+    expect(observationsOf(r)[0]?.params).toMatchObject(params);
   });
 
   it('violation (critical): hoster certificate with another name', () => {
@@ -158,31 +175,6 @@ describe('TLS-02 certificate', () => {
     });
   });
 
-  it('self-signed and wrong name: Node does not check the name, our own checkHost does', () => {
-    const r = run(
-      ep({ authorized: false, authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT', hostnameMatches: false }),
-    );
-    expect(variantsOf(r)).toEqual(['certificate-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({
-      reasons: 'name-mismatch,self-signed',
-      nameMismatch: 'yes',
-      selfSigned: 'yes',
-    });
-  });
-
-  it('violation (critical): unknown root', () => {
-    const r = run(ep({ authorized: false, authorizationError: 'SELF_SIGNED_CERT_IN_CHAIN' }));
-    expect(variantsOf(r)).toEqual(['certificate-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'untrusted-root', untrustedRoot: 'yes' });
-  });
-
-  it('violation (warning): incomplete chain (browsers complete it via AIA) → chain-incomplete', () => {
-    const r = run(
-      ep({ authorized: false, authorizationError: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', chainComplete: false }),
-    );
-    expect(variantsOf(r)).toEqual(['chain-incomplete']);
-  });
-
   describe('the issuer of the leaf was sent, the root is unknown to the store', () => {
     const dates = { notBefore: at(-165), notAfter: at(200) };
     const leaf = (issuer = 'CN=Some Intermediate') => makeCert({ ...dates, issuer });
@@ -234,16 +226,6 @@ describe('TLS-02 certificate', () => {
         }),
       );
       expect(variantsOf(r)).toEqual([]);
-    });
-  });
-
-  it('unknown Node verification error → certificate-invalid (other error)', () => {
-    const r = run(ep({ authorized: false, authorizationError: 'CERT_SIGNATURE_FAILURE' }));
-    expect(variantsOf(r)).toEqual(['certificate-invalid']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({
-      reason: 'invalid',
-      otherError: 'yes',
-      error: 'CERT_SIGNATURE_FAILURE',
     });
   });
 
@@ -304,17 +286,6 @@ describe('TLS-02 certificate', () => {
     expect(variantsOf(r)).toEqual(['certificate-expiring', 'chain-incomplete']);
   });
 
-  it('www / apex endpoints are evaluated with their own subject', () => {
-    const r = run(
-      ep(),
-      ep(
-        { hostVariant: 'www', host: 'example.de', authorized: false, authorizationError: 'CERT_HAS_EXPIRED' },
-        -1,
-      ),
-    );
-    expect(observationsOf(r).map((o) => o.subject)).toEqual(['certificate:pair']);
-  });
-
   it('counterexample: closed 443 or missing DNS on www/apex is not a certificate problem', () => {
     const r = run(
       ep(),
@@ -330,25 +301,17 @@ describe('TLS-02 certificate', () => {
     expect(r).toMatchObject({ status: 'not_applicable', reason: 'no-https' });
   });
 
-  it('inconclusive: handshake timed out', () => {
-    const r = run(ep({ outcome: 'timeout', chain: [], protocol: null, authorized: false }));
-
+  it.each([
+    ['timed out', { outcome: 'timeout' }, 'handshake-timeout'],
+    [
+      'failed without an established cause',
+      { outcome: 'error', error: { code: 'ECONNRESET', message: 'socket hang up' } },
+      'handshake-failed',
+    ],
+  ] as const)('inconclusive: the handshake %s', (_label, p, limitation) => {
+    const r = run(ep({ chain: [], protocol: null, authorized: false, ...p }));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'handshake-inconclusive' });
-    expect(r.outcome?.limitations).toEqual(['undecided:target', 'handshake-timeout']);
-  });
-
-  it('inconclusive: handshake failed without an established cause', () => {
-    const r = run(
-      ep({
-        outcome: 'error',
-        chain: [],
-        protocol: null,
-        authorized: false,
-        error: { code: 'ECONNRESET', message: 'socket hang up' },
-      }),
-    );
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'handshake-inconclusive' });
-    expect(r.outcome?.limitations).toEqual(['undecided:target', 'handshake-failed']);
+    expect(r.outcome?.limitations).toEqual(['undecided:target', limitation]);
   });
 
   it('partial: www timed out, target evaluated', () => {
@@ -519,17 +482,11 @@ describe('TLS-02 subject by host role, independent of how the target was typed (
     expect(observationsOf(direct).map((o) => o.subject)).toEqual(['certificate:final']);
   });
 
-  it('the other host of the www/apex pair is `pair`', () => {
-    const r = runCheck(
-      tls02,
-      makeSnapshot({
-        target: makeTarget('https://www.example.de/'),
-        tls: makeTls({
-          endpoints: [ep(), ep({ id: 'tls-apex', hostVariant: 'apex', host: 'example.de', ...expired }, -1)],
-        }),
-        http: makeHttp(),
-      }),
-    );
-    expect(observationsOf(r).map((o) => o.subject)).toEqual(['certificate:pair']);
+  // `run` scans the default target https://www.example.de/.
+  it.each([
+    ['www', ep({ hostVariant: 'www', host: 'example.de', ...expired }, -1)],
+    ['apex', ep({ id: 'tls-apex', hostVariant: 'apex', host: 'example.de', ...expired }, -1)],
+  ])('the other host of the www/apex pair (%s endpoint) is `pair`', (_variant, other) => {
+    expect(observationsOf(run(ep(), other)).map((o) => o.subject)).toEqual(['certificate:pair']);
   });
 });

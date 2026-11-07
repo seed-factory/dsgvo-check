@@ -1,20 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { mail01 } from '../../../../src/checks/dns/mail-01.ts';
 import { makeSnapshot, observationsOf, runCheck, variantsOf } from '../../../utils/snapshot-builder.ts';
-import { dnsSnapshot, type ZoneEntry, type ZoneSpec } from './zone.ts';
+import { dnsSnapshot, siteZone as site, type ZoneEntry, type ZoneSpec } from './zone.ts';
 
 const RUA = 'rua=mailto:[redacted]@example.de';
-
-/** www.example.de without own record; the organizational record decides. */
-function site(dmarc: ZoneEntry, extra: ZoneSpec = {}): ZoneSpec {
-  return {
-    'MX example.de': ['10 mx.example.de'],
-    'TXT _dmarc.www.example.de': 'NXDOMAIN',
-    'TXT _dmarc.example.de': dmarc,
-    'TXT _dmarc.de': 'NXDOMAIN',
-    ...extra,
-  };
-}
 
 const run = (spec: ZoneSpec) => runCheck(mail01, dnsSnapshot(spec));
 
@@ -41,18 +30,15 @@ describe('MAIL-01 DMARC: warning variants', () => {
     });
   });
 
-  it('p=none → policy-none', () => {
-    const r = run(site([`v=DMARC1; p=none; ${RUA}`]));
+  // Without rua the policy-none text does not claim that reports are requested, and a second weak-option item
+  // would repeat its first step: policy-none names the missing rua itself.
+  it.each([
+    ['with rua', `v=DMARC1; p=none; ${RUA}`, 'no'],
+    ['without rua', 'v=DMARC1; p=none', 'yes'],
+  ])('p=none %s → only policy-none (noRua %s)', (_label, record, noRua) => {
+    const r = run(site([record]));
     expect(variantsOf(r)).toEqual(['policy-none']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ noRua: 'no' });
-  });
-
-  it('p=none without rua → only policy-none, which names the missing rua', () => {
-    const r = run(site(['v=DMARC1; p=none']));
-    // The policy-none text does not claim that reports are requested when no rua is published, and a second
-    // weak-option item would repeat its first step.
-    expect(variantsOf(r)).toEqual(['policy-none']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ noRua: 'yes' });
+    expect(observationsOf(r)[0]?.params).toMatchObject({ noRua });
   });
 
   it.each([
@@ -74,14 +60,14 @@ describe('MAIL-01 DMARC: warning variants', () => {
 });
 
 describe('MAIL-01 DMARC: info variants and clean records', () => {
-  it('p=reject with rua → no finding', () => {
-    const r = run(site([`v=DMARC1; p=reject; ${RUA}`]));
+  it.each([
+    ['p=reject with rua', `v=DMARC1; p=reject; ${RUA}`],
+    ['p=quarantine with rua', `v=DMARC1; p=quarantine; ${RUA}`],
+    ['pct=100 is not partial', `v=DMARC1; p=reject; pct=100; ${RUA}`],
+  ])('%s → no finding', (_label, record) => {
+    const r = run(site([record]));
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('p=quarantine with rua → no finding', () => {
-    expect(variantsOf(run(site([`v=DMARC1; p=quarantine; ${RUA}`])))).toEqual([]);
   });
 
   it('sp=none while p≠none → weak-option (info) listing sp=none', () => {
@@ -114,10 +100,6 @@ describe('MAIL-01 DMARC: info variants and clean records', () => {
     expect(observationsOf(r)[0]?.params).toMatchObject({ pct: 20, policy: 'reject' });
   });
 
-  it('pct=100 is not partial', () => {
-    expect(variantsOf(run(site([`v=DMARC1; p=reject; pct=100; ${RUA}`])))).toEqual([]);
-  });
-
   it('no rua → weak-option (info)', () => {
     const r = run(site(['v=DMARC1; p=reject']));
     expect(variantsOf(r)).toEqual(['weak-option']);
@@ -126,11 +108,6 @@ describe('MAIL-01 DMARC: info variants and clean records', () => {
 
   it('neighbour false finding: sp=none with p=none is only policy-none (no weak-option)', () => {
     expect(variantsOf(run(site([`v=DMARC1; p=none; sp=none; ${RUA}`])))).toEqual(['policy-none']);
-  });
-
-  it('neighbour false finding: www without own record but organizational record → not record-not-found', () => {
-    const r = run(site([`v=DMARC1; p=reject; ${RUA}`]));
-    expect(variantsOf(r)).not.toContain('record-not-found');
   });
 
   it('a record published on the host itself is evaluated', () => {
@@ -144,26 +121,21 @@ describe('MAIL-01 DMARC: info variants and clean records', () => {
 });
 
 describe('MAIL-01 Null MX (RFC 7505)', () => {
-  const nullMx = (dmarc: ZoneEntry) => site(dmarc, { 'MX example.de': ['0 .'] });
+  const nullMx = (dmarc: ZoneEntry, extra: ZoneSpec = {}) =>
+    site(dmarc, { 'MX example.de': ['0 .'], ...extra });
 
-  it('no DMARC on a Null-MX domain → info weak-option (Null MX), not warning record-not-found', () => {
-    const r = run(nullMx('NXDOMAIN'));
+  it.each([
+    ['no DMARC (not warning record-not-found)', nullMx('NXDOMAIN'), 'missing'],
+    ['p=none (and no policy-none)', nullMx(['v=DMARC1; p=none']), 'none'],
+    [
+      "only a PSD p=reject, which is not the domain's own policy",
+      nullMx('NXDOMAIN', { 'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'] }),
+      'missing',
+    ],
+  ])('a Null-MX domain with %s → only info weak-option (Null MX, policy %s)', (_label, spec, policy) => {
+    const r = run(spec);
     expect(variantsOf(r)).toEqual(['weak-option']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy: 'missing' });
-  });
-
-  it('p=none on a Null-MX domain → weak-option (Null MX) only', () => {
-    const r = run(nullMx(['v=DMARC1; p=none']));
-    expect(variantsOf(r)).toEqual(['weak-option']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy: 'none' });
-  });
-
-  it("a PSD-only p=reject is not the Null-MX domain's own policy → weak-option (policy missing)", () => {
-    const r = run(
-      site('NXDOMAIN', { 'MX example.de': ['0 .'], 'TXT _dmarc.de': ['v=DMARC1; p=reject; psd=y'] }),
-    );
-    expect(variantsOf(r)).toEqual(['weak-option']);
-    expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy: 'missing' });
+    expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'null-mx', policy });
   });
 
   it('p=reject on a Null-MX domain → no finding (rua not required)', () => {

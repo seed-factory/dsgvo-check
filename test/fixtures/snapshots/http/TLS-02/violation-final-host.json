@@ -64,61 +64,34 @@
     "errors": []
   },
   "http": {
-    "userAgent": "dsgvo-check/test",
     "chains": [
       {
         "id": "chain-target-https",
-        "hostVariant": "target",
-        "host": "www.example.de",
-        "scheme": "https",
         "startUrl": "https://www.example.de/",
         "hops": [
           {
             "url": "https://www.example.de/",
             "status": 301,
             "location": "https://www.moved.de/",
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 10,
-            "requestedAt": "2026-10-30T12:00:00.000Z"
+            "durationMs": 10
           },
           {
             "url": "https://www.moved.de/",
-            "status": 200,
-            "headers": [],
-            "setCookieNames": [],
-            "durationMs": 10,
-            "requestedAt": "2026-10-30T12:00:00.000Z"
+            "durationMs": 10
           }
-        ],
-        "final": {
-          "url": "https://www.moved.de/",
-          "status": 200,
-          "headers": [],
-          "setCookieNames": [],
-          "durationMs": 10,
-          "requestedAt": "2026-10-30T12:00:00.000Z"
-        },
-        "outcome": "ok"
+        ]
       }
     ],
     "documents": [
       {
-        "role": "start",
         "url": "https://www.example.de/",
         "finalUrl": "https://www.moved.de/",
-        "status": 200,
-        "headers": [],
-        "setCookieNames": [],
-        "metaHttpEquiv": [],
         "metaReferrer": null,
         "chainId": "chain-target-https",
         "foundVia": "target"
       }
     ],
     "requestsIssued": 2,
-    "throttled": false,
-    "errors": [],
     "finalTls": [
       {
         "id": "tls-final-target",

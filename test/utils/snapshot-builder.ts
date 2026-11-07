@@ -479,12 +479,51 @@ export function fixtureFiles(module: string, checkId: string): string[] {
 }
 
 /**
- * Fixture file = partial Snapshot JSON (missing parts filled by makeSnapshot) plus optional
- * `$expect: {status, variants?, reason?}` and `$description`. `derived` is recomputed unless given.
+ * Fixture file = partial Snapshot JSON plus optional `$expect: {status, variants?, reason?}` and `$description`.
+ * A field left out takes the default of the factory above: of the snapshot (makeSnapshot), and in `http` and
+ * `browser` of every chain, hop, document, twin hop, phase, page and DOM. A chain that ended `ok` without `final`
+ * ends on its last hop, and a page belongs to the phase it is listed in. `derived` is recomputed unless given.
  */
 export function loadFixture(module: string, checkId: string, file: string): SnapshotFixture {
   const full = path.join(fixtureDir(module, checkId), file);
-  return fixtureFrom(file, JSON.parse(readFileSync(full, 'utf8')) as RawFixture, full);
+  return fixtureFrom(file, withFixtureDefaults(JSON.parse(readFileSync(full, 'utf8')) as RawFixture), full);
+}
+
+/** A fixture file states only what differs from the factories, so a reader sees what the case is about. */
+function withFixtureDefaults(raw: RawFixture): RawFixture {
+  const { http, browser } = raw;
+  const filled: RawFixture = { ...raw };
+  if (http) {
+    filled.http = makeHttp({
+      ...http,
+      chains: (http.chains ?? []).map(fixtureChain),
+      documents: (http.documents ?? []).map((d) => makeDocumentResponse(d)),
+      ...(http.twins && { twins: http.twins.map((t) => ({ ...t, hop: t.hop && makeHop(t.hop) })) }),
+    });
+  }
+  if (browser) {
+    filled.browser = makeBrowser({
+      ...browser,
+      phases: (browser.phases ?? []).map((ph) =>
+        makePhase(ph.phase, {
+          ...ph,
+          pages: ((ph.pages ?? []) as StoredPage[]).map((p) =>
+            makePage({ phase: ph.phase, ...p, ...(p.dom && { dom: makeDom(p.dom) }) }),
+          ),
+        }),
+      ),
+    });
+  }
+  return filled;
+}
+
+/** A page as a fixture file stores it: every field but the address may be left out. */
+type StoredPage = Partial<PageVisit> & { url: string };
+
+function fixtureChain(c: RedirectChain): RedirectChain {
+  const hops = (c.hops ?? []).map((h) => makeHop(h));
+  const ended = (c.outcome ?? 'ok') === 'ok' ? (hops.at(-1) ?? null) : null;
+  return makeChain({ ...c, hops, final: 'final' in c ? c.final && makeHop(c.final) : ended });
 }
 
 /** Fixture content as stored: a partial Snapshot plus `$expect` and `$description`. */

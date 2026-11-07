@@ -63,6 +63,10 @@ const redirect301 = (host = 'www.example.de', to = `https://${host}/`, hv: HostV
 
 const snap = (...chains: RedirectChain[]) => makeSnapshot({ http: makeHttp({ chains }) });
 
+/** TLS-01 on the http entry of www.example.de with these hops, beside the https chain (working unless given). */
+const entry = (hops: Partial<HttpHop>[], https: RedirectChain = httpsOk()) =>
+  runCheck(tls01, snap(chain('http://www.example.de/', hops), https));
+
 describe('TLS-01 http → https', () => {
   it('reports missing HTTP probe for a redirected final host', () => {
     const snapshot = makeSnapshot({
@@ -85,17 +89,8 @@ describe('TLS-01 http → https', () => {
     expect(observationsOf(runCheck(tls01, snap(detour, httpsOk())))[0]?.params.reason).toBe('http-first-hop');
   });
 
-  it('clean: 301 to https on the same host', () => {
-    const r = runCheck(tls01, snap(redirect301(), httpsOk()));
-    expect(r.status).toBe('completed');
-    expect(variantsOf(r)).toEqual([]);
-  });
-
   it('violation (warning): http serves content without redirect while https works', () => {
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG, bodyKind: 'html' }]), httpsOk()),
-    );
+    const r = entry([{ status: 200, bodyBytes: BIG, bodyKind: 'html' }]);
     expect(variantsOf(r)).toEqual(['no-redirect']);
     expect(observationsOf(r)[0]).toMatchObject({
       subject: 'http-entry:final',
@@ -112,10 +107,7 @@ describe('TLS-01 http → https', () => {
     ['tls-error', 'invalid'],
   ] as const)('violation (critical): http content and https %s', (outcome, reason) => {
     const https = chain('https://www.example.de/', [], { outcome, error: { code: 'X', message: 'x' } });
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG }]), https),
-    );
+    const r = entry([{ status: 200, bodyBytes: BIG }], https);
     expect(variantsOf(r)).toEqual(['https-unavailable']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ reason, downgrade: 'no' });
   });
@@ -124,10 +116,7 @@ describe('TLS-01 http → https', () => {
     const https = chain('https://www.example.de/', [
       { status: 200, tlsAuthorized: false, tlsAuthorizationError: 'CERT_HAS_EXPIRED' },
     ]);
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG }]), https),
-    );
+    const r = entry([{ status: 200, bodyBytes: BIG }], https);
     expect(variantsOf(r)).toEqual(['https-unavailable']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ reason: 'invalid' });
   });
@@ -136,18 +125,11 @@ describe('TLS-01 http → https', () => {
     const https = chain('https://www.example.de/', [
       { status: 200, tlsAuthorized: false, tlsAuthorizationError: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' },
     ]);
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG }]), https),
-    );
-    expect(variantsOf(r)).toEqual(['no-redirect']);
+    expect(variantsOf(entry([{ status: 200, bodyBytes: BIG }], https))).toEqual(['no-redirect']);
   });
 
   it('violation (critical): form on an http page', () => {
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG, hasForm: true }]), httpsOk()),
-    );
+    const r = entry([{ status: 200, bodyBytes: BIG, hasForm: true }]);
     expect(variantsOf(r)).toEqual(['form-on-http-page', 'no-redirect']);
     expect(observationsOf(r).find((o) => o.variant === 'form-on-http-page')?.subject).toBe(
       'http-entry:final',
@@ -155,34 +137,28 @@ describe('TLS-01 http → https', () => {
   });
 
   it('violation (warning): redirect only via meta refresh / JS', () => {
-    const r = runCheck(
-      tls01,
-      snap(
-        chain('http://www.example.de/', [
-          {
-            status: 200,
-            bodyBytes: 300,
-            clientRedirect: { kind: 'meta', url: 'https://www.example.de/' },
-          },
-        ]),
-        httpsOk(),
-      ),
-    );
+    const r = entry([
+      { status: 200, bodyBytes: 300, clientRedirect: { kind: 'meta', url: 'https://www.example.de/' } },
+    ]);
     expect(variantsOf(r)).toEqual(['client-side-redirect-only']);
     expect(observationsOf(r)[0]?.params).toMatchObject({ kind: 'meta' });
   });
 
-  it('a client redirect to http is not an upgrade (content served over http)', () => {
-    const r = runCheck(
-      tls01,
-      snap(
-        chain('http://www.example.de/', [
-          { status: 200, bodyBytes: BIG, clientRedirect: { kind: 'js', url: 'http://www.example.de/home' } },
-        ]),
-        httpsOk(),
-      ),
-    );
-    expect(variantsOf(r)).toEqual(['no-redirect']);
+  it.each([
+    [
+      'a client redirect to http is not an upgrade (content served over http)',
+      { status: 200, bodyBytes: BIG, clientRedirect: { kind: 'js', url: 'http://www.example.de/home' } },
+      ['no-redirect'],
+    ],
+    ['counterexample: a stub of ≤ 1 KiB on http gives no finding', { status: 200, bodyBytes: 512 }, []],
+    [
+      'a cut body with ≤ 1 KiB read is not a stub (its real size is unknown)',
+      { status: 200, bodyBytes: 512, bodyTruncated: true },
+      ['no-redirect'],
+    ],
+    ['http error status (404) is not content', { status: 404, bodyBytes: BIG }, []],
+  ] as const)('%s', (_label, hop, variants) => {
+    expect(variantsOf(entry([hop]))).toEqual(variants);
   });
 
   it('info: 301 to https on another host (first hop off-host)', () => {
@@ -207,11 +183,10 @@ describe('TLS-01 http → https', () => {
   });
 
   it('http → http redirect ending in content is evaluated like no redirect', () => {
-    const c = chain('http://www.example.de/', [
+    const r = entry([
       { status: 302, location: 'http://www.example.de/start' },
       { url: 'http://www.example.de/start', status: 200, bodyBytes: BIG },
     ]);
-    const r = runCheck(tls01, snap(c, httpsOk()));
     expect(variantsOf(r)).toEqual(['no-redirect']);
     expect(observationsOf(r)[0]?.pages).toEqual(['http://www.example.de/start']);
   });
@@ -263,21 +238,6 @@ describe('TLS-01 http → https', () => {
     });
   });
 
-  it('counterexample: closed port 80 is not "serving content"', () => {
-    const http = chain('http://www.example.de/', [], { outcome: 'connection-refused' });
-    expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual([]);
-  });
-
-  it('counterexample: a stub of ≤ 1 KiB on http gives no finding', () => {
-    const http = chain('http://www.example.de/', [{ status: 200, bodyBytes: 512 }]);
-    expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual([]);
-  });
-
-  it('a cut body with ≤ 1 KiB read is not a stub (its real size is unknown)', () => {
-    const http = chain('http://www.example.de/', [{ status: 200, bodyBytes: 512, bodyTruncated: true }]);
-    expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual(['no-redirect']);
-  });
-
   describe('a chain that reaches https and returns to http is evaluated on its final http page', () => {
     const downgrade = (last: Partial<HttpHop>) =>
       chain('http://www.example.de/', [
@@ -326,11 +286,6 @@ describe('TLS-01 http → https', () => {
     });
   });
 
-  it('http error status (404) is not content', () => {
-    const http = chain('http://www.example.de/', [{ status: 404, bodyBytes: BIG }]);
-    expect(variantsOf(runCheck(tls01, snap(http, httpsOk())))).toEqual([]);
-  });
-
   it('www / apex without DNS are ignored', () => {
     const www = chain('http://www.example.de/', [], { hostVariant: 'www', outcome: 'dns-error' });
     const r = runCheck(
@@ -344,17 +299,10 @@ describe('TLS-01 http → https', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('inconclusive: http of the target timed out', () => {
-    const http = chain('http://www.example.de/', [], { outcome: 'timeout' });
-    const r = runCheck(tls01, snap(http, httpsOk()));
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'timeout' });
-  });
-
   it('inconclusive: http content while https timed out (cannot tell critical from warning)', () => {
-    const https = chain('https://www.example.de/', [], { outcome: 'timeout' });
-    const r = runCheck(
-      tls01,
-      snap(chain('http://www.example.de/', [{ status: 200, bodyBytes: BIG }]), https),
+    const r = entry(
+      [{ status: 200, bodyBytes: BIG }],
+      chain('https://www.example.de/', [], { outcome: 'timeout' }),
     );
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'timeout' });
     expect(variantsOf(r)).toEqual([]);
@@ -433,16 +381,18 @@ describe('TLS-01 same-site links to http', () => {
   const visit = (url: string, links: LinkFact[], p: Partial<PageVisit> = {}): PageVisit =>
     makePage({ url, phase: 'A', role: url === SITE ? 'start' : 'other', dom: makeDom({ links }), ...p });
 
+  /** A scan of `site` (SITE): the chains, then the apex chain (port 80 closed unless given, null for none). */
   function linkSnapshot(
     chains: RedirectChain[],
     phases: PhaseRecord[] | null,
-    collection: Partial<Snapshot['collection']> = {},
+    o: { collection?: Partial<Snapshot['collection']>; apex?: RedirectChain | null; site?: string } = {},
   ): Snapshot {
+    const apex = o.apex === undefined ? apexClosed() : o.apex;
     return makeSnapshot({
-      target: makeTarget(SITE),
-      http: makeHttp({ chains: [...chains, apexClosed()] }),
+      target: makeTarget(o.site ?? SITE),
+      http: makeHttp({ chains: [...chains, ...(apex ? [apex] : [])] }),
       ...(phases ? { browser: makeBrowser({ phases }) } : {}),
-      collection,
+      collection: o.collection ?? {},
     });
   }
   const phaseA = (...pages: PageVisit[]) => [makePhase('A', { pages })];
@@ -600,11 +550,7 @@ describe('TLS-01 same-site links to http', () => {
     ]);
     const r = runCheck(
       tls01,
-      makeSnapshot({
-        target: makeTarget(SITE),
-        http: makeHttp({ chains: [toApex, wwwHttps, apexClosed()] }),
-        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://www.example.test/produkte')])) }),
-      }),
+      linkSnapshot([toApex, wwwHttps], phaseA(visit(SITE, [link('http://www.example.test/produkte')]))),
     );
     expect(linkObservations(r)).toEqual([
       expect.objectContaining({
@@ -645,11 +591,10 @@ describe('TLS-01 same-site links to http', () => {
     );
     const r = runCheck(
       tls01,
-      makeSnapshot({
-        target: makeTarget(SITE),
-        http: makeHttp({ chains: [backToHttp, ...wwwUpgraded([HSTS]).slice(1), apexClosed()] }),
-        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://www.example.test/produkte')])) }),
-      }),
+      linkSnapshot(
+        [backToHttp, ...wwwUpgraded([HSTS]).slice(1)],
+        phaseA(visit(SITE, [link('http://www.example.test/produkte')])),
+      ),
     );
     expect(linkObservations(r)).toEqual([
       expect.objectContaining({
@@ -671,11 +616,7 @@ describe('TLS-01 same-site links to http', () => {
     ];
     const r = runCheck(
       tls01,
-      makeSnapshot({
-        target: makeTarget(ip),
-        http: makeHttp({ chains }),
-        browser: makeBrowser({ phases: phaseA(visit(ip, [link('http://192.0.2.1/legal')])) }),
-      }),
+      linkSnapshot(chains, phaseA(visit(ip, [link('http://192.0.2.1/legal')])), { site: ip, apex: null }),
     );
     expect(linkObservations(r)).toEqual([
       expect.objectContaining({ variant: 'internal-http-link-upgraded', subject: 'http-link:@' }),
@@ -683,18 +624,10 @@ describe('TLS-01 same-site links to http', () => {
   });
 
   it('a link to a host whose http probe timed out → internal-http-link, medium (unknown)', () => {
+    const apex = chain('http://example.test/', [], { hostVariant: 'apex', outcome: 'timeout' });
     const r = runCheck(
       tls01,
-      makeSnapshot({
-        target: makeTarget(SITE),
-        http: makeHttp({
-          chains: [
-            ...wwwUpgraded([HSTS]),
-            chain('http://example.test/', [], { hostVariant: 'apex', outcome: 'timeout' }),
-          ],
-        }),
-        browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://example.test/')])) }),
-      }),
+      linkSnapshot(wwwUpgraded([HSTS]), phaseA(visit(SITE, [link('http://example.test/')])), { apex }),
     );
     expect(linkObservations(r)).toEqual([
       expect.objectContaining({
@@ -788,22 +721,15 @@ describe('TLS-01 same-site links to http', () => {
     [
       'a link to a host that redirects to https of another host with a valid HSTS header',
       () =>
-        makeSnapshot({
-          target: makeTarget(SITE),
-          http: makeHttp({
-            chains: [
-              ...wwwUpgraded([HSTS]),
-              chain(
-                'http://example.test/',
-                [
-                  { status: 301, location: SITE },
-                  { url: SITE, status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] },
-                ],
-                { hostVariant: 'apex' },
-              ),
+        linkSnapshot(wwwUpgraded([HSTS]), phaseA(visit(SITE, [link('http://example.test/legal')])), {
+          apex: chain(
+            'http://example.test/',
+            [
+              { status: 301, location: SITE },
+              { url: SITE, status: 200, bodyBytes: BIG, tlsAuthorized: true, headers: [HSTS] },
             ],
-          }),
-          browser: makeBrowser({ phases: phaseA(visit(SITE, [link('http://example.test/legal')])) }),
+            { hostVariant: 'apex' },
+          ),
         }),
     ],
     [
@@ -872,7 +798,7 @@ describe('TLS-01 same-site links to http', () => {
   ])(
     'browser %s: partial with page-links-not-observed, the http entries still evaluated',
     (_n, collection) => {
-      const r = runCheck(tls01, linkSnapshot(wwwServed(), null, collection));
+      const r = runCheck(tls01, linkSnapshot(wwwServed(), null, { collection }));
       expect(r.status).toBe('partial');
       expect(r.outcome?.limitations).toContain('page-links-not-observed');
       expect(variantsOf(r)).toEqual(['no-redirect']);
@@ -895,7 +821,7 @@ describe('TLS-01 same-site links to http', () => {
     const r = runCheck(
       tls01,
       linkSnapshot(wwwUpgraded([HSTS]), null, {
-        browser: { status: 'not-run', reason: 'not-required', durationMs: 0 },
+        collection: { browser: { status: 'not-run', reason: 'not-required', durationMs: 0 } },
       }),
     );
     expect(r.status).toBe('completed');
@@ -972,6 +898,31 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
   const formOf = (r: ReturnType<typeof runCheck>) =>
     observationsOf(r).find((o) => o.variant === 'form-on-http-page');
 
+  /** The answers that decide the http:// address of a page alike, however the page was found. */
+  function answersDecideAlike(build: typeof twin) {
+    it.each<[string, Partial<HttpHop>]>([
+      [
+        'the address redirects to https',
+        { status: 301, location: 'https://www.example.test/post-1/', bodyBytes: 0, bodyKind: 'empty' },
+      ],
+      ['the address answers 404', { status: 404 }],
+      ['the http page has no data form', { hasForm: false, forms: [], formInspection: 'complete' }],
+    ])('clean: %s', (_name, hop) => {
+      const answer = build({ hasForm: undefined, forms: undefined, formInspection: undefined, ...hop });
+      const r = runCheck(tls01, withTwins([answer]));
+      expect(r.status).toBe('completed');
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+
+    it('no clean claim when the request timed out: limitation naming the page, no form finding', () => {
+      const timedOut = build(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } });
+      const r = runCheck(tls01, withTwins([timedOut]));
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual([`http-form-twin-undecided:${timedOut.page}`]);
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+  }
+
   it('a comment form on the http:// address of an article → form-on-http-page naming where the form sends', () => {
     const r = runCheck(tls01, withTwins([twin({ hasForm: true, forms: [COMMENT_FORM] })]));
     expect(r.status).toBe('completed');
@@ -1019,24 +970,9 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
     });
   });
 
-  it.each<[string, Partial<HttpHop>]>([
-    [
-      'the address redirects to https',
-      { status: 301, location: 'https://www.example.test/post-1/', bodyBytes: 0, bodyKind: 'empty' },
-    ],
-    ['the address answers 404', { status: 404 }],
-    ['the http page has no data form', { hasForm: false, forms: [], formInspection: 'complete' }],
-  ])('clean: %s', (_name, hop) => {
-    const r = runCheck(
-      tls01,
-      withTwins([twin({ hasForm: undefined, forms: undefined, formInspection: undefined, ...hop })]),
-    );
-    expect(r.status).toBe('completed');
-    expect(variantsOf(r)).toEqual(['no-redirect']);
-  });
+  answersDecideAlike(twin);
 
   it.each<[string, HttpTwin]>([
-    ['the request timed out', twin(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } })],
     [
       'the host throttled the scan',
       twin(null, { outcome: 'throttled', error: { code: 'throttled', message: 'x' } }),
@@ -1220,33 +1156,7 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
       );
     });
 
-    it.each<[string, Partial<HttpHop>]>([
-      [
-        'the address redirects to https',
-        { status: 301, location: 'https://www.example.test/post-1/', bodyBytes: 0, bodyKind: 'empty' },
-      ],
-      ['the address answers 404', { status: 404 }],
-      ['the http page has no data form', { hasForm: false, forms: [], formInspection: 'complete' }],
-    ])('clean: %s', (_name, hop) => {
-      const r = runCheck(
-        tls01,
-        withTwins([
-          permalinkTwin({ hasForm: undefined, forms: undefined, formInspection: undefined, ...hop }),
-        ]),
-      );
-      expect(r.status).toBe('completed');
-      expect(variantsOf(r)).toEqual(['no-redirect']);
-    });
-
-    it('no clean claim when the request timed out: limitation naming the linked post', () => {
-      const r = runCheck(
-        tls01,
-        withTwins([permalinkTwin(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } })]),
-      );
-      expect(r.status).toBe('partial');
-      expect(r.outcome?.limitations).toEqual([`http-form-twin-undecided:${LINKED}`]);
-      expect(variantsOf(r)).toEqual(['no-redirect']);
-    });
+    answersDecideAlike(permalinkTwin);
 
     it('more permalinks than the budget leave the result complete: they are not known to carry a form', () => {
       const r = runCheck(

@@ -1,33 +1,10 @@
 /** Catalog domains, service-call signatures and consent-state allowlists remain conservative. */
 import { describe, expect, it } from 'vitest';
 import { loadServiceCatalog } from '../../../src/derive/catalog.ts';
-import { derive } from '../../../src/derive/index.ts';
-import {
-  makeBrowser,
-  makeCookie,
-  makePhase,
-  makeRequest,
-  makeSnapshot,
-  makeStorage,
-  makeTarget,
-} from '../../utils/snapshot-builder.ts';
+import { makeCookie, makeStorage } from '../../utils/snapshot-builder.ts';
+import { deriveA, requestsOf } from './derive-phase.ts';
 
 const catalog = loadServiceCatalog();
-
-const snap = (phases: ReturnType<typeof makePhase>[]) =>
-  makeSnapshot({ target: makeTarget('https://www.example.de/'), browser: makeBrowser({ phases }) });
-
-type RequestExtra = Omit<Parameters<typeof makeRequest>[0], 'url'>;
-
-/** Requests of one phase A page, derived; `extra` sets the collector facts (identifier names, resource type). */
-const requestsOf = (...items: Array<[string, RequestExtra?]>) =>
-  derive(
-    snap([
-      makePhase('A', {
-        requests: items.map(([url, extra = {}], i) => makeRequest({ id: `r${i}`, url, ...extra })),
-      }),
-    ]),
-  ).requests;
 
 const VENDOR_DOMAINS: Array<[serviceId: string, domain: string]> = [
   ['the-trade-desk', 'adsrvr.org'],
@@ -172,19 +149,15 @@ describe('signatures and identifiers stay conservative', () => {
   });
 
   it('known identifier cookies and storage keys of the new vendors are tracking; domain-restricted names need the domain', () => {
-    const d = derive(
-      snap([
-        makePhase('A', {
-          cookies: [
-            makeCookie({ name: '_cb' }),
-            makeCookie({ name: 'uid', domain: 'c1.adform.net', firstParty: false }),
-            makeCookie({ name: 'uid', domain: 'other.example.test', firstParty: false }),
-            makeCookie({ name: 'utag_main' }),
-          ],
-          storage: [makeStorage({ key: 'id5id' })],
-        }),
-      ]),
-    );
+    const d = deriveA({
+      cookies: [
+        makeCookie({ name: '_cb' }),
+        makeCookie({ name: 'uid', domain: 'c1.adform.net', firstParty: false }),
+        makeCookie({ name: 'uid', domain: 'other.example.test', firstParty: false }),
+        makeCookie({ name: 'utag_main' }),
+      ],
+      storage: [makeStorage({ key: 'id5id' })],
+    });
     expect(d.cookies.map((c) => [c.key.name, c.serviceId, c.tracking])).toEqual([
       ['_cb', 'chartbeat', true],
       ['uid', 'adform', true],
@@ -258,16 +231,10 @@ describe('consent-state allowlist', () => {
   ];
 
   it('every new consent-state key is classified as allowlisted consent, not tracking, in cookies and storage', () => {
-    const d = derive(
-      snap([
-        makePhase('A', {
-          cookies: COOKIE_KEYS.map((name) =>
-            makeCookie({ name, domain: 'cmp.example.test', firstParty: false }),
-          ),
-          storage: STORAGE_KEYS.map((key) => makeStorage({ key, origin: 'https://cmp.example.test' })),
-        }),
-      ]),
-    );
+    const d = deriveA({
+      cookies: COOKIE_KEYS.map((name) => makeCookie({ name, domain: 'cmp.example.test', firstParty: false })),
+      storage: STORAGE_KEYS.map((key) => makeStorage({ key, origin: 'https://cmp.example.test' })),
+    });
     expect(d.cookies).toHaveLength(COOKIE_KEYS.length);
     expect(d.storage).toHaveLength(STORAGE_KEYS.length);
     for (const c of d.cookies)

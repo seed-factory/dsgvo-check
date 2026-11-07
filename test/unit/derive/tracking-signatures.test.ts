@@ -1,29 +1,6 @@
 /** Tracking signatures distinguish libraries and service calls from events and persistent identifiers. */
 import { describe, expect, it } from 'vitest';
-import { derive } from '../../../src/derive/index.ts';
-import {
-  makeBrowser,
-  makePhase,
-  makeRequest,
-  makeSnapshot,
-  makeTarget,
-} from '../../utils/snapshot-builder.ts';
-
-type RequestExtra = Omit<Parameters<typeof makeRequest>[0], 'url'>;
-
-const requestsOf = (...items: Array<[string, RequestExtra?]>) =>
-  derive(
-    makeSnapshot({
-      target: makeTarget('https://www.example.de/'),
-      browser: makeBrowser({
-        phases: [
-          makePhase('A', {
-            requests: items.map(([url, extra = {}], i) => makeRequest({ id: `r${i}`, url, ...extra })),
-          }),
-        ],
-      }),
-    }),
-  ).requests;
+import { requestsOf } from './derive-phase.ts';
 
 describe('the Google Ad Manager dictionary, library and ad request', () => {
   it('the compression dictionary (resourceType other) is a loaded resource, not an event', () => {
@@ -63,14 +40,6 @@ describe('the Google Ad Manager dictionary, library and ad request', () => {
       kind: 'hit',
       stage: 'event-sent',
     });
-  });
-
-  it('another endpoint of the domain-only match keeps the old behaviour (counter-example)', () => {
-    const [ping] = requestsOf([
-      'https://securepubads.g.doubleclick.net/pcs/view?x=1',
-      { resourceType: 'ping' },
-    ]);
-    expect(ping).toMatchObject({ serviceId: 'google-ad-manager', kind: 'hit', stage: 'event-sent' });
   });
 });
 

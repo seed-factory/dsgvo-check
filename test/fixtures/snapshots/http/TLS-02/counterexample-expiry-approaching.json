@@ -64,12 +64,5 @@
     ],
     "errors": []
   },
-  "http": {
-    "userAgent": "dsgvo-check/test",
-    "chains": [],
-    "documents": [],
-    "requestsIssued": 0,
-    "throttled": false,
-    "errors": []
-  }
+  "http": {}
 }
