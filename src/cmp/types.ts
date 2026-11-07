@@ -1,5 +1,6 @@
 /** CMP facts and the adapter contract. */
 import type { Page } from 'playwright-core';
+import type { CmpDialogMentions } from '../core/snapshot/cmp-dialog.ts';
 import type {
   Box,
   BrowserPhase,
@@ -297,6 +298,23 @@ export interface CmpPhaseFacts {
 
 export interface CmpSection {
   phases: CmpPhaseFacts[];
+  /**
+   * The catalog services the consent dialog names, found in its text once in phase A where an own adapter recognised
+   * its CMP with confidence `high`; the text itself is not kept. Absent when none did, the read failed, and in older
+   * snapshots.
+   */
+  dialogMentions?: CmpDialogMentions;
+  /** The dialog qualified for that read, but its text could not be read or matched; PRIV-01 names it as a limitation. */
+  dialogMentionsFailed?: true;
+}
+
+/**
+ * Text of the adapter's banner container as the page holds it, hidden and collapsed parts included. The collector only
+ * searches it in memory; it is never stored. `truncated`: the page side cut it at the limit it was given.
+ */
+export interface RawDialogText {
+  text: string;
+  truncated: boolean;
 }
 
 export type FirstLayerVariant =
@@ -438,4 +456,9 @@ export interface CmpAdapter {
    */
   verify(page: Page, action: 'reject' | 'accept', opts?: VerifyOptions): Promise<VerifyResult>;
   ready?(page: Page): Promise<boolean>;
+  /**
+   * Reads the whole text of the banner container (adapters.yaml `banner.containers`), hidden and collapsed parts
+   * included, without a click or a scroll; null when the container is not there. At most `maxChars` characters.
+   */
+  dialogText?(page: Page, opts: { maxChars: number }): Promise<RawDialogText | null>;
 }

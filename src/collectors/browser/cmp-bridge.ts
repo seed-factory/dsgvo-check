@@ -9,12 +9,15 @@ import type {
   CmpButton,
   CmpDetection,
   CmpFacts,
+  RawDialogText,
   SettingsChoice,
   SettingsLayerFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
 import type { ClickPlan, ClickPlanTarget } from '../../core/snapshot/browser.ts';
+import { CMP_DIALOG_TEXT_MAX_CHARS, type CmpDialogMentions } from '../../core/snapshot/cmp-dialog.ts';
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
+import { dialogMentionsOf } from './dialog-mentions.ts';
 import { sanitizeRequestUrl } from './recording/features.ts';
 import { ERROR_MESSAGE_MAX_CHARS, errorText, redactFreeText, withTimeout } from './util.ts';
 
@@ -36,6 +39,8 @@ export interface CmpApi {
   chooseSettingsOpener?(facts: CmpFacts, options: ClassifyOptions): Promise<SettingsChoice | null>;
   /** Core's save control of the opened settings layer, or why there is none. */
   chooseSettingsSave?(layer: SettingsLayerFacts): Promise<SettingsChoice>;
+  /** The whole text of the adapter's dialog, hidden details included, as the page holds it; null without its container. */
+  dialogText?(page: Page, adapter: CmpAdapter, maxChars: number): Promise<RawDialogText | null>;
 }
 
 /** Type only: signature drift is a compile error, not a runtime surprise. */
@@ -66,6 +71,8 @@ export const defaultCmpApi: CmpApi = {
     const m = await cmpModule();
     return m.chooseSettingsSave(layer, m.loadLexicon());
   },
+  dialogText: async (page, adapter, maxChars) =>
+    (await cmpModule()).readDialogText(page, adapter, { maxChars }),
 };
 
 // The collector owns phase and page attribution: overwrite `phase`/`pageUrl` and sanitize URL fields the CMP subsystem
@@ -97,6 +104,9 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
 export function normalizeSettings(layer: SettingsLayerFacts): SettingsLayerFacts {
   return { ...layer, buttons: layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) })) };
 }
+
+/** The catalog services the dialog names; `absent` without a reader or a container; `failed` when it could not be read. */
+export type DialogMentionsRead = CmpDialogMentions | 'absent' | 'failed';
 
 /** A plan target as the adapter clicks it. */
 function clickTarget(planned: ClickPlanTarget, kind: ClickTarget['kind']): ClickTarget {
@@ -148,10 +158,16 @@ export class CmpBridge {
     this.classify = classify;
   }
 
-  private async call<T>(what: string, url: string, fn: () => Promise<T>): Promise<T | null> {
+  private async call<T>(
+    what: string,
+    url: string,
+    fn: () => Promise<T>,
+    onError?: () => void,
+  ): Promise<T | null> {
     try {
       return await withTimeout(fn(), this.timeoutMs, `cmp.${what}`);
     } catch (err) {
+      onError?.();
       const code = `cmp-${what}-failed`;
       const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
       // The same failure on every page is reported once per phase.
@@ -228,6 +244,35 @@ export class CmpBridge {
       open.call(adapter, page, clickTarget(opener, 'settings'), { timeoutMs: waitMs }),
     );
     return layer ? normalizeSettings(layer) : null;
+  }
+
+  /**
+   * Reads the whole text of the recognised CMP's dialog without a click and hands out only the catalog services it
+   * names (`dialogMentionsOf`): the text does not leave this method. `absent` when the adapter has no reader or the
+   * container is not there; `failed` when the read threw or timed out (one phase error records it) or the record did
+   * not fit the snapshot schema.
+   */
+  async dialogMentions(
+    page: Page,
+    adapter: CmpAdapter,
+    version: string | null,
+    url: SanitizedUrl,
+  ): Promise<DialogMentionsRead> {
+    const read = this.api.dialogText;
+    if (!read) return 'absent';
+    let failed = false;
+    const raw = await this.call(
+      'dialog-mentions',
+      url,
+      () => read(page, adapter, CMP_DIALOG_TEXT_MAX_CHARS),
+      () => {
+        failed = true;
+      },
+    );
+    if (failed) return 'failed';
+    if (!raw) return 'absent';
+    const takenAt = new Date().toISOString();
+    return dialogMentionsOf(raw, { adapter, version, pageUrl: url, takenAt }) ?? 'failed';
   }
 
   settingsSave(layer: SettingsLayerFacts, url: string): Promise<SettingsChoice | null> {

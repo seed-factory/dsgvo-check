@@ -1,14 +1,28 @@
 /**
  * PRIV-01 (P0): a loaded catalog service is looked up in the Datenschutzerklärung by levels named > company > domain >
  * category. The further privacy notices of the site that phase A read beside the policy are searched with it: a
- * mention in any of them counts. Negations are not parsed, so `not-named` is capped at `medium`. A missing policy is
- * LEGAL-01's finding.
+ * mention in any of them counts. A service no document names, but that the consent dialog of the site names itself
+ * (the catalog services the collector found in its text, collapsed details included, once in phase A for a CMP its own
+ * adapter recognised), is `named-in-cmp-only`; a dialog text that was cut or could not be read is a limitation while a
+ * service stays unnamed. Negations are not parsed, so `not-named` and `named-in-cmp-only` are capped at `medium`. A
+ * missing policy is LEGAL-01's finding.
  */
 
-import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import {
+  containsTerm,
+  defineCheck,
+  type EvidenceInput,
+  firstTermIn,
+  normalizeText,
+  type Observation,
+  type Phase,
+  serviceNameTerms,
+  subjects,
+} from '../../core/api.ts';
 import type { DocumentRecord, RequestRecord } from '../../core/snapshot/browser.ts';
+import type { CmpDialogMentions } from '../../core/snapshot/cmp-dialog.ts';
 import type { ServiceInfo, ServiceObservation } from '../../derive/types.ts';
-import { normalizeText, type PolicyText, policyDocuments, policyText } from './documents.ts';
+import { type PolicyText, policyDocuments, policyText } from './documents.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { sortedUniq } from './lists.ts';
 import { serviceFields } from './services.ts';
@@ -20,27 +34,28 @@ const ID = 'PRIV-01';
 /** A quoted passage starts this far before the match and is at most this long. */
 const QUOTE_LEAD_CHARS = 80;
 const QUOTE_MAX_CHARS = 200;
+/** The id under which evidence names the consent dialog as the text searched. */
+const DIALOG_DOCUMENT_ID = 'cmp-dialog';
 
 export type MatchLevel = 'named' | 'company' | 'domain' | 'category' | 'none';
 
-function contains(text: string, term: string): boolean {
-  const t = normalizeText(term);
-  return t.trim().length > 0 && text.includes(t);
-}
-
+/**
+ * The first level at which `text` (as `normalizeText` gives it) names the service. The browser collector searches the
+ * consent dialog at the `named` level with the same terms and the same search (`serviceNameTerms`, `firstTermIn`).
+ */
 export function matchLevel(
   info: ServiceInfo,
   text: string,
   withCategory = true,
 ): { level: MatchLevel; term: string | null } {
   const levels: Array<[MatchLevel, readonly string[]]> = [
-    ['named', [info.name, ...(info.aliasesDe ?? []), ...(info.aliasesEn ?? [])]],
+    ['named', serviceNameTerms(info)],
     ['company', info.companyAliases ?? []],
     ['domain', info.domains ?? []],
   ];
   if (withCategory) levels.push(['category', info.categoryTerms ?? []]);
   for (const [level, terms] of levels) {
-    const term = terms.find((t) => contains(text, t));
+    const term = firstTermIn(text, terms);
     if (term) return { level, term };
   }
   return { level: 'none', term: null };
@@ -54,7 +69,45 @@ function quote(text: string, term: string): string {
   return q.length > QUOTE_MAX_CHARS ? q.slice(0, QUOTE_MAX_CHARS) : q;
 }
 
-type Variant = 'not-named' | 'category-only' | 'ambiguous-match';
+type Variant = 'not-named' | 'category-only' | 'ambiguous-match' | 'named-in-cmp-only';
+
+/**
+ * The catalog term by which the consent dialog names the service: its name or an alias, as the collector found it in
+ * the dialog's text. Its company, domain or category there do not count: a dialog gives the provider and the purpose of
+ * each service it lists, so they name another service of the same company as well. A term that is not one of the
+ * service's own names (an edited snapshot) is no mention.
+ */
+function dialogMention(info: ServiceInfo, dialog: CmpDialogMentions): string | null {
+  const own = serviceNameTerms(info);
+  return dialog.services.find((m) => m.serviceId === info.serviceId && own.includes(m.term))?.term ?? null;
+}
+
+/**
+ * The CMP whose dialog was read and what in it names the service: the catalog term, not text of the page, which the
+ * snapshot does not keep.
+ */
+function dialogEvidence(d: CmpDialogMentions, term: string): EvidenceInput[] {
+  return [
+    {
+      type: 'cmp',
+      cmpId: d.cmpId,
+      version: d.version,
+      recognitionConfidence: 'high',
+      phase: d.phase,
+      page: d.pageUrl,
+    },
+    {
+      type: 'text-match',
+      documentId: DIALOG_DOCUMENT_ID,
+      section: null,
+      quote: term,
+      matchLevel: 'named',
+      negation: 'none',
+      phase: d.phase,
+      page: d.pageUrl,
+    },
+  ];
+}
 
 /**
  * The legal names of provider and parent the text names as searched (their other spellings are searched too); a
@@ -109,7 +162,7 @@ function mentionVerdict(
 
   if (found.level === 'category' && found.term) {
     const term = found.term;
-    const part = text.visibleParts.find((p) => contains(normalizeText(p.text), term));
+    const part = text.visibleParts.find((p) => containsTerm(normalizeText(p.text), term));
     const textMatch: EvidenceInput | null = part
       ? {
           type: 'text-match',
@@ -144,12 +197,14 @@ export const priv01 = defineCheck({
   id: ID,
   module: 'browser',
   requires: ['browser', 'documents', 'derived'],
+  optional: ['cmp'],
   variants: [
     { variant: 'not-named', variantGroup: 'policy-mention', maxConfidence: 'medium' },
     { variant: 'category-only', variantGroup: 'policy-mention' },
     { variant: 'ambiguous-match', variantGroup: 'policy-mention' },
+    { variant: 'named-in-cmp-only', variantGroup: 'policy-mention', maxConfidence: 'medium' },
   ],
-  run({ browser, documents, derived }) {
+  run({ browser, documents, derived, cmp }) {
     const found = policyDocuments(documents);
     if ('reason' in found) return { status: 'inconclusive', reason: found.reason, observations: [] };
 
@@ -163,6 +218,15 @@ export const priv01 = defineCheck({
     const notOpened = html.some((d) => d.manifest.expandablesOpened < d.manifest.expandablesFound);
     if (notOpened) limitations.push('banner-open');
     if (found.supplementNotEvaluated) limitations.push('supplement-not-evaluated');
+
+    const dialog = cmp?.dialogMentions ?? null;
+    // What keeps the dialog from settling a service no document names: its text was cut, or could not be read.
+    const dialogGap = dialog?.truncated
+      ? 'cmp-dialog-truncated'
+      : !dialog && cmp?.dialogMentionsFailed === true
+        ? 'cmp-dialog-unread'
+        : null;
+    let dialogGapMatters = false;
 
     const records = requestIndex(browser);
     const classified = new Map(derived.requests.map((c) => [c.requestId, c] as const));
@@ -179,7 +243,16 @@ export const priv01 = defineCheck({
       const verdict = mentionVerdict(info, text);
       if (!verdict) continue;
 
-      const evidence: EvidenceInput[] = [...searched, ...(verdict.textMatch ? [verdict.textMatch] : [])];
+      // A name only in hidden text of the policy stays that finding: whether the policy names the service is open.
+      const dialogTerm = dialog && verdict.variant !== 'ambiguous-match' ? dialogMention(info, dialog) : null;
+      const variant: Variant = dialogTerm ? 'named-in-cmp-only' : verdict.variant;
+      if (!dialogTerm && verdict.variant !== 'ambiguous-match' && dialogGap) dialogGapMatters = true;
+
+      const evidence: EvidenceInput[] = [
+        ...searched,
+        ...(dialog && dialogTerm ? dialogEvidence(dialog, dialogTerm) : []),
+        ...(verdict.textMatch ? [verdict.textMatch] : []),
+      ];
       const requests = svc.requestIds.flatMap((id) => {
         const r = records.get(id);
         return r ? [{ r, c: classified.get(id) }] : [];
@@ -193,8 +266,8 @@ export const priv01 = defineCheck({
       const seen = observedAt(requests, identifiers, svc);
       observations.push({
         checkId: ID,
-        variant: verdict.variant,
-        confidence: verdict.variant === 'not-named' ? 'medium' : 'high',
+        variant,
+        confidence: variant === 'not-named' || variant === 'named-in-cmp-only' ? 'medium' : 'high',
         subject: subjects.service(svc.serviceId),
         category: info.category,
         phases: seen.phases,
@@ -211,10 +284,19 @@ export const priv01 = defineCheck({
           partCount: text.parts.length,
           complete: main.complete,
           requestCount: requests.length,
+          ...(dialog && dialogTerm
+            ? {
+                cmp: dialog.cmpName,
+                cmpTerm: dialogTerm,
+                categoryOnly: verdict.variant === 'category-only',
+              }
+            : {}),
         },
         ...serviceFields(derived, svc.serviceId),
       });
     }
+    // The rest of a cut dialog text, or the text that could not be read, may name a service no document names.
+    if (dialogGapMatters && dialogGap) limitations.push(dialogGap);
 
     return {
       status: limitations.length > 0 ? 'partial' : 'completed',

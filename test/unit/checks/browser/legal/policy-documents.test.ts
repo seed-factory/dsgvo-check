@@ -3,7 +3,7 @@
  * and its text split into what the page shows and what it hides, normalised for word search.
  */
 import { describe, expect, it } from 'vitest';
-import { normalizeText, policyDocuments, policyText } from '../../../../../src/checks/browser/documents.ts';
+import { policyDocuments, policyText } from '../../../../../src/checks/browser/documents.ts';
 import type {
   DocumentPart,
   DocumentRecord,
@@ -114,11 +114,5 @@ describe('policyText', () => {
     expect(text.visibleParts.map((p) => p.id)).toEqual(['a', 'c']);
     expect(text.visible).toBe(' wir nutzen google fonts weitere dienste ');
     expect(text.hidden).toBe(' matomo ');
-  });
-
-  it('normalises like a word search: case, umlauts, ß, soft hyphen and punctuation', () => {
-    expect(normalizeText('Goo­gle-Analytics, „Übersicht“ Straße')).toBe(
-      ' google analytics uebersicht strasse ',
-    );
   });
 });

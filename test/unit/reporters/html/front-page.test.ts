@@ -715,20 +715,20 @@ describe('the overview: checks without a result', () => {
   it.each([
     [
       'de',
-      'Es wurden keine kritischen Befunde beobachtet. Ein Befund sollte geprüft werden.',
+      'Es wurde ein kritischer Befund beobachtet.',
       'Das Einwilligungsbanner wurde erkannt.',
       /kein Einwilligungsbanner gefunden|nicht erkannt/,
     ],
     [
       'en',
-      'No critical findings were observed. One finding should be checked.',
+      'One critical finding was observed.',
       'The consent banner was recognised.',
       /No consent banner was found|not recognised/,
     ],
   ] as const)(
-    'a first layer without a reject is a warning about a recognised banner, never a banner called missing (%s)',
+    'a first layer without a reject is a critical finding about a recognised banner, never a banner called missing (%s)',
     (lang, counts, recognised, missing) => {
-      const noReject = findingOf(1, 'CONSENT-04.nonblocking-no-reject', 'warning', {
+      const noReject = findingOf(1, 'CONSENT-04.nonblocking-no-reject', 'critical', {
         params: { cmp: 'wix' },
       });
       const sentences = overview(

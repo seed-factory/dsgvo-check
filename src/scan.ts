@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import { allChecks } from './checks/index.ts';
+import type { CmpSection } from './cmp/types.ts';
 import { collectBrowser } from './collectors/browser/index.ts';
 import { collectDns, collectDnsFollowUp } from './collectors/dns/index.ts';
 import { collectHttpFormTwins } from './collectors/http/form-twins.ts';
@@ -46,6 +47,7 @@ import { errorMessage, type FatalReason, InvalidInputError, ScanFatalError } fro
 import { createLogger, type Logger } from './core/runtime/logger.ts';
 import { uaToken } from './core/runtime/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/runtime/version.ts';
+import { parseCmpDialogMentions } from './core/snapshot/cmp-dialog.ts';
 import type { Collectors } from './core/snapshot/collector.ts';
 import {
   type BrowserEntry,
@@ -174,7 +176,22 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   // Older snapshots may hold the target unredacted.
   snapshot.target = redactTargetInfo(snapshot.target);
   if (snapshot.target.finalUrl) snapshot.target.finalUrl = sanitizeUrl(snapshot.target.finalUrl);
+  if (snapshot.cmp) snapshot.cmp = savedCmpSection(snapshot.cmp);
   return snapshot;
+}
+
+/**
+ * The CMP section of a saved snapshot with only what the collector writes there: its phases, the dialog mentions in
+ * the shape of their schema, the marker of a failed read. Text of a page that an edited file holds under another key,
+ * or in mentions that do not fit, does not reach the checks or the report.
+ */
+function savedCmpSection(cmp: CmpSection): CmpSection {
+  const mentions = cmp.dialogMentions === undefined ? null : parseCmpDialogMentions(cmp.dialogMentions);
+  return {
+    phases: cmp.phases,
+    ...(mentions ? { dialogMentions: mentions } : {}),
+    ...(cmp.dialogMentionsFailed === true ? { dialogMentionsFailed: true as const } : {}),
+  };
 }
 
 function selectChecks(

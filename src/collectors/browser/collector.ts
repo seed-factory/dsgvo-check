@@ -162,7 +162,12 @@ export class BrowserCollection {
   readonly phases: PhaseRecord[] = [];
   readonly plan: BrowserPlan = { pages: [], controlPages: [], click: {} };
   readonly documents: DocumentsSection = { documents: [], attempts: [] };
-  private readonly cmpSection: CmpSection = { phases: [] };
+  readonly cmpSection: CmpSection = { phases: [] };
+  /**
+   * The dialog is read once per scan: on the first screen of phase A where an adapter first qualified. A failed read is
+   * not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
+   */
+  private dialogRead = false;
   readonly screenshots: ScreenshotRecord[] = [];
   private readonly errors: CollectorError[] = [];
   readonly diagnostics: DiagnosticInput[] = [];
@@ -631,7 +636,28 @@ export class BrowserCollection {
     if (s.phase === 'A') a = (await s.cmp.detect(s.page, pageUrl))?.adapter ?? null;
     const facts = await s.cmp.extract(s.page, a, cmpMoment, pageUrl);
     if (facts) s.cmpFacts.facts.push(facts);
+    if (facts && a && s.phase === 'A' && cmpMoment === 'first-screen')
+      await this.readDialogMentions(s, a, facts);
     return facts;
+  }
+
+  /**
+   * The catalog services the dialog names, its collapsed details included (PRIV-01 compares them with the policy):
+   * only where the CMP's own adapter recognised it with confidence `high` and its container is in the page, never what
+   * the generic heuristic found. Read in phase A, before the scan clicks anything; its text is not kept.
+   */
+  private async readDialogMentions(s: Session, adapter: CmpAdapter, facts: CmpFacts): Promise<void> {
+    const d = facts.detection;
+    const qualifies =
+      d.method === 'adapter' &&
+      d.cmpId === adapter.id &&
+      d.recognitionConfidence === 'high' &&
+      facts.firstLayer.bannerPresent;
+    if (this.dialogRead || !qualifies) return;
+    this.dialogRead = true;
+    const read = await s.cmp.dialogMentions(s.page, adapter, d.version, facts.pageUrl);
+    if (read === 'failed') this.cmpSection.dialogMentionsFailed = true;
+    else if (read !== 'absent') this.cmpSection.dialogMentions = read;
   }
 
   /**

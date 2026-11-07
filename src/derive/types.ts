@@ -142,6 +142,11 @@ export interface ClassifiedRequest {
   resourceServiceId?: string;
   /** Category of `resourceServiceId`. */
   resourceCategory?: ServiceCategory;
+  /**
+   * What the request is for `resourceServiceId`, as `kind` would say for the same request of the site: a font service's
+   * stylesheet or font file, or its usage `hit`, which fetches no font. `kind` stays the kind for the embed.
+   */
+  resourceKind?: RequestKind;
 }
 
 /** Key `(name, domain|first-party, path, partitionKey)` used to compare cookies across phases. */
@@ -265,7 +270,10 @@ export interface DerivedSection {
   cookies: ClassifiedCookie[];
   storage: ClassifiedStorage[];
   services: ServiceObservation[];
-  /** Catalog entries referenced by `services` (lookup for checks). */
+  /**
+   * Catalog entries of the services the classified facts name, the `resourceServiceId` of a frame resource included
+   * (lookup for checks).
+   */
   catalog: Record<string, ServiceInfo>;
   /** Names of every catalog service of policy relevance `required` or `optional`, ordered by id. */
   serviceNames?: ServiceName[];

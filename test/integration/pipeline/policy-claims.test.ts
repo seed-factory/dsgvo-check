@@ -1,7 +1,8 @@
 /**
  * PRIV-02 end to end: real browser collector, derive, browser checks, assess and reporters on two fixture sites whose
  * privacy policy states the Google Fonts are installed locally. On one every page loads them from Google, on the
- * other only the frame of an embedded Google Map does, which belongs to the map.
+ * other only the frame of an embedded Google Map does: no use of Google Fonts by the site, but fonts from a
+ * third-party server that EMBED-01 reports for the map's frame.
  */
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -136,11 +137,20 @@ describe('the same statement on a site serving its own font, with a Google Map t
     ).toBe(true);
   });
 
-  it('PRIV-02 completes without a finding and EMBED-01 stays silent', () => {
+  it("PRIV-02 completes without a finding; EMBED-01 reports the map frame's fonts, not a font load of the site", () => {
     const { report } = scanned;
     expect(check(report, 'PRIV-02')?.status).toBe('completed');
     expect(findingsOf(report, 'PRIV-02')).toEqual([]);
     expect(check(report, 'EMBED-01')?.status).toBe('completed');
-    expect(findingsOf(report, 'EMBED-01')).toEqual([]);
+    const map = findingsOf(report, 'EMBED-02')[0];
+    expect(findingsOf(report, 'EMBED-01').map((f) => [f.variant, f.subject, f.severity, f.crmCode])).toEqual([
+      ['fonts-in-embed-frame', 'google-fonts@google-maps', 'warning', 'T1_FONTS_EXTERNAL'],
+    ]);
+    expect(
+      findingsOf(report, 'EMBED-01')[0]?.related.map((r) => [r.checkId, r.fingerprint, r.relation]),
+    ).toContainEqual(['EMBED-02', map?.fingerprint, 'embedded-in']);
+    expect(scanned.userFacing[0]).toContain(
+      'Externe Schriftarten von einer Einbettung geladen: Google Fonts in Google Maps',
+    );
   });
 });

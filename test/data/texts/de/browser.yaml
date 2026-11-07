@@ -305,12 +305,42 @@ messages:
       {}}
   EMBED-01.preconnect-only:
     title: >-
-      {observed, select, hint {Nur Verbindungsvorbereitung zu einem Schriftdienst: {service}} attempt {Nicht
+      {observed, select, hint {{embedFrameFonts, select, true {Nur Verbindungsvorbereitung der Website zu einem
+      Schriftdienst} other {Nur Verbindungsvorbereitung zu einem Schriftdienst}}: {service}} attempt {Nicht
       abgeschlossener Schriftabruf: {service}} other {Verbindungsvorbereitung oder nicht abgeschlossener Schriftabruf:
       {service}}}
     body: >-
-      Zu {service} wurde nur eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener
-      Abruf beobachtet; ein abgeschlossener Abruf von Schriftdateien wurde nicht festgestellt.
+      Zu {service} wurde {embedFrameFonts, select, true {außerhalb der Rahmen eingebetteter Dienste } other {}}nur
+      eine Verbindungsvorbereitung (preconnect/dns-prefetch) oder ein nicht abgeschlossener Abruf beobachtet; ein
+      abgeschlossener Abruf von Schriftdateien wurde {embedFrameFonts, select, true {dort } other {}}nicht
+      festgestellt.{embedFrameFonts, select, true { {embedCount, plural, one {Der Rahmen von {embedServices} lud}
+      other {Die Rahmen von {embedServices} luden}} dagegen Schriftdateien oder Stylesheets von {service}; diese
+      Abrufe sind nicht Teil dieses Befunds.} other {}}
+  EMBED-01.fonts-in-embed-frame:
+    title: >-
+      {moment, select, before-and-after-reject {Externe Schriftarten von einer Einbettung geladen, auch nach
+      {rejectConfirmed, select, true {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings { über die
+      Einstellungen} other {}}: {service} in {embedService}} after-reject {Externe Schriftarten von einer Einbettung
+      nach {rejectConfirmed, select, true {bestätigter Ablehnung} other {Ablehnung}}{rejectPath, select, settings {
+      über die Einstellungen} other {}} geladen: {service} in {embedService}} other {Externe Schriftarten von einer
+      Einbettung geladen: {service} in {embedService}}}
+    body: >-
+      Der Rahmen des eingebetteten Dienstes {embedService} lud Schriftdateien oder Stylesheets von {service}
+      ({requestCount, plural, one {# Anfrage} other {# Anfragen}}), Zeitpunkt: {moment, select,
+      before-and-after-reject {vor einer Interaktion mit dem Einwilligungsbanner und erneut nach {rejectConfirmed,
+      select, true {bestätigter Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other
+      {{rejectPath, select, settings {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick
+      auf „Ablehnen“ (Ablehnung nicht bestätigt)}}}}} after-reject {nach {rejectConfirmed, select, true {bestätigter
+      Ablehnung{rejectPath, select, settings { über die Einstellungen} other {}}} other {{rejectPath, select, settings
+      {dem Speichern der Einstellungen (Ablehnung nicht bestätigt)} other {dem Klick auf „Ablehnen“ (Ablehnung nicht
+      bestätigt)}}}}} other {{afterReject, select, true {vor einer Interaktion mit dem Einwilligungsbanner bzw. nach
+      Ablehnung} other {{bannerFound, select, true {vor einer Interaktion mit dem Einwilligungsbanner} false {vor
+      jeder Interaktion, kein Einwilligungsbanner gefunden} unrecognized {vor jeder Interaktion, Einwilligungsbanner
+      beobachtet, aber nicht erkannt} other {vor jeder Interaktion, Einwilligungsbanner nicht ausgewertet}}}}}}
+      ({pageCount, plural, one {# Seite} other {# Seiten}}{afterRejectPageCount, plural, =0 {} other {, davon # nach
+      der Ablehnung}}).{rejectPath, select, settings { Die erste Ebene des Einwilligungsbanners bot keine Ablehnung;
+      abgelehnt wurde in den Einstellungen, in denen alle optionalen Kategorien bereits ausgeschaltet waren.} other
+      {}}
 
   # EMBED-02
   EMBED-02.maps-loaded:
@@ -466,6 +496,18 @@ messages:
       Datenschutzerklärung unter {policyUrl}} other {in der Datenschutzerklärung und den weiteren Datenschutzhinweisen
       der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
       zuordenbaren Textteil gefunden. Bitte manuell prüfen.
+  PRIV-01.named-in-cmp-only:
+    title: "Nicht gefunden in der Datenschutzerklärung, in den Angaben des Einwilligungsbanners ({cmp}) genannt: {service}"
+    body: >-
+      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl}{documentCount, plural, =0 {} =1 {} other { und
+      der weiteren Datenschutzhinweise der Website (durchsucht: {policyUrls})}} ({partCount, plural, one {# Abschnitt}
+      other {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht
+      vollständig}}) wurde {service} nicht gefunden{categoryOnly, select, true {, nur eine Beschreibung der Kategorie}
+      other {}}. In den Angaben des Einwilligungsbanners ({cmp}), ohne Klick und mit eingeklappten Details gelesen,
+      wurde {service} unter der Bezeichnung „{cmpTerm}“ des Dienstekatalogs gefunden. Der Text des Banners wird nicht
+      gespeichert, nur der gefundene Dienst. Firmenname, Domain oder Kategorie im Banner wurden nicht als Nennung
+      gezählt. Der Dienst wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im
+      Text wurden nicht ausgewertet.
 
   # PRIV-02
   PRIV-02.contradiction-replicated:
@@ -709,6 +751,11 @@ actions:
       dort laden.} attempt {Prüfen Sie, welche Einbindung Schriften von {service} anfordert, und entfernen Sie den
       Abruf oder liefern Sie die Schriften vom eigenen Server aus.} other {Prüfen Sie die Verbindungsvorbereitungen
       und Schriftabrufe zu {service} und entfernen Sie sie, wenn Sie die Schriften nicht von dort laden.}}
+  EMBED-01.fonts-in-embed-frame:
+    text: >-
+      Binden Sie {embedService} erst nach einer Einwilligung oder nach einem Klick der Besucher ein
+      (Zwei-Klick-Lösung). Die Schriften von {service}, die der Rahmen der Einbettung lädt, lassen sich nicht vom
+      eigenen Server ausliefern.
   EMBED-02.maps-loaded:
     text: "Binden Sie die Karte von {service} erst nach einem Klick der Besucher ein oder nutzen Sie eine Lösung, die ohne externen Anbieter auskommt."
   EMBED-03.video-loaded:
@@ -735,6 +782,8 @@ actions:
     text: "Prüfen Sie, ob die Datenschutzerklärung {service} ausreichend konkret nennt, und ergänzen Sie sonst den Namen des Dienstes und des Anbieters."
   PRIV-01.ambiguous-match:
     text: "Prüfen Sie manuell, ob die Datenschutzerklärung {service} im sichtbaren Text nennt."
+  PRIV-01.named-in-cmp-only:
+    text: "Nennen Sie {service} mit Zweck und Anbieter auch in der Datenschutzerklärung, nicht nur in den Angaben des Einwilligungsbanners ({cmp})."
   PRIV-02.contradiction-replicated:
     text: "Vergleichen Sie den zitierten Abschnitt der Datenschutzerklärung mit der Einbindung von {service}: {claim, select, consent-gated {Laden Sie {service} erst nach einer Einwilligung} other {Liefern Sie die Inhalte vom eigenen Server aus}} oder passen Sie die Angabe an."
   PRIV-02.contradiction-single:

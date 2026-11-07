@@ -96,7 +96,7 @@ describe('browser checks in a full report', () => {
     expect((report.checks ?? []).find((c) => c.id === 'CONSENT-03')).toMatchObject({ status: 'completed' });
   });
 
-  it('a non-blocking first layer without a reject is a warning with its catalog code; it does not fail the run', async () => {
+  it('a non-blocking first layer without a reject is critical with its catalog code and fails the run', async () => {
     const wix = scenariosOf('CONSENT-04').find(
       (s) => s.file === 'violation-wix-settings-and-accept-only.json',
     );
@@ -106,11 +106,33 @@ describe('browser checks in a full report', () => {
     expectValidReport(report);
     const consent04 = (report.findings ?? []).filter((f) => f.checkId === 'CONSENT-04');
     expect(consent04.map((f) => [f.variant, f.severity, f.confidence, f.crmCode])).toEqual([
-      ['nonblocking-no-reject', 'warning', 'high', 'T1_CONSENT_BANNER_BROKEN'],
+      ['nonblocking-no-reject', 'critical', 'high', 'T1_CONSENT_BANNER_BROKEN'],
     ]);
-    expect((report.findings ?? []).filter((f) => f.severity === 'critical')).toEqual([]);
-    expect(exitCode).toBe(0);
+    expect((report.findings ?? []).filter((f) => f.severity === 'critical').map((f) => f.checkId)).toEqual([
+      'CONSENT-04',
+    ]);
+    expect(exitCode).toBe(1);
     expect(bannerState(report)).toBe('recognized');
+  });
+
+  it("a map frame that loads Google Fonts: the map is EMBED-02, its frame's fonts an EMBED-01 warning linked to it", async () => {
+    const maps = scenariosOf('EMBED-01').find((s) => s.file === 'violation-fonts-in-map-frame.json');
+
+    const { report } = await scanSnapshot(maps!.build(), 'map-frame-fonts');
+
+    expectValidReport(report);
+    const findings = report.findings ?? [];
+    const map = findings.find((f) => f.checkId === 'EMBED-02');
+    const fonts = findings.filter((f) => f.checkId === 'EMBED-01');
+    expect(map).toMatchObject({ variant: 'maps-loaded', params: { frameFontServices: 'Google Fonts' } });
+    expect(fonts.map((f) => [f.variant, f.subject, f.severity, f.crmCode, f.serviceId])).toEqual([
+      ['fonts-in-embed-frame', 'google-fonts@google-maps', 'warning', 'T1_FONTS_EXTERNAL', 'google-fonts'],
+    ]);
+    expect(fonts[0]?.related).toContainEqual({
+      checkId: 'EMBED-02',
+      fingerprint: map?.fingerprint,
+      relation: 'embedded-in',
+    });
   });
 
   const WIX: CmpFacts['detection'] = {

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Borlabs-Simulator: v3 mit eingeklappten Cookie-Details</title>
+<script>
+  var borlabsCookieConfig = {
+    settings: {
+      dialogGeoIpActive: false,
+      cookiesForBots: true,
+      respectDoNotTrack: false,
+      dialogShowDialogAfterUserInteraction: false,
+      dialogHideDialogOnPages: []
+    },
+    sim: {
+      reject: true,
+      details: [
+        {
+          name: 'Google Tag Manager',
+          provider: 'Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland',
+          purpose: 'Cookie von Google zur Steuerung der erweiterten Script- und Ereignisbehandlung.',
+          policy: 'https://policies.google.com/privacy',
+          cookies: '_ga,_gat,_gid',
+          lifetime: '2 Jahre'
+        },
+        {
+          name: 'Google AdWords',
+          provider: 'Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland',
+          purpose: 'Conversion-Tracking und Remarketing.',
+          policy: 'https://policies.google.com/privacy',
+          cookies: '_gcl_au',
+          lifetime: '3 Monate'
+        }
+      ]
+    }
+  };
+</script>
+<script src="/wp-content/plugins/borlabs-cookie/assets/javascript/borlabs-cookie.min.js?ver=3.2.1" defer></script>
+<!-- The Tag Manager that the Cookie-Details name, and Google Analytics, which they do not name. -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-SIM1"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-SIM1"></script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Handwerk GmbH</h1><p>Willkommen.</p></main>
+<footer><a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutz</a></footer>
+</body>
+</html>

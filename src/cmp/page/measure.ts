@@ -257,6 +257,29 @@ export async function measureBanner(
   return toMeasured(raw, lexicon, page.url(), { closeMeansAccept });
 }
 
+/**
+ * The whole text of the banner container the probe measures by `spec` (the same container, found by the same rules),
+ * its hidden and collapsed parts included; null when there is none. Reads only: no click, no scroll.
+ */
+export async function readBannerText(
+  page: Page,
+  spec: BannerSpec,
+  lexicon: CmpLexicon,
+  maxChars: number,
+): Promise<{ text: string; truncated: boolean } | null> {
+  const raw = await runProbe(
+    page,
+    probeArgs(lexicon, {
+      mode: 'banner',
+      containers: [...spec.containers],
+      overlays: [...(spec.overlays ?? [])],
+      vendorRoles: [...(spec.vendorRoles ?? [])],
+      fullTextMaxChars: maxChars,
+    }),
+  );
+  return raw.found && raw.fullText ? raw.fullText : null;
+}
+
 interface HeuristicHit {
   frame: Frame;
   raw: ProbeResult;

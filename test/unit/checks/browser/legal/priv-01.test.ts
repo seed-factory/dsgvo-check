@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeText } from '../../../../../src/checks/browser/documents.ts';
 import { matchLevel, priv01 } from '../../../../../src/checks/browser/priv-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
@@ -9,6 +8,7 @@ import type {
   DocumentRecord,
   DocumentsSection,
 } from '../../../../../src/core/snapshot/browser.ts';
+import { normalizeText } from '../../../../../src/core/text/search.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
@@ -161,8 +161,7 @@ describe('PRIV-01 service not found in the privacy policy', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('normalisation: NFKC, case, umlauts, soft hyphen, punctuation', () => {
-    expect(normalizeText('Goo­gle-Analytics, „Übersicht“')).toBe(' google analytics uebersicht ');
+  it('match levels in the normalised text: name, company, category, none', () => {
     const info = loadServiceCatalog().info('google-analytics')!;
     expect(matchLevel(info, normalizeText('Wir nutzen GOOGLE ANALYTICS.')).level).toBe('named');
     expect(matchLevel(info, normalizeText('Anbieter ist die Google Ireland Limited.')).level).toBe('company');

@@ -41,7 +41,7 @@ checks:
       reject-ineffective: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
       consent-without-action: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
       reject-as-link: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
-      nonblocking-no-reject: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      nonblocking-no-reject: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
       no-choice-at-first-layer: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
       pur-abo: { severity: info, crm: null }
       banner-not-recognized: { severity: info, gating: false, locked: true, crm: null }
@@ -63,6 +63,8 @@ checks:
     variants:
       fonts-loaded: { severity: warning, crm: T1_FONTS_EXTERNAL }
       preconnect-only: { severity: info, crm: null }
+      # Fonts an embed's frame loads from a font service: the customer counts them as fonts from third-party servers.
+      fonts-in-embed-frame: { severity: warning, crm: T1_FONTS_EXTERNAL }
   EMBED-02:
     gating: true
     variants:
@@ -93,6 +95,8 @@ checks:
       not-named: { severity: warning, crm: T3_LEGAL_DOCS_MISMATCH }
       category-only: { severity: info, crm: null }
       ambiguous-match: { severity: info, crm: null }
+      # No privacy document names the service, the consent dialog of the site does (its collapsed service details).
+      named-in-cmp-only: { severity: info, crm: null }
   PRIV-02:
     gating: true
     variants:

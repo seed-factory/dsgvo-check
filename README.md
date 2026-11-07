@@ -87,28 +87,28 @@ Die Meldungs-ID eines Befunds ist `<Prüfung>.<Variante>`. Die Schweregrade sind
 mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 
 <!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
-| ID           | `critical`                                 | `warning`                                                                                                               | `info`                                                                                                  |
-| ------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `CONSENT-01` | `tracking-completed`                       | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                         |
-| `CONSENT-02` | `tracking-identifier-stored`               | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                |
-| `CONSENT-03` | `no-banner-strong-tracking`                | `no-banner-consent-services`                                                                                            | —                                                                                                       |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`, `nonblocking-no-reject`                        | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
-| `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                             |
-| `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                     |
-| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                       |
-| `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                       |
-| `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                       |
-| `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
-| `LEGAL-02`   | —                                          | —                                                                                                                       | `outdated-reference`                                                                                    |
-| `PRIV-01`    | —                                          | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                      |
-| `PRIV-02`    | `contradiction-replicated`                 | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
-| `MAIL-01`    | —                                          | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
-| `MAIL-02`    | —                                          | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
-| `MAIL-03`    | —                                          | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                   |
-| `HDR-01`     | —                                          | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
-| `HDR-02`     | —                                          | —                                                                                                                       | `version-header`                                                                                        |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`   | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                  |
-| `TLS-02`     | `certificate-invalid`                      | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                        |
+| ID           | `critical`                                                          | `warning`                                                                                                               | `info`                                                                                                  |
+| ------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `CONSENT-01` | `tracking-completed`                                                | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                         |
+| `CONSENT-02` | `tracking-identifier-stored`                                        | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                |
+| `CONSENT-03` | `no-banner-strong-tracking`                                         | `no-banner-consent-services`                                                                                            | —                                                                                                       |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept`, `nonblocking-no-reject` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
+| `CONSENT-05` | `tracking-after-reject`                                             | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                             |
+| `TRACK-01`   | —                                                                   | —                                                                                                                       | `service-inventory`                                                                                     |
+| `EMBED-01`   | —                                                                   | `fonts-loaded`, `fonts-in-embed-frame`                                                                                  | `preconnect-only`                                                                                       |
+| `EMBED-02`   | —                                                                   | `maps-loaded`                                                                                                           | —                                                                                                       |
+| `EMBED-03`   | —                                                                   | `video-loaded`                                                                                                          | —                                                                                                       |
+| `LEGAL-01`   | `document-not-found`, `links-broken`                                | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
+| `LEGAL-02`   | —                                                                   | —                                                                                                                       | `outdated-reference`                                                                                    |
+| `PRIV-01`    | —                                                                   | `not-named`                                                                                                             | `category-only`, `ambiguous-match`, `named-in-cmp-only`                                                 |
+| `PRIV-02`    | `contradiction-replicated`                                          | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
+| `MAIL-01`    | —                                                                   | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
+| `MAIL-02`    | —                                                                   | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
+| `MAIL-03`    | —                                                                   | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                   |
+| `HDR-01`     | —                                                                   | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                        |
+| `HDR-02`     | —                                                                   | —                                                                                                                       | `version-header`                                                                                        |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`                            | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                  |
+| `TLS-02`     | `certificate-invalid`                                               | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                        |
 <!-- registry:end -->
 
 ² Fest vorgegeben (`locked`): wird nicht angehoben und zählt nicht für `--fail-on`; die Prüfung bleibt `inconclusive`.
@@ -267,10 +267,9 @@ Eigene Adapter gibt es für Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, 
 für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookieman. Geklickt wird nur über sie.
 
 - CONSENT-04 bewertet oberhalb von `info` nur bei Erkennung mit hoher Konfidenz.
-- Fehlt auf der ersten Ebene eines erkannten Banners die Ablehnung, meldet CONSENT-04 `warning`, wenn das Banner die
-  Seite nicht blockiert (`nonblocking-no-reject`, etwa nur „Cookie-Einstellungen“ und „Zustimmen“), und `critical`,
-  wenn es sie blockiert und „Zustimmen“ anbietet (`blocking-no-reject`). Eine Schließen-Schaltfläche (×) zählt nie als
-  Ablehnen. Der Scanner lehnt dann über die Einstellungen ab, wenn der Adapter sie kennt (siehe
+- Fehlt auf der ersten Ebene eines erkannten Banners, das „Zustimmen“ anbietet, die Ablehnung, meldet CONSENT-04
+  `critical`, ob das Banner die Seite blockiert (`blocking-no-reject`) oder nicht (`nonblocking-no-reject`, etwa nur
+  „Cookie-Einstellungen“ und „Zustimmen“). Eine Schließen-Schaltfläche (×) zählt nie als Ablehnen. Der Scanner lehnt dann über die Einstellungen ab, wenn der Adapter sie kennt (siehe
   [Ablauf im Browser](#ablauf-im-browser)); CONSENT-04 bewertet weiter die erste Ebene. Sonst klickt er im Besuch
   mit Ablehnung nichts, und CONSENT-05 bleibt `inconclusive`, mit dem Grund als Einschränkung, wenn die Einstellungen
   geöffnet, aber nicht gespeichert wurden.
@@ -689,9 +688,13 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   nicht die Erlaubnis des Website-Betreibers.
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
-  Domain maskiert. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne
-  Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase
-  entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Domain maskiert. Den Text des Einwilligungsbanners, den PRIV-01 braucht, speichert der Scan nicht: Der Collector
+  durchsucht ihn im Speicher nach Namen und Schreibweisen des Dienstekatalogs und behält nur die Treffer, je Dienst
+  dessen Kennung und die Schreibweise aus dem Katalog. Einwilligungs-IDs, UIDs oder TC-Strings, die das Banner neben den
+  Diensten anzeigt, gelangen so in keiner Form in Snapshot, Bericht oder Logs. Von Headern wie `Server` und
+  `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre
+  Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten
+  Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
@@ -736,7 +739,17 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   vor der Interaktion, nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das
   Ablehnen bestätigt. Als „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der
   CMP gilt: Das Banner erscheint dort nicht wieder. Schriften, die ein Kartenrahmen oder ein Videoplayer lädt, nennen
-  EMBED-02 und EMBED-03 mit; einen eigenen EMBED-01-Befund gibt es dafür nicht.
+  EMBED-02 und EMBED-03 mit. EMBED-01 meldet sie zusätzlich als eigenen Befund `fonts-in-embed-frame` je Schriftdienst
+  und Einbettung (etwa Google Fonts im Rahmen von Google Maps), mit Angaben zum Zeitpunkt wie bei `fonts-loaded` und
+  mit einem Link auf den Befund der Einbettung; Schriften, die die Seite selbst lädt, bleiben `fonts-loaded`. Gezählt
+  werden abgeschlossene Abrufe von Schriftdiensten des Dienstekatalogs; Schriftdateien anderer Hosts im Rahmen zählen
+  EMBED-02 und EMBED-03 als Anfragen an Hilfshosts. Die Seite einer Anfrage im Rahmen ist wie bei EMBED-03 die Seite,
+  auf der das Dokument des Rahmens geladen wurde; EMBED-02 zählt eine späte Anfrage des Kartenrahmens dagegen für die
+  Seite, mit der sie aufgezeichnet wurde, sodass Seitenzahl und Zeitpunkt beider Befunde dann abweichen können.
+  Schriften im Rahmen von CAPTCHAs, Widgets, Bewertungen, Chats und Social-Media-Plugins ergeben keinen eigenen Befund,
+  weil deren Prüfungen (EMBED-04, EMBED-05) nicht Teil des Prototyps sind. Ohne abgeschlossenen Abruf der Website
+  selbst bleibt es bei `preconnect-only`; hat der Rahmen einer Einbettung Schriften desselben Dienstes geladen, sagt
+  der Text, dass sich die Feststellung auf Abrufe außerhalb der Rahmen bezieht, und nennt die Einbettung.
 - **Videos (EMBED-03)** werden je Einbettung gemeldet: Was ein Player-Rahmen lädt, gehört zu dessen Dienst, auch die
   Vorschaubilder und Videodaten von YouTube, die ein Player von youtube-nocookie.com abruft; ein Vorschaubild auf der
   Seite selbst bleibt beim Dienst, von dem es stammt. Als Vorschaubild gilt ein Bild nur mit der Signatur des
@@ -753,7 +766,17 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
   oder gar nicht vorliegen, ergeben die Einschränkung `supplement-not-evaluated` (Status `partial`); die
   Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
-  höchstens `medium`.
+  höchstens `medium`. Nennt kein Dokument den Dienst, wohl aber das Einwilligungsbanner selbst mit Namen oder
+  Schreibweise des Dienstekatalogs (etwa die eingeklappten „Cookie-Details“ von Borlabs Cookie), meldet PRIV-01 statt
+  `not-named` oder `category-only` die Variante `named-in-cmp-only` (`info`). Gelesen wird der Text des Banners einmal
+  in Phase A ohne Klick, auf der ersten Seite, auf der ein eigener Adapter das Banner sicher erkennt (nie die
+  allgemeine Heuristik), höchstens 100 000 Zeichen. Der Collector sucht darin wie PRIV-01 in der Datenschutzerklärung
+  und speichert nur die gefundenen Dienste mit der Schreibweise aus dem Katalog, keinen Text des Banners; der Befund
+  nennt diese Schreibweise. Firmenname oder Kategorie im Banner zählen nicht als Nennung, ebenso wenig eine Domain
+  des Dienstes; steht der Dienstname als Teil eines Hostnamens im Text (etwa „player.vimeo.com“), zählt er wie in der
+  Datenschutzerklärung als Nennung.
+  Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist, und
+  `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
   [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
   lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder
@@ -766,8 +789,9 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   `DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS`; eine Anfrage im Frame zählt für die Seite seines Dokuments) ist
   `critical`, in einer `warning`. Beschreibt dasselbe Dokument auch den Abruf von einer Quelle außerhalb der Website
   („von Google“, „von Google-Servern geladen“, „Drittanbieter“) oder wurden nur Abrufe ohne Antwort und
-  Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte lädt, gehören
-  zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im Hauptdokument nicht.
+  Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte lädt, sind
+  kein Abruf der Website (EMBED-01 meldet sie als `fonts-in-embed-frame`); nach „Alle akzeptieren“ zählen Anfragen auf
+  Seiten mit Karten- oder Videodienst im Hauptdokument nicht.
   „Keine Verbindung“ zu einer Karte oder einem Video gilt nur bis zur Einwilligung, denn ohne Verbindung zeigt die
   Einbettung nichts. „Auch nach bestätigter Ablehnung“ steht nur für Anfragen auf Seiten, auf denen die Ablehnung laut
   den Fakten der CMP gilt. Weitere Datenschutzhinweise der Website liest PRIV-02 nicht, nur die Datenschutzerklärung.
