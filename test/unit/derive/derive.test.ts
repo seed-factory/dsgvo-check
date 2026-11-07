@@ -552,8 +552,13 @@ describe('derive: requests of embedded frames', () => {
         ['google-maps', 'maps', 'embed-frame', 'google-maps', 'google-fonts', 'fonts'],
         ['google-maps', 'maps', 'embed-frame', 'google-maps', undefined, undefined],
       ]);
-      // The map frame's fonts stay out of the site's own use of Google Fonts.
+      // The map frame's fonts stay out of the site's own use of Google Fonts, but the lookup knows the font service,
+      // so a finding about the frame's fonts names it with its provider.
       expect(d.services.find((s) => s.serviceId === 'google-fonts')).toBeUndefined();
+      expect(d.catalog['google-fonts']).toMatchObject({
+        name: 'Google Fonts',
+        provider: { name: 'Google Ireland Limited', country: 'IE' },
+      });
     },
   );
 

@@ -181,21 +181,39 @@ describe('browser actions also serve several findings at once', () => {
 });
 
 describe('EMBED titles name the moment of the loads', () => {
-  const service = {
-    'EMBED-01.fonts-loaded': 'Google Fonts',
-    'EMBED-02.maps-loaded': 'Google Maps',
-    'EMBED-03.video-loaded': 'YouTube',
+  /** Each message with the params that name its services, and the end of its title after the colon. */
+  const NAMES = {
+    'EMBED-01.fonts-loaded': [{ service: 'Google Fonts' }, 'Google Fonts'],
+    'EMBED-01.fonts-in-embed-frame': [
+      { service: 'Google Fonts', embedService: 'Google Maps' },
+      'Google Fonts in Google Maps',
+    ],
+    'EMBED-02.maps-loaded': [{ service: 'Google Maps' }, 'Google Maps'],
+    'EMBED-03.video-loaded': [{ service: 'YouTube' }, 'YouTube'],
   } as const;
-  /** Moment params, then the de and en titles of fonts, maps and videos with the service left out. */
-  const CASES: Array<
-    [string, Record<string, string | boolean | null>, Record<'de' | 'en', [string, string, string]>]
-  > = [
+  const KEYS = Object.keys(NAMES) as Array<keyof typeof NAMES>;
+  type Titles = [string, string, string, string];
+  /**
+   * Moment params, then the de and en titles of the site's fonts, an embed's fonts, maps and videos with the services
+   * left out.
+   */
+  const CASES: Array<[string, Record<string, string | boolean | null>, Record<'de' | 'en', Titles>]> = [
     [
       'before the interaction',
       { moment: 'before-interaction', rejectConfirmed: null },
       {
-        de: ['Externe Schriftarten geladen', 'Externer Kartendienst geladen', 'Externer Videodienst geladen'],
-        en: ['External fonts loaded', 'External map service loaded', 'External video service loaded'],
+        de: [
+          'Externe Schriftarten geladen',
+          'Externe Schriftarten von einer Einbettung geladen',
+          'Externer Kartendienst geladen',
+          'Externer Videodienst geladen',
+        ],
+        en: [
+          'External fonts loaded',
+          'External fonts loaded by an embed',
+          'External map service loaded',
+          'External video service loaded',
+        ],
       },
     ],
     [
@@ -204,11 +222,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten geladen, auch nach bestätigter Ablehnung',
+          'Externe Schriftarten von einer Einbettung geladen, auch nach bestätigter Ablehnung',
           'Externer Kartendienst geladen, auch nach bestätigter Ablehnung',
           'Externer Videodienst geladen, auch nach bestätigter Ablehnung',
         ],
         en: [
           'External fonts loaded, also after confirmed rejection',
+          'External fonts loaded by an embed, also after confirmed rejection',
           'External map service loaded, also after confirmed rejection',
           'External video service loaded, also after confirmed rejection',
         ],
@@ -220,11 +240,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten geladen, auch nach Ablehnung',
+          'Externe Schriftarten von einer Einbettung geladen, auch nach Ablehnung',
           'Externer Kartendienst geladen, auch nach Ablehnung',
           'Externer Videodienst geladen, auch nach Ablehnung',
         ],
         en: [
           'External fonts loaded, also after rejection',
+          'External fonts loaded by an embed, also after rejection',
           'External map service loaded, also after rejection',
           'External video service loaded, also after rejection',
         ],
@@ -236,11 +258,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten nach bestätigter Ablehnung geladen',
+          'Externe Schriftarten von einer Einbettung nach bestätigter Ablehnung geladen',
           'Externer Kartendienst nach bestätigter Ablehnung geladen',
           'Externer Videodienst nach bestätigter Ablehnung geladen',
         ],
         en: [
           'External fonts loaded after confirmed rejection',
+          'External fonts loaded by an embed after confirmed rejection',
           'External map service loaded after confirmed rejection',
           'External video service loaded after confirmed rejection',
         ],
@@ -252,11 +276,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten geladen, auch nach bestätigter Ablehnung über die Einstellungen',
+          'Externe Schriftarten von einer Einbettung geladen, auch nach bestätigter Ablehnung über die Einstellungen',
           'Externer Kartendienst geladen, auch nach bestätigter Ablehnung über die Einstellungen',
           'Externer Videodienst geladen, auch nach bestätigter Ablehnung über die Einstellungen',
         ],
         en: [
           'External fonts loaded, also after confirmed rejection via the settings',
+          'External fonts loaded by an embed, also after confirmed rejection via the settings',
           'External map service loaded, also after confirmed rejection via the settings',
           'External video service loaded, also after confirmed rejection via the settings',
         ],
@@ -268,11 +294,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten nach Ablehnung über die Einstellungen geladen',
+          'Externe Schriftarten von einer Einbettung nach Ablehnung über die Einstellungen geladen',
           'Externer Kartendienst nach Ablehnung über die Einstellungen geladen',
           'Externer Videodienst nach Ablehnung über die Einstellungen geladen',
         ],
         en: [
           'External fonts loaded after rejection via the settings',
+          'External fonts loaded by an embed after rejection via the settings',
           'External map service loaded after rejection via the settings',
           'External video service loaded after rejection via the settings',
         ],
@@ -284,11 +312,13 @@ describe('EMBED titles name the moment of the loads', () => {
       {
         de: [
           'Externe Schriftarten nach bestätigter Ablehnung geladen',
+          'Externe Schriftarten von einer Einbettung nach bestätigter Ablehnung geladen',
           'Externer Kartendienst nach bestätigter Ablehnung geladen',
           'Externer Videodienst nach bestätigter Ablehnung geladen',
         ],
         en: [
           'External fonts loaded after confirmed rejection',
+          'External fonts loaded by an embed after confirmed rejection',
           'External map service loaded after confirmed rejection',
           'External video service loaded after confirmed rejection',
         ],
@@ -298,8 +328,18 @@ describe('EMBED titles name the moment of the loads', () => {
       'a summary of findings with different moments',
       { moment: 'after-reject, before-and-after-reject', rejectConfirmed: true },
       {
-        de: ['Externe Schriftarten geladen', 'Externer Kartendienst geladen', 'Externer Videodienst geladen'],
-        en: ['External fonts loaded', 'External map service loaded', 'External video service loaded'],
+        de: [
+          'Externe Schriftarten geladen',
+          'Externe Schriftarten von einer Einbettung geladen',
+          'Externer Kartendienst geladen',
+          'Externer Videodienst geladen',
+        ],
+        en: [
+          'External fonts loaded',
+          'External fonts loaded by an embed',
+          'External map service loaded',
+          'External video service loaded',
+        ],
       },
     ],
   ];
@@ -307,26 +347,26 @@ describe('EMBED titles name the moment of the loads', () => {
   for (const lang of ['de', 'en'] as const) {
     const texts = loadTexts(lang);
     it.each(CASES)(`${lang}: %s`, (_name, moment, titles) => {
-      (['EMBED-01.fonts-loaded', 'EMBED-02.maps-loaded', 'EMBED-03.video-loaded'] as const).forEach(
-        (key, i) => {
-          const params = {
-            ...moment,
-            service: service[key],
-            fontService: true,
-            integrationType: 'iframe',
-            bannerFound: true,
-            afterReject: moment.moment !== 'before-interaction',
-            pageCount: 1,
-            afterRejectPageCount: moment.moment === 'before-interaction' ? 0 : 1,
-            frameFontRequestCount: 0,
-            frameHelperCount: 0,
-          };
-          const m = renderMessage(texts, key, params);
-          expect(m.title).toBe(`${titles[lang][i]}: ${service[key]}`);
-          const text = unquote(`${m.title}\n${m.body}`);
-          expect(RULES[lang].filter(([, re]) => re.test(text)).map(([label]) => label)).toEqual([]);
-        },
-      );
+      KEYS.forEach((key, i) => {
+        const [names, tail] = NAMES[key];
+        const params = {
+          ...moment,
+          ...names,
+          fontService: true,
+          integrationType: 'iframe',
+          bannerFound: true,
+          afterReject: moment.moment !== 'before-interaction',
+          pageCount: 1,
+          requestCount: 1,
+          afterRejectPageCount: moment.moment === 'before-interaction' ? 0 : 1,
+          frameFontRequestCount: 0,
+          frameHelperCount: 0,
+        };
+        const m = renderMessage(texts, key, params);
+        expect(m.title).toBe(`${titles[lang][i]}: ${tail}`);
+        const text = unquote(`${m.title}\n${m.body}`);
+        expect(RULES[lang].filter(([, re]) => re.test(text)).map(([label]) => label)).toEqual([]);
+      });
     });
   }
 });

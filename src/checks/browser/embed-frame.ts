@@ -1,6 +1,7 @@
 /**
  * What the frame of an embedded map or video player loaded besides the embed: fonts and helper hosts that derive
- * attributes to the embed, not to the site. The embed's finding names them, so one cause gives one finding.
+ * attributes to the embed, not to the site. The embed's finding names them; the fonts are also EMBED-01's own finding
+ * of the frame, as fonts from a third-party server.
  */
 import type { EvidenceInput } from '../../core/api.ts';
 import type { ClassifiedRequest, DerivedSection } from '../../derive/types.ts';
@@ -12,14 +13,15 @@ import { serviceName } from './services.ts';
 export const frameResource = (c: ClassifiedRequest): boolean => c.source === 'embed-frame';
 
 /**
- * A font the embed's frame loaded. It stays a request of the embed, one finding for one cause: the site loads the
- * embed after consent, it cannot serve the embed's own fonts itself.
+ * A font the embed's frame loaded from a font service of the catalog. It stays a request of the embed, which EMBED-02
+ * and EMBED-03 count, and EMBED-01 reports it per font service and embed: the site cannot serve the fonts of a
+ * third-party frame itself, only load the embed after consent.
  */
 export const frameFont = (c: ClassifiedRequest): boolean =>
   frameResource(c) && c.resourceCategory === 'fonts';
 
 /** Name of the catalog service of a frame resource; derive lists every catalog service a policy may name. */
-function resourceName(derived: DerivedSection, c: ClassifiedRequest): string {
+export function resourceName(derived: DerivedSection, c: ClassifiedRequest): string {
   const id = c.resourceServiceId ?? null;
   const named = derived.serviceNames?.find((s) => s.serviceId === id)?.name;
   return named ?? serviceName(derived, id, c.etld1);

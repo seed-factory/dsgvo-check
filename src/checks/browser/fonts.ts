@@ -5,7 +5,8 @@ import type { ClassifiedRequest, ServiceCategory } from '../../derive/types.ts';
 /**
  * Categories whose font files EMBED-01 reports besides the font services: hosts outside the catalog and widgets that
  * the page itself loads (a booking or chat widget fetching its fonts from the vendor's server). A CDN or consent tool
- * stays a resource of CONSENT-01, and a font fetched inside an embed's frame belongs to that embed.
+ * stays a resource of CONSENT-01. A font fetched inside an embed's frame is a request of that embed; EMBED-01 reports
+ * it as a font of the embed's frame when a font service of the catalog served it.
  */
 const FONT_FILE_CATEGORIES: ReadonlySet<ServiceCategory> = new Set([
   'unknown',

@@ -1,18 +1,35 @@
 /**
  * EMBED-01: fonts from third-party servers loaded before consent or after the reject: font services of the catalog and
- * font files of other third-party hosts. Self-hosted fonts are first party; the fonts of an embed's frame belong to the
- * embed.
+ * font files of other third-party hosts the site loads, and the fonts that the frame of an embedded map, player or
+ * widget loads from a font service. Self-hosted fonts are first party. A frame's fonts stay a request of the embed and
+ * get their own finding per font service and embed, beside the site's own fonts of the same service.
  */
-import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
+import {
+  type CheckContext,
+  defineCheck,
+  type EvidenceInput,
+  type Observation,
+  type Phase,
+  type RelatedRef,
+  subjects,
+} from '../../core/api.ts';
 import type { RequestRecord } from '../../core/snapshot/browser.ts';
-import type { ClassifiedRequest, DerivedSection } from '../../derive/types.ts';
+import type { ClassifiedRequest, DerivedSection, ServiceCategory } from '../../derive/types.ts';
+import { frameFont, resourceName } from './embed-frame.ts';
 import { distinctRequestEvidence, MAX_EVIDENCE } from './evidence.ts';
 import { otherFontFile } from './fonts.ts';
 import { sortedUniq } from './lists.ts';
 import { loadMoment, momentEvidence, type RejectFacts, rejectFacts, rejectProof } from './reject-moment.ts';
 import { serviceFields, serviceName } from './services.ts';
 import { type BannerState, bannerState, consentSignals, signalOutcome } from './signals.ts';
-import { hasPhaseA, noPhaseAReason, requestIndex, revealCapped, throttleAware } from './snapshot.ts';
+import {
+  hasPhaseA,
+  noPhaseAReason,
+  pageIndex,
+  requestIndex,
+  revealCapped,
+  throttleAware,
+} from './snapshot.ts';
 
 const ID = 'EMBED-01';
 /** Request kinds that fetch a file; a tracking `hit` is not a font load. */
@@ -135,6 +152,89 @@ function fontObservation(
   };
 }
 
+interface FrameFontGroup {
+  subject: string;
+  fontServiceId: string;
+  embedServiceId: string;
+  embedCategory: ServiceCategory;
+  loaded: ClassifiedRequest[];
+}
+
+/**
+ * Fonts that embeds' frames loaded from a font service before the accept, per font service and embed. Only delivered
+ * requests count, as in the embed's own finding that names the same fonts.
+ */
+function groupFrameFonts(derived: DerivedSection): Map<string, FrameFontGroup> {
+  const groups = new Map<string, FrameFontGroup>();
+  for (const c of derived.requests) {
+    if (!frameFont(c) || !c.delivered || c.phase === 'C' || c.timing === 'after-accept') continue;
+    const fontServiceId = c.resourceServiceId;
+    const embedServiceId = c.frameServiceId;
+    if (!fontServiceId || !embedServiceId) continue;
+
+    const subject = subjects.embedResource(fontServiceId, embedServiceId);
+    let g = groups.get(subject);
+    if (!g) {
+      g = { subject, fontServiceId, embedServiceId, embedCategory: c.category, loaded: [] };
+      groups.set(subject, g);
+    }
+    g.loaded.push(c);
+  }
+  return groups;
+}
+
+interface FrameContext {
+  records: Map<string, RequestRecord>;
+  pageOf: (r: RequestRecord) => string;
+  derived: DerivedSection;
+  banner: BannerState;
+  reject: RejectFacts;
+  routing: CheckContext['routing'];
+}
+
+/** The finding of the check that owns the embed (EMBED-02 for a map, EMBED-03 for a player), where one is routed. */
+function embedLink(g: FrameFontGroup, routing: CheckContext['routing']): RelatedRef[] {
+  const owner = routing[g.embedCategory];
+  if (!owner || owner === ID) return [];
+  return [{ checkId: owner, subject: subjects.service(g.embedServiceId), relation: 'embedded-in' }];
+}
+
+/**
+ * The fonts of one embed's frame from one font service, with the moment of the loads as `fonts-loaded` states it. The
+ * moment and the pages count the page of the frame's document; the evidence shows each request as recorded.
+ */
+function frameFontObservation(g: FrameFontGroup, x: FrameContext): Observation {
+  const items = g.loaded.flatMap((c) => {
+    const r = x.records.get(c.requestId);
+    return r ? [{ r, c }] : [];
+  });
+  const onPage = new Map(items.map(({ r, c }) => [c.requestId, { ...r, pageUrl: x.pageOf(r) }]));
+  const pages = sortedUniq([...onPage.values()].map((r) => r.pageUrl));
+  const moment = loadMoment(g.loaded, onPage, x.reject);
+  const related = embedLink(g, x.routing);
+
+  return {
+    checkId: ID,
+    variant: 'fonts-in-embed-frame',
+    confidence: 'high',
+    subject: g.subject,
+    category: 'fonts',
+    phases: sortedUniq(g.loaded.map((c) => c.phase)) as Phase[],
+    pages,
+    evidence: momentEvidence(items, rejectProof(moment, x.reject)),
+    params: {
+      service: resourceName(x.derived, g.loaded[0]!),
+      embedService: serviceName(x.derived, g.embedServiceId),
+      pageCount: pages.length,
+      requestCount: g.loaded.length,
+      ...moment,
+      bannerFound: x.banner,
+    },
+    ...serviceFields(x.derived, g.fontServiceId),
+    ...(related.length > 0 ? { related } : {}),
+  };
+}
+
 export const embed01 = defineCheck({
   id: ID,
   module: 'browser',
@@ -142,6 +242,7 @@ export const embed01 = defineCheck({
   variants: [
     { variant: 'fonts-loaded', variantGroup: 'fonts' },
     { variant: 'preconnect-only', variantGroup: 'fonts' },
+    { variant: 'fonts-in-embed-frame', variantGroup: 'fonts' },
   ],
   run({ browser, cmp, derived }, ctx) {
     const signal = signalOutcome(ID, consentSignals(cmp, ['A', 'B']));
@@ -154,9 +255,22 @@ export const embed01 = defineCheck({
     const records = requestIndex(browser);
     const banner = bannerState(cmp, browser, ctx.thresholds.cmp.minCandidatePages);
     const reject = rejectFacts(browser, cmp);
-    const observations = [...groupFontUse(derived, records).values()]
-      .sort((a, b) => a.subject.localeCompare(b.subject))
-      .map((g) => fontObservation(g, records, derived, banner, reject));
+    const frame: FrameContext = {
+      records,
+      pageOf: pageIndex(browser),
+      derived,
+      banner,
+      reject,
+      routing: ctx.routing,
+    };
+    const observations = [
+      ...[...groupFontUse(derived, records).values()]
+        .sort((a, b) => a.subject.localeCompare(b.subject))
+        .map((g) => fontObservation(g, records, derived, banner, reject)),
+      ...[...groupFrameFonts(derived).values()]
+        .sort((a, b) => a.subject.localeCompare(b.subject))
+        .map((g) => frameFontObservation(g, frame)),
+    ];
 
     return throttleAware(
       browser,

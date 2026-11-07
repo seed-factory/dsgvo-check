@@ -95,7 +95,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `CONSENT-04` | `blocking-no-reject`, `close-means-accept` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`, `nonblocking-no-reject`                        | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized`², `cmp-not-supported`² |
 | `CONSENT-05` | `tracking-after-reject`                    | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                             |
 | `TRACK-01`   | —                                          | —                                                                                                                       | `service-inventory`                                                                                     |
-| `EMBED-01`   | —                                          | `fonts-loaded`                                                                                                          | `preconnect-only`                                                                                       |
+| `EMBED-01`   | —                                          | `fonts-loaded`, `fonts-in-embed-frame`                                                                                  | `preconnect-only`                                                                                       |
 | `EMBED-02`   | —                                          | `maps-loaded`                                                                                                           | —                                                                                                       |
 | `EMBED-03`   | —                                          | `video-loaded`                                                                                                          | —                                                                                                       |
 | `LEGAL-01`   | `document-not-found`, `links-broken`       | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
@@ -736,7 +736,11 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   vor der Interaktion, nach dem Ablehnen oder zu beiden Zeitpunkten geladen wurden und ob der Zustand der CMP das
   Ablehnen bestätigt. Als „nach bestätigter Ablehnung“ zählt nur eine Seite, auf der das Ablehnen laut den Fakten der
   CMP gilt: Das Banner erscheint dort nicht wieder. Schriften, die ein Kartenrahmen oder ein Videoplayer lädt, nennen
-  EMBED-02 und EMBED-03 mit; einen eigenen EMBED-01-Befund gibt es dafür nicht.
+  EMBED-02 und EMBED-03 mit. EMBED-01 meldet sie zusätzlich als eigenen Befund `fonts-in-embed-frame` je Schriftdienst
+  und Einbettung (etwa Google Fonts im Rahmen von Google Maps), mit denselben Angaben zum Zeitpunkt und mit einem Link
+  auf den Befund der Einbettung; Schriften, die die Seite selbst lädt, bleiben `fonts-loaded`. Gezählt werden
+  abgeschlossene Abrufe von Schriftdiensten des Dienstekatalogs, auch im Rahmen von Widgets und CAPTCHAs; Schriftdateien
+  anderer Hosts im Rahmen zählen EMBED-02 und EMBED-03 als Anfragen an Hilfshosts.
 - **Videos (EMBED-03)** werden je Einbettung gemeldet: Was ein Player-Rahmen lädt, gehört zu dessen Dienst, auch die
   Vorschaubilder und Videodaten von YouTube, die ein Player von youtube-nocookie.com abruft; ein Vorschaubild auf der
   Seite selbst bleibt beim Dienst, von dem es stammt. Als Vorschaubild gilt ein Bild nur mit der Signatur des
@@ -766,8 +770,9 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   `DSGVO_CHECK_LEGAL_POLICY_CLAIM_MIN_CONTEXTS`; eine Anfrage im Frame zählt für die Seite seines Dokuments) ist
   `critical`, in einer `warning`. Beschreibt dasselbe Dokument auch den Abruf von einer Quelle außerhalb der Website
   („von Google“, „von Google-Servern geladen“, „Drittanbieter“) oder wurden nur Abrufe ohne Antwort und
-  Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte lädt, gehören
-  zur Karte; nach „Alle akzeptieren“ zählen Anfragen auf Seiten mit Karten- oder Videodienst im Hauptdokument nicht.
+  Verbindungsvorbereitungen beobachtet, ist es `info`. Schriften, die der Frame einer eingebetteten Karte lädt, sind
+  kein Abruf der Website (EMBED-01 meldet sie als `fonts-in-embed-frame`); nach „Alle akzeptieren“ zählen Anfragen auf
+  Seiten mit Karten- oder Videodienst im Hauptdokument nicht.
   „Keine Verbindung“ zu einer Karte oder einem Video gilt nur bis zur Einwilligung, denn ohne Verbindung zeigt die
   Einbettung nichts. „Auch nach bestätigter Ablehnung“ steht nur für Anfragen auf Seiten, auf denen die Ablehnung laut
   den Fakten der CMP gilt. Weitere Datenschutzhinweise der Website liest PRIV-02 nicht, nur die Datenschutzerklärung.

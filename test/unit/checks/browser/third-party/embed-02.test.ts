@@ -398,7 +398,7 @@ describe('EMBED-02 resources of the map frame', () => {
     expect(de).toContain('Der Kartenrahmen stellte außerdem 1 Anfrage an Hilfshosts.');
   });
 
-  it('counterexample: the fonts of the page itself stay EMBED-01, the frame fonts EMBED-02, none in both', () => {
+  it('counterexample: the fonts of the page itself stay fonts-loaded; the frame fonts are named by the map and are EMBED-01 fonts-in-embed-frame', () => {
     const pageCss = req('p', 'https://fonts.googleapis.com/css2?family=Roboto', {
       pageUrl: CONTACT,
       resourceType: 'stylesheet',
@@ -407,11 +407,21 @@ describe('EMBED-02 resources of the map frame', () => {
       phases: [phase('A', { requests: [pageCss, mapDocument, frameCss, frameFont] })],
     });
 
-    const fonts = observationsOf(runCheck(embed01, snapshot));
-    expect(fonts).toHaveLength(1);
-    expect(fonts[0]).toMatchObject({ variant: 'fonts-loaded', subject: 'google-fonts' });
-    expect(fonts[0]?.evidence).toEqual([expect.objectContaining({ type: 'request', url: pageCss.url })]);
-    expect(fonts[0]?.evidence[0]).not.toHaveProperty('frameUrl');
+    const [own, inFrame, ...more] = observationsOf(runCheck(embed01, snapshot));
+    expect(more).toEqual([]);
+    expect(own).toMatchObject({ variant: 'fonts-loaded', subject: 'google-fonts' });
+    expect(own?.evidence).toEqual([expect.objectContaining({ type: 'request', url: pageCss.url })]);
+    expect(own?.evidence[0]).not.toHaveProperty('frameUrl');
+    expect(inFrame).toMatchObject({
+      variant: 'fonts-in-embed-frame',
+      subject: 'google-fonts@google-maps',
+      params: { service: 'Google Fonts', embedService: 'Google Maps', requestCount: 2 },
+      related: [{ checkId: 'EMBED-02', subject: 'google-maps', relation: 'embedded-in' }],
+    });
+    expect(inFrame?.evidence.map((e) => e.type === 'request' && e.url)).toEqual([
+      frameCss.url,
+      frameFont.url,
+    ]);
 
     const [map] = observationsOf(runCheck(embed02, snapshot));
     expect(map?.params).toMatchObject({ frameFontServices: 'Google Fonts', frameFontRequestCount: 2 });

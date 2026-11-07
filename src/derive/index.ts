@@ -151,13 +151,19 @@ export function derive(snapshot: Snapshot, opts: DeriveOptions = {}): DerivedSec
   };
 }
 
-/** Catalog entries of every service that appears in the classified facts, ordered by id. */
+/**
+ * Catalog entries of every service that appears in the classified facts, ordered by id. The service of an embed's
+ * frame resource counts too: a finding about the fonts of a map frame names Google Fonts with its provider.
+ */
 function serviceInfoFor(
   catalog: ServiceCatalog,
-  facts: readonly { serviceId: string | null }[],
+  facts: readonly { serviceId: string | null; resourceServiceId?: string }[],
 ): Record<string, ServiceInfo> {
   const ids = new Set<string>();
-  for (const x of facts) if (x.serviceId) ids.add(x.serviceId);
+  for (const x of facts) {
+    if (x.serviceId) ids.add(x.serviceId);
+    if (x.resourceServiceId) ids.add(x.resourceServiceId);
+  }
 
   const info: Record<string, ServiceInfo> = {};
   for (const id of [...ids].sort()) {

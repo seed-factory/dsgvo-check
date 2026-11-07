@@ -10,6 +10,7 @@ import {
   CONTACT,
   click,
   defaultPages,
+  IMPRESSUM,
   page,
   phase,
   rejectCmp,
@@ -18,7 +19,8 @@ import {
   settingsRejectCmp,
   site,
 } from '../helpers.ts';
-import { SCENARIOS } from '../scenarios/index.ts';
+import { FRAME_CSS, FRAME_FONT, inMapFrame, MAP_EMBED, mapWithFonts } from '../scenarios/embed-01.ts';
+import { SCENARIOS, VARIANT_SCENARIOS } from '../scenarios/index.ts';
 import { AFTER_CLICK, expectMoment, momentCases, rejectPhase } from './reject-moment.ts';
 
 const scenario = (file: string) => SCENARIOS['EMBED-01']!.find((s) => s.file === file)!.build();
@@ -179,7 +181,7 @@ describe('EMBED-01 font files from other third-party servers', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
-  it('counterexample: the fonts of an embedded player belong to the embed, not to the site', () => {
+  it("counterexample: the fonts of an embedded player are the player frame's fonts, not a font load of the site", () => {
     const frame = {
       frameId: 'A-f2',
       isMainFrame: false,
@@ -202,7 +204,235 @@ describe('EMBED-01 font files from other third-party servers', () => {
         ],
       }),
     );
+    expect(observationsOf(r)).toMatchObject([
+      {
+        variant: 'fonts-in-embed-frame',
+        subject: 'google-fonts@youtube-nocookie',
+        params: { service: 'Google Fonts', embedService: 'YouTube (youtube-nocookie.com)', requestCount: 1 },
+        related: [{ checkId: 'EMBED-03', subject: 'youtube-nocookie', relation: 'embedded-in' }],
+      },
+    ]);
+  });
+});
+
+describe("EMBED-01 fonts of an embed's frame", () => {
+  const frameScenario = (file: string) =>
+    VARIANT_SCENARIOS['EMBED-01']!.find((s) => s.file === file)!.build();
+  const frameFont = (id: string, p: Partial<RequestRecord> = {}) => inMapFrame(id, FRAME_FONT, 'font', p);
+  const de = loadTexts('de');
+  const en = loadTexts('en');
+
+  it('violation: the Google Maps frame on Kontakt loads Google Fonts → one finding of the font service in the map', () => {
+    const [o, ...more] = observationsOf(
+      runCheck(embed01, frameScenario('violation-fonts-in-map-frame.json')),
+    );
+    expect(more).toEqual([]);
+    expect(o).toMatchObject({
+      variant: 'fonts-in-embed-frame',
+      subject: 'google-fonts@google-maps',
+      serviceId: 'google-fonts',
+      provider: { name: 'Google Ireland Limited', country: 'IE' },
+      category: 'fonts',
+      phases: ['A'],
+      pages: [CONTACT],
+      params: {
+        service: 'Google Fonts',
+        embedService: 'Google Maps',
+        pageCount: 1,
+        requestCount: 2,
+        moment: 'before-interaction',
+        rejectConfirmed: null,
+        afterReject: false,
+        rejectPath: null,
+        bannerFound: false,
+      },
+      related: [{ checkId: 'EMBED-02', subject: 'google-maps', relation: 'embedded-in' }],
+    });
+    // The font requests as recorded in the map frame; the map document is EMBED-02's own request.
+    expect(o?.evidence.map((e) => e.type === 'request' && [e.url, e.frameUrl])).toEqual([
+      [FRAME_CSS, MAP_EMBED],
+      [FRAME_FONT, MAP_EMBED],
+    ]);
+
+    expect(renderMessage(de, 'EMBED-01.fonts-in-embed-frame', o!.params)).toMatchObject({
+      title: 'Externe Schriftarten von einer Einbettung geladen: Google Fonts in Google Maps',
+      body:
+        'Der Rahmen des eingebetteten Dienstes Google Maps lud Schriftdateien oder Stylesheets von Google Fonts ' +
+        '(2 Anfragen), Zeitpunkt: vor jeder Interaktion, kein Einwilligungsbanner gefunden (1 Seite).',
+    });
+    expect(renderMessage(en, 'EMBED-01.fonts-in-embed-frame', o!.params)).toMatchObject({
+      title: 'External fonts loaded by an embed: Google Fonts in Google Maps',
+      body:
+        'The frame of the embedded service Google Maps loaded font files or stylesheets of Google Fonts ' +
+        '(2 requests), timing: before any interaction, no consent banner found (1 page).',
+    });
+    expect(formatMessage(de.actions['EMBED-01.fonts-in-embed-frame']!, o!.params, 'de')).toBe(
+      'Binden Sie Google Maps erst nach einer Einwilligung oder nach einem Klick der Besucher ein ' +
+        '(Zwei-Klick-Lösung). Die Schriften von Google Fonts, die der Rahmen der Einbettung lädt, lassen sich ' +
+        'nicht vom eigenen Server ausliefern.',
+    );
+    expect(formatMessage(en.actions['EMBED-01.fonts-in-embed-frame']!, o!.params, 'en')).toBe(
+      'Embed Google Maps only after consent or after visitors click on it (two-click solution). The fonts of ' +
+        "Google Fonts that the embed's frame loads cannot be served from your own server.",
+    );
+  });
+
+  it("counterexample: the site's own Google Fonts stay fonts-loaded beside the map frame's, each with its requests", () => {
+    const found = observationsOf(
+      runCheck(embed01, frameScenario('violation-site-fonts-beside-map-frame-fonts.json')),
+    );
+    expect(found.map((o) => [o.variant, o.subject, o.pages])).toEqual([
+      ['fonts-loaded', 'google-fonts', [START]],
+      ['fonts-in-embed-frame', 'google-fonts@google-maps', [CONTACT]],
+    ]);
+    const [site, frame] = found;
+    expect(site?.evidence).toEqual([expect.objectContaining({ type: 'request', page: START })]);
+    expect(site?.evidence[0]).not.toHaveProperty('frameUrl');
+    expect(frame?.evidence.every((e) => e.type === 'request' && e.frameUrl === MAP_EMBED)).toBe(true);
+    expect(frame?.params).toMatchObject({ requestCount: 2 });
+  });
+
+  it.each([
+    ['an embed frame that loads no font', 'clean-map-frame-without-fonts.json'],
+    ['a map frame whose fonts load only after the accept', 'clean-map-frame-fonts-after-accept.json'],
+  ])('counterexample: %s gives no finding', (_name, file) => {
+    expect(variantsOf(runCheck(embed01, frameScenario(file)))).toEqual([]);
+  });
+
+  it('counterexample: an unfinished font request of the frame is no load and no connection hint of the site', () => {
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
+              frameFont('b', { state: 'failed', status: undefined }),
+            ],
+          }),
+        ],
+      }),
+    );
     expect(variantsOf(r)).toEqual([]);
+  });
+
+  it('one finding per font service and embed: two map frames on two pages are one, a player frame its own', () => {
+    const player = {
+      frameId: 'A-player',
+      isMainFrame: false,
+      frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
+    };
+    const r = runCheck(
+      embed01,
+      site({
+        phases: [
+          phase('A', {
+            requests: [
+              ...mapWithFonts('A'),
+              inMapFrame('S-1', MAP_EMBED, 'document', {
+                pageUrl: START,
+                frameId: 'A-map2',
+                isNavigation: true,
+              }),
+              inMapFrame('S-2', FRAME_FONT, 'font', { pageUrl: START, frameId: 'A-map2' }),
+              req('P-1', 'https://www.youtube-nocookie.com/embed/abc', {
+                ...player,
+                isNavigation: true,
+                resourceType: 'document',
+              }),
+              req('P-2', FRAME_FONT, { ...player, resourceType: 'font' }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(
+      observationsOf(r).map((o) => [o.subject, o.pages, o.params.pageCount, o.params.requestCount]),
+    ).toEqual([
+      ['google-fonts@google-maps', [START, CONTACT].sort(), 2, 3],
+      ['google-fonts@youtube-nocookie', [START], 1, 1],
+    ]);
+  });
+
+  it('the fonts of a reCAPTCHA frame are a finding too, linked to the check its category is routed to', () => {
+    const captcha = {
+      frameId: 'A-captcha',
+      isMainFrame: false,
+      frameUrl: 'https://www.google.com/recaptcha/api2/anchor?k=[redacted]',
+    };
+    const [o, ...more] = observationsOf(
+      runCheck(
+        embed01,
+        site({
+          phases: [
+            phase('A', {
+              requests: [
+                req('a', captcha.frameUrl, { ...captcha, isNavigation: true, resourceType: 'document' }),
+                req('b', FRAME_FONT, { ...captcha, resourceType: 'font' }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+    expect(more).toEqual([]);
+    expect(o).toMatchObject({
+      variant: 'fonts-in-embed-frame',
+      subject: 'google-fonts@google-recaptcha',
+      params: { service: 'Google Fonts', embedService: 'Google reCAPTCHA' },
+      related: [{ checkId: 'EMBED-04', subject: 'google-recaptcha', relation: 'embedded-in' }],
+    });
+  });
+
+  it("a frame's late font request counts for the page its frame's document was loaded on", () => {
+    const [o] = observationsOf(
+      runCheck(
+        embed01,
+        site({
+          phases: [
+            phase('A', {
+              requests: [
+                inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
+                frameFont('b', { pageUrl: IMPRESSUM }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+    expect(o).toMatchObject({ variant: 'fonts-in-embed-frame', pages: [CONTACT] });
+  });
+
+  it.each(
+    momentCases({
+      load: frameFont,
+      phaseA: (requests = []) => phase('A', { requests }),
+      control: CONTACT,
+    }),
+  )('%s', (_name, { phases, cmp, want }) => {
+    expectMoment(observationsOf(runCheck(embed01, site({ phases, cmp }))), 'fonts-in-embed-frame', want);
+  });
+
+  it('after the confirmed reject: the title and body say so, and the evidence shows the reject proof', () => {
+    const phases = [
+      phase('A', { requests: mapWithFonts('A') }),
+      rejectPhase(CONTACT, mapWithFonts('B', AFTER_CLICK)),
+    ];
+    const [o] = observationsOf(runCheck(embed01, site({ phases, cmp: confirmed })));
+    const m = renderMessage(de, 'EMBED-01.fonts-in-embed-frame', o!.params);
+    expect(m.title).toBe(
+      'Externe Schriftarten von einer Einbettung geladen, auch nach bestätigter Ablehnung: Google Fonts in Google Maps',
+    );
+    expect(m.body).toContain(
+      'Zeitpunkt: vor einer Interaktion mit dem Einwilligungsbanner und erneut nach bestätigter Ablehnung ' +
+        '(1 Seite, davon 1 nach der Ablehnung).',
+    );
+    expect(o?.evidence.some((e) => e.type === 'request' && e.phase === 'B' && !e.beforeClick)).toBe(true);
+    expect(
+      o?.evidence
+        .filter((e) => e.type === 'consent-state')
+        .map((e) => e.type === 'consent-state' && e.origin),
+    ).toEqual(['action', 'stored']);
   });
 });
 

@@ -75,8 +75,9 @@ const navigationOf = (r: RequestRecord) => `${r.phase}\n${r.navigationId ?? r.pa
 const contextOf = (r: RequestRecord, pageOf: PageOf) => `${r.phase}\n${pageOf(r)}`;
 
 /**
- * Requests of a service the site itself made: not a resource of another service's embed frame (a map frame's fonts
- * belong to the map), but the requests of the service's own frame (the map frame itself) count.
+ * Requests of a service the site itself made: not a resource of another service's embed frame (the fonts a map frame
+ * loads are no use of the font service by the site), but the requests of the service's own frame (the map frame
+ * itself) count.
  */
 function ownRequest(c: ClassifiedRequest): boolean {
   if (!c.serviceId || !c.thirdParty || c.source === 'embed-frame') return false;
