@@ -1,4 +1,4 @@
-import type { CmpSection } from '../../../../../src/cmp/types.ts';
+import { BOT_USER_AGENT_SIGNAL, type BotSignal, type CmpSection } from '../../../../../src/cmp/types.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import type { FixtureExpect } from '../../../../utils/snapshot-builder.ts';
 import { cmpFacts, cmpWith, req } from '../helpers.ts';
@@ -11,6 +11,13 @@ export interface Scenario {
   expect: FixtureExpect;
   build: () => Snapshot;
 }
+
+/** The bot signal of a CMP whose own crawler test matched the scanner's User-Agent and so kept its dialog closed. */
+export const crawlerTestSignal: BotSignal = {
+  cmpId: 'ccm19',
+  signal: BOT_USER_AGENT_SIGNAL,
+  detail: 'CCM19 isBotBrowser (app.js)',
+};
 
 export const ga = {
   lib: (id: string, p = {}) => req(id, 'https://www.googletagmanager.com/gtag/js?id=G-TEST1', p),

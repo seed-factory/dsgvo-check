@@ -1345,7 +1345,7 @@ describe('the full report in words', () => {
     // browser checks; CONSENT-05 passes on why the visit with the reject did not start
     'throttled geo bot-mode cmp-not-observed no-banner banner-not-recognized cmp-not-supported',
     'first-layer-not-visible unknown-classification consent-frame-unresolved banner-candidate-unrecognized',
-    'banner-undetermined cmp-dialog-not-opened',
+    'banner-undetermined cmp-dialog-not-opened cmp-bot-user-agent',
     'no-pre-consent-observation',
     'no-network-observation phase-b-missing phase-c-missing time-budget request-cap no-reject-click',
     'reject-not-confirmed pagehide-capture-unavailable legal-targets-not-evaluable privacy-policy-not-found',

@@ -183,9 +183,18 @@ ui:
   config.problem.unreadable: "Datei nicht lesbar ({code})"
   config.problem.invalid: "ungültiger Wert"
 messages:
+  # `cause` user-agent: the CMP's own crawler test (`test` names it) matched the scanner's User-Agent and kept its
+  # dialog closed; any other value or none: another direct bot signal of the CMP (`signal`).
   diagnostic.SCAN-BOTMODE:
-    title: "Einwilligungsbanner verhält sich wie gegenüber einem Bot"
-    body: "Das Banner hat ein direktes Bot-Signal geliefert ({signal}). Betroffene Prüfungen sind nicht eindeutig."
+    title: >-
+      {cause, select, user-agent {Einwilligungsbanner öffnet sich nicht für den User-Agent des Scanners} other
+      {Einwilligungsbanner verhält sich wie gegenüber einem Bot}}
+    body: >-
+      {cause, select, user-agent {Das Einwilligungsbanner behandelt Browser, deren User-Agent auf sein
+      Erkennungsmuster für Crawler ({test}) passt, als Bot und öffnet ihnen sein Banner nicht. Der User-Agent des
+      Scanners passt auf dieses Muster; das Banner blieb im Scan geschlossen. Ein Besucher mit einem üblichen Browser
+      sieht das Banner womöglich. Betroffene Prüfungen sind nicht eindeutig.} other {Das Banner hat ein direktes
+      Bot-Signal geliefert ({signal}). Betroffene Prüfungen sind nicht eindeutig.}}
   diagnostic.SCAN-GEO:
     title: "Einwilligungsbanner meldet einen Standort außerhalb des EWR"
     body: "Das Banner hat ein Standort-Signal geliefert ({signal}). Betroffene Prüfungen sind nicht eindeutig."
@@ -199,8 +208,11 @@ messages:
     title: "Zeitlimit erreicht"
     body: "{count, plural, =0 {Das globale Zeitlimit wurde erreicht; bereits erfasste Beobachtungen bleiben im Bericht enthalten.} one {Das globale Zeitlimit wurde erreicht. Eine Prüfung wurde nicht vollständig abgeschlossen; bereits erfasste Beobachtungen bleiben im Bericht enthalten.} other {Das globale Zeitlimit wurde erreicht. # Prüfungen wurden nicht vollständig abgeschlossen; bereits erfasste Beobachtungen bleiben im Bericht enthalten.}}"
   # `fallback`: why the browser did not continue on the target of the plain-http redirect (absent in older snapshots).
+  # `signals`: the labels of the bot or WAF protection signals of the target (`fallback` bot-protection only).
   diagnostic.SCAN-TLS-BLOCKED:
-    title: "Browser-Prüfungen nicht ausgeführt: Zertifikat ungültig"
+    title: >-
+      Browser-Prüfungen nicht ausgeführt: Zertifikat ungültig{fallback, select, bot-protection {, Ziel der
+      HTTP-Weiterleitung mit Bot- oder WAF-Schutz ({signals})} other {}}
     body: >-
       Das Zertifikat von {host} wurde bei der TLS-Prüfung nicht als gültig angenommen. Der Browser hat die Website
       deshalb nicht aufgerufen; Einwilligung, Tracking, eingebettete Dienste und Rechtstexte wurden nicht
@@ -208,8 +220,11 @@ messages:
       gültigem Zertifikat und abrufbarer Seite wurde nicht beobachtet.} same-host { Die unverschlüsselte Adresse
       leitet auf HTTPS desselben Hosts weiter.} invalid { Die unverschlüsselte Adresse leitet auf einen anderen Host
       weiter; dabei wurde nicht jedes Zertifikat als gültig bestätigt.} blocked { Die unverschlüsselte Adresse {via}
-      leitet auf {url} weiter; dort hat der Browser keine auswertbare Seite erhalten.} off { Die Fortsetzung auf dem
-      Ziel der HTTP-Weiterleitung ist ausgeschaltet (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
+      leitet auf {url} weiter; dort hat der Browser keine auswertbare Seite erhalten.} bot-protection { Die
+      unverschlüsselte Adresse {via} leitet auf {url} weiter; dort hat der Browser keine auswertbare Seite erhalten:
+      Das Ziel antwortete mit dem Signal eines Bot- oder WAF-Schutzes ({signals}). Der Scanner versucht nicht, einen
+      solchen Schutz zu umgehen.} off { Die Fortsetzung auf dem Ziel der HTTP-Weiterleitung ist ausgeschaltet
+      (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
   diagnostic.SCAN-TLS-FALLBACK:
     title: Browser-Prüfungen auf dem Ziel der HTTP-Weiterleitung ausgeführt
     body: >-

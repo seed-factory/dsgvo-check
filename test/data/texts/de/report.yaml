@@ -54,13 +54,16 @@ ui:
   # `gaps`: the scan ran to its end, but some checks gave no conclusive result (the next sentences say which).
   # `ran`: every check has a result, some only for a part (the next sentence says which and why).
   report.overview.scan: "{state, select, complete {Der Scan wurde vollständig durchgeführt.} gaps {Der Scan ist durchgelaufen, aber nicht jede Prüfung hat ein abschließendes Ergebnis.} ran {Der Scan ist durchgelaufen.} other {Der Scan wurde nur teilweise durchgeführt; nicht alle Seiten oder Prüfungen konnten ausgewertet werden.}}"
-  # Checks without a conclusive result, grouped by `cause`; `checks` lists their ids.
+  # Checks without a conclusive result, grouped by `cause`; `checks` lists their ids. `protection` signal: the
+  # redirect target of a refused certificate answered with bot or WAF protection, whose signal labels are `signals`.
   report.overview.open: >-
     {count, plural, one {Eine Prüfung} other {# Prüfungen}} ({checks}) {cause, select, tls-blocked {{count, plural,
     one {wurde} other {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen,
     deshalb hat der Browser die Website nicht aufgerufen.} tls-fallback-failed {{count, plural, one {wurde} other
-    {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und auf dem Ziel ihrer
-    HTTP-Weiterleitung hat der Browser keine auswertbare Seite erhalten.} geo {{count, plural, one {ist} other {sind}} nicht
+    {wurden}} nicht ausgeführt: Das Zertifikat der Website wurde nicht als gültig angenommen, und {protection, select,
+    signal {das Ziel ihrer HTTP-Weiterleitung hat mit dem Signal eines Bot- oder WAF-Schutzes geantwortet
+    ({signals}); der Browser hat dort keine auswertbare Seite erhalten.} other {auf dem Ziel ihrer HTTP-Weiterleitung
+    hat der Browser keine auswertbare Seite erhalten.}}} geo {{count, plural, one {ist} other {sind}} nicht
     eindeutig: Das Einwilligungsbanner hat einen Standort außerhalb des EWR gemeldet und verhält sich gegenüber
     Besuchern aus dem EWR womöglich anders.} bot {{count, plural, one {ist} other {sind}} nicht eindeutig: Das
     Einwilligungsbanner hat den Scan als automatisierten Zugriff behandelt.} reject {{count, plural, one {ist} other
@@ -86,7 +89,12 @@ ui:
     vorhanden, wurde dem Scanner beim Besuch mit Ablehnung aber nicht geöffnet (Bedienelemente deaktiviert); die
     Ablehnung wurde daher nicht geprüft.} other {Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem
     Scanner aber nicht geöffnet (Bedienelemente deaktiviert); Ablehnung und Zustimmung wurden daher nicht geprüft.}}}
-    other {}}
+    dialogNotOpenedBot {Ein Einwilligungsbanner ist im Seitenquelltext vorhanden, wurde dem Scanner{accepted, select,
+    true { beim Besuch mit Ablehnung} other {}} aber nicht geöffnet: Das Banner behandelt Browser, deren User-Agent auf
+    sein Erkennungsmuster für Crawler{hasTest, select, true { ({test})} other {}} passt, als Bot und öffnet ihnen sein
+    Banner nicht, und der User-Agent des Scanners passt auf dieses Muster. Ein Besucher mit einem üblichen Browser
+    sieht das Banner womöglich. Die davon abhängigen Prüfungen ({checks}) sind nicht eindeutig; {accepted, select, true
+    {die Ablehnung wurde nicht geprüft.} other {Ablehnung und Zustimmung wurden nicht geprüft.}}} other {}}
   report.overview.region: >-
     Die Region, aus der der Scan lief, ist nicht bekannt. Websites können Einwilligungsbanner und Dienste je nach
     Region des Besuchers unterschiedlich ausspielen; die Befunde zur Einwilligung gelten für diese Messumgebung und
@@ -347,6 +355,8 @@ ui:
     Datenschutzerklärung nicht eindeutig: unter Vorbehalt, in nicht angezeigtem Text, zusammen mit dem externen
     Abruf im selben Satz, in einem Satz zu mehreren Diensten oder in einem zu langen Satz}
     cmp-dialog-not-opened {Einwilligungsbanner dem Scanner nicht geöffnet}
+    cmp-bot-user-agent {Einwilligungsbanner dem Scanner nicht geöffnet: User-Agent passt auf das Crawler-Muster des
+    Banners}
     no-https {kein HTTPS} tls-invalid {Zertifikat ungültig} handshake-inconclusive {TLS-Verbindungsaufbau nicht
     eindeutig} undecided {Weiterleitung auf HTTPS nicht eindeutig feststellbar} ip-target {Ziel ist eine IP-Adresse}
     no-registrable-domain {keine registrierbare Domain} multiple-records {mehrere Einträge} invalid-observation

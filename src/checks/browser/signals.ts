@@ -1,12 +1,13 @@
 /** What a check reads as a consent-relevant signal: persistent identifiers, CMP facts, bot and geo signals. */
-import type {
-  BannerCandidateFact,
-  BotSignal,
-  CmpFacts,
-  CmpPhaseFacts,
-  CmpSection,
-  ConsentStateFact,
-  GeoSignal,
+import {
+  type BannerCandidateFact,
+  BOT_USER_AGENT_SIGNAL,
+  type BotSignal,
+  type CmpFacts,
+  type CmpPhaseFacts,
+  type CmpSection,
+  type ConsentStateFact,
+  type GeoSignal,
 } from '../../cmp/types.ts';
 import type { BrowserPhase, CheckOutcome, EvidenceInput, Phase } from '../../core/api.ts';
 import type { BrowserSection, PageVisit } from '../../core/snapshot/browser.ts';
@@ -165,8 +166,27 @@ export function consentSignals(cmp: CmpSection, phases: readonly BrowserPhase[])
   return { bot, geo };
 }
 
-/** A direct bot or geo signal makes the consent evaluation inconclusive; null when there is none. */
+/**
+ * A direct bot or geo signal makes the consent evaluation inconclusive; null when there is none. A CMP whose own crawler
+ * test matched the scanner's User-Agent kept its dialog closed for that reason, so the outcome names the test
+ * (`cmp-bot-user-agent`) before any other bot signal.
+ */
 export function signalOutcome(checkId: string, s: ConsentSignals): CheckOutcome | null {
+  const crawlerTest = s.bot.find((b) => b.signal === BOT_USER_AGENT_SIGNAL);
+  if (crawlerTest) {
+    return {
+      status: 'inconclusive',
+      reason: 'cmp-bot-user-agent',
+      observations: [],
+      diagnostics: [
+        {
+          code: 'SCAN-BOTMODE',
+          affects: [checkId],
+          params: { signal: crawlerTest.signal, cause: 'user-agent', test: crawlerTest.detail ?? null },
+        },
+      ],
+    };
+  }
   if (s.bot.length > 0) {
     return {
       status: 'inconclusive',

@@ -180,9 +180,17 @@ ui:
   config.problem.unreadable: "file cannot be read ({code})"
   config.problem.invalid: "invalid value"
 messages:
+  # `cause` user-agent: the CMP's own crawler test (`test` names it) matched the scanner's User-Agent and kept its
+  # dialog closed; any other value or none: another direct bot signal of the CMP (`signal`).
   diagnostic.SCAN-BOTMODE:
-    title: "Consent banner behaves as towards a bot"
-    body: "The banner gave a direct bot signal ({signal}). Affected checks are inconclusive."
+    title: >-
+      {cause, select, user-agent {Consent banner does not open for the scanner's User-Agent} other {Consent banner
+      behaves as towards a bot}}
+    body: >-
+      {cause, select, user-agent {The consent banner treats browsers whose User-Agent matches its pattern for crawlers
+      ({test}) as bots and does not open its banner for them. The scanner's User-Agent matches this pattern; the banner
+      stayed closed during the scan. A visitor with a normal browser may see the banner. Affected checks are
+      inconclusive.} other {The banner gave a direct bot signal ({signal}). Affected checks are inconclusive.}}
   diagnostic.SCAN-GEO:
     title: "Consent banner reports a location outside the EEA"
     body: "The banner gave a location signal ({signal}). Affected checks are inconclusive."
@@ -196,16 +204,22 @@ messages:
     title: "Time limit reached"
     body: "{count, plural, =0 {The global time limit was reached; observations already collected remain in the report.} one {The global time limit was reached. One check was not completed in full; observations already collected remain in the report.} other {The global time limit was reached. # checks were not completed in full; observations already collected remain in the report.}}"
   # `fallback`: why the browser did not continue on the target of the plain-http redirect (absent in older snapshots).
+  # `signals`: the labels of the bot or WAF protection signals of the target (`fallback` bot-protection only).
   diagnostic.SCAN-TLS-BLOCKED:
-    title: "Browser checks not run: certificate invalid"
+    title: >-
+      Browser checks not run: certificate invalid{fallback, select, bot-protection {, target of the HTTP redirect
+      with bot or WAF protection ({signals})} other {}}
     body: >-
       The TLS check did not accept the certificate of {host} as valid. The browser therefore did not visit the
       website; consent, tracking, embedded services and legal pages were not checked.{fallback, select, none { No
       redirect of the plain-http address to another host with a valid certificate and a retrievable page was
       observed.} same-host { The plain-http address redirects to HTTPS on the same host.} invalid { The plain-http
       address redirects to another host, but not every certificate on the way was confirmed as valid.} blocked { The
-      plain-http address {via} redirects to {url}; the browser did not receive an evaluable page there.} off {
-      Continuing on the target of the HTTP redirect is switched off (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
+      plain-http address {via} redirects to {url}; the browser did not receive an evaluable page there.}
+      bot-protection { The plain-http address {via} redirects to {url}; the browser did not receive an evaluable page
+      there: the target answered with the signal of a bot or WAF protection ({signals}). The scanner does not try to
+      get around such protection.} off { Continuing on the target of the HTTP redirect is switched off
+      (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
   diagnostic.SCAN-TLS-FALLBACK:
     title: Browser checks run on the target of the HTTP redirect
     body: >-

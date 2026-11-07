@@ -60,6 +60,33 @@ const SettingsLayerSchema = z.strictObject({
   vendorRoles: z.array(z.strictObject({ selector: Selector, role: z.enum(['save', 'reject']) })).min(1),
 });
 
+/** `RegExp.test` keeps state between calls with `g` or `y`; the vendors' crawler tests use none of them. */
+const STATELESS_FLAGS = /^(?!.*(.).*\1)[imsu]*$/;
+
+function compilesWith(source: string, flags: string): boolean {
+  try {
+    new RegExp(source, flags);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The vendor's own test for crawlers, for which it keeps its dialog closed: the pattern and flags as in the vendor's
+ * script, and the name the report gives that test.
+ */
+const DialogBotUserAgentSchema = z
+  .strictObject({
+    pattern: z.string().min(1),
+    flags: z.string().regex(STATELESS_FLAGS, 'only the flags i, m, s, u, each once').default(''),
+    label: z.string().min(1).max(80),
+  })
+  .refine((r) => compilesWith(r.pattern, r.flags), {
+    message: 'invalid regular expression',
+    path: ['pattern'],
+  });
+
 const AdapterSchema = z
   .strictObject({
     name: z.string().min(1),
@@ -89,6 +116,11 @@ const AdapterSchema = z
       .optional(),
     /** The dialog the CMP renders into the page closed, and its controls, which stay disabled until it opens. */
     closedDialog: z.strictObject({ container: Selector, controls: Selector }).optional(),
+    /**
+     * A dialog left closed (`dialogNotOpened`) for a page whose User-Agent matches this test is the vendor's bot branch:
+     * the facts get a bot signal that names the test. Adapters without it never test a User-Agent for that.
+     */
+    dialogBotUserAgent: DialogBotUserAgentSchema.optional(),
     /** Present only for adapters whose first layer may lack a reject that phase B can then give in the settings layer. */
     settingsLayer: SettingsLayerSchema.optional(),
   })
@@ -105,6 +137,7 @@ const AdapterSchema = z
 
 export type AdapterData = z.infer<typeof AdapterSchema>;
 export type VersionRule = z.infer<typeof VersionRuleSchema>;
+export type DialogBotUserAgent = z.infer<typeof DialogBotUserAgentSchema>;
 
 export type ReaderInput =
   | 'botUserAgent'

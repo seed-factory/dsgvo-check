@@ -168,6 +168,30 @@ describe('adapter data', () => {
     expect(() => adaptersSection.parse(broken)).toThrow(message);
   });
 
+  // The vendor's crawler test runs as `RegExp.test` on every closed dialog: a stateful flag would change its answer.
+  it.each([
+    [
+      'a pattern that does not compile',
+      { pattern: '(bot', flags: '' },
+      /dialogBotUserAgent\.pattern: invalid/,
+    ],
+    [
+      'a pattern that does not compile with its flags',
+      { pattern: String.raw`\p{L}+[`, flags: 'u' },
+      /invalid/,
+    ],
+    ['a stateful flag', { flags: 'g' }, /dialogBotUserAgent\.flags/],
+    ['an unknown flag', { flags: 'x' }, /dialogBotUserAgent\.flags/],
+    ['no label', { label: '' }, /dialogBotUserAgent\.label/],
+    ['an unknown key', { userAgent: 'bot' }, /dialogBotUserAgent/],
+  ])('ccm19 crawler test with %s is a data error', (_case, edit, message) => {
+    const broken = withAdapters((all) => {
+      const ccm19 = all.ccm19 as Record<string, unknown>;
+      ccm19.dialogBotUserAgent = { ...(ccm19.dialogBotUserAgent as object), ...edit };
+    });
+    expect(() => adaptersSection.parse(broken)).toThrow(message);
+  });
+
   it('a version rule names exactly one signal', () => {
     const both = withAdapters((all) => {
       const version = all.borlabs?.version as { rules: unknown[] };

@@ -20,7 +20,7 @@ import {
   site,
   unopenedDialogCmp,
 } from '../helpers.ts';
-import { confirmedReject, ga, type Scenario } from './shared.ts';
+import { confirmedReject, crawlerTestSignal, ga, type Scenario } from './shared.ts';
 
 /** Shopware's permission cookies, named by the adapter: none present after "Nur technisch notwendige". */
 const SHOPWARE_DENIED = {
@@ -288,6 +288,17 @@ const bannerScenarios: Scenario[] = [
       site({
         phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
         cmp: unopenedDialogCmp(),
+      }),
+  },
+  {
+    file: 'inconclusive-cmp-bot-user-agent.json',
+    description:
+      "The same closed CCM19 dialog, and CCM19's own crawler test matched the scanner's User-Agent: no reject was clicked, the reason names the crawler test",
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
+        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
       }),
   },
 ];
