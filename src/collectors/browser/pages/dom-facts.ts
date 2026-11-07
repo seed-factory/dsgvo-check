@@ -120,6 +120,16 @@ function languageTag(value: string): string | null {
   return /^(?:[a-z]{2,3}(?:-[a-z0-9]{1,8})*|x-default)$/.test(tag) ? tag : null;
 }
 
+/**
+ * The HTML link type `bookmark` among the tokens of `rel`: the link is the permalink of the nearest article. Tokens are
+ * separated by ASCII whitespace and compared ASCII case-insensitively (HTML, "set of space-separated tokens").
+ */
+const isPermalink = (rel: string): boolean =>
+  rel
+    .toLowerCase()
+    .split(/[\t\n\f\r ]+/)
+    .includes('bookmark');
+
 /** Raw links to stored link facts (redacted) and to the in-memory candidates of the page planner. */
 export function mapLinks(
   raw: Pick<RawDomFacts, 'links'>,
@@ -157,6 +167,7 @@ export function mapLinks(
       inShadowDom: l.inShadowDom,
       ...(sameSite !== undefined ? { sameSite } : {}),
       ...(l.rel ? { rel: l.rel } : {}),
+      ...(isPermalink(l.rel) ? { permalink: true as const } : {}),
     };
   });
   return { links, candidates };

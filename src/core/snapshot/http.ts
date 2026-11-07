@@ -121,21 +121,36 @@ export interface HttpSection {
   throttledHosts?: string[];
   /** TLS endpoints of the start page's final host after a redirect outside target/www/apex, and of its www/apex; the TLS collector runs before that host is known. */
   finalTls?: TlsEndpoint[];
-  /** The plain-http addresses of pages with a form, requested after the browser; absent when that step did not run. */
+  /**
+   * The plain-http addresses of pages with a form and of permalinks those pages link, requested after the browser;
+   * absent when that step did not run.
+   */
   twins?: HttpTwin[];
   formTwinStage?: FormTwinStage;
   errors: CollectorError[];
 }
 
 /**
- * The plain-http address of a page on which phase A saw a form, requested once with GET after the browser: no redirect
- * is followed and nothing is submitted. Only for a host whose http:// root served content without a redirect.
+ * Why the step after the browser requested an address. `input-form`: phase A saw a form that takes input on the page.
+ * `permalink`: a page of phase A links the address as the permalink of an article (`rel="bookmark"`, a blog post with a
+ * comment form, for example) and the browser did not visit it.
+ */
+export type TwinSource = 'input-form' | 'permalink';
+
+/**
+ * The plain-http address of a page on which phase A saw a form, or of a permalink those pages link, requested once with
+ * GET after the browser: no redirect is followed and nothing is submitted. Only for a host whose http:// root served
+ * content without a redirect.
  */
 export interface HttpTwin {
-  /** The page as phase A visited it. */
+  /** The page as phase A visited it; for a permalink, the address as linked. */
   page: SanitizedUrl;
   /** Its http:// address as requested. */
   url: SanitizedUrl;
+  /** Absent in older snapshots, which requested only pages with a form (`input-form`). */
+  source?: TwinSource;
+  /** A permalink: the page of phase A that links it (the start page before the others). */
+  linkedFrom?: SanitizedUrl;
   /** The answer, with form facts when it is a plain-http success page; null when the request failed. */
   hop: HttpHop | null;
   outcome: 'ok' | 'connection-refused' | 'timeout' | 'tls-error' | 'dns-error' | 'throttled' | 'error';
@@ -148,8 +163,13 @@ export interface HttpTwin {
 export interface FormTwinStage {
   /** `http.formTwinPages` of the run; 0 requests none. */
   budget: number;
-  /** Pages whose http:// address was eligible (more than `budget` are not all requested); null when unknown. */
+  /** Pages with a form whose http:// address was eligible (more than `budget` are not all requested); null when unknown. */
   candidates: number | null;
+  /**
+   * Permalinks whose http:// address was eligible; they take what the pages with a form leave of the budget. Absent in
+   * older snapshots and when the step failed.
+   */
+  permalinkCandidates?: number;
   durationMs: number;
   /** The step failed; the forms of further pages over http are then unknown. */
   error?: CollectorError;

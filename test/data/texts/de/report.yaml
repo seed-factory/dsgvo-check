@@ -369,7 +369,7 @@ ui:
     dkim-selectors-capped {erwartete DKIM-Selektoren über der Grenze DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS nicht abgefragt}
     no-documents {weder Impressum noch Datenschutzerklärung als lesbarer Text gefunden}
     other {}}
-  report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} http-form {Seite mit Formular über http} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
+  report.pageRole: "{role, select, start {Startseite} nav {verlinkte Seite} impressum {Impressum} privacy {Datenschutzerklärung} contact {Kontakt} http-form {Seite mit Formular über http} http-form-permalink {http-Adresse eines verlinkten Beitrags mit Formular} legal-hop {Zwischenseite} fallback {üblicher Pfad} other {{role}}}"
   report.collectorStatus: "{status, select, ok {abgeschlossen} partial {teilweise} error {Fehler} skipped {übersprungen} not-run {nicht ausgeführt} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Anfrage} other {Anfragen}}} cookie {Cookie} storage {Speichereintrag} header {Header} dns {DNS-Eintrag} tls {TLS-Verbindung} cmp {Einwilligungsbanner} consent-state {Einwilligungsstatus} document {Dokument} text-match {Textstelle} screenshot {Screenshot} page {{count, plural, one {Seite} other {Seiten}}} redirect-chain {Umleitungskette} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
   report.evidence.field: >-

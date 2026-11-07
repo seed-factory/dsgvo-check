@@ -96,6 +96,11 @@ export interface LinkFact {
   frameUrl?: SanitizedUrl;
   sameSite?: boolean;
   rel?: string;
+  /**
+   * `rel` names the HTML link type `bookmark`: the href is the permalink of the nearest article (a blog post, a news
+   * item). Absent otherwise and in older snapshots.
+   */
+  permalink?: true;
 }
 
 export interface FormFact {

@@ -171,7 +171,7 @@ const http = z.strictObject({
   maxRedirects: int(5, 'Redirect hops followed per probe chain.', 1, 20),
   formTwinPages: int(
     3,
-    'Pages of phase A with a form whose http:// address is requested once (GET, no redirect followed, nothing submitted) after the browser, only on a host whose http:// root serves content without a redirect (TLS-01); 0 requests none.',
+    'http:// addresses requested once (GET, no redirect followed, nothing submitted) after the browser, only on a host whose http:// root serves content without a redirect (TLS-01): first of the pages of phase A with a form, then of the permalinks (rel="bookmark") those pages link; 0 requests none.',
     0,
     10,
   ),
