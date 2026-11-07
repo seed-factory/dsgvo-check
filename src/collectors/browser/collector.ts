@@ -162,8 +162,11 @@ export class BrowserCollection {
   readonly phases: PhaseRecord[] = [];
   readonly plan: BrowserPlan = { pages: [], controlPages: [], click: {} };
   readonly documents: DocumentsSection = { documents: [], attempts: [] };
-  private readonly cmpSection: CmpSection = { phases: [] };
-  /** The dialog text is read once per scan: on the first screen of phase A where an adapter first qualified. */
+  readonly cmpSection: CmpSection = { phases: [] };
+  /**
+   * The dialog text is read once per scan: on the first screen of phase A where an adapter first qualified. A failed
+   * read is not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
+   */
   private dialogTextRead = false;
   readonly screenshots: ScreenshotRecord[] = [];
   private readonly errors: CollectorError[] = [];
@@ -651,8 +654,9 @@ export class BrowserCollection {
       facts.firstLayer.bannerPresent;
     if (this.dialogTextRead || !qualifies) return;
     this.dialogTextRead = true;
-    const text = await s.cmp.dialogText(s.page, adapter, d.version, facts.pageUrl);
-    if (text) this.cmpSection.dialogText = text;
+    const read = await s.cmp.dialogText(s.page, adapter, d.version, facts.pageUrl);
+    if (read === 'failed') this.cmpSection.dialogTextFailed = true;
+    else if (read !== 'absent') this.cmpSection.dialogText = read;
   }
 
   /**

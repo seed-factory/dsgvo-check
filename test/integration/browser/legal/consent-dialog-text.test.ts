@@ -43,9 +43,9 @@ describe('Borlabs dialog with collapsed Cookie-Details through the browser colle
     expect(dialogText()?.text).toContain('Name Google AdWords');
   });
 
-  it('the UID the dialog prints is redacted: nothing of it in the snapshot, the rest of the collection or the documents', () => {
+  it('the UID the dialog prints, letters only behind its label, is redacted: nothing of it anywhere in the collection', () => {
     expect(dialogText()?.text).toMatch(/Ihre Einwilligungs-ID \(UID\): \[redacted\]$/);
-    expect(persisted(run)).not.toContain('zq7');
+    expect(persisted(run)).not.toContain('zqx');
   });
 
   it('reading it clicked nothing: no consent cookie in phase A, the policy and the Impressum were read as usual', () => {

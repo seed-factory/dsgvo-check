@@ -690,10 +690,10 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
   Domain maskiert. Im Text des Einwilligungsbanners, den der Snapshot für PRIV-01 aufbewahrt, ersetzt der Collector
-  Einwilligungs-IDs, UIDs und ähnliche Kennungen vor dem Schreiben durch `[redacted]`. Von Headern wie `Server` und
-  `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre
-  Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten
-  Scans räumt der nächste Scan auf.
+  Einwilligungs-IDs, UIDs, TC-Strings und ähnliche Kennungen vor dem Schreiben durch `[redacted]`, auch wenn
+  unsichtbare Zeichen eine Kennung oder Adresse teilen. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt
+  und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der
+  Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
@@ -760,7 +760,8 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   `not-named` oder `category-only` die Variante `named-in-cmp-only` (`info`). Gelesen wird der Text des Banners einmal
   in Phase A ohne Klick, auf der ersten Seite, auf der ein eigener Adapter das Banner sicher erkennt (nie die
   allgemeine Heuristik), höchstens 100 000 Zeichen. Firmenname, Domain oder Kategorie im Banner zählen nicht als
-  Nennung; ist der Text abgeschnitten und bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`.
+  Nennung. Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist,
+  und `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
   [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
   lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder

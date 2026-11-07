@@ -110,6 +110,9 @@ export function normalizeSettings(layer: SettingsLayerFacts): SettingsLayerFacts
   return { ...layer, buttons: layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) })) };
 }
 
+/** The redacted dialog text; `absent` without a reader or a container; `failed` when it could not be read or stored. */
+export type DialogTextRead = CmpDialogText | 'absent' | 'failed';
+
 /** Where and from which CMP the dialog text was read. */
 export interface DialogTextSource {
   adapter: Pick<CmpAdapter, 'id' | 'name'>;
@@ -187,10 +190,16 @@ export class CmpBridge {
     this.classify = classify;
   }
 
-  private async call<T>(what: string, url: string, fn: () => Promise<T>): Promise<T | null> {
+  private async call<T>(
+    what: string,
+    url: string,
+    fn: () => Promise<T>,
+    onError?: () => void,
+  ): Promise<T | null> {
     try {
       return await withTimeout(fn(), this.timeoutMs, `cmp.${what}`);
     } catch (err) {
+      onError?.();
       const code = `cmp-${what}-failed`;
       const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
       // The same failure on every page is reported once per phase.
@@ -270,20 +279,36 @@ export class CmpBridge {
   }
 
   /**
-   * Reads the whole text of the recognised CMP's dialog without a click and redacts it before it leaves the bridge;
-   * null when the adapter has no reader, the container is not there or the read failed.
+   * Reads the whole text of the recognised CMP's dialog without a click and redacts it before it leaves the bridge.
+   * `absent` when the adapter has no reader or the container is not there; `failed` when the read threw or timed out
+   * (one phase error records it) or the text did not fit the snapshot schema.
    */
   async dialogText(
     page: Page,
     adapter: CmpAdapter,
     version: string | null,
     url: SanitizedUrl,
-  ): Promise<CmpDialogText | null> {
+  ): Promise<DialogTextRead> {
     const read = this.api.dialogText;
-    if (!read) return null;
-    const raw = await this.call('dialog-text', url, () => read(page, adapter, CMP_DIALOG_TEXT_MAX_CHARS));
-    if (!raw) return null;
-    return normalizeDialogText(raw, { adapter, version, pageUrl: url, takenAt: new Date().toISOString() });
+    if (!read) return 'absent';
+    let failed = false;
+    const raw = await this.call(
+      'dialog-text',
+      url,
+      () => read(page, adapter, CMP_DIALOG_TEXT_MAX_CHARS),
+      () => {
+        failed = true;
+      },
+    );
+    if (failed) return 'failed';
+    if (!raw) return 'absent';
+    const text = normalizeDialogText(raw, {
+      adapter,
+      version,
+      pageUrl: url,
+      takenAt: new Date().toISOString(),
+    });
+    return text ?? 'failed';
   }
 
   settingsSave(layer: SettingsLayerFacts, url: string): Promise<SettingsChoice | null> {

@@ -291,7 +291,8 @@ ui:
     not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
     privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further privacy
     notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} cmp-dialog-truncated {Text
-    of the consent banner searched only up to the reading limit} reveal-height-capped {Lower
+    of the consent banner searched only up to the reading limit} cmp-dialog-unread {Text of the consent banner not
+    searched: reading it failed} reveal-height-capped {Lower
     part of a long page not shown: the window height is capped, or the page grew with the window} page-links-not-observed {Links of the pages not observed
     because the browser did not run or no page was evaluable} http-form-not-inspected {Forms of {detail} not read in
     full (response cut, not readable or replaced by bot protection)} http-form-twin-undecided {http address of {detail} without a usable answer}

@@ -4,10 +4,10 @@
  * `not-named` or `category-only`. Company, domain and category in the dialog do not count; without dialog text the
  * check works as before.
  */
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { priv01 } from '../../../../../src/checks/browser/priv-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
@@ -20,7 +20,7 @@ import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import { toSavedSnapshot } from '../../../../../src/core/snapshot/index.ts';
 import { scan } from '../../../../../src/scan.ts';
 import { FIXED_NOW, observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
-import { defaultDocuments, PRIVACY, phase, privacyDoc, req, START, site } from '../helpers.ts';
+import { defaultDocuments, noBannerCmp, PRIVACY, phase, privacyDoc, req, START, site } from '../helpers.ts';
 import { BORLABS_DIALOG_TEXT, borlabsDialog } from '../scenarios/priv-01.ts';
 
 const gtm = req('gtm', 'https://www.googletagmanager.com/gtm.js?id=GTM-TEST1');
@@ -41,12 +41,19 @@ const withPolicy = (parts: DocumentPart[]) => ({
   attempts: [],
 });
 
-function run(o: { dialog?: string | null; parts?: DocumentPart[]; truncated?: boolean } = {}) {
+function run(
+  o: {
+    dialog?: string | null;
+    parts?: DocumentPart[];
+    truncated?: boolean;
+    requests?: ReturnType<typeof req>[];
+  } = {},
+) {
   const dialog = o.dialog === undefined ? BORLABS_DIALOG_TEXT : o.dialog;
   return runCheck(
     priv01,
     site({
-      phases: [phase('A', { requests: [gtm, ads, ga] })],
+      phases: [phase('A', { requests: o.requests ?? [gtm, ads, ga] })],
       documents: withPolicy(o.parts ?? []),
       ...(dialog !== null ? { cmp: borlabsDialog(dialog, { truncated: o.truncated ?? false }) } : {}),
     }),
@@ -106,6 +113,30 @@ describe('PRIV-01 services the consent dialog names', () => {
     expect(quote.startsWith('…')).toBe(true);
   });
 
+  it('a name that begins a longer one is quoted where it stands alone: Google Ads after Google AdSense', () => {
+    const adsense =
+      'Cookie-Details Name Google AdSense Anbieter Google Ireland Limited Zweck Anzeigen auf der Website. ' +
+      'Weitere Informationen zu den Cookies von Google AdSense finden Sie in der Datenschutzerklärung von Google. ';
+    const text = `${adsense}Name Google Ads Anbieter Google Ireland Limited Zweck Conversion-Tracking`;
+    const o = of(run({ dialog: text, requests: [ads] }), 'google-ads');
+    expect(o?.variant).toBe('named-in-cmp-only');
+    expect(o?.params.cmpQuote).toContain('Name Google Ads Anbieter');
+    expect(o?.params.cmpQuote).not.toContain('AdSense Anbieter');
+  });
+
+  it.each([
+    ['with umlauts spelled out', 'Google Uebersetzer'],
+    ['with the umlaut as a letter and a combining mark', 'Google U\u0308bersetzer'],
+  ])('a name the dialog writes %s is quoted where it stands', (_, name) => {
+    const translate = req('tr', 'https://translate.googleapis.com/translate_a/element.js?cb=init', {
+      resourceType: 'script',
+    });
+    const text = `${'Wir nutzen Cookies. '.repeat(10)}Name ${name} Anbieter Google Ireland Limited`;
+    const o = of(run({ dialog: text, requests: [translate] }), 'google-translate');
+    expect(o?.variant).toBe('named-in-cmp-only');
+    expect(o?.params.cmpQuote).toContain(`Name ${name} Anbieter`);
+  });
+
   it.each([
     ['its provider', 'Cookie-Details Name Statistik Anbieter Google Ireland Limited'],
     ['its domain', 'Cookie-Details Skript von www.googletagmanager.com'],
@@ -157,6 +188,26 @@ describe('PRIV-01 services the consent dialog names', () => {
     expect(allNamed.outcome?.limitations ?? []).toEqual([]);
   });
 
+  it('a dialog whose text could not be read: partial with cmp-dialog-unread while a service stays unnamed', () => {
+    const failed = (parts: DocumentPart[]) =>
+      runCheck(
+        priv01,
+        site({
+          phases: [phase('A', { requests: [gtm] })],
+          documents: withPolicy(parts),
+          cmp: { ...noBannerCmp(), dialogTextFailed: true },
+        }),
+      );
+    const unread = failed([]);
+    expect(unread).toMatchObject({ status: 'partial' });
+    expect(unread.outcome?.limitations).toEqual(['cmp-dialog-unread']);
+    expect(verdicts(unread)).toEqual([['google-tag-manager', 'not-named']]);
+
+    const named = failed([policyPart('Wir setzen den Google Tag Manager ein.')]);
+    expect(named.status).toBe('completed');
+    expect(named.outcome?.limitations ?? []).toEqual([]);
+  });
+
   it.each(['de', 'en'] as const)('%s: title and body name the service, the CMP and the quote', (lang) => {
     const o = of(run(), 'google-tag-manager')!;
     const m = renderMessage(loadTexts(lang), 'PRIV-01.named-in-cmp-only', o.params);
@@ -169,7 +220,14 @@ describe('PRIV-01 services the consent dialog names', () => {
 });
 
 describe('PRIV-01 dialog text of a saved snapshot', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'priv01-dialog-'));
+  let dir = '';
+  beforeAll(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'priv01-dialog-'));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   const replay = async (dialogText: unknown) => {
     const snap = site({ phases: [phase('A', { requests: [gtm] })], cmp: borlabsDialog(BORLABS_DIALOG_TEXT) });
     const saved = { ...toSavedSnapshot(snap), cmp: { ...snap.cmp, dialogText } };

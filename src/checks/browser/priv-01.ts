@@ -2,9 +2,9 @@
  * PRIV-01 (P0): a loaded catalog service is looked up in the Datenschutzerklärung by levels named > company > domain >
  * category. The further privacy notices of the site that phase A read beside the policy are searched with it: a
  * mention in any of them counts. A service no document names, but that the consent dialog of the site names itself
- * (its collapsed service details, read once in phase A for a CMP its own adapter recognised), is `named-in-cmp-only`.
- * Negations are not parsed, so `not-named` and `named-in-cmp-only` are capped at `medium`. A missing policy is
- * LEGAL-01's finding.
+ * (its collapsed service details, read once in phase A for a CMP its own adapter recognised), is `named-in-cmp-only`;
+ * a dialog text that was cut or could not be read is a limitation while a service stays unnamed. Negations are not
+ * parsed, so `not-named` and `named-in-cmp-only` are capped at `medium`. A missing policy is LEGAL-01's finding.
  */
 
 import { defineCheck, type EvidenceInput, type Observation, type Phase, subjects } from '../../core/api.ts';
@@ -63,31 +63,57 @@ function quote(text: string, term: string): string {
 type Variant = 'not-named' | 'category-only' | 'ambiguous-match' | 'named-in-cmp-only';
 
 /**
- * Where the words of `term` start in `text`, written with any separators between them (`Google-Tag-Manager`); the
- * normalised words hold only letters and digits. -1 when the page writes them otherwise (umlauts).
+ * The dialog text with its search form: `text` as `normalizeText` gives it (lower case, umlauts spelled out, every run
+ * of other characters one space), `from` the index in the dialog text that each character of `text` comes from. A name
+ * found in the search form is quoted where the dialog writes it, on the same word boundaries and whatever its spelling
+ * there (`Google-Tag-Manager`, `Übersetzer`).
  */
-function termIndex(text: string, term: string): number {
-  const words = normalizeText(term).trim().split(' ').filter(Boolean);
-  const m = words.length > 0 ? new RegExp(words.join('[^\\p{L}\\p{N}]+'), 'iu').exec(text) : null;
-  return m ? m.index : text.toLowerCase().indexOf(term.toLowerCase());
-}
-
-/** At most 120 characters of the dialog text around the name, cut at spaces, `…` where it goes on. */
-function dialogQuote(text: string, term: string): string {
-  const at = Math.max(0, termIndex(text, term));
-  let start = Math.max(0, at - DIALOG_QUOTE_LEAD_CHARS);
-  const space = start > 0 && text[start - 1] !== ' ' ? text.indexOf(' ', start) : -1;
-  if (space !== -1 && space < at) start = space + 1;
-  let end = Math.min(text.length, start + DIALOG_QUOTE_MAX_CHARS);
-  const last = end < text.length ? text.lastIndexOf(' ', end) : -1;
-  if (last > at + term.length) end = last;
-  return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
-}
-
-/** The dialog text of the CMP with its form for the search. */
 interface DialogSearch {
   record: CmpDialogText;
   text: string;
+  from: number[];
+}
+
+/** A letter with its combining marks, folded together as `normalizeText` folds the whole text. */
+const FOLD_UNIT_RE = /\P{M}\p{M}*|\p{M}+/gu;
+
+function dialogSearch(record: CmpDialogText): DialogSearch {
+  let text = ' ';
+  const from = [0];
+  const separate = (at: number) => {
+    if (text.endsWith(' ')) return;
+    text += ' ';
+    from.push(at);
+  };
+  for (const m of record.text.matchAll(FOLD_UNIT_RE)) {
+    const unit = m[0];
+    const folded = /^[A-Za-z0-9]$/.test(unit) ? unit.toLowerCase() : normalizeText(unit).trim();
+    // A soft hyphen and a lone combining mark vanish in `normalizeText`; every other character it drops separates.
+    if (folded === '') {
+      if (unit !== '\u00AD' && !/^\p{M}+$/u.test(unit)) separate(m.index);
+      continue;
+    }
+    for (const c of folded) {
+      if (c === ' ') separate(m.index);
+      else {
+        text += c;
+        from.push(m.index);
+      }
+    }
+  }
+  separate(record.text.length);
+  return { record, text, from };
+}
+
+/** At most 120 characters of the dialog text around `[at, end)`, cut at spaces, `…` where it goes on. */
+function dialogQuote(text: string, at: number, end: number): string {
+  let start = Math.max(0, at - DIALOG_QUOTE_LEAD_CHARS);
+  const space = start > 0 && text[start - 1] !== ' ' ? text.indexOf(' ', start) : -1;
+  if (space !== -1 && space < at) start = space + 1;
+  let stop = Math.min(text.length, start + DIALOG_QUOTE_MAX_CHARS);
+  const last = stop < text.length ? text.lastIndexOf(' ', stop) : -1;
+  if (last >= end) stop = last;
+  return `${start > 0 ? '…' : ''}${text.slice(start, stop).trim()}${stop < text.length ? '…' : ''}`;
 }
 
 /**
@@ -101,7 +127,13 @@ function dialogMention(
 ): { record: CmpDialogText; quote: string } | null {
   const found = matchLevel(info, dialog.text, false);
   if (found.level !== 'named' || !found.term) return null;
-  return { record: dialog.record, quote: dialogQuote(dialog.record.text, found.term) };
+  // `contains` found the term in the search form, between spaces: its first and last letter map back to the text.
+  const term = normalizeText(found.term);
+  const i = dialog.text.indexOf(term);
+  const at = dialog.from[i + 1];
+  const end = dialog.from[i + term.length - 1];
+  if (at === undefined || end === undefined) return null;
+  return { record: dialog.record, quote: dialogQuote(dialog.record.text, at, end) };
 }
 
 /** The CMP whose dialog was read and the passage that names the service. */
@@ -238,10 +270,14 @@ export const priv01 = defineCheck({
     if (notOpened) limitations.push('banner-open');
     if (found.supplementNotEvaluated) limitations.push('supplement-not-evaluated');
 
-    const dialog: DialogSearch | null = cmp?.dialogText
-      ? { record: cmp.dialogText, text: normalizeText(cmp.dialogText.text) }
-      : null;
-    let dialogCutMatters = false;
+    const dialog = cmp?.dialogText ? dialogSearch(cmp.dialogText) : null;
+    // What keeps the dialog from settling a service no document names: its text was cut, or could not be read.
+    const dialogGap = dialog?.record.truncated
+      ? 'cmp-dialog-truncated'
+      : !dialog && cmp?.dialogTextFailed === true
+        ? 'cmp-dialog-unread'
+        : null;
+    let dialogGapMatters = false;
 
     const records = requestIndex(browser);
     const classified = new Map(derived.requests.map((c) => [c.requestId, c] as const));
@@ -261,8 +297,7 @@ export const priv01 = defineCheck({
       // A name only in hidden text of the policy stays that finding: whether the policy names the service is open.
       const inDialog = dialog && verdict.variant !== 'ambiguous-match' ? dialogMention(info, dialog) : null;
       const variant: Variant = inDialog ? 'named-in-cmp-only' : verdict.variant;
-      if (!inDialog && verdict.variant !== 'ambiguous-match' && dialog?.record.truncated)
-        dialogCutMatters = true;
+      if (!inDialog && verdict.variant !== 'ambiguous-match' && dialogGap) dialogGapMatters = true;
 
       const evidence: EvidenceInput[] = [
         ...searched,
@@ -311,8 +346,8 @@ export const priv01 = defineCheck({
         ...serviceFields(derived, svc.serviceId),
       });
     }
-    // The dialog text was cut at its limit: the rest may name a service no document names.
-    if (dialogCutMatters) limitations.push('cmp-dialog-truncated');
+    // The rest of a cut dialog text, or the text that could not be read, may name a service no document names.
+    if (dialogGapMatters && dialogGap) limitations.push(dialogGap);
 
     return {
       status: limitations.length > 0 ? 'partial' : 'completed',

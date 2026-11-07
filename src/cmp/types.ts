@@ -303,6 +303,8 @@ export interface CmpSection {
    * `high`. Absent when none did, the read failed, and in older snapshots.
    */
   dialogText?: CmpDialogText;
+  /** The dialog qualified for that read, but its text could not be read or stored; PRIV-01 names it as a limitation. */
+  dialogTextFailed?: true;
 }
 
 /**

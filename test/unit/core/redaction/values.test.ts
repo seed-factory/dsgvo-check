@@ -1,6 +1,7 @@
 /**
- * `redactValueTokens` replaces what a consent dialog prints about the visitor (consent ID, UID, time stamp) by
- * `[redacted]` and keeps words, service names, dates and short numbers, so that PRIV-01 can still search the names.
+ * `redactValueTokens` replaces what a consent dialog prints about the visitor (consent ID, UID, TC string, time stamp
+ * in milliseconds) by `[redacted]` and keeps words, service names, dates, clock times and short numbers, so that
+ * PRIV-01 can still search the names.
  */
 import { describe, expect, it } from 'vitest';
 import { redactValueTokens } from '../../../../src/core/redaction/values.ts';
@@ -33,8 +34,34 @@ describe('redactValueTokens: identifiers of the visitor', () => {
     ],
     ['base64 without a digit', 'Kennung qWeRtYuIoPaSdFgHjK.', `Kennung ${REDACTED}.`],
     ['a time stamp in milliseconds', 'Zeitstempel 1730901234567', `Zeitstempel ${REDACTED}`],
-    ['an ID split by a soft hyphen', 'Wert zq7­ab12cd34', `Wert ${REDACTED}`],
+    ['an ID split by a soft hyphen', 'Wert zq7\u00ADab12cd34', `Wert ${REDACTED}`],
+    ['an ID split by a zero-width space', 'Wert zq7\u200Bab12cd34', `Wert ${REDACTED}`],
     ['an ID in brackets', '(Consent: zq7ab12cd34)', `(Consent: ${REDACTED})`],
+    [
+      'letters only behind a label with an alias in brackets',
+      'Ihre Einwilligungs-ID (UID): abcdefgh-ijklmnop-qrstuvwx-yzabcdef',
+      `Ihre Einwilligungs-ID (UID): ${REDACTED}`,
+    ],
+    ['a label glued to the word before it, short digits', 'ConsentID: 12345678', `ConsentID: ${REDACTED}`],
+    ['a label glued to the word before it, letters only', 'UserID: abcdefghij', `UserID: ${REDACTED}`],
+    ['a session ID with "="', 'SessionID=abcdef', `SessionID=${REDACTED}`],
+    ['a label followed by a space and digits', 'Consent ID 1234567890', `Consent ID ${REDACTED}`],
+    [
+      'a label followed by "lautet"',
+      'Ihre Consent-ID lautet 123456789',
+      `Ihre Consent-ID lautet ${REDACTED}`,
+    ],
+    ['a label followed by "is"', 'Your consent ID is anonymous.', `Your consent ID is ${REDACTED}`],
+    [
+      'a value a space splits after its label',
+      'Consent-ID: 1234 5678 Einwilligungsdatum 06.11.2026',
+      `Consent-ID: ${REDACTED} Einwilligungsdatum 06.11.2026`,
+    ],
+    [
+      'a TC string with a segment of letters only',
+      'TC-String: CPxyzAAPxyzAAAGABCENB-CgAAAAAAAAAAYgAAAAAAAA.YAAAAAAAAAAA',
+      `TC-String: ${REDACTED}`,
+    ],
   ])('%s', (_, input, expected) => {
     expect(stable(input)).toBe(expected);
   });
@@ -49,6 +76,8 @@ describe('redactValueTokens: counterexamples that stay as they are', () => {
     'Cookie Name _ga,_gat,_gid borlabs-cookie CookieConsent __Secure-ENID',
     'https://policies.google.com/privacy Telefon +49 30 1234567',
     'Valid: ja, Android: aktuell',
+    'Die Einwilligungs-ID (UID) und das Datum werden gespeichert. Cookie-ID _ga Laufzeit 2 Jahre',
+    'ID5 Identity Cloud, Version 3.2.1, www.googletagmanager.com',
   ])('%s', (text) => {
     expect(stable(text)).toBe(text);
   });
@@ -61,7 +90,10 @@ describe('redactValueTokens: counterexamples that stay as they are', () => {
   });
 
   it('grows linearly with the text', () => {
-    const text = (n: number) => 'Name Google Tag Manager UID: 2ehm7qph-c6u7dyfb id id: '.repeat(n);
+    const text = (n: number) =>
+      'Name Google Tag Manager UID: 2ehm7qph-c6u7dyfb id id: Consent-ID (UID) 1234 5678 ID lautet a.b.c '.repeat(
+        n,
+      );
     expectLinearGrowth(
       () => redactValueTokens(text(400)),
       () => redactValueTokens(text(1600)),

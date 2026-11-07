@@ -131,6 +131,25 @@ describe('normalizeDialogText: the text of the consent dialog', () => {
     });
   });
 
+  it.each([
+    ['a soft hyphen, as hyphenation plugins insert it', 'Kontakt: zq7mail@exa\u00ADmple.test'],
+    ['a zero-width space against address harvesting', 'Kontakt: zq7mail@\u200Bexample.test'],
+  ])(
+    'an address split by %s loses its local part: invisible characters go before the address is masked',
+    (_, text) => {
+      expect(normalizeDialogText({ text, truncated: false }, source)?.text).toBe(
+        'Kontakt: [redacted]@example.test',
+      );
+    },
+  );
+
+  it('a UID of letters only behind its label "(UID):" is not stored', () => {
+    const text = 'Name Google Tag Manager Ihre Einwilligungs-ID (UID): zqxabcde-fghijklm-nopqrstu-vwxyzabc';
+    expect(normalizeDialogText({ text, truncated: false }, source)?.text).toBe(
+      'Name Google Tag Manager Ihre Einwilligungs-ID (UID): [redacted]',
+    );
+  });
+
   it('a text the page cut at the limit loses its last token, which may be the start of an ID', () => {
     const cut = normalizeDialogText({ text: 'Name Google Tag Manager UID zq7a9k', truncated: true }, source);
     expect(cut).toMatchObject({ text: 'Name Google Tag Manager UID', truncated: true });
@@ -163,18 +182,18 @@ describe('CmpBridge.dialogText', () => {
         return { text: DIALOG, truncated: false };
       },
     } as CmpApi;
-    const text = await new CmpBridge(api, 1_000, [], 'A', DEFAULT_CLASSIFY).dialogText(
+    const read = await new CmpBridge(api, 1_000, [], 'A', DEFAULT_CLASSIFY).dialogText(
       page,
       borlabs,
       '3.2.1',
       'https://www.example.test/',
     );
     expect(asked).toEqual([CMP_DIALOG_TEXT_MAX_CHARS]);
-    expect(text?.text).toContain('Google Tag Manager');
-    expect(JSON.stringify(text)).not.toContain('zq7');
+    expect(typeof read === 'object' ? read.text : read).toContain('Google Tag Manager');
+    expect(JSON.stringify(read)).not.toContain('zq7');
   });
 
-  it('a failed read is recorded as one phase error with its own code and gives no record', async () => {
+  it('a failed read is recorded as one phase error with its own code and says it failed', async () => {
     const errors: CollectorError[] = [];
     const api = {
       dialogText: async () => {
@@ -182,12 +201,24 @@ describe('CmpBridge.dialogText', () => {
       },
     } as unknown as CmpApi;
     const bridge = new CmpBridge(api, 1_000, errors, 'A', DEFAULT_CLASSIFY);
-    expect(await bridge.dialogText(page, borlabs, null, 'https://www.example.test/')).toBeNull();
+    expect(await bridge.dialogText(page, borlabs, null, 'https://www.example.test/')).toBe('failed');
     expect(errors.map((e) => e.code)).toEqual(['cmp-dialog-text-failed']);
   });
 
-  it('an API without the reader (a test stub) reads nothing', async () => {
-    const bridge = new CmpBridge({} as CmpApi, 1_000, [], 'A', DEFAULT_CLASSIFY);
-    expect(await bridge.dialogText(page, borlabs, null, 'https://www.example.test/')).toBeNull();
+  it('a text that does not fit the snapshot schema counts as failed, and is not stored', async () => {
+    const api = { dialogText: async () => ({ text: DIALOG, truncated: false }) } as unknown as CmpApi;
+    const unnamed = { id: 'borlabs', name: '' } as CmpAdapter;
+    const bridge = new CmpBridge(api, 1_000, [], 'A', DEFAULT_CLASSIFY);
+    expect(await bridge.dialogText(page, unnamed, null, 'https://www.example.test/')).toBe('failed');
+  });
+
+  it.each([
+    ['an API without the reader (a test stub)', {} as CmpApi],
+    ['a dialog without its container', { dialogText: async () => null } as unknown as CmpApi],
+  ])('%s: nothing read, and no failure', async (_, api) => {
+    const errors: CollectorError[] = [];
+    const bridge = new CmpBridge(api, 1_000, errors, 'A', DEFAULT_CLASSIFY);
+    expect(await bridge.dialogText(page, borlabs, null, 'https://www.example.test/')).toBe('absent');
+    expect(errors).toEqual([]);
   });
 });
