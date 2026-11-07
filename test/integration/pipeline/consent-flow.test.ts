@@ -263,7 +263,7 @@ describe('full browser pipeline on the Wix simulator', () => {
       scanned = await run('www.wix-nodecline-shop.test');
     });
 
-    it('recognises Wix and reports CONSENT-04 nonblocking-no-reject as a warning, which does not fail the run', () => {
+    it('recognises Wix and reports CONSENT-04 nonblocking-no-reject as critical, which fails the run', () => {
       const { r, report } = scanned;
 
       expect(firstScreen(r, 'B')?.detection).toMatchObject({
@@ -273,10 +273,15 @@ describe('full browser pipeline on the Wix simulator', () => {
       });
       expect(check(report, 'CONSENT-04')?.status).toBe('completed');
       expect(report.findings.filter((f) => f.checkId === 'CONSENT-04')).toMatchObject([
-        { variant: 'nonblocking-no-reject', severity: 'warning', confidence: 'high', params: { cmp: 'wix' } },
+        {
+          variant: 'nonblocking-no-reject',
+          severity: 'critical',
+          confidence: 'high',
+          params: { cmp: 'wix' },
+        },
       ]);
       expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode).toBe(1);
     });
 
     it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Auswahl bestätigen"', () => {

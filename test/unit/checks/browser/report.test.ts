@@ -96,7 +96,7 @@ describe('browser checks in a full report', () => {
     expect((report.checks ?? []).find((c) => c.id === 'CONSENT-03')).toMatchObject({ status: 'completed' });
   });
 
-  it('a non-blocking first layer without a reject is a warning with its catalog code; it does not fail the run', async () => {
+  it('a non-blocking first layer without a reject is critical with its catalog code and fails the run', async () => {
     const wix = scenariosOf('CONSENT-04').find(
       (s) => s.file === 'violation-wix-settings-and-accept-only.json',
     );
@@ -106,10 +106,12 @@ describe('browser checks in a full report', () => {
     expectValidReport(report);
     const consent04 = (report.findings ?? []).filter((f) => f.checkId === 'CONSENT-04');
     expect(consent04.map((f) => [f.variant, f.severity, f.confidence, f.crmCode])).toEqual([
-      ['nonblocking-no-reject', 'warning', 'high', 'T1_CONSENT_BANNER_BROKEN'],
+      ['nonblocking-no-reject', 'critical', 'high', 'T1_CONSENT_BANNER_BROKEN'],
     ]);
-    expect((report.findings ?? []).filter((f) => f.severity === 'critical')).toEqual([]);
-    expect(exitCode).toBe(0);
+    expect((report.findings ?? []).filter((f) => f.severity === 'critical').map((f) => f.checkId)).toEqual([
+      'CONSENT-04',
+    ]);
+    expect(exitCode).toBe(1);
     expect(bannerState(report)).toBe('recognized');
   });
 

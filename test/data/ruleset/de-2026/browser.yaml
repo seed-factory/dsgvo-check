@@ -41,7 +41,7 @@ checks:
       reject-ineffective: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
       consent-without-action: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
       reject-as-link: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
-      nonblocking-no-reject: { severity: warning, crm: T1_CONSENT_BANNER_BROKEN }
+      nonblocking-no-reject: { severity: critical, crm: T1_CONSENT_BANNER_BROKEN }
       no-choice-at-first-layer: { severity: info, crm: T1_CONSENT_BANNER_BROKEN }
       pur-abo: { severity: info, crm: null }
       banner-not-recognized: { severity: info, gating: false, locked: true, crm: null }
