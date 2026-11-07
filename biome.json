@@ -20,7 +20,8 @@
       "!**/test/fixtures/snapshots/**/*.json",
       "!**/test/fixtures/reports/*.json",
       "!**/test/unit/core/__snapshots__/*.json",
-      "!**/test/fixture-server/sites"
+      "!**/test/fixture-server/sites",
+      "!**/test/fixtures/cmp"
     ]
   },
   "formatter": {

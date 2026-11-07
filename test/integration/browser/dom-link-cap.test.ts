@@ -1,7 +1,8 @@
 /**
  * The link cap must not drop a footer's legal links on a page with a long article list (LEGAL-01 would infer a missing
  * link from truncated input): legal-looking and footer/nav links go first, the list is reported as truncated. Forms
- * carry whether they take input other than a site search, by the rules the HTTP collector applies to markup.
+ * carry whether they take input other than a site search, by the rules the HTTP collector applies to markup. A link
+ * whose rel names `bookmark` is flagged as a permalink.
  */
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -40,6 +41,15 @@ beforeAll(async () => {
       <form method="post" action="/wp-comments-post.php"><textarea name="comment"></textarea></form>
       <form method="post" action="/login"><input type="password" name="pw"></form>
       <template><form method="post"><textarea></textarea></form></template>`),
+    'permalinks/index.html': html(`
+      <main>
+        <a href="/eins/" rel="bookmark"><time datetime="2025-03-14T09:30:00+01:00">14. März 2025</time></a>
+        <a href="/zwei/" rel="NoFollow Bookmark">Zwei</a>
+        <a href="/drei/" rel="nofollow">Drei</a>
+        <a href="/vier/" rel="bookmarks">Vier</a>
+        <a href="/fuenf/">Fünf</a>
+        <map name="m"><area href="/sechs/" rel="bookmark" alt="Sechs" shape="rect" coords="0,0,10,10"></map>
+      </main>`),
   });
   server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
   browser = await launchTestBrowser(server);
@@ -109,6 +119,20 @@ describe('collectDom: forms', () => {
       ['get', true],
       ['post', true],
       ['post', true],
+    ]);
+  });
+});
+
+describe('collectDom: permalinks', () => {
+  it('rel="bookmark", also beside other tokens and in any case, flags the link; other rel values do not', async () => {
+    const { dom } = await collectAt('permalinks/');
+    expect(dom.links.map((l) => [new URL(l.href ?? '').pathname, l.permalink ?? false])).toEqual([
+      ['/eins/', true],
+      ['/zwei/', true],
+      ['/drei/', false],
+      ['/vier/', false],
+      ['/fuenf/', false],
+      ['/sechs/', true],
     ]);
   });
 });

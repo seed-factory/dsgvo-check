@@ -13,7 +13,7 @@ import {
 } from '../../core/api.ts';
 import type { BrowserSection, DomRegion, LinkFact, PageVisit } from '../../core/snapshot/browser.ts';
 import type { HttpHop, HttpSection, RedirectChain } from '../../core/snapshot/http.ts';
-import { browserAcceptsTls, hstsOf, isRedirect, isSuccess } from './shared.ts';
+import { browserAcceptsTls, hstsOf, isHttpStub, isRedirect, isSuccess } from './shared.ts';
 
 const ID = 'TLS-01';
 
@@ -132,6 +132,14 @@ function hstsOnTheWay(probe: RedirectChain): boolean {
   });
 }
 
+/** The hosts of the https answers on the way of the redirect, where a browser would have got HSTS; sorted. */
+function httpsHostsOnTheWay(probe: RedirectChain): string[] {
+  const hosts = probe.hops.flatMap((h) =>
+    h.url.startsWith('https:') ? (parseUrl(h.url)?.hostname.toLowerCase() ?? []) : [],
+  );
+  return [...new Set(hosts)].sort();
+}
+
 function linkedHostState(http: HttpSection, host: LinkedHost): LinkedHostState {
   const probe = probeOf(http, host);
   if (!probe) return 'not-probed';
@@ -147,7 +155,9 @@ function linkedHostState(http: HttpSection, host: LinkedHost): LinkedHostState {
     return hstsOnTheWay(probe) ? 'hsts' : 'upgraded';
   }
   if (probe.outcome !== 'ok' || isRedirect(last.status)) return 'unknown';
-  return isSuccess(last.status) ? 'served' : 'unknown';
+  if (!isSuccess(last.status)) return 'unknown';
+  // A stub at the root says nothing about the linked path, as for the entry of the host, unless it redirects itself.
+  return isHttpStub(last) && !last.clientRedirect ? 'unknown' : 'served';
 }
 
 /** The labels of the host below its registrable domain; `@` for the registrable domain itself. */
@@ -231,8 +241,13 @@ function hostObservation(http: HttpSection, host: LinkedHost): Observation | nul
     phases: ['A'],
     pages,
     evidence: [...(probe ? [chainEvidence(probe)] : []), ...linkEvidence(links)],
+    // The https answers checked for HSTS are those on the way of the redirect, which may lead to another host.
     params: upgraded
-      ? { ...params, location: probe?.hops[0]?.location ?? '' }
+      ? {
+          ...params,
+          location: probe?.hops[0]?.location ?? '',
+          hstsHost: (probe ? httpsHostsOnTheWay(probe) : []).join(', '),
+        }
       : { ...params, httpState: state },
   };
 }

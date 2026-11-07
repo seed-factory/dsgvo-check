@@ -113,9 +113,10 @@ const isHtml2xx = (d: DocumentRecord): boolean =>
 
 /**
  * The details of an Impressum observed without a link that names them: one block with at least `minGroups` kinds of
- * provider details. Any block of a page read for them (contact, intermediate or start page) counts; in the privacy
- * policy only a block headed with an Impressum label or one in the page chrome, because a policy lists the company
- * details of its processors too.
+ * provider details. Any block of a page read for them (contact, intermediate or start page) counts, but only a section
+ * headed with an Impressum label adds up its subsections: the heading of the page over its sections ("Kontakt" over
+ * "Anfahrt", "Team", "Buchhaltung") would add up unrelated text. In the privacy policy only a block headed with an
+ * Impressum label or one in the page chrome counts, because a policy lists the company details of its processors too.
  */
 function impressumDetails(env: Env): ImpressumDetails | null {
   const { documents, details, lex } = env;
@@ -130,7 +131,7 @@ function impressumDetails(env: Env): ImpressumDetails | null {
   const blocks: Block[] = [];
   for (const d of documents.candidates ?? []) {
     if (d.kind !== 'impressum' || !isHtml2xx(d) || blocked(d)) continue;
-    blocks.push(...blocksOf(d, details));
+    blocks.push(...blocksOf(d, details, (h) => isImpressumHeading(lex, h)));
   }
   for (const d of documents.documents) {
     if (d.kind !== 'privacy' || d.format !== 'html' || !usableDocument(d, documents.attempts)) continue;

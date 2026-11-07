@@ -66,9 +66,9 @@ describe('browser collector: settings', () => {
     });
   });
 
-  it('the built-in settings keep the request limit of 2000', async () => {
+  it('the built-in settings keep the request limit of 4000', async () => {
     const run = await collect(server, { maxPages: 1 });
 
-    expect(run.result.sections.browser?.requestCap.limit).toBe(2_000);
+    expect(run.result.sections.browser?.requestCap.limit).toBe(4_000);
   });
 });

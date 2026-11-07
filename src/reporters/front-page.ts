@@ -210,7 +210,8 @@ export type BannerState =
   | 'notRecognized'
   | 'notFound'
   | 'notVisible'
-  | 'dialogNotOpened';
+  | 'dialogNotOpened'
+  | 'dialogNotOpenedBot';
 
 /** CONSENT-04 variants of a banner that no adapter or heuristic could attribute. */
 const NOT_RECOGNIZED: ReadonlySet<string> = new Set(['banner-not-recognized', 'cmp-not-supported']);
@@ -225,12 +226,16 @@ const CANDIDATE_REASON = 'banner-candidate-unrecognized';
 /** The CMP's dialog was in the page but not opened for the scanner; nothing is known about what visitors see. */
 const NOT_OPENED_REASON = 'cmp-dialog-not-opened';
 
+/** The CMP kept its dialog closed because its own crawler test matched the scanner's User-Agent. */
+const BOT_USER_AGENT_REASON = 'cmp-bot-user-agent';
+
 /** Reasons of an inconclusive check that the banner sentence already explains. */
 const BANNER_REASONS: ReadonlySet<string> = new Set([
   ...NOT_RECOGNIZED,
   'first-layer-not-visible',
   CANDIDATE_REASON,
   NOT_OPENED_REASON,
+  BOT_USER_AGENT_REASON,
 ]);
 
 /**
@@ -248,6 +253,7 @@ export function bannerState(report: Report): BannerState | null {
   if (findings.length > 0) return 'firstLayerAmbiguous';
 
   const check = (report.checks ?? []).find((c) => c.id === 'CONSENT-04');
+  if (check?.status === 'inconclusive' && check.reason === BOT_USER_AGENT_REASON) return 'dialogNotOpenedBot';
   if (check?.status === 'inconclusive' && check.reason === NOT_OPENED_REASON) return 'dialogNotOpened';
   if (check?.status === 'completed') return 'recognized';
   if (check?.status === 'not_applicable' && check.reason === 'no-banner') return 'notFound';
@@ -257,13 +263,40 @@ export function bannerState(report: Report): BannerState | null {
 
 /**
  * The banner sentence: a dialog that stayed closed in the visit with the reject may have opened in the visit with
- * consent, where our accept was clicked; then only the reject is open.
+ * consent, where our accept was clicked; then only the reject is open. A dialog the CMP's crawler test kept closed
+ * names that test and the checks it left open, which the sentence explains instead of the list of open checks.
  */
 function bannerSentence(report: Report, banner: BannerState, tools: FrontPageTools): string {
   const accepted = (report.scan.coverage?.consentActions ?? []).some(
     (a) => a.action === 'accept' && a.clicked,
   );
-  return tools.label('overview.banner', { state: banner, accepted });
+  const test = crawlerTest(report);
+  const checks = (report.checks ?? [])
+    .filter((c) => c.status === 'inconclusive' && c.reason === BOT_USER_AGENT_REASON)
+    .map((c) => c.id)
+    .sort();
+  return tools.label('overview.banner', {
+    state: banner,
+    accepted,
+    hasTest: test !== null,
+    test: test ? tools.clean(test, 120) : null,
+    checks: checks.join(', '),
+  });
+}
+
+/** The name of the CMP's crawler test that kept its dialog closed, as the bot diagnostic of the checks gives it. */
+function crawlerTest(report: Report): string | null {
+  const params = (report.diagnostics ?? []).find((d) => d.code === 'SCAN-BOTMODE')?.params;
+  return params?.cause === 'user-agent' && typeof params.test === 'string' ? params.test : null;
+}
+
+/**
+ * The signals of bot or WAF protection the redirect target of a refused certificate answered with, as the diagnostic
+ * of the skipped browser checks lists them; null when it failed for another reason.
+ */
+function fallbackProtection(report: Report): string | null {
+  const params = (report.diagnostics ?? []).find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params;
+  return params?.fallback === 'bot-protection' && typeof params.signals === 'string' ? params.signals : null;
 }
 
 type CheckEntry = NonNullable<Report['checks']>[number];
@@ -333,6 +366,7 @@ function reasonOf(c: CheckEntry, tools: FrontPageTools): string {
 function openSentences(
   checks: readonly CheckEntry[],
   banner: BannerState | null,
+  protection: string | null,
   tools: FrontPageTools,
 ): string[] {
   const bannerExplains = banner !== null && banner !== 'recognized';
@@ -355,6 +389,8 @@ function openSentences(
         cause,
         hasReasons: reasons !== '',
         reasons,
+        protection: protection ? 'signal' : 'none',
+        signals: protection ? tools.clean(protection, 300) : null,
       }),
     ];
   });
@@ -479,7 +515,11 @@ function overviewSentences(
         : partly.length > 0
           ? 'ran'
           : 'complete';
-  sentences.push(tools.label('overview.scan', { state }), ...openSentences(open, banner, tools), ...partly);
+  sentences.push(
+    tools.label('overview.scan', { state }),
+    ...openSentences(open, banner, fallbackProtection(report), tools),
+    ...partly,
+  );
 
   if (banner) sentences.push(bannerSentence(report, banner, tools));
 
@@ -508,6 +548,7 @@ function serviceNotes(report: Report, rows: readonly Finding[], tools: FrontPage
   const notes = openSentences(
     checks.filter((c) => !partlyEvaluated(c, report)),
     banner,
+    fallbackProtection(report),
     tools,
   );
   if (banner && banner !== 'recognized') notes.push(bannerSentence(report, banner, tools));

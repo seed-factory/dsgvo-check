@@ -201,6 +201,38 @@ describe('locale prefixes and language versions', () => {
     expect(p.extras.map((e) => e.url)).toEqual([u('/ueber-uns/')]);
   });
 
+  it.each(['DE', 'Deutsch'])(
+    'a start page without a locale whose switch "%s" leads to /de/ of its own language keeps the /de/ sections',
+    (label) => {
+      const p = plan(
+        [
+          link({ raw: u('/de/'), text: label, region: 'header' }),
+          link({ raw: u('/en/'), text: 'EN', region: 'header' }),
+          link({ raw: u('/de/kontakt/'), text: 'Kontakt', region: 'nav' }),
+          link({ raw: u('/de/geschichte/'), text: 'Geschichte', region: 'nav' }),
+          link({ raw: u('/de/anfahrt/'), text: 'Anfahrt', region: 'nav' }),
+          link({ raw: u('/en/history/'), text: 'History', region: 'nav' }),
+          ...legal('/de'),
+        ],
+        { startLang: 'de-DE', sitemapLocs: [u('/de/team/')] },
+      );
+      expect(p.language.alternatePrefixes).toEqual(new Set(['en']));
+      expect(p.contact?.url).toBe(u('/de/kontakt/'));
+      expect(extrasOf(p)).toEqual([
+        [u('/de/anfahrt/'), ['keyword:anfahrt']],
+        [u('/de/geschichte/'), ['keyword:geschichte']],
+      ]);
+    },
+  );
+
+  it('counterexample: a region of the start language behind its switch stays another version', () => {
+    const ctx = languageContext({ raw: START, lang: 'de-DE' }, [
+      link({ raw: u('/de-at/'), text: 'DE-AT', region: 'header' }),
+      link({ raw: u('/de/'), text: 'DE', region: 'header' }),
+    ]);
+    expect(ctx.alternatePrefixes).toEqual(new Set(['de-at']));
+  });
+
   it('counterexample: without a locale on the start page, /it/ "IT-Service" is a section and stays eligible', () => {
     const p = plan([
       link({ raw: u('/it/'), text: 'IT-Service', region: 'nav' }),
@@ -425,6 +457,44 @@ describe('the extras budget follows --max-pages', () => {
       ]);
     },
   );
+
+  it.each<[string, string[], string | undefined, number]>([
+    ['with a contact page', [], u('/kontakt/'), 3],
+    ['without a contact page', ['/kontakt/', '/anfahrt/'], undefined, 4],
+  ])('a page both legal links lead to is one visit of the budget, %s', (_name, without, contact, extras) => {
+    const pages = MANY.filter(
+      (l) => !/\/(impressum|datenschutz)\/$/.test(l.raw) && !without.some((w) => l.raw === u(w)),
+    );
+    const p = plan([
+      ...pages,
+      link({ raw: u('/impressum-datenschutz/'), text: 'Impressum' }),
+      link({ raw: u('/impressum-datenschutz/'), text: 'Datenschutz' }),
+    ]);
+    expect(p.impressum.choice?.url).toBe(u('/impressum-datenschutz/'));
+    expect(p.privacy.choice?.url).toBe(u('/impressum-datenschutz/'));
+    expect(p.contact?.url).toBe(contact);
+    expect(p.extrasWanted).toBe(extras);
+    expect(p.extras).toHaveLength(extras);
+  });
+});
+
+describe('legal links of another language version', () => {
+  const links = [
+    link({ raw: u('/de/impressum/'), text: 'Impressum' }),
+    link({ raw: u('/en/privacy/'), text: 'Privacy Policy', hreflang: 'en' }),
+    link({ raw: u('/de/datenschutz/'), text: 'Datenschutz' }),
+  ];
+
+  it('the policy of the start page language is chosen before an English one linked first', () => {
+    const p = plan(links, { startRaw: u('/de/'), startLang: 'de' });
+    expect(p.privacy.choice?.url).toBe(u('/de/datenschutz/'));
+    expect(p.privacy.candidates?.map((c) => c.url)).toEqual([u('/de/datenschutz/'), u('/en/privacy/')]);
+  });
+
+  it('counterexample: an English policy that is the only privacy link is still chosen', () => {
+    const p = plan([links[0]!, links[1]!], { startRaw: u('/de/'), startLang: 'de' });
+    expect(p.privacy.choice?.url).toBe(u('/en/privacy/'));
+  });
 });
 
 describe('control-page signals', () => {

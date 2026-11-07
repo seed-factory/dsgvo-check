@@ -86,6 +86,21 @@ export function visitedPages(
   return out;
 }
 
+/**
+ * The page of a request. A request of a subframe belongs to the page its frame's document was loaded on: a player's
+ * beacon sent while the browser already navigates is recorded with the next page.
+ */
+export function pageIndex(browser: BrowserSection): (r: RequestRecord) => string {
+  const framePage = new Map<string, string>();
+  for (const p of browser.phases) {
+    for (const r of p.requests) {
+      if (r.isMainFrame || !r.frameId || r.resourceType !== 'document' || framePage.has(r.frameId)) continue;
+      framePage.set(r.frameId, r.pageUrl);
+    }
+  }
+  return (r) => (!r.isMainFrame && r.frameId ? framePage.get(r.frameId) : undefined) ?? r.pageUrl;
+}
+
 export function requestIndex(browser: BrowserSection): Map<string, RequestRecord> {
   const out = new Map<string, RequestRecord>();
   for (const p of browser.phases) for (const r of p.requests) out.set(r.id, r);

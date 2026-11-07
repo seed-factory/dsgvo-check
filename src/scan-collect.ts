@@ -18,6 +18,7 @@ import type {
 import type { RedirectChain } from './core/snapshot/http.ts';
 import {
   type BrowserEntry,
+  type CollectorError,
   type CollectorName,
   SECTION_PRODUCER,
   type Snapshot,
@@ -345,7 +346,7 @@ export async function collect(
   if (snapshot.dns && !state.fatal) {
     await runDnsFollowUp(snapshot, collectors.dnsFollowUp, ctx(), state, log, grace);
   }
-  // So are the pages with a form, whose http:// addresses TLS-01 reads.
+  // So are the pages with a form and the permalinks they link, whose http:// addresses TLS-01 reads.
   if (snapshot.http && snapshot.browser && !state.fatal) {
     await runFormTwins(snapshot, collectors.httpFormTwins, ctx(), state, log, grace);
   }
@@ -428,7 +429,12 @@ function endFailedAttempt(snapshot: Snapshot, state: CollectState): void {
   fallbackFailed(
     snapshot,
     fatal
-      ? { code: fatal.code, message: params.join('; ') || fatal.reason }
+      ? {
+          code: fatal.code,
+          message: params.join('; ') || fatal.reason,
+          // Kept as given, so the report can name what blocked the page there (`signals` of `start-page-blocked`).
+          ...(fatal.params ? { params: fatal.params } : {}),
+        }
       : {
           code: status?.error?.code ?? status?.reason ?? 'no-start-page',
           message: status?.error?.message ?? 'start page not visited',
@@ -438,7 +444,7 @@ function endFailedAttempt(snapshot: Snapshot, state: CollectState): void {
 }
 
 /** The browser checks did not run on the redirect target either; nothing the browser handed over is kept. */
-function fallbackFailed(snapshot: Snapshot, error: { code: string; message: string }): void {
+function fallbackFailed(snapshot: Snapshot, error: CollectorError): void {
   snapshot.collection.browser = {
     status: 'skipped',
     reason: TLS_FALLBACK_FAILED,
@@ -517,9 +523,10 @@ async function runDnsFollowUp(
 }
 
 /**
- * Requests the http:// addresses of the pages with a form and replaces the HTTP section with its extended copy. Like the
- * DNS follow-up it is no collector of its own in `collection`: a failure keeps the section and is noted in it, so TLS-01
- * says that the forms of further pages are unknown instead of reading their absence as clean.
+ * Requests the http:// addresses of the pages with a form and of the permalinks they link, and replaces the HTTP section
+ * with its extended copy. Like the DNS follow-up it is no collector of its own in `collection`: a failure keeps the
+ * section and is noted in it, so TLS-01 says that the forms of further pages are unknown instead of reading their
+ * absence as clean.
  */
 async function runFormTwins(
   snapshot: Snapshot,

@@ -185,11 +185,16 @@ export function languageContext(
   const base: LanguageContext = { rules, startLocale, startLanguage, alternatePrefixes: new Set() };
 
   // A start page without a locale prefix may still switch to `/en/…`: the sections behind that switch are the other
-  // language as well, even where their own label does not say so.
+  // language as well, even where their own label does not say so. Its switch to `/de/` of its own language leads to
+  // the same language: the sections there are its own (a region of it, `/de-at/`, stays another version).
+  const startTag = start.lang ? localeOf(start.lang, rules) : null;
+  const ownLocale = (locale: string) =>
+    startLocale === null && (locale === startLanguage || locale === startTag);
   const prefixes = new Set<string>();
   for (const l of links) {
     const locale = localeOf(pathSegments(l.raw)[0], rules);
-    if (locale !== null && locale !== startLocale && isLanguageAlternate(l, base)) prefixes.add(locale);
+    if (locale === null || locale === startLocale || ownLocale(locale)) continue;
+    if (isLanguageAlternate(l, base)) prefixes.add(locale);
   }
   return { ...base, alternatePrefixes: prefixes };
 }
@@ -357,12 +362,15 @@ function reasonOfLegal(x: LegalMatch): string {
 }
 
 // Best link per legal kind (start page and hop pages), with the navigable same-site candidates in rank order. A hidden
-// banner link to another registrable domain is the CMP vendor's policy, not the site's.
+// banner link to another registrable domain is the CMP vendor's policy, not the site's. A page an `alternate` link leads
+// to (another language version of the site, as `privacySupplements` tells them) ranks after every page of the start
+// page's language, so it is chosen only when the site links no other.
 export function findLegalLink(
   links: readonly CandidateLink[],
   kind: LegalKind,
   scope: Scope,
   lexicon: LegalLexicon = loadLegalLexicon(),
+  alternate: (l: AlternateCandidate) => boolean = () => false,
 ): LegalLinkResult {
   const considered = links.filter((l) => !(l.region === 'banner' && !l.visible && !sameSite(l.raw, scope)));
   // The page identity lets a weak key lose against an exact label of the other kind on another link to the same URL.
@@ -379,7 +387,8 @@ export function findLegalLink(
   if (matches.length === 0) return { kind, status: 'none' };
   matches.sort(rankLegal);
 
-  const usable = usableLegalMatches(matches, scope);
+  const versions = new Set(links.filter((l) => navigable(l) && alternate(l)).map((l) => pageKey(l.raw)));
+  const usable = usableLegalMatches(matches, scope, (key) => versions.has(key));
   const first = usable[0];
   if (first) {
     const alternatives = usable.slice(1, 1 + MAX_ALTERNATIVES).map((x) => `alt:${reasonOfLegal(x)}`);
@@ -402,8 +411,12 @@ export function findLegalLink(
   return { kind, status: 'unresolved', link: best.link };
 }
 
-/** Navigable same-site matches in rank order, one per page. */
-function usableLegalMatches(matches: readonly LegalMatch[], scope: Scope): LegalMatch[] {
+/** Navigable same-site matches in rank order, one per page; the pages `last` names come after the others. */
+function usableLegalMatches(
+  matches: readonly LegalMatch[],
+  scope: Scope,
+  last: (key: string) => boolean = () => false,
+): LegalMatch[] {
   const usable: LegalMatch[] = [];
   const seen = new Set<string>();
   for (const x of matches) {
@@ -413,7 +426,8 @@ function usableLegalMatches(matches: readonly LegalMatch[], scope: Scope): Legal
     seen.add(key);
     usable.push(x);
   }
-  return usable;
+  const later = (x: LegalMatch) => last(pageKey(x.link.raw));
+  return [...usable.filter((x) => !later(x)), ...usable.filter(later)];
 }
 
 interface NavPick {
@@ -476,8 +490,9 @@ export function selectPages(
     !rules.file.test(parse(l.raw)?.pathname ?? '') &&
     !excluded(l.raw, rules);
 
-  const impressum = findLegalLink(i.links, 'impressum', i, lexicon);
-  const privacy = findLegalLink(i.links, 'privacy', i, lexicon);
+  const alternate = (l: AlternateCandidate) => isLanguageAlternate(l, lang);
+  const impressum = findLegalLink(i.links, 'impressum', i, lexicon, alternate);
+  const privacy = findLegalLink(i.links, 'privacy', i, lexicon, alternate);
   for (const r of [impressum, privacy]) if (r.status === 'page' && r.choice) take(chosen, r.choice.raw);
 
   const c = bestNav(i.links, lexicon.contact, candidate);
@@ -488,11 +503,18 @@ export function selectPages(
   const hops = legalMissing ? pickHops(i, lexicon, MAX_HOP_GETS - (contact ? 1 : 0), chosen, candidate) : [];
 
   // The extras get what --max-pages leaves after the pages every scan visits: the start, contact and hop pages, and per
-  // legal kind its linked page or, without one, the probe of its conventional path. A PDF link is read without a visit.
-  const legalVisits = [impressum, privacy].filter((r) => r.status !== 'pdf').length;
-  const fixed = 1 + legalVisits + (contact ? 1 : 0) + hops.length;
+  // legal kind its linked page or, without one, the probe of its conventional path. A page both kinds link to is one
+  // visit; a PDF link is read without one.
+  const legalPages = new Set<string>();
+  let legalProbes = 0;
+  for (const r of [impressum, privacy]) {
+    if (r.status === 'pdf') continue;
+    if (r.status === 'page' && r.choice) legalPages.add(pageKey(r.choice.raw));
+    else legalProbes++;
+  }
+  const fixed = 1 + legalPages.size + legalProbes + (contact ? 1 : 0) + hops.length;
   const need = Math.max(0, i.maxPages - fixed);
-  const extras = pickExtras(i, rules, need, chosen, candidate, (l) => isLanguageAlternate(l, lang));
+  const extras = pickExtras(i, rules, need, chosen, candidate, alternate);
 
   return { impressum, privacy, contact, hops, extras, extrasWanted: need, language: lang };
 }

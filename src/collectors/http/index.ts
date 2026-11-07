@@ -2,7 +2,7 @@
 // the target, its www and apex; the start page and the legal pages it links (http runs before the browser plan exists);
 // meta / JS redirect and form heuristics. With an explicit port the start document and reachability come from exactly
 // that origin. A final host outside target/www/apex gets TLS handshakes (`finalTls`). The http:// addresses of further
-// pages with a form are requested after the browser (form-twins.ts).
+// pages with a form and of the permalinks phase A saw are requested after the browser (form-twins.ts).
 
 import { BLOCKED_DOCUMENT, startFinalHost } from '../../checks/http/shared.ts';
 import { storedHeaderRecord } from '../../core/redaction/headers.ts';

@@ -4,27 +4,33 @@
 # Matching: a sentence is normalised like PRIV-01 (NFKC, lower case, ä→ae ö→oe ü→ue ß→ss, everything that is not a
 # letter or digit becomes a space) and split into words. A phrase matches where its words follow each other; a word
 # ending in `*` may continue ("server*" matches "servern"). A pattern is a list of phrases that must all occur in the
-# sentence, in any order. Phrases are written in lower case, umlauts allowed, words separated by one space.
+# sentence, in any order; an entry that is itself a list holds phrases of which one must occur. Phrases are written in
+# lower case, umlauts allowed, words separated by one space.
 # The German and the English words apply to every sentence: the `lang` attribute of a page is not reliable.
 #
 # Per kind:
 #   scope         `unconditional`: the statement holds at any time, so every load of the service from the site's own
 #                 frames contradicts it; `until-consent`: it holds until consent, so only loads before an interaction
-#                 and after a confirmed reject do
+#                 and after a confirmed reject do. PRIV-02 holds `no-connection` about a map or a video until consent:
+#                 such an embed shows nothing without its connection
 #   categories    catalog categories the statement can be about; a sentence naming a service of another category is
 #                 no statement of this kind
 #   patterns      the statement itself (one pattern of the list is enough)
-#   reversals     phrases that turn the statement around in the same sentence ("nicht lokal"): no statement; so does
-#                 a word of `negations` up to three words before a pattern that holds no negation itself ("are not
-#                 installed locally")
+#   reversals     phrases before or among the words of the statement that turn it around ("nicht lokal"): no
+#                 statement, unless a word of `negationEnds` stands between ("nicht auf dem Server von Google, sondern
+#                 lokal"); so does a word of `negations` up to three words before a pattern that holds no negation
+#                 itself ("are not installed locally")
 #   hedges        phrases that make the sentence a condition or a possibility ("sofern", "kann"): not evaluated
+#   limits        phrases that restrict a statement to some services, pages or another time ("einige", "früher"):
+#                 not evaluated; unlike a hedge they leave a disclosure in the same sentence one (optional)
 #   disclosures   sentences that describe the connection of the same service to an outside source (see `external`),
-#                 without a hedge and without a negation up to three words around the matched words; next to the
-#                 statement the same document then describes both variants, which is reported for manual review. A
-#                 sentence that states a statement and also describes it so holds both variants: not evaluated, and
-#                 it counts as a disclosure; one that denies the connection ("keine Verbindung") describes none
+#                 without a hedge, without a negation up to three words around the matched words and outside the words
+#                 of a statement ("von unserem eigenen Server geladen"); next to the statement the same document then
+#                 describes both variants, which is reported for manual review. A sentence that states a statement
+#                 and also describes it so holds both variants: not evaluated, and it counts as a disclosure; one that
+#                 denies the connection ("keine Verbindung") describes none
 claims:
-  version: "2026.11.1"
+  version: "2026.11.2"
 
   # Abbreviations whose dot ends no sentence (a single letter, "z. B.", and a number of up to three digits, "5.",
   # never end one either).
@@ -177,14 +183,19 @@ claims:
           - [von unseren server*, geladen]
           - [selbst gehostet*]
           - [self hosted]
+        # "nicht auf dem eigenen Webserver lokal installiert" and "Es ist nicht so, dass …" put the negation further
+        # away than the negation window.
         reversals:
           [
             nicht lokal,
             nicht mehr lokal,
             nicht auf unserem,
             nicht auf unseren,
+            nicht auf dem,
+            nicht auf einem,
             nicht von unserem,
             nicht von unseren,
+            nicht so dass,
             statt lokal,
             anstatt lokal,
             nicht selbst gehostet*,
@@ -216,6 +227,22 @@ claims:
             dennoch,
             trotzdem,
           ]
+        # Some fonts, some pages, a time other than now: no statement about the site as it was scanned.
+        limits:
+          [
+            einig*,
+            manche,
+            andere,
+            weitere,
+            außer,
+            mit ausnahme,
+            ausgenommen,
+            früher,
+            künftig,
+            zukünftig,
+            demnächst,
+            ob,
+          ]
         disclosures:
           - [browser, lädt]
           - [verbindung, server* von]
@@ -223,6 +250,8 @@ claims:
           - [ip adresse, übertragen]
           - [ip adresse, übermittelt]
           - [kenntnis, ip adresse]
+          - [server*, geladen]
+          - [server*, laden]
       en:
         patterns:
           - [hosted locally]
@@ -235,7 +264,15 @@ claims:
           - [on our own server*]
           - [from our server*, load*]
         reversals:
-          [not hosted locally, not locally, no longer hosted locally, not self hosted, instead of locally]
+          [
+            not hosted locally,
+            not locally,
+            no longer hosted locally,
+            not self hosted,
+            instead of locally,
+            not on the,
+            it is not the case,
+          ]
         hedges:
           [
             if,
@@ -257,6 +294,7 @@ claims:
             but,
             nevertheless,
           ]
+        limits: [some, other, except, previously, formerly, in future, in the future, whether]
         disclosures:
           - [browser, loads]
           - [connect*, server* of]
@@ -277,7 +315,8 @@ claims:
           - [keine daten, übermittelt]
           - [keine personenbezogenen daten, übertragen]
           - [keine personenbezogenen daten, übermittelt]
-        reversals: []
+        # Data "an uns" is no connection to the service.
+        reversals: [an uns]
         hedges:
           [
             sofern,
@@ -307,7 +346,12 @@ claims:
             ohne deine,
             vor ihrer,
             vor deiner,
+            vorher,
+            zunächst,
+            standardmäßig,
           ]
+        # What the provider says, or only data of a kind whose scope is a legal question.
+        limits: [laut, nach angaben, identifizierung]
         disclosures:
           - [browser, lädt]
           - [verbindung, server* von]
@@ -315,6 +359,8 @@ claims:
           - [ip adresse, übertragen]
           - [ip adresse, übermittelt]
           - [kenntnis, ip adresse]
+          - [server*, geladen]
+          - [server*, laden]
       en:
         patterns:
           - [no connection]
@@ -325,7 +371,7 @@ claims:
           - [no data, transmitted]
           - [no data, sent to]
           - [no personal data, transmitted]
-        reversals: []
+        reversals: [to us]
         hedges:
           [
             if,
@@ -346,7 +392,11 @@ claims:
             however,
             but,
             nevertheless,
+            beforehand,
+            initially,
+            by default,
           ]
+        limits: [according to, identif*]
         disclosures:
           - [browser, loads]
           - [connect*, server* of]
@@ -360,15 +410,54 @@ claims:
         patterns:
           - [erst, nach ihrer einwilligung, geladen]
           - [erst, nach ihrer zustimmung, geladen]
-          - [erst, wenn sie, zustimm*]
-          - [erst, wenn sie, zugestimmt]
-          - [erst, wenn sie, einwillig*]
-          - [erst, wenn sie, eingewilligt]
-          - [erst, wenn sie, klicken]
-          - [erst, sobald sie, zustimm*]
-          - [erst, sobald sie, einwillig*]
-          - [erst, sobald sie, klick*]
-          - [erst nach einem klick]
+          # Consent or a click alone is no statement about loading: "Cookies werden erst gesetzt, wenn Sie zustimmen",
+          # "Die Wiedergabe startet erst, wenn Sie klicken".
+          - [
+              erst,
+              wenn sie,
+              [zustimm*, zugestimmt, einwillig*, eingewilligt, klicken],
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
+          - [
+              erst,
+              sobald sie,
+              [zustimm*, einwillig*, klick*],
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
+          - [
+              erst nach einem klick,
+              [
+                geladen,
+                nachgeladen,
+                lädt,
+                laden,
+                eingebunden,
+                eingebettet,
+                verbindung,
+                übertragen,
+                übermittelt,
+              ],
+            ]
           - [bis sie, zustimm*, keine verbindung]
           - [ohne ihre einwilligung, keine verbindung]
           - [ohne ihre einwilligung, nicht geladen]
@@ -382,9 +471,8 @@ claims:
       en:
         patterns:
           - [only, after, your consent, load*]
-          - [only once you, consent*]
-          - [only when you, consent*]
-          - [only, after you, click*]
+          - [[only once you, only when you], consent*, [load*, connect*, embedded, transmitted, transferred]]
+          - [only, after you, click*, [load*, connect*, embedded, transmitted, transferred]]
           - [two click*]
           - [without your consent, no connection]
           - [not loaded, without your consent]

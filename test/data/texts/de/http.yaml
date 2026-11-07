@@ -59,17 +59,22 @@ messages:
       ungültigen Zertifikat erreichbar} other {nicht nutzbar}}. Seitenaufrufe und Eingaben werden damit
       unverschlüsselt übertragen. Empfehlung: ein gültiges Zertifikat einrichten und http dauerhaft (301 oder 308)
       auf https umleiten.
-  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends.
+  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends;
+  # `permalinks` of them are the http addresses of posts the visited pages link as permalinks (absent in older reports).
   TLS-01.form-on-http-page:
     title: "Formular auf einer http-Seite"
     body: >-
       {count, plural, one {Auf {url} wurde ein Formular beobachtet, das über unverschlüsseltes http ausgeliefert
       wird} other {Auf # Seiten, die über unverschlüsseltes http ausgeliefert werden, wurden Formulare beobachtet,
       zuerst auf {url}}}{downgrade, select, yes { (die Weiterleitung führt über https zurück auf http)} other
-      {}}.{hasAction, select, yes { {count, plural, one {Es sendet} other {Das erste sendet}} seine Eingaben an
-      {action}.} other {}} {count, plural, one {Das Formular wurde} other {Die Formulare wurden}} nicht ausgefüllt
-      oder abgesendet. Eingaben können so unverschlüsselt übertragen werden. Empfehlung: die Seite nur über https
-      ausliefern und http auf https umleiten.
+      {}}.{permalinks, plural, =0 {} one { {count, plural, one {Die Seite} other {Eine dieser Seiten}} wurde als
+      http-Adresse eines Beitrags oder Artikels abgefragt, den die besuchten Seiten als Permalink (rel="bookmark")
+      verlinken; der Browser hat sie nicht besucht.} other { # dieser Seiten wurden als http-Adressen von Beiträgen
+      oder Artikeln abgefragt, die die besuchten Seiten als Permalink (rel="bookmark") verlinken; der Browser hat sie
+      nicht besucht.}}{hasAction, select, yes { {count, plural, one {Es sendet} other {Das erste sendet}} seine
+      Eingaben an {action}.} other {}} {count, plural, one {Das Formular wurde} other {Die Formulare wurden}} nicht
+      ausgefüllt oder abgesendet. Eingaben können so unverschlüsselt übertragen werden. Empfehlung: die Seite nur über
+      https ausliefern und http auf https umleiten.
   TLS-01.no-redirect:
     title: "Keine Umleitung von http auf https"
     body: >-
@@ -116,7 +121,8 @@ messages:
       steht im Bereich des Einwilligungsbanners} other {}}} other {}}. Ein Klick darauf fordert die Seite zunächst
       über unverschlüsseltes http an; {host} leitet dann auf {location} um. Ein wirksamer
       Strict-Transport-Security-Header (HSTS), mit dem Browser spätere Aufrufe gleich über https senden, wurde in den
-      https-Antworten von {host} nicht gefunden. Empfehlung: den Link auf https umstellen.
+      https-Antworten von {hstsHost} auf dem Weg der Umleitung nicht gefunden. Empfehlung: den Link auf https
+      umstellen.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Zertifikat von {host} nicht gültig"
@@ -235,7 +241,7 @@ actions:
   TLS-01.internal-http-link:
     text: "Stellen Sie Links auf eigene Seiten auf https oder relative Adressen um und leiten Sie http dauerhaft auf https um."
   TLS-01.internal-http-link-upgraded:
-    text: "Stellen Sie die Links auf https um und senden Sie auf dem verlinkten Host den Header Strict-Transport-Security."
+    text: "Stellen Sie die Links auf https um und senden Sie auf {hstsHost} den Header Strict-Transport-Security."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Erneuern Sie das Zertifikat und prüfen Sie, ob die automatische Verlängerung

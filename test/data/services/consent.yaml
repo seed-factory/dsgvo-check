@@ -45,7 +45,7 @@ services:
         stage: loaded
       - id: self-hosted-api
         anyHost: true
-        path: "/public/(widget|cron|page_check/report)$"
+        path: "/public/(widget|cron|page_check/report|statistics/consent)$"
         query: { apiKey: "", domain: "" }
         kind: resource
       - id: self-hosted-icon

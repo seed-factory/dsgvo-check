@@ -96,6 +96,11 @@ export interface LinkFact {
   frameUrl?: SanitizedUrl;
   sameSite?: boolean;
   rel?: string;
+  /**
+   * `rel` names the HTML link type `bookmark`: the href is the permalink of the nearest article (a blog post, a news
+   * item). Absent otherwise and in older snapshots.
+   */
+  permalink?: true;
 }
 
 export interface FormFact {
@@ -198,7 +203,10 @@ export interface RevealFacts {
   documentHeightPx: number | null;
   /** Height the viewport was set to: the document height, at most `browser.revealMaxHeightPx`. */
   viewportHeightPx?: number;
-  /** The document was taller than the largest viewport allowed: its lower part stayed below it. */
+  /**
+   * Its lower part stayed below the viewport: the document was taller than the largest viewport allowed, or it grew
+   * with the enlarged viewport (a section sized in viewport units) or with what loaded.
+   */
   capped?: true;
   /** Quiet window reached before the end of the stay. */
   quietReached?: boolean;

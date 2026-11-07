@@ -46,8 +46,12 @@ const maskedAddress = (m: string) => `${REDACTED}@${m.slice(m.lastIndexOf('@') +
  */
 const BLANK = String.raw`[\s\p{Z}]`;
 const OBFUSCATED_AT = `${BLANK}{0,3}(?:\\(${BLANK}{0,2}at${BLANK}{0,2}\\)|\\[${BLANK}{0,2}at${BLANK}{0,2}\\])${BLANK}{0,3}`;
+/** No mailbox domain starts with `www.`: "1010 Wien (AT) www.example.at" names a country and a website. */
+const OBFUSCATED_DOMAIN = `(?!www\\.)${EMAIL_DOMAIN}`;
 const obfuscatedSource = (extraBorder: string) =>
-  `(?:${QUOTED_LOCAL}|${localChar(extraBorder)}{1,64})${OBFUSCATED_AT}(${EMAIL_DOMAIN})`;
+  `(?:${QUOTED_LOCAL}|${localChar(extraBorder)}{1,64})${OBFUSCATED_AT}(${OBFUSCATED_DOMAIN})`;
+/** An address in the `(at)` or `[at]` form, without a capture group, for a pattern of its own (a `mailto:` value). */
+export const OBFUSCATED_ADDRESS = `(?:${QUOTED_LOCAL}|${localChar('')}{1,64})${OBFUSCATED_AT}${OBFUSCATED_DOMAIN}`;
 const OBFUSCATED_RE = new RegExp(obfuscatedSource(''), 'giu');
 const OBFUSCATED_IN_URL_RE = new RegExp(obfuscatedSource(LOCAL_URL_STRUCTURE), 'giu');
 const MAY_BE_OBFUSCATED = /[([][\s\p{Z}]{0,2}at[\s\p{Z}]{0,2}[)\]]/iu;
@@ -55,6 +59,11 @@ const MAY_BE_OBFUSCATED = /[([][\s\p{Z}]{0,2}at[\s\p{Z}]{0,2}[)\]]/iu;
 function maskObfuscated(text: string, re: RegExp): string {
   if (!MAY_BE_OBFUSCATED.test(text)) return text;
   return text.replace(re, (_m, domain: string) => `${REDACTED}@${domain.toLowerCase()}`);
+}
+
+/** Only the addresses in the `(at)` and `[at]` forms → `[redacted]@domain`. */
+export function maskObfuscatedEmails(text: string): string {
+  return maskObfuscated(text, OBFUSCATED_RE);
 }
 
 /** Cheap pre-check before the masks: an `@` or an `(at)` / `[at]` marker. */

@@ -1,7 +1,7 @@
 /** Pure helpers shared by HDR-01, TLS-01 and TLS-02 (no I/O); the HTTP collector uses them too. */
 
 import type { HeaderRecord } from '../../core/api.ts';
-import type { HttpSection } from '../../core/snapshot/http.ts';
+import type { HttpHop, HttpSection } from '../../core/snapshot/http.ts';
 
 /** What a Node `authorizationError` means for a visitor. */
 export type TlsProblem =
@@ -50,14 +50,19 @@ export function headerValues(headers: readonly HeaderRecord[], name: string): st
   return headers.filter((h) => h.name.toLowerCase() === n).map((h) => h.value);
 }
 
+/** Directives whose repetition makes a browser drop the header; it ignores directives it does not know (`preload`). */
+const HSTS_DIRECTIVES: ReadonlySet<string> = new Set(['max-age', 'includesubdomains']);
+
 /** RFC 6797 §6.1: `max-age` is required and each directive appears once; the UA uses only the first header. */
 function parseHsts(value: string): { ok: true; maxAge: number } | { ok: false; problem: string } {
   const directives = value
     .split(';')
     .map((d) => d.trim())
     .filter(Boolean);
-  // Browsers drop a header that repeats a directive, so its first max-age protects nothing.
-  const names = directives.map((d) => (d.split('=')[0] ?? '').trim().toLowerCase());
+  // Chromium and Firefox drop a header that repeats max-age or includeSubDomains, so its first max-age protects nothing.
+  const names = directives
+    .map((d) => (d.split('=')[0] ?? '').trim().toLowerCase())
+    .filter((n) => HSTS_DIRECTIVES.has(n));
   if (new Set(names).size !== names.length) return { ok: false, problem: 'repeated-directive' };
   const maxAge = directives.find((d) => /^max-age\s*=/i.test(d));
   const m = maxAge ? /^max-age\s*=\s*"?(\d+)"?$/i.exec(maxAge) : null;
@@ -72,6 +77,14 @@ export function hstsOf(headers: readonly HeaderRecord[]): ReturnType<typeof pars
   const hsts = headerValues(headers, 'strict-transport-security')[0];
   if (hsts === undefined) return null;
   return parseHsts(hsts.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)[0] ?? '');
+}
+
+/** A page of at most this size is a stub (parking page, redirect stub), not content served over http. */
+const STUB_BYTES = 1024;
+
+/** The answer is a stub read whole: it serves no content of the site. */
+export function isHttpStub(hop: Pick<HttpHop, 'bodyTruncated' | 'bodyBytes'>): boolean {
+  return !hop.bodyTruncated && (hop.bodyBytes ?? 0) <= STUB_BYTES;
 }
 
 export function isSuccess(status: number | null | undefined): boolean {

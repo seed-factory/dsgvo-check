@@ -244,6 +244,13 @@ describe('URL matching', () => {
       'ccm19',
       'self-hosted-api',
     ],
+    // The consent statistics the widget posts to its own install.
+    [
+      'https://consent.agency.example/cmp/public/statistics/consent?apiKey=[redacted]&domain=[redacted]&gen=[redacted]',
+      'ccm19',
+      'self-hosted-api',
+    ],
+    ['https://consent.agency.example/cmp/public/statistics/consent', null, null],
     ['https://cdn.example-unknown.net/public/app.js', null, null],
     // Site builder, booking, chat and translation widgets.
     ['https://static.parastorage.com/services/wix-thunderbolt/dist/main.js', 'wix', null],

@@ -32,7 +32,7 @@ describe('built-in defaults', () => {
     ['browser', 'phaseBHardCapMs', 12_000],
     ['browser', 'phaseCMinDwellMs', 4_000],
     ['browser', 'phaseCHardCapMs', 12_000],
-    ['browser', 'requestLimit', 2_000],
+    ['browser', 'requestLimit', 4_000],
     ['browser', 'screenshotMaxBytes', 200 * 1024],
     ['browser', 'screenshotMaxViewportShare', 0.5],
     ['browser', 'sourceFetchTimeoutMs', 8_000],

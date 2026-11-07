@@ -18,6 +18,7 @@ import {
   unchangedDeniedAfterAccept,
   versionFromUrl,
 } from '../detection.ts';
+import { geometrySignature } from '../geometry.ts';
 import { loadLexicon } from '../lexicon-file.ts';
 import { cmpDetectProbe, type DetectArgs, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
 import { type BannerSpec, measureBanner } from '../page/measure.ts';
@@ -235,6 +236,9 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     get rejectsViaSettings() {
       return data().settingsLayer !== undefined;
     },
+    get dialogBotUserAgent() {
+      return data().dialogBotUserAgent;
+    },
 
     async detect(page): Promise<CmpDetection | null> {
       const vendor = data();
@@ -430,14 +434,32 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
       switches: layer.groups,
     };
     const measure = () => measureBanner(page, spec, lexicon);
-    const shown = await waitUntil(async () => {
-      const m = (await measure()).firstLayer;
-      return m.bannerVisible && m.containerAnimating !== true;
+    // Shown = visible, no animation running, at least one control rendered, and the same boxes in two readings in a
+    // row. Some vendors show the layer's overlay at once and start fading its panel in only a moment later: a reading
+    // in between finds the container visible but every control inside it still transparent.
+    const seen: { previous: string | null; last: Awaited<ReturnType<typeof measure>> | null } = {
+      previous: null,
+      last: null,
+    };
+    const settled = await waitUntil(async () => {
+      const m = await measure();
+      seen.last = m;
+      const layerNow = m.firstLayer;
+      const ready =
+        layerNow.bannerVisible &&
+        layerNow.containerAnimating !== true &&
+        layerNow.buttons.some((b) => b.box !== null);
+      const signature = ready ? geometrySignature(layerNow) : null;
+      const still = signature !== null && signature === seen.previous;
+      seen.previous = signature;
+      return still;
     }, timeoutMs);
-    if (!shown) return closed();
+    // A layer that showed but never settled is read as it was last measured; its controls decide on their own whether
+    // anything can be saved.
+    const measured = seen.last;
+    if (!measured || (!settled && !measured.firstLayer.bannerVisible)) return closed();
 
     // One measurement for the controls and the switches: both come from the container the probe chose.
-    const measured = await measure();
     const first = measured.firstLayer;
     return {
       takenAt: new Date().toISOString(),

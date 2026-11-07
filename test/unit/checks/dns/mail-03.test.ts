@@ -189,6 +189,16 @@ describe('MAIL-03: unknown answers never become a missing key', () => {
     expect(variantsOf(r)).toEqual([]);
   });
 
+  it.each(['v=DKIM1.0; k=rsa; p=AAAA', 'v="DKIM1"; k=rsa; p=AAAA'])(
+    'a key record "%s" at the operator selector is an unreadable key, not a missing one: inconclusive',
+    (txt) => {
+      const own = plan('example.de', [['s1', 'operator']]);
+      const r = run({ ...mail('example.de', false), ...selectors(own, { s1: [txt] }) }, own);
+      expect(r).toMatchObject({ status: 'inconclusive', reason: 'key-unparsable' });
+      expect(variantsOf(r)).toEqual([]);
+    },
+  );
+
   it('an unparsable key on a common name keeps the given selectors open: inconclusive, no warning', () => {
     const r = run(
       { ...mail('example.de', true), ...selectors(SITE_M365, { dkim: ['v=DKIM1; k=rsa; p=AAAA'] }) },

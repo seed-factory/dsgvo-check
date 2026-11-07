@@ -60,7 +60,7 @@ describe('scan with the browser collector', () => {
           ['https://www.example.test/kontakt/', 'contact', true, true, true],
         ]),
       );
-      expect(coverage?.browserRequests?.limit).toBe(2000);
+      expect(coverage?.browserRequests?.limit).toBe(4000);
     });
 
     it('shows the browser environment and the final URL', () => {

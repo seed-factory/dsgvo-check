@@ -3,7 +3,8 @@
  * ≤ 1 KiB gives no finding, a timeout is inconclusive. When the browser ran, same-site links of phase A that ask for
  * `http://` are reported per linked host (tls-01-links.ts); without the browser the http entries are evaluated alone.
  * A form on a page served over http counts on the entries, on linked legal documents that ended on http and on the
- * http:// addresses of pages with a form that the scan requested after the browser (`http.twins`).
+ * http:// addresses the scan requested after the browser (`http.twins`): of pages with a form, and of the permalinks of
+ * posts and articles the visited pages link.
  */
 
 import {
@@ -22,12 +23,17 @@ import type {
   HttpTwin,
   RedirectChain,
 } from '../../core/snapshot/http.ts';
-import { BLOCKED_DOCUMENT, browserAcceptsTls, isRedirect, isSuccess, startFinalHost } from './shared.ts';
+import {
+  BLOCKED_DOCUMENT,
+  browserAcceptsTls,
+  isHttpStub,
+  isRedirect,
+  isSuccess,
+  startFinalHost,
+} from './shared.ts';
 import { evaluateHttpLinks } from './tls-01-links.ts';
 
 const ID = 'TLS-01';
-/** A page of at most this size is a stub (parking page, redirect stub), not content served over http. */
-const STUB_BYTES = 1024;
 const HOST_VARIANTS: readonly HostVariant[] = ['target', 'www', 'apex'];
 
 /** A closed port or an unknown host serves nothing over http: there is nothing to evaluate. */
@@ -77,6 +83,8 @@ interface FormPage {
   /** Where its first form sends; empty when unknown (an http(s) action not found, or an older snapshot). */
   action: string;
   downgrade: 'yes' | 'no';
+  /** The http:// address of a permalink the visited pages link: the browser did not visit the page. */
+  permalink: boolean;
   /** Evidence beside the page itself (the redirect chain of an entry). */
   evidence: EvidenceInput[];
 }
@@ -209,6 +217,7 @@ function judgeChainEndingOnHttp(
       status: last.status,
       host: http.host,
       downgrade,
+      permalink: false,
       evidence: [chainEvidence(http)],
     }),
   ];
@@ -228,8 +237,7 @@ function judgeChainEndingOnHttp(
     );
     return { ...noVerdict(), observations, forms };
   }
-  if (!last.bodyTruncated && (last.bodyBytes ?? 0) <= STUB_BYTES)
-    return { ...noVerdict(), observations, forms };
+  if (isHttpStub(last)) return { ...noVerdict(), observations, forms };
 
   const state = httpsStateOfHost(https, hops);
   if (state === 'unknown')
@@ -282,13 +290,15 @@ function documentForms(doc: DocumentResponse): FormResult {
     status: doc.status,
     host: hostOf(doc.finalUrl),
     downgrade: 'no',
+    permalink: false,
     evidence: [],
   });
 }
 
 /**
- * The http:// address of a page with a form, requested once without following a redirect. A redirect to https serves
- * no form over http; a failed request, a challenge, a redirect to another http address or a server error leaves it open.
+ * The http:// address of a page with a form or of a permalink, requested once without following a redirect. A redirect
+ * to https serves no form over http; a failed request, a challenge, a redirect to another http address or a server
+ * error leaves it open.
  */
 function twinForms(twin: HttpTwin): FormResult {
   const open: FormResult = { limitation: `http-form-twin-undecided:${twin.page}` };
@@ -302,6 +312,7 @@ function twinForms(twin: HttpTwin): FormResult {
     status: hop.status,
     host: hostOf(hop.url),
     downgrade: 'no',
+    permalink: twin.source === 'permalink',
     evidence: [],
   });
 }
@@ -335,7 +346,7 @@ function formObservations(forms: readonly FormPage[], finalHost: string): Observ
           phase: 'http',
           url: p.page,
           status: p.status,
-          role: 'http-form',
+          role: p.permalink ? 'http-form-permalink' : 'http-form',
           ...(p.action ? { formAction: p.action } : {}),
         },
         ...p.evidence,
@@ -347,12 +358,16 @@ function formObservations(forms: readonly FormPage[], finalHost: string): Observ
         hasAction: first.action ? 'yes' : 'no',
         count: pages.length,
         downgrade: first.downgrade,
+        permalinks: pages.filter((p) => p.permalink).length,
       },
     };
   });
 }
 
-/** Whether the step after the browser saw all pages with a form it could request. */
+/**
+ * Whether the step after the browser saw all pages with a form it could request. Permalinks over the budget are not
+ * known to carry a form, like the pages phase A did not visit: they leave the result complete.
+ */
 function twinStageLimitations(http: HttpSection): string[] {
   const stage = http.formTwinStage;
   if (!stage) return [];

@@ -62,16 +62,20 @@ messages:
       unavailable {not reachable} invalid {only reachable with an invalid certificate} other {not usable}}. Page
       views and inputs are therefore transmitted unencrypted. Recommendation: install a valid certificate and
       redirect http permanently (301 or 308) to https.
-  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends.
+  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends;
+  # `permalinks` of them are the http addresses of posts the visited pages link as permalinks (absent in older reports).
   TLS-01.form-on-http-page:
     title: "Form on an http page"
     body: >-
       {count, plural, one {A form served via unencrypted http was observed on {url}} other {Forms were observed on #
       pages served via unencrypted http, first on {url}}}{downgrade, select, yes { (the redirect leads via https back
-      to http)} other {}}.{hasAction, select, yes { {count, plural, one {It sends} other {The first one sends}} its
-      input to {action}.} other {}} {count, plural, one {The form was} other {The forms were}} not filled in or
-      submitted. Inputs may be transmitted unencrypted. Recommendation: serve the page via https only and redirect
-      http to https.
+      to http)} other {}}.{permalinks, plural, =0 {} one { {count, plural, one {The page} other {One of these pages}}
+      was requested as the http address of a post or article that the visited pages link as its permalink
+      (rel="bookmark"); the browser did not visit it.} other { # of these pages were requested as the http addresses
+      of posts or articles that the visited pages link as their permalinks (rel="bookmark"); the browser did not visit
+      them.}}{hasAction, select, yes { {count, plural, one {It sends} other {The first one sends}} its input to
+      {action}.} other {}} {count, plural, one {The form was} other {The forms were}} not filled in or submitted.
+      Inputs may be transmitted unencrypted. Recommendation: serve the page via https only and redirect http to https.
   TLS-01.no-redirect:
     title: "No redirect from http to https"
     body: >-
@@ -116,8 +120,8 @@ messages:
       select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
       banner area} other {}}} other {}}. Clicking it first requests the page over unencrypted http; {host} then
       redirects to {location}. An effective Strict-Transport-Security header (HSTS), with which browsers send later
-      requests over https right away, was not found in the https responses of {host}. Recommendation: change the
-      link to https.
+      requests over https right away, was not found in the https responses of {hstsHost} on the redirect path.
+      Recommendation: change the link to https.
   # TLS-02
   TLS-02.certificate-invalid:
     title: "Certificate of {host} not valid"
@@ -234,7 +238,7 @@ actions:
   TLS-01.internal-http-link:
     text: "Change links to your own pages to https or relative addresses and redirect http permanently to https."
   TLS-01.internal-http-link-upgraded:
-    text: "Change the links to https and send the Strict-Transport-Security header on the linked host."
+    text: "Change the links to https and send the Strict-Transport-Security header on {hstsHost}."
   TLS-02.certificate-invalid:
     text: >-
       {reason, select, expired {Renew the certificate and check that automatic renewal works.} not-yet-valid

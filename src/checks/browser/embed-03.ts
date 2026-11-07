@@ -14,6 +14,7 @@ import { type BannerState, bannerState, consentSignals, signalOutcome } from './
 import {
   hasPhaseA,
   noPhaseAReason,
+  pageIndex,
   phaseRecord,
   requestIndex,
   revealCapped,
@@ -51,21 +52,6 @@ function ownerOf(c: ClassifiedRequest, derived: DerivedSection): string | null {
   if (c.category !== 'video' || !c.serviceId) return null;
   const frame = c.frameServiceId;
   return frame && categoryOf(derived, frame) === 'video' ? frame : c.serviceId;
-}
-
-/**
- * The page of a request. A request of a subframe belongs to the page its frame's document was loaded on: a player's
- * beacon sent while the browser already navigates is recorded with the next page.
- */
-function pageIndex(browser: BrowserSection): (r: RequestRecord) => string {
-  const framePage = new Map<string, string>();
-  for (const p of browser.phases) {
-    for (const r of p.requests) {
-      if (r.isMainFrame || !r.frameId || r.resourceType !== 'document' || framePage.has(r.frameId)) continue;
-      framePage.set(r.frameId, r.pageUrl);
-    }
-  }
-  return (r) => (!r.isMainFrame && r.frameId ? framePage.get(r.frameId) : undefined) ?? r.pageUrl;
 }
 
 /** Third-party video requests that were delivered before the accept, per embed. */

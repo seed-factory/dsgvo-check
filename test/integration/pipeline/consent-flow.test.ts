@@ -1,14 +1,17 @@
 /**
  * All browser-side modules together: real browser collector and CMP subsystem, derive, browser checks, assess/gate and
- * reporters on hand-written shops with the Cookiebot, the Wix, the Shopware and the cookieman simulator. Variants:
- * consent respected, tracker before consent, blocking banner, a first layer without a reject, a reject the CMP state
- * confirms or cannot confirm, control pages on another host the answer of the start page does or does not reach.
+ * reporters on hand-written shops with the Cookiebot, the Wix, the Shopware and the cookieman simulator, and on the
+ * CCM19 simulator. Variants: consent respected, tracker before consent, blocking banner, a first layer without a
+ * reject, a reject the CMP state confirms or cannot confirm, control pages on another host the answer of the start page
+ * does or does not reach, a CMP whose crawler test does not take the scanner's User-Agent for a bot, and its widget
+ * that never opens.
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
+import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { bannerState } from '../../../src/reporters/front-page.ts';
@@ -47,6 +50,7 @@ beforeAll(async () => {
       'pipeline/shopware-shop',
       'pipeline/cookieman-shop',
       'cmp/cookieman',
+      'cmp/ccm19',
     ],
   });
 });
@@ -65,16 +69,19 @@ afterEach(() => {
  */
 async function run(
   host: string,
+  config?: ConfigInput,
+  pathname = '/',
 ): Promise<{ r: ScanResult; report: FullReport; outDir: string; files: string }> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-pipeline-'));
   const r = await scan({
-    url: `https://${host}/`,
+    url: `https://${host}${pathname}`,
     network: server.network(),
     log: silentLogger,
     sandbox: TEST_SANDBOX,
     outDir,
     checks: BROWSER_CHECKS,
     collectors: { browser: createBrowserCollector({ timing: FAST_TIMING }) },
+    ...(config ? { config } : {}),
   });
   const w = await writeReports(r, { outDir, formats: ['console', 'json', 'html', 'summary'], lang: 'de' });
   expect(w.errors).toEqual([]);
@@ -277,7 +284,7 @@ describe('full browser pipeline on the Wix simulator', () => {
       expect(r.exitCode).toBe(0);
     });
 
-    it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Speichern"', () => {
+    it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Auswahl bestätigen"', () => {
       const { r } = scanned;
 
       const kinds = firstScreen(r, 'B')?.firstLayer.buttons.map((b) => [b.name, b.kind]);
@@ -293,7 +300,7 @@ describe('full browser pipeline on the Wix simulator', () => {
         reason: 'no-unambiguous-reject-at-first-layer',
         settings: {
           open: { cmpId: 'wix', name: 'Cookie-Einstellungen' },
-          save: { cmpId: 'wix', name: 'Speichern' },
+          save: { cmpId: 'wix', name: 'Auswahl bestätigen' },
         },
       });
       expect(r.snapshot?.plan.browser?.click?.B?.settings?.reason).toBeUndefined();
@@ -302,10 +309,15 @@ describe('full browser pipeline on the Wix simulator', () => {
         action: 'reject',
         clicked: true,
         path: 'settings',
-        button: { name: 'Speichern' },
+        button: { name: 'Auswahl bestätigen' },
       });
       expect(b?.settings).toMatchObject({
         opened: true,
+        // The layer's own controls: the first layer stays open behind it and is not what was measured.
+        buttons: [
+          { name: 'Einstellungen schließen', vendorRole: null },
+          { name: 'Auswahl bestätigen', vendorRole: 'save' },
+        ],
         groups: [
           { checked: true, disabled: true },
           { checked: false, disabled: false },
@@ -315,7 +327,7 @@ describe('full browser pipeline on the Wix simulator', () => {
       });
       expect(r.snapshot?.browser?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
         action: 'reject',
-        name: 'Speichern',
+        name: 'Auswahl bestätigen',
         success: true,
       });
       expect(r.snapshot?.plan.browser?.click?.C).toMatchObject({
@@ -788,5 +800,92 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
       stageAfterReject: 'event-sent',
       stageAfterAccept: 'event-sent',
     });
+  });
+});
+
+// CCM19 keeps its widget closed for a User-Agent its crawler test takes for a bot (` (+http`); the scanner's honest
+// User-Agent is none, so the widget opens and the consent checks read it as a visitor would.
+describe("full browser pipeline on the CCM19 simulator, whose crawler test does not match the scanner's User-Agent", () => {
+  const CONSENT_CHECKS = ['CONSENT-01', 'CONSENT-02', 'CONSENT-03', 'CONSENT-04', 'CONSENT-05', 'EMBED-01'];
+  let scanned: Awaited<ReturnType<typeof run>>;
+
+  beforeAll(async () => {
+    scanned = await run('www.ccm19.test');
+  });
+
+  it('records the opened widget without a bot signal and clicks the reject', () => {
+    const { r } = scanned;
+    const cmp = r.snapshot?.cmp;
+    const first = cmp?.phases.find((p) => p.phase === 'B')?.facts.find((f) => f.moment === 'first-screen');
+
+    expect(first?.firstLayer.bannerVisible).toBe(true);
+    expect(first?.firstLayer.dialogNotOpened).toBeUndefined();
+    expect(cmp?.phases.flatMap((p) => p.facts.flatMap((f) => f.botSignals))).toEqual([]);
+    expect(cmp?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({
+      clicked: true,
+      button: { kind: 'reject' },
+    });
+  });
+
+  it('the consent checks read the opened widget: none names a bot, and the reports carry no crawler text', () => {
+    const { report, files } = scanned;
+
+    expect(
+      CONSENT_CHECKS.map((id) => [id, check(report, id)?.status, check(report, id)?.reason ?? null]),
+    ).toEqual([
+      ['CONSENT-01', 'completed', null],
+      ['CONSENT-02', 'completed', null],
+      // The simulator is one page, fewer than CONSENT-03 needs.
+      ['CONSENT-03', 'inconclusive', 'insufficient-pages'],
+      ['CONSENT-04', 'completed', null],
+      // Beacons sent on pagehide are not captured yet.
+      ['CONSENT-05', 'inconclusive', 'pagehide-capture-unavailable'],
+      ['EMBED-01', 'completed', null],
+    ]);
+    expect(report.diagnostics.map((d) => d.code)).not.toContain('SCAN-BOTMODE');
+    expect(bannerState(report)).toBe('recognized');
+    expect(files).not.toContain('Einwilligungsbanner öffnet sich nicht für den User-Agent des Scanners');
+    expect(files).not.toContain('Erkennungsmuster für Crawler');
+  });
+});
+
+describe('full browser pipeline on a CCM19 page whose widget never opens', () => {
+  let scanned: Awaited<ReturnType<typeof run>>;
+
+  beforeAll(async () => {
+    scanned = await run('www.ccm19.test', { cmp: { waitMs: 1_500 } }, '/not-opened.html');
+  });
+
+  it('records the closed widget on B without a bot signal and clicks nothing', () => {
+    const cmp = scanned.r.snapshot?.cmp;
+    const first = cmp?.phases.find((p) => p.phase === 'B')?.facts.find((f) => f.moment === 'first-screen');
+
+    expect(first?.firstLayer.dialogNotOpened).toBe(true);
+    expect(cmp?.phases.flatMap((p) => p.facts.flatMap((f) => f.botSignals))).toEqual([]);
+    expect(cmp?.phases.find((p) => p.phase === 'B')?.click).toMatchObject({ clicked: false });
+  });
+
+  it('the consent checks and the reports say the banner was not opened, without naming a crawler test', () => {
+    const { report, files } = scanned;
+    expect(
+      ['CONSENT-03', 'CONSENT-04', 'CONSENT-05'].map((id) => [
+        id,
+        check(report, id)?.status,
+        check(report, id)?.reason ?? null,
+      ]),
+    ).toEqual([
+      // One page, fewer than CONSENT-03 needs.
+      ['CONSENT-03', 'inconclusive', 'insufficient-pages'],
+      ['CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'],
+      ['CONSENT-05', 'inconclusive', 'cmp-dialog-not-opened'],
+    ]);
+    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04' || f.checkId === 'CONSENT-05')).toEqual(
+      [],
+    );
+    expect(report.diagnostics.map((d) => d.code)).not.toContain('SCAN-BOTMODE');
+    expect(bannerState(report)).toBe('dialogNotOpened');
+    expect(files).toContain('Einwilligungsbanner dem Scanner nicht geöffnet');
+    expect(files).not.toContain('Erkennungsmuster für Crawler');
+    expect(files).not.toContain('Einwilligungsbanner nicht erkannt');
   });
 });

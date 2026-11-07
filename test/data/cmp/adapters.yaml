@@ -23,6 +23,9 @@
 # Reader inputs used by one adapter only: optionalGroups, botUserAgent, essentialEmbeddings, answerCookie (name of the
 # cookie that records the visitor's answer; its value never leaves the page), groupsSource (element and attribute
 # with the site's own consent groups, configuration and no visitor data).
+# dialogBotUserAgent {pattern, flags, label}: the vendor's own crawler test, for which it keeps its dialog closed, copied
+#   from the vendor's script with its flags. A dialog still closed after the wait for the banner (`dialogNotOpened`) on a
+#   page whose User-Agent matches gets a bot signal that names `label`; the checks then report `cmp-bot-user-agent`.
 adapters:
   borlabs:
     name: Borlabs Cookie
@@ -172,6 +175,13 @@ adapters:
     # enabling them. Still so after the wait for the banner and with no answer stored: the dialog was not opened for
     # this browser.
     closedDialog: { container: "#ccm-widget", controls: "button.ccm--ctrl-init" }
+    # `isBotBrowser` of CCM19's app.js, case-sensitive like there: for a matching User-Agent CCM19 revokes every
+    # permission and never opens the widget. It catches the ` (+http` of crawler tokens; the scanner's token puts its
+    # repository link after the description and without `+`, so the widget opens for the scanner as for a visitor.
+    dialogBotUserAgent:
+      pattern: '(bot\b|BOT\b|Bot\b|BingPreview| \(\+http)|[a-z]-Google\b'
+      flags: ""
+      label: CCM19 isBotBrowser (app.js)
 
   real-cookie-banner:
     name: Real Cookie Banner
@@ -266,9 +276,11 @@ adapters:
     optionalGroups: [functional, analytics, advertising]
     # The layer "Cookie-Einstellungen" opens. When the first layer has no reject, phase B saves it as the reject, but
     # only while every switch the visitor can change is off: switches are never toggled (src/cmp/settings-layer.ts).
+    # The selectors follow the vendor's markup (test/fixtures/cmp/wix/settings-layer.html): the layer is a dialog of its
+    # own while the first layer stays open, and each category's switch is a visually hidden checkbox in a shown toggle.
     settingsLayer:
-      containers: ['[data-hook="consent-banner-settings-modal"]']
-      groups: 'input[type="checkbox"], [role="switch"]'
+      containers: ['[data-hook="consent-banner-settings-container"]']
+      groups: '[data-hook="consent-banner-section-toggle-input"]'
       # Wix shows one locked switch that is on, for the essential processing; a second one would hold a category on.
       essentialGroups: 1
       vendorRoles:

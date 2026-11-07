@@ -266,7 +266,8 @@ function scanDiagnostics(
 
 /**
  * The browser checks did not run because the target's certificate was refused: say so instead of leaving only
- * `skipped`, with why the browser did not continue on the redirect target of the plain-http address (`fallback`).
+ * `skipped`, with why the browser did not continue on the redirect target of the plain-http address (`fallback`):
+ * `bot-protection` with the labels of its signals when the start page there was a block or challenge page.
  */
 function tlsBlockedDiagnostic(
   snapshot: Snapshot,
@@ -277,16 +278,36 @@ function tlsBlockedDiagnostic(
     .filter(([, e]) => e.status === 'skipped' && e.reason === reason)
     .map(([id]) => id);
   const entry = snapshot.plan.browserEntry;
-  const fallback = reason === TLS_FALLBACK_FAILED ? 'blocked' : snapshot.plan.tlsFallback;
+  const signals = reason === TLS_FALLBACK_FAILED ? protectionSignals(snapshot) : null;
+  const fallback =
+    reason === TLS_FALLBACK_FAILED ? (signals ? 'bot-protection' : 'blocked') : snapshot.plan.tlsFallback;
   return {
     code: 'SCAN-TLS-BLOCKED',
     affects: affected,
     params: {
       host: snapshot.target.host,
       ...(fallback ? { fallback } : {}),
+      ...(signals ? { signals } : {}),
       ...(reason === TLS_FALLBACK_FAILED && entry ? { via: entry.via, url: entry.url } : {}),
     },
   };
+}
+
+/**
+ * The bot or WAF protection signals of a start page that was a block page (`start-page-blocked`), as labels and capped;
+ * null for any other failure, for snapshots that did not keep them and when only a status was observed.
+ */
+function protectionSignals(snapshot: Snapshot): string | null {
+  const error = snapshot.collection.browser?.error;
+  const signals = error?.code === 'start-page-blocked' ? error.params?.signals : undefined;
+  if (typeof signals !== 'string') return null;
+  const labels = signals
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // A status alone (`status:403`) is a refusal, not a signature of bot or WAF protection.
+  if (!labels.some((s) => !s.startsWith('status:'))) return null;
+  return labels.slice(0, MAX_BLOCK_SIGNALS).join(', ');
 }
 
 /** The browser checks ran on the redirect target of a refused certificate, not on the target: the report says where. */

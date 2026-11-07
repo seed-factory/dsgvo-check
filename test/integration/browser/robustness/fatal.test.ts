@@ -128,6 +128,8 @@ describe('fatal start-page conditions', () => {
       expect(run.result).toMatchObject({ status: 'skipped', reason: 'tls-fallback-failed', error: { code } });
       expect(run.result.fatal).toBeUndefined();
       expect(run.result.sections).toEqual({});
+      // Only a block page leaves the labels of its protection signals, for the report to name them.
+      expect(run.result.error?.params?.signals !== undefined).toBe(code === 'start-page-blocked');
     });
 
     it('never navigates to the target whose certificate was refused', async () => {

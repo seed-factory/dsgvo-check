@@ -1,11 +1,13 @@
 // After the browser: the http:// address of pages on which phase A saw a form that takes data, requested once each with
 // GET (no redirect followed, nothing submitted), so that TLS-01 sees a form that plain http serves beyond the root of a
-// host, such as the comment form of an article. Only on a host whose http:// root ended on a page served over http:
-// where the root already redirects to https, its pages do so too and the request would be one more for nothing. At most
-// `http.formTwinPages` pages, paced like every HTTP probe (≤ 2 requests per second and host).
+// host. What the pages with a form leave of the budget goes to the permalinks (`rel="bookmark"`) phase A saw: the posts
+// of a blog carry the comment form, and the page budget of phase A seldom reaches them. Only on a host whose http://
+// root ended on a page served over http: where the root already redirects to https, its pages do so too and the
+// request would be one more for nothing. At most `http.formTwinPages` addresses, paced like every HTTP probe (≤ 2
+// requests per second and host).
 
 import { isSuccess } from '../../checks/http/shared.ts';
-import type { FormFact, PageVisit } from '../../core/snapshot/browser.ts';
+import { type FormFact, isHttpHref, type PageVisit } from '../../core/snapshot/browser.ts';
 import type { CollectorContext, HttpCollector } from '../../core/snapshot/collector.ts';
 import type {
   FormTwinStage,
@@ -13,6 +15,7 @@ import type {
   HttpTwin,
   ProbeRecord,
   RedirectChain,
+  TwinSource,
 } from '../../core/snapshot/http.ts';
 import type { Snapshot } from '../../core/snapshot/index.ts';
 import { REDACTED } from '../../core/url/email.ts';
@@ -23,10 +26,13 @@ import { outcomeOf, ProbeError } from './errors.ts';
 import { createClient, DOCUMENT_READ_BYTES, errorOf, type HttpCollectorOptions, toHop } from './index.ts';
 
 export interface FormTwinCandidate {
-  /** The page as phase A stored it. */
+  /** The page as phase A stored it; for a permalink, the address as linked. */
   page: string;
   /** Its http:// address. */
   url: string;
+  source: TwinSource;
+  /** A permalink: the page of phase A that links it. */
+  linkedFrom?: string;
 }
 
 /** A form that takes input other than a site search, as phase A read it (the HTTP collector's rule on markup). */
@@ -72,7 +78,18 @@ function phaseAPages(snapshot: Pick<Snapshot, 'browser'>): readonly PageVisit[] 
   return snapshot.browser?.phases.find((p) => p.phase === 'A')?.pages ?? [];
 }
 
-/** Pages whose http:// address the step may request, forms asking for an address first, otherwise in visit order. */
+/** Pages whose DOM facts are the site's own: evaluable, read, and no bot challenge in their place. */
+const readable = (page: PageVisit): page is PageVisit & { dom: NonNullable<PageVisit['dom']> } =>
+  page.evaluable && page.dom !== null && page.challenge?.detected !== true;
+
+/** The start page first, then the other pages in visit order (a stable sort keeps that order). */
+const startFirst = (pages: readonly PageVisit[]): PageVisit[] =>
+  [...pages].sort((a, b) => Number(b.role === 'start') - Number(a.role === 'start'));
+
+/**
+ * The http:// addresses the step may request: pages with a form, forms asking for an address first and otherwise in
+ * visit order, then the permalinks of the pages, those of the start page first and each page's in document order.
+ */
 export function selectFormTwins(snapshot: Pick<Snapshot, 'http' | 'browser'>): FormTwinCandidate[] {
   const http = snapshot.http;
   if (!http || !snapshot.browser) return [];
@@ -85,29 +102,58 @@ export function selectFormTwins(snapshot: Pick<Snapshot, 'http' | 'browser'>): F
     ...http.chains.flatMap((c) => c.hops.map((h) => h.url)),
     ...http.documents.flatMap((d) => [d.url, d.finalUrl]),
   ]);
-
   const seen = new Set<string>();
+  const take = (url: string | null): url is string => {
+    if (url === null || known.has(url) || seen.has(url)) return false;
+    const host = new URL(url).hostname.toLowerCase();
+    if (!serving.has(host) || stopped.has(host)) return false;
+    seen.add(url);
+    return true;
+  };
+
+  const pages = phaseAPages(snapshot);
   const first: FormTwinCandidate[] = [];
   const rest: FormTwinCandidate[] = [];
-  for (const page of phaseAPages(snapshot)) {
-    if (!page.evaluable || page.dom === null || page.challenge?.detected) continue;
+  for (const page of pages) {
+    if (!readable(page)) continue;
     const forms = page.dom.forms.filter(takesData);
     if (forms.length === 0) continue;
 
     const url = twinUrl(page.finalUrl);
-    if (url === null || known.has(url) || seen.has(url)) continue;
-    const host = new URL(url).hostname.toLowerCase();
-    if (!serving.has(host) || stopped.has(host)) continue;
-
-    seen.add(url);
-    (forms.some(asksForAddress) ? first : rest).push({ page: page.finalUrl, url });
+    if (!take(url)) continue;
+    (forms.some(asksForAddress) ? first : rest).push({ page: page.finalUrl, url, source: 'input-form' });
   }
-  return [...first, ...rest];
+
+  // A page phase A visited, under the address it asked for or ended on: the browser saw its forms.
+  const visited = new Set(pages.flatMap((p) => [twinUrl(p.url), twinUrl(p.finalUrl)]));
+  const permalinks: FormTwinCandidate[] = [];
+  for (const page of startFirst(pages)) {
+    if (!readable(page)) continue;
+    for (const link of page.dom.links) {
+      if (link.permalink !== true || link.href === null || !isHttpHref(link.hrefKind)) continue;
+      const url = twinUrl(link.href);
+      if (url === null || visited.has(url) || !take(url)) continue;
+      permalinks.push({ page: link.href, url, source: 'permalink', linkedFrom: page.finalUrl });
+    }
+  }
+  return [...first, ...rest, ...permalinks];
 }
 
 type TwinOutcome = HttpTwin['outcome'];
 
-const twinBase = (c: FormTwinCandidate) => ({ page: sanitizeUrl(c.page), url: sanitizeUrl(c.url) });
+const twinBase = (c: FormTwinCandidate) => ({
+  page: sanitizeUrl(c.page),
+  url: sanitizeUrl(c.url),
+  source: c.source,
+  ...(c.linkedFrom ? { linkedFrom: sanitizeUrl(c.linkedFrom) } : {}),
+});
+
+/** The probe record of a request; its purpose says why the address was requested. */
+function probeOf(c: FormTwinCandidate): ProbeRecord {
+  const target = sanitizeUrl(c.url);
+  if (c.source === 'permalink') return { kind: 'http', class: 'T', target, purpose: 'permalink-twin' };
+  return { kind: 'http', class: 'T', target, purpose: 'form-twin' };
+}
 
 /** A candidate left out because its host answered an earlier request of the step with 429 or 503. */
 function notRequested(c: FormTwinCandidate): HttpTwin {
@@ -154,9 +200,11 @@ export function createFormTwinCollector(opts: HttpCollectorOptions = {}): HttpCo
     const budget = ctx.config.http.formTwinPages;
     const candidates = selectFormTwins(ctx.snapshot);
     const chosen = candidates.slice(0, budget);
+    const permalinkCandidates = candidates.filter((c) => c.source === 'permalink').length;
     const stage = (error?: FormTwinStage['error']): FormTwinStage => ({
       budget,
-      candidates: candidates.length,
+      candidates: candidates.length - permalinkCandidates,
+      permalinkCandidates,
       durationMs: Math.round(performance.now() - t0),
       ...(error ? { error } : {}),
     });
@@ -186,13 +234,13 @@ export function createFormTwinCollector(opts: HttpCollectorOptions = {}): HttpCo
           twins.push(notRequested(c));
           continue;
         }
-        probes.push({ kind: 'http', class: 'T', target: sanitizeUrl(c.url), purpose: 'form-twin' });
+        probes.push(probeOf(c));
         const twin = await requestTwin(client, c);
         twins.push(twin);
         if (OVERLOAD_STATUSES.has(twin.hop?.status ?? 0)) overloaded.add(host);
       }
       ctx.log.debug(
-        `http:// addresses of pages with a form: ${twins.length} of ${candidates.length} requested`,
+        `http:// addresses of pages with a form and of permalinks: ${twins.length} of ${candidates.length} requested`,
       );
 
       return {

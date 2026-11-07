@@ -54,13 +54,15 @@ ui:
   # `gaps`: the scan ran to its end, but some checks gave no conclusive result (the next sentences say which).
   # `ran`: every check has a result, some only for a part (the next sentence says which and why).
   report.overview.scan: "{state, select, complete {The scan was completed.} gaps {The scan ran to the end, but not every check has a conclusive result.} ran {The scan ran to the end.} other {The scan was only partly performed; not all pages or checks could be evaluated.}}"
-  # Checks without a conclusive result, grouped by `cause`; `checks` lists their ids.
+  # Checks without a conclusive result, grouped by `cause`; `checks` lists their ids. `protection` signal: the
+  # redirect target of a refused certificate answered with bot or WAF protection, whose signal labels are `signals`.
   report.overview.open: >-
     {count, plural, one {One check} other {# checks}} ({checks}) {cause, select, tls-blocked {{count, plural, one
     {was} other {were}} not run: the certificate of the website was not accepted as valid, so the browser did not
     visit the website.} tls-fallback-failed {{count, plural, one {was} other {were}} not run: the certificate of
-    the website was not accepted as valid, and the browser did not receive an evaluable page on the target of its
-    HTTP redirect.} geo {{count, plural, one {is} other {are}} inconclusive: the consent banner reported a
+    the website was not accepted as valid, and {protection, select, signal {the target of its HTTP redirect answered
+    with the signal of a bot or WAF protection ({signals}); the browser did not receive an evaluable page there.}
+    other {the browser did not receive an evaluable page on the target of its HTTP redirect.}}} geo {{count, plural, one {is} other {are}} inconclusive: the consent banner reported a
     location outside the EEA and may behave differently towards visitors from the EEA.} bot {{count, plural, one {is}
     other {are}} inconclusive: the consent banner treated the scan as automated traffic.} reject {{count, plural, one
     {is} other {are}} inconclusive: the rejection in the consent banner could not be triggered or confirmed.} timeout
@@ -82,7 +84,13 @@ ui:
     conclusively evaluated and should be checked manually.} dialogNotOpened {{accepted, select, true {A consent banner
     is present in the page source but was not opened for the scanner in the visit with rejection (controls disabled);
     rejection was therefore not checked.} other {A consent banner is present in the page source but was not opened
-    for the scanner (controls disabled); rejection and acceptance were therefore not checked.}}} other {}}
+    for the scanner (controls disabled); rejection and acceptance were therefore not checked.}}} dialogNotOpenedBot {A
+    consent banner is present in the page source but was not opened for the scanner{accepted, select, true { in the
+    visit with rejection} other {}}: the banner treats browsers whose User-Agent matches its pattern for
+    crawlers{hasTest, select, true { ({test})} other {}} as bots and does not open its banner for them, and the
+    scanner's User-Agent matches this pattern. A visitor with a normal browser may see the banner. The checks that
+    depend on it ({checks}) are inconclusive; {accepted, select, true {rejection was not checked.} other {rejection and
+    acceptance were not checked.}}} other {}}
   report.overview.region: >-
     The region from which the scan ran is not known. Websites can show consent banners and services differently
     depending on the visitor's region; the consent findings apply to this measurement environment and may differ for
@@ -283,7 +291,7 @@ ui:
     not evaluable} impressum-type-unconfirmed {Direct link not confirmed as the legal notice}
     privacy-type-unconfirmed {Direct link not confirmed as the privacy policy} supplement-not-evaluated {Further privacy
     notice of the site not evaluated (PDF, other language, incomplete or not retrievable)} reveal-height-capped {Lower
-    part of a long page not shown, the window height is capped} page-links-not-observed {Links of the pages not observed
+    part of a long page not shown: the window height is capped, or the page grew with the window} page-links-not-observed {Links of the pages not observed
     because the browser did not run or no page was evaluable} http-form-not-inspected {Forms of {detail} not read in
     full (response cut, not readable or replaced by bot protection)} http-form-twin-undecided {http address of {detail} without a usable answer}
     http-form-twins-capped {http addresses of further pages with a form not requested (limit
@@ -332,7 +340,8 @@ ui:
     banner-undetermined {whether a consent banner was shown could not be determined} claim-ambiguous {privacy policy
     statement not unambiguous: with a reservation, in text not displayed, together with the external load in one
     sentence, in a sentence on several services or in a sentence too long} cmp-dialog-not-opened {consent banner not
-    opened for the scanner} no-https {no HTTPS}
+    opened for the scanner} cmp-bot-user-agent {consent banner not opened for the scanner: its User-Agent matches the
+    banner's crawler pattern} no-https {no HTTPS}
     tls-invalid {certificate invalid} handshake-inconclusive {TLS handshake inconclusive} undecided {redirect to HTTPS
     could not be determined} ip-target {target is an IP address} no-registrable-domain {no registrable domain}
     multiple-records {several records} invalid-observation {invalid observation} blocked {blocked by bot protection}
@@ -343,7 +352,7 @@ ui:
     no-mail-records {neither MX nor SPF record found} key-revoked {DKIM key withdrawn (empty p=)} dkim-selectors-capped
     {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} no-documents {neither a
     legal notice nor a privacy policy found as readable text} other {}}
-  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
+  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} http-form-permalink {http address of a linked post with a form} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
   report.evidence.field: >-

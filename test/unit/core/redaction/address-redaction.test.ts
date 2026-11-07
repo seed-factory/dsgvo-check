@@ -529,10 +529,24 @@ describe('addresses written with (at) or [at]', () => {
   });
 
   it.each([
+    [`E-Mail: mailto: ${MARK} (at) ${D}`, `E-Mail: mailto:${REDACTED}@${D}`],
+    [`mailto:${MARK} (at) ${D}`, `mailto:${REDACTED}@${D}`],
+    [`mailto: ${MARK} [at] ${D}`, `mailto:${REDACTED}@${D}`],
+    [`mailto: ${MARK}(at)${D}`, `mailto:${REDACTED}@${D}`],
+    [`mailto:\n${MARK} (at) ${D}`, `mailto:${REDACTED}@${D}`],
+    [`mailto:${MARK} (at) ${D}?subject=${MARK}`, `mailto:${REDACTED}@${D}`],
+  ])('a mailto: value in the (at) form: %j → %j', (input, want) => {
+    const once = expectStable(input);
+    expect(once).toBe(want);
+    expect(once).not.toContain(MARK);
+  });
+
+  it.each([
     'Wir treffen uns at noon at the office.',
     'Preis (at) Kasse',
     'meet [at] noon',
     'Angaben (at) www',
+    'Sitz: 1010 Wien (AT) www.example.at',
   ])('prose without a domain after the marker stays: %j', (input) => {
     expect(redactText(input)).toBe(input);
   });
@@ -581,6 +595,8 @@ describe('long inputs: the scan stays linear (about 100 000 to 400 000 character
     ['a run of local-part characters before "(at)"', `${'a'.repeat(4 * n)}(at)x.test`],
     ['"[at]" markers with blanks and short domains', 'a [at] b.'.repeat(n / 9)],
     ['"(at)" markers between Unicode blanks', 'a\u00a0(at)\u2003'.repeat(n / 8)],
+    ['mailto: values in the (at) form', 'mailto: a (at) b.test'.repeat(n / 21)],
+    ['mailto: with a run of local-part characters before "(at)"', `mailto:${'a'.repeat(4 * n)} (at) x.test`],
   ];
 
   it.each(inputs)('redactText: %s', (_name, input) => {

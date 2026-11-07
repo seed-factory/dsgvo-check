@@ -9,8 +9,10 @@ import type { SanitizedUrl } from '../../../core/snapshot/common.ts';
 import type { BrowserCollection, Session } from '../collector.ts';
 import { THROTTLE_STATUSES } from '../pages/navigate.ts';
 import {
+  type AlternateCandidate,
   type CandidateLink,
   findLegalLink,
+  isLanguageAlternate,
   type LanguageContext,
   LEGAL_KINDS,
   type LegalKind,
@@ -121,6 +123,8 @@ export class PageQueue {
   private readonly documents: DocumentsSection;
   private readonly scope: Scope;
   private readonly supplements: SupplementPolicy | null;
+  /** A link to another language version of the site, as the start page shows them. */
+  readonly alternate: (l: AlternateCandidate) => boolean;
 
   constructor(
     visited: Set<string>,
@@ -132,6 +136,8 @@ export class PageQueue {
     this.documents = documents;
     this.scope = scope;
     this.supplements = supplements;
+    const language = supplements?.language;
+    this.alternate = language ? (l) => isLanguageAlternate(l, language) : () => false;
   }
 
   pending(k: LegalKind): boolean {
@@ -267,19 +273,34 @@ export class PageQueue {
   }
 
   // The page behind a legal link is substantive but not of the expected type: the next best link of the same page is
-  // tried, within `MAX_CANDIDATE_RETRIES` extra GETs.
+  // tried, within `MAX_CANDIDATE_RETRIES` extra GETs. After a page of the start page's language, another language
+  // version of the policy is noted without a navigation, as beside a policy that was found: it is not read.
   tryNextCandidate(item: QueueItem): void {
     const kind = item.docKind;
     if (!kind || !item.pool || this.candidateRetries >= MAX_CANDIDATE_RETRIES) return;
 
     const rest = item.pool.filter((l) => !this.tried[kind].has(pageKey(l.raw)));
-    const next = findLegalLink(rest, kind, this.scope);
+    const next = findLegalLink(rest, kind, this.scope, undefined, this.alternate);
     if (next.status !== 'page' || !next.choice) return;
     const key = pageKey(next.choice.raw);
     if (this.visited.has(key)) return;
 
-    const choice: PageChoice = { ...next.choice, reasons: [...next.choice.reasons, 'next-candidate'] };
     const via = item.foundVia === 'hop' ? 'hop' : 'link';
+    const version = (k: string) => item.pool?.some((l) => pageKey(l.raw) === k && this.alternate(l)) === true;
+    if (kind === 'privacy' && !version(pageKey(item.choice.raw)) && version(key)) {
+      this.tried[kind].add(key);
+      this.documents.attempts.push({
+        kind,
+        via,
+        url: next.choice.url,
+        status: null,
+        outcome: 'other-language',
+        supplement: true,
+      });
+      return;
+    }
+
+    const choice: PageChoice = { ...next.choice, reasons: [...next.choice.reasons, 'next-candidate'] };
     const queuedAt = this.items.findIndex((q) => pageKey(q.choice.raw) === key);
     if (queuedAt < 0) {
       this.candidateRetries++;

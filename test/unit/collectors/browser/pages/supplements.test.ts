@@ -49,6 +49,20 @@ describe('privacySupplements', () => {
     });
   });
 
+  it('a start page without a locale that switches to /de/ of its own language reads a notice under /de/', () => {
+    const links = [
+      link({ raw: u('/de/'), text: 'DE', region: 'header' }),
+      link({ raw: u('/en/'), text: 'EN', region: 'header' }),
+      link({ raw: u('/de/datenschutz/'), text: 'Datenschutz' }),
+      link({ raw: u('/de/datenschutz-kurse/'), text: 'Datenschutz Kurse' }),
+      link({ raw: u('/en/privacy/'), text: 'Privacy', region: 'nav' }),
+    ];
+    expect(supplements(links, 1, START, 'de-DE')).toMatchObject({
+      notices: [u('/de/datenschutz-kurse/')],
+      languages: [u('/en/privacy/')],
+    });
+  });
+
   it('with the limit 0 nothing is chosen and no language version is noted', () => {
     const en = link({ raw: u('/en/datenschutz/'), text: 'EN', region: 'nav' });
     expect(supplements([POLICY, COURSES, en], 0)).toEqual({ notices: [], languages: [], reasons: [] });

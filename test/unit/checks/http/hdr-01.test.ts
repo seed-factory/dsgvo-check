@@ -339,6 +339,14 @@ describe('HDR-01 security headers', () => {
     expect(observationsOf(r)[0]?.evidence[0]).toMatchObject({ present: true, value });
   });
 
+  it.each(['max-age=31536000; includeSubDomains; preload; preload', 'max-age=31536000; foo; foo'])(
+    'counterexample: HSTS "%s" repeats a directive the browser ignores and is in force → no finding',
+    (value) => {
+      const headers = [...without('strict-transport-security'), { name: 'strict-transport-security', value }];
+      expect(variantsOf(runCheck(hdr01, snap([start(headers)])))).toEqual([]);
+    },
+  );
+
   describe('combined HSTS fields: the first one decides (RFC 6797 §8.1)', () => {
     const hstsRun = (value: string) =>
       runCheck(

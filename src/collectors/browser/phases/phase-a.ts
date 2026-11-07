@@ -4,6 +4,7 @@
 
 import { TOOL_NAME } from '../../../core/runtime/version.ts';
 import type { FatalSignal } from '../../../core/snapshot/collector.ts';
+import type { CollectorError } from '../../../core/snapshot/common.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
 import { loadServiceCatalog } from '../../../derive/catalog.ts';
 import { MAX_RETRY_AFTER_MS } from '../../http/pacing.ts';
@@ -206,13 +207,14 @@ function failedStartNavigation(c: BrowserCollection, code: string): PhaseAOutcom
  * page), else null.
  */
 function fallbackOutcome(fatal: PhaseAOutcome | null, start: VisitResult): PhaseAOutcome | null {
-  const failed = (code: string, message: string): PhaseAOutcome => ({
+  const failed = (code: string, message: string, params?: CollectorError['params']): PhaseAOutcome => ({
     kind: 'fallback-failed',
-    error: { code, message },
+    error: { code, message, ...(params ? { params } : {}) },
   });
   if (fatal?.kind === 'fatal') {
     const params = Object.entries(fatal.fatal.params ?? {}).map(([k, v]) => `${k}=${v}`);
-    return failed(fatal.fatal.code, params.join('; '));
+    // Kept as given, so the report can name what blocked the page there (`signals` of `start-page-blocked`).
+    return failed(fatal.fatal.code, params.join('; '), fatal.fatal.params);
   }
   if (fatal)
     return failed('start-page-tls', start.error ? navigationErrorCode(start.error) : 'certificate refused');
@@ -407,7 +409,7 @@ async function lookForLegalLinks(
   for (const kind of LEGAL_KINDS) {
     if (queue.found[kind] || queue.pending(kind)) continue;
 
-    const lr = findLegalLink(r.candidates, kind, scope);
+    const lr = findLegalLink(r.candidates, kind, scope, undefined, queue.alternate);
     if (lr.status === 'page' || lr.status === 'pdf') {
       queue.handleLink(lr, 'hop', item.choice.role, r.candidates);
     } else if (
