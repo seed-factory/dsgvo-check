@@ -3,60 +3,57 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tls02 } from '../../../src/checks/http/tls-02.ts';
-import { defineCheck } from '../../../src/core/evaluation/check.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import type { CollectorContext, Collectors } from '../../../src/core/snapshot/collector.ts';
-import type { HttpHop } from '../../../src/core/snapshot/http.ts';
 import { sanitizeUrl } from '../../../src/core/url/url.ts';
 import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import {
   makeBrowser,
-  makeCert,
   makeChain,
   makeDocumentResponse,
-  makeHop,
   makeHttp,
   makePage,
   makePhase,
-  makeTls,
   makeTlsEndpoint,
 } from '../../utils/snapshot-builder.ts';
-import { browserCheck, opts, tlsCheck, withBrowser } from './fixtures.ts';
+import {
+  brokenTarget,
+  browserCheck,
+  httpHop,
+  httpsHop,
+  opts,
+  RAW_FINAL,
+  refusedTls,
+  STORED_FINAL,
+  TARGET,
+  tlsCheck,
+  VIA,
+  withBrowser,
+} from './fixtures.ts';
+
+/** A browser collector that notes whether the scan started it. */
+function spyBrowser() {
+  const spy: { started: boolean; browser: Collectors['browser'] } = {
+    started: false,
+    browser: async (ctx) => {
+      spy.started = true;
+      return withBrowser.browser(ctx);
+    },
+  };
+  return spy;
+}
 
 describe('scan — invalid certificate on the target', () => {
   it('invalid certificate on the target → browser not started, browser checks skipped (tls-blocked)', async () => {
-    let browserCalled = false;
+    const spy = spyBrowser();
     const result = await scan(
       opts({
-        collectors: {
-          ...withBrowser,
-          browser: async () => {
-            browserCalled = true;
-            return { status: 'ok', sections: {} };
-          },
-          tls: async () => ({
-            status: 'ok',
-            sections: {
-              tls: makeTls({
-                endpoints: [makeTlsEndpoint({ authorized: false, authorizationError: 'CERT_HAS_EXPIRED' })],
-              }),
-            },
-          }),
-        },
-        registry: new CheckRegistry([
-          browserCheck,
-          defineCheck({
-            id: 'TEST-02',
-            module: 'http',
-            requires: ['tls'],
-            variants: [{ variant: 'header' }],
-            run: () => [],
-          }),
-        ]),
+        collectors: { ...withBrowser, browser: spy.browser, tls: refusedTls() },
+        registry: new CheckRegistry([browserCheck, tlsCheck]),
       }),
     );
-    expect(browserCalled).toBe(false);
+    expect(spy.started).toBe(false);
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'skipped',
       reason: 'tls-blocked',
@@ -75,114 +72,41 @@ describe('scan — invalid certificate on the target', () => {
   });
 
   it('invalid certificate on an explicit target port → tls-blocked as well', async () => {
-    let browserCalled = false;
+    const spy = spyBrowser();
     const result = await scan(
       opts({
         url: 'https://www.example.de:8443/',
-        collectors: {
-          ...withBrowser,
-          browser: async () => {
-            browserCalled = true;
-            return { status: 'ok', sections: {} };
-          },
-          tls: async () => ({
-            status: 'ok',
-            sections: {
-              tls: makeTls({
-                endpoints: [
-                  makeTlsEndpoint({ port: 8443, authorized: false, authorizationError: 'CERT_HAS_EXPIRED' }),
-                ],
-              }),
-            },
-          }),
-        },
+        collectors: { ...withBrowser, browser: spy.browser, tls: refusedTls({ port: 8443 }) },
         registry: new CheckRegistry([browserCheck, tlsCheck]),
       }),
     );
-    expect(browserCalled).toBe(false);
+    expect(spy.started).toBe(false);
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({ reason: 'tls-blocked' });
   });
 
-  it.each(['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'])(
-    'incomplete chain (%s) does not block the browser: Chrome completes chains via AIA',
-    async (code) => {
-      let browserCalled = false;
+  // Chrome completes an incomplete chain via AIA, so it does not block the browser; a wrong host name still does.
+  it.each([
+    { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', hostnameMatches: true, started: true },
+    { code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', hostnameMatches: true, started: true },
+    { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', hostnameMatches: false, started: false },
+  ])(
+    'incomplete chain ($code), host name matches: $hostnameMatches → browser started: $started',
+    async ({ code, hostnameMatches, started }) => {
+      const spy = spyBrowser();
+      const tls = refusedTls({ authorizationError: code, chainComplete: false, hostnameMatches });
       const result = await scan(
         opts({
-          collectors: {
-            ...withBrowser,
-            browser: async (ctx) => {
-              browserCalled = true;
-              return withBrowser.browser(ctx);
-            },
-            tls: async () => ({
-              status: 'ok',
-              sections: {
-                tls: makeTls({
-                  endpoints: [
-                    makeTlsEndpoint({
-                      authorized: false,
-                      authorizationError: code,
-                      chainComplete: false,
-                      hostnameMatches: true,
-                    }),
-                  ],
-                }),
-              },
-            }),
-          },
+          collectors: { ...withBrowser, browser: spy.browser, tls },
           registry: new CheckRegistry([browserCheck, tlsCheck]),
         }),
       );
-      expect(browserCalled).toBe(true);
-      expect(result.report.diagnostics?.map((d) => d.code)).not.toContain('SCAN-TLS-BLOCKED');
+      expect(spy.started).toBe(started);
+      expect(result.report.diagnostics?.some((d) => d.code === 'SCAN-TLS-BLOCKED')).toBe(!started);
     },
   );
-
-  it('wrong host name with an incomplete chain still blocks the browser', async () => {
-    let browserCalled = false;
-    await scan(
-      opts({
-        collectors: {
-          ...withBrowser,
-          browser: async (ctx) => {
-            browserCalled = true;
-            return withBrowser.browser(ctx);
-          },
-          tls: async () => ({
-            status: 'ok',
-            sections: {
-              tls: makeTls({
-                endpoints: [
-                  makeTlsEndpoint({
-                    authorized: false,
-                    authorizationError: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-                    chainComplete: false,
-                    hostnameMatches: false,
-                  }),
-                ],
-              }),
-            },
-          }),
-        },
-        registry: new CheckRegistry([browserCheck, tlsCheck]),
-      }),
-    );
-    expect(browserCalled).toBe(false);
-  });
 });
 
 describe('scan — invalid certificate, plain-http address redirects to another host with valid certificates', () => {
-  const TARGET = 'https://broken.example.test/';
-  const VIA = 'http://broken.example.test/';
-  const RAW_FINAL = 'https://site.example.test/start?token=raw-fixture-7';
-  const STORED_FINAL = 'https://site.example.test/start?token=[redacted]';
-
-  const httpHop = (url: string, status: number, location?: string): HttpHop =>
-    makeHop({ url, status, ...(location ? { location } : {}) });
-  const httpsHop = (url: string, status: number): HttpHop =>
-    makeHop({ url, status, tlsAuthorized: true, tlsAuthorizationError: null });
-
   /** HTTP collector: http://broken → 302 → https://site (accepted); https://broken is the refused start document. */
   const redirectingHttp =
     (finalStatus = 200): Collectors['http'] =>
@@ -211,22 +135,7 @@ describe('scan — invalid certificate, plain-http address redirects to another 
       };
     };
 
-  const brokenTls: Collectors['tls'] = async () => ({
-    status: 'ok',
-    sections: {
-      tls: makeTls({
-        endpoints: [
-          makeTlsEndpoint({
-            host: 'broken.example.test',
-            authorized: false,
-            authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
-            hostnameMatches: false,
-            chain: [makeCert({ subject: 'CN=other.example.test', selfSigned: true })],
-          }),
-        ],
-      }),
-    },
-  });
+  const brokenTls = refusedTls(brokenTarget());
 
   /** A browser that records the context it was started with and visits the start page it was given. */
   function recordingBrowser(seen: CollectorContext[]): Collectors['browser'] {
@@ -535,16 +444,10 @@ describe('scan — invalid certificate, plain-http address redirects to another 
   });
 
   it('a redirect target that answered 500 is not tried: SCAN-TLS-BLOCKED with fallback none', async () => {
-    let browserCalled = false;
-    const result = await fallbackScan({
-      http: redirectingHttp(500),
-      browser: async () => {
-        browserCalled = true;
-        return { status: 'ok', sections: {} };
-      },
-    });
+    const spy = spyBrowser();
+    const result = await fallbackScan({ http: redirectingHttp(500), browser: spy.browser });
 
-    expect(browserCalled).toBe(false);
+    expect(spy.started).toBe(false);
     expect(result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params).toEqual({
       host: 'broken.example.test',
       fallback: 'none',
@@ -552,18 +455,10 @@ describe('scan — invalid certificate, plain-http address redirects to another 
   });
 
   it('switched off with DSGVO_CHECK_SCAN_TLS_FALLBACK=off: the browser is not started (fallback off)', async () => {
-    let browserCalled = false;
-    const result = await fallbackScan(
-      {
-        browser: async () => {
-          browserCalled = true;
-          return { status: 'ok', sections: {} };
-        },
-      },
-      { config: { scan: { tlsFallback: 'off' } } },
-    );
+    const spy = spyBrowser();
+    const result = await fallbackScan({ browser: spy.browser }, { config: { scan: { tlsFallback: 'off' } } });
 
-    expect(browserCalled).toBe(false);
+    expect(spy.started).toBe(false);
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({ reason: 'tls-blocked' });
     expect(result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params).toEqual({
       host: 'broken.example.test',

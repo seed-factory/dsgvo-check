@@ -2,14 +2,15 @@
  * Pure tests (no browser): `headersArray()`, `serverAddr()` and `frame.evaluate()` that never settle end by a local
  * budget or an aborted signal, keep the facts collected so far and do not change a stored record afterwards.
  */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, Response } from 'playwright-core';
+import type { EventEmitter } from 'node:events';
+import type { Response } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { JarTracker } from '../../../../../src/collectors/browser/recording/jar.ts';
-import { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
+import type { RecorderOptions } from '../../../../../src/collectors/browser/recording/recorder.ts';
 import {
   fakeContext,
   fakePage,
+  fakeRecorder,
   fakeRequest,
   fakeResponse,
   jarCookie,
@@ -25,24 +26,11 @@ describe('NetworkRecorder: response metadata that never settles is bounded', () 
   const PROMPT_MS = 1_500;
 
   /** A phase-A recorder on a fresh context whose navigation to START has begun. */
-  function startedRecorder(options: { metaTimeoutMs: number; signal?: AbortSignal }) {
-    const ctx = new EventEmitter();
-    const rec = new NetworkRecorder(
-      'A',
-      'example.de',
-      { limit: 2000, issued: 0, truncated: false },
-      false,
-      undefined,
-      options,
-    );
-    rec.attach(ctx as unknown as BrowserContext);
-    rec.beginNavigation(START);
-    return { ctx, rec };
-  }
+  const startedRecorder = (options: RecorderOptions) => fakeRecorder({ options, start: START });
 
   /** A document request whose response metadata never arrives. */
   function emitHangingDocument(ctx: EventEmitter) {
-    const req = fakeRequest('https://www.example.de/doc.pdf', 'document');
+    const req = fakeRequest('https://www.example.de/doc.pdf', { type: 'document' });
     ctx.emit('request', req);
     ctx.emit(
       'response',
@@ -101,7 +89,7 @@ describe('NetworkRecorder: response metadata that never settles is bounded', () 
 
   it('flush({ timeoutMs }) returns false when pending work is abandoned', async () => {
     const { ctx, rec } = startedRecorder({ metaTimeoutMs: 60_000 });
-    const req = fakeRequest('https://www.example.de/doc.pdf', 'document');
+    const req = fakeRequest('https://www.example.de/doc.pdf', { type: 'document' });
     ctx.emit('request', req);
     ctx.emit('response', fakeResponse(req, [], { headersArray: never } as Partial<Response>));
 

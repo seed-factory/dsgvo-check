@@ -10,23 +10,11 @@ import {
   findLegalLink,
   isLanguageAlternate,
   languageContext,
-  type SelectInput,
-  selectPages,
 } from '../../../../../src/collectors/browser/pages/pages.ts';
 import { parseRobots } from '../../../../../src/collectors/browser/pages/robots.ts';
 import { loadPageRules } from '../../../../../src/collectors/browser/rules.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
-
-const START = 'https://www.example.test/';
-let n = 0;
-const link = (p: Partial<CandidateLink> & { raw: string; text: string }): CandidateLink => ({
-  hrefKind: p.raw.startsWith('https:') ? 'https' : 'http',
-  region: 'footer',
-  visible: true,
-  order: n++,
-  ...p,
-});
-const u = (path: string) => `https://www.example.test${path}`;
+import { link, plan, START, scope, u } from '../../../../utils/candidate-links.ts';
 
 const LINKS: CandidateLink[] = [
   link({ raw: 'https://www.example.test/leistungen/webdesign', text: 'Webdesign', region: 'nav' }),
@@ -42,12 +30,6 @@ const LINKS: CandidateLink[] = [
   link({ raw: 'https://other.example/impressum', text: 'Impressum Partner', region: 'main' }),
   link({ raw: 'mailto:info@example.test', text: 'E-Mail', hrefKind: 'mailto' }),
 ];
-
-const scope = { startRaw: START, finalHost: 'www.example.test', etld1: 'example.test' };
-
-/** selectPages on www.example.test with the defaults of a scan (6 pages, no robots.txt, no sitemap). */
-const plan = (links: CandidateLink[], o: Partial<SelectInput> = {}) =>
-  selectPages({ links, ...scope, maxPages: 6, robots: null, token: 'dsgvo-check', sitemapLocs: [], ...o });
 
 const extrasOf = (p: ReturnType<typeof plan>) => p.extras.map((e) => [e.url, e.reasons]);
 

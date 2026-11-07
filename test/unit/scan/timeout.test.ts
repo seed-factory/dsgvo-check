@@ -2,25 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { makeBrowser, makePage, makePhase } from '../../utils/snapshot-builder.ts';
-import { opts, withBrowser } from './fixtures.ts';
+import { abortAware, opts, withBrowser } from './fixtures.ts';
 
 const startVisit = (phase: 'A' | 'B' = 'A') => makePage({ url: 'https://www.example.de/', phase });
-
-/** Browser collector that honours the abort signal: it stops and returns what it has after `delayMs`. */
-const abortAware =
-  (sections: () => Record<string, unknown>, delayMs = 5) =>
-  (ctx: { signal: AbortSignal }) =>
-    new Promise<never>((resolve) => {
-      ctx.signal.addEventListener(
-        'abort',
-        () =>
-          setTimeout(
-            () => resolve({ status: 'partial', reason: 'timeout', sections: sections() } as never),
-            delayMs,
-          ),
-        { once: true },
-      );
-    });
 
 describe('scan — global timeout (5.2)', () => {
   it('global timeout before phase A finished on the start page → failed, SCAN-TIMEOUT, exit 2 (timeout)', async () => {

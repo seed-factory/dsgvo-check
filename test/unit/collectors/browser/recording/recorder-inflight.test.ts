@@ -2,56 +2,10 @@
  * The quiet decision counts only requests of the current navigation and document: never-ending requests of an earlier
  * page must not hold the next page until HARD_CAP, and stay in the records unchanged. Fake Playwright objects.
  */
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, Request, Response } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import { NetworkRecorder } from '../../../../../src/collectors/browser/recording/recorder.ts';
+import { fakeRecorder, fakeResponse, fakeFrame as frame, fakeRequest as request } from '../cookies/fakes.ts';
 
-interface FakeFrame {
-  parentFrame(): FakeFrame | null;
-  url(): string;
-}
-
-function frame(parent: FakeFrame | null = null, url = 'https://www.example.test/'): FakeFrame {
-  return { parentFrame: () => parent, url: () => url };
-}
-
-function request(
-  url: string,
-  o: { frame?: FakeFrame; nav?: boolean; from?: Request; type?: string } = {},
-): Request {
-  const f = o.frame ?? frame();
-  return {
-    url: () => url,
-    postData: () => null,
-    serviceWorker: () => null,
-    frame: () => f,
-    isNavigationRequest: () => o.nav ?? false,
-    redirectedFrom: () => o.from ?? null,
-    method: () => 'GET',
-    resourceType: () => o.type ?? 'fetch',
-    failure: () => null,
-    allHeaders: async () => ({}),
-  } as unknown as Request;
-}
-
-function response(req: Request, status: number): Response {
-  return {
-    request: () => req,
-    status: () => status,
-    fromServiceWorker: () => false,
-    headersArray: async () => [],
-    serverAddr: async () => ({ ipAddress: '93.184.215.14', port: 443 }),
-  } as unknown as Response;
-}
-
-function setup() {
-  const ctx = new EventEmitter();
-  const counter = { limit: 2000, issued: 0, truncated: false };
-  const rec = new NetworkRecorder('A', 'example.test', counter, false);
-  rec.attach(ctx as unknown as BrowserContext);
-  return { ctx, rec, main: frame() };
-}
+const setup = () => ({ ...fakeRecorder({ etld1: 'example.test' }), main: frame() });
 
 const URL_1 = 'https://www.example.test/';
 const URL_2 = 'https://www.example.test/impressum/';
@@ -155,7 +109,7 @@ describe('NetworkRecorder.inflight: the quiet decision looks at the current navi
     const answered = request('https://www.example.test/ok');
     ctx.emit('request', hung);
     ctx.emit('request', answered);
-    ctx.emit('response', response(answered, 200));
+    ctx.emit('response', fakeResponse(answered));
     await rec.flush();
     const before = JSON.stringify(rec.records);
 

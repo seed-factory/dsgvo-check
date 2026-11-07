@@ -44,45 +44,13 @@ describe('SSRF guard: a name that does not resolve locally fails closed', () => 
 
     expect(blocks(verdict), `verdict ${verdict}`).toBe(true);
   });
+});
 
-  it('public and non-http(s) documents still pass', async () => {
-    const classify = hostClassifier({
-      ...defaultNetworkConfig(),
-      lookup: async () => [{ address: '93.184.215.14', family: 4 }],
-    });
-
-    const publicVerdict = await urlVerdict('https://www.example.de/', classify);
-    const blankVerdict = await urlVerdict('about:blank', classify);
-
-    expect(blocks(publicVerdict), `verdict ${publicVerdict}`).toBe(false);
-    expect(blocks(blankVerdict), `verdict ${blankVerdict}`).toBe(false);
-  });
-
-  it('a transient resolver error is retried once', async () => {
-    let calls = 0;
-    const lookup: Lookup = async () => {
-      calls++;
-      if (calls === 1) throw Object.assign(new Error('getaddrinfo EAI_AGAIN'), { code: 'EAI_AGAIN' });
-      return [{ address: '10.0.0.5', family: 4 }];
-    };
-    const classify = hostClassifier({ ...defaultNetworkConfig(), lookup });
-
-    expect(await classify('intranet.example.test')).toBe('private');
-    expect(calls).toBe(2);
-  });
-
-  it('a failed lookup is not cached: the next document to that host is classified again', async () => {
-    let calls = 0;
-    const lookup: Lookup = async () => {
-      calls++;
-      if (calls <= 2) throw new Error('getaddrinfo EAI_AGAIN');
-      return [{ address: '10.0.0.5', family: 4 }];
-    };
-    const classify = hostClassifier({ ...defaultNetworkConfig(), lookup });
-
-    expect(await classify('intranet.example.test')).toBe('unresolved');
-    expect(await classify('intranet.example.test')).toBe('private');
-  });
+const emptyStorage = (): RawStorage => ({
+  origin: 'https://www.example.de',
+  local: [],
+  session: [],
+  idb: [],
 });
 
 interface FakeState {
@@ -94,7 +62,15 @@ interface FakeState {
   storageWrites: Array<{ type: 'localStorage' | 'sessionStorage'; key: string; t: number }>;
 }
 
-function fakeBrowser(state: FakeState): { context: BrowserContext; page: Page } {
+/** A page with one frame over `state`; a test changes the returned state to change what the next snapshot reads. */
+function fakeBrowser(over: Partial<FakeState> = {}) {
+  const state: FakeState = {
+    cookies: [],
+    cookieWrites: [],
+    storage: emptyStorage(),
+    storageWrites: [],
+    ...over,
+  };
   const frame = {
     url: () => 'https://www.example.de/',
     evaluate: async (fn: (...a: unknown[]) => unknown) => {
@@ -112,15 +88,8 @@ function fakeBrowser(state: FakeState): { context: BrowserContext; page: Page } 
   };
   const page = { frames: () => [frame], mainFrame: () => frame } as unknown as Page;
   const context = { cookies: async () => state.cookies } as unknown as BrowserContext;
-  return { context, page };
+  return { context, page, state };
 }
-
-const emptyStorage = (): RawStorage => ({
-  origin: 'https://www.example.de',
-  local: [],
-  session: [],
-  idb: [],
-});
 
 const cookie = (name: string, value: string, expires: number) => ({
   name,
@@ -135,8 +104,7 @@ const cookie = (name: string, value: string, expires: number) => ({
 
 describe('cookie setter URLs are sanitized wherever a record is created', () => {
   it('attempted script cookie: the script URL keeps no query values', async () => {
-    const state: FakeState = {
-      cookies: [],
+    const { context, page } = fakeBrowser({
       cookieWrites: [
         {
           name: '_visitor',
@@ -145,10 +113,7 @@ describe('cookie setter URLs are sanitized wherever a record is created', () => 
           deletion: false,
         },
       ],
-      storage: emptyStorage(),
-      storageWrites: [],
-    };
-    const { context, page } = fakeBrowser(state);
+    });
     const jar = new JarTracker(target, new Map());
 
     await jar.snapshot(context, page, pre);
@@ -345,7 +310,7 @@ describe('documents with same-origin frames', () => {
 describe('writes after the click are recorded even when the key existed before', () => {
   it('cookies: a script write or a Set-Cookie after the click → an afterClick record for a known cookie', async () => {
     const clickAt = Date.now();
-    const state: FakeState = {
+    const { context, page, state } = fakeBrowser({
       cookies: [
         cookie('_ga', 'GA1.1.111', 2_000_000_000),
         cookie('_fbp', 'fb.1.222', 2_000_000_000),
@@ -357,10 +322,7 @@ describe('writes after the click are recorded even when the key existed before',
         { name: '_ga', t: clickAt - 5_000, script: null, deletion: false },
         { name: '_fbp', t: clickAt - 5_000, script: null, deletion: false },
       ],
-      storage: emptyStorage(),
-      storageWrites: [],
-    };
-    const { context, page } = fakeBrowser(state);
+    });
     // The `Set-Cookie` after the click arrives as a recorder origin flagged `afterClick` (per name, domain,
     // path and partition, not by name alone).
     const origins = new Map<string, SetCookieOrigin>();
@@ -413,9 +375,7 @@ describe('writes after the click are recorded even when the key existed before',
 
   it('storage: a key written again after the click → an afterClick record', async () => {
     const clickAt = Date.now();
-    const state: FakeState = {
-      cookies: [],
-      cookieWrites: [],
+    const { context, page, state } = fakeBrowser({
       storage: {
         ...emptyStorage(),
         local: [
@@ -424,8 +384,7 @@ describe('writes after the click are recorded even when the key existed before',
         ],
       },
       storageWrites: [{ type: 'localStorage', key: '_ga4_session', t: clickAt - 1_000 }],
-    };
-    const { context, page } = fakeBrowser(state);
+    });
     const jar = new JarTracker(target, new Map());
     await jar.snapshot(context, page, pre);
     jar.markClick(clickAt);
@@ -439,13 +398,7 @@ describe('writes after the click are recorded even when the key existed before',
   });
 
   it('control: without a click nothing is duplicated', async () => {
-    const state: FakeState = {
-      cookies: [cookie('_ga', 'GA1.1.111', 2_000_000_000)],
-      cookieWrites: [],
-      storage: emptyStorage(),
-      storageWrites: [],
-    };
-    const { context, page } = fakeBrowser(state);
+    const { context, page, state } = fakeBrowser({ cookies: [cookie('_ga', 'GA1.1.111', 2_000_000_000)] });
     const jar = new JarTracker(target, new Map());
     await jar.snapshot(context, page, pre);
 

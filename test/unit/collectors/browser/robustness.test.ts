@@ -1,5 +1,5 @@
-import { EventEmitter } from 'node:events';
-import type { BrowserContext, Page, Request, Response } from 'playwright-core';
+import type { EventEmitter } from 'node:events';
+import type { Page, Response } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostClassifier, type LookupError } from '../../../../src/collectors/browser/launch/ssrf.ts';
 import {
@@ -7,9 +7,10 @@ import {
   valueWithin,
   visitPage,
 } from '../../../../src/collectors/browser/pages/visit.ts';
-import { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
-import { defaultNetworkConfig, type Lookup } from '../../../../src/core/url/net.ts';
+import type { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
+import { defaultNetworkConfig, type ResolvedAddress } from '../../../../src/core/url/net.ts';
 import { FAST_TIMING } from '../../../integration/browser/helpers.ts';
+import { fakeRecorder, fakeRequest, fakeResponse } from './cookies/fakes.ts';
 
 const never = <T>() => new Promise<T>(() => {});
 
@@ -41,14 +42,13 @@ describe('the code of a failed navigation keeps its digits', () => {
     ['page.goto: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH', 'ERR_SSL_VERSION_OR_CIPHER_MISMATCH'],
     ['page.goto: net::ERR_NAME_NOT_RESOLVED at https://x.example.test/', 'ERR_NAME_NOT_RESOLVED'],
     ['net::ERR_QUIC_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR'],
+    ['page.goto: net::ERR_CERT_DATE_INVALID at https://x/', 'ERR_CERT_DATE_INVALID'],
+    // Counterexamples: timeouts, downloads and unknown errors keep their own codes.
+    ['page.goto: Timeout 30000ms exceeded.', 'timeout'],
+    ['page.goto: Download is starting', 'download'],
+    ['something else', 'navigation-error'],
   ])('%s → %s', (message, code) => {
     expect(navigationErrorCode(message)).toBe(code);
-  });
-
-  it('counterexamples: timeouts, downloads and unknown errors keep their own codes', () => {
-    expect(navigationErrorCode('page.goto: Timeout 30000ms exceeded.')).toBe('timeout');
-    expect(navigationErrorCode('page.goto: Download is starting')).toBe('download');
-    expect(navigationErrorCode('something else')).toBe('navigation-error');
   });
 });
 
@@ -165,27 +165,12 @@ describe('response metadata that arrives after the page budget is kept until the
   const late = <T>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), LATE_MS));
 
   function beacon(ctx: EventEmitter) {
-    const frame = { parentFrame: () => null, url: () => URL_ };
-    const req = {
-      url: () => 'https://tracker.example.net/collect',
-      postData: () => null,
-      serviceWorker: () => null,
-      frame: () => frame,
-      isNavigationRequest: () => false,
-      redirectedFrom: () => null,
-      method: () => 'GET',
-      resourceType: () => 'xhr',
-      failure: () => null,
+    const req = fakeRequest('https://tracker.example.net/collect', {
+      type: 'xhr',
       allHeaders: () => late({ cookie: '_ga=GA1.2.123456789.1700000000' }),
-    } as unknown as Request;
-
-    const res = {
-      request: () => req,
-      status: () => 200,
-      fromServiceWorker: () => false,
-      headersArray: () => late([{ name: 'set-cookie', value: 'late_cookie=1; Path=/' }]),
-      serverAddr: async () => ({ ipAddress: '93.184.215.14', port: 443 }),
-    } as unknown as Response;
+    });
+    const setCookie = [{ name: 'set-cookie', value: 'late_cookie=1; Path=/' }];
+    const res = fakeResponse(req, [], { headersArray: () => late(setCookie) } as Partial<Response>);
 
     // The request is never finished: the page keeps one request open, so the quiet wait ends at the hard cap.
     ctx.emit('request', req);
@@ -194,10 +179,7 @@ describe('response metadata that arrives after the page budget is kept until the
 
   /** A page whose navigation starts a beacon, exhausts the HARD_CAP and returns before the metadata arrives. */
   async function visit() {
-    const ctx = new EventEmitter();
-    const counter = { limit: 2000, issued: 0, truncated: false };
-    const recorder = new NetworkRecorder('A', 'example.test', counter, false);
-    recorder.attach(ctx as unknown as BrowserContext);
+    const { ctx, rec: recorder } = fakeRecorder({ etld1: 'example.test' });
 
     const main = {
       status: () => 200,
@@ -274,24 +256,33 @@ describe('response metadata that arrives after the page budget is kept until the
   });
 });
 
+const err = (code: string) => Object.assign(new Error(`getaddrinfo ${code}`), { code });
+const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
+const PRIVATE = [{ address: '10.0.0.5', family: 4 as const }];
+type Answer = (call: number) => Promise<ResolvedAddress[]>;
+
+/** A guard whose resolver gives `answer(n)` on its n-th call; it counts the calls and records the lookup errors. */
+function guard(options: { budgetMs?: number; backoffMs?: number[] }, answer: Answer) {
+  let calls = 0;
+  const seen: LookupError[] = [];
+  const classify = hostClassifier(
+    { ...defaultNetworkConfig(), lookup: () => answer(++calls) },
+    { ...options, onLookupError: (e) => seen.push(e) },
+  );
+  return { classify, calls: () => calls, seen };
+}
+
 describe('the guard re-asks a resolver that failed for a moment', () => {
-  const err = (code: string) => Object.assign(new Error(`getaddrinfo ${code}`), { code });
-  const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
-  const quick = { backoffMs: [5, 5] } as const;
-  const classifier = (lookup: Lookup, errors: LookupError[] = []) =>
-    hostClassifier({ ...defaultNetworkConfig(), lookup }, { ...quick, onLookupError: (e) => errors.push(e) });
+  const quick = { backoffMs: [5, 5] };
 
   it('EAI_AGAIN on the 1st and 2nd call, success on the 3rd → public', async () => {
-    let calls = 0;
-    const seen: LookupError[] = [];
-    const classify = classifier(async () => {
-      calls++;
-      if (calls <= 2) throw err('EAI_AGAIN');
+    const { classify, calls, seen } = guard(quick, async (call) => {
+      if (call <= 2) throw err('EAI_AGAIN');
       return PUBLIC;
-    }, seen);
+    });
 
     expect(await advance(classify('www.example.test'), 20)).toBe('public');
-    expect(calls).toBe(3);
+    expect(calls()).toBe(3);
     expect(seen.map((e) => [e.code, e.attempt])).toEqual([
       ['EAI_AGAIN', 1],
       ['EAI_AGAIN', 2],
@@ -299,143 +290,109 @@ describe('the guard re-asks a resolver that failed for a moment', () => {
 
     // The verdict is cached: no further lookup.
     await advance(classify('www.example.test'), 20);
-    expect(calls).toBe(3);
+    expect(calls()).toBe(3);
   });
 
-  it('ENOTFOUND stays fail-closed: asked twice, then unresolved; the code is reported', async () => {
-    let calls = 0;
-    const seen: LookupError[] = [];
-    const classify = classifier(async () => {
-      calls++;
-      throw err('ENOTFOUND');
-    }, seen);
-
-    expect(await advance(classify('gone.example.test'), 20)).toBe('unresolved');
-    expect(calls).toBe(2);
-    expect(seen.map((e) => e.code)).toEqual(['ENOTFOUND', 'ENOTFOUND']);
-  });
-
-  it('a resolver that keeps failing transiently ends unresolved after 3 attempts, not cached', async () => {
-    let calls = 0;
-    const classify = classifier(async () => {
-      calls++;
-      throw err('ETIMEOUT');
-    });
-
-    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
-    expect(calls).toBe(3);
-    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
-    expect(calls).toBe(6);
-  });
-
-  it('the attempts stay within the time budget', async () => {
-    let calls = 0;
-    const classify = hostClassifier(
-      {
-        ...defaultNetworkConfig(),
-        lookup: async () => {
-          calls++;
-          throw err('EAI_AGAIN');
-        },
-      },
-      { backoffMs: [60_000, 60_000], budgetMs: 100 },
-    );
-
-    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
-    expect(calls).toBe(1);
-  });
-
-  it('a private answer is final: no retry', async () => {
-    let calls = 0;
-    const classify = classifier(async () => {
-      calls++;
-      return [{ address: '10.0.0.5', family: 4 as const }];
+  it('a transient resolver error is retried once', async () => {
+    const { classify, calls } = guard(quick, async (call) => {
+      if (call === 1) throw err('EAI_AGAIN');
+      return PRIVATE;
     });
 
     expect(await advance(classify('intranet.example.test'), 20)).toBe('private');
-    expect(calls).toBe(1);
+    expect(calls()).toBe(2);
+  });
+
+  it('ENOTFOUND stays fail-closed: asked twice, then unresolved; the code is reported', async () => {
+    const { classify, calls, seen } = guard(quick, () => Promise.reject(err('ENOTFOUND')));
+
+    expect(await advance(classify('gone.example.test'), 20)).toBe('unresolved');
+    expect(calls()).toBe(2);
+    expect(seen.map((e) => e.code)).toEqual(['ENOTFOUND', 'ENOTFOUND']);
+  });
+
+  it('a failed lookup is not cached: the next document to that host is classified again', async () => {
+    // An error without a code is a definitive answer: asked twice, then unresolved.
+    const { classify } = guard(quick, async (call) => {
+      if (call <= 2) throw new Error('getaddrinfo EAI_AGAIN');
+      return PRIVATE;
+    });
+
+    expect(await advance(classify('intranet.example.test'), 20)).toBe('unresolved');
+    expect(await advance(classify('intranet.example.test'), 20)).toBe('private');
+  });
+
+  it('a resolver that keeps failing transiently ends unresolved after 3 attempts, not cached', async () => {
+    const { classify, calls } = guard(quick, () => Promise.reject(err('ETIMEOUT')));
+
+    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
+    expect(calls()).toBe(3);
+    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
+    expect(calls()).toBe(6);
+  });
+
+  it('the attempts stay within the time budget', async () => {
+    const budget = { backoffMs: [60_000, 60_000], budgetMs: 100 };
+    const { classify, calls } = guard(budget, () => Promise.reject(err('EAI_AGAIN')));
+
+    expect(await advance(classify('slow.example.test'), 20)).toBe('unresolved');
+    expect(calls()).toBe(1);
+  });
+
+  it('a private answer is final: no retry', async () => {
+    const { classify, calls } = guard(quick, async () => PRIVATE);
+
+    expect(await advance(classify('intranet.example.test'), 20)).toBe('private');
+    expect(calls()).toBe(1);
   });
 });
 
 describe('every wait for the resolver is bounded by what is left of the shared budget', () => {
-  const err = (code: string) => Object.assign(new Error(`getaddrinfo ${code}`), { code });
-  const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
   const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
   const within = <T>(work: Promise<T>, ms = 2_500) => advance(work, ms);
-  const make = (lookup: Lookup, budgetMs: number, seen: LookupError[] = [], backoffMs: number[] = [1, 1]) =>
-    hostClassifier(
-      { ...defaultNetworkConfig(), lookup },
-      { budgetMs, backoffMs, onLookupError: (e) => seen.push(e) },
-    );
+  const make = (budgetMs: number, answer: Answer) => guard({ budgetMs, backoffMs: [1, 1] }, answer);
 
   it('a public answer that comes after the budget is not applied: unresolved, a timeout is recorded, not cached', async () => {
-    let calls = 0;
-    const seen: LookupError[] = [];
-    const classify = make(
-      async () => {
-        calls++;
-        if (calls === 1) {
-          await delay(1_000);
-          return PUBLIC;
-        }
-        return [{ address: '10.0.0.5', family: 4 as const }];
-      },
-      60,
-      seen,
-    );
+    const { classify, calls, seen } = make(60, async (call) => {
+      if (call > 1) return PRIVATE;
+      await delay(1_000);
+      return PUBLIC;
+    });
 
     expect(await within(classify('late.example.test'))).toBe('unresolved');
-    expect(calls).toBe(1);
+    expect(calls()).toBe(1);
     expect(seen.map((e) => [e.code, e.attempt])).toEqual([['ETIMEOUT', 1]]);
 
     // The late "public" must not be cached or applied afterwards: the next document asks again and gets its own answer.
     expect(await within(classify('late.example.test'))).toBe('private');
-    expect(calls).toBe(2);
+    expect(calls()).toBe(2);
   });
 
   it('a resolver whose promise never settles ends unresolved within the budget', async () => {
-    let calls = 0;
-    const seen: LookupError[] = [];
-    const classify = make(
-      () => {
-        calls++;
-        return never();
-      },
-      60,
-      seen,
-    );
+    const { classify, calls, seen } = make(60, () => never());
 
     expect(await within(classify('hang.example.test'))).toBe('unresolved');
-    expect(calls).toBe(1);
+    expect(calls()).toBe(1);
     expect(seen.map((e) => e.code)).toEqual(['ETIMEOUT']);
   });
 
   it('a slow definitive error is cut too: no second ask once the budget is spent', async () => {
-    let calls = 0;
-    const classify = make(async () => {
-      calls++;
+    const { classify, calls } = make(60, async () => {
       await delay(1_000);
       throw err('ENOTFOUND');
-    }, 60);
+    });
 
     expect(await within(classify('slow-gone.example.test'))).toBe('unresolved');
-    expect(calls).toBe(1);
+    expect(calls()).toBe(1);
   });
 
   it('the immediate re-ask after ENOTFOUND is bounded as well', async () => {
-    let calls = 0;
-    const seen: LookupError[] = [];
-    const classify = make(
-      () => {
-        calls++;
-        return calls === 1 ? Promise.reject(err('ENOTFOUND')) : never();
-      },
-      60,
-      seen,
+    const { classify, calls, seen } = make(60, (call) =>
+      call === 1 ? Promise.reject(err('ENOTFOUND')) : never(),
     );
 
     expect(await within(classify('re-ask.example.test'))).toBe('unresolved');
-    expect(calls).toBe(2);
+    expect(calls()).toBe(2);
     expect(seen.map((e) => [e.code, e.attempt])).toEqual([
       ['ENOTFOUND', 1],
       ['ETIMEOUT', 2],
@@ -443,60 +400,47 @@ describe('every wait for the resolver is bounded by what is left of the shared b
   });
 
   it('the budget is shared by all attempts: a later attempt gets only the remainder', async () => {
-    let calls = 0;
-    const classify = make(
-      async () => {
-        calls++;
-        if (calls === 1) throw err('EAI_AGAIN');
-        if (calls === 2) {
-          await delay(120);
-          throw err('EAI_AGAIN');
-        }
-        return never();
-      },
-      200,
-      [],
-      [1, 1],
-    );
+    const { classify, calls } = make(200, async (call) => {
+      if (call === 1) throw err('EAI_AGAIN');
+      if (call === 2) {
+        await delay(120);
+        throw err('EAI_AGAIN');
+      }
+      return never();
+    });
 
     expect(await within(classify('shared.example.test'))).toBe('unresolved');
     // 200 ms in all (the 3rd attempt had ~80 ms left), not 200 ms for the 3rd attempt alone.
-    expect(calls).toBe(3);
+    expect(calls()).toBe(3);
   });
 
   it('counterexample: a slow answer within the budget still counts (public), nothing is recorded', async () => {
-    const seen: LookupError[] = [];
-    const classify = make(
-      async () => {
-        await delay(60);
-        return PUBLIC;
-      },
-      2_000,
-      seen,
-    );
+    const { classify, seen } = make(2_000, async () => {
+      await delay(60);
+      return PUBLIC;
+    });
 
     expect(await within(classify('slow-ok.example.test'))).toBe('public');
     expect(seen).toEqual([]);
   });
 
   it('counterexample: a private answer within the budget is final, no timeout record', async () => {
-    const seen: LookupError[] = [];
-    const classify = make(async () => [{ address: '10.0.0.5', family: 4 as const }], 2_000, seen);
+    const { classify, seen } = make(2_000, async () => PRIVATE);
 
     expect(await within(classify('intranet2.example.test'))).toBe('private');
     expect(seen).toEqual([]);
   });
 
   it('timers are cleared in every outcome: answer, error, timeout', async () => {
-    const okay = make(async () => PUBLIC, 60_000);
+    const okay = make(60_000, async () => PUBLIC).classify;
     expect(await okay('t-ok.example.test')).toBe('public');
     expect(vi.getTimerCount()).toBe(0);
 
-    const failing = make(async () => Promise.reject(err('ENOTFOUND')), 60_000);
+    const failing = make(60_000, () => Promise.reject(err('ENOTFOUND'))).classify;
     expect(await failing('t-err.example.test')).toBe('unresolved');
     expect(vi.getTimerCount()).toBe(0);
 
-    const hanging = make(() => never(), 60_000);
+    const hanging = make(60_000, () => never()).classify;
     expect(await advance(hanging('t-hang.example.test'), 60_001)).toBe('unresolved');
     expect(vi.getTimerCount()).toBe(0);
   });
