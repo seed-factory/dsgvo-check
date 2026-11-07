@@ -54,28 +54,28 @@ Der Bericht beschreibt technische Beobachtungen („beobachtet“, „nicht gefu
 
 ## Was geprüft wird
 
-| ID         | Beobachtung                                                                               |
-| ---------- | ----------------------------------------------------------------------------------------- |
-| CONSENT-01 | Anfragen an Dritte und Tracking-Hits vor einer Interaktion mit dem Banner                 |
-| CONSENT-02 | Cookies und Web Storage vor Interaktion (Namen, Flags, Laufzeit; **keine Werte**)         |
-| CONSENT-03 | Tracking ohne erkennbares Einwilligungsbanner                                             |
-| CONSENT-04 | Erste Banner-Ebene: „Ablehnen“ gleichrangig zu „Akzeptieren“?                             |
-| CONSENT-05 | Was nach einem bestätigten „Ablehnen“ weiter gesendet oder gespeichert wird               |
-| TRACK-01   | Dienste-Inventar je Zeitpunkt: vor Interaktion, nach Ablehnung, nach Zustimmung           |
-| EMBED-01   | Schriften von Drittservern (z. B. Google Fonts)                                           |
-| EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                         |
-| EMBED-03   | Videos und Vorschaubilder (z. B. YouTube, Vimeo) ohne Zwei-Klick-Lösung                   |
-| LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt       |
-| LEGAL-02   | Bezeichnungen früherer Rechtslage im Text (z. B. TMG, RStV, TTDSG, Privacy Shield)        |
-| PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                           |
-| PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen       |
-| HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy |
-| HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                              |
-| TLS-01     | Umleitung von http auf https; Formulare auf http-Seiten; Links auf eigene http-Adressen   |
-| TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit           |
-| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum     |
-| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                   |
-| MAIL-03    | DKIM-Schlüssel auf den geprüften Selektoren und ihre RSA-Länge, je E-Mail-Domain          |
+| ID         | Beobachtung                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| CONSENT-01 | Anfragen an Dritte und Tracking-Hits vor einer Interaktion mit dem Banner                                         |
+| CONSENT-02 | Cookies und Web Storage vor Interaktion (Namen, Flags, Laufzeit; **keine Werte**)                                 |
+| CONSENT-03 | Tracking ohne erkennbares Einwilligungsbanner                                                                     |
+| CONSENT-04 | Erste Banner-Ebene: „Ablehnen“ gleichrangig zu „Akzeptieren“?                                                     |
+| CONSENT-05 | Was nach einem bestätigten „Ablehnen“ weiter gesendet oder gespeichert wird                                       |
+| TRACK-01   | Dienste-Inventar je Zeitpunkt: vor Interaktion, nach Ablehnung, nach Zustimmung                                   |
+| EMBED-01   | Schriften von Drittservern (z. B. Google Fonts)                                                                   |
+| EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                                                 |
+| EMBED-03   | Videos und Vorschaubilder (z. B. YouTube, Vimeo) ohne Zwei-Klick-Lösung                                           |
+| LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt                               |
+| LEGAL-02   | Bezeichnungen früherer Rechtslage im Text (z. B. TMG, RStV, TTDSG, Privacy Shield)                                |
+| PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                                                   |
+| PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen                               |
+| HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy                         |
+| HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                                                      |
+| TLS-01     | Umleitung von http auf https; Formulare auf http-Seiten, auch verlinkter Beiträge; Links auf eigene http-Adressen |
+| TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit                                   |
+| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum                             |
+| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                                           |
+| MAIL-03    | DKIM-Schlüssel auf den geprüften Selektoren und ihre RSA-Länge, je E-Mail-Domain                                  |
 
 Jede Prüfung kann mehrere Varianten melden. Die Tabelle darunter wird aus `test/data/ruleset` erzeugt und zeigt, welche
 Variante mit welchem Standard-Schweregrad gemeldet wird.
@@ -645,9 +645,11 @@ will, was bei ihm angekommen ist, findet es hier vollständig.
   - je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung (nur gleiche
     Website, für die Sicherheits-Header und Versionsangaben);
   - nach dem Browser höchstens 3 Anfragen (`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`) an die `http://`-Adressen von Seiten,
-    auf denen Phase A ein Formular gesehen hat, nur wenn `http://` ihres Hosts ohne Umleitung auf https ausliefert:
-    je ein GET, ohne einer Weiterleitung zu folgen und ohne etwas abzusenden, keine Wiederholung und nach 429 oder 503
-    keine weitere Anfrage an diesen Host (für TLS-01).
+    auf denen Phase A ein Formular gesehen hat, und mit dem Rest dieses Budgets an die `http://`-Adressen von Beiträgen
+    und Artikeln, die die besuchten Seiten als Permalink (`rel="bookmark"`) verlinken und die der Browser nicht besucht
+    hat; nur wenn `http://` ihres Hosts ohne Umleitung auf https ausliefert: je ein GET, ohne einer Weiterleitung zu
+    folgen und ohne etwas abzusenden, keine Wiederholung und nach 429 oder 503 keine weitere Anfrage an diesen Host
+    (für TLS-01).
 - **TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen; nach einer Umleitung auf eine
   andere Domain höchstens 3 weitere für den Zielhost und seine `www.`- und Apex-Varianten.
 - **DNS:** MX-, SPF-, DMARC- und DKIM-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website: für die
@@ -798,15 +800,22 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
   `<base href>` auf; das `formaction` einer Schaltfläche liest er nicht. Gelesen werden die ersten 512 KiB einer Seite;
   wurde eine Antwort dort abgeschnitten, ließ sie sich nicht entpacken oder stand dort statt des Impressums oder der
   Datenschutzerklärung ein Bot-Schutz, und stand im gelesenen Teil kein Formular, nennt TLS-01 die Einschränkung
-  `http-form-not-inspected`. Außer der Startseite und den verlinkten Rechtstexten fragt er nur die `http://`-Adressen
-  von bis zu 3 Seiten ab, auf denen Phase A ein Formular gesehen hat, das mehr als eine Suche auf der Website nimmt
-  (dieselbe Regel wie für das Markup, Wörter in `test/data/http/html.yaml`), und nur auf Hosts, deren Wurzel
-  `http://<host>/` ohne Umleitung auf https ausgeliefert wird; Formulare mit E-Mail- oder Passwortfeld zuerst. Seiten
-  mit Query-Parametern oder Port in der Adresse werden nicht abgefragt. Antwortet ein Host mit 429 oder 503, bekommt er
-  in diesem Schritt keine weitere Anfrage. Ein Beitrag mit Kommentarformular wird nur gesehen, wenn Phase A ihn besucht
-  (Seitengruppe Blog/News). Antwortet die Adresse mit einem Bot-Schutz, einem Fehler oder einer Weiterleitung auf eine
-  andere `http://`-Adresse, bleibt es bei der Einschränkung `http-form-twin-undecided`. Ein Formular einer
-  https-Seite, das an eine `http://`-Adresse sendet, ist kein TLS-01-Befund.
+  `http-form-not-inspected`. Außer der Startseite und den verlinkten Rechtstexten fragt er höchstens 3 weitere
+  `http://`-Adressen ab (`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`), nur auf Hosts, deren Wurzel `http://<host>/` ohne
+  Umleitung auf https ausgeliefert wird: zuerst die von Seiten, auf denen Phase A ein Formular gesehen hat, das mehr als
+  eine Suche auf der Website nimmt (dieselbe Regel wie für das Markup, Wörter in `test/data/http/html.yaml`), Formulare
+  mit E-Mail- oder Passwortfeld zuerst; mit dem Rest die von Beiträgen und Artikeln, die die Seiten der Phase A als
+  Permalink verlinken (`rel="bookmark"`, so verlinkt WordPress das Datum eines Beitrags), die Links der Startseite
+  zuerst, sonst in der Reihenfolge im Dokument, und nur Adressen, die Phase A nicht selbst besucht hat. Ein Beitrag mit
+  Kommentarformular wird so nur gesehen, wenn Phase A ihn besucht (Seitengruppe Blog/News) oder eine besuchte Seite ihn
+  als Permalink verlinkt und er ins Budget passt; ein Beitrag, der nur über Titel oder „Weiterlesen“ ohne
+  `rel="bookmark"` verlinkt ist, wird nicht abgefragt. Weitere Permalinks über dem Budget nennt TLS-01 nicht als
+  Einschränkung, denn ob sie ein Formular tragen, ist nicht bekannt; nur Seiten mit Formular über dem Budget ergeben
+  `http-form-twins-capped`. Seiten und Permalinks mit Query-Parametern oder Port in der Adresse werden nicht abgefragt
+  (also auch nicht WordPress-Adressen der Form `/?p=123`). Antwortet ein Host mit 429 oder 503, bekommt er in
+  diesem Schritt keine weitere Anfrage. Antwortet die Adresse mit einem Bot-Schutz, einem Fehler oder einer
+  Weiterleitung auf eine andere `http://`-Adresse, bleibt es bei der Einschränkung `http-form-twin-undecided`. Ein
+  Formular einer https-Seite, das an eine `http://`-Adresse sendet, ist kein TLS-01-Befund.
 - **http-Links (TLS-01)** zählen nur, wenn sie in Phase A auf einer https-Seite der Website beobachtet wurden und auf
   `http://` eines Hosts derselben Domain zeigen. Ob ein solcher Link umleitet, entscheidet die Abfrage der Startseite
   (`/`) des Hosts, nicht der verlinkte Pfad; abgefragt werden nur die angegebene Adresse, www und die Domain selbst,

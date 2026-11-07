@@ -987,6 +987,7 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
         hasAction: 'yes',
         count: 1,
         downgrade: 'no',
+        permalinks: 0,
       },
     });
     expect(formOf(r)?.evidence).toContainEqual({
@@ -1138,6 +1139,130 @@ describe('TLS-01 forms on pages served over http beyond the root', () => {
         withTwins([], { documents: [legal({ hasForm: false, forms: [], formInspection: 'truncated' })] }),
       );
       expect(r.outcome?.limitations).toEqual(['http-form-not-inspected:http://www.example.test/impressum']);
+    });
+  });
+
+  describe('the http:// address of a post that the visited pages link as its permalink', () => {
+    const LINKED = 'https://www.example.test/post-1/';
+    const permalinkTwin = (hop: Partial<HttpHop> | null, p: Partial<HttpTwin> = {}) =>
+      twin(hop, { page: LINKED, source: 'permalink', linkedFrom: 'https://www.example.test/', ...p });
+    const render = (lang: 'de' | 'en', params: Record<string, string | number>) =>
+      formatMessage(loadTexts(lang).messages['TLS-01.form-on-http-page']!.body, params, lang);
+
+    it('a comment form there counts like the other pages: one critical finding naming the action and the page', () => {
+      const r = runCheck(tls01, withTwins([permalinkTwin({ hasForm: true, forms: [COMMENT_FORM] })]));
+      expect(r.status).toBe('completed');
+      expect(variantsOf(r)).toEqual(['form-on-http-page', 'no-redirect']);
+      expect(formOf(r)).toMatchObject({
+        subject: 'http-entry:final',
+        pages: [POST],
+        params: { url: POST, action: ACTION, hasAction: 'yes', count: 1, permalinks: 1 },
+      });
+      expect(formOf(r)?.evidence).toContainEqual({
+        type: 'page',
+        phase: 'http',
+        url: POST,
+        status: 200,
+        role: 'http-form-permalink',
+        formAction: ACTION,
+      });
+    });
+
+    it('the text says the page was requested as the http address of a post the visited pages link', () => {
+      const r = runCheck(tls01, withTwins([permalinkTwin({ hasForm: true, forms: [COMMENT_FORM] })]));
+      const params = formOf(r)?.params as Record<string, string | number>;
+      expect(render('de', params)).toContain(
+        'Die Seite wurde als http-Adresse eines Beitrags oder Artikels abgefragt, den die besuchten Seiten als Permalink (rel="bookmark") verlinken; der Browser hat sie nicht besucht.',
+      );
+      expect(render('en', params)).toContain(
+        'The page was requested as the http address of a post or article that the visited pages link as its permalink (rel="bookmark"); the browser did not visit it.',
+      );
+      for (const lang of ['de', 'en'] as const) {
+        expect(render(lang, { ...params, permalinks: 0 })).not.toContain('rel="bookmark"');
+        expect(render(lang, { ...params, permalinks: undefined as unknown as number })).not.toMatch(
+          /\{|rel=/,
+        );
+      }
+    });
+
+    it('forms on the root, a visited page and a post are one finding; the post is counted and named as such', () => {
+      const r = runCheck(
+        tls01,
+        withTwins(
+          [
+            twin(
+              { hasForm: true, forms: [COMMENT_FORM], url: 'http://www.example.test/kontakt/' },
+              {
+                page: 'https://www.example.test/kontakt/',
+                url: 'http://www.example.test/kontakt/',
+                source: 'input-form',
+              },
+            ),
+            permalinkTwin({ hasForm: true, forms: [COMMENT_FORM] }),
+          ],
+          {},
+          [root({ hasForm: true, forms: [COMMENT_FORM] }), https()],
+        ),
+      );
+      const forms = observationsOf(r).filter((o) => o.variant === 'form-on-http-page');
+      expect(forms).toHaveLength(1);
+      expect(forms[0]).toMatchObject({
+        pages: [ROOT, 'http://www.example.test/kontakt/', POST],
+        params: { url: ROOT, count: 3, permalinks: 1 },
+      });
+      expect(forms[0]?.evidence.filter((e) => e.type === 'page').map((e) => [e.url, e.role])).toEqual([
+        [ROOT, 'http-form'],
+        ['http://www.example.test/kontakt/', 'http-form'],
+        [POST, 'http-form-permalink'],
+      ]);
+      expect(render('de', forms[0]?.params as Record<string, string | number>)).toContain(
+        'Eine dieser Seiten wurde als http-Adresse eines Beitrags oder Artikels abgefragt',
+      );
+    });
+
+    it.each<[string, Partial<HttpHop>]>([
+      [
+        'the address redirects to https',
+        { status: 301, location: 'https://www.example.test/post-1/', bodyBytes: 0, bodyKind: 'empty' },
+      ],
+      ['the address answers 404', { status: 404 }],
+      ['the http page has no data form', { hasForm: false, forms: [], formInspection: 'complete' }],
+    ])('clean: %s', (_name, hop) => {
+      const r = runCheck(
+        tls01,
+        withTwins([
+          permalinkTwin({ hasForm: undefined, forms: undefined, formInspection: undefined, ...hop }),
+        ]),
+      );
+      expect(r.status).toBe('completed');
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+
+    it('no clean claim when the request timed out: limitation naming the linked post', () => {
+      const r = runCheck(
+        tls01,
+        withTwins([permalinkTwin(null, { outcome: 'timeout', error: { code: 'timeout', message: 'x' } })]),
+      );
+      expect(r.status).toBe('partial');
+      expect(r.outcome?.limitations).toEqual([`http-form-twin-undecided:${LINKED}`]);
+      expect(variantsOf(r)).toEqual(['no-redirect']);
+    });
+
+    it('more permalinks than the budget leave the result complete: they are not known to carry a form', () => {
+      const r = runCheck(
+        tls01,
+        withTwins([permalinkTwin({})], {
+          formTwinStage: { budget: 1, candidates: 0, permalinkCandidates: 7, durationMs: 1 },
+        }),
+      );
+      expect(r.status).toBe('completed');
+      expect(r.outcome?.limitations ?? []).toEqual([]);
+    });
+
+    it('an older twin without a source counts as a page with a form', () => {
+      const r = runCheck(tls01, withTwins([twin({ hasForm: true, forms: [COMMENT_FORM] })]));
+      expect(formOf(r)?.params).toMatchObject({ permalinks: 0 });
+      expect(formOf(r)?.evidence.find((e) => e.type === 'page')).toMatchObject({ role: 'http-form' });
     });
   });
 

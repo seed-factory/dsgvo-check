@@ -2,7 +2,8 @@
  * Forms served over plain http on the fixture server: http:// of www serves the site without a redirect, the start page
  * has its comment form after 70 KiB of content, and an article and the contact page carry forms. The HTTP collector
  * reads the whole start page; after the browser the step requests the http:// addresses of the pages with a form once,
- * with GET and paced, and TLS-01 reports the forms with where they send. Field values reach no output.
+ * with GET and paced, then permalinks of posts with what is left of the budget, and TLS-01 reports the forms with
+ * where they send. Field values reach no output.
  */
 import zlib from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -15,7 +16,7 @@ import { defineCheck } from '../../../src/core/evaluation/check.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
 import { createLogger } from '../../../src/core/runtime/logger.ts';
-import type { BrowserSection, FormFact } from '../../../src/core/snapshot/browser.ts';
+import type { BrowserSection, FormFact, LinkFact } from '../../../src/core/snapshot/browser.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
 import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
@@ -26,6 +27,7 @@ import { testDataDir } from '../../utils/scan-harness.ts';
 import {
   makeBrowser,
   makeDom,
+  makeLink,
   makePage,
   makePhase,
   makeSnapshot,
@@ -77,6 +79,8 @@ const ROUTES = (['http', 'https'] as const).flatMap((scheme) => [
   route(scheme, '/blog/post-1/', doc('Beitrag', `${SEARCH_FORM}${filler(8 * KIB)}${COMMENT_FORM}`)),
   route(scheme, '/kontakt/', doc('Kontakt', `${SEARCH_FORM}${CONTACT_FORM}`)),
   route(scheme, '/suche/', doc('Suche', SEARCH_FORM)),
+  route(scheme, '/2025/02/erster/', doc('Erster Beitrag', `${filler(4 * KIB)}${COMMENT_FORM}`)),
+  route(scheme, '/2025/03/zweiter/', doc('Zweiter Beitrag', `${filler(4 * KIB)}${COMMENT_FORM}`)),
 ]);
 
 /** What phase A saw of the pages: the search in the header of each, the forms that take data on three. */
@@ -284,6 +288,90 @@ describe('forms over http: the HTTP collector and the step after the browser', (
     for (const out of [JSON.stringify(http), JSON.stringify(extended), lines.join('\n')]) {
       for (const secret of SECRETS) expect(out).not.toContain(secret);
     }
+  });
+});
+
+describe('forms over http: pages with a form and permalinks share the budget', () => {
+  const FIRST = `${SITE}2025/02/erster/`;
+  const SECOND = `${SITE}2025/03/zweiter/`;
+  const permalink = (href: string): LinkFact =>
+    makeLink({
+      href,
+      hrefKind: 'https',
+      text: 'Februar 2025',
+      region: 'main',
+      sameSite: true,
+      permalink: true,
+    });
+  let extended: HttpSection;
+  let probes: unknown[];
+  let stepRequests: typeof server.requests;
+
+  beforeAll(async () => {
+    server.reset();
+    const first = await createHttpCollector({ minIntervalMs: 20 })(collectorContext(SITE, network()));
+    const http = first.sections.http as HttpSection;
+    // The start page links both posts by their date; the contact page has a form that takes data.
+    const browser = makeBrowser({
+      phases: [
+        makePhase('A', {
+          pages: [
+            makePage({
+              url: SITE,
+              role: 'start',
+              order: 0,
+              dom: makeDom({ forms: [SEARCH_FACT], links: [permalink(FIRST), permalink(SECOND)] }),
+            }),
+            makePage({
+              url: `${SITE}kontakt/`,
+              role: 'contact',
+              order: 1,
+              dom: makeDom({ forms: [SEARCH_FACT, CONTACT_FACT] }),
+            }),
+          ],
+        }),
+      ],
+    });
+    const before = server.requests.length;
+    const config = defaultConfig();
+    const second = await createFormTwinCollector({ minIntervalMs: 20 })(
+      collectorContext(SITE, network(), {
+        snapshot: { http, browser } as Partial<Snapshot> as Snapshot,
+        config: { ...config, http: { ...config.http, formTwinPages: 2 } },
+      }),
+    );
+    extended = second.sections.http as HttpSection;
+    probes = second.probes ?? [];
+    stepRequests = server.requests.slice(before);
+  });
+
+  it('the page with a form first, then the first permalink; the second waits for a larger budget', () => {
+    expect(extended.twins?.map((t) => [t.source, t.page, t.url, t.outcome])).toEqual([
+      ['input-form', `${SITE}kontakt/`, `http://${HOST}/kontakt/`, 'ok'],
+      ['permalink', FIRST, `http://${HOST}/2025/02/erster/`, 'ok'],
+    ]);
+    expect(extended.twins?.[1]).toMatchObject({ linkedFrom: SITE });
+    expect(extended.formTwinStage).toMatchObject({ budget: 2, candidates: 1, permalinkCandidates: 2 });
+    expect(stepRequests.map((q) => `${q.method} ${q.scheme}://${q.host}${q.path}`)).toEqual([
+      `GET http://${HOST}/kontakt/`,
+      `GET http://${HOST}/2025/02/erster/`,
+    ]);
+    expect(probes).toEqual([
+      { kind: 'http', class: 'T', target: `http://${HOST}/kontakt/`, purpose: 'form-twin' },
+      { kind: 'http', class: 'T', target: `http://${HOST}/2025/02/erster/`, purpose: 'permalink-twin' },
+    ]);
+  });
+
+  it('TLS-01: the post counts like the other pages; the permalink over the budget leaves the result complete', () => {
+    const result = runCheck(tls01, makeSnapshot({ target: makeTarget(SITE), http: extended }));
+    expect(result.status).toBe('completed');
+    const form = observationsOf(result).find((o) => o.variant === 'form-on-http-page');
+    expect(form?.pages).toEqual([
+      `http://${HOST}/`,
+      `http://${HOST}/kontakt/`,
+      `http://${HOST}/2025/02/erster/`,
+    ]);
+    expect(form?.params).toMatchObject({ count: 3, permalinks: 1 });
   });
 });
 

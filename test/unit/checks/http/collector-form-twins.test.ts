@@ -1,11 +1,12 @@
 /**
- * Which http:// addresses the step after the browser requests: pages of phase A with a form that takes data, on a host
- * whose http:// root served content without a redirect, each address once and none the HTTP collector already fetched.
- * The requests themselves are covered on the fixture server (test/integration/http/form-twins.test.ts).
+ * Which http:// addresses the step after the browser requests: pages of phase A with a form that takes data, then the
+ * permalinks (`rel="bookmark"`) those pages link, on a host whose http:// root served content without a redirect, each
+ * address once and none the HTTP collector already fetched. The requests themselves are covered on the fixture server
+ * (test/integration/http/form-twins.test.ts, test/integration/http/permalink-twins.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { selectFormTwins } from '../../../../src/collectors/http/form-twins.ts';
-import type { FormFact, PageVisit } from '../../../../src/core/snapshot/browser.ts';
+import type { FormFact, LinkFact, PageVisit } from '../../../../src/core/snapshot/browser.ts';
 import type { DocumentResponse, HttpHop, RedirectChain } from '../../../../src/core/snapshot/http.ts';
 import {
   makeBrowser,
@@ -14,6 +15,7 @@ import {
   makeDom,
   makeHop,
   makeHttp,
+  makeLink,
   makePage,
   makePhase,
 } from '../../../utils/snapshot-builder.ts';
@@ -74,8 +76,16 @@ describe('selectFormTwins', () => {
       visit('/blog/post-1/', [SEARCH, COMMENTS]),
     ]);
     expect(selectFormTwins(s)).toEqual([
-      { page: 'https://www.example.test/kontakt/', url: 'http://www.example.test/kontakt/' },
-      { page: 'https://www.example.test/blog/post-1/', url: 'http://www.example.test/blog/post-1/' },
+      {
+        page: 'https://www.example.test/kontakt/',
+        url: 'http://www.example.test/kontakt/',
+        source: 'input-form',
+      },
+      {
+        page: 'https://www.example.test/blog/post-1/',
+        url: 'http://www.example.test/blog/post-1/',
+        source: 'input-form',
+      },
     ]);
   });
 
@@ -246,5 +256,212 @@ describe('selectFormTwins', () => {
 
   it('nothing without a browser section', () => {
     expect(selectFormTwins({ http: makeHttp({ chains: [httpChain('www.example.test')] }) })).toEqual([]);
+  });
+});
+
+describe('selectFormTwins: permalinks of the visited pages', () => {
+  const POST = 'https://www.example.test/2025/02/beitrag/';
+  const POST_TWIN = 'http://www.example.test/2025/02/beitrag/';
+
+  /** A WordPress post date: `<a href="…" rel="bookmark"><time datetime="…">…</time></a>`. */
+  const permalink = (href: string, p: Partial<LinkFact> = {}): LinkFact =>
+    makeLink({
+      href,
+      hrefKind: href.startsWith('http:') ? 'http' : 'https',
+      text: '14. März 2025',
+      region: 'main',
+      sameSite: true,
+      rel: 'bookmark',
+      permalink: true,
+      ...p,
+    });
+  const linking = (
+    path: string,
+    links: LinkFact[],
+    p: Partial<PageVisit> = {},
+    forms: FormFact[] = [SEARCH],
+  ) => makePage({ url: new URL(path, SITE).href, role: 'other', dom: makeDom({ forms, links }), ...p });
+  const start = (links: LinkFact[], p: Partial<PageVisit> = {}) =>
+    linking('/', links, { role: 'start', ...p });
+
+  it('the http:// address of a post the start page links as its permalink, with the page that links it', () => {
+    const s = snapshot([start([permalink(POST)]), visit('/impressum/', [SEARCH], { role: 'impressum' })]);
+    expect(selectFormTwins(s)).toEqual([
+      { page: POST, url: POST_TWIN, source: 'permalink', linkedFrom: SITE },
+    ]);
+  });
+
+  it('pages with a form that takes data come first; then the start page links, then the other pages, each in document order', () => {
+    const s = snapshot([
+      linking('/news/', [permalink('https://www.example.test/news/drei/')], { order: 1 }),
+      start([
+        permalink('https://www.example.test/zwei/'),
+        makeLink({ href: 'https://www.example.test/kontakt/', text: 'Kontakt', sameSite: true }),
+        permalink('https://www.example.test/eins/'),
+      ]),
+      visit('/kontakt/', [CONTACT], { role: 'contact', order: 2 }),
+    ]);
+    expect(selectFormTwins(s).map((c) => [c.source, c.url])).toEqual([
+      ['input-form', 'http://www.example.test/kontakt/'],
+      ['permalink', 'http://www.example.test/zwei/'],
+      ['permalink', 'http://www.example.test/eins/'],
+      ['permalink', 'http://www.example.test/news/drei/'],
+    ]);
+  });
+
+  it('each address once: linked twice, over http and https, with a fragment, or from two pages', () => {
+    const s = snapshot([
+      start([
+        permalink(POST),
+        permalink(`${POST}#comments`),
+        permalink(POST_TWIN),
+        permalink('https://www.example.test/zwei/'),
+      ]),
+      linking('/blog/', [permalink(POST), permalink('https://www.example.test/zwei/')], { order: 1 }),
+    ]);
+    expect(selectFormTwins(s).map((c) => [c.url, c.linkedFrom])).toEqual([
+      [POST_TWIN, SITE],
+      ['http://www.example.test/zwei/', SITE],
+    ]);
+  });
+
+  it('a permalink to a page with a form that phase A visited is requested once, as that page', () => {
+    const s = snapshot([
+      start([permalink('https://www.example.test/blog/post-1/')]),
+      visit('/blog/post-1/', [COMMENTS]),
+    ]);
+    expect(selectFormTwins(s)).toEqual([
+      {
+        page: 'https://www.example.test/blog/post-1/',
+        url: 'http://www.example.test/blog/post-1/',
+        source: 'input-form',
+      },
+    ]);
+  });
+
+  it('the www and the apex host each count by their own http:// root', () => {
+    const s = snapshot(
+      [start([permalink('https://example.test/apex-beitrag/'), permalink(POST)])],
+      [
+        httpChain('www.example.test'),
+        httpChain('example.test', [
+          { status: 301, location: 'https://example.test/' },
+          { url: 'https://example.test/', status: 200 },
+        ]),
+      ],
+    );
+    expect(urls(s)).toEqual([POST_TWIN]);
+  });
+
+  it.each<[string, () => Parameters<typeof selectFormTwins>[0]]>([
+    [
+      'the permalink names another host',
+      () => snapshot([start([permalink('https://blog.other.test/beitrag/')])]),
+    ],
+    [
+      'the permalink names a host of the site whose http:// root was not probed',
+      () => snapshot([start([permalink('https://blog.example.test/beitrag/')])]),
+    ],
+    ['the permalink has a query', () => snapshot([start([permalink('https://www.example.test/?p=12')])])],
+    [
+      'the permalink names a port',
+      () => snapshot([start([permalink('https://www.example.test:8443/beitrag/')])]),
+    ],
+    [
+      'part of the permalink was redacted',
+      () => snapshot([start([permalink('https://www.example.test/beitrag;sid=[redacted]/')])]),
+    ],
+    [
+      'the http:// root redirects to https',
+      () =>
+        snapshot(
+          [start([permalink(POST)])],
+          [
+            httpChain('www.example.test', [
+              { status: 301, location: SITE },
+              { url: SITE, status: 200 },
+            ]),
+          ],
+        ),
+    ],
+    [
+      'the http:// root timed out',
+      () => snapshot([start([permalink(POST)])], [httpChain('www.example.test', [], { outcome: 'timeout' })]),
+    ],
+    [
+      'the host throttled the HTTP collector',
+      () => ({
+        http: makeHttp({
+          chains: [httpChain('www.example.test')],
+          throttled: true,
+          throttledHosts: ['www.example.test'],
+        }),
+        browser: makeBrowser({ phases: [makePhase('A', { pages: [start([permalink(POST)])] })] }),
+      }),
+    ],
+    [
+      'the post is a page of phase A (without a form that takes data)',
+      () => snapshot([start([permalink(POST)]), linking(POST, [], { order: 1 })]),
+    ],
+    [
+      'the post is a page of phase A that redirected to its final address',
+      () =>
+        snapshot([
+          start([permalink(POST)]),
+          linking('https://www.example.test/?p=12', [], { order: 1, finalUrl: POST }),
+        ]),
+    ],
+    [
+      'the post is the address of a page of phase A that redirected elsewhere',
+      () =>
+        snapshot([
+          start([permalink(POST)]),
+          linking(POST, [], { order: 1, finalUrl: 'https://www.example.test/2025/02/beitrag-neu/' }),
+        ]),
+    ],
+    [
+      'the permalink names the root, which the HTTP collector already requested',
+      () => snapshot([start([permalink(SITE)])]),
+    ],
+    [
+      'the address was already fetched as a linked document',
+      () =>
+        snapshot([start([permalink('https://www.example.test/impressum/')])], undefined, [
+          makeDocumentResponse({
+            url: 'http://www.example.test/impressum/',
+            role: 'impressum',
+            foundVia: 'link',
+          }),
+        ]),
+    ],
+    [
+      'browser facts of an older version: rel="bookmark" stored, no permalink flag',
+      () => snapshot([start([permalink(POST, { permalink: undefined })])]),
+    ],
+    [
+      'a link that is no permalink',
+      () => snapshot([start([permalink(POST, { rel: 'nofollow', permalink: undefined })])]),
+    ],
+    [
+      'a permalink that is not an http(s) address',
+      () => snapshot([start([permalink(POST, { href: null, hrefKind: 'javascript' })])]),
+    ],
+    [
+      'the linking page was a bot challenge',
+      () =>
+        snapshot([start([permalink(POST)], { challenge: { detected: true, kind: 'captcha', signals: [] } })]),
+    ],
+    ['the linking page was not evaluable', () => snapshot([start([permalink(POST)], { evaluable: false })])],
+    [
+      'the permalink was seen in phase B only',
+      () => ({
+        http: makeHttp({ chains: [httpChain('www.example.test')] }),
+        browser: makeBrowser({
+          phases: [makePhase('A'), makePhase('B', { pages: [start([permalink(POST)], { phase: 'B' })] })],
+        }),
+      }),
+    ],
+  ])('nothing to request: %s', (_name, build) => {
+    expect(selectFormTwins(build())).toEqual([]);
   });
 });

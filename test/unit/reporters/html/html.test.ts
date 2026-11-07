@@ -271,6 +271,22 @@ describe('HTML report: sections and content', () => {
     expect(en).toContain('form sends to http://www.example.de/wp-comments-post.php');
   });
 
+  it('labels the http address of a linked post with a form as such', () => {
+    const r = sampleFullReport();
+    const page = r.evidence.find((e) => e.id === 'ev-page')!;
+    Object.assign(page, {
+      status: 200,
+      role: 'http-form-permalink',
+      evaluable: undefined,
+      reason: undefined,
+      url: 'http://www.example.de/2025/02/beitrag/',
+      formAction: 'http://www.example.de/wp-comments-post.php',
+    });
+    r.findings[0]!.evidenceIds = ['ev-page'];
+    expect(renderHtml(r, ctx())).toContain('http-Adresse eines verlinkten Beitrags mit Formular');
+    expect(renderHtml(r, ctx('en'))).toContain('http address of a linked post with a form');
+  });
+
   it('words the match of a dictionary term and labels the kind of statement a quote makes', () => {
     const r = sampleFullReport();
     const match = r.evidence.find((e) => e.id === 'ev-match')!;

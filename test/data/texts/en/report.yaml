@@ -343,7 +343,7 @@ ui:
     no-mail-records {neither MX nor SPF record found} key-revoked {DKIM key withdrawn (empty p=)} dkim-selectors-capped
     {expected DKIM selectors over the limit DSGVO_CHECK_DNS_DKIM_MAX_SELECTORS not queried} no-documents {neither a
     legal notice nor a privacy policy found as readable text} other {}}
-  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
+  report.pageRole: "{role, select, start {start page} nav {linked page} impressum {legal notice} privacy {privacy policy} contact {contact} http-form {page with a form over http} http-form-permalink {http address of a linked post with a form} legal-hop {intermediate page} fallback {usual path} other {{role}}}"
   report.collectorStatus: "{status, select, ok {completed} partial {partial} error {error} skipped {skipped} not-run {not run} other {{status}}}"
   report.evidence.type: "{type, select, request {{count, plural, one {Request} other {Requests}}} cookie {Cookie} storage {Storage entry} header {Header} dns {DNS record} tls {TLS connection} cmp {Consent banner} consent-state {Consent state} document {Document} text-match {Text passage} screenshot {Screenshot} page {{count, plural, one {Page} other {Pages}}} redirect-chain {Redirect chain} link {{count, plural, one {Link} other {Links}}} other {{type}}}"
   report.evidence.field: >-
