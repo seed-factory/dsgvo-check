@@ -772,7 +772,9 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   in Phase A ohne Klick, auf der ersten Seite, auf der ein eigener Adapter das Banner sicher erkennt (nie die
   allgemeine Heuristik), höchstens 100 000 Zeichen. Der Collector sucht darin wie PRIV-01 in der Datenschutzerklärung
   und speichert nur die gefundenen Dienste mit der Schreibweise aus dem Katalog, keinen Text des Banners; der Befund
-  nennt diese Schreibweise. Firmenname, Domain oder Kategorie im Banner zählen nicht als Nennung.
+  nennt diese Schreibweise. Firmenname oder Kategorie im Banner zählen nicht als Nennung, ebenso wenig eine Domain
+  des Dienstes; steht der Dienstname als Teil eines Hostnamens im Text (etwa „player.vimeo.com“), zählt er wie in der
+  Datenschutzerklärung als Nennung.
   Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist, und
   `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
