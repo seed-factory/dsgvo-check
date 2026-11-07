@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { containsAddress, REDACTED } from '../../../../src/core/url/email.ts';
 import { QUERY_ALLOWLIST, QUERY_VALUE_RULES, sanitizeUrl } from '../../../../src/core/url/url.ts';
 import { expectLinearGrowth } from '../../../utils/scaling.ts';
+import { random } from './redaction-helpers.ts';
 
 const KiB = 1024;
 const manyParams = (bytes: number) => `http://h.test/?a=${'&a'.repeat(bytes / 2)}`;
@@ -64,14 +65,6 @@ describe('query processing scales with parameter count and value size', () => {
     },
   );
 });
-
-/** mulberry32: the same sequence on every run, no extra dependency. */
-const random = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
 
 /** The query part of the old `sanitizeUrl` (quadratic via `u.searchParams`), for short inputs only. */
 function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST): string {

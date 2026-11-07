@@ -7,16 +7,8 @@ import * as api from '../../../../src/core/api.ts';
 import { maskEmails, maskMailto, redactText } from '../../../../src/core/redaction/redact.ts';
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
-
-const MARK = 'zq7marker';
-const D = 'example.invalid';
-
-/** The output of the first pass is a fixed point. */
-function expectStable(input: string): string {
-  const once = redactText(input);
-  expect(redactText(once), `redactText(redactText(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
+import { expectLinearGrowth } from '../../../utils/scaling.ts';
+import { D, expectStableText, MARK } from '../url/redaction-helpers.ts';
 
 describe('redactText: DNS TXT records', () => {
   it.each([
@@ -46,13 +38,13 @@ describe('redactText: DNS TXT records', () => {
     ['rua=mailto:a@x.test,mailto:b@y.test!10m', `rua=mailto:${REDACTED}@x.test,mailto:${REDACTED}@y.test`],
     ['v=spf1 include:_spf.example.test ~all', 'v=spf1 include:_spf.example.test ~all'],
   ])('%j → %j', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 });
 
 describe('redactText: URLs inside text', () => {
   it('redacts query values that are not allowlisted and keeps allowlisted ones', () => {
-    expect(redactText(`Siehe https://shop.example.test/p?token=${MARK}&id=G-ABC123 und weiter.`)).toBe(
+    expect(expectStableText(`Siehe https://shop.example.test/p?token=${MARK}&id=G-ABC123 und weiter.`)).toBe(
       `Siehe https://shop.example.test/p?token=${REDACTED}&id=G-ABC123 und weiter.`,
     );
   });
@@ -82,7 +74,7 @@ describe('redactText: URLs inside text', () => {
       `https://web.archive.example/web/20240329064148/mailto:${REDACTED}@example.test`,
     ],
   ])('redacts path parameters and drops credentials and the fragment: %s', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 
   // An apostrophe or a backtick inside a URL does not end the redaction.
@@ -99,7 +91,7 @@ describe('redactText: URLs inside text', () => {
     [`https://${D}/p;ord=a'${MARK}`, `https://${D}/p;ord=${REDACTED}`],
     [`Siehe https://${D}/p?token=alice's-id, danach.`, `Siehe https://${D}/p?token=${REDACTED}, danach.`],
   ])('an apostrophe inside the URL: %s', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
     expect(out).not.toContain("alice's");
@@ -149,7 +141,7 @@ describe('redactText: URLs inside text', () => {
     // only the surplus closing brackets are cut when the token has fewer openers than closers
     ['mailto:info@example.test)).', `mailto:${REDACTED}@example.test)).`],
   ])('punctuation around the URL stays outside: %s', (input, expected) => {
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 
   it.each([
@@ -179,7 +171,7 @@ describe('redactText: URLs inside text', () => {
     'Siehe https://x.test/a/b/c.html',
     'Siehe https://x.test/',
   ])('a URL without anything sensitive stays as written (no normalisation of the visible text): %s', (s) => {
-    expect(expectStable(s)).toBe(s);
+    expect(expectStableText(s)).toBe(s);
   });
 
   describe('a path segment in front of a dot segment is an address too', () => {
@@ -227,32 +219,22 @@ describe('redactText: long runs of closing brackets after a token', () => {
       (n: number) => `mailto:${REDACTED}@example.test${'}'.repeat(n)}`,
     ],
   ] as const)('redacts and scales with %s', (_name, input, expected) => {
-    /** The fastest of 5 runs on an input of size n, after a warm-up run. */
-    const best = (n: number) => {
-      const value = input(n);
-      redactText(value);
+    const small = input(20_000);
+    const large = input(80_000);
 
-      return Math.min(
-        ...Array.from({ length: 5 }, () => {
-          const started = performance.now();
-          redactText(value);
-          return performance.now() - started;
-        }),
-      );
-    };
-
-    // 4x the input may cost far less than 12x the time (a quadratic scan would need ~16x)
-    expect(best(80_000) / Math.max(best(20_000), 0.05)).toBeLessThan(12);
-    expect(redactText(input(20_000))).toBe(expected(20_000));
+    // 4x the input stays below the bound of linear growth (a quadratic scan would need ~16x the time)
+    expectLinearGrowth(
+      () => redactText(small),
+      () => redactText(large),
+    );
+    expect(redactText(small)).toBe(expected(20_000));
   });
 });
 
 describe('redactText: general properties', () => {
+  // Inputs that already run through expectStableText in this file or in address-redaction.test.ts are not
+  // repeated here.
   const samples = [
-    'mailto: info@example.test',
-    'Kontakt: info@example.test.',
-    `Siehe https://shop.example.test/p?token=${MARK}&id=G-ABC123 und weiter.`,
-    `(https://shop.example.test/?sid=${MARK}).`,
     `https://ad.example.test/activity;src=1;dc_pre=${MARK}`,
     'https://web.archive.example/web/2024/mailto:info@example.test',
     'rua=mailto:dmarc@example.test,mailto:agg@other.test;',
@@ -261,8 +243,7 @@ describe('redactText: general properties', () => {
   ];
 
   it.each(samples)('is idempotent for %j', (s) => {
-    const once = redactText(s);
-    expect(redactText(once)).toBe(once);
+    expectStableText(s);
   });
 
   it('is linear on long inputs (document parts reach 400 000 characters)', () => {

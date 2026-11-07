@@ -6,30 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { maskEmails, maskMailto, redactText } from '../../../../src/core/redaction/redact.ts';
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
-
-const MARK = 'zq7marker';
-const D = 'example.invalid';
-
-/** mulberry32: the same sequence on every run, no extra dependency. */
-const random = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
-
-/** Both functions are idempotent: the output of the first pass is a fixed point. */
-function expectStable(input: string): string {
-  const once = redactText(input);
-  expect(redactText(once), `redactText(redactText(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
-
-function expectStableUrl(input: string): string {
-  const once = sanitizeUrl(input);
-  expect(sanitizeUrl(once), `sanitizeUrl(sanitizeUrl(${JSON.stringify(input)}))`).toBe(once);
-  return once;
-}
+import { D, expectStable, expectStableText, MARK, random } from '../url/redaction-helpers.ts';
 
 describe('the whole local part goes, whatever characters it has', () => {
   const specials = [
@@ -60,7 +37,7 @@ describe('the whole local part goes, whatever characters it has', () => {
     expect(maskEmails(address)).toBe(`${REDACTED}@${D}`);
     expect(redactText(`Kontakt: ${address}.`)).toBe(`Kontakt: ${REDACTED}@${D}.`);
     expect(redactText(`Kontakt (${address}), Tel. 030`)).toBe(`Kontakt (${REDACTED}@${D}), Tel. 030`);
-    expectStable(address);
+    expectStableText(address);
   });
 
   it.each([
@@ -78,7 +55,7 @@ describe('the whole local part goes, whatever characters it has', () => {
     expect(out).not.toContain('alice');
     expect(out).not.toContain('john');
     expect(maskEmails(input)).toBe(expected);
-    expectStable(input);
+    expectStableText(input);
   });
 
   it('keeps no fragment of the local part in a serialized snapshot', () => {
@@ -126,7 +103,7 @@ describe('the whole local part goes, whatever characters it has', () => {
       `mailto:${REDACTED}@example.test oder ${REDACTED}@example.test`,
     ],
   ])('a bare address in a sentence: %j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -162,21 +139,21 @@ describe('the whole local part goes, whatever characters it has', () => {
 
   it('masks an address that is glued to a URL, and still redacts the URL (text nodes joined without a blank)', () => {
     // The tokens are taken first: the domain of the address must not swallow the start of the URL after it.
-    expect(expectStable(`kontakt@x.test${'https://shop.example.test/p?sid='}${MARK}`)).toBe(
+    expect(expectStableText(`kontakt@x.test${'https://shop.example.test/p?sid='}${MARK}`)).toBe(
       `${REDACTED}@x.testhttps://shop.example.test/p?sid=${REDACTED}`,
     );
-    expect(expectStable(`${MARK}!a@x.testmailto:b@y.test`)).toBe(
+    expect(expectStableText(`${MARK}!a@x.testmailto:b@y.test`)).toBe(
       `${REDACTED}@x.testmailto:${REDACTED}@y.test`,
     );
   });
 
   it('takes a chain "a@b.test@c.test" for one address (the second pass must not find a new one)', () => {
-    expect(expectStable(`a@b.test@c.test`)).toBe(`${REDACTED}@c.test`);
-    expect(expectStable(`${MARK}@x.test@y.test@z.test.`)).toBe(`${REDACTED}@z.test.`);
-    expect(expectStableUrl(`https://${D}/a@b.test@c.test`)).toBe(`https://${D}/${REDACTED}@c.test`);
+    expect(expectStableText(`a@b.test@c.test`)).toBe(`${REDACTED}@c.test`);
+    expect(expectStableText(`${MARK}@x.test@y.test@z.test.`)).toBe(`${REDACTED}@z.test.`);
+    expect(expectStable(`https://${D}/a@b.test@c.test`)).toBe(`https://${D}/${REDACTED}@c.test`);
 
     // an "@" that does not continue into a domain is not part of the chain
-    expect(expectStable('a@b.test @c.test und x@y')).toBe(`${REDACTED}@b.test @c.test und x@y`);
+    expect(expectStableText('a@b.test @c.test und x@y')).toBe(`${REDACTED}@b.test @c.test und x@y`);
   });
 
   it('randomized: no fragment of a generated local part survives and the result is stable', () => {
@@ -192,14 +169,14 @@ describe('the whole local part goes, whatever characters it has', () => {
 
     for (let i = 0; i < 3000; i++) {
       const local = randomLocal(alphabet);
-      const out = expectStable(`Kontakt: ${local}@${D}.`);
+      const out = expectStableText(`Kontakt: ${local}@${D}.`);
 
       expect(out, local).toBe(`Kontakt: ${REDACTED}@${D}.`);
     }
 
     for (let i = 0; i < 3000; i++) {
       const local = randomLocal(pathAlphabet);
-      const out = expectStableUrl(`https://${D}/kontakt/${local}@${D}`);
+      const out = expectStable(`https://${D}/kontakt/${local}@${D}`);
 
       expect(out, local).toBe(`https://${D}/kontakt/${REDACTED}@${D}`);
     }
@@ -241,7 +218,7 @@ describe('mailto: recipients', () => {
       `v=DMARC1; p=none; rua=mailto:${REDACTED}@example.invalid; pct=100`,
     ],
   ])('%j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toMatch(/alice|bob|brien|%40|%61|%69/i);
   });
@@ -253,9 +230,9 @@ describe('mailto: recipients', () => {
   });
 
   it('gives one prefix to the first recipient also when it carries its own', () => {
-    expect(expectStable('mailto:mailto:a@x.test')).toBe(`mailto:${REDACTED}@x.test`);
-    expect(expectStable('mailto:,mailto:a@x.test')).toBe(`mailto:${REDACTED}@x.test`);
-    expect(expectStable('mailto: %40-')).toBe(`mailto:${REDACTED}`);
+    expect(expectStableText('mailto:mailto:a@x.test')).toBe(`mailto:${REDACTED}@x.test`);
+    expect(expectStableText('mailto:,mailto:a@x.test')).toBe(`mailto:${REDACTED}@x.test`);
+    expect(expectStableText('mailto: %40-')).toBe(`mailto:${REDACTED}`);
   });
 
   it.each([
@@ -270,7 +247,7 @@ describe('mailto: recipients', () => {
     'mailto: https://shop.example.test/impressum',
     'mailto: siehe https://shop.example.test/p',
   ])('counterexample: prose after "mailto:" stays: %j', (s) => {
-    expect(expectStable(s)).toBe(s);
+    expect(expectStableText(s)).toBe(s);
   });
 });
 
@@ -290,7 +267,7 @@ describe('an address glued to a URL does not survive in a kept query value or ke
     [`https://x.test/p?family=Roboto%2C${MARK}%40${D}`, `https://x.test/p?family=${REDACTED}`],
     [`https://x.test/p?hl=de%2C${MARK}%2540${D}`, `https://x.test/p?hl=${REDACTED}`],
   ])('the value goes: %s', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -304,11 +281,11 @@ describe('an address glued to a URL does not survive in a kept query value or ke
       `https://x.test/p?a=${REDACTED}&${REDACTED}=${REDACTED}&b=${REDACTED}`,
     ],
   ])('the key goes: %s', (input, expected) => {
-    const out = expectStableUrl(input);
+    const out = expectStable(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
     // redactText agrees with sanitizeUrl on a bare URL
-    expect(expectStable(input)).toBe(expected);
+    expect(expectStableText(input)).toBe(expected);
   });
 
   describe('counterexamples: a kept value without an address stays as it was', () => {
@@ -329,12 +306,12 @@ describe('an address glued to a URL does not survive in a kept query value or ke
         'https://x.test/p?hl=de&display=swap&v=2.1.0&id=G-ABC123',
       ],
     ])('%s', (input, expected) => {
-      expect(expectStable(input)).toBe(expected);
+      expect(expectStableText(input)).toBe(expected);
     });
 
     it('a masked address stays a fixed point inside a value', () => {
       const url = `https://x.test/p?hl=${REDACTED}&${REDACTED}=${REDACTED}`;
-      expect(expectStableUrl(url)).toBe(url);
+      expect(expectStable(url)).toBe(url);
     });
   });
 
@@ -350,10 +327,10 @@ describe('an address glued to a URL does not survive in a kept query value or ke
       const form = forms(MARK)[Math.floor(rnd() * 4)] as string;
       const url = `https://x.test/p?${name}=de${g}${form}`;
 
-      const out = expectStable(`'${url}'`);
+      const out = expectStableText(`'${url}'`);
 
       expect(out, url).not.toContain(MARK);
-      expectStableUrl(url);
+      expectStable(url);
     }
   });
 });
@@ -370,7 +347,7 @@ describe('a quoted address after "mailto:" or glued to a token is stable', () =>
     [`mailto: "${MARK}"@${D}.`, `mailto:${REDACTED}@${D}.`],
     [`Mail an mailto: "${MARK}"@${D}, danke`, `Mail an mailto:${REDACTED}@${D}, danke`],
   ])('mailto: %j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -382,7 +359,7 @@ describe('a quoted address after "mailto:" or glued to a token is stable', () =>
     [`mailto:a@d.test"${MARK}"@d.test`, `mailto:${REDACTED}@d.test`],
     [`mailto:a@d.test"${MARK}"@d.test"b"@e.test`, `mailto:${REDACTED}@e.test`],
   ])('a quoted address that follows a token without a blank: %j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -395,14 +372,14 @@ describe('a quoted address after "mailto:" or glued to a token is stable', () =>
       '<a href="https://shop.example.test/p">"Kontakt"</a>',
       'Er sagte "Kontakt"@ und ging.',
     ])('%j', (s) => {
-      expect(expectStable(s)).toBe(s);
+      expect(expectStableText(s)).toBe(s);
     });
 
     it('a quote after a URL is still its closing quote', () => {
-      expect(expectStable(`<a href="https://shop.example.test/p?sid=${MARK}">"Kontakt"</a>`)).toBe(
+      expect(expectStableText(`<a href="https://shop.example.test/p?sid=${MARK}">"Kontakt"</a>`)).toBe(
         `<a href="https://shop.example.test/p?sid=${REDACTED}">"Kontakt"</a>`,
       );
-      expect(expectStable(`"https://shop.example.test/p?sid=${MARK}" "${MARK}"@${D}`)).toBe(
+      expect(expectStableText(`"https://shop.example.test/p?sid=${MARK}" "${MARK}"@${D}`)).toBe(
         `"https://shop.example.test/p?sid=${REDACTED}" ${REDACTED}@${D}`,
       );
     });
@@ -428,7 +405,7 @@ describe('"mailto: " followed by a URL', () => {
       `Fragen? mailto: https://shop.example.test/p?sid=${REDACTED}, dann weiter`,
     ],
   ])('%j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -453,7 +430,7 @@ describe('"mailto: " followed by a URL', () => {
     // a token inside prose
     ['mailto: Kontakt,mailto:info', `mailto: Kontakt,mailto:${REDACTED}`],
   ])('a URL next to a recipient, or a token inside prose: %j', (input, expected) => {
-    const out = expectStable(input);
+    const out = expectStableText(input);
     expect(out).toBe(expected);
     expect(out).not.toContain(MARK);
   });
@@ -463,18 +440,16 @@ describe('non-ASCII characters in the local part', () => {
   const odd = ['😀', '™', '·', '–', '€', '©', '½', '♥', '‍', '👨‍👩‍👧', 'é', 'ß', 'ø', '中', 'ж'];
 
   it.each(odd)('masks the whole local part with %j at the end, in the middle and at the start', (ch) => {
-    expect(expectStable(`${MARK}${ch}@${D}`)).toBe(`${REDACTED}@${D}`);
-    expect(expectStable(`${MARK}${ch}x@${D}`)).toBe(`${REDACTED}@${D}`);
-    expect(expectStable(`${ch}${MARK}@${D}`)).toBe(`${REDACTED}@${D}`);
-    expect(expectStable(`Kontakt: ${MARK}${ch}${MARK}@${D}.`)).toBe(`Kontakt: ${REDACTED}@${D}.`);
+    expect(expectStableText(`${MARK}${ch}@${D}`)).toBe(`${REDACTED}@${D}`);
+    expect(expectStableText(`${MARK}${ch}x@${D}`)).toBe(`${REDACTED}@${D}`);
+    expect(expectStableText(`${ch}${MARK}@${D}`)).toBe(`${REDACTED}@${D}`);
+    expect(expectStableText(`Kontakt: ${MARK}${ch}${MARK}@${D}.`)).toBe(`Kontakt: ${REDACTED}@${D}.`);
     expect(maskEmails(`${MARK}${ch}@${D}`)).toBe(`${REDACTED}@${D}`);
   });
 
   it('masks it in a path segment, but a "/" is still the border', () => {
-    expect(expectStableUrl(`https://${D}/kontakt/${MARK}😀@${D}`)).toBe(
-      `https://${D}/kontakt/${REDACTED}@${D}`,
-    );
-    expect(expectStableUrl(`https://${D}/kontakt/${MARK}%E2%84%A2@${D}`)).toBe(
+    expect(expectStable(`https://${D}/kontakt/${MARK}😀@${D}`)).toBe(`https://${D}/kontakt/${REDACTED}@${D}`);
+    expect(expectStable(`https://${D}/kontakt/${MARK}%E2%84%A2@${D}`)).toBe(
       `https://${D}/kontakt/${REDACTED}@${D}`,
     );
   });
@@ -487,8 +462,8 @@ describe('non-ASCII characters in the local part', () => {
       ['ideographic space', '　'],
       ['line separator', ' '],
     ])('a %s in front of the address is a border', (_name, space) => {
-      expect(expectStable(`Kontakt:${space}${MARK}@${D}`)).toBe(`Kontakt:${space}${REDACTED}@${D}`);
-      expect(expectStable(`${MARK}${space}${MARK}@${D}`)).toBe(`${MARK}${space}${REDACTED}@${D}`);
+      expect(expectStableText(`Kontakt:${space}${MARK}@${D}`)).toBe(`Kontakt:${space}${REDACTED}@${D}`);
+      expect(expectStableText(`${MARK}${space}${MARK}@${D}`)).toBe(`${MARK}${space}${REDACTED}@${D}`);
     });
 
     it.each([
@@ -500,7 +475,7 @@ describe('non-ASCII characters in the local part', () => {
       ['（', '）'],
       ['「', '」'],
     ])('quotes and brackets %s…%s around the address are kept', (open, close) => {
-      expect(expectStable(`${open}${MARK}@${D}${close}`)).toBe(`${open}${REDACTED}@${D}${close}`);
+      expect(expectStableText(`${open}${MARK}@${D}${close}`)).toBe(`${open}${REDACTED}@${D}${close}`);
     });
   });
 });
@@ -513,7 +488,7 @@ describe('addresses written with (at) or [at]', () => {
     [`${MARK}(AT)${D}`, `${REDACTED}@${D}`],
     [`${MARK}\u00a0(at)\u00a0${D}`, `${REDACTED}@${D}`],
   ])('%j → %j: the domain stays, nothing of the local part', (input, want) => {
-    const once = expectStable(input);
+    const once = expectStableText(input);
     expect(once).toBe(want);
     expect(once).not.toContain(MARK);
   });
@@ -524,7 +499,7 @@ describe('addresses written with (at) or [at]', () => {
     [`https://${D}/${MARK}[at]mail.example?x=1`, `https://${D}/${REDACTED}@mail.example?x=${REDACTED}`],
     [`https://${D}/${MARK}%C2%A0(at)%C2%A0mail.example`, `https://${D}/${REDACTED}@mail.example`],
   ])('in a URL path, also percent-encoded: %j → %j', (input, want) => {
-    expect(expectStableUrl(input)).toBe(want);
+    expect(expectStable(input)).toBe(want);
     expect(redactText(`Link: ${input}`)).toBe(`Link: ${want}`);
   });
 
@@ -536,7 +511,7 @@ describe('addresses written with (at) or [at]', () => {
     [`mailto:\n${MARK} (at) ${D}`, `mailto:${REDACTED}@${D}`],
     [`mailto:${MARK} (at) ${D}?subject=${MARK}`, `mailto:${REDACTED}@${D}`],
   ])('a mailto: value in the (at) form: %j → %j', (input, want) => {
-    const once = expectStable(input);
+    const once = expectStableText(input);
     expect(once).toBe(want);
     expect(once).not.toContain(MARK);
   });
@@ -691,8 +666,8 @@ describe('idempotency over mixed pieces (URLs, addresses, quotes, escapes, "mail
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
     for (let i = 0; i < 40_000; i++) {
       const text = Array.from({ length: 1 + Math.floor(rnd() * 10) }, pick).join('');
-      expectStable(text);
-      expectStableUrl(`https://x.test/${text.replace(/\s/g, '')}`);
+      expectStableText(text);
+      expectStable(`https://x.test/${text.replace(/\s/g, '')}`);
     }
   });
 });

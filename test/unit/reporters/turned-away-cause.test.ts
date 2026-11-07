@@ -5,7 +5,6 @@
  * keeps today's text.
  */
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../src/core/data/load.ts';
 import type { ReportDetail, ReporterContext } from '../../../src/core/report/reporter.ts';
 import type { Diagnostic, FullReport } from '../../../src/core/report/schema.ts';
 import { renderConsole } from '../../../src/reporters/console.ts';
@@ -13,27 +12,12 @@ import { renderHtml } from '../../../src/reporters/html.ts';
 import { buildReportView } from '../../../src/reporters/report-view.ts';
 import { renderSummary } from '../../../src/reporters/summary.ts';
 import { sampleFullReport } from '../../utils/report/fixtures.ts';
+import { checkResult as check, consentClicks, reporterContext } from '../../utils/report/reporter-inputs.ts';
 
 type Lang = 'de' | 'en';
 type Check = FullReport['checks'][number];
 
-const ctx = (lang: Lang, detail: ReportDetail = 'full'): ReporterContext => ({
-  texts: loadTexts(lang),
-  lang,
-  outDir: '/nonexistent-out',
-  color: false,
-  detail,
-});
-
-const check = (id: string, status: Check['status'], reason: string | null, module = 'browser'): Check => ({
-  id,
-  module,
-  status,
-  reason,
-  limitations: [],
-  coverage: null,
-  durationMs: 1,
-});
+const ctx = (lang: Lang, detail: ReportDetail = 'full'): ReporterContext => reporterContext(lang, { detail });
 
 const diagnostic = (code: string, affects: string[], params: Diagnostic['params']): Diagnostic => ({
   code,
@@ -136,10 +120,7 @@ describe('a CMP whose own crawler test matched the scanner User-Agent', () => {
     'when the banner opened in the visit with consent and our accept was clicked, only the reject is open (%s)',
     (lang, visit, open, denied) => {
       const r = crawler();
-      r.scan.coverage.consentActions = [
-        { action: 'reject', clicked: false, verified: null },
-        { action: 'accept', clicked: true, verified: true },
-      ];
+      r.scan.coverage.consentActions = consentClicks({ reject: 'not-clicked', accept: 'confirmed' });
       const out = rendered(r, lang);
 
       expect(out.overview).toContain(visit);

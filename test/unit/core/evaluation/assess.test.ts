@@ -20,6 +20,7 @@ import {
   maxSeverityOf,
   mergeDiagnostics,
   resolveSeverity,
+  type SeverityOverride,
 } from '../../../../src/core/evaluation/assess.ts';
 import { type AnyCheck, defineCheck, type Observation } from '../../../../src/core/evaluation/check.ts';
 import { fingerprint } from '../../../../src/core/evaluation/fingerprint.ts';
@@ -91,7 +92,7 @@ const exec = (observations: Observation[]): ExecutedCheck => ({
 function run(
   checks: AnyCheck[],
   executed: Record<string, ExecutedCheck>,
-  overrides = [],
+  overrides: SeverityOverride[] = [],
   extra: Partial<AssessInput> = {},
 ) {
   return assess({
@@ -166,15 +167,12 @@ describe('ruleset resolution and overrides', () => {
 
   it('maxSeverity uses static variants, ruleset and overrides, without the confidence cap', () => {
     expect(maxSeverityOf(check('TEST-01', ['soft', 'inventory']), ruleset)).toBe('warning');
-    const multiVariantCheck = defineCheck({
-      id: 'TEST-01',
-      module: 'browser',
+    const multiVariantCheck = check('TEST-01', [], {
       requires: [],
       variants: [
         { variant: 'soft', maxConfidence: 'medium' },
         { variant: 'inventory', maxConfidence: 'low' },
       ],
-      run: () => [],
     });
     // A failed check has no confidence: the cap applies to concrete findings only.
     expect(maxSeverityOf(multiVariantCheck, ruleset)).toBe('warning');
@@ -190,41 +188,13 @@ describe('ruleset resolution and overrides', () => {
   });
 
   it('a check whose variant is overridden above its confidence cap stays relevant when it fails', () => {
-    const c = defineCheck({
-      id: 'TEST-01',
-      module: 'browser',
-      requires: [],
-      variants: [{ variant: 'soft' }],
-      run: () => [],
-    });
-    const out = assess({
-      checks: [c],
-      executed: new Map([
-        ['TEST-01', { status: 'error', reason: 'exception', outcome: null, durationMs: 1 }],
-      ]),
-      ruleset,
-      routing: {},
-      overrides: [{ rule: 'TEST-01.soft', severity: 'critical' }],
-    });
-    expect(out.checks[0]?.maxSeverity).toBe('critical');
+    const c = check('TEST-01', ['soft'], { requires: [] });
+    const overrides: SeverityOverride[] = [{ rule: 'TEST-01.soft', severity: 'critical' }];
+    const failed = { status: 'error', reason: 'exception', outcome: null, durationMs: 1 } as const;
+
+    expect(run([c], { 'TEST-01': failed }, overrides).checks[0]?.maxSeverity).toBe('critical');
     // The finding itself is still capped by its confidence.
-    const ok = assess({
-      checks: [c],
-      executed: new Map([
-        [
-          'TEST-01',
-          {
-            status: 'completed',
-            reason: null,
-            outcome: { status: 'completed', observations: [obs({ variant: 'soft', confidence: 'medium' })] },
-            durationMs: 1,
-          },
-        ],
-      ]),
-      ruleset,
-      routing: {},
-      overrides: [{ rule: 'TEST-01.soft', severity: 'critical' }],
-    });
+    const ok = run([c], { 'TEST-01': exec([obs({ variant: 'soft', confidence: 'medium' })]) }, overrides);
     expect(ok.findings[0]?.severity).toBe('warning');
   });
 });
@@ -441,15 +411,11 @@ describe('legal note of a finding', () => {
   });
 
   it('findings carry the resolved id', () => {
-    const c = defineCheck({
-      id: 'TEST-01',
-      module: 'browser',
-      requires: ['browser'],
+    const c = check('TEST-01', [], {
       variants: [
         { variant: 'hit', variantGroup: 'g' },
         { variant: 'soft', variantGroup: 'g' },
       ],
-      run: () => [],
     });
     const out = run(
       [c],

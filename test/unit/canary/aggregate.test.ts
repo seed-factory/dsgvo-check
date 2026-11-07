@@ -11,6 +11,7 @@ import {
 } from '../../../scripts/canary/load.ts';
 import { renderMarkdown } from '../../../scripts/canary/markdown.ts';
 import type { SiteMeta, SiteRef } from '../../../scripts/canary/results.ts';
+import type { CmpFacts, CmpPhaseFacts } from '../../../src/cmp/types.ts';
 import type { CheckResult, Finding, FullReport } from '../../../src/core/report/schema.ts';
 import { sampleFailedReport, sampleFullReport } from '../../utils/report/fixtures.ts';
 import { makeCmp, makeCmpFacts } from '../../utils/snapshot-builder.ts';
@@ -396,43 +397,28 @@ describe('aggregate', () => {
   });
 });
 
+/**
+ * A phase whose one fact is a first-screen fact with this detection; the fields not given keep the values of no
+ * detection (no version, low confidence, no signals).
+ */
+function detected(phase: CmpPhaseFacts['phase'], detection: Partial<CmpFacts['detection']>): CmpPhaseFacts {
+  const facts = makeCmpFacts({ phase, moment: 'first-screen' });
+  return { phase, facts: [{ ...facts, detection: { ...facts.detection, ...detection } }] };
+}
+
 describe('CMP detection', () => {
   it('prefers the phase B first-screen detection of an adapter', () => {
     const cmp = makeCmp({
       phases: [
-        {
-          phase: 'A',
-          facts: [
-            makeCmpFacts({
-              phase: 'A',
-              detection: {
-                cmpId: 'cookiehub',
-                method: 'heuristic',
-                version: null,
-                versionSupported: null,
-                recognitionConfidence: 'low',
-                signals: [],
-              },
-            }),
-          ],
-        },
-        {
-          phase: 'B',
-          facts: [
-            makeCmpFacts({
-              phase: 'B',
-              moment: 'first-screen',
-              detection: {
-                cmpId: 'borlabs',
-                method: 'adapter',
-                version: '3.1',
-                versionSupported: true,
-                recognitionConfidence: 'high',
-                signals: ['global:BorlabsCookie', 'dom:#BorlabsCookieBox'],
-              },
-            }),
-          ],
-        },
+        detected('A', { cmpId: 'cookiehub', method: 'heuristic' }),
+        detected('B', {
+          cmpId: 'borlabs',
+          method: 'adapter',
+          version: '3.1',
+          versionSupported: true,
+          recognitionConfidence: 'high',
+          signals: ['global:BorlabsCookie', 'dom:#BorlabsCookieBox'],
+        }),
       ],
     });
 
@@ -446,21 +432,7 @@ describe('CMP detection', () => {
   it('maps heuristic names to other, missing facts to none and a skipped browser to n/a', () => {
     const heuristic = makeCmp({
       phases: [
-        {
-          phase: 'B',
-          facts: [
-            makeCmpFacts({
-              detection: {
-                cmpId: 'onetrust',
-                method: 'heuristic',
-                version: null,
-                versionSupported: null,
-                recognitionConfidence: 'low',
-                signals: ['script:cdn.cookielaw.org'],
-              },
-            }),
-          ],
-        },
+        detected('B', { cmpId: 'onetrust', method: 'heuristic', signals: ['script:cdn.cookielaw.org'] }),
       ],
     });
 
@@ -506,21 +478,12 @@ describe('loadRun', () => {
         collection: { browser: { status: 'ok' } },
         cmp: makeCmp({
           phases: [
-            {
-              phase: 'B',
-              facts: [
-                makeCmpFacts({
-                  detection: {
-                    cmpId: 'cookiebot',
-                    method: 'adapter',
-                    version: null,
-                    versionSupported: true,
-                    recognitionConfidence: 'high',
-                    signals: [],
-                  },
-                }),
-              ],
-            },
+            detected('B', {
+              cmpId: 'cookiebot',
+              method: 'adapter',
+              versionSupported: true,
+              recognitionConfidence: 'high',
+            }),
           ],
         }),
       }),

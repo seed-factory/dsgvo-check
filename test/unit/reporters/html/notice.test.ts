@@ -1,18 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { loadTexts } from '../../../../src/core/data/load.ts';
 import type { ReportDetail, ReporterContext } from '../../../../src/core/report/reporter.ts';
 import type { FullReport } from '../../../../src/core/report/schema.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
 import { buildReportView } from '../../../../src/reporters/report-view.ts';
 import { sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
+import { reporterContext } from '../../../utils/report/reporter-inputs.ts';
 
-const ctx = (detail: ReportDetail = 'full', lang: 'de' | 'en' = 'de'): ReporterContext => ({
-  texts: loadTexts(lang),
-  lang,
-  outDir: '/nonexistent-out',
-  color: false,
-  detail,
-});
+const ctx = (detail: ReportDetail = 'full', lang: 'de' | 'en' = 'de'): ReporterContext =>
+  reporterContext(lang, { detail });
 
 const notice = (r: FullReport | ReturnType<typeof sampleFailedReport>, c: ReporterContext = ctx()) =>
   buildReportView(r, c).notice;
