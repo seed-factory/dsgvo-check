@@ -39,8 +39,6 @@ import {
 import {
   CONTACT,
   click,
-  cmpFacts,
-  cmpWith,
   consentPages,
   IMPRESSUM,
   PRIVACY,
@@ -59,11 +57,11 @@ import {
   FONTS_CSS,
   FONTS_SECTION,
   fontsCss,
+  fontsOnTwoPages,
   fontsPart,
   LOCAL_CLAIM,
   policyWith,
 } from '../scenarios/priv-02.ts';
-import { confirmedReject } from '../scenarios/shared.ts';
 
 const scenario = (file: string) =>
   scenariosOf('PRIV-02')
@@ -445,11 +443,6 @@ describe('statements of the policy', () => {
       text: 'Die Schriftart Open Sans ist lokal eingebunden, weitere Schriften laden wir über Google Fonts.',
       expected: ['self-hosted google-fonts sentence [hedge]'],
     },
-    {
-      name: 'a limit leaves the disclosure in the same sentence one',
-      text: 'Ihr Browser lädt nicht nur die Schriftarten von Google, sondern auch weitere Inhalte.',
-      expected: ['disclosure self-hosted google-fonts', 'disclosure no-connection google-fonts'],
-    },
     ...[
       'Die Google Fonts werden nicht auf dem eigenen Webserver lokal installiert.',
       'Es ist nicht so, dass die Google Fonts lokal installiert sind.',
@@ -603,13 +596,7 @@ describe('PRIV-02 levels', () => {
   ])(
     'a document that also describes the load or limits its statement is no contradiction: %s',
     (_, text, expected) => {
-      const r = runCheck(
-        priv02,
-        site({
-          phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-          documents: policyWith(fontsPart(text)),
-        }),
-      );
+      const r = runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(text))));
       if (expected === 'claim-ambiguous') {
         expect(r).toMatchObject({ status: 'inconclusive', reason: 'claim-ambiguous' });
       } else {
@@ -618,17 +605,6 @@ describe('PRIV-02 levels', () => {
       }
     },
   );
-
-  it.each<[string, string[]]>([
-    ['violation-local-fonts-claim-single.json', ['contradiction-single']],
-    ['violation-maps-consent-gated.json', ['contradiction-single']],
-    ['violation-english-claim.json', ['contradiction-replicated']],
-    ['violation-claim-and-disclosure.json', ['wording-to-review']],
-    ['violation-claim-attempt-only.json', ['wording-to-review']],
-    ['violation-claim-and-conditional-disclosure.json', ['contradiction-replicated']],
-  ])('%s → %s', (file, variants) => {
-    expect(variantsOf(runCheck(priv02, scenario(file)))).toEqual(variants);
-  });
 
   it('wording-to-review names its basis: the disclosure is quoted next to the statements', () => {
     const [o] = observationsOf(runCheck(priv02, scenario('violation-claim-and-disclosure.json')));
@@ -652,10 +628,7 @@ describe('PRIV-02 levels', () => {
     });
     const r = runCheck(
       priv02,
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: { documents: [policyWith().documents[0]!, main, other], attempts: [] },
-      }),
+      fontsOnTwoPages({ documents: [policyWith().documents[0]!, main, other], attempts: [] }),
     );
     expect(variantsOf(r)).toEqual(['contradiction-replicated']);
   });
@@ -668,13 +641,7 @@ describe('PRIV-02 levels', () => {
         ...(role ? { role } : {}),
       });
     const run = (doc: ReturnType<typeof notice>) =>
-      runCheck(
-        priv02,
-        site({
-          phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-          documents: { documents: [...policyWith().documents, doc], attempts: [] },
-        }),
-      );
+      runCheck(priv02, fontsOnTwoPages({ documents: [...policyWith().documents, doc], attempts: [] }));
     expect(run(notice('supplement')).status).toBe('completed');
     expect(variantsOf(run(notice('supplement')))).toEqual([]);
     expect(variantsOf(run(notice()))).toEqual(['contradiction-replicated']);
@@ -683,13 +650,7 @@ describe('PRIV-02 levels', () => {
   it('a disclosure too long to quote still makes it wording-to-review, and every quote stays within the limit', () => {
     const long = `Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen, ${'um die Schriftarten der Website zu laden '.repeat(4)}.`;
     const [o] = observationsOf(
-      runCheck(
-        priv02,
-        site({
-          phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-          documents: policyWith(fontsPart(`${LOCAL_CLAIM} ${long}`)),
-        }),
-      ),
+      runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(`${LOCAL_CLAIM} ${long}`)))),
     );
     expect(o?.params).toMatchObject({ basis: 'disclosure' });
     for (const ev of o!.evidence) {
@@ -709,15 +670,7 @@ describe('PRIV-02 levels', () => {
 
   it('the subject from a previous sentence or a category is medium confidence (at most warning)', () => {
     const run = (text: string, section: string) =>
-      observationsOf(
-        runCheck(
-          priv02,
-          site({
-            phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-            documents: policyWith(fontsPart(text, { section })),
-          }),
-        ),
-      );
+      observationsOf(runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(text, { section })))));
     expect(run('Wir verwenden Google Fonts. Diese sind lokal eingebunden.', 'Schriftarten')).toMatchObject([
       { variant: 'contradiction-replicated', confidence: 'medium' },
     ]);
@@ -727,26 +680,23 @@ describe('PRIV-02 levels', () => {
   });
 
   it('a policy whose expandable parts were not opened gives medium confidence and partial with banner-open', () => {
-    const snap = site({
-      phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-      documents: {
-        documents: [
-          policyWith().documents[0]!,
-          {
-            ...policyWith(fontsPart(LOCAL_CLAIM)).documents[1]!,
-            complete: false,
-            errors: ['expand-failed'],
-            manifest: {
-              expandablesFound: 1,
-              expandablesOpened: 0,
-              framesIncluded: 0,
-              linkedPages: 0,
-              textLength: 200,
-            },
+    const snap = fontsOnTwoPages({
+      documents: [
+        policyWith().documents[0]!,
+        {
+          ...policyWith(fontsPart(LOCAL_CLAIM)).documents[1]!,
+          complete: false,
+          errors: ['expand-failed'],
+          manifest: {
+            expandablesFound: 1,
+            expandablesOpened: 0,
+            framesIncluded: 0,
+            linkedPages: 0,
+            textLength: 200,
           },
-        ],
-        attempts: [],
-      },
+        },
+      ],
+      attempts: [],
     });
     const r = runCheck(priv02, snap);
     expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['banner-open'] } });
@@ -826,7 +776,7 @@ describe('PRIV-02 moments that contradict a statement', () => {
       priv02,
       site({
         phases: [phase('A'), afterReject([map('B-1')])],
-        cmp: confirmedReject(),
+        cmp: rejectCmp({ confirmed: true }),
         documents: maps(text),
       }),
     );
@@ -1022,18 +972,6 @@ describe('PRIV-02 moments that contradict a statement', () => {
       }
     },
   );
-
-  it('bot and geo signals of phase A or B make the check inconclusive', () => {
-    const geo = cmpWith({
-      phase: 'B',
-      facts: [cmpFacts({ geoSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:outside-eu' }] })],
-    });
-    const r = runCheck(
-      priv02,
-      site({ phases: [phase('A', { requests: [fontsCss('A-1')] })], cmp: geo, documents: policy }),
-    );
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'geo' });
-  });
 
   it('no phase A: no-network-observation; no policy: privacy-policy-not-found', () => {
     expect(

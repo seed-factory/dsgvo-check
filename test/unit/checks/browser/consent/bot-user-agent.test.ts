@@ -1,7 +1,8 @@
 /**
  * A CMP that kept its dialog closed because its own crawler test matched the scanner's User-Agent: every check that
  * reads the CMP's bot signals is inconclusive with a reason that names this cause, never a finding; a dialog that
- * stayed closed without that signal keeps its own reason.
+ * stayed closed without that signal keeps its own reason. A direct bot or geo signal of the CMP makes each of these
+ * checks inconclusive in the same way.
  */
 import { describe, expect, it } from 'vitest';
 import { consent01 } from '../../../../../src/checks/browser/consent-01.ts';
@@ -16,7 +17,7 @@ import { priv02 } from '../../../../../src/checks/browser/priv-02.ts';
 import { BOT_USER_AGENT_SIGNAL, type BotSignal, type CmpFacts } from '../../../../../src/cmp/types.ts';
 import type { AnyCheck } from '../../../../../src/core/evaluation/check.ts';
 import { makeBrowserPlan, runCheck } from '../../../../utils/snapshot-builder.ts';
-import { cmpFacts, cmpWith, phase, site, unopenedDialogCmp } from '../helpers.ts';
+import { cmpFacts, cmpWith, firstLayer, phase, site, unopenedDialogCmp } from '../helpers.ts';
 import { ga } from '../scenarios/shared.ts';
 
 const LABEL = 'CCM19 isBotBrowser (app.js)';
@@ -45,17 +46,7 @@ const tracked = (cmp: ReturnType<typeof unopenedDialogCmp>) =>
     plan: makeBrowserPlan(),
   });
 
-const visibleBanner = (p: Partial<CmpFacts> = {}) =>
-  cmpFacts({
-    firstLayer: {
-      bannerPresent: true,
-      bannerVisible: true,
-      buttons: [],
-      purAbo: false,
-      closeMeansAccept: null,
-    },
-    ...p,
-  });
+const visibleBanner = (p: Partial<CmpFacts> = {}) => cmpFacts({ firstLayer: firstLayer(), ...p });
 
 const botDiagnostics = (r: ReturnType<typeof runCheck>) =>
   (r.outcome?.diagnostics ?? []).filter((d) => d.code === 'SCAN-BOTMODE');
@@ -131,5 +122,30 @@ describe('the crawler signal among other bot signals', () => {
 
     expect(r.reason).toBe('cmp-bot-user-agent');
     expect(botDiagnostics(r)[0]?.params).toMatchObject({ cause: 'user-agent', test: LABEL });
+  });
+});
+
+describe.each(SIGNAL_CHECKS)('%s and a direct bot or geo signal of the CMP', (id, check) => {
+  it('a bot signal in the facts of phase A (cookiebot:isSpider) → inconclusive bot-mode with SCAN-BOTMODE, no observation', () => {
+    const spider: BotSignal = { cmpId: 'cookiebot', signal: 'cookiebot:isSpider' };
+    const r = runCheck(
+      check,
+      tracked(cmpWith({ phase: 'A', facts: [cmpFacts({ phase: 'A', botSignals: [spider] })] })),
+    );
+
+    expect({ status: r.status, reason: r.reason }).toEqual({ status: 'inconclusive', reason: 'bot-mode' });
+    expect(r.outcome?.observations).toEqual([]);
+    expect(r.outcome?.diagnostics).toEqual([
+      { code: 'SCAN-BOTMODE', affects: [id], params: { signal: 'cookiebot:isSpider' } },
+    ]);
+  });
+
+  it('a geo signal in the facts of phase B (out of region) → inconclusive geo with SCAN-GEO, no observation', () => {
+    const geo = { cmpId: 'cookiebot', signal: 'cookiebot:isOutOfRegion' };
+    const r = runCheck(check, tracked(cmpWith({ phase: 'B', facts: [cmpFacts({ geoSignals: [geo] })] })));
+
+    expect({ status: r.status, reason: r.reason }).toEqual({ status: 'inconclusive', reason: 'geo' });
+    expect(r.outcome?.observations).toEqual([]);
+    expect(r.outcome?.diagnostics).toMatchObject([{ code: 'SCAN-GEO', affects: [id] }]);
   });
 });

@@ -91,10 +91,6 @@ describe('CONSENT-05 after a confirmed reject', () => {
     });
   });
 
-  it('clean: only consent update after the click; a request started before the click is not new', () => {
-    expect(variantsOf(runCheck(consent05, scenario('clean-confirmed-reject.json')))).toEqual([]);
-  });
-
   it('a Shopware reject confirmed from the cookie source: Google Ads with its cookie, GA4 cookieless, the state as proof', () => {
     const r = runCheck(consent05, scenario('violation-shopware-known-flags-absent.json'));
 
@@ -115,13 +111,6 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(observationsOf(r)).toEqual([]);
   });
 
-  it('inconclusive: reject not confirmed by CMP state', () => {
-    expect(runCheck(consent05, scenario('inconclusive-reject-not-confirmed.json'))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'reject-not-confirmed',
-    });
-  });
-
   it('counterexample: request started before the click and completed after it is not counted', () => {
     expect(variantsOf(runB([gaAfter('b', { afterClick: false })]))).toEqual([]);
   });
@@ -135,13 +124,6 @@ describe('CONSENT-05 after a confirmed reject', () => {
     ]);
   });
 
-  it('cookieless ping with denied state → cookieless-ping-after-reject (warning)', () => {
-    const r = runB([
-      gaAfter('b', { url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]' }),
-    ]);
-    expect(variantsOf(r)).toEqual(['cookieless-ping-after-reject']);
-  });
-
   it('a hit and a cookieless ping of one service give one request finding (strongest wins)', () => {
     const r = runB([
       gaAfter('b'),
@@ -150,19 +132,7 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(observationsOf(r).map((o) => o.variant)).toEqual(['tracking-after-reject']);
   });
 
-  it('default-denied only is not a reject; no click; phase B missing → inconclusive', () => {
-    const def = runB(
-      [gaAfter('b')],
-      {},
-      cmpWith(
-        rejectB({
-          stateAfter: [
-            { source: 'api', ready: 'ready', categories: { statistics: 'denied' }, origin: 'default' },
-          ],
-        }),
-      ),
-    );
-    expect(def).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
+  it('no click; phase B missing → inconclusive', () => {
     const noClick = runB([], {}, cmpWith({ phase: 'B', facts: [cmpFacts()] }));
     expect(noClick).toMatchObject({ status: 'inconclusive', reason: 'no-reject-click' });
     const noB = runCheck(
@@ -178,42 +148,31 @@ describe('CONSENT-05 after a confirmed reject', () => {
     expect(observationsOf(r)).toEqual([]);
   });
 
-  it('not persisted after reload → not confirmed', () => {
-    expect(runB([gaAfter('b')], {}, cmpWith(rejectB({ persistedAfterReload: false })))).toMatchObject({
-      status: 'inconclusive',
-      reason: 'reject-not-confirmed',
-    });
-  });
-
-  it('reload skipped by the time budget (persistence unknown) → reject not confirmed, no finding', () => {
-    const r = runB(
-      [gaAfter('b')],
-      {},
-      cmpWith(rejectB({ persistedAfterReload: null, stateAfter: [ACTION], method: ['api:all-denied'] })),
-    );
+  // What the click recorded decides; a GA4 hit after it is no finding while the reject is not confirmed.
+  it.each<[string, Partial<NonNullable<CmpPhaseFacts['verify']>>]>([
+    [
+      'default-denied only is not a reject',
+      {
+        stateAfter: [
+          { source: 'api', ready: 'ready', categories: { statistics: 'denied' }, origin: 'default' },
+        ],
+      },
+    ],
+    ['not persisted after reload', { persistedAfterReload: false }],
+    [
+      'reload skipped by the time budget (persistence unknown)',
+      { persistedAfterReload: null, stateAfter: [ACTION], method: ['api:all-denied'] },
+    ],
+    ['no state produced by our click (only a stored state)', { stateAfter: [STORED] }],
+    [
+      'the action state does not record the user decision (responded false)',
+      { stateAfter: [{ ...ACTION, decision: { responded: false, method: 'unknown' } }, STORED] },
+    ],
+    ['persisted flag without any stored state read after the reload', { stateAfter: [ACTION] }],
+  ])('%s → reject not confirmed, no finding', (_name, verify) => {
+    const r = runB([gaAfter('b')], {}, cmpWith(rejectB(verify)));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
     expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('no state produced by our click (only a stored state) → reject not confirmed', () => {
-    const r = runB([gaAfter('b')], {}, cmpWith(rejectB({ stateAfter: [STORED] })));
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
-  });
-
-  it('the action state must record the user decision (responded false → not confirmed)', () => {
-    const r = runB(
-      [gaAfter('b')],
-      {},
-      cmpWith(
-        rejectB({ stateAfter: [{ ...ACTION, decision: { responded: false, method: 'unknown' } }, STORED] }),
-      ),
-    );
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
-  });
-
-  it('persisted flag without any stored state read after the reload → reject not confirmed', () => {
-    const r = runB([gaAfter('b')], {}, cmpWith(rejectB({ stateAfter: [ACTION] })));
-    expect(r).toMatchObject({ status: 'inconclusive', reason: 'reject-not-confirmed' });
   });
 
   it('the stored state may come from the CMP facts read after the reload', () => {
@@ -504,13 +463,6 @@ describe('CONSENT-05 after a reject saved in the settings layer of a first layer
     expect(renderMessage(loadTexts('de'), 'CONSENT-05.tracking-after-reject', o!.params).body).not.toContain(
       'Einstellungen',
     );
-  });
-
-  it('a save the platform policy left at its default is no confirmed reject: reject-not-confirmed', () => {
-    expect(settingsScenario('inconclusive-settings-reject-not-confirmed.json')).toMatchObject({
-      status: 'inconclusive',
-      reason: 'reject-not-confirmed',
-    });
   });
 
   it.each([

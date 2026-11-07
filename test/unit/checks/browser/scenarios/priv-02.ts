@@ -4,7 +4,12 @@
  * counterexample that looks like the violation but must stay silent or change variant.
  */
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
-import type { DocumentPart, PhaseRecord, RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
+import type {
+  DocumentPart,
+  DocumentsSection,
+  PhaseRecord,
+  RequestRecord,
+} from '../../../../../src/core/snapshot/browser.ts';
 import { makeDocument, makeDom } from '../../../../utils/snapshot-builder.ts';
 import {
   CONTACT,
@@ -18,11 +23,12 @@ import {
   page,
   phase,
   privacyDoc,
+  rejectCmp,
   req,
   START,
   site,
 } from '../helpers.ts';
-import { confirmedReject, ORIGIN_IMG, type Scenario } from './shared.ts';
+import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
 export const FONTS_SECTION = 'Datenschutzerklärung > 5. Plugins und Tools > Google Fonts';
 export const FONTS_CSS = 'https://fonts.googleapis.com/css2?family=Roboto';
@@ -65,6 +71,13 @@ export const policyWith = (...parts: DocumentPart[]) => ({
 
 export const fontsCss = (id: string, p: Partial<RequestRecord> = {}) =>
   req(id, FONTS_CSS, { resourceType: 'stylesheet', ...p });
+
+/** The fonts CSS loads from Google on the start and the contact page in phase A, held against `documents`. */
+export const fontsOnTwoPages = (documents: DocumentsSection) =>
+  site({
+    phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
+    documents,
+  });
 
 /** Phase B after a reject: the start page reloaded, `requests` made after the click. */
 export const afterReject = (requests: RequestRecord[]): PhaseRecord =>
@@ -119,7 +132,7 @@ export const scenarios: Scenario[] = [
           phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] }),
           afterReject([bAfterClick('B-1')]),
         ],
-        cmp: confirmedReject(),
+        cmp: rejectCmp({ confirmed: true }),
         documents: policyWith(fontsPart(LOCAL_CLAIM)),
       }),
   },
@@ -135,10 +148,7 @@ export const scenarios: Scenario[] = [
       'The statement is hedged ("Soweit möglich") while the fonts load from Google: not evaluated (claim-ambiguous)',
     expect: { status: 'inconclusive', variants: [], reason: 'claim-ambiguous' },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(fontsPart('Soweit möglich, sind die Google Fonts lokal installiert.')),
-      }),
+      fontsOnTwoPages(policyWith(fontsPart('Soweit möglich, sind die Google Fonts lokal installiert.'))),
   },
 ];
 
@@ -150,22 +160,19 @@ export const variantScenarios: Scenario[] = [
       'An English policy states the fonts are hosted locally with no connection to Google servers; the CSS loads on two pages',
     expect: { status: 'completed', variants: ['contradiction-replicated'] },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: {
-          documents: [
-            defaultDocuments().documents[0]!,
-            privacyDoc(
-              [
-                fontsPart('The fonts are hosted locally. No connection to Google servers is established.', {
-                  section: 'Privacy Policy > Google Fonts',
-                }),
-              ],
-              { lang: 'en' },
-            ),
-          ],
-          attempts: [],
-        },
+      fontsOnTwoPages({
+        documents: [
+          defaultDocuments().documents[0]!,
+          privacyDoc(
+            [
+              fontsPart('The fonts are hosted locally. No connection to Google servers is established.', {
+                section: 'Privacy Policy > Google Fonts',
+              }),
+            ],
+            { lang: 'en' },
+          ),
+        ],
+        attempts: [],
       }),
   },
   {
@@ -191,22 +198,14 @@ export const variantScenarios: Scenario[] = [
     description:
       'The statement stands only in a part the page hides while the fonts load from Google: not evaluated (claim-ambiguous)',
     expect: { status: 'inconclusive', variants: [], reason: 'claim-ambiguous' },
-    build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(fontsPart(LOCAL_CLAIM, { origin: 'hidden-irrelevant' })),
-      }),
+    build: () => fontsOnTwoPages(policyWith(fontsPart(LOCAL_CLAIM, { origin: 'hidden-irrelevant' }))),
   },
   {
     file: 'clean-claim-negated.json',
     description:
       'Counterexample: the policy says the Google Fonts are not installed locally; they load from Google',
     expect: { status: 'completed', variants: [] },
-    build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(fontsPart('Die Google Fonts sind nicht lokal installiert.')),
-      }),
+    build: () => fontsOnTwoPages(policyWith(fontsPart('Die Google Fonts sind nicht lokal installiert.'))),
   },
 
   // contradiction-single
@@ -309,14 +308,13 @@ export const variantScenarios: Scenario[] = [
       'The policy states the fonts are local and also describes the browser connecting to Google servers; the fonts load from Google',
     expect: { status: 'completed', variants: ['wording-to-review'] },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(
+      fontsOnTwoPages(
+        policyWith(
           fontsPart(
             `${LOCAL_CLAIM} Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen.`,
           ),
         ),
-      }),
+      ),
   },
   {
     file: 'violation-claim-attempt-only.json',
@@ -356,14 +354,13 @@ export const variantScenarios: Scenario[] = [
       'Counterexample: under the Google Fonts heading the policy states Font Awesome is local; Google Fonts load, Font Awesome does not',
     expect: { status: 'completed', variants: [] },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(
+      fontsOnTwoPages(
+        policyWith(
           fontsPart(
             'Font Awesome ist bei uns lokal installiert. Zu Servern von Fonticons, Inc. wird dabei keine Verbindung aufgebaut.',
           ),
         ),
-      }),
+      ),
   },
   {
     file: 'clean-optout-addon-sentence.json',
@@ -388,14 +385,13 @@ export const variantScenarios: Scenario[] = [
     description: 'Counterexample: a consent statement about Google Maps while only Google Fonts load',
     expect: { status: 'completed', variants: [] },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(
+      fontsOnTwoPages(
+        policyWith(
           fontsPart('Google Maps wird erst geladen, wenn Sie zustimmen.', {
             section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps',
           }),
         ),
-      }),
+      ),
   },
   {
     file: 'inconclusive-pdf.json',
@@ -424,13 +420,12 @@ export const variantScenarios: Scenario[] = [
       'Counterexample to wording-to-review: the connection is described only under a condition ("Wenn Sie …"), so the statement is contradicted',
     expect: { status: 'completed', variants: ['contradiction-replicated'] },
     build: () =>
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: CONTACT })] })],
-        documents: policyWith(
+      fontsOnTwoPages(
+        policyWith(
           fontsPart(
             `${LOCAL_CLAIM} Wenn Sie externe Inhalte zulassen, baut Ihr Browser eine Verbindung zu den Servern von Google auf.`,
           ),
         ),
-      }),
+      ),
   },
 ];

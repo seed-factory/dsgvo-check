@@ -19,6 +19,7 @@ import {
   cmpWith,
   consentPages,
   controlPageFacts,
+  firstLayer,
   IMPRESSUM,
   phase,
   SHOP_HOST,
@@ -43,13 +44,7 @@ const unanswered = (p: Partial<ConsentStateFact> = {}): ConsentStateFact => ({
   ...p,
 });
 
-const shown = (visible: boolean) => ({
-  bannerPresent: true,
-  bannerVisible: visible,
-  buttons: [],
-  purAbo: false,
-  closeMeansAccept: null,
-});
+const shown = (visible: boolean) => firstLayer({ bannerVisible: visible });
 
 /** Phase B with a reject our click produced (`action`) and read back after the reload (`stored`). */
 const rejectPhase = (

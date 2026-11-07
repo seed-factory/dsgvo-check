@@ -11,6 +11,7 @@ import {
   click,
   cmpFacts,
   cmpWith,
+  firstLayer,
   noBannerCmp,
   phase,
   START,
@@ -61,13 +62,7 @@ const firstLayerSite = (
       phase: 'B',
       facts: [
         cmpFacts({
-          firstLayer: {
-            bannerPresent: true,
-            bannerVisible: true,
-            buttons,
-            purAbo: p.purAbo ?? false,
-            closeMeansAccept: p.closeMeansAccept ?? null,
-          },
+          firstLayer: firstLayer({ buttons, ...p }),
           blocking,
         }),
       ],
@@ -96,17 +91,13 @@ const wixSite = (controls: CmpButton[]) =>
       facts: [
         cmpFacts({
           detection: WIX,
-          firstLayer: {
-            bannerPresent: true,
-            bannerVisible: true,
+          firstLayer: firstLayer({
             buttons: [
               button('Zur Datenschutzerklärung', { role: 'link', tag: 'a' }),
               ...controls,
               button('Schließen', { vendorRole: 'close', box: { x: 1240, y: 600, width: 32, height: 32 } }),
             ],
-            purAbo: false,
-            closeMeansAccept: null,
-          },
+          }),
           blocking: { ...BAR, coveredRatio: 0.17 },
         }),
       ],
@@ -248,13 +239,7 @@ export const scenarios: Scenario[] = [
             cmpFacts({
               phase: 'A',
               moment: 'phase-end',
-              firstLayer: {
-                bannerPresent: true,
-                bannerVisible: false,
-                buttons: [],
-                purAbo: false,
-                closeMeansAccept: null,
-              },
+              firstLayer: firstLayer({ bannerVisible: false }),
               state: [
                 {
                   source: 'api',
@@ -300,13 +285,7 @@ export const scenarios: Scenario[] = [
                 recognitionConfidence: 'low',
                 signals: ['heuristic:fixed-bottom-dialog'],
               },
-              firstLayer: {
-                bannerPresent: true,
-                bannerVisible: true,
-                buttons: [],
-                purAbo: false,
-                closeMeansAccept: null,
-              },
+              firstLayer: firstLayer(),
             }),
           ],
         }),
@@ -355,13 +334,7 @@ export const variantScenarios: Scenario[] = [
           facts: [
             cmpFacts({
               detection: { ...cmpFacts().detection, version: '1.0.0', versionSupported: false },
-              firstLayer: {
-                bannerPresent: true,
-                bannerVisible: true,
-                buttons: [],
-                purAbo: false,
-                closeMeansAccept: null,
-              },
+              firstLayer: firstLayer(),
             }),
           ],
         }),

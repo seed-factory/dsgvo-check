@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../../src/checks/browser/legal-01.ts';
-import type { DocumentsSection, LinkFact, PageVisit } from '../../../../../src/core/snapshot/browser.ts';
+import type { LinkFact, PageVisit } from '../../../../../src/core/snapshot/browser.ts';
+import { named } from '../../../../utils/named-rows.ts';
 import {
   makeDocument,
   makeDom,
@@ -13,7 +14,7 @@ import {
   CONTACT,
   cmpFacts,
   cmpWith,
-  defaultDocuments,
+  firstLayer,
   footerLinks,
   IMPRESSUM,
   ORIGIN,
@@ -24,80 +25,29 @@ import {
   START,
   site,
 } from '../helpers.ts';
+import {
+  type Attempt,
+  att,
+  doc,
+  documents,
+  fallback,
+  impressum,
+  link,
+  linked,
+  missing,
+  privacy,
+  type Scenario,
+  twoPages,
+  verify,
+} from './legal-01-verify.ts';
 
-type Attempt = DocumentsSection['attempts'][number];
-
-const att = (
-  kind: Attempt['kind'],
-  via: Attempt['via'],
-  url: string,
-  status: number | null,
-  outcome: Attempt['outcome'],
-): Attempt => ({ kind, via, url, status, outcome });
-const fallback = (kind: Attempt['kind'] = 'impressum') =>
-  att(kind, 'fallback', kind === 'privacy' ? PRIVACY : IMPRESSUM, 404, 'not-found');
 const unconfirmed = att('privacy', 'link', PRIVACY, 200, 'unconfirmed');
-
-const doc = (kind: 'impressum' | 'privacy') => defaultDocuments().documents.find((d) => d.kind === kind)!;
-const documents = (stored: DocumentsSection['documents'], attempts: Attempt[] = []): DocumentsSection => ({
-  documents: stored,
-  attempts,
-});
-
-const link = (text: string, href: string, extra: Partial<LinkFact> = {}) =>
-  makeLink({ text, href, hrefKind: 'https', sameSite: true, ...extra });
-const impressum = (href = IMPRESSUM) => link('Impressum', href);
-const privacy = (href = PRIVACY) => link('Datenschutz', href);
-
-const twoPages = (links: LinkFact[]) => [
-  page(START, 'start', 'A', {}, links),
-  page(CONTACT, 'contact', 'A', {}, links),
-];
-const linked = (
-  links: LinkFact[],
-  stored: DocumentsSection['documents'],
-  attempts: Attempt[] = [],
-): SiteSpec => ({ phases: [phase('A', { pages: twoPages(links) })], documents: documents(stored, attempts) });
-
-const missing = (kind = 'impressum', variant = 'document-not-found') => [[kind, variant]];
-
-interface Expected {
-  kinds?: string[][];
-  status?: string;
-  limitations?: string[];
-  first?: Record<string, unknown>;
-  firstSubject?: string;
-  emptySubject?: string;
-  pages?: string[];
-  coverage?: Record<string, unknown>;
-}
-interface Scenario {
-  name: string;
-  input: SiteSpec;
-  expected: Expected;
-}
-function verify(input: SiteSpec, expected: Expected) {
-  const result = runCheck(legal01, site(input));
-  const observations = observationsOf(result);
-  const first = expected.firstSubject
-    ? observations.find((o) => o.subject === expected.firstSubject)
-    : observations[0];
-
-  if (expected.kinds) expect(observations.map((o) => [o.subject, o.variant])).toEqual(expected.kinds);
-  if (expected.status) expect(result.status).toBe(expected.status);
-  if (expected.limitations) expect(result.outcome?.limitations ?? []).toEqual(expected.limitations);
-  if (expected.first) expect(first).toMatchObject(expected.first);
-  if (expected.pages) expect(first?.pages).toEqual(expected.pages);
-  if (expected.emptySubject)
-    expect(observations.filter((o) => o.subject === expected.emptySubject)).toEqual([]);
-  if (expected.coverage) expect(result.outcome?.coverage).toMatchObject(expected.coverage);
-}
 
 describe('LEGAL-01 document search evidence', () => {
   const second = `${ORIGIN}/impressum-neu`;
   const unchecked = `${ORIGIN}/impressum-extra`;
   const viaFallback = makeDocument({ kind: 'impressum', url: second, foundVia: 'fallback' });
-  it.each<Scenario>([
+  const SEARCH_CASES: Scenario[] = [
     {
       name: 'an unconfirmed linked document is a limitation',
       input: linked([impressum(), privacy()], [doc('impressum')], [unconfirmed]),
@@ -163,7 +113,8 @@ describe('LEGAL-01 document search evidence', () => {
       ),
       expected: { kinds: missing('impressum', 'reachable-via-intermediate') },
     },
-  ])('$name', ({ input, expected }) => verify(input, expected));
+  ];
+  it.each(named(SEARCH_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 
   const noImpressum = (
     pages: PageVisit[],
@@ -178,7 +129,7 @@ describe('LEGAL-01 document search evidence', () => {
   const team = page(`${ORIGIN}/team`, 'nav', 'A', {}, [privacy()]);
   const contact = link('Kontakt', CONTACT, { region: 'nav' });
   const startWithHop = page(START, 'start', 'A', {}, [privacy(), contact]);
-  it.each<Scenario>([
+  const NO_IMPRESSUM_CASES: Scenario[] = [
     ...['time-budget', 'throttled', 'request-cap'].map((reason) => ({
       name: `an interrupted search preserves the ${reason} reason`,
       input: noImpressum([start, page(PRIVACY, 'privacy', 'A', {}, [])], [], 'partial', reason),
@@ -223,7 +174,8 @@ describe('LEGAL-01 document search evidence', () => {
       input: noImpressum([start], [], 'partial', 'time-budget'),
       expected: { limitations: ['impressum-search-incomplete:time-budget'] },
     },
-  ])('$name', ({ input, expected }) => verify(input, expected));
+  ];
+  it.each(named(NO_IMPRESSUM_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 });
 
 describe('LEGAL-01 legal link identity', () => {
@@ -242,7 +194,7 @@ describe('LEGAL-01 legal link identity', () => {
     link('View our Privacy Policy', policy, { accessibleName, region: 'banner' });
   const policyOnly = (links: LinkFact[]) =>
     linked(links, [makeDocument({ kind: 'privacy', url: policy, foundVia: 'link' })], [fallback()]);
-  it.each<Scenario>([
+  const IDENTITY_CASES: Scenario[] = [
     {
       name: 'French footer labels identify both documents',
       input: linked(
@@ -302,7 +254,8 @@ describe('LEGAL-01 legal link identity', () => {
       ),
       expected: { kinds: [] },
     },
-  ])('$name', ({ input, expected }) => verify(input, expected));
+  ];
+  it.each(named(IDENTITY_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 });
 
 describe('LEGAL-01 checked page coverage', () => {
@@ -334,7 +287,7 @@ describe('LEGAL-01 checked page coverage', () => {
       [att('impressum', 'link', IMPRESSUM, 200, 'found'), att('privacy', 'link', policyPage, 200, outcome)],
     ),
   });
-  it.each<Scenario>([
+  const COVERAGE_CASES: Scenario[] = [
     {
       name: 'a soft-404 fallback remains observed but is not a checked page',
       input: probed(probe(), att('impressum', 'fallback', IMPRESSUM, 200, 'soft-404')),
@@ -433,13 +386,14 @@ describe('LEGAL-01 checked page coverage', () => {
         pages: [policyPage],
       },
     },
-  ])('$name', ({ input, expected }) => verify(input, expected));
+  ];
+  it.each(named(COVERAGE_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 });
 
 describe('LEGAL-01 unavailable and unconfirmed targets', () => {
   const legal = `${ORIGIN}/rechtliches`;
   const viaFallback = makeDocument({ kind: 'privacy', url: PRIVACY, foundVia: 'fallback' });
-  it.each<Scenario>([
+  const TARGET_CASES: Scenario[] = [
     ...[
       {
         name: 'a challenge and an unchecked alternative',
@@ -499,7 +453,8 @@ describe('LEGAL-01 unavailable and unconfirmed targets', () => {
       input: linked([impressum(), privacy(legal)], [doc('impressum'), viaFallback]),
       expected: { kinds: missing('privacy', 'reachable-via-intermediate'), limitations: [] },
     },
-  ])('$name', ({ input, expected }) => verify(input, expected));
+  ];
+  it.each(named(TARGET_CASES))('%s', (_name, { input, expected }) => verify(input, expected));
 });
 
 describe('LEGAL-01 confidence of footer coverage', () => {
@@ -519,19 +474,14 @@ describe('LEGAL-01 confidence of footer coverage', () => {
 
   /** A banner that covers the footer; `measured` adds the measured overlap with a footer link. */
   function bannerCoveringFooter(heuristic: boolean, measured: boolean) {
-    const facts = cmpFacts(heuristic ? { detection: HEURISTIC_DETECTION } : {});
-    facts.firstLayer = {
-      ...facts.firstLayer,
-      bannerPresent: true,
-      bannerVisible: true,
-      buttons: [],
-      purAbo: false,
-      closeMeansAccept: null,
-      coversFooter: true,
-      legalLinks: [],
-      ...(measured ? { coveredFooterLinks: [COVERED_FOOTER_LINK] } : {}),
-    };
-    return facts;
+    return cmpFacts({
+      ...(heuristic ? { detection: HEURISTIC_DETECTION } : {}),
+      firstLayer: firstLayer({
+        coversFooter: true,
+        legalLinks: [],
+        ...(measured ? { coveredFooterLinks: [COVERED_FOOTER_LINK] } : {}),
+      }),
+    });
   }
 
   it.each([
