@@ -1,6 +1,6 @@
 /** Borlabs Cookie v3 and v2 adapters against the own simulators, plus the cookiesForBots branch. */
 import { expect, it } from 'vitest';
-import { extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
+import { extract, loadLexicon, readDialogText, waitForBanner } from '../../../../src/cmp/index.ts';
 import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CHROME_UA, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
@@ -64,6 +64,33 @@ describeCmpScenarios(
 
       expect(verify.verified).toBe(true);
       expect(verify.method.some((m) => m.startsWith('categories-ignored'))).toBe(false);
+    });
+
+    it('dialog text: the collapsed Cookie-Details are read with the first layer, without opening them', async () => {
+      const { page, adapter } = await env.openRecognized('https://www.borlabs.test/details.html', 'borlabs', {
+        banner: true,
+      });
+
+      const read = await readDialogText(page, adapter, { maxChars: 100_000 });
+
+      expect(read?.truncated).toBe(false);
+      expect(read?.text).toMatch(/^Datenschutzeinstellungen Wir nutzen Cookies/);
+      expect(read?.text).toContain('Cookie-Details Name Google Tag Manager Anbieter Google Ireland Limited');
+      expect(read?.text).toContain('Name Google AdWords');
+      // The page side does not redact: the UID is there; the collector replaces it before anything is stored.
+      expect(read?.text).toMatch(/Ihre Einwilligungs-ID \(UID\): zqx[a-z]{5}(-[a-z]{8}){3}$/);
+      const details = await page.locator('.brlbs-cmpnt-cookie-details').evaluate((el) => el.style.display);
+      expect(details).toBe('none');
+    });
+
+    it('dialog text: cut at the limit it is given, and said so', async () => {
+      const { page, adapter } = await env.openRecognized('https://www.borlabs.test/details.html', 'borlabs', {
+        banner: true,
+      });
+
+      const read = await readDialogText(page, adapter, { maxChars: 40 });
+
+      expect(read).toEqual({ text: 'Datenschutzeinstellungen Wir nutzen Cook', truncated: true });
     });
 
     it('config facts: dialogHideDialogOnPages is evaluated for the current page', async () => {

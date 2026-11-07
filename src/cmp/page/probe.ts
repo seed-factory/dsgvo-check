@@ -1343,6 +1343,12 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const CONTAINER_TEXT_CAP = 20000;
 
+  /** Every text node of the container (`all`), so the details a dialog keeps collapsed or hidden are read too. */
+  const fullTextOf = (root: DElement, max: number): NonNullable<ProbeResult['fullText']> => {
+    const all = textOf(root, 'all').replace(/\s+/g, ' ').trim();
+    return { text: all.slice(0, max), truncated: all.length > max };
+  };
+
   const { hit: container, rejected } = findContainer();
   if (!container) return notFoundResult(rejected);
 
@@ -1377,5 +1383,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     heuristic: container.heuristic,
     rejectedCandidate: null,
     ...(args.switches ? { switches: readSwitches(root, args.switches) } : {}),
+    ...(args.fullTextMaxChars !== undefined ? { fullText: fullTextOf(root, args.fullTextMaxChars) } : {}),
   };
 }

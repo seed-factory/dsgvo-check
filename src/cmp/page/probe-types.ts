@@ -45,6 +45,11 @@ export interface ProbeArgs {
    * measures, so the switches and the save control always come from one layer.
    */
   switches?: string;
+  /**
+   * When given, the probe also returns the whole text of the container it found (`fullText`), hidden and collapsed parts
+   * included, cut at this many characters.
+   */
+  fullTextMaxChars?: number;
 }
 
 export interface RawButton {
@@ -103,4 +108,6 @@ export interface ProbeResult {
   rejectedCandidate: { fact: BannerCandidateFact; rank: number; box: Box } | null;
   /** The switches `switches` names inside the container, in DOM order; absent without that argument. */
   switches?: SettingsGroupFact[];
+  /** Whitespace-collapsed text of the container; absent without `fullTextMaxChars`. */
+  fullText?: { text: string; truncated: boolean };
 }

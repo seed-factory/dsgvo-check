@@ -93,6 +93,8 @@ checks:
       not-named: { severity: warning, crm: T3_LEGAL_DOCS_MISMATCH }
       category-only: { severity: info, crm: null }
       ambiguous-match: { severity: info, crm: null }
+      # No privacy document names the service, the consent dialog of the site does (its collapsed service details).
+      named-in-cmp-only: { severity: info, crm: null }
   PRIV-02:
     gating: true
     variants:

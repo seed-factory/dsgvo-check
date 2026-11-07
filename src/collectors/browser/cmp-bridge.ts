@@ -9,12 +9,20 @@ import type {
   CmpButton,
   CmpDetection,
   CmpFacts,
+  RawDialogText,
   SettingsChoice,
   SettingsLayerFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
 import type { ClickPlan, ClickPlanTarget } from '../../core/snapshot/browser.ts';
-import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
+import {
+  CMP_DIALOG_ID,
+  CMP_DIALOG_TEXT_MAX_CHARS,
+  type CmpDialogText,
+  CmpDialogTextSchema,
+  storedDialogText,
+} from '../../core/snapshot/cmp-dialog.ts';
+import type { BrowserPhase, CollectorError, IsoTimestamp, SanitizedUrl } from '../../core/snapshot/common.ts';
 import { sanitizeRequestUrl } from './recording/features.ts';
 import { ERROR_MESSAGE_MAX_CHARS, errorText, redactFreeText, withTimeout } from './util.ts';
 
@@ -36,6 +44,8 @@ export interface CmpApi {
   chooseSettingsOpener?(facts: CmpFacts, options: ClassifyOptions): Promise<SettingsChoice | null>;
   /** Core's save control of the opened settings layer, or why there is none. */
   chooseSettingsSave?(layer: SettingsLayerFacts): Promise<SettingsChoice>;
+  /** The whole text of the adapter's dialog, hidden details included, not yet redacted; null without its container. */
+  dialogText?(page: Page, adapter: CmpAdapter, maxChars: number): Promise<RawDialogText | null>;
 }
 
 /** Type only: signature drift is a compile error, not a runtime surprise. */
@@ -66,6 +76,8 @@ export const defaultCmpApi: CmpApi = {
     const m = await cmpModule();
     return m.chooseSettingsSave(layer, m.loadLexicon());
   },
+  dialogText: async (page, adapter, maxChars) =>
+    (await cmpModule()).readDialogText(page, adapter, { maxChars }),
 };
 
 // The collector owns phase and page attribution: overwrite `phase`/`pageUrl` and sanitize URL fields the CMP subsystem
@@ -96,6 +108,36 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
 /** Control names of the settings layer are page text: they pass `redactFreeText` like those of the first layer. */
 export function normalizeSettings(layer: SettingsLayerFacts): SettingsLayerFacts {
   return { ...layer, buttons: layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) })) };
+}
+
+/** The redacted dialog text; `absent` without a reader or a container; `failed` when it could not be read or stored. */
+export type DialogTextRead = CmpDialogText | 'absent' | 'failed';
+
+/** Where and from which CMP the dialog text was read. */
+export interface DialogTextSource {
+  adapter: Pick<CmpAdapter, 'id' | 'name'>;
+  version: string | null;
+  pageUrl: SanitizedUrl;
+  takenAt: IsoTimestamp;
+}
+
+/**
+ * The dialog text as the snapshot keeps it: redacted like every string copied from the page (`redactFreeText`), with
+ * consent IDs, UIDs and other value-like tokens replaced, cut at the protective limit, and checked against the
+ * snapshot schema; null when it does not fit.
+ */
+export function normalizeDialogText(raw: RawDialogText, from: DialogTextSource): CmpDialogText | null {
+  const parsed = CmpDialogTextSchema.safeParse({
+    id: CMP_DIALOG_ID,
+    cmpId: from.adapter.id,
+    cmpName: from.adapter.name,
+    version: from.version?.slice(0, 40) ?? null,
+    phase: 'A',
+    pageUrl: from.pageUrl,
+    takenAt: from.takenAt,
+    ...storedDialogText(raw.text, raw.truncated, redactFreeText),
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 /** A plan target as the adapter clicks it. */
@@ -148,10 +190,16 @@ export class CmpBridge {
     this.classify = classify;
   }
 
-  private async call<T>(what: string, url: string, fn: () => Promise<T>): Promise<T | null> {
+  private async call<T>(
+    what: string,
+    url: string,
+    fn: () => Promise<T>,
+    onError?: () => void,
+  ): Promise<T | null> {
     try {
       return await withTimeout(fn(), this.timeoutMs, `cmp.${what}`);
     } catch (err) {
+      onError?.();
       const code = `cmp-${what}-failed`;
       const message = errorText(err).split('\n')[0]?.slice(0, ERROR_MESSAGE_MAX_CHARS) ?? '';
       // The same failure on every page is reported once per phase.
@@ -228,6 +276,39 @@ export class CmpBridge {
       open.call(adapter, page, clickTarget(opener, 'settings'), { timeoutMs: waitMs }),
     );
     return layer ? normalizeSettings(layer) : null;
+  }
+
+  /**
+   * Reads the whole text of the recognised CMP's dialog without a click and redacts it before it leaves the bridge.
+   * `absent` when the adapter has no reader or the container is not there; `failed` when the read threw or timed out
+   * (one phase error records it) or the text did not fit the snapshot schema.
+   */
+  async dialogText(
+    page: Page,
+    adapter: CmpAdapter,
+    version: string | null,
+    url: SanitizedUrl,
+  ): Promise<DialogTextRead> {
+    const read = this.api.dialogText;
+    if (!read) return 'absent';
+    let failed = false;
+    const raw = await this.call(
+      'dialog-text',
+      url,
+      () => read(page, adapter, CMP_DIALOG_TEXT_MAX_CHARS),
+      () => {
+        failed = true;
+      },
+    );
+    if (failed) return 'failed';
+    if (!raw) return 'absent';
+    const text = normalizeDialogText(raw, {
+      adapter,
+      version,
+      pageUrl: url,
+      takenAt: new Date().toISOString(),
+    });
+    return text ?? 'failed';
   }
 
   settingsSave(layer: SettingsLayerFacts, url: string): Promise<SettingsChoice | null> {

@@ -451,6 +451,16 @@ messages:
       {service} was found {documentCount, plural, =0 {in the privacy policy at {policyUrl}} =1 {in the privacy policy
       at {policyUrl}} other {in the privacy policy and the site's further privacy notices (searched: {policyUrls})}}
       only in text not displayed on the page or not attributable to a section. Please review manually.
+  PRIV-01.named-in-cmp-only:
+    title: "Not found in the privacy policy, named in the consent banner's information ({cmp}): {service}"
+    body: >-
+      In the evaluated text of the privacy policy at {policyUrl}{documentCount, plural, =0 {} =1 {} other { and of the
+      site's further privacy notices (searched: {policyUrls})}} ({partCount, plural, one {# section} other {#
+      sections}}; completeness per manifest: {complete, select, true {complete} other {not complete}}) {service} was
+      not found{categoryOnly, select, true {, only a description of its category} other {}}. The information of the
+      consent banner ({cmp}), read without a click and with its collapsed details, names {service}: “{cmpQuote}”. A
+      company name, domain or category in the banner was not counted as a mention. The service was observed on
+      {pageCount, plural, one {# page} other {# pages}}. Negations in the text were not evaluated.
 
   # PRIV-02
   PRIV-02.contradiction-replicated:
@@ -716,6 +726,8 @@ actions:
     text: "Check whether the privacy policy names {service} specifically enough, and otherwise add the names of the service and the provider."
   PRIV-01.ambiguous-match:
     text: "Check manually whether the privacy policy names {service} in its visible text."
+  PRIV-01.named-in-cmp-only:
+    text: "Name {service}, with purpose and provider, in the privacy policy as well, not only in the consent banner's information ({cmp})."
   PRIV-02.contradiction-replicated:
     text: "Compare the quoted section of the privacy policy with how {service} is embedded: {claim, select, consent-gated {load {service} only after consent} other {serve the content from your own server}} or adjust the statement."
   PRIV-02.contradiction-single:

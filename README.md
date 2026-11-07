@@ -100,7 +100,7 @@ mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
 | `EMBED-03`   | —                                                                   | `video-loaded`                                                                                                          | —                                                                                                       |
 | `LEGAL-01`   | `document-not-found`, `links-broken`                                | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                            |
 | `LEGAL-02`   | —                                                                   | —                                                                                                                       | `outdated-reference`                                                                                    |
-| `PRIV-01`    | —                                                                   | `not-named`                                                                                                             | `category-only`, `ambiguous-match`                                                                      |
+| `PRIV-01`    | —                                                                   | `not-named`                                                                                                             | `category-only`, `ambiguous-match`, `named-in-cmp-only`                                                 |
 | `PRIV-02`    | `contradiction-replicated`                                          | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                     |
 | `MAIL-01`    | —                                                                   | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                             |
 | `MAIL-02`    | —                                                                   | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                            |
@@ -688,9 +688,11 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   nicht die Erlaubnis des Website-Betreibers.
 - **Keine Werte.** Werte von Cookies, Web Storage und TC-String landen weder im Bericht noch im Snapshot, auch nicht
   gehasht. Query-Parameter werden bis auf eine Allowlist durch `[redacted]` ersetzt, `mailto:`-Adressen bis auf die
-  Domain maskiert. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne
-  Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase
-  entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Domain maskiert. Im Text des Einwilligungsbanners, den der Snapshot für PRIV-01 aufbewahrt, ersetzt der Collector
+  Einwilligungs-IDs, UIDs, TC-Strings und ähnliche Kennungen vor dem Schreiben durch `[redacted]`, auch wenn
+  unsichtbare Zeichen eine Kennung oder Adresse teilen. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt
+  und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der
+  Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
@@ -752,7 +754,13 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   Sprachversionen werden nicht gelesen. Sie und weitere Hinweise, die als PDF, in einer anderen Sprache, abgeschnitten
   oder gar nicht vorliegen, ergeben die Einschränkung `supplement-not-evaluated` (Status `partial`); die
   Datenschutzerklärung selbst wird trotzdem ausgewertet. Verneinungen werden nicht ausgewertet; die Konfidenz ist daher
-  höchstens `medium`.
+  höchstens `medium`. Nennt kein Dokument den Dienst, wohl aber das Einwilligungsbanner selbst mit Namen oder
+  Schreibweise des Dienstekatalogs (etwa die eingeklappten „Cookie-Details“ von Borlabs Cookie), meldet PRIV-01 statt
+  `not-named` oder `category-only` die Variante `named-in-cmp-only` (`info`). Gelesen wird der Text des Banners einmal
+  in Phase A ohne Klick, auf der ersten Seite, auf der ein eigener Adapter das Banner sicher erkennt (nie die
+  allgemeine Heuristik), höchstens 100 000 Zeichen. Firmenname, Domain oder Kategorie im Banner zählen nicht als
+  Nennung. Bleibt ein Dienst ungenannt, gilt die Einschränkung `cmp-dialog-truncated`, wenn der Text abgeschnitten ist,
+  und `cmp-dialog-unread`, wenn das Lesen fehlschlug; es wird im selben Scan nicht wiederholt.
 - **PRIV-02** erkennt nur die Angaben aus dem Wörterbuch
   [test/data/legal/claims.yaml](test/data/legal/claims.yaml) (deutsch und englisch, in HTML-Datenschutzerklärungen):
   lokal eingebunden, keine Verbindung, erst nach Einwilligung geladen. Ein Satz zählt, wenn er den Dienst nennt oder
