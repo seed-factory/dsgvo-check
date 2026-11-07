@@ -4,25 +4,17 @@
  * carry whether they take input other than a site search, by the rules the HTTP collector applies to markup. A link
  * whose rel names `bookmark` is flagged as a permalink.
  */
-import type { Page } from 'playwright-core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { domFactsInPage } from '../../../src/collectors/browser/in-page/dom.ts';
 import { collectDom, formRules } from '../../../src/collectors/browser/pages/dom-facts.ts';
 import { loadDomPatterns } from '../../../src/collectors/browser/rules.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
-import { page as html, type SiteDir, writeSite } from './site-dir.ts';
+import { page as html, useSite } from './site-dir.ts';
 
 const articles = (n: number) =>
   Array.from({ length: n }, (_, i) => `<li><a href="/artikel/${i}">Artikel ${i}</a></li>`).join('');
 
-let server: FixtureServer;
-let site: SiteDir;
-let browser: TestBrowser;
-let tab: Page;
-
-beforeAll(async () => {
-  site = writeSite({
+const site = useSite(
+  {
     'long/index.html': html(`
       <header><a href="/">Start</a></header>
       <main><ul>${articles(1600)}</ul></main>
@@ -50,23 +42,15 @@ beforeAll(async () => {
         <a href="/fuenf/">Fünf</a>
         <map name="m"><area href="/sechs/" rel="bookmark" alt="Sechs" shape="rect" coords="0,0,10,10"></map>
       </main>`),
-  });
-  server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
-  browser = await launchTestBrowser(server);
-  tab = await browser.context.newPage();
-});
-
-afterAll(async () => {
-  await browser?.close();
-  await server?.close();
-  site?.cleanup();
-});
+  },
+  { browser: true },
+);
 
 const target = { etld1: 'example.test', host: 'www.example.test' };
 
 async function collectAt(path: string) {
-  await tab.goto(`https://www.example.test/${path}`);
-  return collectDom(tab, target, []);
+  await site.tab.goto(`https://www.example.test/${path}`);
+  return collectDom(site.tab, target, []);
 }
 
 describe('collectDom with more links than the cap', () => {
@@ -139,8 +123,8 @@ describe('collectDom: permalinks', () => {
 
 describe('domFactsInPage with a small cap', () => {
   it('reads priority links first and fills the rest in document order', async () => {
-    await tab.goto('https://www.example.test/long/');
-    const raw = await tab.evaluate(domFactsInPage, {
+    await site.tab.goto('https://www.example.test/long/');
+    const raw = await site.tab.evaluate(domFactsInPage, {
       maxLinks: 10,
       maxScripts: 5,
       patterns: loadDomPatterns().page,

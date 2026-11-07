@@ -5,41 +5,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
-import type { Snapshot } from '../../../../src/core/snapshot/index.ts';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
-import { makeSnapshot, observationsOf, runCheck, withDerived } from '../../../utils/snapshot-builder.ts';
-import { type CollectRun, collect } from '../helpers.ts';
-
-type Res = Parameters<DynamicHandler['handle']>[1];
-
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
-
-const html = (title: string, body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-const send =
-  (body: string, status = 200) =>
-  (res: Res) => {
-    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(body);
-  };
-
-/** Routes of one synthetic host; every other path answers 404 (so a fallback probe finds nothing). */
-function site(host: string, routes: Record<string, (res: Res) => void>): DynamicHandler {
-  return {
-    host,
-    path: /.*/,
-    handle: (_req, res, ctx) => {
-      const route = routes[ctx.url.pathname];
-      if (route) return route(res);
-      send(html('404', '<h1>Nicht gefunden</h1>'), 404)(res);
-    },
-  };
-}
+import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
+import { collect, snapshotOf } from '../helpers.ts';
+import { html, LOREM, send, site } from '../site-dir.ts';
 
 /** One page, two documents: both headings are in the content. */
 const COMBINED = html(
@@ -90,19 +59,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await server?.close();
 });
-
-function snapshotOf(run: CollectRun): Snapshot {
-  const s = run.result.sections;
-  return withDerived(
-    makeSnapshot({
-      target: run.ctx.target,
-      ...(s.browser ? { browser: s.browser } : {}),
-      ...(s.documents ? { documents: s.documents } : {}),
-      cmp: s.cmp ?? { phases: [] },
-      plan: { browser: s.plan ?? null, probes: [] },
-    }),
-  );
-}
 
 describe('a combined page behind two exact labels keeps both documents', () => {
   it.each([

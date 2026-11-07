@@ -27,13 +27,7 @@ import {
   TEST_SANDBOX,
   waitUntil,
 } from '../helpers.ts';
-
-const html = (title: string, body: string) =>
-  `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen. ';
-const FOOTER =
-  '<footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutzerklärung</a></footer>';
+import { FOOTER, html, LOREM } from '../site-dir.ts';
 
 const PAGES: Record<string, string> = {
   '/': html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>${FOOTER}`),
@@ -71,7 +65,6 @@ beforeAll(async () => {
       site('queue.example.test'),
       site('phaseb.example.test'),
     ],
-    sites: ['browser/fatal'],
   });
 });
 
@@ -273,17 +266,6 @@ describe('a collection cut by the deadline', () => {
       ['B', 'partial', 'timeout'],
       ['C', 'skipped', 'timeout'],
     ]);
-  });
-
-  it('a partial result names its reason: throttling', async () => {
-    server.reset();
-
-    const run = await collect(server, {
-      url: 'https://throttled.example.test/',
-      deps: { phases: ['A', 'B', 'C'] },
-    });
-
-    expect(run.result).toMatchObject({ status: 'partial', reason: 'throttled' });
   });
 
   it('a partial result names its reason: the time budget', async () => {

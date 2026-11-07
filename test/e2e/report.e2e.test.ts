@@ -2,7 +2,6 @@
  * `dsgvo-check report <report.json>` regenerates HTML, JSON and PDF from a saved report without scanning, takes its
  * option defaults from the settings, and keeps going when no PDF browser is installed.
  */
-import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadTexts } from '../../src/core/data/load.ts';
 import { uiText } from '../../src/core/data/messages.ts';
 import { sampleFullReport } from '../utils/report/fixtures.ts';
-import { CLI, type CliRun, ensureBuilt, runCli } from './support/cli-harness.ts';
+import { type CliRun, ensureBuilt, runCli } from './support/cli-harness.ts';
 
 /** Without a browser the PDF step must give up quickly instead of waiting for a download or a launch. */
 const NO_BROWSER_TIMEOUT_MS = 30_000;
@@ -36,33 +35,11 @@ async function runReport(args: string[], opts: Parameters<typeof runCli>[2] = {}
   return run;
 }
 
-/** The same command in an environment whose Playwright browser directory is empty. */
-function runWithoutBrowser(args: string[]): Promise<{ code: number | null; stderr: string }> {
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PLAYWRIGHT_BROWSERS_PATH: path.join(tempDir(), 'no-browser'),
-    NO_COLOR: '1',
-  };
-  delete env.GITHUB_STEP_SUMMARY;
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLI, ...args], { env, stdio: ['ignore', 'ignore', 'pipe'] });
-    let stderr = '';
-    child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-      stderr += chunk;
-    });
-    const timer = setTimeout(() => child.kill('SIGKILL'), NO_BROWSER_TIMEOUT_MS);
-
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code, stderr });
-    });
-  });
-}
+/** `runReport` options for an environment whose Playwright browser directory is empty. */
+const withoutBrowser = () => ({
+  env: { PLAYWRIGHT_BROWSERS_PATH: path.join(tempDir(), 'no-browser') },
+  timeoutMs: NO_BROWSER_TIMEOUT_MS,
+});
 
 function expectNoFile(dir: string, name: string): void {
   expect(existsSync(path.join(dir, name)), `${name} must not be written`).toBe(false);
@@ -166,49 +143,26 @@ describe('report command regenerates reports without scanning', () => {
   it('a missing PDF browser keeps the report and exits successfully with one warning', async () => {
     const source = reportFile();
     const original = readFileSync(source, 'utf8');
-    const out = tempDir();
 
-    const result = await runWithoutBrowser([
-      'report',
-      source,
-      '--format',
-      'json,html,pdf',
-      '--lang',
-      'en',
-      '--out',
-      out,
-    ]);
+    const run = await runReport([source, '--format', 'json,html,pdf', '--lang', 'en'], withoutBrowser());
 
-    expect(result.code, result.stderr).toBe(0);
-    expectFile(out, 'report.html');
-    expectNoFile(out, 'report.pdf');
+    expect(run.code, run.stderr).toBe(0);
+    expectFile(run.outDir, 'report.html');
+    expectNoFile(run.outDir, 'report.pdf');
     expect(readFileSync(source, 'utf8')).toBe(original);
-
-    const written = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
-    expect(written.summary).toEqual(JSON.parse(original).summary);
+    expect(run.json?.summary).toEqual(JSON.parse(original).summary);
 
     const warning = uiText(loadTexts('en'), 'report.pdf.skipped');
-    expect(result.stderr.split('\n').filter((line) => line.includes(warning))).toHaveLength(1);
-    expect(result.stderr).not.toContain("Executable doesn't exist");
+    expect(run.stderr.split('\n').filter((line) => line.includes(warning))).toHaveLength(1);
+    expect(run.stderr).not.toContain("Executable doesn't exist");
   });
 
   it('PDF-only rendering keeps HTML in memory when the browser is unavailable', async () => {
-    const out = tempDir();
+    const run = await runReport([reportFile(), '--format', 'pdf', '--lang', 'en'], withoutBrowser());
 
-    const result = await runWithoutBrowser([
-      'report',
-      reportFile(),
-      '--format',
-      'pdf',
-      '--lang',
-      'en',
-      '--out',
-      out,
-    ]);
-
-    expect(result.code, result.stderr).toBe(0);
-    expectNoFile(out, 'report.html');
-    expectNoFile(out, 'report.pdf');
-    expect(result.stderr).toContain(uiText(loadTexts('en'), 'report.pdf.skipped'));
+    expect(run.code, run.stderr).toBe(0);
+    expectNoFile(run.outDir, 'report.html');
+    expectNoFile(run.outDir, 'report.pdf');
+    expect(run.stderr).toContain(uiText(loadTexts('en'), 'report.pdf.skipped'));
   });
 });

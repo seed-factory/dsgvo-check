@@ -38,8 +38,7 @@ describeCmpScenarios(
     });
 
     it('geo branch: out of region → isOutOfRegion, CookieConsent=-1, gdprApplies=false and TCF ping', async () => {
-      const { page } = await env.open('https://www.cookiebot.test/geo.html');
-      const adapter = await recognized(page, 'cookiebot');
+      const { page, adapter } = await env.openRecognized('https://www.cookiebot.test/geo.html', 'cookiebot');
       const facts = await extract(page, adapter, 'first-screen');
 
       expect(facts.geoSignals.map((g) => g.signal).sort()).toEqual([
@@ -54,8 +53,7 @@ describeCmpScenarios(
     });
 
     it('collector flow (verify without reload, own reload, verify again): origin action, then stored', async () => {
-      const { page } = await env.open('https://www.cookiebot.test/');
-      const adapter = await recognized(page, 'cookiebot');
+      const { page, adapter } = await env.openRecognized('https://www.cookiebot.test/', 'cookiebot');
       expect((await decideAndAct(page, adapter, 'reject')).click.clicked).toBe(true);
 
       // Before the reload the state comes from the click itself.
@@ -76,8 +74,7 @@ describeCmpScenarios(
     });
 
     it('never stores cookie values: the facts contain no CookieConsent payload', async () => {
-      const { page } = await env.open('https://www.cookiebot.test/');
-      const adapter = await recognized(page, 'cookiebot');
+      const { page, adapter } = await env.openRecognized('https://www.cookiebot.test/', 'cookiebot');
       expect((await decideAndAct(page, adapter, 'reject')).click.clicked).toBe(true);
 
       const facts = await adapter.extract(page, 'after-click');

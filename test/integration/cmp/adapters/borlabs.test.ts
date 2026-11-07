@@ -67,8 +67,7 @@ describeCmpScenarios(
     });
 
     it('config facts: dialogHideDialogOnPages is evaluated for the current page', async () => {
-      const { page } = await env.open('https://www.borlabs.test/');
-      const adapter = await recognized(page, 'borlabs');
+      const { page, adapter } = await env.openRecognized('https://www.borlabs.test/', 'borlabs');
 
       const facts = await extract(page, adapter, 'first-screen');
 

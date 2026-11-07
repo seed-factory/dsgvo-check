@@ -1,9 +1,7 @@
 /** Click selectors omit class tokens containing addresses while retaining the intended button identity. */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
-import { launchTestBrowser, type TestBrowser } from '../../../utils/browser.ts';
-import { type CollectRun, collect, persisted } from '../helpers.ts';
-import { page, type SiteDir, writeSite } from '../site-dir.ts';
+import { describe, expect, it } from 'vitest';
+import { persisted } from '../helpers.ts';
+import { page, useSite } from '../site-dir.ts';
 
 const INDEX = page(`
   <main><h1>Beispiel Kanzlei</h1></main>
@@ -19,32 +17,16 @@ const INDEX = page(`
     <button type="button" class="cta zq7mix@example.test" onclick="window.clicked = 'settings'">Einstellungen</button>
   </div>`);
 
-let server: FixtureServer;
-let site: SiteDir;
-let run: CollectRun;
-let browser: TestBrowser;
-
-beforeAll(async () => {
-  site = writeSite({ 'index.html': INDEX });
-  server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
-  run = await collect(server, { maxPages: 1 });
-  browser = await launchTestBrowser(server);
-});
-
-afterAll(async () => {
-  await browser?.close();
-  await server?.close();
-  site?.cleanup();
-});
+const site = useSite({ 'index.html': INDEX }, { collect: { maxPages: 1 }, browser: true });
 
 const buttons = () =>
-  (run.result.sections.cmp?.phases.flatMap((p) => p.facts) ?? []).find((f) => f.firstLayer.bannerPresent)
+  (site.run.result.sections.cmp?.phases.flatMap((p) => p.facts) ?? []).find((f) => f.firstLayer.bannerPresent)
     ?.firstLayer.buttons ?? [];
 const byName = (name: string) => buttons().find((b) => b.name === name);
 
 /** The recorded selector of a control, used the way the adapters use it: in a fresh page, exactly one match, a click. */
 async function clickBySelector(selector: string): Promise<{ count: number; clicked: unknown }> {
-  const p = await browser.context.newPage();
+  const p = await site.browser.context.newPage();
   try {
     await p.goto('https://www.example.test/', { waitUntil: 'load' });
     const loc = p.locator(selector);
@@ -70,7 +52,7 @@ describe('CMP click selector: a class token with an address', () => {
 
   it('no local part of an address in a class token anywhere in what the collector persists', () => {
     // The excerpts around a marker, not the whole snapshot, so that a failure stays readable.
-    expect(persisted(run).match(/[^"]{0,40}zq7[^"]{0,40}/g) ?? []).toEqual([]);
+    expect(persisted(site.run).match(/[^"]{0,40}zq7[^"]{0,40}/g) ?? []).toEqual([]);
   });
 
   it('the control whose only unique selector would be its address class gets a structural selector that still clicks', async () => {
@@ -93,6 +75,6 @@ describe('CMP click selector: a class token with an address', () => {
   });
 
   it('touches only declared hosts', () => {
-    expect(server.unexpected).toEqual([]);
+    expect(site.server.unexpected).toEqual([]);
   });
 });

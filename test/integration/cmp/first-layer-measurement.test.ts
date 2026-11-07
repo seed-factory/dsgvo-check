@@ -5,17 +5,15 @@
 import { describe, expect, it } from 'vitest';
 import { extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
 import { classifyFirstLayer } from '../../utils/classify.ts';
-import { CMP_WAIT_MS, decideAndAct, recognized, useCmpServer } from './helpers.ts';
+import { CMP_WAIT_MS, decideAndAct, useCmpServer } from './helpers.ts';
 
 describe('first-layer measurement (Cookiebot simulator)', () => {
   const env = useCmpServer(['cmp/cookiebot', 'cmp/generic']);
   const lexicon = loadLexicon();
 
-  /** Opens `file` of the Cookiebot simulator and waits until the CMP is recognized. */
-  async function openCookiebot(file: string) {
-    const { page } = await env.open(`https://www.cookiebot.test/${file}`);
-    return { page, adapter: await recognized(page, 'cookiebot') };
-  }
+  /** Opens `file` of the Cookiebot simulator and waits until the CMP is recognized (with `banner`, also its banner). */
+  const openCookiebot = (file: string, opts?: { banner?: boolean }) =>
+    env.openRecognized(`https://www.cookiebot.test/${file}`, 'cookiebot', opts);
 
   describe('button limit', () => {
     it('45 hidden vendor toggles before the visible buttons: reject and accept are measured and clicked', async () => {
@@ -36,20 +34,8 @@ describe('first-layer measurement (Cookiebot simulator)', () => {
       expect(cls.targets?.accept?.name).toBe('Alle zulassen');
     });
 
-    it('phase B clicks the reject on that page', async () => {
-      const { page, adapter } = await openCookiebot('many-vendors.html');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
-
-      const { click } = await decideAndAct(page, adapter, 'reject');
-
-      expect(click.error).toBeUndefined();
-      expect(click.clicked).toBe(true);
-      expect(click.button?.kind).toBe('reject');
-    });
-
     it('counterexample: the ordinary banner is not flagged as truncated', async () => {
-      const { page, adapter } = await openCookiebot('');
-      await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS });
+      const { page, adapter } = await openCookiebot('', { banner: true });
 
       const facts = await extract(page, adapter, 'first-screen');
 

@@ -16,16 +16,7 @@ import {
 import { fakeCollectors, testDataDir } from '../../../utils/scan-harness.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect, FAST_TIMING, TEST_SANDBOX } from '../helpers.ts';
-
-const LOREM =
-  'Wir verarbeiten personenbezogene Daten ausschließlich im Rahmen der gesetzlichen Vorgaben. Diese Erklärung beschreibt, welche Daten beim Besuch dieser Website anfallen und wie lange sie gespeichert werden. ';
-
-function html(title: string, body: string): string {
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
-}
-
-const FOOTER =
-  '<footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutzerklärung</a></footer>';
+import { FOOTER, html, LOREM, type Route, redirect, send, site } from '../site-dir.ts';
 
 const IMPRESSUM = html(
   'Impressum',
@@ -52,38 +43,11 @@ function minimalPdf(): Buffer {
   return Buffer.from(out, 'latin1');
 }
 
-function site(host: string, routes: Record<string, (res: Parameters<DynamicHandler['handle']>[1]) => void>) {
-  const handler: DynamicHandler = {
-    host,
-    path: /.*/,
-    handle: (req, res, ctx) => {
-      const route = routes[ctx.url.pathname];
-      if (route) return route(res);
-      res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(html('404', '<h1>Nicht gefunden</h1>'));
-      void req;
-    },
-  };
-  return handler;
-}
-
-const send = (body: string | Buffer, type = 'text/html; charset=utf-8', status = 200) =>
-  ((res) => {
-    res.writeHead(status, { 'content-type': type });
-    res.end(body);
-  }) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
-
-const redirect = (to: string) =>
-  ((res) => {
-    res.writeHead(302, { location: to });
-    res.end();
-  }) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
-
 /** A Cloudflare-like challenge page. */
-const challenge = ((res) => {
+const challenge: Route = (res) => {
   res.writeHead(403, { 'content-type': 'text/html; charset=utf-8', 'cf-mitigated': 'challenge' });
   res.end(html('Just a moment...', '<p>Checking if the site connection is secure</p>'));
-}) as (res: Parameters<DynamicHandler['handle']>[1]) => void;
+};
 
 /** The start page is fine in phase A and challenged on every later visit (phase B). */
 function laterBlockSite(host: string): DynamicHandler {
@@ -162,14 +126,14 @@ beforeAll(async () => {
         '/': send(html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>${FOOTER}`)),
         '/kontakt/': send(html('Kontakt', `<main><h1>Kontakt</h1></main>${FOOTER}`)),
         '/impressum/': send(IMPRESSUM),
-        '/datenschutz/': send(minimalPdf(), 'application/pdf'),
+        '/datenschutz/': send(minimalPdf(), 200, 'application/pdf'),
       }),
 
       // a 403 on the fallback probe /impressum (the start page has no legal links).
       site('probe403.example.test', {
         '/': send(html('Start', `<main><h1>Start</h1><a href="/kontakt/">Kontakt</a></main>`)),
         '/kontakt/': send(html('Kontakt', `<main><h1>Kontakt</h1></main>`)),
-        '/impressum': send(html('Forbidden', '<h1>Forbidden</h1>'), 'text/html; charset=utf-8', 403),
+        '/impressum': send(html('Forbidden', '<h1>Forbidden</h1>'), 403),
         '/datenschutz': send(
           html('Datenschutzerklärung', `<main><h1>Datenschutzerklärung</h1><p>${LOREM.repeat(4)}</p></main>`),
         ),

@@ -19,10 +19,11 @@ import type {
   CollectorResult,
   EntryTarget,
 } from '../../../src/core/snapshot/collector.ts';
+import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { parseTarget } from '../../../src/core/url/url.ts';
 import type { FixtureServer } from '../../fixture-server/server.ts';
-import { makeSnapshot } from '../../utils/snapshot-builder.ts';
+import { makeSnapshot, withDerived } from '../../utils/snapshot-builder.ts';
 
 /** Same algorithm as production, scaled down so that a full A/B/C run takes seconds. */
 export const FAST_TIMING: BrowserTiming = {
@@ -99,6 +100,20 @@ export async function collect(
 /** Everything a snapshot would persist from this collector, as one string (for "no value leaked" checks). */
 export function persisted(run: CollectRun): string {
   return JSON.stringify(run.result);
+}
+
+/** The collected sections as a snapshot with `derived`, to run the checks over a real collection. */
+export function snapshotOf(run: CollectRun): Snapshot {
+  const s = run.result.sections;
+  return withDerived(
+    makeSnapshot({
+      target: run.ctx.target,
+      ...(s.browser ? { browser: s.browser } : {}),
+      ...(s.documents ? { documents: s.documents } : {}),
+      cmp: s.cmp ?? { phases: [] },
+      plan: { browser: s.plan ?? null, probes: [] },
+    }),
+  );
 }
 
 /** Resolves once `condition` holds, checked every `intervalMs` (e.g. "the fixture server has seen the request"). */

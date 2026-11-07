@@ -3,10 +3,9 @@
  * identifier from matrix or `prefix:k=v` path segments and no comment of a product header into the snapshot. Markers
  * start with `zq7`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { type CollectRun, collect, persisted } from './helpers.ts';
-import { page, type SiteDir, writeSite } from './site-dir.ts';
+import { describe, expect, it } from 'vitest';
+import { persisted } from './helpers.ts';
+import { page, useSite } from './site-dir.ts';
 
 const INDEX = page(`
   <nav><a id="mail" href="mailto:zq7local@example.test?subject=zq7subject">zq7local@example.test</a></nav>
@@ -21,14 +20,9 @@ const INDEX = page(`
   </main>
   <footer><a href="/impressum/">Impressum</a> <a href="/datenschutz/">Datenschutz</a></footer>`);
 
-let server: FixtureServer;
-let site: SiteDir;
-let run: CollectRun;
-
-beforeAll(async () => {
-  site = writeSite({ 'index.html': INDEX });
-  server = await startFixtureServer({
-    hosts: { 'www.example.test': site.root },
+const site = useSite(
+  { 'index.html': INDEX },
+  {
     routes: [
       {
         host: 'www.example.test',
@@ -48,16 +42,11 @@ beforeAll(async () => {
       },
       { host: 'dpm.demdex.net', path: '^/ibs:', pathRegex: true, headers: { 'content-type': 'image/gif' } },
     ],
-  });
-  run = await collect(server, { maxPages: 1 });
-});
+    collect: { maxPages: 1 },
+  },
+);
 
-afterAll(async () => {
-  await server?.close();
-  site?.cleanup();
-});
-
-const links = () => run.result.sections.browser?.phases[0]?.pages[0]?.dom?.links ?? [];
+const links = () => site.run.result.sections.browser?.phases[0]?.pages[0]?.dom?.links ?? [];
 
 describe('free text in the snapshot', () => {
   it('masks the address in the text and the accessible name of a mailto link; the href stays out of the snapshot', () => {
@@ -87,27 +76,27 @@ describe('free text in the snapshot', () => {
 
   it('keeps domains and service hosts, so that the matching of documents and services does not change', () => {
     expect(links().find((l) => l.href === 'https://www.example.test/impressum/')?.text).toBe('Impressum');
-    expect(persisted(run)).toContain('@example.test');
+    expect(persisted(site.run)).toContain('@example.test');
   });
 });
 
 describe('identifiers in the path of request URLs', () => {
   it('redacts matrix parameters of a Floodlight-style URL', () => {
-    const r = run.requests.find((x) => x.host === 'ad.doubleclick.net');
+    const r = site.run.requests.find((x) => x.host === 'ad.doubleclick.net');
     expect(r?.url).toBe(
       'https://ad.doubleclick.net/activityi;src=[redacted];type=[redacted];dc_pre=[redacted];ord=[redacted]',
     );
   });
 
   it('redacts the values of a prefix:k=v&k=v segment', () => {
-    const r = run.requests.find((x) => x.host === 'dpm.demdex.net');
+    const r = site.run.requests.find((x) => x.host === 'dpm.demdex.net');
     expect(r?.url).toBe('https://dpm.demdex.net/ibs:dpid=[redacted]&dpuuid=[redacted]');
   });
 });
 
 describe('headers that name the server software', () => {
   it('the main document keeps product and version next to the redacted value, as the HTTP collector does', () => {
-    const headers = run.result.sections.browser?.phases[0]?.pages[0]?.responseHeaders ?? [];
+    const headers = site.run.result.sections.browser?.phases[0]?.pages[0]?.responseHeaders ?? [];
     expect(
       headers
         .filter((h) => h.name === 'server' || h.name === 'x-powered-by')
@@ -116,16 +105,16 @@ describe('headers that name the server software', () => {
       { name: 'server', value: '[redacted]', productVersions: [{ product: 'Apache', version: '2.4.41' }] },
       { name: 'x-powered-by', value: '[redacted]', productVersions: [{ product: 'PHP', version: '7.2.34' }] },
     ]);
-    expect(persisted(run)).not.toContain('Ubuntu');
+    expect(persisted(site.run)).not.toContain('Ubuntu');
   });
 });
 
 describe('nothing from the markers is persisted', () => {
   it('no local part, query value or path identifier anywhere in the collector result', () => {
-    expect(persisted(run)).not.toContain('zq7');
+    expect(persisted(site.run)).not.toContain('zq7');
   });
 
   it('touches only declared hosts', () => {
-    expect(server.unexpected).toEqual([]);
+    expect(site.server.unexpected).toEqual([]);
   });
 });

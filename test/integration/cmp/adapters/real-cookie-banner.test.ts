@@ -17,8 +17,7 @@ describeCmpScenarios(
   },
   (env) => {
     it('random digit-leading container id and obfuscation-free structural selectors still give a unique click target', async () => {
-      const { page } = await env.open('https://www.rcb.test/');
-      const adapter = await recognized(page, 'real-cookie-banner');
+      const { page, adapter } = await env.openRecognized('https://www.rcb.test/', 'real-cookie-banner');
       const facts = await extract(page, adapter, 'first-screen');
       const reject = classifyFirstLayer(facts, loadLexicon()).targets?.reject;
       expect(reject?.role).toBe('button');

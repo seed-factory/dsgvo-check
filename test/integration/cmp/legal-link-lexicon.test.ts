@@ -1,9 +1,7 @@
 /** The localized legal-link lexicon determines which page and banner links count as covered. */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { extract } from '../../../src/cmp/index.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
-import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
-import { page as html, type SiteDir, writeSite } from '../browser/site-dir.ts';
+import { page as html, useSite } from '../browser/site-dir.ts';
 
 interface Footer {
   /** [label, href] of the links of the footer. */
@@ -91,24 +89,10 @@ FILES['de-banner-links.html'] = pageOf({
   ],
 });
 
-let server: FixtureServer;
-let site: SiteDir;
-let browser: TestBrowser;
-
-beforeAll(async () => {
-  site = writeSite(FILES);
-  server = await startFixtureServer({ hosts: { 'www.example.test': site.root } });
-  browser = await launchTestBrowser(server);
-});
-
-afterAll(async () => {
-  await browser?.close();
-  await server?.close();
-  site?.cleanup();
-});
+const site = useSite(FILES, { browser: true });
 
 async function facts(file: string) {
-  const p = await browser.context.newPage();
+  const p = await site.browser.context.newPage();
   try {
     await p.goto(`https://www.example.test/${file}`, { waitUntil: 'load' });
     const f = await extract(p, null, 'first-screen');
