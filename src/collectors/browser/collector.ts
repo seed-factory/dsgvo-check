@@ -163,6 +163,8 @@ export class BrowserCollection {
   readonly plan: BrowserPlan = { pages: [], controlPages: [], click: {} };
   readonly documents: DocumentsSection = { documents: [], attempts: [] };
   private readonly cmpSection: CmpSection = { phases: [] };
+  /** The dialog text is read once per scan: on the first screen of phase A where an adapter first qualified. */
+  private dialogTextRead = false;
   readonly screenshots: ScreenshotRecord[] = [];
   private readonly errors: CollectorError[] = [];
   readonly diagnostics: DiagnosticInput[] = [];
@@ -631,7 +633,26 @@ export class BrowserCollection {
     if (s.phase === 'A') a = (await s.cmp.detect(s.page, pageUrl))?.adapter ?? null;
     const facts = await s.cmp.extract(s.page, a, cmpMoment, pageUrl);
     if (facts) s.cmpFacts.facts.push(facts);
+    if (facts && a && s.phase === 'A' && cmpMoment === 'first-screen') await this.readDialogText(s, a, facts);
     return facts;
+  }
+
+  /**
+   * The text of the dialog, its collapsed details included (PRIV-01 compares the services it names with the policy):
+   * only where the CMP's own adapter recognised it with confidence `high` and its container is in the page, never what
+   * the generic heuristic found. Read in phase A, before the scan clicks anything.
+   */
+  private async readDialogText(s: Session, adapter: CmpAdapter, facts: CmpFacts): Promise<void> {
+    const d = facts.detection;
+    const qualifies =
+      d.method === 'adapter' &&
+      d.cmpId === adapter.id &&
+      d.recognitionConfidence === 'high' &&
+      facts.firstLayer.bannerPresent;
+    if (this.dialogTextRead || !qualifies) return;
+    this.dialogTextRead = true;
+    const text = await s.cmp.dialogText(s.page, adapter, d.version, facts.pageUrl);
+    if (text) this.cmpSection.dialogText = text;
   }
 
   /**

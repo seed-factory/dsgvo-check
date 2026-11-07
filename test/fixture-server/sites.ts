@@ -275,7 +275,12 @@ export const SITES: Record<string, SiteConfig> = {
     routes: [{ host: 'www.youtube-nocookie.com', path: '/youtubei/v1/log_event', status: 204 }],
     fileHeaders: { 'nocookie/embed/fixture-a': html, 'nocookie/embed/fixture-b': html },
   },
-  'cmp/borlabs': { hosts: { 'www.borlabs.test': 'www' } },
+  // details.html loads the Google tags its Cookie-Details name, and links the legal pages of browser/clean.
+  'cmp/borlabs': {
+    hosts: { 'www.borlabs.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    routes: cleanLegalPages('www.borlabs.test'),
+    fileHeaders: { 'gtm/gtag/js': js },
+  },
   'cmp/ccm19': { hosts: { 'www.ccm19.test': 'www', 'cloud.ccm19.de': 'ccm' } },
   'cmp/complianz': { hosts: { 'www.complianz.test': 'www' } },
   'cmp/cookiebot': { hosts: { 'www.cookiebot.test': 'www', 'consent.cookiebot.com': 'cb' } },

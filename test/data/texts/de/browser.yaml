@@ -466,6 +466,17 @@ messages:
       Datenschutzerklärung unter {policyUrl}} other {in der Datenschutzerklärung und den weiteren Datenschutzhinweisen
       der Website (durchsucht: {policyUrls})}} nur in einem auf der Seite nicht angezeigten oder keinem Abschnitt
       zuordenbaren Textteil gefunden. Bitte manuell prüfen.
+  PRIV-01.named-in-cmp-only:
+    title: "Nicht gefunden in der Datenschutzerklärung, genannt in den Angaben des Einwilligungsbanners ({cmp}): {service}"
+    body: >-
+      Im ausgewerteten Text der Datenschutzerklärung unter {policyUrl}{documentCount, plural, =0 {} =1 {} other { und
+      der weiteren Datenschutzhinweise der Website (durchsucht: {policyUrls})}} ({partCount, plural, one {# Abschnitt}
+      other {# Abschnitte}}; Vollständigkeit laut Manifest: {complete, select, true {vollständig} other {nicht
+      vollständig}}) wurde {service} nicht gefunden{categoryOnly, select, true {, nur eine Beschreibung der Kategorie}
+      other {}}. Die Angaben des Einwilligungsbanners ({cmp}), ohne Klick und mit eingeklappten Details gelesen, nennen
+      {service}: „{cmpQuote}“. Firmenname, Domain oder Kategorie im Banner wurden nicht als Nennung gezählt. Der Dienst
+      wurde auf {pageCount, plural, one {# Seite} other {# Seiten}} beobachtet. Verneinungen im Text wurden nicht
+      ausgewertet.
 
   # PRIV-02
   PRIV-02.contradiction-replicated:
@@ -735,6 +746,8 @@ actions:
     text: "Prüfen Sie, ob die Datenschutzerklärung {service} ausreichend konkret nennt, und ergänzen Sie sonst den Namen des Dienstes und des Anbieters."
   PRIV-01.ambiguous-match:
     text: "Prüfen Sie manuell, ob die Datenschutzerklärung {service} im sichtbaren Text nennt."
+  PRIV-01.named-in-cmp-only:
+    text: "Nennen Sie {service} mit Zweck und Anbieter auch in der Datenschutzerklärung, nicht nur in den Angaben des Einwilligungsbanners ({cmp})."
   PRIV-02.contradiction-replicated:
     text: "Vergleichen Sie den zitierten Abschnitt der Datenschutzerklärung mit der Einbindung von {service}: {claim, select, consent-gated {Laden Sie {service} erst nach einer Einwilligung} other {Liefern Sie die Inhalte vom eigenen Server aus}} oder passen Sie die Angabe an."
   PRIV-02.contradiction-single:

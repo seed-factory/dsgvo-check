@@ -1,6 +1,18 @@
+import type { CmpSection } from '../../../../../src/cmp/types.ts';
 import type { DocumentRecord } from '../../../../../src/core/snapshot/browser.ts';
+import type { CmpDialogText } from '../../../../../src/core/snapshot/cmp-dialog.ts';
 import { makeDocument } from '../../../../utils/snapshot-builder.ts';
-import { defaultDocuments, ORIGIN, PRIVACY, phase, privacyDoc, req, site } from '../helpers.ts';
+import {
+  defaultDocuments,
+  noBannerCmp,
+  ORIGIN,
+  PRIVACY,
+  phase,
+  privacyDoc,
+  req,
+  START,
+  site,
+} from '../helpers.ts';
 import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
 const trustindexLoaded = () =>
@@ -196,3 +208,103 @@ export const variantScenarios: Scenario[] = [
       }),
   },
 ];
+
+/**
+ * The text of a Borlabs Cookie dialog as the collector stores it: the first layer, then the collapsed Cookie-Details
+ * that list each service with provider and purpose, and the visitor's UID redacted.
+ */
+export const BORLABS_DIALOG_TEXT =
+  'Datenschutzeinstellungen Wir nutzen Cookies auf unserer Website. Alle akzeptieren Nur essenzielle Cookies ' +
+  'akzeptieren Individuelle Datenschutzeinstellungen Cookie-Details Marketing Name Google Tag Manager Anbieter ' +
+  'Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland Zweck Cookie von Google zur Steuerung der ' +
+  'erweiterten Script- und Ereignisbehandlung. Datenschutzerklärung https://policies.google.com/privacy Cookie Name ' +
+  '_ga,_gat,_gid Cookie Laufzeit 2 Jahre Name Google AdWords Anbieter Google Ireland Limited Zweck ' +
+  'Conversion-Tracking und Remarketing Cookie Laufzeit 3 Monate Einwilligungs-ID (UID): [redacted]';
+
+/** A dialog that lists Google services by provider, domain and category, but not the Google Tag Manager by name. */
+const DIALOG_WITHOUT_GTM =
+  'Datenschutzeinstellungen Alle akzeptieren Nur essenzielle Cookies akzeptieren Cookie-Details Statistik Name ' +
+  'Google Analytics Anbieter Google Ireland Limited Zweck Tag-Management und Statistik, Skript von ' +
+  'www.googletagmanager.com Einwilligungs-ID (UID): [redacted]';
+
+export function borlabsDialog(text: string, p: Partial<CmpDialogText> = {}): CmpSection {
+  return {
+    ...noBannerCmp(),
+    dialogText: {
+      id: 'cmp-dialog',
+      cmpId: 'borlabs',
+      cmpName: 'Borlabs Cookie',
+      version: '3.2.1',
+      phase: 'A',
+      pageUrl: START,
+      takenAt: '2026-11-01T10:00:00.000Z',
+      text,
+      truncated: false,
+      ...p,
+    },
+  };
+}
+
+const gtmLoaded = () =>
+  phase('A', { requests: [req('A-1', 'https://www.googletagmanager.com/gtm.js?id=GTM-TEST1')] });
+const policyNaming = (text: string) => ({
+  documents: [
+    defaultDocuments().documents[0]!,
+    privacyDoc([
+      policyPart('p1', 'Datenschutzerklärung. Verantwortlich ist die Beispiel GmbH.'),
+      policyPart('p2', text),
+    ]),
+  ],
+  attempts: [],
+});
+
+variantScenarios.push(
+  {
+    file: 'violation-named-in-cmp-only.json',
+    description:
+      'Google Tag Manager is loaded; no privacy document names it, the collapsed Cookie-Details of the Borlabs dialog do',
+    expect: { status: 'completed', variants: ['named-in-cmp-only'] },
+    build: () => site({ phases: [gtmLoaded()], cmp: borlabsDialog(BORLABS_DIALOG_TEXT) }),
+  },
+  {
+    file: 'clean-named-in-policy-and-cmp.json',
+    description: 'Google Tag Manager is loaded; the policy names it, and so does the Borlabs dialog',
+    expect: { status: 'completed', variants: [] },
+    build: () =>
+      site({
+        phases: [gtmLoaded()],
+        cmp: borlabsDialog(BORLABS_DIALOG_TEXT),
+        documents: policyNaming('Wir setzen den Google Tag Manager der Google Ireland Limited ein.'),
+      }),
+  },
+  {
+    file: 'inconclusive-named-in-cmp-policy-pdf.json',
+    description:
+      'Google Tag Manager is loaded and the Borlabs dialog names it; the policy is only a PDF, so it is not searched',
+    expect: { status: 'inconclusive', variants: [], reason: 'pdf-not-evaluated' },
+    build: () =>
+      site({
+        phases: [gtmLoaded()],
+        cmp: borlabsDialog(BORLABS_DIALOG_TEXT),
+        documents: {
+          documents: [
+            makeDocument({
+              kind: 'privacy',
+              id: 'doc-privacy',
+              url: `${ORIGIN_IMG}/datenschutz.pdf`,
+              format: 'pdf',
+              parts: [],
+            }),
+          ],
+          attempts: [],
+        },
+      }),
+  },
+  {
+    file: 'violation-cmp-text-without-the-service.json',
+    description:
+      'Google Tag Manager is loaded; the Borlabs dialog names its provider, its domain and its category, not the service',
+    expect: { status: 'completed', variants: ['not-named'] },
+    build: () => site({ phases: [gtmLoaded()], cmp: borlabsDialog(DIALOG_WITHOUT_GTM) }),
+  },
+);

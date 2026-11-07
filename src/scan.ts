@@ -46,6 +46,7 @@ import { errorMessage, type FatalReason, InvalidInputError, ScanFatalError } fro
 import { createLogger, type Logger } from './core/runtime/logger.ts';
 import { uaToken } from './core/runtime/user-agent.ts';
 import { TOOL_NAME, TOOL_VERSION } from './core/runtime/version.ts';
+import { parseCmpDialogText } from './core/snapshot/cmp-dialog.ts';
 import type { Collectors } from './core/snapshot/collector.ts';
 import {
   type BrowserEntry,
@@ -174,6 +175,12 @@ async function loadSnapshot(file: string): Promise<Snapshot> {
   // Older snapshots may hold the target unredacted.
   snapshot.target = redactTargetInfo(snapshot.target);
   if (snapshot.target.finalUrl) snapshot.target.finalUrl = sanitizeUrl(snapshot.target.finalUrl);
+  // Page text the file may hold in any shape: kept only when it fits the schema, and redacted as the collector does.
+  if (snapshot.cmp?.dialogText !== undefined) {
+    const dialogText = parseCmpDialogText(snapshot.cmp.dialogText);
+    if (dialogText) snapshot.cmp.dialogText = dialogText;
+    else delete snapshot.cmp.dialogText;
+  }
   return snapshot;
 }
 

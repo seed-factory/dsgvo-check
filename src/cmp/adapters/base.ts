@@ -21,7 +21,7 @@ import {
 import { geometrySignature } from '../geometry.ts';
 import { loadLexicon } from '../lexicon-file.ts';
 import { cmpDetectProbe, type DetectArgs, type DetectRaw, tcfPingProbe } from '../page/detect.ts';
-import { type BannerSpec, measureBanner } from '../page/measure.ts';
+import { type BannerSpec, measureBanner, readBannerText } from '../page/measure.ts';
 import type {
   ActOptions,
   BotSignal,
@@ -371,6 +371,8 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     },
 
     ready: (page) => safe(spec.isReady(page), false),
+
+    dialogText: (page, opts) => readBannerText(page, data().banner, loadLexicon(), opts.maxChars),
   };
 
   /** Reloads the page and reads the state again: a stored answer survives the reload, a session-only one does not. */

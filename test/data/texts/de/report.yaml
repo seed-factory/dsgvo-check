@@ -300,6 +300,7 @@ ui:
     impressum-type-unconfirmed {Direkter Link zum Impressum nicht als Impressum bestätigt} privacy-type-unconfirmed
     {Direkter Link zur Datenschutzerklärung nicht als Datenschutzerklärung bestätigt} supplement-not-evaluated {Weiterer
     Datenschutzhinweis der Website nicht ausgewertet (PDF, andere Sprache, unvollständig oder nicht abrufbar)}
+    cmp-dialog-truncated {Text des Einwilligungsbanners nur bis zur Lesegrenze durchsucht}
     reveal-height-capped {Unterer Teil einer langen Seite nicht angezeigt: die Fensterhöhe ist begrenzt, oder die
     Seite wuchs mit dem Fenster}
     page-links-not-observed {Links der Seiten nicht beobachtet, weil der Browser nicht lief oder keine Seite auswertbar

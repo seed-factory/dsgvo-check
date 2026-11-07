@@ -20,7 +20,14 @@ import { NOT_DETECTED, outranks } from './detection.ts';
 import { geometrySignature } from './geometry.ts';
 import { loadLexicon } from './lexicon-file.ts';
 import { measureHeuristic, probeHeuristic } from './page/measure.ts';
-import type { CmpAdapter, CmpDetection, CmpFacts, CmpFirstLayer, ExtractOptions } from './types.ts';
+import type {
+  CmpAdapter,
+  CmpDetection,
+  CmpFacts,
+  CmpFirstLayer,
+  ExtractOptions,
+  RawDialogText,
+} from './types.ts';
 
 export { clickButton as act, waitUntil } from './adapters/base.ts';
 export { type ClassifyOptions, classifyFirstLayer, isBlocking } from './classify.ts';
@@ -264,4 +271,16 @@ export async function extract(
     markDialog(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon())),
   );
   return withDialogBotSignal(page, adapter, facts);
+}
+
+/**
+ * The whole text of the adapter's dialog, its collapsed and hidden details included, as the page holds it (not
+ * redacted); null when the adapter cannot read it or its container is not there.
+ */
+export async function readDialogText(
+  page: Page,
+  adapter: CmpAdapter,
+  opts: { maxChars: number },
+): Promise<RawDialogText | null> {
+  return (await adapter.dialogText?.(page, opts)) ?? null;
 }
