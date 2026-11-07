@@ -1,27 +1,38 @@
 /**
- * CCM19 adapter against the own simulator, which renders the widget hidden with disabled controls and opens it later.
- * A widget that is never opened is recorded as such, in the adapter and through the collector into the checks.
+ * CCM19 adapter against the own simulator, which renders the widget hidden with disabled controls and opens it later,
+ * and, like CCM19, never opens it for a User-Agent its crawler test takes for a bot. A widget that is never opened is
+ * recorded as such, and with the reason when that test matched the page's User-Agent, in the adapter and through the
+ * collector into the checks.
  */
 import { expect, it } from 'vitest';
+import { consent03 } from '../../../../src/checks/browser/consent-03.ts';
 import { consent04 } from '../../../../src/checks/browser/consent-04.ts';
 import { consent05 } from '../../../../src/checks/browser/consent-05.ts';
 import { adaptersSection } from '../../../../src/cmp/adapters-data.ts';
 import { extract, loadLexicon, waitForBanner } from '../../../../src/cmp/index.ts';
-import type { CmpFacts } from '../../../../src/cmp/types.ts';
+import { BOT_USER_AGENT_SIGNAL, type CmpFacts } from '../../../../src/cmp/types.ts';
 import { loadDataDir } from '../../../../src/core/data/load.ts';
+import { browserUserAgent } from '../../../../src/core/runtime/user-agent.ts';
 import { classifyFirstLayer } from '../../../utils/classify.ts';
 import { makeSnapshot, makeTarget, runCheck, withDerived } from '../../../utils/snapshot-builder.ts';
 import { collect } from '../../browser/helpers.ts';
-import { CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
+import { CHROME_UA, CMP_WAIT_MS, decideAndAct, describeCmpScenarios, recognized } from '../helpers.ts';
 
 const SITE = 'https://www.ccm19.test';
 /** Long enough for the simulator to open its dialog (500 ms), short enough to keep the never-opened cases quick. */
 const SHORT_WAIT_MS = 1_500;
 
-const settingsSelector = (): string => {
-  const roles = adaptersSection.parse(loadDataDir('cmp')).ccm19.banner.vendorRoles;
-  return roles.find((r) => r.role === 'settings')?.selector ?? '';
-};
+const ccm19Data = () => adaptersSection.parse(loadDataDir('cmp')).ccm19;
+
+const settingsSelector = (): string =>
+  ccm19Data().banner.vendorRoles.find((r) => r.role === 'settings')?.selector ?? '';
+
+/** The bot signal of a widget CCM19's crawler test kept closed. */
+const crawlerSignal = () => ({
+  cmpId: 'ccm19',
+  signal: BOT_USER_AGENT_SIGNAL,
+  detail: ccm19Data().dialogBotUserAgent?.label,
+});
 
 describeCmpScenarios(
   {
@@ -53,8 +64,38 @@ describeCmpScenarios(
         ['Alle akzeptieren', false, null],
       ]);
       expect(facts.state[0]?.decision?.responded).toBe(false);
+      // A plain Chrome is no crawler for CCM19: the dialog stayed closed for another reason, which is not named.
+      expect(facts.botSignals).toEqual([]);
       expect(classifyFirstLayer(facts, loadLexicon()).targets?.reject ?? null).toBeNull();
       expect(await adapter.act?.(page, 'reject', null)).toMatchObject({ clicked: false });
+    });
+
+    it("the scanner's honest User-Agent matches CCM19's crawler test: the widget stays closed, the bot signal says why", async () => {
+      const { page } = await env.open(`${SITE}/`, browserUserAgent(CHROME_UA));
+      const adapter = await recognized(page, 'ccm19');
+      expect(await waitForBanner(page, adapter, { timeoutMs: SHORT_WAIT_MS })).toBe(false);
+
+      const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+
+      expect(facts.firstLayer).toMatchObject({
+        bannerPresent: true,
+        bannerVisible: false,
+        dialogNotOpened: true,
+      });
+      expect(facts.botSignals).toEqual([crawlerSignal()]);
+      expect(JSON.stringify(facts)).not.toContain('dsgvo-check/');
+    });
+
+    it('counterexample: the same page opens its widget for a plain Chrome, without a bot signal', async () => {
+      const { page } = await env.open(`${SITE}/`);
+      const adapter = await recognized(page, 'ccm19');
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+
+      expect(facts.firstLayer.bannerVisible).toBe(true);
+      expect(facts.firstLayer.dialogNotOpened).toBeUndefined();
+      expect(facts.botSignals).toEqual([]);
     });
 
     it('without the wait for the banner the same widget is not called unopened', async () => {
@@ -116,9 +157,10 @@ describeCmpScenarios(
       ]);
     });
 
-    it('through the collector: flagged on the first screen of B only, nothing clicked, CONSENT-04 and 05 say why', async () => {
+    // The collector browses with the scanner's own User-Agent, so the widget that opens for a plain Chrome stays closed.
+    it('through the collector: the crawler test kept the widget closed; flagged on B only, nothing clicked, CONSENT-03, 04 and 05 name the cause', async () => {
       const run = await collect(env.server, {
-        url: `${SITE}/not-opened.html`,
+        url: `${SITE}/`,
         deps: { phases: ['A', 'B'] },
         config: { cmp: { waitMs: SHORT_WAIT_MS } },
         maxPages: 1,
@@ -127,7 +169,10 @@ describeCmpScenarios(
       const { browser, cmp, documents, plan } = run.result.sections;
       const facts = (p: 'A' | 'B') => cmp?.phases.find((x) => x.phase === p)?.facts ?? [];
 
-      expect(facts('B').find((f) => f.moment === 'first-screen')?.firstLayer.dialogNotOpened).toBe(true);
+      const firstScreen = facts('B').find((f) => f.moment === 'first-screen');
+      expect(firstScreen?.firstLayer.dialogNotOpened).toBe(true);
+      expect(firstScreen?.botSignals).toEqual([crawlerSignal()]);
+      expect(JSON.stringify(cmp)).not.toContain('dsgvo-check/');
       // Phase A measures without waiting for the banner: the same closed widget, not called unopened there.
       expect(
         facts('A').map((f) => [f.firstLayer.bannerPresent, f.firstLayer.dialogNotOpened]),
@@ -136,7 +181,7 @@ describeCmpScenarios(
       expect(plan?.click.B).toMatchObject({ target: null });
       expect(cmp?.phases.find((x) => x.phase === 'B')?.click).toMatchObject({ clicked: false });
 
-      const target = makeTarget(`${SITE}/not-opened.html`);
+      const target = makeTarget(`${SITE}/`);
       const snapshot = withDerived(
         makeSnapshot({
           target,
@@ -146,14 +191,21 @@ describeCmpScenarios(
           plan: { browser: plan ?? null, probes: [] },
         }),
       );
-      for (const check of [consent04, consent05]) {
+      for (const check of [consent03, consent04, consent05]) {
         const r = runCheck(check, snapshot);
         expect({ id: check.id, status: r.status, reason: r.reason }).toEqual({
           id: check.id,
           status: 'inconclusive',
-          reason: 'cmp-dialog-not-opened',
+          reason: 'cmp-bot-user-agent',
         });
         expect(r.outcome?.observations).toEqual([]);
+        expect(r.outcome?.diagnostics).toEqual([
+          {
+            code: 'SCAN-BOTMODE',
+            affects: [check.id],
+            params: { signal: BOT_USER_AGENT_SIGNAL, cause: 'user-agent', test: crawlerSignal().detail },
+          },
+        ]);
       }
     });
   },

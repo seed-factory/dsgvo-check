@@ -16,7 +16,7 @@ import {
   site,
   unopenedDialogCmp,
 } from '../helpers.ts';
-import { ga, type Scenario } from './shared.ts';
+import { crawlerTestSignal, ga, type Scenario } from './shared.ts';
 
 /** Scenarios of a banner observed but not recognised, and what does not count as one. */
 const candidateScenarios: Scenario[] = [
@@ -104,6 +104,17 @@ const unopenedDialogScenarios: Scenario[] = [
       site({
         phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] }), phase('B')],
         cmp: unopenedDialogCmp(),
+      }),
+  },
+  {
+    file: 'inconclusive-cmp-bot-user-agent.json',
+    description:
+      "The same closed CCM19 dialog, and CCM19's own crawler test matched the scanner's User-Agent; GA hit with identifier before any interaction: the reason names the crawler test, no finding",
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
+    build: () =>
+      site({
+        phases: [phase('A', { requests: [ga.lib('A-1'), ga.hit('A-2')] }), phase('B')],
+        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
       }),
   },
   {

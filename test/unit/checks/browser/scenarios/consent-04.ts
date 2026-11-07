@@ -18,7 +18,7 @@ import {
   unopenedDialogCmp,
   unopenedDialogFacts,
 } from '../helpers.ts';
-import type { Scenario } from './shared.ts';
+import { crawlerTestSignal, type Scenario } from './shared.ts';
 
 /** First-layer button as the adapter reports it; `kind` is left to the classifier and the lexicon. */
 const button = (name: string, p: Partial<CmpButton> = {}): CmpButton => ({
@@ -204,6 +204,17 @@ const unopenedDialogScenarios: Scenario[] = [
             ),
           ],
         }),
+      }),
+  },
+  {
+    file: 'inconclusive-cmp-bot-user-agent.json',
+    description:
+      "CCM19's own crawler test matched the scanner's User-Agent and its dialog stayed closed: the reason names the crawler test, nothing clicked, no finding",
+    expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
+    build: () =>
+      site({
+        phases: [phase('A'), phase('B')],
+        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
       }),
   },
   {

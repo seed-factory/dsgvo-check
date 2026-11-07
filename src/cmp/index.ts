@@ -15,6 +15,7 @@ import { realCookieBanner } from './adapters/real-cookie-banner.ts';
 import { shopware } from './adapters/shopware.ts';
 import { usercentrics } from './adapters/usercentrics.ts';
 import { wix } from './adapters/wix.ts';
+import { withDialogBotSignal } from './bot-user-agent.ts';
 import { NOT_DETECTED, outranks } from './detection.ts';
 import { loadLexicon } from './lexicon-file.ts';
 import { measureHeuristic, probeHeuristic } from './page/measure.ts';
@@ -250,7 +251,10 @@ async function heuristicFacts(
   };
 }
 
-/** Facts via the adapter, or the generic heuristic when `adapter` is null (`info` only). */
+/**
+ * Facts via the adapter, or the generic heuristic when `adapter` is null (`info` only). A dialog the adapter's CMP did
+ * not open gets the bot signal of its crawler test when that test matches the page's User-Agent.
+ */
 export async function extract(
   page: Page,
   adapter: CmpAdapter | null,
@@ -260,8 +264,9 @@ export async function extract(
   if (!adapter) return heuristicFacts(page, moment, opts);
 
   const own = await adapter.extract(page, moment, opts);
-  return markGeometry(
+  const facts = markGeometry(
     page,
     markDialog(page, await withHeuristicBanner(page, own, opts.lexicon ?? loadLexicon())),
   );
+  return withDialogBotSignal(page, adapter, facts);
 }

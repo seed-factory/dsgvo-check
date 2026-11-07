@@ -221,8 +221,10 @@ describe('refused certificate, http redirect the browser checks do not follow', 
       reason: 'tls-fallback-failed',
       error: { code: 'start-page-blocked' },
     });
+    // The report names the protection and its signal; the scanner does not try to get past it.
     expect(report.diagnostics.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params).toMatchObject({
-      fallback: 'blocked',
+      fallback: 'bot-protection',
+      signals: 'header:cf-mitigated, title:just a moment, status:403',
       url: 'https://challenged.example.test/',
     });
     expect(report.scan.status).toBe('complete');

@@ -111,9 +111,23 @@ export interface GeoSignal {
 
 export interface BotSignal {
   cmpId: string;
-  /** e.g. `cookiebot:isSpider`, `rcb:accept-all-for-bots`. */
+  /** e.g. `cookiebot:isSpider`, `rcb:accept-all-for-bots`, or `BOT_USER_AGENT_SIGNAL`. */
   signal: string;
   detail?: string;
+}
+
+/**
+ * The signal of a dialog the CMP kept closed (`dialogNotOpened`) because its own crawler test matched the page's
+ * User-Agent (`dialogBotUserAgent` in test/data/cmp/adapters.yaml); `detail` is the name of that test. The User-Agent
+ * itself is not stored here.
+ */
+export const BOT_USER_AGENT_SIGNAL = 'bot-user-agent';
+
+/** A vendor's own crawler test: the regular expression of its script, with its flags, and the name the report gives it. */
+export interface BotUserAgentTest {
+  pattern: string;
+  flags: string;
+  label: string;
 }
 
 export interface CmpFirstLayer {
@@ -411,6 +425,8 @@ export interface CmpAdapter {
   accept(page: Page, opts?: ActOptions): Promise<ClickOutcome>;
   /** The adapter's data describes a settings layer that phase B may reject through (`settingsLayer`). */
   readonly rejectsViaSettings?: boolean;
+  /** The vendor's crawler test for which it keeps its dialog closed (`dialogBotUserAgent`); absent for most adapters. */
+  readonly dialogBotUserAgent?: BotUserAgentTest;
   /**
    * Clicks `opener`, the settings control core chose on the first layer, waits up to `timeoutMs` for the settings layer
    * and reads it. Toggles nothing and saves nothing; the save is a separate `act` on core's choice.

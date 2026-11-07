@@ -1,4 +1,5 @@
 /** Primitive types shared by all snapshot sections; the data is already redacted (no cookie / Web Storage / TC-String values). */
+import type { MessageParams } from '../report/schema.ts';
 
 /** Browser phases of the prototype (A′ and M are not implemented). */
 export type BrowserPhase = 'A' | 'B' | 'C';
@@ -63,6 +64,11 @@ export interface CollectorError {
   message: string;
   phase?: Phase;
   url?: SanitizedUrl;
+  /**
+   * The parameters of the `failure.<code>` text of a fatal the error stands for, e.g. `signals` (the labels of the bot
+   * or WAF protection signals) of `start-page-blocked`. Absent in older snapshots.
+   */
+  params?: MessageParams;
 }
 
 /** Outcome of one collector run, recorded in `snapshot.collection`. */

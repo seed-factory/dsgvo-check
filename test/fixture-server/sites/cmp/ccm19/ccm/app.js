@@ -2,7 +2,8 @@
    window.CCM (acceptedEmbeddings, embeddings), #ccm-widget.ccm-modal, .ccm-modal-inner, .ccm--ctrl-init,
    .ccm--decline-cookies, [data-full-consent], [data-ccm-modal="ccm-control-panel"], localStorage "ccm_consent".
    Lifecycle as in CCM19: the widget is rendered into the page at once, hidden and with every control disabled, and
-   opened later by showing it and enabling the controls; with an answer stored it stays closed.
+   opened later by showing it and enabling the controls; with an answer stored it stays closed, and so it does, as in
+   CCM19, for a browser whose User-Agent CCM19's crawler pattern takes for a bot.
    Variants (data-sim-variant): reject (default), blocking (no reject, overlay, scroll lock), not-opened (never
    opens), template (opens without `ccm-show` and keeps a hidden nested modal template). */
 (function () {
@@ -14,6 +15,8 @@
     { id: 'e2', name: 'Google Analytics' },
     { id: 'e3', name: 'Google Maps' }
   ];
+  // CCM19's crawler pattern (`isBotBrowser` of its app.js), case-sensitive like there.
+  function isBotBrowser() { return /(bot\b|BOT\b|Bot\b|BingPreview| \(\+http)|[a-z]-Google\b/.test(navigator.userAgent); }
   var stored = null;
   try { stored = JSON.parse(localStorage.getItem('ccm_consent') || 'null'); } catch (e) {}
   function accepted() {
@@ -73,7 +76,7 @@
       for (var i = 0; i < controls.length; i++) controls[i].disabled = false;
       if (blocking) document.body.style.overflow = 'hidden';
     }
-    if (!stored && variant !== 'not-opened') setTimeout(open, OPEN_DELAY_MS);
+    if (!stored && variant !== 'not-opened' && !isBotBrowser()) setTimeout(open, OPEN_DELAY_MS);
   }
   if (document.body) render(); else document.addEventListener('DOMContentLoaded', render);
 })();

@@ -18,6 +18,7 @@ import type {
 import type { RedirectChain } from './core/snapshot/http.ts';
 import {
   type BrowserEntry,
+  type CollectorError,
   type CollectorName,
   SECTION_PRODUCER,
   type Snapshot,
@@ -428,7 +429,12 @@ function endFailedAttempt(snapshot: Snapshot, state: CollectState): void {
   fallbackFailed(
     snapshot,
     fatal
-      ? { code: fatal.code, message: params.join('; ') || fatal.reason }
+      ? {
+          code: fatal.code,
+          message: params.join('; ') || fatal.reason,
+          // Kept as given, so the report can name what blocked the page there (`signals` of `start-page-blocked`).
+          ...(fatal.params ? { params: fatal.params } : {}),
+        }
       : {
           code: status?.error?.code ?? status?.reason ?? 'no-start-page',
           message: status?.error?.message ?? 'start page not visited',
@@ -438,7 +444,7 @@ function endFailedAttempt(snapshot: Snapshot, state: CollectState): void {
 }
 
 /** The browser checks did not run on the redirect target either; nothing the browser handed over is kept. */
-function fallbackFailed(snapshot: Snapshot, error: { code: string; message: string }): void {
+function fallbackFailed(snapshot: Snapshot, error: CollectorError): void {
   snapshot.collection.browser = {
     status: 'skipped',
     reason: TLS_FALLBACK_FAILED,

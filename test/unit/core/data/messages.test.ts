@@ -80,12 +80,13 @@ describe('diagnostic texts use the params the collectors send (browser-collector
         host: 'broken.example.test',
         via: 'http://broken.example.test/',
         url: 'https://site.example.test/',
+        signals: 'header:x-vercel-mitigated',
       };
       const body = (fallback?: string) =>
         renderMessage(texts, 'diagnostic.SCAN-TLS-BLOCKED', fallback ? { ...params, fallback } : params).body;
       // Older snapshots carry no reason: the text stays as it was.
       const base = body();
-      const reasons = ['none', 'same-host', 'invalid', 'blocked', 'off'];
+      const reasons = ['none', 'same-host', 'invalid', 'blocked', 'bot-protection', 'off'];
       const bodies = reasons.map(body);
 
       for (const b of bodies) {
@@ -95,12 +96,42 @@ describe('diagnostic texts use the params the collectors send (browser-collector
       }
       expect(new Set(bodies).size).toBe(reasons.length);
       expect(bodies[reasons.indexOf('blocked')]).toContain('https://site.example.test/');
+      // The signal of the protection is named only where the target answered with one.
+      expect(bodies[reasons.indexOf('bot-protection')]).toContain('header:x-vercel-mitigated');
+      expect(bodies.filter((b) => b.includes('header:x-vercel-mitigated'))).toHaveLength(1);
       expect(templateParams(texts.messages['diagnostic.SCAN-TLS-BLOCKED']?.body ?? '').sort()).toEqual([
         'fallback',
         'host',
+        'signals',
         'url',
         'via',
       ]);
+    },
+  );
+
+  it.each(['de', 'en'] as const)(
+    '%s: SCAN-BOTMODE names the crawler test of the CMP only for that cause, else the signal as before',
+    (lang) => {
+      const texts = loadTexts(lang);
+      const render = (params: Record<string, string>) => {
+        const m = renderMessage(texts, 'diagnostic.SCAN-BOTMODE', params);
+        return `${m.title} ${m.body}`;
+      };
+      const crawler = render({
+        signal: 'bot-user-agent',
+        cause: 'user-agent',
+        test: 'CCM19 isBotBrowser (app.js)',
+      });
+      const generic = render({ signal: 'cookiebot:isSpider' });
+
+      expect(crawler).toContain('CCM19 isBotBrowser (app.js)');
+      expect(crawler).toMatch(/User-Agent/);
+      expect(crawler).not.toContain('bot-user-agent');
+      expect(generic).toContain('cookiebot:isSpider');
+      expect(generic).not.toMatch(/User-Agent|Crawler|crawler/);
+      for (const text of [crawler, generic]) expect(text).not.toMatch(/\{[a-z]+\}/);
+      const t = texts.messages['diagnostic.SCAN-BOTMODE'];
+      expect(templateParams(`${t?.title} ${t?.body}`).sort()).toEqual(['cause', 'signal', 'test']);
     },
   );
 

@@ -253,8 +253,10 @@ Jede Phase startet mit einem frischen Browserprofil in einem temporären Verzeic
   Der Bericht nennt das (`SCAN-TLS-FALLBACK`, in `report.json` unter `scan.entry`); TLS-02 meldet das Zertifikat der
   Ziel-URL weiterhin. Eine Weiterleitung, die über ein abgelehntes Zertifikat läuft, zählt nicht. Liefert der Browser
   dort keine auswertbare Seite (Challenge, Fehlerstatus, Zeitlimit) oder kommt er nicht bis dorthin, entfallen die
-  Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl.
-  `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
+  Browser-Prüfungen wie ohne den Versuch (`tls-fallback-failed`); der Scan schlägt deshalb nicht fehl. Antwortet das
+  Ziel mit einem Bot- oder WAF-Schutz, nennen Übersicht, `SCAN-TLS-BLOCKED` (`fallback: bot-protection`), Konsole und
+  Zusammenfassung diesen Schutz mit den Bezeichnungen seiner Signale (etwa `header:x-vercel-mitigated`); umgangen wird
+  er nicht. `DSGVO_CHECK_SCAN_TLS_FALLBACK=off` schaltet das ab.
 
 ### Banner
 
@@ -317,6 +319,15 @@ für die eingebauten Banner von Shopware 6, Wix und der TYPO3-Erweiterung cookie
   und keine Antwort gespeichert, klickt der Scanner nichts: CONSENT-04 und CONSENT-05 bleiben `inconclusive`
   („Einwilligungsbanner dem Scanner nicht geöffnet“), ohne Befund, ebenso CONSENT-03, wenn vor einer Interaktion
   einwilligungsbedürftige Dienste geladen wurden. Über das, was Besucher sehen, sagt der Bericht dann nichts.
+- CCM19 öffnet seinen Dialog nie für einen Browser, dessen User-Agent sein eigener Crawler-Test (`isBotBrowser` in
+  seiner `app.js`) für einen Bot hält; der ehrliche User-Agent des Scanners passt mit dem Link zum Repository darauf
+  (` (+https`). Bleibt der Dialog geschlossen und passt der User-Agent der Seite auf diesen Test (`dialogBotUserAgent`
+  in `test/data/cmp/adapters.yaml`, vom Anbieter übernommen), vermerkt der Scanner ein Bot-Signal: Jede Prüfung, die
+  Bot-Signale liest (CONSENT-01 bis CONSENT-05, EMBED-01 bis EMBED-03, PRIV-02), bleibt `inconclusive` mit dem Grund
+  „Einwilligungsbanner dem Scanner nicht geöffnet: User-Agent passt auf das Crawler-Muster des Banners“
+  (`cmp-bot-user-agent`), ohne Befund. Übersicht und `SCAN-BOTMODE` nennen den Test und dass ein Besucher mit einem
+  üblichen Browser das Banner womöglich sieht. Der User-Agent wird dafür nicht geändert und nur im Abschnitt der
+  Messumgebung gespeichert; passt er nicht, bleibt es beim Grund „Einwilligungsbanner dem Scanner nicht geöffnet“.
 - Findet der erste passende Container-Selektor eines Adapters nur verborgene Elemente, zählt ein späterer, wenn sein
   Element eine sichtbare Schaltfläche oder einen sichtbaren Link zeigt: Eine verborgene Vorlage verdeckt so nicht den
   offenen Dialog, und ein Rahmen, von dem bei geschlossenem Banner nur der eigene Kasten zu sehen ist, gilt nicht als
@@ -659,7 +670,8 @@ Nicht gesendet werden Anfragen auf offene Dateien oder Admin-Oberflächen, Login
 nie, Bot-Schutz, CAPTCHAs oder Geo-Sperren zu umgehen: Eine blockierte Website wird als blockiert vermerkt und nicht
 mit Tricks erneut aufgerufen. Phase C („Alle akzeptieren“) lässt die Website ihre Ressourcen von Drittanbietern laden;
 diese erhalten dann die IP-Adresse des prüfenden Rechners. HTTP-Anfragen tragen einen ehrlichen User-Agent mit Link zum
-Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
+Repository (siehe [Nutzungshinweise](#nutzungshinweise)). Er bleibt auch dann unverändert, wenn ein Einwilligungsbanner
+ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt das (siehe [Banner](#banner)).
 
 ## Grenzen
 
@@ -680,8 +692,9 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Nur die 20 Prüfungen oben.** Die [geplanten Prüfungen](#geplante-prüfungen) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt; es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 - **Banner:** Nur die zehn Adapter bedienen ein Banner; andere werden heuristisch erkannt und führen höchstens zu
-  `info`. CCM19 öffnet seinen Dialog für einen automatisierten Browser unter Umständen nicht; das meldet der Scanner
-  als `inconclusive`, nicht als Befund. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
+  `info`. CCM19 öffnet seinen Dialog dem Scanner nicht, weil sein Crawler-Test auf den ehrlichen User-Agent passt:
+  Einwilligung, Ablehnung und eingebettete Dienste bleiben auf solchen Websites `inconclusive` (`cmp-bot-user-agent`),
+  ohne Befund, und sind manuell zu prüfen. Der User-Agent bleibt dabei unverändert, `navigator.webdriver` wird nicht
   verborgen. Ein Shopware-Ablehnen bestätigt der Scanner an den Berechtigungs-Cookies von Shopware selbst; die von
   Plugins bleiben unberücksichtigt. Über die Einstellungen lehnt er nur bei Wix ab und nur, wenn dort jede Kategorie
   schon ausgeschaltet ist; voreingestellte Kategorien schaltet er nicht aus, die Ablehnung bleibt dann ungeprüft. Die
@@ -817,9 +830,10 @@ Repository (siehe [Nutzungshinweise](#nutzungshinweise)).
 - **Abgelehntes Zertifikat der Ziel-URL.** Die Browser-Prüfungen laufen dann nur auf dem Ziel einer HTTP-Weiterleitung
   auf einen anderen Host mit gültigen Zertifikaten, also nicht auf der angegebenen Adresse. Liefert `http://` die
   Seite selbst aus, leitet es auf HTTPS desselben Hosts weiter oder nennt die Ziel-URL einen Port oder eine IP-Adresse,
-  entfallen sie (`SCAN-TLS-BLOCKED` nennt den Grund). Hinter `--proxy` ist das Urteil über die Zertifikate unbekannt,
-  der Browser wechselt dann nicht. Ohne TLS-02 (`--checks`) wird das Zertifikat nicht vorab geprüft: Der Browser ruft
-  die Ziel-URL auf und bricht beim Zertifikat ab, ohne Fortsetzung.
+  entfallen sie (`SCAN-TLS-BLOCKED` nennt den Grund), ebenso, wenn ein Bot- oder WAF-Schutz das Ziel der Weiterleitung
+  sperrt: Der Bericht nennt dann diesen Schutz und seine Signale. Hinter `--proxy` ist das Urteil über die Zertifikate
+  unbekannt, der Browser wechselt dann nicht. Ohne TLS-02 (`--checks`) wird das Zertifikat nicht vorab geprüft: Der
+  Browser ruft die Ziel-URL auf und bricht beim Zertifikat ab, ohne Fortsetzung.
 - **Netzwerkgrenze (SSRF).** Geprüft werden die Zieladresse vor dem Start und jede Navigation von Dokumenten und
   Frames (private, Loopback-, Link-local- und Metadaten-Adressen). Nicht abgedeckt: Subressourcen, DNS-Rebinding und das
   Ziel hinter einem `--proxy`. Den Scanner nicht in einem Netz mit sensiblen internen Diensten und nicht in Jobs mit

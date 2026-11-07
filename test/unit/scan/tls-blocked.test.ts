@@ -340,7 +340,7 @@ describe('scan — invalid certificate, plain-http address redirects to another 
         status: 'skipped',
         reason: 'tls-fallback-failed',
         sections: {},
-        error: { code: 'start-page-blocked', message: 'signals=header:cf-mitigated' },
+        error: { code: 'start-page-not-evaluable', message: 'empty-document' },
       }),
     });
 
@@ -358,6 +358,105 @@ describe('scan — invalid certificate, plain-http address redirects to another 
     expect(codes(result)).not.toContain('SCAN-TLS-FALLBACK');
     if (result.report.scan.status !== 'failed') expect(result.report.scan.entry).toBeUndefined();
     expect(tls02Variants(result)).toContain('certificate-invalid:critical');
+  });
+
+  // The protection is named with its signal, so the report says why the browser got nothing there (never a bypass).
+  describe('bot or WAF protection on the redirect target', () => {
+    const SIGNALS = 'header:x-vercel-mitigated';
+    const blockedParams = (signals: string) => ({
+      host: 'broken.example.test',
+      fallback: 'bot-protection',
+      signals,
+      via: VIA,
+      url: STORED_FINAL,
+    });
+
+    it('a start page there that is a block page: SCAN-TLS-BLOCKED names the protection and its signal', async () => {
+      const result = await fallbackScan({
+        browser: async () => ({
+          status: 'skipped',
+          reason: 'tls-fallback-failed',
+          sections: {},
+          error: { code: 'start-page-blocked', message: `signals=${SIGNALS}`, params: { signals: SIGNALS } },
+        }),
+      });
+
+      expect(result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')).toMatchObject({
+        affects: ['TEST-01'],
+        params: blockedParams(SIGNALS),
+      });
+      expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
+        status: 'skipped',
+        reason: 'tls-fallback-failed',
+      });
+      expectValidReport(result.report);
+    });
+
+    it('a fatal block of the browser there keeps its signals in the snapshot and names them alike', async () => {
+      const result = await fallbackScan({
+        browser: async () => ({
+          status: 'error',
+          reason: 'start-page-blocked',
+          sections: {},
+          fatal: {
+            reason: 'blocked',
+            code: 'start-page-blocked',
+            params: { signals: 'header:cf-mitigated' },
+          },
+        }),
+      });
+
+      expect(result.snapshot?.collection.browser?.error).toEqual({
+        code: 'start-page-blocked',
+        message: 'signals=header:cf-mitigated',
+        params: { signals: 'header:cf-mitigated' },
+      });
+      expect(result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params).toEqual(
+        blockedParams('header:cf-mitigated'),
+      );
+    });
+
+    it('lists at most the capped number of signals', async () => {
+      const many = Array.from({ length: 14 }, (_, i) => `header:x-block-${i}`);
+      const result = await fallbackScan({
+        browser: async () => ({
+          status: 'skipped',
+          reason: 'tls-fallback-failed',
+          sections: {},
+          error: { code: 'start-page-blocked', message: 'blocked', params: { signals: many.join(', ') } },
+        }),
+      });
+
+      const params = result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params;
+      expect(String(params?.signals).split(', ')).toEqual(many.slice(0, 10));
+    });
+
+    it.each([
+      [
+        'a start page that gives nothing to evaluate',
+        { code: 'start-page-not-evaluable', message: 'empty-document' },
+      ],
+      [
+        'a start page answering 5xx twice',
+        { code: 'start-page-5xx', message: 'status=503', params: { status: 503 } },
+      ],
+      [
+        'a block page of an older snapshot without its signals',
+        { code: 'start-page-blocked', message: 'signals=x' },
+      ],
+    ])('counterexample: %s keeps the general wording (fallback blocked, no signal)', async (_case, error) => {
+      const result = await fallbackScan({
+        browser: async () => ({ status: 'skipped', reason: 'tls-fallback-failed', sections: {}, error }),
+      });
+
+      const params = result.report.diagnostics?.find((d) => d.code === 'SCAN-TLS-BLOCKED')?.params;
+      expect(params).toEqual({
+        host: 'broken.example.test',
+        fallback: 'blocked',
+        via: VIA,
+        url: STORED_FINAL,
+      });
+    });
   });
 
   it.each([

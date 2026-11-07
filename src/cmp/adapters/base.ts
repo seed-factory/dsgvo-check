@@ -235,6 +235,9 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     get rejectsViaSettings() {
       return data().settingsLayer !== undefined;
     },
+    get dialogBotUserAgent() {
+      return data().dialogBotUserAgent;
+    },
 
     async detect(page): Promise<CmpDetection | null> {
       const vendor = data();
