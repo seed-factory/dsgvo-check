@@ -20,6 +20,7 @@ import type { ClickTarget, CmpAdapter, CmpButton } from '../../../../src/cmp/typ
 import { DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
 import { CMP_WAIT_MS, recognized, useCmpServer } from '../helpers.ts';
 
+const CAPTURED_URL = 'https://www.wix.test/captured-settings-layer.html';
 const CAPTURED = readFileSync(
   new URL('../../../fixtures/cmp/wix/settings-layer.html', import.meta.url),
   'utf8',
@@ -137,7 +138,10 @@ describe('Wix selectors against the markup captured from the vendor banner', () 
 
   async function captured(): Promise<Page> {
     const { page } = await env.open('about:blank');
-    await page.setContent(CAPTURED, { waitUntil: 'load' });
+    await page.route(CAPTURED_URL, (route) =>
+      route.fulfill({ contentType: 'text/html; charset=utf-8', body: CAPTURED }),
+    );
+    await page.goto(CAPTURED_URL, { waitUntil: 'load' });
     return page;
   }
 

@@ -2,10 +2,10 @@
  * A combined legal page: "Impressum" and "Datenschutzerklärung" link to ONE URL whose page holds both documents. The
  * collector must keep a document of each kind (`DocumentsSection`) so LEGAL-01 / PRIV-01 read the real result.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { collect, snapshotOf } from '../helpers.ts';
 import { html, LOREM, send, site } from '../site-dir.ts';
@@ -18,10 +18,8 @@ const COMBINED = html(
 const START = (footer: string) =>
   html('Start', `<main><h1>Start</h1><p>${LOREM.repeat(3)}</p></main><footer>${footer}</footer>`);
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     handlers: [
       // both footer links go to /recht; neither /impressum nor /datenschutz exists
       site('shared.example.test', {
@@ -53,11 +51,7 @@ beforeAll(async () => {
         ),
       }),
     ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
+  };
 });
 
 describe('a combined page behind two exact labels keeps both documents', () => {
@@ -65,7 +59,7 @@ describe('a combined page behind two exact labels keeps both documents', () => {
     ['both links to one URL', 'https://shared.example.test/'],
     ['the links in the other order, one with a trailing slash', 'https://sharedorder.example.test/'],
   ])('%s: a document of each kind in the collected section', async (_, url) => {
-    const run = await collect(server, { url });
+    const run = await collect(server(), { url });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.map((d) => d.kind).sort()).toEqual(['impressum', 'privacy']);
     // Both are the combined page, confirmed by its headings; neither is an error or an unconfirmed page.
@@ -76,7 +70,7 @@ describe('a combined page behind two exact labels keeps both documents', () => {
   });
 
   it('no extra navigation: the page is fetched once and no fallback probe is made', async () => {
-    const run = await collect(server, { url: 'https://shared.example.test/' });
+    const run = await collect(server(), { url: 'https://shared.example.test/' });
     const pages = run.result.sections.plan?.pages ?? [];
     expect(pages.filter((p) => /\/recht\/?$/.test(p.url))).toHaveLength(1);
     expect(pages.some((p) => p.role === 'fallback')).toBe(false);
@@ -89,7 +83,7 @@ describe('a combined page behind two exact labels keeps both documents', () => {
   });
 
   it('LEGAL-01 and PRIV-01 read the collected result: no document-not-found, the policy is evaluated', async () => {
-    const run = await collect(server, { url: 'https://shared.example.test/' });
+    const run = await collect(server(), { url: 'https://shared.example.test/' });
     const snap = snapshotOf(run);
     const legal = runCheck(legal01, snap);
     expect(observationsOf(legal).map((o) => [o.subject, o.variant])).toEqual([]);
@@ -100,7 +94,7 @@ describe('a combined page behind two exact labels keeps both documents', () => {
   });
 
   it('counterexample: two separate pages stay two documents, each fetched once', async () => {
-    const run = await collect(server, { url: 'https://separate.example.test/' });
+    const run = await collect(server(), { url: 'https://separate.example.test/' });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.map((d) => [d.kind, d.errors.length]).sort()).toEqual([
       ['impressum', 0],

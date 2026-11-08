@@ -3,7 +3,7 @@
  * lexicon, end to end from adapter facts to the finding; the others use check-level variants or early-return paths.
  */
 
-import type { CmpButton, CmpFacts } from '../../../../../src/cmp/types.ts';
+import type { CmpButton, CmpFacts, CmpSection } from '../../../../../src/cmp/types.ts';
 import { makeCmpFacts } from '../../../../utils/snapshot-builder.ts';
 import {
   bannerCandidate,
@@ -51,23 +51,15 @@ const BAR: CmpFacts['blocking'] = {
   method: ['overlay-grid'],
 };
 
+const siteWithFirstScreen = (fact: CmpFacts) => site({ cmp: cmpWith({ phase: 'B', facts: [fact] }) });
+const siteWithNoClick = (cmp: CmpSection) => site({ phases: [phase('A'), phase('B')], cmp });
+
 /** Cookiebot (supported, high recognition) shows its first layer on the first screen of phase B. */
 const firstLayerSite = (
   buttons: CmpButton[],
   blocking: CmpFacts['blocking'],
   p: { closeMeansAccept?: boolean; purAbo?: boolean } = {},
-) =>
-  site({
-    cmp: cmpWith({
-      phase: 'B',
-      facts: [
-        cmpFacts({
-          firstLayer: firstLayer({ buttons, ...p }),
-          blocking,
-        }),
-      ],
-    }),
-  });
+) => siteWithFirstScreen(cmpFacts({ firstLayer: firstLayer({ buttons, ...p }), blocking }));
 
 /** Wix recognised by its policy API, the banner script and the banner root, as the adapter reports it. */
 const WIX: CmpFacts['detection'] = {
@@ -85,24 +77,19 @@ const WIX: CmpFacts['detection'] = {
 
 /** The Wix bar at the bottom of the first screen with its policy link and the × in the corner. */
 const wixSite = (controls: CmpButton[]) =>
-  site({
-    cmp: cmpWith({
-      phase: 'B',
-      facts: [
-        cmpFacts({
-          detection: WIX,
-          firstLayer: firstLayer({
-            buttons: [
-              button('Zur Datenschutzerklärung', { role: 'link', tag: 'a' }),
-              ...controls,
-              button('Schließen', { vendorRole: 'close', box: { x: 1240, y: 600, width: 32, height: 32 } }),
-            ],
-          }),
-          blocking: { ...BAR, coveredRatio: 0.17 },
-        }),
-      ],
+  siteWithFirstScreen(
+    cmpFacts({
+      detection: WIX,
+      firstLayer: firstLayer({
+        buttons: [
+          button('Zur Datenschutzerklärung', { role: 'link', tag: 'a' }),
+          ...controls,
+          button('Schließen', { vendorRole: 'close', box: { x: 1240, y: 600, width: 32, height: 32 } }),
+        ],
+      }),
+      blocking: { ...BAR, coveredRatio: 0.17 },
     }),
-  });
+  );
 
 /**
  * A Wix first layer with only settings and accept next to its × does not block the page and has no reject; the × is a
@@ -166,7 +153,7 @@ const unopenedDialogScenarios: Scenario[] = [
     description:
       'CCM19 recognised; its dialog is in the page, hidden with disabled controls and no answer stored, also after the wait in phase B: nothing clicked, no finding',
     expect: { status: 'inconclusive', variants: [], reason: 'cmp-dialog-not-opened' },
-    build: () => site({ phases: [phase('A'), phase('B')], cmp: unopenedDialogCmp() }),
+    build: () => siteWithNoClick(unopenedDialogCmp()),
   },
   {
     file: 'inconclusive-hidden-dialog-answered.json',
@@ -202,11 +189,7 @@ const unopenedDialogScenarios: Scenario[] = [
     description:
       "CCM19's own crawler test matched the scanner's User-Agent and its dialog stayed closed: the reason names the crawler test, nothing clicked, no finding",
     expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
-    build: () =>
-      site({
-        phases: [phase('A'), phase('B')],
-        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
-      }),
+    build: () => siteWithNoClick(unopenedDialogCmp({ botSignals: [crawlerTestSignal] })),
   },
   {
     file: 'inconclusive-dialog-not-opened-bot-signal.json',
@@ -214,10 +197,7 @@ const unopenedDialogScenarios: Scenario[] = [
       'Counterexample: the adapter reports a bot branch next to the closed dialog: the bot signal decides (bot-mode)',
     expect: { status: 'inconclusive', variants: [], reason: 'bot-mode' },
     build: () =>
-      site({
-        phases: [phase('A'), phase('B')],
-        cmp: unopenedDialogCmp({ botSignals: [{ cmpId: 'ccm19', signal: 'ccm19:bot-branch' }] }),
-      }),
+      siteWithNoClick(unopenedDialogCmp({ botSignals: [{ cmpId: 'ccm19', signal: 'ccm19:bot-branch' }] })),
   },
 ];
 
@@ -270,26 +250,21 @@ export const scenarios: Scenario[] = [
       reason: 'banner-not-recognized',
     },
     build: () =>
-      site({
-        cmp: cmpWith({
+      siteWithFirstScreen(
+        makeCmpFacts({
           phase: 'B',
-          facts: [
-            makeCmpFacts({
-              phase: 'B',
-              pageUrl: START,
-              detection: {
-                cmpId: null,
-                method: 'heuristic',
-                version: null,
-                versionSupported: null,
-                recognitionConfidence: 'low',
-                signals: ['heuristic:fixed-bottom-dialog'],
-              },
-              firstLayer: firstLayer(),
-            }),
-          ],
+          pageUrl: START,
+          detection: {
+            cmpId: null,
+            method: 'heuristic',
+            version: null,
+            versionSupported: null,
+            recognitionConfidence: 'low',
+            signals: ['heuristic:fixed-bottom-dialog'],
+          },
+          firstLayer: firstLayer(),
         }),
-      }),
+      ),
   },
 ];
 
@@ -328,17 +303,12 @@ export const variantScenarios: Scenario[] = [
       'Cookiebot recognised with high confidence, but in a version outside the supported range: info, no verdict',
     expect: { status: 'inconclusive', variants: ['cmp-not-supported'], reason: 'cmp-not-supported' },
     build: () =>
-      site({
-        cmp: cmpWith({
-          phase: 'B',
-          facts: [
-            cmpFacts({
-              detection: { ...cmpFacts().detection, version: '1.0.0', versionSupported: false },
-              firstLayer: firstLayer(),
-            }),
-          ],
+      siteWithFirstScreen(
+        cmpFacts({
+          detection: { ...cmpFacts().detection, version: '1.0.0', versionSupported: false },
+          firstLayer: firstLayer(),
         }),
-      }),
+      ),
   },
   {
     file: 'violation-blocking-no-reject.json',

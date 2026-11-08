@@ -3,12 +3,9 @@
  * hosts (`*.example.test`); the "forever" requests are never answered.
  */
 import type { ServerResponse } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
+import { describe, expect, it } from 'vitest';
+import type { DynamicHandler } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { collect, FAST_TIMING } from '../helpers.ts';
 import { FOOTER, html, LOREM } from '../site-dir.ts';
 
@@ -57,26 +54,18 @@ function hangingSite(host: string, startBody: string): DynamicHandler {
 
 const FETCHES = [1, 2, 3].map((n) => `fetch('/forever/${n}').catch(() => {});`).join('');
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
-    handlers: [
-      hangingSite('hang.example.test', `<script>${FETCHES}</script>`),
-      // The same requests, but in a frame of the start page: the frame's requests end with the page it belongs to.
-      hangingSite(
-        'frame.example.test',
-        '<iframe src="/frame-content/" title="widget" style="width:10px;height:10px"></iframe>',
-      ),
-      // Control: nothing hangs.
-      hangingSite('quiet.example.test', ''),
-    ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({
+  handlers: [
+    hangingSite('hang.example.test', `<script>${FETCHES}</script>`),
+    // The same requests, but in a frame of the start page: the frame's requests end with the page it belongs to.
+    hangingSite(
+      'frame.example.test',
+      '<iframe src="/frame-content/" title="widget" style="width:10px;height:10px"></iframe>',
+    ),
+    // Control: nothing hangs.
+    hangingSite('quiet.example.test', ''),
+  ],
+}));
 
 describe('requests of an earlier page that never end', () => {
   for (const [name, host] of [
@@ -84,7 +73,7 @@ describe('requests of an earlier page that never end', () => {
     ['made inside a frame of the start page', 'frame.example.test'],
   ] as const) {
     it(`do not hold the next pages of the phase until HARD_CAP: ${name}`, async () => {
-      const run = await collect(server, { url: `https://${host}/` });
+      const run = await collect(server(), { url: `https://${host}/` });
 
       const pages = run.result.sections.browser?.phases[0]?.pages ?? [];
       expect(pages.map((p) => p.url.replace(/^https:\/\/[^/]+/, ''))).toEqual(
@@ -100,7 +89,7 @@ describe('requests of an earlier page that never end', () => {
   }
 
   it('stay in the snapshot as they were observed: no response, no end', async () => {
-    const run = await collect(server, { url: 'https://hang.example.test/' });
+    const run = await collect(server(), { url: 'https://hang.example.test/' });
 
     const forever = run.requests.filter((r) => r.url.includes('/forever/'));
     expect(forever).toHaveLength(3);
@@ -111,7 +100,7 @@ describe('requests of an earlier page that never end', () => {
   });
 
   it('counterexample: on the page that makes them they still hold the wait up to HARD_CAP', async () => {
-    const run = await collect(server, { url: 'https://hang.example.test/' });
+    const run = await collect(server(), { url: 'https://hang.example.test/' });
 
     const start = run.result.sections.browser?.phases[0]?.pages.find((p) => p.role === 'start');
     expect(start?.navigation.quietReached).toBe(false);
@@ -119,7 +108,7 @@ describe('requests of an earlier page that never end', () => {
   });
 
   it('control: a site without hanging requests is quiet on every page', async () => {
-    const run = await collect(server, { url: 'https://quiet.example.test/' });
+    const run = await collect(server(), { url: 'https://quiet.example.test/' });
 
     const pages = run.result.sections.browser?.phases[0]?.pages ?? [];
     expect(pages.length).toBeGreaterThanOrEqual(3);

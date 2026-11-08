@@ -20,10 +20,15 @@ const liveRecorder = () => fakeRecorder({ phase: 'B', etld1: target.etld1, start
 const flags = (jar: JarTracker, name: string, domain: string) =>
   jar.cookies.filter((c) => c.name === name && c.domain === domain).map((c) => c.afterClick);
 
-/** The jar as read before the press, with a pause so the press time lies after it. */
-async function jarBeforePress(rec: NetworkRecorder, context: BrowserContext) {
+async function readJar(rec: NetworkRecorder, context = fakeContext([])) {
   const jar = new JarTracker(target, rec.setCookieOrigins);
   await jar.snapshot(context, noFrames, pre);
+  return jar;
+}
+
+/** The jar as read before the press, with a pause so the press time lies after it. */
+async function jarBeforePress(rec: NetworkRecorder, context: BrowserContext) {
+  const jar = await readJar(rec, context);
   await sleep(5);
   return jar;
 }
@@ -181,9 +186,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
   it('the existing cookie is not attributed to the foreign response (setter unknown)', async () => {
     const { rec, send } = liveRecorder();
     await send(FOREIGN, ['_ga=V2; Domain=www.example.test; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([jarCookie('_ga', 'www.example.test')]), noFrames, pre);
+    const jar = await readJar(rec, fakeContext([jarCookie('_ga', 'www.example.test')]));
 
     expect(jar.cookies[0]).toMatchObject({ firstParty: true, setter: 'unknown' });
     expect(jar.cookies[0]?.setterHost).toBeUndefined();
@@ -210,9 +213,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     async (_what, url, domain, host) => {
       const { rec, send } = liveRecorder();
       await send(url, [`_ga=V2; Domain=${domain}; Path=/`]);
-      const jar = new JarTracker(target, rec.setCookieOrigins);
-
-      await jar.snapshot(fakeContext([]), noFrames, pre);
+      const jar = await readJar(rec);
       jar.finalize(pre);
 
       expect(jar.cookies.map((c) => [c.name, c.state, c.domain, c.setterHost])).toEqual([
@@ -225,9 +226,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
     const { rec, send } = liveRecorder();
     await send(FOREIGN, ['uid=1; Domain=www.example.test; Path=/']);
     await send('https://www.example.test/own.gif', ['uid=2; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([jarCookie('uid', 'www.example.test')]), noFrames, pre);
+    const jar = await readJar(rec, fakeContext([jarCookie('uid', 'www.example.test')]));
 
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'www.example.test' });
   });
@@ -235,9 +234,7 @@ describe('a Domain= the response host may not set is no setter and no write afte
   it('without a jar cookie the rejected response is an attempted cookie of ITS host, not of the claimed first party', async () => {
     const { rec, send } = liveRecorder();
     await send(FOREIGN, ['_ga=V2; Domain=www.example.test; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([]), noFrames, pre);
+    const jar = await readJar(rec);
     jar.finalize(pre);
 
     expect(jar.cookies.map((c) => [c.name, c.state, c.domain, c.firstParty, c.setterHost])).toEqual([
@@ -262,34 +259,15 @@ describe('a Domain= the response host may not set is no setter and no write afte
     expect([...rec.setCookieOrigins.values()].map((o) => o.domain)).toEqual(['tracker-a.test']);
   });
 
-  it('counterexample: Domain= equal to the response host is accepted', async () => {
+  it.each([
+    ['the response host', 'tracker-a.test', '.tracker-a.test'],
+    ['a public suffix equal to the response host', 'test', 'test'],
+    ['an IP host', '203.0.113.7', '203.0.113.7'],
+  ])('counterexample: Domain= equal to %s is accepted', async (_name, host, cookieDomain) => {
     const { rec, send } = liveRecorder();
-    await send('https://tracker-a.test/p.gif', ['uid=1; Domain=tracker-a.test; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([jarCookie('uid', '.tracker-a.test')]), noFrames, pre);
-
-    expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'tracker-a.test' });
-  });
-
-  it('counterexample: a public suffix equal to the response host is a host-only cookie (RFC 6265 5.3 step 5)', async () => {
-    const { rec, send } = liveRecorder();
-    await send('https://test/p.gif', ['uid=1; Domain=test; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([jarCookie('uid', 'test')]), noFrames, pre);
-
-    expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: 'test' });
-  });
-
-  it('counterexample: an IP host may set a cookie for itself', async () => {
-    const { rec, send } = liveRecorder();
-    await send('https://203.0.113.7/p.gif', ['uid=1; Domain=203.0.113.7; Path=/']);
-    const jar = new JarTracker(target, rec.setCookieOrigins);
-
-    await jar.snapshot(fakeContext([jarCookie('uid', '203.0.113.7')]), noFrames, pre);
-
-    expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: '203.0.113.7' });
+    await send(`https://${host}/p.gif`, [`uid=1; Domain=${host}; Path=/`]);
+    const jar = await readJar(rec, fakeContext([jarCookie('uid', cookieDomain)]));
+    expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: host });
   });
 });
 

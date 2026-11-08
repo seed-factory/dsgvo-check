@@ -20,7 +20,8 @@ import type {
 } from '../../core/snapshot/http.ts';
 import type { CollectorError, DiagnosticInput } from '../../core/snapshot/index.ts';
 import type { TlsEndpoint } from '../../core/snapshot/tls.ts';
-import { isHttpUrl, isSameSite, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
+import { REDACTED } from '../../core/url/email.ts';
+import { isHttpUrl, isSameSite, parseUrl, registrableDomain, sanitizeUrl } from '../../core/url/url.ts';
 import { DEFAULT_TLS_PORT, probeTlsEndpoint } from '../tls/probe.ts';
 import { httpChallenge } from './challenge.ts';
 import { type FetchResult, HttpClient, type HttpClientOptions } from './client.ts';
@@ -79,10 +80,18 @@ interface ChainRun {
   start: string;
 }
 
-export function toHop(r: FetchResult): HttpHop {
+export function storedRedirectTarget(url: string, base: string): string {
+  const value = storedHeaderRecord('location', url, base, sanitizeUrl).value;
+  if (value !== REDACTED) return value;
+  const http = parseUrl(url, base, true);
+  return http ? `${http.origin}/${REDACTED}` : value;
+}
+
+export function toHop(r: FetchResult, storedUrl?: string): HttpHop {
   const html = isHtml(r.contentType, r.body);
+  const url = sanitizeUrl(r.url);
   const hop: HttpHop = {
-    url: sanitizeUrl(r.url),
+    url: storedUrl ?? url,
     status: r.status,
     headers: r.headers,
     setCookieNames: r.setCookieNames,
@@ -93,7 +102,7 @@ export function toHop(r: FetchResult): HttpHop {
     durationMs: r.durationMs,
     requestedAt: r.requestedAt,
   };
-  if (r.location) hop.location = sanitizeUrl(r.location);
+  if (r.location) hop.location = storedRedirectTarget(r.location, r.url);
 
   if (r.url.startsWith('https:')) {
     hop.tlsProtocol = r.conn?.protocol ?? null;
@@ -109,9 +118,14 @@ export function toHop(r: FetchResult): HttpHop {
       const prefix = r.body.subarray(0, HEURISTIC_BYTES).toString('utf8');
       const client = detectClientRedirect(prefix, r.url);
       if (client)
-        hop.clientRedirect = { kind: client.kind, url: client.url ? sanitizeUrl(client.url) : null };
+        hop.clientRedirect = {
+          kind: client.kind,
+          url: client.url ? storedRedirectTarget(client.url, r.url) : null,
+        };
     }
-    Object.assign(hop, formFacts(r));
+    const sanitizeAction =
+      hop.url === url ? sanitizeUrl : (action: string) => storedRedirectTarget(action, r.url);
+    Object.assign(hop, formFacts(r, sanitizeAction));
   }
 
   return hop;
@@ -122,37 +136,47 @@ export function toHop(r: FetchResult): HttpHop {
  * decode `unavailable`, so a form beyond what was seen never reads as absent. Only the action, its scheme and the method
  * are kept: field names and values stay in memory.
  */
-function formFacts(r: FetchResult): Pick<HttpHop, 'hasForm' | 'forms' | 'formInspection'> {
+function formFacts(
+  r: FetchResult,
+  sanitizeAction: (url: string) => string,
+): Pick<HttpHop, 'hasForm' | 'forms' | 'formInspection'> {
   if (r.undecodedEncoding !== undefined) return { hasForm: false, forms: [], formInspection: 'unavailable' };
   const forms: HttpFormFact[] = dataForms(r.body.toString('utf8'), r.url)
     .slice(0, MAX_STORED_FORMS)
     .map((f) => ({
-      action: f.action === null ? null : sanitizeUrl(f.action),
+      action: f.action === null ? null : sanitizeAction(f.action),
       actionScheme: f.actionScheme,
       method: f.method,
     }));
   return { hasForm: forms.length > 0, forms, formInspection: r.bodyTruncated ? 'truncated' : 'complete' };
 }
 
-export function errorOf(err: unknown, url: string): CollectorError {
+export function errorOf(err: unknown, url: string, storedUrl = sanitizeUrl(url)): CollectorError {
   const code = err instanceof ProbeError ? err.code : 'error';
   const outcome = outcomeOf(code);
   return {
     code: outcome === 'timeout' ? 'timeout' : code,
-    message: errorMessage(err).slice(0, 300),
+    message: errorMessage(err)
+      .replaceAll(url, () => storedUrl)
+      .slice(0, 300),
     phase: 'http',
-    url: sanitizeUrl(url),
+    url: storedUrl,
   };
 }
 
-function emptyChain(startUrl: string, hostVariant: HostVariant, id: string): RedirectChain {
+function emptyChain(
+  startUrl: string,
+  storedStartUrl: string,
+  hostVariant: HostVariant,
+  id: string,
+): RedirectChain {
   const u = new URL(startUrl);
   return {
     id,
     hostVariant,
     host: u.hostname,
     scheme: u.protocol === 'https:' ? 'https' : 'http',
-    startUrl: sanitizeUrl(startUrl),
+    startUrl: storedStartUrl,
     hops: [],
     final: null,
     outcome: 'ok',
@@ -166,10 +190,12 @@ async function followChain(
   hostVariant: HostVariant,
   id: string,
   maxRedirects: number,
+  storedStartUrl: string,
 ): Promise<ChainRun> {
-  const chain = emptyChain(startUrl, hostVariant, id);
+  const chain = emptyChain(startUrl, storedStartUrl, hostVariant, id);
   const ended = (last: FetchResult | null): ChainRun => ({ chain, last, start: startUrl });
   let url = startUrl;
+  let storedUrl: string | undefined = storedStartUrl;
 
   for (let i = 0; ; i++) {
     let r: FetchResult;
@@ -177,11 +203,11 @@ async function followChain(
       r = await client.get(url, DOCUMENT_READ_BYTES);
     } catch (err) {
       chain.outcome = outcomeOf(err instanceof ProbeError ? err.code : 'error') as ChainOutcome;
-      chain.error = errorOf(err, url);
+      chain.error = errorOf(err, url, storedUrl);
       return ended(null);
     }
 
-    const hop = toHop(r);
+    const hop = toHop(r, storedUrl);
     chain.hops.push(hop);
 
     if (!REDIRECT_STATUSES.has(r.status) || !r.location) {
@@ -200,6 +226,7 @@ async function followChain(
       return ended(null);
     }
     url = next.href;
+    storedUrl = hop.location;
   }
 }
 
@@ -423,10 +450,10 @@ async function followVariant(
   const out: ChainRun[] = [];
   for (const scheme of ['http', 'https'] as const) {
     const start = startUrlFor(ctx, t, scheme);
-    probe(start, 'redirect-chain');
-    out.push(
-      await followChain(client, start, t.hostVariant, `chain-${t.hostVariant}-${scheme}`, maxRedirects),
-    );
+    const storedStart = sanitizeUrl(start);
+    const id = `chain-${t.hostVariant}-${scheme}`;
+    probe(storedStart, 'redirect-chain');
+    out.push(await followChain(client, start, t.hostVariant, id, maxRedirects, storedStart));
   }
   return out;
 }
@@ -439,8 +466,10 @@ async function followExplicitPort(
   port: number,
   maxRedirects: number,
 ): Promise<ChainRun[]> {
-  probe(ctx.target.url, 'redirect-chain');
-  const run = await followChain(client, ctx.target.url, 'target', 'chain-target-origin', maxRedirects);
+  const start = ctx.target.url;
+  const storedStart = sanitizeUrl(start);
+  probe(storedStart, 'redirect-chain');
+  const run = await followChain(client, start, 'target', 'chain-target-origin', maxRedirects, storedStart);
   run.chain.port = port;
   return [run];
 }
@@ -466,13 +495,15 @@ async function followLegalPages(
     return [];
 
   const links = findLegalLinks(start.body.toString('utf8'), start.url);
+  const redactedBase = startRun.chain.final?.url !== sanitizeUrl(start.url);
   const documents: DocumentResponse[] = [];
   for (const role of ['impressum', 'privacy'] as const) {
     const href = links[role];
     if (!href || !isSameSite(new URL(href).hostname, ctx.target.host)) continue;
 
-    probe(href, `security-headers:${role}`);
-    const run = await followChain(client, href, 'target', `doc-${role}`, maxRedirects);
+    const target = redactedBase ? storedRedirectTarget(href, start.url) : sanitizeUrl(href);
+    probe(target, `security-headers:${role}`);
+    const run = await followChain(client, href, 'target', `doc-${role}`, maxRedirects, target);
     documents.push(documentFrom(role, run, 'link'));
   }
   return documents;
@@ -520,8 +551,7 @@ export function createHttpCollector(opts: HttpCollectorOptions = {}): HttpCollec
   return async (ctx) => {
     const client = createClient(ctx, opts);
     const probes: ProbeRecord[] = [];
-    const probe: ProbeLog = (target, purpose) =>
-      probes.push({ kind: 'http', class: 'T', target: sanitizeUrl(target), purpose });
+    const probe: ProbeLog = (target, purpose) => probes.push({ kind: 'http', class: 'T', target, purpose });
 
     try {
       const maxRedirects = ctx.config.http.maxRedirects;

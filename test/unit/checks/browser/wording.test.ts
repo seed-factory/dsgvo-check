@@ -54,16 +54,25 @@ const RULES: Record<'de' | 'en', Array<[string, RegExp]>> = {
 /** Quoted button labels („Nur notwendige“, “…”) may contain otherwise restricted words. */
 const unquote = (s: string) => s.replace(/„[^“]*“|“[^”]*”|"[^"]*"/g, '""');
 
-describe('browser finding texts only describe observations', () => {
+describe('browser findings and their actions', () => {
+  const variants = browserChecks.flatMap((c) => c.variants.map((v) => `${c.id}.${v.variant}`));
+
   for (const lang of ['de', 'en'] as const) {
     const texts = loadTexts(lang);
-    const keys = browserChecks.flatMap((c) => c.variants.map((v) => `${c.id}.${v.variant}`));
-    it.each(keys)(`${lang}: %s`, (key) => {
-      const m = texts.messages[key];
-      expect(m, `${key} has no ${lang} text`).toBeDefined();
-      const text = unquote(`${m?.title ?? ''}\n${m?.body ?? ''}`);
+    it.each(variants)(`${lang}: %s describes observations and has a standalone action`, (key) => {
+      const message = texts.messages[key];
+      expect(message, `${key} has no ${lang} text`).toBeDefined();
+      const { title, body } = message!;
+      const text = unquote(`${title}\n${body}`);
       const hits = RULES[lang].filter(([, re]) => re.test(text)).map(([label, re]) => `${label}: ${re}`);
       expect(hits).toEqual([]);
+
+      const action = texts.actions[key] ?? '';
+      const own = new Set([...templateParams(title), ...templateParams(body)]);
+      expect(templateParams(action).filter((p) => !own.has(p))).toEqual([]);
+      expect(action).not.toMatch(
+        /\btitel|\btitle\b|dieser dienst|dieses dienstes|diesen dienst|this service/iu,
+      );
     });
   }
 });
@@ -93,21 +102,6 @@ describe('browser legal notes per check or per variant', () => {
 });
 
 describe('browser actions also serve several findings at once', () => {
-  const variants = browserChecks.flatMap((c) => c.variants.map((v) => `${c.id}.${v.variant}`));
-
-  for (const lang of ['de', 'en'] as const) {
-    const texts = loadTexts(lang);
-    it.each(variants)(`${lang}: %s uses only parameters of its finding and points to no title`, (key) => {
-      const action = texts.actions[key] ?? '';
-      const m = texts.messages[key];
-      const own = new Set([...templateParams(m?.title ?? ''), ...templateParams(m?.body ?? '')]);
-      expect(templateParams(action).filter((p) => !own.has(p))).toEqual([]);
-      expect(action).not.toMatch(
-        /\btitel|\btitle\b|dieser dienst|dieses dienstes|diesen dienst|this service/iu,
-      );
-    });
-  }
-
   it('LEGAL-01: each document kind names its document, a mixed group names both', () => {
     const de = loadTexts('de');
     const action = (documentKind: string) =>

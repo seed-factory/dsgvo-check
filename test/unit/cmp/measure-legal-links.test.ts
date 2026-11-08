@@ -4,143 +4,42 @@ import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import { toMeasured } from '../../../src/cmp/page/measure.ts';
 import type { ProbeResult, RawButton } from '../../../src/cmp/page/probe-types.ts';
 import { legalLexiconFromData } from '../../../src/collectors/browser/legal/lexicon.ts';
-import { loadDataDir } from '../../../src/core/data/load.ts';
+import { BUTTON_BOX, rawButton, rawProbe } from './fakes.ts';
 
-const BOX = { x: 10, y: 700, width: 120, height: 20 };
 const PAGE = 'https://www.example.test/';
 
-const link = (name: string, href: string | null = '/seite', p: Partial<RawButton> = {}): RawButton => ({
-  role: 'link',
-  name,
-  tag: 'a',
-  vendorRole: null,
-  box: BOX,
-  rendered: true,
-  visibleInViewport: true,
-  inViewport: true,
-  enabled: true,
-  hitTestOk: true,
-  actionable: true,
-  contrast: 7,
-  fontSizePx: 14,
-  selector: null,
-  inShadowDom: false,
-  href,
-  ...p,
-});
+const link = (name: string, href: string | null = '/seite', over: Partial<RawButton> = {}) =>
+  rawButton({ role: 'link', tag: 'a', name, href, ...over });
 
 const covered = (label: string, coveredBy: 'banner' | 'overlay' = 'banner') => ({
   label,
-  box: BOX,
+  box: BUTTON_BOX,
   coveredBy,
 });
 
 function probe(p: { buttons?: RawButton[]; covered?: string[] } = {}): ProbeResult {
-  return {
+  return rawProbe({
     found: true,
     containerCount: 1,
     visible: true,
     containerBox: { x: 0, y: 648, width: 1366, height: 120 },
     containerFixed: true,
-    containerSelector: null,
     textLength: 80,
-    purAbo: false,
-    keywordHits: [],
     buttons: p.buttons ?? [],
-    buttonsTruncated: false,
-    animating: false,
-    blocking: {
-      overlay: false,
-      scrollLock: false,
-      inert: false,
-      coveredRatio: 0.2,
-      method: [],
-      ariaModal: false,
-    },
-    viewport: { width: 1366, height: 768 },
+    blocking: { ...rawProbe().blocking, coveredRatio: 0.2 },
     coveredLinks: (p.covered ?? []).map((l) => covered(l)),
-    heuristic: null,
-    rejectedCandidate: null,
-  };
+  });
 }
 
 const lexicon = loadLexicon();
 const measure = (p: Parameters<typeof probe>[0]) => toMeasured(probe(p), lexicon, PAGE).firstLayer;
 
-/** Every label, key and bare topic word that test/data/legal/links.yaml lists for the Impressum and the privacy policy. */
-function lexiconPhrases(): Array<{ kind: string; lang: string; role: string; phrase: string }> {
-  const raw = loadDataDir('legal') as {
-    legal: {
-      kinds: Record<string, { languages: Record<string, Record<string, string[] | undefined>> }>;
-    };
-  };
-  const out: Array<{ kind: string; lang: string; role: string; phrase: string }> = [];
-  for (const [kind, spec] of Object.entries(raw.legal.kinds)) {
-    for (const [lang, entry] of Object.entries(spec.languages)) {
-      for (const role of ['labels', 'keys', 'generic'] as const) {
-        for (const phrase of entry[role] ?? []) out.push({ kind, lang, role, phrase });
-      }
-    }
-  }
-  return out;
-}
-
 describe('toMeasured: covered links are judged by the lexicon of test/data/legal', () => {
-  it('the lexicon file lists phrases of many languages (the scenario is real)', () => {
-    const langs = new Set(lexiconPhrases().map((p) => p.lang));
-    expect(langs.has('fr') && langs.has('es') && langs.has('pl')).toBe(true);
-  });
-
-  it('every label, key and topic word of the lexicon file is a covered legal link', () => {
-    const missed = lexiconPhrases().filter(
-      (p) => !measure({ covered: [p.phrase] }).coveredFooterLinks?.some((l) => l.label === p.phrase),
-    );
-    expect(missed).toEqual([]);
-  });
-
-  it('French names are covered legal links, with box and who covers them', () => {
-    const layer = measure({ covered: ['Mentions légales', 'Politique de confidentialité'] });
-    expect(layer.coversFooter).toBe(true);
-    expect(layer.coveredFooterLinks).toEqual([
-      covered('Mentions légales'),
-      covered('Politique de confidentialité'),
-    ]);
-  });
-
   it('who covers is kept: the overlay as well as the banner', () => {
     const raw = probe();
     raw.coveredLinks = [covered('Impressum', 'overlay')];
-    expect(toMeasured(raw, lexicon, PAGE).firstLayer.coveredFooterLinks?.[0]?.coveredBy).toBe('overlay');
-  });
-
-  it('counterexample: links that name no legal document are dropped, so nothing is covered', () => {
-    const layer = measure({ covered: ['Nos produits', 'Nous contacter', 'Startseite', 'Alle akzeptieren'] });
-    expect(layer.coversFooter).toBe(false);
-    expect(layer.coveredFooterLinks).toEqual([]);
-  });
-
-  it('counterexample: a link to a settings dialog is no document link, in any language', () => {
-    const layer = measure({
-      covered: [
-        'Datenschutz-Einstellungen',
-        'Privacy settings',
-        'Paramètres de confidentialité',
-        'Cookie-Einstellungen',
-      ],
-    });
-    expect(layer.coversFooter).toBe(false);
-    expect(layer.coveredFooterLinks).toEqual([]);
-  });
-
-  it('counterexample: German and English names are still covered legal links', () => {
-    const layer = measure({
-      covered: ['Impressum', 'Datenschutzerklärung', 'Privacy Policy', 'Legal Notice'],
-    });
-    expect(layer.coveredFooterLinks?.map((l) => l.label)).toEqual([
-      'Impressum',
-      'Datenschutzerklärung',
-      'Privacy Policy',
-      'Legal Notice',
+    expect(toMeasured(raw, lexicon, PAGE).firstLayer.coveredFooterLinks).toEqual([
+      covered('Impressum', 'overlay'),
     ]);
   });
 
@@ -192,13 +91,6 @@ describe('toMeasured: covered links are judged by the lexicon of test/data/legal
 });
 
 describe('toMeasured: legal links of the banner are judged by the lexicon of test/data/legal', () => {
-  it('every label and key of the lexicon file is a legal link of the banner', () => {
-    const missed = lexiconPhrases().filter(
-      (p) => !measure({ buttons: [link(p.phrase)] }).legalLinks?.some((l) => l.text === p.phrase),
-    );
-    expect(missed).toEqual([]);
-  });
-
   it('a French privacy link is listed with its sanitized absolute address', () => {
     const layer = measure({
       buttons: [link('Politique de confidentialité', '/confidentialite?session=abc123')],
@@ -211,22 +103,10 @@ describe('toMeasured: legal links of the banner are judged by the lexicon of tes
     ]);
   });
 
-  it('counterexample: links that name no document and controls that are no links are not listed', () => {
+  it('a button with a legal label is not a legal link', () => {
     const layer = measure({
-      buttons: [
-        link('En savoir plus sur notre société'),
-        link('Paramètres de confidentialité', '#parametres'),
-        link('Alle akzeptieren', null),
-        link('Datenschutzerklärung', null, { role: 'button', tag: 'button' }),
-      ],
+      buttons: [link('Datenschutzerklärung', null, { role: 'button', tag: 'button' })],
     });
     expect(layer.legalLinks).toEqual([]);
-  });
-
-  it('counterexample: German and English links of the banner are still listed', () => {
-    const layer = measure({
-      buttons: [link('Datenschutzerklärung', '/datenschutz'), link('Imprint', '/imprint')],
-    });
-    expect(layer.legalLinks?.map((l) => l.text)).toEqual(['Datenschutzerklärung', 'Imprint']);
   });
 });

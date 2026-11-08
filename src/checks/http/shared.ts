@@ -1,7 +1,5 @@
-/** Pure helpers shared by HDR-01, TLS-01 and TLS-02 (no I/O); the HTTP collector uses them too. */
-
-import type { HeaderRecord } from '../../core/api.ts';
-import type { HttpHop, HttpSection } from '../../core/snapshot/http.ts';
+import type { CheckOutcome, EvidenceInput, HeaderRecord } from '../../core/api.ts';
+import type { DocumentResponse, HttpHop, HttpSection, RedirectChain } from '../../core/snapshot/http.ts';
 
 /** What a Node `authorizationError` means for a visitor. */
 export type TlsProblem =
@@ -45,6 +43,47 @@ export function browserAcceptsTls(authorized: boolean | null | undefined, error:
  */
 export const BLOCKED_DOCUMENT = 'blocked';
 
+export function headerStartDocument(documents: readonly DocumentResponse[]): DocumentResponse {
+  const start = documents.find((d) => d.role === 'start');
+  if (!start) throw new Error('http section has no start document');
+  return start;
+}
+
+export function headerStartFailure(start: DocumentResponse): CheckOutcome | null {
+  if (start.error?.code === BLOCKED_DOCUMENT) {
+    return {
+      status: 'inconclusive',
+      reason: 'blocked',
+      ...(start.status !== null ? { limitations: [`status:${start.status}`] } : {}),
+      observations: [],
+    };
+  }
+  if (start.error || start.status === null) {
+    return {
+      status: 'inconclusive',
+      reason: start.error?.code === 'timeout' ? 'timeout' : 'start-page-unavailable',
+      observations: [],
+    };
+  }
+  return null;
+}
+
+export function headerDocumentCoverage(
+  documents: readonly DocumentResponse[],
+  evaluable: (document: DocumentResponse) => boolean,
+): { evaluated: DocumentResponse[]; limitations: string[] } {
+  const evaluated: DocumentResponse[] = [];
+  const limitations: string[] = [];
+  for (const doc of documents) {
+    if (evaluable(doc)) evaluated.push(doc);
+    else {
+      const reason = doc.error?.code === BLOCKED_DOCUMENT ? 'document-blocked' : 'document-unavailable';
+      limitations.push(`${reason}:${doc.role}`);
+    }
+  }
+  return { evaluated, limitations };
+}
+
 export function headerValues(headers: readonly HeaderRecord[], name: string): string[] {
   const n = name.toLowerCase();
   return headers.filter((h) => h.name.toLowerCase() === n).map((h) => h.value);
@@ -85,6 +124,26 @@ const STUB_BYTES = 1024;
 /** The answer is a stub read whole: it serves no content of the site. */
 export function isHttpStub(hop: Pick<HttpHop, 'bodyTruncated' | 'bodyBytes'>): boolean {
   return !hop.bodyTruncated && (hop.bodyBytes ?? 0) <= STUB_BYTES;
+}
+
+export const HTTP_NOT_SERVING_OUTCOMES: ReadonlySet<RedirectChain['outcome']> = new Set([
+  'connection-refused',
+  'dns-error',
+  'tls-error',
+]);
+
+export function redirectChainEvidence(c: RedirectChain): EvidenceInput {
+  return {
+    type: 'redirect-chain',
+    phase: 'http',
+    startUrl: c.startUrl,
+    hops: c.hops.map((h) => ({
+      url: h.url,
+      status: h.status,
+      ...(h.location ? { location: h.location } : {}),
+    })),
+    outcome: c.outcome,
+  };
 }
 
 export function isSuccess(status: number | null | undefined): boolean {

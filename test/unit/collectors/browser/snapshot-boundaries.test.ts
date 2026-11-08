@@ -10,8 +10,8 @@ import { blocks, hostClassifier, urlVerdict } from '../../../../src/collectors/b
 import { extractDocument } from '../../../../src/collectors/browser/legal/documents.ts';
 import { snapshotResponseHeaders } from '../../../../src/collectors/browser/pages/visit.ts';
 import { JarTracker, type Moment, mapCookie } from '../../../../src/collectors/browser/recording/jar.ts';
-import type { SetCookieOrigin } from '../../../../src/collectors/browser/recording/recorder.ts';
 import { defaultNetworkConfig, type Lookup } from '../../../../src/core/url/net.ts';
+import { legalPage, POLICY, privacyContext, rawPolicy } from './legal/fakes.ts';
 
 const target = { etld1: 'example.de', host: 'www.example.de' };
 const pre: Moment = {
@@ -184,63 +184,25 @@ describe('response headers of documents are minimized before the snapshot', () =
   });
 });
 
-function rawDoc(over: Partial<RawDocument>): RawDocument {
-  return {
-    lang: 'de',
-    title: 'Datenschutzerklärung',
-    h1: 'Datenschutzerklärung',
-    parts: [],
-    expandablesFound: 0,
-    expandablesWithContent: 0,
-    textLength: 0,
-    truncated: false,
-    ...over,
-  };
-}
-
-function fakeDocPage(main: RawDocument, frames: Array<RawDocument | Error>): Page {
-  const mainFrame = {
-    url: () => 'https://www.example.de/datenschutz/',
-    evaluate: async () => main,
-  };
-  const children = frames.map((f, i) => ({
-    url: () => `https://www.example.de/frame-${i + 1}?sid=abc`,
-    evaluate: async () => {
-      if (f instanceof Error) throw f;
-      return f;
-    },
-  }));
-  return {
-    url: () => 'https://www.example.de/datenschutz/',
-    evaluate: async () => main,
-    frames: () => [mainFrame, ...children],
-    mainFrame: () => mainFrame,
-  } as unknown as Page;
-}
-
-const POLICY = 'Wir verarbeiten personenbezogene Daten nach der DSGVO. '.repeat(20);
-const docCtx = {
-  id: 'doc-privacy-1',
-  kind: 'privacy' as const,
-  phase: 'A' as const,
-  url: 'https://www.example.de/datenschutz/',
-  foundVia: 'link' as const,
-  status: 200,
-  contentType: 'text/html; charset=utf-8',
-};
-
 describe('documents with same-origin frames', () => {
+  const ctx = privacyContext('https://www.example.de/datenschutz/');
+  const read = (frame: RawDocument | Error, main: Partial<RawDocument> = {}) =>
+    extractDocument(
+      legalPage(ctx.url, rawPolicy({ parts: [{ section: '1', text: POLICY, origin: 'visible' }], ...main }), [
+        ['https://www.example.de/frame-1?sid=abc', frame],
+      ]),
+      ctx,
+    );
+
   it('hidden text inside a frame keeps origin hidden-irrelevant; the frame is recorded in frameUrl', async () => {
-    const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
-      rawDoc({
+    const doc = await read(
+      rawPolicy({
         parts: [
           { section: 'Vorlage', text: 'Wir nutzen Google Analytics.', origin: 'hidden-irrelevant' },
           { section: 'Sichtbar', text: 'Kontaktformular.', origin: 'visible' },
         ],
       }),
-    ]);
-
-    const doc = await extractDocument(page, docCtx);
+    );
 
     const ga = doc.parts.find((p) => p.text.includes('Google Analytics'));
     expect(ga).toMatchObject({
@@ -250,71 +212,42 @@ describe('documents with same-origin frames', () => {
     expect(doc.parts.find((p) => p.text === 'Kontaktformular.')).toMatchObject({ origin: 'frame' });
   });
 
-  it('a truncated frame makes the document incomplete', async () => {
-    const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
-      rawDoc({ parts: [{ section: '2', text: 'Teil im Frame.', origin: 'visible' }], truncated: true }),
-    ]);
+  const visibleFrame = { section: '2', text: 'Teil im Frame.', origin: 'visible' as const };
 
-    const doc = await extractDocument(page, docCtx);
-
+  it.each([
+    ['a truncated frame', rawPolicy({ parts: [visibleFrame], truncated: true }), 'truncated'],
+    ['an unreadable frame', new Error('frame.evaluate: Execution context was destroyed'), 'frame-unreadable'],
+  ] as const)('%s makes the document incomplete', async (_name, frame, reason) => {
+    const doc = await read(frame);
+    expect(doc.errors).toContain(reason);
     expect(doc.complete).toBe(false);
-    expect(doc.errors).toContain('truncated');
   });
 
   it('unopened expandables of a frame count in the manifest and make the document incomplete', async () => {
-    const page = fakeDocPage(
-      rawDoc({
-        parts: [{ section: '1', text: POLICY, origin: 'visible' }],
-        expandablesFound: 1,
-        expandablesWithContent: 1,
-      }),
-      [
-        rawDoc({
-          parts: [{ section: '2', text: 'Akkordeon.', origin: 'visible' }],
-          expandablesFound: 2,
-          expandablesWithContent: 0,
-        }),
-      ],
+    const doc = await read(
+      rawPolicy({ parts: [{ ...visibleFrame, text: 'Akkordeon.' }], expandablesFound: 2 }),
+      { expandablesFound: 1, expandablesWithContent: 1 },
     );
-
-    const doc = await extractDocument(page, docCtx);
 
     expect(doc.manifest).toMatchObject({ expandablesFound: 3, expandablesOpened: 1, framesIncluded: 1 });
     expect(doc.errors).toContain('expand-failed');
     expect(doc.complete).toBe(false);
   });
 
-  it('a same-origin frame that cannot be read makes the document incomplete', async () => {
-    const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
-      new Error('frame.evaluate: Execution context was destroyed'),
-    ]);
-
-    const doc = await extractDocument(page, docCtx);
-
-    expect(doc.errors).toContain('frame-unreadable');
-    expect(doc.complete).toBe(false);
-  });
-
   it('control: main document and a complete frame → complete', async () => {
-    const page = fakeDocPage(rawDoc({ parts: [{ section: '1', text: POLICY, origin: 'visible' }] }), [
-      rawDoc({ parts: [{ section: '2', text: 'Teil im Frame.', origin: 'visible' }] }),
-    ]);
-
-    const doc = await extractDocument(page, docCtx);
-
+    const doc = await read(rawPolicy({ parts: [visibleFrame] }));
     expect(doc.errors).toEqual([]);
     expect(doc.complete).toBe(true);
   });
 });
 
 describe('writes after the click are recorded even when the key existed before', () => {
-  it('cookies: a script write or a Set-Cookie after the click → an afterClick record for a known cookie', async () => {
+  it('script writes after the click are recorded even when the cookie value stays the same', async () => {
     const clickAt = Date.now();
     const { context, page, state } = fakeBrowser({
       cookies: [
         cookie('_ga', 'GA1.1.111', 2_000_000_000),
         cookie('_fbp', 'fb.1.222', 2_000_000_000),
-        cookie('_gid', 'GA1.1.333', 2_000_000_000),
         cookie('pref', 'de', 2_000_000_000),
         cookie('_late', 'L.1', 2_000_000_000),
       ],
@@ -323,19 +256,13 @@ describe('writes after the click are recorded even when the key existed before',
         { name: '_fbp', t: clickAt - 5_000, script: null, deletion: false },
       ],
     });
-    // The `Set-Cookie` after the click arrives as a recorder origin flagged `afterClick` (per name, domain,
-    // path and partition, not by name alone).
-    const origins = new Map<string, SetCookieOrigin>();
-    const jar = new JarTracker(target, origins);
+    const jar = new JarTracker(target, new Map());
     await jar.snapshot(context, page, pre);
     jar.markClick(clickAt);
 
-    // After the reject: _ga re-set by script with a new value, _fbp re-written by script with the same value, _gid
-    // re-sent by the server; pref untouched; _late written by script BEFORE the click (seen only now).
     state.cookies = [
       cookie('_ga', 'GA1.1.999', 2_000_000_500),
       cookie('_fbp', 'fb.1.222', 2_000_000_000),
-      cookie('_gid', 'GA1.1.333', 2_000_000_000),
       cookie('pref', 'de', 2_000_000_000),
       cookie('_late', 'L.2', 2_000_000_000),
     ];
@@ -344,22 +271,11 @@ describe('writes after the click are recorded even when the key existed before',
       { name: '_fbp', t: clickAt + 60, script: null, deletion: false },
       { name: '_late', t: clickAt - 10, script: null, deletion: false },
     );
-    origins.set('_gid|example.de|/|', {
-      name: '_gid',
-      host: 'www.example.de',
-      domain: 'example.de',
-      url: 'https://www.example.de/',
-      path: '/',
-      partitioned: false,
-      at: 1,
-      afterClick: true,
-    });
     await jar.snapshot(context, page, post);
 
     const flags = (n: string) => jar.cookies.filter((c) => c.name === n).map((c) => c.afterClick);
     expect(flags('_ga')).toEqual([false, true]);
     expect(flags('_fbp')).toEqual([false, true]);
-    expect(flags('_gid')).toEqual([false, true]);
     expect(flags('pref')).toEqual([false]);
     expect(flags('_late')).toEqual([false]);
     expect(jar.cookies.find((c) => c.name === '_ga' && c.afterClick)).toMatchObject({

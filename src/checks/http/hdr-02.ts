@@ -5,7 +5,6 @@
  */
 
 import {
-  type CheckOutcome,
   defineCheck,
   type EvidenceInput,
   type HeaderRecord,
@@ -15,7 +14,7 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { DocumentResponse } from '../../core/snapshot/http.ts';
-import { BLOCKED_DOCUMENT } from './shared.ts';
+import { headerDocumentCoverage, headerStartDocument, headerStartFailure } from './shared.ts';
 
 const ID = 'HDR-02';
 
@@ -29,31 +28,8 @@ const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'x-aspnetmvc-version': 'X-AspNetMvc-Version',
 };
 
-const isBlocked = (doc: DocumentResponse): boolean => doc.error?.code === BLOCKED_DOCUMENT;
-
 /** A response that arrived and is the site's own: any status counts, the header is sent with error pages too. */
 const evaluable = (doc: DocumentResponse): boolean => !doc.error && doc.status !== null;
-
-/** The start page decides whether the headers can be read at all; null when they can. */
-function startPageOutcome(start: DocumentResponse): CheckOutcome | null {
-  // A bot or WAF challenge answered instead of the site: its product headers are the protection's.
-  if (isBlocked(start)) {
-    return {
-      status: 'inconclusive',
-      reason: 'blocked',
-      ...(start.status !== null ? { limitations: [`status:${start.status}`] } : {}),
-      observations: [],
-    };
-  }
-  if (!evaluable(start)) {
-    return {
-      status: 'inconclusive',
-      reason: start.error?.code === 'timeout' ? 'timeout' : 'start-page-unavailable',
-      observations: [],
-    };
-  }
-  return null;
-}
 
 /** The value as the header sent it: the version alone where the header name implies the product. */
 function shownValue(name: string, pair: ProductVersion): string {
@@ -112,15 +88,10 @@ export const hdr02 = defineCheck({
   variants: [{ variant: 'version-header' }],
   run(slice) {
     const docs = slice.http.documents;
-    const start = docs.find((d) => d.role === 'start');
-    if (!start) throw new Error('http section has no start document');
-    const unusable = startPageOutcome(start);
+    const unusable = headerStartFailure(headerStartDocument(docs));
     if (unusable) return unusable;
 
-    const evaluated = docs.filter(evaluable);
-    const limitations = docs
-      .filter((d) => !evaluable(d))
-      .map((d) => `${isBlocked(d) ? 'document-blocked' : 'document-unavailable'}:${d.role}`);
+    const { evaluated, limitations } = headerDocumentCoverage(docs, evaluable);
 
     const byPair = new Map<string, Observation>();
     let notStored = false;

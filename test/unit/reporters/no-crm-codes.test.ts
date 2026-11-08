@@ -13,17 +13,24 @@ const ctx: ReporterContext = { texts: loadTexts('de'), lang: 'de', outDir: '/tmp
 
 const reporters: Array<[string, RenderReport]> = [
   ['console', renderConsole],
-  ['html', renderHtml],
   ['summary', renderSummary],
 ];
 
-describe.each(reporters)('%s output', (_name, render) => {
-  it.for([
-    ['full report', sampleFullReport()],
-    ['failed report', sampleFailedReport()],
-  ] as const)('has no T[0-9]_ codes (%s)', ([_label, report]) => {
-    const out = render(report, ctx);
-    expect(out).not.toMatch(T_CODE);
+describe('human-readable reports', () => {
+  it.each(reporters)('%s hides CRM fields in full and failed reports', (_name, render) => {
+    expect(render(sampleFullReport(), ctx)).not.toMatch(T_CODE);
+    expect(render(sampleFailedReport(), ctx)).not.toMatch(T_CODE);
+  });
+
+  it('HTML displays a code-like cookie name safely and hides the field in both detail levels', () => {
+    const full = sampleFullReport();
+    (full.evidence[1] as { name: string }).name = 'T1_TRACKING_COOKIE';
+    full.findings[0]!.params = { service: 'T2_SOMETHING' };
+    const html = renderHtml(full, ctx);
+    expect(html).toContain('T1&#95;TRACKING_COOKIE');
+    expect(html).not.toMatch(/T[0-9]_|crmCode/);
+    expect(renderHtml(full, { ...ctx, detail: 'brief' })).not.toMatch(/T[0-9]_|crmCode/);
+    expect(renderHtml(sampleFailedReport(), ctx)).not.toMatch(T_CODE);
   });
 });
 

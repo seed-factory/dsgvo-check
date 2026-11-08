@@ -15,7 +15,6 @@ import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import { createLogger } from '../../../src/core/runtime/logger.ts';
 import { uaToken } from '../../../src/core/runtime/user-agent.ts';
 import type { Collectors } from '../../../src/core/snapshot/collector.ts';
-import { scan } from '../../../src/scan.ts';
 import type { ScanOptions } from '../../../src/scan-options.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { fakeCollectors, testDataDir } from '../../utils/scan-harness.ts';
@@ -31,13 +30,10 @@ import {
   REPO_ROOT,
   withDerived,
 } from '../../utils/snapshot-builder.ts';
-import { abortAware, opts } from './fixtures.ts';
+import { abortAware, scanWith } from './fixtures.ts';
 
 const START = 'https://www.example.de/';
 const startVisit = () => makePage({ url: START, phase: 'A' });
-/** A scan of START with the defaults of the scan tests. */
-const scanWith = (over: Partial<ScanOptions>) => scan(opts(over));
-
 describe('checks that lack data because the deadline cut the browser collection end in error/timeout', () => {
   const partial = (phases: ReturnType<typeof makePhase>[], reason: string | null = 'timeout') =>
     withDerived(
@@ -184,8 +180,8 @@ describe('scan after the deadline cut phase B', () => {
     status: 'ok' as const,
     sections: { dns: makeDns({ queries: [makeDnsQuery({ qname: 'www.example.de' })] }) },
   });
-  const base = (over: Partial<ScanOptions> = {}) =>
-    opts({
+  const runAfterDeadline = (over: Partial<ScanOptions> = {}) =>
+    scanWith({
       dataDir,
       registry: new CheckRegistry([consent05, consent03, dnsProbe]),
       timeoutMs: 100,
@@ -195,7 +191,7 @@ describe('scan after the deadline cut phase B', () => {
     });
 
   it('CONSENT-05 error/timeout (phase B cut); CONSENT-03 stays inconclusive (phase A ended by itself); SCAN-TIMEOUT names only the first; the other collectors keep their results', async () => {
-    const r = await scan(base());
+    const r = await runAfterDeadline();
 
     expectValidReport(r.report);
 
@@ -218,7 +214,7 @@ describe('scan after the deadline cut phase B', () => {
   });
 
   it('fail-on none: the diagnostic stays, the exit code is 0', async () => {
-    const r = await scan(base({ failOn: 'none' }));
+    const r = await runAfterDeadline({ failOn: 'none' });
 
     expect(r.exitCode).toBe(0);
     expect(r.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
@@ -254,78 +250,46 @@ const emptyPartialOnAbort: Collectors['browser'] = (ctx) =>
   });
 
 describe('no hand-over after the global timeout', () => {
-  it('a collector that never returns: its own failure code and a warning, not "before the start page"', async () => {
-    const lines: string[] = [];
-    const r = await scanWith({
-      registry: new CheckRegistry([consent05]),
-      log: createLogger('warn', (l) => lines.push(l)),
-      timeoutMs: 80,
-      abortGraceMs: 30,
-      collectors: fakeCollectors({ browser: () => new Promise(() => {}) }),
-    });
+  const modes: Array<{
+    browser: Collectors['browser'];
+    code: string;
+    warns: boolean;
+  }> = [
+    { browser: () => new Promise(() => {}), code: 'browser-no-handover', warns: true },
+    { browser: emptyPartialOnAbort, code: 'scan-timeout', warns: false },
+  ];
+  const cases = modes.flatMap((mode) => (['de', 'en'] as const).map((lang) => ({ ...mode, lang })));
 
-    expect(r.report.scan.status).toBe('failed');
-    if (r.report.scan.status === 'failed') {
-      expect(r.report.scan.failure.code).toBe('browser-no-handover');
-      expect(r.report.scan.failure.message).not.toMatch(/bevor die Startseite/);
-    }
-    expect(r.report.summary.exitReasons).toContain('timeout');
-    expect(
-      lines.some((l) => /warn/.test(l) && /browser/.test(l) && /handed over no result/.test(l)),
-      `log lines: ${lines.join(' | ')}`,
-    ).toBe(true);
-    expectValidReport(r.report);
-  });
+  it.each(cases)(
+    '$code produces a localized failed report ($lang)',
+    async ({ lang, browser, code, warns }) => {
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+      try {
+        const lines: string[] = [];
+        const pending = scanWith({
+          lang,
+          registry: new CheckRegistry([consent05]),
+          log: createLogger('warn', (line) => lines.push(line)),
+          timeoutMs: 1_200,
+          abortGraceMs: 30,
+          collectors: fakeCollectors({ browser }),
+        });
+        await vi.advanceTimersByTimeAsync(1_230);
+        const { report } = await pending;
+        expectValidReport(report);
+        expect(report.summary.exitReasons).toContain('timeout');
+        if (report.scan.status !== 'failed') throw new Error('expected a failed report');
 
-  it('counterexample: a collector that returns an empty result keeps "scan-timeout"', async () => {
-    const r = await scanWith({
-      registry: new CheckRegistry([consent05]),
-      timeoutMs: 80,
-      abortGraceMs: 300,
-      collectors: fakeCollectors({ browser: emptyPartialOnAbort }),
-    });
-
-    if (r.report.scan.status === 'failed') expect(r.report.scan.failure.code).toBe('scan-timeout');
-    else throw new Error('expected a failed report');
-  });
-});
-
-// the failure texts of the orchestrator are data (test/data/texts), in the language of the scan.
-describe('the failure message of a scan cut by the global timeout is a text of test/data/texts', () => {
-  const failed = async (lang: 'de' | 'en', browser: Collectors['browser']) => {
-    const r = await scanWith({
-      lang,
-      registry: new CheckRegistry([consent05]),
-      timeoutMs: 1_200,
-      abortGraceMs: 30,
-      collectors: fakeCollectors({ browser }),
-    });
-    if (r.report.scan.status !== 'failed') throw new Error('expected a failed report');
-    return r.report.scan.failure;
-  };
-  const GERMAN = /Zeitlimit|Startseite|Browser-Kollektor/;
-
-  it.each(['de', 'en'] as const)(
-    '%s: browser-no-handover is rendered from the texts with the seconds',
-    async (lang) => {
-      const f = await failed(lang, () => new Promise(() => {}));
-
-      expect(f.code).toBe('browser-no-handover');
-      expect(f.message).toBe(uiText(loadTexts(lang), 'failure.browser-no-handover', { seconds: 1 }));
-      expect(f.message).toContain('1 s');
-      if (lang === 'en') expect(f.message).not.toMatch(GERMAN);
-      else expect(f.message).toMatch(/Globales Zeitlimit/);
-    },
-  );
-
-  it.each(['de', 'en'] as const)(
-    '%s: scan-timeout is rendered from the texts with the seconds',
-    async (lang) => {
-      const f = await failed(lang, emptyPartialOnAbort);
-
-      expect(f.code).toBe('scan-timeout');
-      expect(f.message).toBe(uiText(loadTexts(lang), 'failure.scan-timeout', { seconds: 1 }));
-      if (lang === 'en') expect(f.message).not.toMatch(GERMAN);
+        const { failure } = report.scan;
+        expect(failure.code).toBe(code);
+        expect(failure.message).toBe(uiText(loadTexts(lang), `failure.${code}`, { seconds: 1 }));
+        expect(failure.message).toContain('1 s');
+        expect(failure.message).toMatch(lang === 'de' ? /^Globales Zeitlimit/ : /^Global time limit/);
+        if (warns) expect(failure.message).not.toMatch(/bevor die Startseite|before the start page/);
+        expect(lines.some((line) => /warn.*browser.*handed over no result/.test(line))).toBe(warns);
+      } finally {
+        vi.useRealTimers();
+      }
     },
   );
 
@@ -414,7 +378,13 @@ describe('SCAN-PRIVATE-REQUEST-BLOCKED tells an unresolvable name from a private
     ['de', /nach Wiederholung geladen/, /Eine weitere Navigation/, /2 weitere Navigationen/],
     ['en', /loaded after a retry/, /One more navigation/, /2 more navigations/],
   ] as const)('%s: a recovered navigation is stated as loaded after the retry', (lang, loaded, one, many) => {
-    const base = { count: 1, addressClass: 'private', unresolved: 0, nonPublic: 1, hasLookupCodes: false };
+    const base = {
+      count: 1,
+      addressClass: 'private',
+      unresolved: 0,
+      nonPublic: 1,
+      hasLookupCodes: false,
+    };
     const plain = render(lang, base);
     const withOne = render(lang, { ...base, recovered: 1 });
     const withTwo = render(lang, { ...base, recovered: 2 });

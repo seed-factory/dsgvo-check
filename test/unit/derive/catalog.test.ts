@@ -98,13 +98,7 @@ describe('service catalog data', () => {
   });
 
   it('rejects unknown fields and invalid regexes', () => {
-    const base = {
-      catalog: { name: 'x', version: '1', date: '2026-10-30', license: 'Apache-2.0' },
-      categories: catalog.data.categories,
-      userSuppliedParams: catalog.data.userSuppliedParams,
-      consentMode: catalog.data.consentMode,
-      allowlist: { version: '1', cookies: {} },
-    };
+    const base = emptyCatalog();
     const svc = { id: 'a', name: 'A', category: 'analytics', policyRelevance: 'required' };
 
     expect(() => parseCatalog({ ...base, services: [{ ...svc, typo: 1 }] })).toThrow(/typo/);

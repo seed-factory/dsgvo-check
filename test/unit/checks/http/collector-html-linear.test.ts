@@ -43,153 +43,75 @@ const forms: Run = (h) => dataForms(h, BASE);
 /** The read limit of a document: forms are looked for in all of it. */
 const DOCUMENT_BYTES = 512 * KIB;
 
-interface Hostile {
-  name: string;
-  run: Run;
-  /** Base input size for the growth comparison. */
-  smallBytes: number;
-  build: (bytes: number) => string;
-}
+type Hostile = [name: string, run: Run, smallBytes: number, build: (bytes: number) => string];
+const repeatMarkup = (markup: string) => (bytes: number) => fill(markup, bytes);
 
 const HOSTILE: readonly Hostile[] = [
-  {
-    name: 'findLegalLinks: "<a " without any ">"',
-    run: links,
-    smallBytes: 128 * KIB,
-    build: (n) => fill('<a ', n),
-  },
-  {
-    name: 'findLegalLinks: opening tags without a closing </a>',
-    run: links,
-    smallBytes: 256 * KIB,
-    build: (n) => fill('<a href="/x">', n),
-  },
-  {
-    name: 'findLegalLinks: "<" in the text of one link',
-    run: links,
-    smallBytes: 256 * KIB,
-    build: (n) => `<a href="/x">${fill('<', n)}</a>`,
-  },
-  {
-    name: 'findLegalLinks: unterminated comments',
-    run: links,
-    smallBytes: 256 * KIB,
-    build: (n) => fill('<!--', n),
-  },
-  {
-    name: 'extractMeta: unterminated comments',
-    run: meta,
-    smallBytes: 256 * KIB,
-    build: (n) => fill('<!--', n),
-  },
-  {
-    name: 'detectClientRedirect: unterminated comments',
-    run: redirect,
-    smallBytes: 128 * KIB,
-    build: (n) => fill('<!--', n),
-  },
-  {
-    name: 'detectForm: unterminated comments',
-    run: form,
-    smallBytes: 256 * KIB,
-    build: (n) => fill('<!--', n),
-  },
-  {
-    name: 'detectForm: "<form " without any ">"',
-    run: form,
-    smallBytes: 128 * KIB,
-    build: (n) => fill('<form ', n),
-  },
-  {
-    name: 'detectForm: "<input " without any ">" inside a form',
-    run: form,
-    smallBytes: 128 * KIB,
-    build: (n) => `<form>${fill('<input ', n)}`,
-  },
-  {
-    name: 'detectClientRedirect: "<script " without any ">"',
-    run: redirect,
-    smallBytes: 128 * KIB,
-    build: (n) => fill('<script ', n),
-  },
-  {
-    name: 'detectClientRedirect: unclosed <script> elements',
-    run: redirect,
-    smallBytes: 512 * KIB,
-    build: (n) => fill('<script>', n),
-  },
-  {
-    name: 'extractMeta: every ">" sits inside a quoted attribute value',
-    run: meta,
-    smallBytes: 64 * KIB,
-    build: (n) => fill('<a x=">" ', n),
-  },
-  {
-    name: 'detectClientRedirect: every ">" sits inside a quoted attribute value',
-    run: redirect,
-    smallBytes: 64 * KIB,
-    build: (n) => fill('<a x=">" ', n),
-  },
-  {
-    name: 'detectForm: every ">" sits inside a quoted attribute value',
-    run: form,
-    smallBytes: 64 * KIB,
-    build: (n) => fill('<a x=">" ', n),
-  },
-  {
-    name: 'extractMeta: the same inside an unclosed <template>',
-    run: meta,
-    smallBytes: 64 * KIB,
-    build: (n) => `<template>${fill('<a x=">" ', n)}`,
-  },
-  {
-    name: 'extractMeta: single-quoted values that hold a ">"',
-    run: meta,
-    smallBytes: 64 * KIB,
-    build: (n) => fill("<a x='>' ", n),
-  },
-  {
-    name: 'findLegalLinks: tags with a quoted ">" and no closing </a>',
-    run: links,
-    smallBytes: 256 * KIB,
-    build: (n) => fill('<a x=">" ', n),
-  },
+  ['findLegalLinks: "<a " without any ">"', links, 128 * KIB, repeatMarkup('<a ')],
+  ['findLegalLinks: opening tags without a closing </a>', links, 256 * KIB, repeatMarkup('<a href="/x">')],
+  [
+    'findLegalLinks: "<" in the text of one link',
+    links,
+    256 * KIB,
+    (n) => `<a href="/x">${fill('<', n)}</a>`,
+  ],
+  ['findLegalLinks: unterminated comments', links, 256 * KIB, repeatMarkup('<!--')],
+  ['detectClientRedirect: unterminated comments', redirect, 128 * KIB, repeatMarkup('<!--')],
+  ['detectForm: "<form " without any ">"', form, 128 * KIB, repeatMarkup('<form ')],
+  [
+    'detectForm: "<input " without any ">" inside a form',
+    form,
+    128 * KIB,
+    (n) => `<form>${fill('<input ', n)}`,
+  ],
+  ['detectClientRedirect: "<script " without any ">"', redirect, 128 * KIB, repeatMarkup('<script ')],
+  ['detectClientRedirect: unclosed <script> elements', redirect, 512 * KIB, repeatMarkup('<script>')],
+  ['extractMeta: every ">" sits inside a quoted attribute value', meta, 64 * KIB, repeatMarkup('<a x=">" ')],
+  [
+    'detectClientRedirect: every ">" sits inside a quoted attribute value',
+    redirect,
+    64 * KIB,
+    repeatMarkup('<a x=">" '),
+  ],
+  [
+    'extractMeta: the same inside an unclosed <template>',
+    meta,
+    64 * KIB,
+    (n) => `<template>${fill('<a x=">" ', n)}`,
+  ],
+  ['extractMeta: single-quoted values that hold a ">"', meta, 64 * KIB, repeatMarkup("<a x='>' ")],
+  ['findLegalLinks: tags with a quoted ">" and no closing </a>', links, 256 * KIB, repeatMarkup('<a x=">" ')],
   // Forms are looked for in the whole document read (512 KiB), so the adversarial input reaches that size.
-  {
-    name: 'dataForms: unclosed forms, each with a field',
-    run: forms,
-    smallBytes: DOCUMENT_BYTES / 4,
-    build: (n) => fill('<form method=post><textarea>', n),
-  },
-  {
-    name: 'dataForms: "<form " without any ">"',
-    run: forms,
-    smallBytes: DOCUMENT_BYTES / 4,
-    build: (n) => fill('<form action="/x" ', n),
-  },
-  {
-    name: 'dataForms: "<input " without any ">" inside one form',
-    run: forms,
-    smallBytes: DOCUMENT_BYTES / 4,
-    build: (n) => `<form method="post">${fill('<input name="a" ', n)}`,
-  },
-  {
-    name: 'dataForms: closed forms with a field each',
-    run: forms,
-    smallBytes: DOCUMENT_BYTES / 4,
-    build: (n) => fill('<form action="/a?b=c"><input name="e"></form>', n),
-  },
-  {
-    name: 'dataForms: unclosed templates and scripts before the forms',
-    run: forms,
-    smallBytes: DOCUMENT_BYTES / 4,
-    build: (n) => fill('<template><script>', n),
-  },
+  [
+    'dataForms: unclosed forms, each with a field',
+    forms,
+    DOCUMENT_BYTES / 4,
+    repeatMarkup('<form method=post><textarea>'),
+  ],
+  ['dataForms: "<form " without any ">"', forms, DOCUMENT_BYTES / 4, repeatMarkup('<form action="/x" ')],
+  [
+    'dataForms: "<input " without any ">" inside one form',
+    forms,
+    DOCUMENT_BYTES / 4,
+    (n) => `<form method="post">${fill('<input name="a" ', n)}`,
+  ],
+  [
+    'dataForms: closed forms with a field each',
+    forms,
+    DOCUMENT_BYTES / 4,
+    repeatMarkup('<form action="/a?b=c"><input name="e"></form>'),
+  ],
+  [
+    'dataForms: unclosed templates and scripts before the forms',
+    forms,
+    DOCUMENT_BYTES / 4,
+    repeatMarkup('<template><script>'),
+  ],
 ];
 
 describe('HTML parsing scales with hostile input size', () => {
-  it.each(HOSTILE.map((h) => [h.name, h] as const))('%s', (_name, h) => {
-    expectLinear(h.run, h.build, h.smallBytes);
+  it.each(HOSTILE)('%s', (_name, run, bytes, build) => {
+    expectLinear(run, build, bytes);
   });
 
   it('finds no legal link in a large ordinary product list', () => {

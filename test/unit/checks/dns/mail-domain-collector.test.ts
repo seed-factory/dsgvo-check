@@ -335,13 +335,23 @@ const stage = (
   o: { budget?: number; signal?: AbortSignal } = {},
 ) => collectMailDomains({ section, plan, client, now: () => FIXED_NOW, ...o });
 
+async function runDomainStage(
+  plan: MailTargetPlan,
+  {
+    client = fakeDnsClient(ZONE),
+    ...options
+  }: Parameters<typeof stage>[3] & {
+    client?: ReturnType<typeof fakeDnsClient>;
+  } = {},
+) {
+  const first = await firstStage(client);
+  const before = client.calls.length;
+  return { client, first, before, section: await stage(client, first, plan, options) };
+}
+
 describe('collectMailDomains: queries of the further mail domains', () => {
   it('MX, DMARC walk, SPF tree, DKIM selectors per domain; ids continue and an include the first stage resolved is not asked again', async () => {
-    const client = fakeDnsClient(ZONE);
-    const first = await firstStage(client);
-    const before = client.calls.length;
-
-    const section = await stage(client, first, contactPlan('example-mail.de'));
+    const { client, first, before, section } = await runDomainStage(contactPlan('example-mail.de'));
 
     // _spf.provider.example is in both SPF trees: the first stage's answer is reused.
     expect(client.calls.slice(before)).toEqual([
@@ -369,8 +379,7 @@ describe('collectMailDomains: queries of the further mail domains', () => {
   });
 
   it('a free-mail domain sends no query', async () => {
-    const client = fakeDnsClient(ZONE);
-    const section = await stage(client, await firstStage(client), contactPlan('gmx.de'));
+    const { client, section } = await runDomainStage(contactPlan('gmx.de'));
 
     expect(client.calls.filter((c) => c.includes('gmx.de'))).toEqual([]);
     expect(section.mailDomains).toEqual([
@@ -384,8 +393,6 @@ describe('collectMailDomains: queries of the further mail domains', () => {
   });
 
   it('a domain over its own budget is partial; the scanned domain and the next domain keep theirs', async () => {
-    const client = fakeDnsClient(ZONE);
-    const first = await firstStage(client);
     const plan: MailTargetPlan = {
       contacts: 'impressum',
       targets: [
@@ -395,7 +402,7 @@ describe('collectMailDomains: queries of the further mail domains', () => {
     };
 
     // example-other.de needs 10 queries (MX, DMARC, SPF, 7 selectors); example-mail.de 12, its walk starts lower.
-    const section = await stage(client, first, plan, { budget: 10 });
+    const { first, section } = await runDomainStage(plan, { budget: 10 });
 
     expect(section.budget).toEqual(first.budget);
     expect(section.mailDomains?.map((d) => [d.domain, d.status, d.reason ?? null, d.budget.used])).toEqual([
@@ -422,9 +429,10 @@ describe('collectMailDomains: queries of the further mail domains', () => {
     const client = fakeDnsClient(ZONE, () => {
       if (client.calls.at(-1) === 'MX example-mail.de') controller.abort();
     });
-    const first = await firstStage(client);
-
-    const section = await stage(client, first, contactPlan('example-mail.de'), { signal: controller.signal });
+    const { section } = await runDomainStage(contactPlan('example-mail.de'), {
+      client,
+      signal: controller.signal,
+    });
 
     expect(section.mailDomains).toMatchObject([
       { status: 'partial', reason: 'aborted', budget: { used: 1 } },
@@ -464,12 +472,8 @@ describe('collectMailDomains: queries of the further mail domains', () => {
   });
 
   it('a final domain is walked from the final host', async () => {
-    const client = fakeDnsClient(ZONE);
-    const first = await firstStage(client);
-    const before = client.calls.length;
     const target = planned('example.net', { host: 'www.example.net', roles: ['final'], sources: [] });
-
-    await stage(client, first, { contacts: 'not-collected', targets: [target] });
+    const { client, before } = await runDomainStage({ contacts: 'not-collected', targets: [target] });
 
     expect(client.calls.slice(before, before + 4)).toEqual([
       'MX example.net',

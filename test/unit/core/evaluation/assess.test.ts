@@ -105,6 +105,9 @@ function run(
   });
 }
 
+const completed = (c: AnyCheck, observations: Observation[], extra?: Partial<AssessInput>) =>
+  run([c], { [c.id]: exec(observations) }, [], extra);
+
 describe('confidence cap', () => {
   it.each([
     ['critical', 'high', 'critical'],
@@ -119,13 +122,11 @@ describe('confidence cap', () => {
 
   it('applies the cap to findings', () => {
     const c = check('TEST-01', ['hit', 'soft', 'inventory']);
-    const out = run([c], {
-      'TEST-01': exec([
-        obs({ subject: 'a', confidence: 'medium' }),
-        obs({ subject: 'b', confidence: 'low' }),
-        obs({ subject: 'c', confidence: 'high' }),
-      ]),
-    });
+    const out = completed(c, [
+      obs({ subject: 'a', confidence: 'medium' }),
+      obs({ subject: 'b', confidence: 'low' }),
+      obs({ subject: 'c', confidence: 'high' }),
+    ]);
     const bySubject = Object.fromEntries(out.findings.map((f) => [f.subject, f.severity]));
     expect(bySubject).toEqual({ a: 'warning', b: 'info', c: 'critical' });
   });
@@ -200,6 +201,13 @@ describe('ruleset resolution and overrides', () => {
 });
 
 describe('assess', () => {
+  const header = (i: number) => ({
+    type: 'header' as const,
+    url: 'https://x/',
+    name: `h${i}`,
+    present: false,
+  });
+
   it('builds findings with fingerprint, crmCode, messageId and evidence ids', () => {
     const c = check('TEST-01', ['hit', 'inventory']);
     const evidence = [
@@ -219,12 +227,10 @@ describe('assess', () => {
       },
     ];
 
-    const out = run([c], {
-      'TEST-01': exec([
-        obs({ evidence, serviceId: 'google-analytics-4' }),
-        obs({ variant: 'inventory', subject: 'inv' }),
-      ]),
-    });
+    const out = completed(c, [
+      obs({ evidence, serviceId: 'google-analytics-4' }),
+      obs({ variant: 'inventory', subject: 'inv' }),
+    ]);
 
     const hit = out.findings.find((f) => f.variant === 'hit')!;
     expect(hit.fingerprint).toBe(fingerprint({ checkId: 'TEST-01', variantGroup: 'hit', subject: 'svc-a' }));
@@ -249,12 +255,10 @@ describe('assess', () => {
         { variant: 'soft', variantGroup: 'svc' },
       ],
     });
-    const out = run([c], {
-      'TEST-01': exec([
-        obs({ variant: 'soft', pages: ['https://www.example.de/a'], phases: ['A'] }),
-        obs({ variant: 'hit', pages: ['https://www.example.de/b'], phases: ['B'] }),
-      ]),
-    });
+    const out = completed(c, [
+      obs({ variant: 'soft', pages: ['https://www.example.de/a'], phases: ['A'] }),
+      obs({ variant: 'hit', pages: ['https://www.example.de/b'], phases: ['B'] }),
+    ]);
     expect(out.findings).toHaveLength(1);
     expect(out.findings[0]).toMatchObject({ variant: 'hit', severity: 'critical', phases: ['A', 'B'] });
     expect(out.findings[0]?.pages).toEqual(['https://www.example.de/a', 'https://www.example.de/b']);
@@ -262,12 +266,9 @@ describe('assess', () => {
 
   it('deduplicates identical evidence and truncates to 20 ids', () => {
     const c = check('TEST-01', ['hit']);
-    const ev = (i: number) => ({ type: 'header' as const, url: 'https://x/', name: `h${i}`, present: false });
-    const out = run([c], {
-      'TEST-01': exec([
-        obs({ evidence: [ev(1), ev(1), ...Array.from({ length: 25 }, (_, i) => ev(i + 2))] }),
-      ]),
-    });
+    const out = completed(c, [
+      obs({ evidence: [header(1), header(1), ...Array.from({ length: 25 }, (_, i) => header(i + 2))] }),
+    ]);
     expect(out.findings[0]?.evidenceIds).toHaveLength(20);
     expect(out.findings[0]?.evidenceTruncated).toBe(true);
     expect(out.evidence).toHaveLength(26);
@@ -275,12 +276,11 @@ describe('assess', () => {
 
   it('keeps as many evidence ids as the settings allow', () => {
     const c = check('TEST-01', ['hit']);
-    const ev = (i: number) => ({ type: 'header' as const, url: 'https://x/', name: `h${i}`, present: false });
-    const executed = { 'TEST-01': exec([obs({ evidence: Array.from({ length: 8 }, (_, i) => ev(i)) })]) };
-    const few = run([c], executed, [], { maxEvidencePerFinding: 3 });
+    const observations = [obs({ evidence: Array.from({ length: 8 }, (_, i) => header(i)) })];
+    const few = completed(c, observations, { maxEvidencePerFinding: 3 });
     expect(few.findings[0]?.evidenceIds).toHaveLength(3);
     expect(few.findings[0]?.evidenceTruncated).toBe(true);
-    const many = run([c], executed, [], { maxEvidencePerFinding: 8 });
+    const many = completed(c, observations, { maxEvidencePerFinding: 8 });
     expect(many.findings[0]?.evidenceIds).toHaveLength(8);
     expect(many.findings[0]).not.toHaveProperty('evidenceTruncated');
   });
@@ -331,9 +331,9 @@ describe('assess', () => {
 
   it('an unknown variant or missing ruleset entry turns the check into an error', () => {
     const c = check('TEST-01', ['hit', 'unlisted']);
-    const out = run([c], { 'TEST-01': exec([obs({ variant: 'nope' })]) });
+    const out = completed(c, [obs({ variant: 'nope' })]);
     expect(out.checks[0]).toMatchObject({ status: 'error', reason: 'invalid-observation' });
-    const out2 = run([c], { 'TEST-01': exec([obs({ variant: 'unlisted' })]) });
+    const out2 = completed(c, [obs({ variant: 'unlisted' })]);
     expect(out2.checks[0]).toMatchObject({ status: 'error', reason: 'invalid-observation' });
     expect(out2.findings).toHaveLength(0);
   });
@@ -417,12 +417,9 @@ describe('legal note of a finding', () => {
         { variant: 'soft', variantGroup: 'g' },
       ],
     });
-    const out = run(
-      [c],
-      { 'TEST-01': exec([obs({ subject: 'a' }), obs({ variant: 'soft', subject: 'b' })]) },
-      [],
-      { texts: texts(['TEST-01', 'TEST-01.hit']) },
-    );
+    const out = completed(c, [obs({ subject: 'a' }), obs({ variant: 'soft', subject: 'b' })], {
+      texts: texts(['TEST-01', 'TEST-01.hit']),
+    });
     expect(out.findings.map((f) => [f.variant, f.legalNoteId])).toEqual([
       ['hit', 'TEST-01.hit'],
       ['soft', 'TEST-01'],

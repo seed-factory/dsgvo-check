@@ -4,10 +4,10 @@
  * without a navigation, and leaves settings dialogs alone. PRIV-01 searches the notices with the policy; LEGAL-01 does
  * not take a failed notice for a broken privacy link.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { type CollectRun, collect, FAST_TIMING, snapshotOf } from '../helpers.ts';
 import { html, LOREM, send, site } from '../site-dir.ts';
@@ -46,10 +46,8 @@ const SAME = 'same.supplement.example.test';
 const EXTRAS = 'extras.supplement.example.test';
 const CONTACT = 'contact.supplement.example.test';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     handlers: [
       {
         host: 'code.tidio.co',
@@ -127,24 +125,23 @@ beforeAll(async () => {
         '/blog/': send(OTHER),
       }),
     ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
+  };
 });
 
 beforeEach(() => {
-  server.reset();
+  server().reset();
 });
 
-const pathsOf = (host: string) => server.requestsTo(host).map((r) => r.path);
+const pathsOf = (host: string) =>
+  server()
+    .requestsTo(host)
+    .map((r) => r.path);
 const privacyDocs = (run: CollectRun) =>
   (run.result.sections.documents?.documents ?? []).filter((d) => d.kind === 'privacy');
 
 describe('further privacy notices of the site', () => {
   it('reads the notice beside the policy, notes the language version and leaves the settings dialog alone', async () => {
-    const run = await collect(server, { url: `https://${HOST}/` });
+    const run = await collect(server(), { url: `https://${HOST}/` });
 
     expect(privacyDocs(run).map((d) => [new URL(d.url).pathname, d.role ?? 'main', d.errors])).toEqual([
       ['/datenschutz/', 'main', []],
@@ -170,7 +167,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('PRIV-01 finds the chat named in the notice; LEGAL-01 reports nothing about the notice', async () => {
-    const run = await collect(server, { url: `https://${HOST}/` });
+    const run = await collect(server(), { url: `https://${HOST}/` });
     const snap = snapshotOf(run);
     expect(snap.derived?.services.map((s) => s.serviceId)).toContain('tidio');
 
@@ -186,7 +183,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('counterexample with the limit 0: only the policy, no request for the notice, the chat stays not-named', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: `https://${HOST}/`,
       config: { browser: { maxSupplementaryPolicies: 0 } },
     });
@@ -199,7 +196,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('three notices and the limit 1: only the best-ranked one is fetched', async () => {
-    const run = await collect(server, { url: `https://${THREE}/` });
+    const run = await collect(server(), { url: `https://${THREE}/` });
     const paths = pathsOf(THREE);
     expect(paths).toContain('/datenschutz-bewerbung/');
     expect(paths).not.toContain('/datenschutzhinweise-kurse/');
@@ -212,7 +209,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('a notice that answers 404: the policy is still evaluated and LEGAL-01 reports no broken link', async () => {
-    const run = await collect(server, { url: `https://${BROKEN}/` });
+    const run = await collect(server(), { url: `https://${BROKEN}/` });
     const attempts = run.result.sections.documents?.attempts ?? [];
     expect(attempts.filter((a) => a.supplement)).toMatchObject([
       { kind: 'privacy', outcome: 'not-found', status: 404, supplement: true },
@@ -227,7 +224,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('two labels of one URL fetch it once and read no notice', async () => {
-    const run = await collect(server, { url: `https://${SAME}/` });
+    const run = await collect(server(), { url: `https://${SAME}/` });
     expect(pathsOf(SAME).filter((p) => p === '/datenschutz/')).toHaveLength(1);
     expect(privacyDocs(run).map((d) => d.role ?? 'main')).toEqual(['main']);
     expect((run.result.sections.documents?.attempts ?? []).filter((a) => a.supplement)).toEqual([]);
@@ -236,18 +233,18 @@ describe('further privacy notices of the site', () => {
   it('the notice is a legal page: the extra pages are the same with and without it', async () => {
     const extras = (run: CollectRun) =>
       (run.result.sections.plan?.pages ?? []).filter((p) => p.role === 'nav').map((p) => p.url);
-    const without = await collect(server, {
+    const without = await collect(server(), {
       url: `https://${EXTRAS}/`,
       config: { browser: { maxSupplementaryPolicies: 0 } },
     });
-    const withNotice = await collect(server, { url: `https://${EXTRAS}/` });
+    const withNotice = await collect(server(), { url: `https://${EXTRAS}/` });
     expect(extras(without)).toHaveLength(3);
     expect(extras(withNotice)).toEqual(extras(without));
     expect(privacyDocs(withNotice).map((d) => d.role ?? 'main')).toEqual(['main', 'supplement']);
   });
 
   it('a contact page that is also the notice is read as both: its Impressum link is still followed', async () => {
-    const run = await collect(server, { url: `https://${CONTACT}/` });
+    const run = await collect(server(), { url: `https://${CONTACT}/` });
     const docs = run.result.sections.documents?.documents ?? [];
     expect(docs.map((d) => [d.kind, new URL(d.url).pathname, d.role ?? 'main', d.foundVia])).toEqual([
       ['privacy', '/datenschutz/', 'main', 'link'],
@@ -261,7 +258,7 @@ describe('further privacy notices of the site', () => {
   });
 
   it('keeps the navigation pause before the notice with production pacing', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: `https://${HOST}/`,
       deps: { timing: { ...FAST_TIMING, navigationPauseMs: 1_500 } },
     });

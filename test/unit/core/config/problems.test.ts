@@ -56,22 +56,26 @@ function problemsOf(run: () => unknown) {
 }
 
 /** The parameter names that each reason id carries across all the cases. */
-function carriedParams(): Map<string, Set<string>> {
+function carriedParams(problems: ReturnType<typeof problemsOf>): Map<string, Set<string>> {
   const carried = new Map<string, Set<string>>();
-  for (const [, run] of CASES) {
-    for (const p of problemsOf(run)) {
-      const keys = carried.get(p.reason.id) ?? new Set<string>();
-      for (const k of Object.keys(p.reason.params)) keys.add(k);
-      carried.set(p.reason.id, keys);
-    }
+  for (const { reason } of problems) {
+    const keys = carried.get(reason.id) ?? new Set<string>();
+    for (const key of Object.keys(reason.params)) keys.add(key);
+    carried.set(reason.id, keys);
   }
   return carried;
 }
 
 describe('texts of the reasons', () => {
-  it.each(LANGS)('%s has a text for every id, using only parameters the reason carries', (lang) => {
+  const problems = CASES.flatMap(([, run]) => problemsOf(run));
+  const carried = carriedParams(problems);
+
+  it('every reason is reached by the invalid inputs', () => {
+    expect([...carried.keys()].sort()).toEqual([...REASON_IDS].sort());
+  });
+
+  it.each(LANGS)('%s renders each reason using only parameters the reason carries', (lang) => {
     const texts = loadTexts(lang);
-    const carried = carriedParams();
 
     for (const id of REASON_IDS) {
       const text = texts.ui[`config.problem.${id}`]?.text;
@@ -84,21 +88,9 @@ describe('texts of the reasons', () => {
     for (const source of ['environment', 'config', 'default']) {
       expect(texts.ui[`config.source.${source}`], `${lang} ${source}`).toBeDefined();
     }
-  });
-
-  it('every id is reached by one of the cases', () => {
-    const reached = new Set(CASES.flatMap(([, run]) => problemsOf(run).map((p) => p.reason.id)));
-
-    expect([...reached].sort()).toEqual([...REASON_IDS].sort());
-  });
-
-  it.each(LANGS)('%s renders every reason without a placeholder or a missing key', (lang) => {
-    const texts = loadTexts(lang);
-    for (const [, run] of CASES) {
-      for (const p of problemsOf(run)) {
-        const line = formatProblem(p, texts);
-        expect(line, line).not.toMatch(/\{\w|config\.(problem|source)\./);
-      }
+    for (const problem of problems) {
+      const line = formatProblem(problem, texts);
+      expect(line, line).not.toMatch(/\{\w|config\.(problem|source)\./);
     }
   });
 });

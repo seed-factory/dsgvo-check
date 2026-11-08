@@ -10,6 +10,7 @@ import type {
   CmpSection,
   ConsentStateFact,
 } from '../../../../src/cmp/types.ts';
+import type { AnyCheck } from '../../../../src/core/evaluation/check.ts';
 import type {
   BrowserPlan,
   CookieRecord,
@@ -35,6 +36,7 @@ import {
   makeSnapshot,
   makeStorage,
   makeTarget,
+  runCheck,
   withDerived,
 } from '../../../utils/snapshot-builder.ts';
 
@@ -67,6 +69,11 @@ export function page(
     ...p,
   });
 }
+
+export const startAndContact = (links: LinkFact[]) => [
+  page(START, 'start', 'A', {}, links),
+  page(CONTACT, 'contact', 'A', {}, links),
+];
 
 export const defaultPages = (phase: PageVisit['phase'] = 'A'): PageVisit[] => [
   page(START, 'start', phase),
@@ -549,6 +556,15 @@ export function site(spec: SiteSpec = {}): Snapshot {
   };
   return spec.derive === false ? snap : withDerived(snap);
 }
+
+export const runSiteCheck = (check: AnyCheck, spec?: SiteSpec, ctx?: Parameters<typeof runCheck>[2]) =>
+  runCheck(check, site(spec), ctx);
+
+export const runPhaseACheck = (
+  check: AnyCheck,
+  facts?: Partial<PhaseRecord>,
+  spec?: Omit<SiteSpec, 'phases'>,
+) => runSiteCheck(check, { ...spec, phases: [phase('A', facts)] });
 
 /** The partial snapshot that is written to a fixture file (derived is recomputed on load). */
 export function fixtureBody(s: Snapshot): Partial<Snapshot> {

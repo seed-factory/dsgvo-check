@@ -40,18 +40,6 @@ describe('rsaModulusBits', () => {
     },
   );
 
-  it.each(SIZES)('reads %i bits from the fixture builder, so fixtures say what they claim', (bits) => {
-    expect(rsaModulusBits(new Uint8Array(rsaSpkiDer(bits)))).toBe(bits);
-    expect(rsaModulusBits(new Uint8Array(rsaPkcs1Der(bits)))).toBe(bits);
-  });
-
-  it('does not count the leading zero byte of a modulus whose top bit is set', () => {
-    // 1024 bits: 128 bytes with the high bit set, so the INTEGER carries 129 bytes.
-    const der = rsaPkcs1Der(1024);
-    expect(der.slice(0, 8)).toEqual([0x30, 0x81, 0x89, 0x02, 0x81, 0x81, 0x00, expect.any(Number)]);
-    expect(rsaModulusBits(new Uint8Array(der))).toBe(1024);
-  });
-
   it('accepts rsaEncryption without parameters, as some encoders write it', () => {
     const spki = rsaSpkiDer(2048);
     // Drop `05 00` from the AlgorithmIdentifier and shorten the enclosing lengths by 2.

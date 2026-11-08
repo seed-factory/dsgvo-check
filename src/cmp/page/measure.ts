@@ -244,6 +244,20 @@ export function toMeasured(
   };
 }
 
+function bannerProbeArgs(
+  spec: BannerSpec,
+  lexicon: CmpLexicon,
+  options: Pick<ProbeArgs, 'switches' | 'fullTextMaxChars'>,
+): ProbeArgs {
+  return probeArgs(lexicon, {
+    mode: 'banner',
+    containers: [...spec.containers],
+    overlays: [...(spec.overlays ?? [])],
+    vendorRoles: [...(spec.vendorRoles ?? [])],
+    ...options,
+  });
+}
+
 export async function measureBanner(
   page: Page,
   spec: BannerSpec,
@@ -252,15 +266,8 @@ export async function measureBanner(
 ): Promise<Measured> {
   const raw = await runProbe(
     page,
-    probeArgs(lexicon, {
-      mode: 'banner',
-      containers: [...spec.containers],
-      overlays: [...(spec.overlays ?? [])],
-      vendorRoles: [...(spec.vendorRoles ?? [])],
-      ...(spec.switches ? { switches: spec.switches } : {}),
-    }),
+    bannerProbeArgs(spec, lexicon, spec.switches ? { switches: spec.switches } : {}),
   );
-
   return toMeasured(raw, lexicon, page.url(), { closeMeansAccept });
 }
 
@@ -274,16 +281,7 @@ export async function readBannerText(
   lexicon: CmpLexicon,
   maxChars: number,
 ): Promise<{ text: string; truncated: boolean } | null> {
-  const raw = await runProbe(
-    page,
-    probeArgs(lexicon, {
-      mode: 'banner',
-      containers: [...spec.containers],
-      overlays: [...(spec.overlays ?? [])],
-      vendorRoles: [...(spec.vendorRoles ?? [])],
-      fullTextMaxChars: maxChars,
-    }),
-  );
+  const raw = await runProbe(page, bannerProbeArgs(spec, lexicon, { fullTextMaxChars: maxChars }));
   return raw.found && raw.fullText ? raw.fullText : null;
 }
 
@@ -309,7 +307,6 @@ interface FrameGeometry {
   clip: Box | null;
 }
 
-/** What `iframeLayout` reads of an iframe element in its document. */
 interface IFrameElement {
   offsetWidth: number;
   offsetHeight: number;
@@ -421,7 +418,6 @@ async function frameGeometry(frame: Frame): Promise<FrameGeometry | null> {
   return geometry;
 }
 
-/** A child frame with its heuristic probe (null when it failed) and the geometry of its iframe element. */
 interface ChildFrameProbe {
   frame: Frame;
   raw: ProbeResult | null;
@@ -566,7 +562,6 @@ export async function probeHeuristic(page: Page, lexicon: CmpLexicon): Promise<H
   return { hit: { measured, detection: heuristicDetection(best, best.raw.heuristic) } };
 }
 
-/** The overlap of two boxes; null when they do not overlap. */
 function overlap(a: Box, b: Box): Box | null {
   const x = Math.max(a.x, b.x);
   const y = Math.max(a.y, b.y);
@@ -584,7 +579,6 @@ function shownInMainViewport(box: Box, clip: Box | null, vp: Viewport): Box | nu
   return shown && overlap(shown, { x: 0, y: 0, width: vp.width, height: vp.height });
 }
 
-/** Share of the viewport that the box covers; 0 when it lies outside. */
 function viewportShare(box: Box, vp: Viewport): number {
   const w = Math.min(vp.width, box.x + box.width) - Math.max(0, box.x);
   const h = Math.min(vp.height, box.y + box.height) - Math.max(0, box.y);
@@ -598,9 +592,7 @@ function keywordHint(lexicon: CmpLexicon): (text: string | null) => boolean {
   for (const k of lexicon.bannerKeywords ?? []) {
     try {
       patterns.push(new RegExp(k, 'iu'));
-    } catch {
-      // an invalid pattern matches nothing (the lexicon test compiles every source)
-    }
+    } catch {}
   }
   return (text) => text !== null && patterns.some((p) => p.test(text.toLowerCase()));
 }

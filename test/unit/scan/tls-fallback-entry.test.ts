@@ -75,6 +75,17 @@ describe('tlsFallbackEntry — the redirect target of the plain-http address', (
     });
   });
 
+  it('keeps a masked redirect path in the browser entry record', () => {
+    const raw = 'https://site.example.test/u/alice@intranet?session=fixture-secret';
+    const stored = 'https://site.example.test/[redacted]';
+    const chains = [httpChain([http(VIA, 302, stored), https(stored, 200)])];
+
+    expect(tlsFallbackEntry(snapshotWith({ chains }), handover(raw), 'http-redirect')).toEqual({
+      entry: { reason: 'tls-invalid', url: raw, via: VIA },
+      record: { reason: 'tls-invalid', url: stored, via: VIA },
+    });
+  });
+
   it.each([
     ['403 (a challenge the browser may pass)', 403],
     ['429 (a challenge the browser may pass)', 429],

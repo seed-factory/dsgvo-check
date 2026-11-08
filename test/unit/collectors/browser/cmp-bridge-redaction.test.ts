@@ -6,20 +6,15 @@ import { describe, expect, it } from 'vitest';
 import type { CmpButton, CmpFacts } from '../../../../src/cmp/types.ts';
 import { normalizeFacts, normalizeSettings } from '../../../../src/collectors/browser/cmp-bridge.ts';
 import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
+import { layerButton } from '../../cmp/fakes.ts';
 
-const button = (name: string, p: Partial<CmpButton> = {}): CmpButton => ({
-  role: 'button',
-  name,
-  tag: 'button',
-  kind: 'settings',
-  kindConfidence: 'high',
-  layer: 1,
-  box: { x: 10, y: 600, width: 160, height: 44 },
-  visibleAtFirstScreen: true,
-  actionableAtFirstScreen: true,
-  contrast: 7,
-  ...p,
-});
+const button = (name: string, over: Partial<CmpButton> = {}) =>
+  layerButton(name, {
+    kind: 'settings',
+    kindConfidence: 'high',
+    box: { x: 10, y: 600, width: 160, height: 44 },
+    ...over,
+  });
 
 const facts = (): CmpFacts => {
   const f = makeCmpFacts();

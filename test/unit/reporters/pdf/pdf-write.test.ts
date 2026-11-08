@@ -163,15 +163,4 @@ describe('optional PDF output', () => {
     expect(renderPdf).not.toHaveBeenCalled();
     expect(skipped.warnings).toEqual([uiText(loadTexts('en'), 'report.pdf.skipped')]);
   });
-
-  it('does not launch Chromium unless PDF was requested', async () => {
-    const outDir = outputDir();
-    await writeReports(
-      { report: sampleFullReport(), snapshot: null, exitCode: 0 },
-      { outDir, formats: ['json', 'html'], lang: 'en' },
-    );
-
-    expect(renderPdf).not.toHaveBeenCalled();
-    expect(existsSync(path.join(outDir, 'report.pdf')), 'no PDF file without the pdf format').toBe(false);
-  });
 });

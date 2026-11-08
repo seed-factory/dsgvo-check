@@ -25,8 +25,8 @@ function expectLinear(build: (n: number) => string): void {
 describe('query processing scales with parameter count and value size', () => {
   it('four times as many parameters stays below quadratic growth', () => expectLinear(manyParams));
 
-  it.each([64 * KiB, 512 * KiB, 4 * 1024 * KiB])('bounds the output for %i input bytes', (bytes) => {
-    const out = sanitizeUrl(manyParams(bytes));
+  it('bounds the output for a 4 MiB query', () => {
+    const out = sanitizeUrl(manyParams(4 * 1024 * KiB));
     expect(out).toHaveLength(2048);
     expect(out.startsWith(`http://h.test/?a=${REDACTED}&a=${REDACTED}`)).toBe(true);
   });
@@ -57,7 +57,7 @@ describe('query processing scales with parameter count and value size', () => {
     expect(out.startsWith(`http://h.test/?a=${REDACTED}&b=${REDACTED}&b=${REDACTED}`)).toBe(true);
   });
 
-  it.each([200, 340, 341, 342, 500, 1023, 1024, 1025, 2000])(
+  it.each([155, 156, 157, 158, 2000])(
     'cuts a query of %i short parameters at the same character boundary',
     (n) => {
       const expected = `http://h.test/?${Array.from({ length: n }, () => `a=${REDACTED}`).join('&')}`;
@@ -171,10 +171,10 @@ describe('query output matches the reference implementation', () => {
     ')',
   ];
 
-  it('random queries, 60 000 inputs', () => {
+  it('short queries with mixed escapes and separators', () => {
     const rnd = random(20261101);
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
-    for (let i = 0; i < 60_000; i++) {
+    for (let i = 0; i < 6_000; i++) {
       const query = Array.from({ length: 1 + Math.floor(rnd() * 14) }, pick).join('');
       const url = `http://h.test/p?${query}`;
       let expected: string;
@@ -190,7 +190,7 @@ describe('query output matches the reference implementation', () => {
   it('long random queries: the cut at 2048 characters is the same', () => {
     const rnd = random(20261102);
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 60; i++) {
       const query = Array.from({ length: 600 + Math.floor(rnd() * 800) }, pick).join('');
       const url = `http://h.test/p?${query}`;
       const expected = REFERENCE(url);

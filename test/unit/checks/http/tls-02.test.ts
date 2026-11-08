@@ -3,6 +3,7 @@ import { tls02 } from '../../../../src/checks/http/tls-02.ts';
 import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { checkThresholds } from '../../../../src/core/config/thresholds.ts';
 import type { HttpSection } from '../../../../src/core/snapshot/http.ts';
+import type { TargetInfo } from '../../../../src/core/snapshot/index.ts';
 import type { TlsEndpoint } from '../../../../src/core/snapshot/tls.ts';
 import {
   FIXED_NOW,
@@ -32,6 +33,8 @@ function ep(p: Partial<TlsEndpoint> = {}, left = 200, age = 165): TlsEndpoint {
 }
 
 const snap = (...endpoints: TlsEndpoint[]) => makeSnapshot({ tls: makeTls({ endpoints }), http: makeHttp() });
+const runTarget = (target: TargetInfo, ...endpoints: TlsEndpoint[]) =>
+  runCheck(tls02, { ...snap(...endpoints), target });
 const run = (...endpoints: TlsEndpoint[]) => runCheck(tls02, snap(...endpoints));
 
 /** An endpoint whose certificate Node rejected with `error`. */
@@ -188,44 +191,52 @@ describe('TLS-02 certificate', () => {
         chain,
       });
 
-    it('leaf + its intermediate, root not in the store → certificate-invalid (untrusted-root), not chain-incomplete', () => {
-      const r = run(unknownIssuer([leaf(), intermediate()]));
-      expect(variantsOf(r)).toEqual(['certificate-invalid']);
-      expect(observationsOf(r)[0]?.params).toMatchObject({
-        reason: 'untrusted-root',
-        untrustedRoot: 'yes',
-        error: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-        issuer: 'CN=Some Intermediate',
-      });
-    });
-
-    it('the intermediate may come later in the chain: the issuer is searched in every sent certificate', () => {
-      const other = makeCert({ ...dates, subject: 'CN=Other CA', issuer: 'CN=Some Root', isCa: true });
-      const r = run(unknownIssuer([leaf(), other, intermediate()]));
-      expect(variantsOf(r)).toEqual(['certificate-invalid']);
-    });
-
-    it('counterexample: the leaf alone with the same error → chain-incomplete stays (the issuer was not sent)', () => {
-      const r = run(unknownIssuer([leaf()]));
-      expect(variantsOf(r)).toEqual(['chain-incomplete']);
-      expect(observationsOf(r)[0]?.params).toMatchObject({ issuer: 'CN=Some Intermediate' });
-    });
-
-    it('counterexample: a sent certificate that is not the issuer of the leaf → chain-incomplete stays', () => {
-      const r = run(unknownIssuer([leaf(), intermediate('CN=Unrelated CA')]));
-      expect(variantsOf(r)).toEqual(['chain-incomplete']);
-    });
-
-    it('counterexample: authorized by the store → neither chain-incomplete nor certificate-invalid', () => {
-      const r = run(
+    it.each([
+      [
+        'leaf + its intermediate, root not in the store → certificate-invalid (untrusted-root), not chain-incomplete',
+        unknownIssuer([leaf(), intermediate()]),
+        ['certificate-invalid'],
+        {
+          reason: 'untrusted-root',
+          untrustedRoot: 'yes',
+          error: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+          issuer: 'CN=Some Intermediate',
+        },
+      ],
+      [
+        'the intermediate may come later in the chain: the issuer is searched in every sent certificate',
+        unknownIssuer([
+          leaf(),
+          makeCert({ ...dates, subject: 'CN=Other CA', issuer: 'CN=Some Root', isCa: true }),
+          intermediate(),
+        ]),
+        ['certificate-invalid'],
+      ],
+      [
+        'counterexample: the leaf alone with the same error → chain-incomplete stays (the issuer was not sent)',
+        unknownIssuer([leaf()]),
+        ['chain-incomplete'],
+        { issuer: 'CN=Some Intermediate' },
+      ],
+      [
+        'counterexample: a sent certificate that is not the issuer of the leaf → chain-incomplete stays',
+        unknownIssuer([leaf(), intermediate('CN=Unrelated CA')]),
+        ['chain-incomplete'],
+      ],
+      [
+        'counterexample: authorized by the store → neither chain-incomplete nor certificate-invalid',
         ep({
           authorized: true,
           authorizationError: null,
           chainComplete: false,
           chain: [leaf(), intermediate()],
         }),
-      );
-      expect(variantsOf(r)).toEqual([]);
+        [],
+      ],
+    ] as const)('%s', (_name, endpoint, variants, params?: Record<string, string>) => {
+      const r = run(endpoint);
+      expect(variantsOf(r)).toEqual(variants);
+      if (params) expect(observationsOf(r)[0]?.params).toMatchObject(params);
     });
   });
 
@@ -432,15 +443,9 @@ describe('TLS-02 certificate', () => {
   });
 
   it('the target endpoint on an explicit port is evaluated', () => {
-    const r = runCheck(
-      tls02,
-      makeSnapshot({
-        target: makeTarget('https://www.example.de:8443/'),
-        tls: makeTls({
-          endpoints: [ep({ port: 8443, authorized: false, authorizationError: 'CERT_HAS_EXPIRED' }, -1)],
-        }),
-        http: makeHttp(),
-      }),
+    const r = runTarget(
+      makeTarget('https://www.example.de:8443/'),
+      rejected('CERT_HAS_EXPIRED', { port: 8443 }, -1),
     );
 
     expect(variantsOf(r)).toEqual(['certificate-invalid']);
@@ -452,31 +457,15 @@ describe('TLS-02 subject by host role, independent of how the target was typed (
   const expired = { authorized: false, authorizationError: 'CERT_HAS_EXPIRED' } as const;
 
   it('typed example.de (redirect to www) and typed www.example.de: same subject for the www certificate', () => {
-    const viaApex = runCheck(
-      tls02,
-      makeSnapshot({
-        target: makeTarget('https://example.de/', 'https://www.example.de/'),
-        tls: makeTls({
-          endpoints: [
-            ep({ hostVariant: 'target', host: 'example.de' }),
-            ep({ id: 'tls-www', hostVariant: 'www', host: 'www.example.de', ...expired }, -1),
-          ],
-        }),
-        http: makeHttp(),
-      }),
+    const viaApex = runTarget(
+      makeTarget('https://example.de/', 'https://www.example.de/'),
+      ep({ hostVariant: 'target', host: 'example.de' }),
+      ep({ id: 'tls-www', hostVariant: 'www', host: 'www.example.de', ...expired }, -1),
     );
-    const direct = runCheck(
-      tls02,
-      makeSnapshot({
-        target: makeTarget('https://www.example.de/'),
-        tls: makeTls({
-          endpoints: [
-            ep({ host: 'www.example.de', ...expired }, -1),
-            ep({ id: 'tls-apex', hostVariant: 'apex', host: 'example.de' }),
-          ],
-        }),
-        http: makeHttp(),
-      }),
+    const direct = runTarget(
+      makeTarget('https://www.example.de/'),
+      ep({ host: 'www.example.de', ...expired }, -1),
+      ep({ id: 'tls-apex', hostVariant: 'apex', host: 'example.de' }),
     );
     expect(observationsOf(viaApex).map((o) => o.subject)).toEqual(['certificate:final']);
     expect(observationsOf(direct).map((o) => o.subject)).toEqual(['certificate:final']);

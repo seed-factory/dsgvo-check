@@ -145,7 +145,6 @@ export interface CmpFirstLayer {
   /** Length only; the text itself is not stored. */
   textLength?: number;
   containerBox?: Box | null;
-  /** Exactly one container matched; the screenshot is taken only then. */
   containerUnambiguous?: boolean;
   containerFixed?: boolean;
   /** The probe dropped controls that may belong to the first layer; "no reject" must not be concluded then. */
@@ -396,6 +395,7 @@ export type ActOptions = {
   /** Lexicon of the decision over `facts` (default: test/data/cmp). */
   lexicon?: CmpLexicon;
   timeoutMs?: number;
+  signal?: AbortSignal;
 } & (
   | {
       /** Core's click decision; `null` means nothing to click. When present, `facts` and `lexicon` are ignored. */
@@ -411,6 +411,8 @@ export type ActOptions = {
       blockingCoveredRatio: number;
     }
 );
+
+export type CmpActionOptions = Pick<ActOptions, 'timeoutMs' | 'signal'>;
 
 export interface VerifyOptions {
   /** Reload the page and read the state again (default true). */
@@ -436,7 +438,7 @@ export interface CmpAdapter {
     page: Page,
     action: 'reject' | 'accept',
     target: ClickTarget | null,
-    opts?: Pick<ActOptions, 'timeoutMs'>,
+    opts?: CmpActionOptions,
   ): Promise<ClickOutcome>;
   /** Clicks `opts.target`, or the reject target classified from `opts.facts`. */
   reject(page: Page, opts?: ActOptions): Promise<ClickOutcome>;
@@ -449,7 +451,7 @@ export interface CmpAdapter {
    * Clicks `opener`, the settings control core chose on the first layer, waits up to `timeoutMs` for the settings layer
    * and reads it. Toggles nothing and saves nothing; the save is a separate `act` on core's choice.
    */
-  openSettings?(page: Page, opener: ClickTarget, opts?: { timeoutMs?: number }): Promise<SettingsLayerFacts>;
+  openSettings?(page: Page, opener: ClickTarget, opts?: CmpActionOptions): Promise<SettingsLayerFacts>;
   /**
    * Reads the state after the action, then (default) reloads and reads it again. In the document of our click only
    * a state the click produced verifies.

@@ -1,5 +1,5 @@
 /** Arguments and raw result of `cmpPageProbe`, shared by the probe and its Node side (measure.ts). */
-import type { PagePattern } from '../../core/redaction/page-names.ts';
+import type { IdLikePatterns, PagePattern } from '../../core/redaction/id-like.ts';
 import type { Box, Viewport } from '../../core/snapshot/common.ts';
 import type { BannerCandidateFact, SettingsGroupFact } from '../types.ts';
 
@@ -22,20 +22,7 @@ export interface ProbeNameRules {
   /** A value one of these matches, as written or in NFKC, is no name. */
   notName: readonly PagePattern[];
   /** Runs that make a value no name, applied in the steps of `hasIdLikeRun`. */
-  idLike: {
-    otherDigit: PagePattern;
-    separator: PagePattern;
-    compact: readonly PagePattern[];
-    plain: readonly PagePattern[];
-    token: PagePattern;
-    tokenSplit: PagePattern;
-    word: PagePattern;
-    version: PagePattern;
-    smallNumber: PagePattern;
-    wordsWithGroup: PagePattern;
-    lettersSplit: PagePattern;
-    letters: PagePattern;
-  };
+  idLike: IdLikePatterns;
   tag: PagePattern & { maxLength: number };
   /** The roles a `role` token may name; the first listed token counts, else the implicit role of the element. */
   roles: readonly string[];

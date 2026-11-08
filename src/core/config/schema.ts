@@ -138,13 +138,13 @@ const browser = z.strictObject({
   ),
   screenshotMaxBytes: int(
     204_800,
-    `Largest banner screenshot kept. The HTML report embeds images up to ${envName('report', 'screenshotEmbedMaxBytes')}.`,
+    'Banner screenshot size limit retained for compatibility while live capture is paused.',
     10_240,
     2_097_152,
   ),
   screenshotMaxViewportShare: ratio(
     0.5,
-    'Largest share of the viewport a banner may cover to be photographed; a larger container gets no image.',
+    'Banner screenshot viewport limit retained for compatibility while live capture is paused.',
   ),
   sourceFetchTimeoutMs: int(8_000, 'Time limit for fetching robots.txt and sitemaps.', 1_000),
   responseMetaTimeoutMs: int(

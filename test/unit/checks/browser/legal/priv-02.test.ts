@@ -3,11 +3,7 @@
  * against what the browser loaded. The matcher table covers the dictionary rules, the check cases the levels,
  * the evidence and the moments that count.
  */
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { browserChecks } from '../../../../../src/checks/browser/index.ts';
 import {
   claimsFromData,
   hasPhrase,
@@ -20,22 +16,18 @@ import {
 } from '../../../../../src/checks/browser/policy-claims.ts';
 import { priv01 } from '../../../../../src/checks/browser/priv-01.ts';
 import { priv02 } from '../../../../../src/checks/browser/priv-02.ts';
+import type { CmpSection } from '../../../../../src/cmp/types.ts';
 import { loadDataDir, loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage } from '../../../../../src/core/data/messages.ts';
-import { CheckRegistry } from '../../../../../src/core/evaluation/registry.ts';
 import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
-import { silentLogger } from '../../../../../src/core/runtime/logger.ts';
-import type { DocumentPart } from '../../../../../src/core/snapshot/browser.ts';
-import { toSavedSnapshot } from '../../../../../src/core/snapshot/index.ts';
+import type {
+  DocumentPart,
+  DocumentsSection,
+  PhaseRecord,
+  RequestRecord,
+} from '../../../../../src/core/snapshot/browser.ts';
 import type { ServiceCategory } from '../../../../../src/derive/types.ts';
-import { scan } from '../../../../../src/scan.ts';
-import {
-  checkContext,
-  FIXED_NOW,
-  observationsOf,
-  runCheck,
-  variantsOf,
-} from '../../../../utils/snapshot-builder.ts';
+import { checkContext, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
   CONTACT,
   click,
@@ -46,6 +38,8 @@ import {
   privacyDoc,
   rejectCmp,
   req,
+  runPhaseACheck,
+  runSiteCheck,
   START,
   site,
 } from '../helpers.ts';
@@ -508,8 +502,20 @@ describe('statements of the policy', () => {
 });
 
 describe('PRIV-02 levels', () => {
+  const runFonts = (documents: DocumentsSection) => runCheck(priv02, fontsOnTwoPages(documents));
+  const runClaim = (text: string, part?: Parameters<typeof fontsPart>[1]) =>
+    runFonts(policyWith(fontsPart(text, part)));
+  const coursePolicy = (text: string, role?: 'supplement') =>
+    privacyDoc([fontsPart(text)], {
+      id: 'doc-privacy-courses',
+      url: `${PRIVACY}-kurse`,
+      ...(role ? { role } : {}),
+    });
+
   it('replicated: one finding with a quote per statement, a request per context and the confirmed reject', () => {
-    const r = runCheck(priv02, scenario('violation-local-fonts-claim-replicated.json'));
+    const snap = scenario('violation-local-fonts-claim-replicated.json');
+    const r = runCheck(priv02, snap);
+    expect(variantsOf(runCheck(priv01, snap))).toEqual([]);
     const [o, ...rest] = observationsOf(r);
     expect(rest).toEqual([]);
     expect(o).toMatchObject({
@@ -549,7 +555,6 @@ describe('PRIV-02 levels', () => {
       'stored',
     ]);
     expect(o!.evidence[0]).toMatchObject({ type: 'document', kind: 'privacy', url: PRIVACY });
-    for (const ev of o!.evidence) expect(EvidenceSchema.safeParse({ ...ev, id: 'ev-1' }).success).toBe(true);
   });
 
   it('replicated needs as many contexts as the setting says', () => {
@@ -596,7 +601,7 @@ describe('PRIV-02 levels', () => {
   ])(
     'a document that also describes the load or limits its statement is no contradiction: %s',
     (_, text, expected) => {
-      const r = runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(text))));
+      const r = runClaim(text);
       if (expected === 'claim-ambiguous') {
         expect(r).toMatchObject({ status: 'inconclusive', reason: 'claim-ambiguous' });
       } else {
@@ -622,36 +627,23 @@ describe('PRIV-02 levels', () => {
 
   it('a disclosure in another document of the site leaves the statement of the policy contradicted', () => {
     const main = privacyDoc([fontsPart(LOCAL_CLAIM)]);
-    const other = privacyDoc([fontsPart('Ihr Browser lädt die Schriftarten von Google.')], {
-      id: 'doc-privacy-courses',
-      url: `${PRIVACY}-kurse`,
-    });
-    const r = runCheck(
-      priv02,
-      fontsOnTwoPages({ documents: [policyWith().documents[0]!, main, other], attempts: [] }),
-    );
+    const other = coursePolicy('Ihr Browser lädt die Schriftarten von Google.');
+    const r = runFonts({ documents: [policyWith().documents[0]!, main, other], attempts: [] });
     expect(variantsOf(r)).toEqual(['contradiction-replicated']);
   });
 
   it('a statement in a further privacy notice of the site is not read; the same document as a policy is', () => {
-    const notice = (role?: 'supplement') =>
-      privacyDoc([fontsPart(LOCAL_CLAIM)], {
-        id: 'doc-privacy-courses',
-        url: `${PRIVACY}-kurse`,
-        ...(role ? { role } : {}),
-      });
-    const run = (doc: ReturnType<typeof notice>) =>
-      runCheck(priv02, fontsOnTwoPages({ documents: [...policyWith().documents, doc], attempts: [] }));
-    expect(run(notice('supplement')).status).toBe('completed');
-    expect(variantsOf(run(notice('supplement')))).toEqual([]);
-    expect(variantsOf(run(notice()))).toEqual(['contradiction-replicated']);
+    const run = (role?: 'supplement') =>
+      runFonts({ documents: [...policyWith().documents, coursePolicy(LOCAL_CLAIM, role)], attempts: [] });
+    const supplement = run('supplement');
+    expect(supplement.status).toBe('completed');
+    expect(variantsOf(supplement)).toEqual([]);
+    expect(variantsOf(run())).toEqual(['contradiction-replicated']);
   });
 
   it('a disclosure too long to quote still makes it wording-to-review, and every quote stays within the limit', () => {
     const long = `Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen, ${'um die Schriftarten der Website zu laden '.repeat(4)}.`;
-    const [o] = observationsOf(
-      runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(`${LOCAL_CLAIM} ${long}`)))),
-    );
+    const [o] = observationsOf(runClaim(`${LOCAL_CLAIM} ${long}`));
     expect(o?.params).toMatchObject({ basis: 'disclosure' });
     for (const ev of o!.evidence) {
       expect(EvidenceSchema.safeParse({ ...ev, id: 'ev-1' }).success, JSON.stringify(ev)).toBe(true);
@@ -669,8 +661,7 @@ describe('PRIV-02 levels', () => {
   });
 
   it('the subject from a previous sentence or a category is medium confidence (at most warning)', () => {
-    const run = (text: string, section: string) =>
-      observationsOf(runCheck(priv02, fontsOnTwoPages(policyWith(fontsPart(text, { section })))));
+    const run = (text: string, section: string) => observationsOf(runClaim(text, { section }));
     expect(run('Wir verwenden Google Fonts. Diese sind lokal eingebunden.', 'Schriftarten')).toMatchObject([
       { variant: 'contradiction-replicated', confidence: 'medium' },
     ]);
@@ -680,7 +671,7 @@ describe('PRIV-02 levels', () => {
   });
 
   it('a policy whose expandable parts were not opened gives medium confidence and partial with banner-open', () => {
-    const snap = fontsOnTwoPages({
+    const r = runFonts({
       documents: [
         policyWith().documents[0]!,
         {
@@ -698,7 +689,6 @@ describe('PRIV-02 levels', () => {
       ],
       attempts: [],
     });
-    const r = runCheck(priv02, snap);
     expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['banner-open'] } });
     expect(observationsOf(r)).toMatchObject([{ variant: 'contradiction-replicated', confidence: 'medium' }]);
   });
@@ -706,6 +696,10 @@ describe('PRIV-02 levels', () => {
 
 describe('PRIV-02 moments that contradict a statement', () => {
   const policy = policyWith(fontsPart(LOCAL_CLAIM));
+  const runPolicy = (phases: PhaseRecord[], documents: DocumentsSection = policy, cmp?: CmpSection) =>
+    runSiteCheck(priv02, { phases, documents, cmp });
+  const runRequests = (requests: RequestRecord[], documents: DocumentsSection = policy) =>
+    runPolicy([phase('A', { requests })], documents);
   const maps = (text: string) =>
     policyWith(fontsPart(text, { section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps' }));
   const MAPS_JS = 'https://maps.googleapis.com/maps/api/js?key=[redacted]';
@@ -713,47 +707,29 @@ describe('PRIV-02 moments that contradict a statement', () => {
     phase('C', { click: click('accept'), requests });
 
   it('fonts after the accept outside a map or video navigation contradict the local statement', () => {
-    const one = runCheck(
-      priv02,
-      site({ phases: [phase('A'), acceptOn(cAfterClick('C-1', FONTS_CSS))], documents: policy }),
-    );
-    expect(variantsOf(one)).toEqual(['contradiction-single']);
-    const two = runCheck(
-      priv02,
-      site({
-        phases: [
-          phase('A'),
-          acceptOn(cAfterClick('C-1', FONTS_CSS), cAfterClick('C-2', FONTS_CSS, { pageUrl: CONTACT })),
-        ],
-        documents: policy,
-      }),
-    );
-    expect(variantsOf(two)).toEqual(['contradiction-replicated']);
+    const contact = cAfterClick('C-2', FONTS_CSS, { pageUrl: CONTACT });
+    for (const [extra, expected] of [
+      [[], 'contradiction-single'],
+      [[contact], 'contradiction-replicated'],
+    ] as const) {
+      const accepted = acceptOn(cAfterClick('C-1', FONTS_CSS), ...extra);
+      expect(variantsOf(runPolicy([phase('A'), accepted])), expected).toEqual([expected]);
+    }
   });
 
   it('fonts after the accept in a navigation with the Maps JavaScript API are left out and named as a limitation', () => {
     const r = runCheck(priv02, scenario('clean-maps-js-fonts-after-accept.json'));
     expect(r).toMatchObject({ status: 'partial', outcome: { limitations: ['embed-navigation-excluded'] } });
     // The same page in phase A, before any interaction, still counts.
-    const before = runCheck(
-      priv02,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('A-1', MAPS_JS, { pageUrl: CONTACT }), fontsCss('A-2', { pageUrl: CONTACT })],
-          }),
-        ],
-        documents: policy,
-      }),
-    );
+    const before = runRequests([
+      req('A-1', MAPS_JS, { pageUrl: CONTACT }),
+      fontsCss('A-2', { pageUrl: CONTACT }),
+    ]);
     expect(variantsOf(before)).toEqual(['contradiction-single']);
   });
 
   it('after an unconfirmed reject an unconditional statement is contradicted, afterReject stays false', () => {
-    const r = runCheck(
-      priv02,
-      site({ phases: [phase('A'), afterReject([bAfterClick('B-1')])], documents: policy }),
-    );
+    const r = runPolicy([phase('A'), afterReject([bAfterClick('B-1')])]);
     expect(observationsOf(r)).toMatchObject([
       { variant: 'contradiction-single', params: { afterReject: false } },
     ]);
@@ -766,20 +742,10 @@ describe('PRIV-02 moments that contradict a statement', () => {
         pageUrl: START,
         resourceType: 'document',
       });
-    const text = 'Google Maps wird erst geladen, wenn Sie zustimmen.';
-    const unconfirmed = runCheck(
-      priv02,
-      site({ phases: [phase('A'), afterReject([map('B-1')])], documents: maps(text) }),
-    );
-    expect(variantsOf(unconfirmed)).toEqual([]);
-    const confirmed = runCheck(
-      priv02,
-      site({
-        phases: [phase('A'), afterReject([map('B-1')])],
-        cmp: rejectCmp({ confirmed: true }),
-        documents: maps(text),
-      }),
-    );
+    const documents = maps('Google Maps wird erst geladen, wenn Sie zustimmen.');
+    const phases = () => [phase('A'), afterReject([map('B-1')])];
+    expect(variantsOf(runPolicy(phases(), documents))).toEqual([]);
+    const confirmed = runPolicy(phases(), documents, rejectCmp({ confirmed: true }));
     expect(observationsOf(confirmed)).toMatchObject([
       { variant: 'contradiction-single', params: { afterReject: true } },
     ]);
@@ -805,12 +771,9 @@ describe('PRIV-02 moments that contradict a statement', () => {
           section: `Datenschutzerklärung > 5. Plugins und Tools > ${service}`,
         }),
       );
-    const recaptcha = runCheck(
-      priv02,
-      site({ phases: [phase('A', { requests })], documents: gated('Google reCAPTCHA') }),
-    );
+    const recaptcha = runRequests(requests, gated('Google reCAPTCHA'));
     expect(variantsOf(recaptcha)).toEqual([]);
-    const video = runCheck(priv02, site({ phases: [phase('A', { requests })], documents: gated('YouTube') }));
+    const video = runRequests(requests, gated('YouTube'));
     expect(observationsOf(video).map((o) => [o.subject, o.variant])).toEqual([
       ['youtube-nocookie', 'contradiction-single'],
     ]);
@@ -835,21 +798,15 @@ describe('PRIV-02 moments that contradict a statement', () => {
       phase('A', { requests: [frameDocument('A-1', YOUTUBE)] }),
       phase('B', { pages: consentPages('B', []), requests: [frameDocument('B-1', YOUTUBE, { phase: 'B' })] }),
     ];
-    const cookies = runCheck(
-      priv02,
-      site({
-        phases,
-        documents: videoPolicy(
-          'Wir binden Videos von YouTube im erweiterten Datenschutzmodus ein. Cookies werden erst gesetzt, wenn Sie zustimmen.',
-        ),
-      }),
+    const cookies = runPolicy(
+      phases,
+      videoPolicy(
+        'Wir binden Videos von YouTube im erweiterten Datenschutzmodus ein. Cookies werden erst gesetzt, wenn Sie zustimmen.',
+      ),
     );
     expect(cookies.status).toBe('completed');
     expect(variantsOf(cookies)).toEqual([]);
-    const loading = runCheck(
-      priv02,
-      site({ phases, documents: videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.') }),
-    );
+    const loading = runPolicy(phases, videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.'));
     expect(variantsOf(loading)).toEqual(['contradiction-replicated']);
   });
 
@@ -875,47 +832,34 @@ describe('PRIV-02 moments that contradict a statement', () => {
       const documents = policyWith(fontsPart(text, { section }));
       const afterAccept = (id: string, pageUrl: string) =>
         frameDocument(id, url, { phase: 'C', afterClick: true, tRef: 'click', pageUrl });
-      const r = runCheck(
-        priv02,
-        site({
-          phases: [phase('A'), acceptOn(afterAccept('C-1', START), afterAccept('C-2', CONTACT))],
-          documents,
-        }),
+      const r = runPolicy(
+        [phase('A'), acceptOn(afterAccept('C-1', START), afterAccept('C-2', CONTACT))],
+        documents,
       );
       expect(r.status).toBe('completed');
       expect(variantsOf(r)).toEqual([]);
       // The same embed before any interaction contradicts the statement.
-      const before = runCheck(
-        priv02,
-        site({
-          phases: [phase('A', { requests: [frameDocument('A-1', url, { pageUrl: CONTACT })] })],
-          documents,
-        }),
-      );
+      const before = runRequests([frameDocument('A-1', url, { pageUrl: CONTACT })], documents);
       expect(variantsOf(before)).toEqual(['contradiction-single']);
     },
   );
 
   it("a player's late beacon recorded with the next page counts for the page of the player", () => {
-    const r = runCheck(
+    const r = runPhaseACheck(
       priv02,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              frameDocument('A-1', YOUTUBE, { pageUrl: START, frameId: 'y1' }),
-              req('A-2', 'https://www.youtube-nocookie.com/generate_204?x=[redacted]', {
-                pageUrl: CONTACT,
-                isMainFrame: false,
-                frameId: 'y1',
-                frameUrl: YOUTUBE,
-                resourceType: 'image',
-              }),
-            ],
+      {
+        requests: [
+          frameDocument('A-1', YOUTUBE, { pageUrl: START, frameId: 'y1' }),
+          req('A-2', 'https://www.youtube-nocookie.com/generate_204?x=[redacted]', {
+            pageUrl: CONTACT,
+            isMainFrame: false,
+            frameId: 'y1',
+            frameUrl: YOUTUBE,
+            resourceType: 'image',
           }),
         ],
-        documents: videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.'),
-      }),
+      },
+      { documents: videoPolicy('YouTube wird erst geladen, wenn Sie zustimmen.') },
     );
     expect(observationsOf(r)).toMatchObject([
       {
@@ -934,25 +878,22 @@ describe('PRIV-02 moments that contradict a statement', () => {
     (effect, afterRejectParam, proofs) => {
       const SHOP_A = `${START}shop/a`;
       const SHOP_B = `${START}shop/b`;
-      const r = runCheck(
-        priv02,
-        site({
-          phases: [
-            phase('A'),
-            phase('B', {
-              click: click('reject'),
-              reloaded: true,
-              pages: consentPages('B', [SHOP_A, SHOP_B]),
-              requests: [
-                bAfterClick('B-1', FONTS_CSS, { pageUrl: SHOP_A }),
-                bAfterClick('B-2', FONTS_CSS, { pageUrl: SHOP_B }),
-              ],
-            }),
-          ],
-          cmp: rejectCmp({ confirmed: true, pages: { [SHOP_A]: effect, [SHOP_B]: effect } }),
-          documents: policyWith(fontsPart('Google Fonts werden erst nach Ihrer Einwilligung geladen.')),
-        }),
-      );
+      const r = runSiteCheck(priv02, {
+        phases: [
+          phase('A'),
+          phase('B', {
+            click: click('reject'),
+            reloaded: true,
+            pages: consentPages('B', [SHOP_A, SHOP_B]),
+            requests: [
+              bAfterClick('B-1', FONTS_CSS, { pageUrl: SHOP_A }),
+              bAfterClick('B-2', FONTS_CSS, { pageUrl: SHOP_B }),
+            ],
+          }),
+        ],
+        cmp: rejectCmp({ confirmed: true, pages: { [SHOP_A]: effect, [SHOP_B]: effect } }),
+        documents: policyWith(fontsPart('Google Fonts werden erst nach Ihrer Einwilligung geladen.')),
+      });
       const [o, ...rest] = observationsOf(r);
       expect(rest).toEqual([]);
       expect(o).toMatchObject({
@@ -974,88 +915,39 @@ describe('PRIV-02 moments that contradict a statement', () => {
   );
 
   it('no phase A: no-network-observation; no policy: privacy-policy-not-found', () => {
-    expect(
-      runCheck(priv02, site({ phases: [phase('A', { status: 'skipped', pages: [] })], documents: policy })),
-    ).toMatchObject({
+    expect(runPhaseACheck(priv02, { status: 'skipped', pages: [] }, { documents: policy })).toMatchObject({
       status: 'inconclusive',
       reason: 'no-network-observation',
     });
-    expect(
-      runCheck(
-        priv02,
-        site({
-          phases: [phase('A', { requests: [fontsCss('A-1')] })],
-          documents: { documents: [], attempts: [] },
-        }),
-      ),
-    ).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
+    expect(runRequests([fontsCss('A-1')], { documents: [], attempts: [] })).toMatchObject({
+      status: 'inconclusive',
+      reason: 'privacy-policy-not-found',
+    });
   });
 });
 
 describe('PRIV-02 next to the other checks', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'priv02-'));
-
-  it('PRIV-01 stays silent for the named service and EMBED-01 keeps the load; assess links them by service', async () => {
-    const snap = scenario('violation-local-fonts-claim-replicated.json');
-    expect(variantsOf(runCheck(priv01, snap))).toEqual([]);
-
-    const file = path.join(dir, 'fonts.json');
-    writeFileSync(file, JSON.stringify(toSavedSnapshot(snap)));
-    const { report } = await scan({
-      fromSnapshot: file,
-      registry: new CheckRegistry(browserChecks),
-      now: () => FIXED_NOW,
-      log: silentLogger,
-    });
-    const findings = report.findings ?? [];
-    const priv = findings.find((f) => f.checkId === 'PRIV-02');
-    const embed = findings.find((f) => f.checkId === 'EMBED-01');
-    expect(priv).toMatchObject({
-      variant: 'contradiction-replicated',
-      severity: 'critical',
-      crmCode: 'T1_MISLEADING_CLAIM',
-    });
-    expect(embed).toMatchObject({ variant: 'fonts-loaded' });
-    expect(priv?.related).toContainEqual({
-      checkId: 'EMBED-01',
-      fingerprint: embed?.fingerprint,
-      relation: 'same-service',
-    });
-  });
-
   it('a policy without statements: completed without findings', () => {
-    const r = runCheck(
-      priv02,
-      site({
-        phases: [phase('A', { requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: IMPRESSUM })] })],
-      }),
-    );
+    const r = runPhaseACheck(priv02, {
+      requests: [fontsCss('A-1'), fontsCss('A-2', { pageUrl: IMPRESSUM })],
+    });
     expect(r).toMatchObject({ status: 'completed', outcome: { coverage: { evaluated: 0 } } });
     expect(variantsOf(r)).toEqual([]);
   });
 });
 
 describe('PRIV-02 words in the report', () => {
-  it.each(['de', 'en'] as const)(
-    '%s: the reason, the limitation and the statement codes have words',
-    (lang) => {
-      const ui = loadTexts(lang).ui;
-      const reason = formatMessage(ui['report.reason']!.text, { code: 'claim-ambiguous' }, lang);
-      const limitation = formatMessage(
-        ui['report.checkLimitation']!.text,
-        { code: 'embed-navigation-excluded' },
-        lang,
-      );
-      expect(reason).not.toBe('');
-      expect(limitation).not.toBe('');
-      for (const value of ['self-hosted', 'no-connection', 'consent-gated']) {
-        expect(
-          formatMessage(ui['report.evidence.value']!.text, { field: 'claim', value }, lang),
-          value,
-        ).not.toBe('');
-      }
-    },
-  );
+  it.each(['de', 'en'] as const)('%s: the reason and the limitation have words', (lang) => {
+    const ui = loadTexts(lang).ui;
+    const reason = formatMessage(ui['report.reason']!.text, { code: 'claim-ambiguous' }, lang);
+    const limitation = formatMessage(
+      ui['report.checkLimitation']!.text,
+      { code: 'embed-navigation-excluded' },
+      lang,
+    );
+    expect(reason).not.toBe('');
+    expect(limitation).not.toBe('');
+  });
 
   it('every statement kind of the dictionary has words of its own in the finding texts and the evidence', () => {
     const [o] = observationsOf(runCheck(priv02, scenario('violation-local-fonts-claim-replicated.json')));

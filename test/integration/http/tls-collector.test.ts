@@ -17,8 +17,8 @@ import {
   collectorContext,
   createChainPki,
   httpProxy,
-  silentServer,
   withRoutes,
+  withSilentServer,
 } from './helpers.ts';
 
 let server: FixtureServer;
@@ -168,13 +168,12 @@ describe('TLS collector with the test PKI', () => {
     });
   });
 
-  it('server that never completes the handshake → timeout, TLS-02 inconclusive', async () => {
-    const silent = await silentServer();
-    try {
+  it('server that never completes the handshake → timeout, TLS-02 inconclusive', () =>
+    withSilentServer(async (port) => {
       const res = await createTlsCollector({ timeoutMs: SHORT_TIMEOUT_MS })(
         collectorContext(
           'https://www.slow.test/',
-          withRoutes(server.network(), { 'www.slow.test': silent.port, 'slow.test': closed }),
+          withRoutes(server.network(), { 'www.slow.test': port, 'slow.test': closed }),
         ),
       );
 
@@ -184,10 +183,7 @@ describe('TLS collector with the test PKI', () => {
         status: 'inconclusive',
         reason: 'handshake-inconclusive',
       });
-    } finally {
-      await silent.close();
-    }
-  });
+    }));
 });
 
 describe('TLS collector: certificate chains', () => {

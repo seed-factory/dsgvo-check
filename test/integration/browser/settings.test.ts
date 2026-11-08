@@ -1,17 +1,10 @@
 /** The browser collector reads its timings and limits from the settings of the scan unless a test injects its own. */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+
+import { beforeAll, describe, expect, it } from 'vitest';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { type CollectRun, collect } from './helpers.ts';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/selection'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({ sites: ['browser/selection'] }));
 
 /** Far below the production timing (a page would stay at least 6 s), so that a test run is fast. */
 const SETTINGS = {
@@ -31,7 +24,7 @@ describe('browser collector: settings', () => {
     let browser: CollectRun['result']['sections']['browser'];
 
     beforeAll(async () => {
-      const run = await collect(server, {
+      const run = await collect(server(), {
         maxPages: 1,
         deps: { timing: undefined },
         config: { browser: SETTINGS },

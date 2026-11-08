@@ -26,22 +26,17 @@ import type {
 import {
   BLOCKED_DOCUMENT,
   browserAcceptsTls,
+  HTTP_NOT_SERVING_OUTCOMES,
   isHttpStub,
   isRedirect,
   isSuccess,
+  redirectChainEvidence,
   startFinalHost,
 } from './shared.ts';
 import { evaluateHttpLinks } from './tls-01-links.ts';
 
 const ID = 'TLS-01';
 const HOST_VARIANTS: readonly HostVariant[] = ['target', 'www', 'apex'];
-
-/** A closed port or an unknown host serves nothing over http: there is nothing to evaluate. */
-const NOT_SERVING_OUTCOMES: readonly RedirectChain['outcome'][] = [
-  'connection-refused',
-  'dns-error',
-  'tls-error',
-];
 
 type HttpsState = 'ok' | 'unavailable' | 'invalid' | 'unknown';
 
@@ -58,20 +53,6 @@ function httpsState(c: RedirectChain | undefined): HttpsState {
   if (httpsHops.some((h) => !browserAcceptsTls(h.tlsAuthorized, h.tlsAuthorizationError))) return 'invalid';
   if (c.hops.length > 0) return 'ok';
   return HTTPS_STATE_OF_EMPTY_CHAIN.get(c.outcome) ?? 'unknown';
-}
-
-function chainEvidence(c: RedirectChain): EvidenceInput {
-  return {
-    type: 'redirect-chain',
-    phase: 'http',
-    startUrl: c.startUrl,
-    hops: c.hops.map((h) => ({
-      url: h.url,
-      status: h.status,
-      ...(h.location ? { location: h.location } : {}),
-    })),
-    outcome: c.outcome,
-  };
 }
 
 /** A page served over plain http with a form that takes input: an entry, a linked document or a twin. */
@@ -170,12 +151,19 @@ function judgeUpgradedChain(finalHost: string, http: RedirectChain): Verdict {
   const location = (http.hops[0] as HttpHop).location ?? '';
   if (isDirectHttpsRedirect(location, http.host)) return noVerdict();
 
-  const detail = observation('redirect-chain-detail', http, finalHost, http.startUrl, [chainEvidence(http)], {
-    host: http.host,
-    url: http.startUrl,
-    location,
-    reason: location.startsWith('http:') ? 'http-first-hop' : 'other-host',
-  });
+  const detail = observation(
+    'redirect-chain-detail',
+    http,
+    finalHost,
+    http.startUrl,
+    [redirectChainEvidence(http)],
+    {
+      host: http.host,
+      url: http.startUrl,
+      location,
+      reason: location.startsWith('http:') ? 'http-first-hop' : 'other-host',
+    },
+  );
   return { ...noVerdict(), observations: [detail] };
 }
 
@@ -218,7 +206,7 @@ function judgeChainEndingOnHttp(
       host: http.host,
       downgrade,
       permalink: false,
-      evidence: [chainEvidence(http)],
+      evidence: [redirectChainEvidence(http)],
     }),
   ];
 
@@ -230,7 +218,7 @@ function judgeChainEndingOnHttp(
         http,
         finalHost,
         page,
-        [chainEvidence(http)],
+        [redirectChainEvidence(http)],
         { ...entry, kind: client.kind },
         'medium',
       ),
@@ -245,7 +233,10 @@ function judgeChainEndingOnHttp(
 
   if (state === 'ok') {
     observations.push(
-      observation('no-redirect', http, finalHost, page, [chainEvidence(http)], { ...entry, downgrade }),
+      observation('no-redirect', http, finalHost, page, [redirectChainEvidence(http)], {
+        ...entry,
+        downgrade,
+      }),
     );
   } else {
     observations.push(
@@ -254,7 +245,7 @@ function judgeChainEndingOnHttp(
         http,
         finalHost,
         page,
-        [chainEvidence(http), ...(https ? [chainEvidence(https)] : [])],
+        [redirectChainEvidence(http), ...(https ? [redirectChainEvidence(https)] : [])],
         { ...entry, reason: state, downgrade },
       ),
     );
@@ -265,7 +256,7 @@ function judgeChainEndingOnHttp(
 function evaluate(finalHost: string, http: RedirectChain, https: RedirectChain | undefined): Verdict {
   const hops = http.hops;
   if (hops.length === 0) {
-    if (NOT_SERVING_OUTCOMES.includes(http.outcome)) return noVerdict();
+    if (HTTP_NOT_SERVING_OUTCOMES.has(http.outcome)) return noVerdict();
     return undecided(http.outcome === 'timeout');
   }
 

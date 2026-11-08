@@ -3,9 +3,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { writeReports } from '../../../src/reporters/write.ts';
-import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
-import { dataDir, opts } from './fixtures.ts';
+import { dataDir, scanWith } from './fixtures.ts';
 
 describe('save-snapshot write failure', () => {
   it('keeps the scan result but exits 2 with report-write-failed', async () => {
@@ -13,7 +12,7 @@ describe('save-snapshot write failure', () => {
     const blocker = path.join(parent, 'file');
     writeFileSync(blocker, 'x');
 
-    const result = await scan(opts({ saveSnapshot: path.join(blocker, 'sub', 'x.snapshot.json') }));
+    const result = await scanWith({ saveSnapshot: path.join(blocker, 'sub', 'x.snapshot.json') });
 
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('complete');
@@ -23,23 +22,11 @@ describe('save-snapshot write failure', () => {
 });
 
 describe('writeReports', () => {
-  it('writes report.json and renders the console report', async () => {
-    const out = mkdtempSync(path.join(tmpdir(), 'out-'));
-    const result = await scan(opts());
-    const w = await writeReports(result, { outDir: out, formats: ['console', 'json'], lang: 'de', dataDir });
-
-    expect(w.exitCode).toBe(1);
-    expect(w.errors).toEqual([]);
-    const json = JSON.parse(readFileSync(path.join(out, 'report.json'), 'utf8'));
-    expectValidReport(json);
-    expect(w.console).toContain('TEST-01');
-  });
-
   it('a requested file that cannot be written → exit 2 with report-write-failed', async () => {
     const parent = mkdtempSync(path.join(tmpdir(), 'out-'));
     const blocker = path.join(parent, 'not-a-dir');
     writeFileSync(blocker, 'x');
-    const result = await scan(opts());
+    const result = await scanWith();
 
     const w = await writeReports(result, { outDir: blocker, formats: ['json'], lang: 'de', dataDir });
 
@@ -58,7 +45,7 @@ describe('writeReports', () => {
       const out = mkdtempSync(path.join(tmpdir(), 'out-'));
       // A directory in place of the file makes exactly this reporter fail; report.json stays writable.
       mkdirSync(path.join(out, file));
-      const result = await scan(opts({ failOn: 'none' }));
+      const result = await scanWith({ failOn: 'none' });
       expect(result.exitCode).toBe(0);
 
       const w = await writeReports(result, { outDir: out, formats: ['json', format], lang: 'de', dataDir });

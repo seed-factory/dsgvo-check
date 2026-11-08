@@ -15,9 +15,9 @@ import {
   cookie,
   phase,
   req,
+  runSiteCheck,
   SHOP_HOST,
   START,
-  site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
@@ -35,24 +35,21 @@ describe('TRACK-01 inventory', () => {
   });
 
   it('counterexample: GTM container without tags → only "loaded"; GA only after accept stays info with timing', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-1')] }),
-          phase('C', {
-            click: click('accept'),
-            requests: [
-              req('c', 'https://www.google-analytics.com/g/collect?v=2&cid=[redacted]', {
-                phase: 'C',
-                afterClick: true,
-                resourceType: 'ping',
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(track01, {
+      phases: [
+        phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-1')] }),
+        phase('C', {
+          click: click('accept'),
+          requests: [
+            req('c', 'https://www.google-analytics.com/g/collect?v=2&cid=[redacted]', {
+              phase: 'C',
+              afterClick: true,
+              resourceType: 'ping',
+            }),
+          ],
+        }),
+      ],
+    });
     expect(
       observationsOf(r).map((o) => [
         o.subject,
@@ -168,7 +165,7 @@ describe('TRACK-01 inventory', () => {
   ];
   it.each(named(INVENTORY_CASES))('%s', (_name, { requests, cookies = [], expected }) => {
     expect(
-      observationsOf(runCheck(track01, site({ phases: [phase('A', { requests, cookies })] }))),
+      observationsOf(runSiteCheck(track01, { phases: [phase('A', { requests, cookies })] })),
     ).toMatchObject(expected);
   });
 
@@ -180,16 +177,13 @@ describe('TRACK-01 inventory', () => {
     ['attempted without any response (aborted)', { state: 'attempted', delivery: 'attempted' }],
     ['failed before a response', { state: 'failed', delivery: 'attempted' }],
   ] as const)('a request %s is no inventory', (_name, p) => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('a', 'https://static.hotjar.com/c/hotjar-1.js', { ...p, status: undefined })],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(track01, {
+      phases: [
+        phase('A', {
+          requests: [req('a', 'https://static.hotjar.com/c/hotjar-1.js', { ...p, status: undefined })],
+        }),
+      ],
+    });
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual([]);
   });
@@ -211,7 +205,7 @@ describe('TRACK-01 stage per timing', () => {
     });
 
   it('library before the interaction, event only after accept → the stage belongs to its own timing', () => {
-    const r = runCheck(track01, site({ phases: [ga4LibraryInA(), ga4HitInC()] }));
+    const r = runSiteCheck(track01, { phases: [ga4LibraryInA(), ga4HitInC()] });
     const obs = observationsOf(r);
     // gtag/js and /g/collect are two catalog signatures of one service.
     expect(obs.map((o) => o.subject)).toEqual(['google-analytics']);
@@ -228,7 +222,7 @@ describe('TRACK-01 stage per timing', () => {
   });
 
   it('the German text pairs each stage with its timing and does not claim an event before the interaction', () => {
-    const [o] = observationsOf(runCheck(track01, site({ phases: [ga4LibraryInA(), ga4HitInC()] })));
+    const [o] = observationsOf(runSiteCheck(track01, { phases: [ga4LibraryInA(), ga4HitInC()] }));
     const body = renderMessage(loadTexts('de'), 'TRACK-01.service-inventory', o?.params ?? {}).body;
     expect(body).toMatch(/vor einer Interaktion:\s*geladen/);
     expect(body).toMatch(/nach Ablehnung:\s*nicht geprüft/);
@@ -238,26 +232,23 @@ describe('TRACK-01 stage per timing', () => {
   });
 
   it('an event before the interaction is reported for that timing; a tracking cookie proves "initialised" for its own timing', () => {
-    const r = runCheck(
-      track01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://connect.facebook.net/en_US/fbevents.js'),
-              req('b', 'https://www.facebook.com/tr?id=1&ev=PageView', { resourceType: 'image' }),
-            ],
-          }),
-          phase('B', {
-            click: click('reject'),
-            requests: [
-              req('c', 'https://connect.facebook.net/en_US/fbevents.js', { phase: 'B', afterClick: true }),
-            ],
-            cookies: [cookie('_fbp', { phase: 'B', afterClick: true })],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(track01, {
+      phases: [
+        phase('A', {
+          requests: [
+            req('a', 'https://connect.facebook.net/en_US/fbevents.js'),
+            req('b', 'https://www.facebook.com/tr?id=1&ev=PageView', { resourceType: 'image' }),
+          ],
+        }),
+        phase('B', {
+          click: click('reject'),
+          requests: [
+            req('c', 'https://connect.facebook.net/en_US/fbevents.js', { phase: 'B', afterClick: true }),
+          ],
+          cookies: [cookie('_fbp', { phase: 'B', afterClick: true })],
+        }),
+      ],
+    });
     expect(observationsOf(r)[0]?.params).toMatchObject({
       stageBeforeInteraction: 'event-sent',
       stageAfterReject: 'initialised',
@@ -270,7 +261,7 @@ describe('TRACK-01 stage per timing', () => {
     const libraryInA = () =>
       phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtag/js?id=G-ABC')] });
     const bodies = (phases: ReturnType<typeof phase>[]) => {
-      const [o] = observationsOf(runCheck(track01, site({ phases })));
+      const [o] = observationsOf(runSiteCheck(track01, { phases }));
       const params = o?.params ?? {};
       return {
         params,
@@ -341,25 +332,22 @@ describe('TRACK-01 stage per timing', () => {
     });
 
     it('a service seen only through its stored identifier is listed too, backed by the stored entry', () => {
-      const r = runCheck(
-        track01,
-        site({
-          phases: [
-            libraryInA(),
-            phase('B', {
-              click: click('reject'),
-              cookies: [
-                cookie('IDE', {
-                  domain: '.doubleclick.net',
-                  firstParty: false,
-                  phase: 'B',
-                  afterClick: true,
-                }),
-              ],
-            }),
-          ],
-        }),
-      );
+      const r = runSiteCheck(track01, {
+        phases: [
+          libraryInA(),
+          phase('B', {
+            click: click('reject'),
+            cookies: [
+              cookie('IDE', {
+                domain: '.doubleclick.net',
+                firstParty: false,
+                phase: 'B',
+                afterClick: true,
+              }),
+            ],
+          }),
+        ],
+      });
       const gmp = observationsOf(r).find((o) => o.subject === 'google-marketing-platform');
       expect(gmp).toMatchObject({
         confidence: 'high',
@@ -469,30 +457,27 @@ describe('TRACK-01 on control pages where the decision of the click is not in ef
     hits: { B?: string[]; C?: string[] },
     extra: { B?: Partial<Parameters<typeof phase>[1]> } = {},
   ) =>
-    runCheck(
-      track01,
-      site({
-        phases: [
-          libraryInA(),
-          phase('B', {
-            click: click('reject'),
-            reloaded: true,
-            pages: consentPages('B', [url]),
-            requests: (hits.B ?? []).map((p, i) => hit(`b${i}`, 'B', p)),
-            ...extra.B,
-          }),
-          phase('C', {
-            click: click('accept'),
-            pages: consentPages('C', [url]),
-            requests: (hits.C ?? []).map((p, i) => hit(`c${i}`, 'C', p)),
-          }),
-        ],
-        cmp: cmpWith(
-          { phase: 'B', facts: [cmpFacts(), controlPageFacts(url, 'B', inEffect.B)] },
-          { phase: 'C', facts: [cmpFacts({ phase: 'C' }), controlPageFacts(url, 'C', inEffect.C)] },
-        ),
-      }),
-    );
+    runSiteCheck(track01, {
+      phases: [
+        libraryInA(),
+        phase('B', {
+          click: click('reject'),
+          reloaded: true,
+          pages: consentPages('B', [url]),
+          requests: (hits.B ?? []).map((p, i) => hit(`b${i}`, 'B', p)),
+          ...extra.B,
+        }),
+        phase('C', {
+          click: click('accept'),
+          pages: consentPages('C', [url]),
+          requests: (hits.C ?? []).map((p, i) => hit(`c${i}`, 'C', p)),
+        }),
+      ],
+      cmp: cmpWith(
+        { phase: 'B', facts: [cmpFacts(), controlPageFacts(url, 'B', inEffect.B)] },
+        { phase: 'C', facts: [cmpFacts({ phase: 'C' }), controlPageFacts(url, 'C', inEffect.C)] },
+      ),
+    });
 
   it('a hit on a control page without the reject is not "after rejection"; the result names the pages left out', () => {
     const r = consentRun(OTHER, { B: false, C: true }, { B: [OTHER] });

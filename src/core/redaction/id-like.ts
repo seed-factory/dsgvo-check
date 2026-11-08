@@ -8,6 +8,21 @@ export interface PagePattern {
   flags: string;
 }
 
+export interface IdLikePatterns {
+  otherDigit: PagePattern;
+  separator: PagePattern;
+  compact: readonly PagePattern[];
+  plain: readonly PagePattern[];
+  token: PagePattern;
+  tokenSplit: PagePattern;
+  word: PagePattern;
+  version: PagePattern;
+  smallNumber: PagePattern;
+  wordsWithGroup: PagePattern;
+  lettersSplit: PagePattern;
+  letters: PagePattern;
+}
+
 /** Characters of a token run: base64 with `+` and `/`, `-` and `_` of base64url, and `.` and `:` as vendors join words. */
 const TOKEN_CHARS = 'A-Za-z0-9+/_.:-';
 
@@ -94,20 +109,7 @@ export const ID_LIKE = {
   lettersSplit: { source: '[-_.:/+]', flags: '' },
   /** A part of a run without a digit: camelCase words, short words and acronyms, or capitals alone. */
   letters: { source: LETTERS, flags: '' },
-} as const satisfies {
-  otherDigit: PagePattern;
-  separator: PagePattern;
-  compact: readonly PagePattern[];
-  plain: readonly PagePattern[];
-  token: PagePattern;
-  tokenSplit: PagePattern;
-  word: PagePattern;
-  version: PagePattern;
-  smallNumber: PagePattern;
-  wordsWithGroup: PagePattern;
-  lettersSplit: PagePattern;
-  letters: PagePattern;
-};
+} as const satisfies IdLikePatterns;
 
 const compile = (p: PagePattern): RegExp => new RegExp(p.source, p.flags);
 export const OTHER_DIGIT_RE = compile(ID_LIKE.otherDigit);

@@ -42,27 +42,25 @@ const VENDOR_DOMAINS: Array<[serviceId: string, domain: string]> = [
 ];
 
 describe('required vendor domains are classified', () => {
-  it('covers all 26 services', () => {
-    const ids = new Set(VENDOR_DOMAINS.map(([id]) => id));
-    expect(ids.size).toBe(26);
-    for (const id of ids) expect(catalog.byId.has(id), id).toBe(true);
-  });
-
-  it.each(VENDOR_DOMAINS)('%s: subdomain of %s', (serviceId, domain) => {
-    const [r] = requestsOf([`https://edge.${domain}/synthetic?x=1`]);
-    expect(r).toMatchObject({ serviceId, source: 'catalog' });
+  it('keeps all 26 required services and their domain mappings in the catalog', () => {
+    expect(new Set(VENDOR_DOMAINS.map(([id]) => id)).size).toBe(26);
+    for (const [id, domain] of VENDOR_DOMAINS) {
+      expect(catalog.byId.get(id)?.domains, id).toContain(domain);
+    }
   });
 });
 
 describe('catalog domains classify apexes and subdomains', () => {
-  it.each(
-    catalog.data.services.flatMap((service) =>
-      service.domains.map((domain) => [service.id, domain] as const),
-    ),
-  )('%s owns %s and its subdomains', (serviceId, domain) => {
-    for (const host of [domain, `edge.${domain}`]) {
-      const [request] = requestsOf([`https://${host}/synthetic-resource?x=1`]);
-      expect(request).toMatchObject({ serviceId, source: 'catalog' });
+  it('matches each domain and subdomain to its catalog service', () => {
+    const cases = catalog.data.services.flatMap(({ id, domains }) =>
+      domains.flatMap((domain) => [domain, `edge.${domain}`].map((host) => ({ id, host }))),
+    );
+    const requests = requestsOf(
+      ...cases.map(({ host }): [string] => [`https://${host}/synthetic-resource?x=1`]),
+    );
+    expect(requests).toHaveLength(cases.length);
+    for (const [index, { host, id }] of cases.entries()) {
+      expect(requests[index], host).toMatchObject({ serviceId: id, source: 'catalog' });
     }
   });
 });

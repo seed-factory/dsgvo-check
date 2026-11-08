@@ -6,24 +6,16 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { liveProfileDirs } from '../../../../src/collectors/browser/launch/profile.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { collect, waitUntil } from '../helpers.ts';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/fatal'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({ sites: ['browser/fatal'] }));
 
 describe('fatal start-page conditions', () => {
   it('Cloudflare-like challenge with 403 → blocked (SCAN-BLOCKED), the visit is kept as evidence', async () => {
-    const run = await collect(server, { url: 'https://blocked.example.test/' });
+    const run = await collect(server(), { url: 'https://blocked.example.test/' });
 
     expect(run.result.status).toBe('error');
     expect(run.result.fatal).toMatchObject({ reason: 'blocked', code: 'start-page-blocked' });
@@ -33,26 +25,30 @@ describe('fatal start-page conditions', () => {
   });
 
   it('503 on the start page twice → unreachable', async () => {
-    const run = await collect(server, { url: 'https://down.example.test/' });
+    const run = await collect(server(), { url: 'https://down.example.test/' });
 
     expect(run.result.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-5xx' });
-    expect(server.requestsTo('down.example.test').filter((r) => r.path === '/')).toHaveLength(2);
+    expect(
+      server()
+        .requestsTo('down.example.test')
+        .filter((r) => r.path === '/'),
+    ).toHaveLength(2);
   });
 
   it('connection failure → unreachable', async () => {
     // Any port other than 80/443 is not mapped by the test resolver rules → ERR_NAME_NOT_RESOLVED.
-    const run = await collect(server, { url: 'https://www.example.test:8443/' });
+    const run = await collect(server(), { url: 'https://www.example.test:8443/' });
     expect(run.result.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-unreachable' });
   });
 
   it('invalid certificate → skipped with tls-blocked (no fatal)', async () => {
-    const run = await collect(server, { url: 'https://expired.example.test/' });
+    const run = await collect(server(), { url: 'https://expired.example.test/' });
     expect(run.result).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
     expect(run.result.fatal).toBeUndefined();
   });
 
   it('429 on the start page twice → SCAN-THROTTLED, partial, no fatal (5.2: code by the other rules)', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: 'https://throttled.example.test/',
       deps: { phases: ['A', 'B', 'C'] },
     });
@@ -67,7 +63,9 @@ describe('fatal start-page conditions', () => {
     ]);
     // One retry, then no new navigation to the host (no legal fallbacks, no B/C start page). The favicon is
     // fetched by Chrome itself after each document.
-    const paths = server.requestsTo('throttled.example.test').map((r) => r.path);
+    const paths = server()
+      .requestsTo('throttled.example.test')
+      .map((r) => r.path);
     expect(paths.filter((p) => p !== '/favicon.ico')).toEqual(['/', '/']);
   });
 
@@ -81,8 +79,8 @@ describe('fatal start-page conditions', () => {
       },
     } as unknown as BrowserType;
     // Abort only once the collection has really started: the fixture server holds the start page open.
-    const started = waitUntil(() => server.requestsTo('slow.example.test').length > 0, 20);
-    const pending = collect(server, {
+    const started = waitUntil(() => server().requestsTo('slow.example.test').length > 0, 20);
+    const pending = collect(server(), {
       url: 'https://slow.example.test/',
       signal: ac.signal,
       deps: { chromium: spy },
@@ -106,7 +104,7 @@ describe('fatal start-page conditions', () => {
 
   describe('on the redirect target of a refused certificate', () => {
     const fallback = (url: string) =>
-      collect(server, {
+      collect(server(), {
         url: 'https://expired.example.test/',
         entry: { reason: 'tls-invalid', url, via: 'http://expired.example.test/' },
       });
@@ -133,8 +131,8 @@ describe('fatal start-page conditions', () => {
     });
 
     it('never navigates to the target whose certificate was refused', async () => {
-      const toTarget = () => server.requestsTo('expired.example.test').length;
-      const toEntry = () => server.requestsTo('blocked.example.test').length;
+      const toTarget = () => server().requestsTo('expired.example.test').length;
+      const toEntry = () => server().requestsTo('blocked.example.test').length;
       const before = { target: toTarget(), entry: toEntry() };
       await fallback('https://blocked.example.test/');
 
@@ -145,6 +143,6 @@ describe('fatal start-page conditions', () => {
 
   it('touches only declared hosts', () => {
     // Chrome's own connectivity probe after a network error is browser traffic, not page traffic.
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 });

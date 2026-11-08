@@ -3,11 +3,11 @@
  * the home page, policies in another language, headings of navigation or footer, empty panels, masked e-mail
  * addresses, Impressum details on the contact and start pages, and a designation of a former legal situation.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { legal02 } from '../../../../src/checks/browser/legal-02.ts';
 import { priv01 } from '../../../../src/checks/browser/priv-01.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { type CollectRun, collect, snapshotOf } from '../helpers.ts';
 import { FOOTER, html, LOREM, redirect, send, site } from '../site-dir.ts';
@@ -53,10 +53,8 @@ const SHIELD_POLICY = html(
 const CONTACT_FORM =
   '<p>Musterstraße 1, 10115 Berlin, Telefon 030 123456.</p><form><label>Nachricht <textarea name="m"></textarea></label></form>';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     handlers: [
       // (a) an empty navigation panel (collapsed, no content) outside the text of the policy
       site('navpanel.example.test', {
@@ -205,7 +203,9 @@ beforeAll(async () => {
           html(
             'Empresa Exemplo',
             `<main><h1>Aviso legal</h1><p>${LOREM_PT.repeat(2)}</p></main>${FOOTER_PT}`,
-            { lang: 'pt' },
+            {
+              lang: 'pt',
+            },
           ),
         ),
         '/privacidade/': send(
@@ -217,11 +217,7 @@ beforeAll(async () => {
         ),
       }),
     ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
+  };
 });
 
 const privacyDoc = (run: CollectRun) =>
@@ -244,7 +240,7 @@ const impressumObservations = (run: CollectRun) =>
 
 describe('expandable elements outside and inside the text of the policy', () => {
   it('(a) an empty navigation panel: the policy is complete and PRIV-01 is not inconclusive', async () => {
-    const run = await collect(server, { url: 'https://navpanel.example.test/' });
+    const run = await collect(server(), { url: 'https://navpanel.example.test/' });
 
     const r = runCheck(priv01, snapshotOf(run));
 
@@ -253,7 +249,7 @@ describe('expandable elements outside and inside the text of the policy', () => 
   });
 
   it('(a) the navigation panel is not counted as a part of the policy (manifest, no expand-failed)', async () => {
-    const run = await collect(server, { url: 'https://navpanel.example.test/' });
+    const run = await collect(server(), { url: 'https://navpanel.example.test/' });
 
     const doc = privacyDoc(run);
 
@@ -263,7 +259,7 @@ describe('expandable elements outside and inside the text of the policy', () => 
   });
 
   it('(b) an unopened section of the policy stays in the manifest; PRIV-01 is partial with banner-open', async () => {
-    const run = await collect(server, { url: 'https://accordion.example.test/' });
+    const run = await collect(server(), { url: 'https://accordion.example.test/' });
 
     const doc = privacyDoc(run);
     expect(doc?.manifest).toMatchObject({ expandablesFound: 1, expandablesOpened: 0 });
@@ -276,7 +272,7 @@ describe('expandable elements outside and inside the text of the policy', () => 
 
 describe('the type of a fetched page is confirmed by its headings', () => {
   it('impressum redirecting to the home page is no Impressum: no reachable-via-intermediate', async () => {
-    const run = await collect(server, { url: 'https://homeredirect.example.test/' });
+    const run = await collect(server(), { url: 'https://homeredirect.example.test/' });
 
     // The home page may be kept as a tagged candidate, never as a plain document.
     expect(plainDocuments(run, 'impressum')).toEqual([]);
@@ -286,7 +282,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
   });
 
   it('a footer column titled "Impressum" does not make the home page an Impressum (fallback → home page)', async () => {
-    const run = await collect(server, { url: 'https://footerheading.example.test/' });
+    const run = await collect(server(), { url: 'https://footerheading.example.test/' });
 
     expect(plainDocuments(run, 'impressum')).toEqual([]);
     expect(impressumFallbackOutcome(run)).not.toBe('found');
@@ -294,14 +290,14 @@ describe('the type of a fetched page is confirmed by its headings', () => {
   });
 
   it('a navigation heading in another language does not set the language of the home page as a policy', async () => {
-    const run = await collect(server, { url: 'https://navheading.example.test/' });
+    const run = await collect(server(), { url: 'https://navheading.example.test/' });
 
     expect(plainDocuments(run, 'privacy')).toEqual([]);
     expect(runCheck(priv01, snapshotOf(run)).reason).not.toBe('language-unsupported');
   });
 
   it('the h1 of the navigation does not make an ordinary page the Impressum (fallback)', async () => {
-    const run = await collect(server, { url: 'https://navh1.example.test/' });
+    const run = await collect(server(), { url: 'https://navh1.example.test/' });
 
     expect(plainDocuments(run, 'impressum')).toEqual([]);
     expect(impressumFallbackOutcome(run)).not.toBe('found');
@@ -310,7 +306,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
   });
 
   it('counterexample: headings inside the content confirm the type, also next to a footer heading of the same text', async () => {
-    const run = await collect(server, { url: 'https://contentheading.example.test/' });
+    const run = await collect(server(), { url: 'https://contentheading.example.test/' });
 
     const impressum = documentsOf(run).find((d) => d.kind === 'impressum');
     const privacy = documentsOf(run).find((d) => d.kind === 'privacy');
@@ -320,7 +316,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
   });
 
   it('a Portuguese policy behind the label "Aviso de Privacidade": a document, language pt, not an error', async () => {
-    const run = await collect(server, { url: 'https://pt.example.test/' });
+    const run = await collect(server(), { url: 'https://pt.example.test/' });
 
     const doc = privacyDoc(run);
     expect(doc).toBeDefined();
@@ -336,7 +332,7 @@ describe('the type of a fetched page is confirmed by its headings', () => {
   });
 
   it('the Portuguese footer is found by its labels ("Aviso legal", "Aviso de Privacidade")', async () => {
-    const run = await collect(server, { url: 'https://pt.example.test/' });
+    const run = await collect(server(), { url: 'https://pt.example.test/' });
 
     const roles = run.result.sections.plan?.pages.map((p) => [p.role, p.source]);
     expect(roles).toEqual(
@@ -358,7 +354,7 @@ describe('Impressum details on pages that were open anyway', () => {
     (run.result.sections.browser?.phases ?? []).flatMap((p) => p.pages).map((p) => new URL(p.url).pathname);
 
   it('a footer widget "Impressum" without a link: the contact and start pages are kept as candidates with chrome parts', async () => {
-    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+    const run = await collect(server(), { url: 'https://footerwidget.example.test/' });
 
     expect(plainDocuments(run, 'impressum')).toEqual([]);
     const candidates = candidatesOf(run);
@@ -378,7 +374,7 @@ describe('Impressum details on pages that were open anyway', () => {
   });
 
   it('a footer widget "Impressum" without a link: LEGAL-01 reports the details, not the missing document', async () => {
-    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+    const run = await collect(server(), { url: 'https://footerwidget.example.test/' });
 
     const [o] = impressumObservations(run);
     expect(o?.variant).toBe('provider-details-without-link');
@@ -391,7 +387,7 @@ describe('Impressum details on pages that were open anyway', () => {
   });
 
   it('the text of a candidate is masked like a document: no local part of an e-mail address', async () => {
-    const run = await collect(server, { url: 'https://footerwidget.example.test/' });
+    const run = await collect(server(), { url: 'https://footerwidget.example.test/' });
 
     const stored = JSON.stringify(run.result.sections.documents);
     expect(candidatesOf(run).length).toBeGreaterThan(0);
@@ -400,7 +396,7 @@ describe('Impressum details on pages that were open anyway', () => {
   });
 
   it('a Kontakt page with an Impressum under a heading of its content is the Impressum, found via that page', async () => {
-    const run = await collect(server, { url: 'https://contactimpressum.example.test/' });
+    const run = await collect(server(), { url: 'https://contactimpressum.example.test/' });
 
     const impressum = documentsOf(run).find((d) => d.kind === 'impressum');
     expect(impressum).toMatchObject({ foundVia: 'hop', errors: [] });
@@ -414,7 +410,7 @@ describe('Impressum details on pages that were open anyway', () => {
   });
 
   it('a broken Impressum link keeps links-broken: the Kontakt page with an Impressum stays a candidate', async () => {
-    const run = await collect(server, { url: 'https://brokenlink.example.test/' });
+    const run = await collect(server(), { url: 'https://brokenlink.example.test/' });
 
     expect(documentsOf(run).filter((d) => d.kind === 'impressum')).toEqual([]);
     expect(candidatesOf(run).map((d) => new URL(d.url).pathname)).toEqual(['/kontakt/']);
@@ -422,7 +418,7 @@ describe('Impressum details on pages that were open anyway', () => {
   });
 
   it('counterexample: a Kontakt page with an address, a phone number and a form keeps document-not-found', async () => {
-    const run = await collect(server, { url: 'https://contactonly.example.test/' });
+    const run = await collect(server(), { url: 'https://contactonly.example.test/' });
 
     expect(candidatesOf(run).map((d) => new URL(d.url).pathname)).toContain('/kontakt/');
     expect(impressumObservations(run).map((o) => o.variant)).toEqual(['document-not-found']);
@@ -431,7 +427,7 @@ describe('Impressum details on pages that were open anyway', () => {
 
 describe('free text of the documents is masked before it is stored', () => {
   it('no local part of an e-mail address in the stored documents; the domain stays', async () => {
-    const run = await collect(server, { url: 'https://navpanel.example.test/' });
+    const run = await collect(server(), { url: 'https://navpanel.example.test/' });
 
     const stored = JSON.stringify(run.result.sections.documents);
 
@@ -443,7 +439,7 @@ describe('free text of the documents is masked before it is stored', () => {
 
 describe('a designation of a former legal situation in the policy (LEGAL-02)', () => {
   it('a sentence split by inline markup is stored whole, the query of its link redacted, and LEGAL-02 reports it', async () => {
-    const run = await collect(server, { url: 'https://shield.example.test/' });
+    const run = await collect(server(), { url: 'https://shield.example.test/' });
 
     const part = privacyDoc(run)?.parts.find((p) => p.text.includes('Shield'));
     expect(part?.section).toBe('Datenschutzerklärung > Analyse');
@@ -461,7 +457,7 @@ describe('a designation of a former legal situation in the policy (LEGAL-02)', (
   });
 
   it('the link to the former participant list is text of the policy: no request goes there, no page is added', async () => {
-    const run = await collect(server, { url: 'https://shield.example.test/' });
+    const run = await collect(server(), { url: 'https://shield.example.test/' });
 
     expect(run.requests.filter((r) => r.url.includes('privacyshield'))).toEqual([]);
     const hosts = (run.result.sections.browser?.phases ?? [])

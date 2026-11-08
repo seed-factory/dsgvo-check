@@ -8,15 +8,13 @@ import type { DocumentsSection, LinkFact } from '../../../../../src/core/snapsho
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
 import { makeLink, observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
 import {
-  CONTACT,
   defaultDocuments,
   IMPRESSUM,
   PRIVACY,
-  page,
   phase,
   type SiteSpec,
-  START,
   site,
+  startAndContact,
 } from '../helpers.ts';
 
 export type Attempt = DocumentsSection['attempts'][number];
@@ -28,6 +26,10 @@ export const att = (
   status: number | null,
   outcome: Attempt['outcome'],
 ): Attempt => ({ kind, via, url, status, outcome });
+export const noticeAttempt = (url: string, status: number | null, outcome: Attempt['outcome']): Attempt => ({
+  ...att('privacy', 'link', url, status, outcome),
+  supplement: true,
+});
 export const fallback = (kind: Attempt['kind'] = 'impressum') =>
   att(kind, 'fallback', kind === 'privacy' ? PRIVACY : IMPRESSUM, 404, 'not-found');
 
@@ -46,16 +48,15 @@ export const link = (text: string, href: string, extra: Partial<LinkFact> = {}) 
 export const impressum = (href = IMPRESSUM) => link('Impressum', href);
 export const privacy = (href = PRIVACY) => link('Datenschutz', href);
 
-export const twoPages = (links: LinkFact[]) => [
-  page(START, 'start', 'A', {}, links),
-  page(CONTACT, 'contact', 'A', {}, links),
-];
 /** The start and Kontakt pages carry `links`; `stored` and `attempts` are what the document search recorded. */
 export const linked = (
   links: LinkFact[],
   stored: DocumentsSection['documents'],
   attempts: Attempt[] = [],
-): SiteSpec => ({ phases: [phase('A', { pages: twoPages(links) })], documents: documents(stored, attempts) });
+): SiteSpec => ({
+  phases: [phase('A', { pages: startAndContact(links) })],
+  documents: documents(stored, attempts),
+});
 
 export const missing = (kind = 'impressum', variant = 'document-not-found') => [[kind, variant]];
 

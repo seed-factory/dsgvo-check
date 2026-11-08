@@ -2,13 +2,9 @@
  * Generic heuristic: facts only; an unknown banner (no adapter) in the main document, an open shadow DOM or a
  * cross-origin iframe is `banner-not-recognized` (info), nothing is clicked.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { detectCmp, extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
 import type { CmpFacts } from '../../../src/cmp/types.ts';
-import { bannerScreenshot } from '../../../src/collectors/browser/phases/screenshot.ts';
 import { classifyFirstLayer } from '../../utils/classify.ts';
 import { useCmpServer } from './helpers.ts';
 
@@ -16,25 +12,28 @@ describe('generic heuristic: recognition of unknown banners', () => {
   const env = useCmpServer(['cmp/generic', 'cmp/cookiebot']);
   const lexicon = loadLexicon();
 
+  const open = async (file: string) => (await env.open(`https://www.generic.test/${file}`)).page;
+
   /** Opens `file` of the generic fixture site and measures its first screen without an adapter. */
   async function measure(file: string): Promise<CmpFacts> {
-    const { page } = await env.open(`https://www.generic.test/${file}`);
-    return extract(page, null, 'first-screen');
+    return extract(await open(file), null, 'first-screen');
+  }
+
+  async function detectAndMeasure(file: string) {
+    const page = await open(file);
+    const detection = await detectCmp(page);
+    return { ...detection, facts: await extract(page, null, 'first-screen') };
   }
 
   const buttonKinds = (facts: CmpFacts) => facts.firstLayer.buttons.map((b) => b.kind).sort();
 
   describe('where the unknown banner sits', () => {
     it('main document: fixed bar with consent wording → heuristic facts, banner-not-recognized', async () => {
-      const { page } = await env.open('https://www.generic.test/');
-
-      const { adapter, detection } = await detectCmp(page);
+      const { adapter, detection, facts } = await detectAndMeasure('');
       expect(adapter).toBeNull();
       expect(detection.method).toBe('heuristic');
       expect(detection.recognitionConfidence).not.toBe('high');
       expect(detection.signals).toContain('heuristic:fixed');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerVisible).toBe(true);
       expect(buttonKinds(facts)).toEqual(['accept', 'settings']);
       const cls = classifyFirstLayer(facts, lexicon);
@@ -63,12 +62,8 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
 
     it('no banner → method none, and the heuristic saw no candidate', async () => {
-      const { page } = await env.open('https://www.generic.test/none.html');
-
-      const { detection } = await detectCmp(page);
+      const { detection, facts } = await detectAndMeasure('none.html');
       expect(detection.method).toBe('none');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerPresent).toBe(false);
       expect(facts.firstLayer.bannerCandidate).toBeNull();
       expect(classifyFirstLayer(facts, lexicon).reasons).toEqual(['no-banner-detected']);
@@ -130,14 +125,10 @@ describe('generic heuristic: recognition of unknown banners', () => {
 
   describe('languages beyond de/en and static banners', () => {
     it('Finnish fixed bar with reject and accept → found as heuristic banner, kinds classified, info only', async () => {
-      const { page } = await env.open('https://www.generic.test/fi-banner.html');
-
-      const { adapter, detection } = await detectCmp(page);
+      const { adapter, detection, facts } = await detectAndMeasure('fi-banner.html');
       expect(adapter).toBeNull();
       expect(detection.method).toBe('heuristic');
       expect(detection.signals).toContain('heuristic:fixed');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerVisible).toBe(true);
       expect(buttonKinds(facts)).toEqual(['accept', 'reject', 'settings']);
       const cls = classifyFirstLayer(facts, lexicon);
@@ -157,24 +148,16 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
 
     it('counterexample: a data-protection text block in main without banner controls is not a banner', async () => {
-      const { page } = await env.open('https://www.generic.test/policy-text.html');
-
-      const { detection } = await detectCmp(page);
+      const { detection, facts } = await detectAndMeasure('policy-text.html');
       expect(detection.method).toBe('none');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerPresent).toBe(false);
     });
   });
 
   describe('page chrome is not a banner, and "covers the footer" is a measured overlap', () => {
     it('fixed side menu inside <nav> with privacy words and many links → nothing recognized, footer not covered', async () => {
-      const { page } = await env.open('https://www.generic.test/docs-nav.html');
-
-      const { detection } = await detectCmp(page);
+      const { detection, facts } = await detectAndMeasure('docs-nav.html');
       expect(detection.method).toBe('none');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerPresent).toBe(false);
       expect(facts.firstLayer.coversFooter ?? false).toBe(false);
       expect(classifyFirstLayer(facts, lexicon).reasons).toEqual(['no-banner-detected']);
@@ -204,32 +187,22 @@ describe('generic heuristic: recognition of unknown banners', () => {
       expect(facts.firstLayer.coveredFooterLinks ?? []).toEqual([]);
     });
 
-    it('a fixed cookie bar with accept/reject placed inside <footer> (footer partial) is still found', async () => {
-      const facts = await measure('bar-in-footer.html');
-
+    it.each([
+      ['fixed bar in the footer', 'bar-in-footer.html', 'fixed'],
+      ['static region in the header', 'region-in-header.html', 'static'],
+    ])('a %s is found with accept and reject', async (_name, file, signal) => {
+      const facts = await measure(file);
       expect(facts.detection.method).toBe('heuristic');
-      expect(facts.detection.signals).toContain('heuristic:fixed');
+      expect(facts.detection.signals).toContain(`heuristic:${signal}`);
       expect(facts.firstLayer.bannerVisible).toBe(true);
       expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
-      expect(classifyFirstLayer(facts, lexicon).variant).toBe('banner-not-recognized');
-    });
-
-    it('a static cookie region with accept/reject inside <header> is still found (heuristic:static)', async () => {
-      const facts = await measure('region-in-header.html');
-
-      expect(facts.detection.method).toBe('heuristic');
-      expect(facts.detection.signals).toContain('heuristic:static');
-      expect(facts.firstLayer.bannerVisible).toBe(true);
-      expect(buttonKinds(facts)).toEqual(['accept', 'reject']);
+      if (signal === 'fixed')
+        expect(classifyFirstLayer(facts, lexicon).variant).toBe('banner-not-recognized');
     });
 
     it('counterexample: a fixed footer strip "Impressum · Datenschutz · Cookie-Einstellungen" (settings link, no accept/reject) is no banner', async () => {
-      const { page } = await env.open('https://www.generic.test/footer-link-strip.html');
-
-      const { detection } = await detectCmp(page);
+      const { detection, facts } = await detectAndMeasure('footer-link-strip.html');
       expect(detection.method).toBe('none');
-
-      const facts = await extract(page, null, 'first-screen');
       expect(facts.firstLayer.bannerPresent).toBe(false);
     });
   });
@@ -278,54 +251,28 @@ describe('generic heuristic: recognition of unknown banners', () => {
     });
 
     it.each([
-      ['a shipping notice ("Tracking") with "Verstanden"', 'one-keyword-acknowledge-shipping.html'],
-      ['a policy update notice ("Datenschutzerklärung") with "OK"', 'one-keyword-acknowledge-policy.html'],
-    ])(
-      'counterexample: %s → no banner, the acknowledgement is no choice of the candidate',
-      async (_name, file) => {
+      ['a shipping notice with "Verstanden"', 'one-keyword-acknowledge-shipping.html', ['other'], false],
+      ['a policy update with "OK"', 'one-keyword-acknowledge-policy.html', ['other'], false],
+      [
+        'a discount box with "Mehr Informationen"',
+        'one-keyword-newsletter-details.html',
+        ['settings', 'other'],
+        false,
+      ],
+      ['a chat teaser with "Details"', 'one-keyword-chat-details.html', ['settings', 'other'], false],
+      ['a newsletter box with a paid accept', 'one-keyword-newsletter.html', ['other'], undefined],
+      ['a chat box with "Chat starten" and a close button', 'one-keyword-chat.html', ['other'], undefined],
+    ] as const)(
+      '%s remains a candidate, without a recognized banner',
+      async (_name, file, controls, cookieWording) => {
         const facts = await measure(file);
-
         expect(facts.detection.method).toBe('none');
         expect(facts.firstLayer.bannerPresent).toBe(false);
         expect(facts.firstLayer.bannerCandidate).toMatchObject({
           reason: 'keywords',
-          controls: ['other'],
-          cookieWording: false,
+          controls,
+          ...(cookieWording === undefined ? {} : { cookieWording }),
         });
-      },
-    );
-
-    it.each([
-      [
-        'a discount box ("Datenschutz") with "Anmelden" and "Mehr Informationen"',
-        'one-keyword-newsletter-details.html',
-      ],
-      [
-        'a chat teaser ("Datenschutzhinweise") with "Chat starten" and "Details"',
-        'one-keyword-chat-details.html',
-      ],
-    ])('counterexample: %s → no banner, a candidate without cookie wording', async (_name, file) => {
-      const facts = await measure(file);
-
-      expect(facts.detection.method).toBe('none');
-      expect(facts.firstLayer.bannerCandidate).toMatchObject({
-        reason: 'keywords',
-        controls: ['settings', 'other'],
-        cookieWording: false,
-      });
-    });
-
-    it.each([
-      ['a newsletter box with "Newsletter abonnieren" and a paid accept', 'one-keyword-newsletter.html'],
-      ['a chat box with "Chat starten" and a close button', 'one-keyword-chat.html'],
-    ])(
-      'counterexample: %s and one keyword → no banner, no lexicon control in the candidate',
-      async (_name, file) => {
-        const facts = await measure(file);
-
-        expect(facts.detection.method).toBe('none');
-        expect(facts.firstLayer.bannerPresent).toBe(false);
-        expect(facts.firstLayer.bannerCandidate).toMatchObject({ reason: 'keywords', controls: ['other'] });
       },
     );
 
@@ -457,22 +404,22 @@ describe('generic heuristic: recognition of unknown banners', () => {
       named: false,
     };
 
-    it.each([
+    const framePage = (query = '') =>
+      measure(query ? `frame-one-keyword.html?${query}` : 'frame-one-keyword.html');
+    const acceptFrame = (query = '') => framePage(query ? `bar=accept&${query}` : 'bar=accept');
+    const visibleFrames = [
       ['a 200 px iframe at the bottom', ''],
-      ['an iframe inside that iframe', '?nested=1'],
-      ['an iframe above the first screen whose lower part with the bar reaches it', '?frame=partly-above'],
-      ['a 200 px strip at the top with an iframe filling it', '?frame=top-strip&nested=1'],
-      ['an iframe twice the size of the screen, scaled to half, its bar at the bottom', '?frame=scaled-half'],
-      ['an iframe twice the size of the screen, zoomed to half, its bar at the bottom', '?frame=zoomed-half'],
-      [
-        'an iframe filling an iframe twice the size of the screen, scaled to half',
-        '?frame=scaled-half&nested=1',
-      ],
-    ])(
-      '%s with a one-keyword cookie bar and a settings button → no banner, the candidate of the frame is kept',
-      async (_name, query) => {
-        const facts = await measure(`frame-one-keyword.html${query}`);
+      ['an iframe partly above the first screen, with its bar showing', 'frame=partly-above'],
+      ['a 200 px top strip filled by an inner iframe', 'frame=top-strip&nested=1'],
+      ['an iframe scaled to half', 'frame=scaled-half'],
+      ['an iframe zoomed to half', 'frame=zoomed-half'],
+      ['an iframe filling an iframe scaled to half', 'frame=scaled-half&nested=1'],
+    ] as const;
 
+    it.each([...visibleFrames, ['an iframe inside the bottom iframe', 'nested=1'] as const])(
+      '%s with a settings button stays a candidate',
+      async (_name, query) => {
+        const facts = await framePage(query);
         expect(facts.detection.method).toBe('none');
         expect(facts.firstLayer.bannerPresent).toBe(false);
         expect(facts.firstLayer.consentFrameUnresolved ?? false).toBe(false);
@@ -487,57 +434,34 @@ describe('generic heuristic: recognition of unknown banners', () => {
       expect(facts.firstLayer.bannerCandidate).toEqual(frameBar);
     });
 
-    it.each([
-      ['with display: none', 'display-none'],
-      ['with visibility: hidden', 'visibility-hidden'],
-      ['with opacity: 0', 'opacity-zero'],
-      ['of zero size', 'zero-size'],
+    const hiddenFrames = [
+      ['display: none', 'display-none'],
+      ['zero size', 'zero-size'],
+      ['visibility: hidden', 'visibility-hidden'],
+      ['opacity: 0', 'opacity-zero'],
       ['below the first screen', 'below-first-screen'],
-      ['with visibility: hidden around a nested iframe with the bar', 'visibility-hidden&nested=1'],
-      ['reaching the first screen only with its top, the bar at its bottom below the screen', 'partly-below'],
-      [
-        'as a 200 px strip at the top around a taller inner iframe whose bar lies below the strip',
-        'top-strip&nested=tall',
-      ],
-      [
-        'as high as the screen and scaled to twice its size, so its bar lies below the screen',
-        'scaled-double',
-      ],
-      [
-        'as high as the screen and scaled to twice its size around an iframe filling it, its bar below the screen',
-        'scaled-double&nested=1',
-      ],
-    ])('counterexample: the same iframe %s → the heuristic saw no candidate', async (_name, query) => {
-      const facts = await measure(`frame-one-keyword.html?frame=${query}`);
+      ['hidden around a nested iframe', 'visibility-hidden&nested=1'],
+      ['with only its top on the first screen', 'partly-below'],
+      ['in a top strip around a taller nested iframe', 'top-strip&nested=tall'],
+      ['scaled to twice its size', 'scaled-double'],
+      ['scaled to twice its size around a nested iframe', 'scaled-double&nested=1'],
+    ] as const;
 
+    it.each(hiddenFrames)('counterexample: the iframe with %s is no candidate', async (_name, query) => {
+      const facts = await framePage(`frame=${query}`);
       expect(facts.detection.method).toBe('none');
       expect(facts.firstLayer.bannerPresent).toBe(false);
       expect(facts.firstLayer.bannerCandidate).toBeNull();
     });
 
     it.each([
-      ['at the bottom', ''],
-      ['above the first screen with its lower part and the bar reaching it', '&frame=partly-above'],
-      ['as a 200 px strip at the top filled by an inner iframe', '&frame=top-strip&nested=1'],
-      ['twice the size of the screen and scaled to half', '&frame=scaled-half'],
-      ['twice the size of the screen and zoomed to half', '&frame=zoomed-half'],
-      [
-        'twice the size of the screen and scaled to half, the bar in an iframe filling it',
-        '&frame=scaled-half&nested=1',
-      ],
-      [
-        'twice the size of the screen and zoomed to half, the bar in an iframe filling it',
-        '&frame=zoomed-half&nested=1',
-      ],
-    ])(
-      'the iframe with an accept button instead, %s, is found as a banner in a frame',
-      async (_name, query) => {
-        const facts = await measure(`frame-one-keyword.html?bar=accept${query}`);
-
-        expect(facts.detection.method).toBe('heuristic');
-        expect(facts.detection.signals).toContain('heuristic:frame');
-      },
-    );
+      ...visibleFrames,
+      ['an iframe filling an iframe zoomed to half', 'frame=zoomed-half&nested=1'] as const,
+    ])('%s with an accept button is recognized as a banner', async (_name, query) => {
+      const { detection } = await acceptFrame(query);
+      expect(detection.method).toBe('heuristic');
+      expect(detection.signals).toContain('heuristic:frame');
+    });
 
     it.each([
       ['scaled to half', 'scaled-half'],
@@ -547,8 +471,8 @@ describe('generic heuristic: recognition of unknown banners', () => {
     ])(
       'the accept button of the iframe %s is reported where the main page shows it, at half its size',
       async (_name, frame) => {
-        const unscaled = (await measure('frame-one-keyword.html?bar=accept')).firstLayer.buttons[0]?.box;
-        const facts = await measure(`frame-one-keyword.html?bar=accept&frame=${frame}`);
+        const unscaled = (await acceptFrame()).firstLayer.buttons[0]?.box;
+        const facts = await acceptFrame(`frame=${frame}`);
         const box = facts.firstLayer.buttons[0]?.box;
 
         if (!box || !unscaled) throw new Error('the accept button has no box');
@@ -561,9 +485,8 @@ describe('generic heuristic: recognition of unknown banners', () => {
     );
 
     it('the accept button of an iframe filling a bordered and padded iframe is reported where the main page shows it', async () => {
-      const outer = (await measure('frame-one-keyword.html?bar=accept&frame=bordered')).firstLayer.buttons[0]
-        ?.box;
-      const facts = await measure('frame-one-keyword.html?bar=accept&frame=bordered&nested=1');
+      const outer = (await acceptFrame('frame=bordered')).firstLayer.buttons[0]?.box;
+      const facts = await acceptFrame('frame=bordered&nested=1');
       const box = facts.firstLayer.buttons[0]?.box;
 
       if (!box || !outer) throw new Error('the accept button has no box');
@@ -572,27 +495,14 @@ describe('generic heuristic: recognition of unknown banners', () => {
       expect(box).toEqual(outer);
     });
 
-    it.each([
-      ['with visibility: hidden', 'visibility-hidden'],
-      ['with opacity: 0', 'opacity-zero'],
-      ['below the first screen', 'below-first-screen'],
-      ['with visibility: hidden around a nested iframe with the bar', 'visibility-hidden&nested=1'],
-      ['reaching the first screen only with its top, the bar at its bottom below the screen', 'partly-below'],
-      [
-        'as a 200 px strip at the top around a taller inner iframe whose bar lies below the strip',
-        'top-strip&nested=tall',
-      ],
-      ['as high as the screen and scaled to twice its size, the bar below the screen', 'scaled-double'],
-      [
-        'as high as the screen and scaled to twice its size around an iframe filling it, the bar below the screen',
-        'scaled-double&nested=1',
-      ],
-    ])('counterexample: the iframe with an accept button %s is no banner', async (_name, query) => {
-      const facts = await measure(`frame-one-keyword.html?bar=accept&frame=${query}`);
-
-      expect(facts.detection.method).toBe('none');
-      expect(facts.firstLayer.bannerPresent).toBe(false);
-    });
+    it.each(hiddenFrames.filter(([, query]) => query !== 'display-none' && query !== 'zero-size'))(
+      'counterexample: the iframe with an accept button and %s is no banner',
+      async (_name, query) => {
+        const facts = await acceptFrame(`frame=${query}`);
+        expect(facts.detection.method).toBe('none');
+        expect(facts.firstLayer.bannerPresent).toBe(false);
+      },
+    );
 
     it('counterexample: an embedded newsletter form with two keywords and a submit button is no banner', async () => {
       const facts = await measure('frame-newsletter-form.html');
@@ -633,20 +543,6 @@ describe('generic heuristic: recognition of unknown banners', () => {
       );
       expect(facts.firstLayer.containerBox).toBeTruthy();
       expect(classifyFirstLayer(facts, lexicon).targets).toEqual({ reject: null, accept: null });
-
-      // The banner can be photographed for the report: the container is unique and small.
-      const dir = await mkdtemp(path.join(tmpdir(), 'dsgvo-check-shot-'));
-      try {
-        const shot = await bannerScreenshot(page, facts, {
-          artifactsDir: dir,
-          artifactsRelDir: 'artifacts',
-          phase: 'B',
-          pageUrl: 'https://www.generic.test/medium-storage.html',
-        });
-        expect(shot, 'no screenshot record').toHaveProperty('record');
-      } finally {
-        await rm(dir, { recursive: true, force: true });
-      }
     });
 
     it('counterexample: a medium adapter whose own banner is measured and visible keeps its facts next to a foreign dialog', async () => {

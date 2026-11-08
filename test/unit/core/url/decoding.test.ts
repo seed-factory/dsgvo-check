@@ -125,9 +125,8 @@ describe('safe URL parsing', () => {
     expect(parseUrl('http://[::1]:8080/')?.hostname).toBe('[::1]');
   });
 
-  it('can require HTTP while still accepting other schemes for callers that need them', () => {
+  it('accepts other schemes by default and resolves a relative HTTP URL before filtering', () => {
     expect(parseUrl('mailto:person@example.test')?.protocol).toBe('mailto:');
-    expect(parseUrl('mailto:person@example.test', undefined, true)).toBeNull();
     expect(parseUrl('/next', 'https://example.test/', true)?.protocol).toBe('https:');
   });
 

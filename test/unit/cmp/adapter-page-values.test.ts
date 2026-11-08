@@ -6,7 +6,8 @@
  */
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import { clickButton, foldCategories } from '../../../src/cmp/adapters/base.ts';
+import { clickButton } from '../../../src/cmp/action.ts';
+import { foldCategories } from '../../../src/cmp/adapters/base.ts';
 import { borlabs } from '../../../src/cmp/adapters/borlabs.ts';
 import { ccm19 } from '../../../src/cmp/adapters/ccm19.ts';
 import { complianz } from '../../../src/cmp/adapters/complianz.ts';
@@ -15,36 +16,10 @@ import { cookieman } from '../../../src/cmp/adapters/cookieman.ts';
 import { realCookieBanner } from '../../../src/cmp/adapters/real-cookie-banner.ts';
 import { shopware } from '../../../src/cmp/adapters/shopware.ts';
 import { usercentrics } from '../../../src/cmp/adapters/usercentrics.ts';
-import type { ProbeResult } from '../../../src/cmp/page/probe-types.ts';
-import type { CategoryState } from '../../../src/cmp/types.ts';
+import type { CategoryState, CmpAdapter } from '../../../src/cmp/types.ts';
+import { rawProbe } from './fakes.ts';
 
-/** The probe's answer for a page without a banner. */
-const NO_BANNER: ProbeResult = {
-  found: false,
-  containerCount: 0,
-  visible: false,
-  containerBox: null,
-  containerFixed: false,
-  containerSelector: null,
-  textLength: 0,
-  purAbo: false,
-  keywordHits: [],
-  buttons: [],
-  buttonsTruncated: false,
-  animating: false,
-  blocking: {
-    overlay: false,
-    scrollLock: false,
-    inert: false,
-    coveredRatio: null,
-    method: [],
-    ariaModal: false,
-  },
-  viewport: { width: 1366, height: 768 },
-  coveredLinks: [],
-  heuristic: null,
-  rejectedCandidate: null,
-};
+const NO_BANNER = rawProbe();
 
 const NO_TCF = { present: false, gdprApplies: null, cmpId: null };
 
@@ -57,6 +32,7 @@ function stubPage(answers: Record<string, unknown>, extra: Record<string, unknow
       throw new Error(`no answer for ${fn.name || 'an anonymous function'}`);
     },
     url: () => 'https://www.example.test/',
+    on: () => {},
     ...extra,
   } as unknown as Page;
 }
@@ -348,30 +324,30 @@ describe('foldCategories', () => {
   });
 });
 
-const detectAnswer = (p: Record<string, unknown> = {}) => ({
-  globals: ['Cookiebot'],
+const emptyDetection = {
+  globals: [],
   versions: {},
-  scripts: ['consent.cookiebot.com/uc.js'],
-  scriptUrls: ['https://consent.cookiebot.com/uc.js'],
-  dom: ['#CybotCookiebotDialog'],
-  cookies: ['CookieConsent'],
+  scripts: [],
+  scriptUrls: [],
+  dom: [],
+  cookies: [],
   storage: [],
-  ...p,
-});
+};
+const detect = (adapter: CmpAdapter, over: Record<string, unknown>) =>
+  adapter.detect(stubPage({ cmpDetectProbe: { ...emptyDetection, ...over } }));
+
+const complianzDetection = { globals: ['complianz'], dom: ['#cmplz-cookiebanner-container'] };
 
 describe('detection signals', () => {
   it('only globals, scripts and selectors of the vendor, and cookie names its pattern matches', async () => {
-    const detection = await cookiebot.detect(
-      stubPage({
-        cmpDetectProbe: detectAnswer({
-          globals: ['Cookiebot', 'zq7=alice@example.test'],
-          scripts: ['consent.cookiebot.com/uc.js', 'zq7'],
-          dom: ['#CybotCookiebotDialog', '#zq7'],
-          cookies: ['CookieConsent', 'CookieConsentzq7', 7, `CookieConsent${'x'.repeat(200)}`],
-          storage: ['zq7'],
-        }),
-      }),
-    );
+    const detection = await detect(cookiebot, {
+      globals: ['Cookiebot', 'zq7=alice@example.test'],
+      scripts: ['consent.cookiebot.com/uc.js', 'zq7'],
+      scriptUrls: ['https://consent.cookiebot.com/uc.js'],
+      dom: ['#CybotCookiebotDialog', '#zq7'],
+      cookies: ['CookieConsent', 'CookieConsentzq7', 7, `CookieConsent${'x'.repeat(200)}`],
+      storage: ['zq7'],
+    });
     expect(detection?.signals).toEqual([
       'global:Cookiebot',
       'script:consent.cookiebot.com/uc.js',
@@ -387,45 +363,20 @@ describe('detection signals', () => {
     ['a name with a blank', 'cmplz_ref zq7'],
     ['a fullwidth equals sign', 'cmplz_ref\uff1dzq7'],
   ])('a cookie or storage name that is no name is no signal: %s', async (_case, name) => {
-    const detection = await complianz.detect(
-      stubPage({
-        cmpDetectProbe: detectAnswer({
-          globals: ['complianz'],
-          scripts: [],
-          scriptUrls: [],
-          dom: ['#cmplz-cookiebanner-container'],
-          cookies: [name],
-        }),
-      }),
-    );
+    const detection = await detect(complianz, { ...complianzDetection, cookies: [name] });
     expect(detection?.signals).toEqual(['global:complianz', 'dom:#cmplz-cookiebanner-container']);
-    const ccm = await ccm19.detect(
-      stubPage({
-        cmpDetectProbe: detectAnswer({
-          globals: ['CCM'],
-          scripts: [],
-          scriptUrls: [],
-          dom: [],
-          cookies: [],
-          storage: [name.replace('cmplz_ref', 'ccm_consent'), 'ccm_consent'],
-        }),
-      }),
-    );
+    const ccm = await detect(ccm19, {
+      globals: ['CCM'],
+      storage: [name.replace('cmplz_ref', 'ccm_consent'), 'ccm_consent'],
+    });
     expect(ccm?.signals).toEqual(['global:CCM', 'storage:ccm_consent']);
   });
 
   it('counterexample: the Real Cookie Banner cookie name with its colons is a signal', async () => {
-    const detection = await realCookieBanner.detect(
-      stubPage({
-        cmpDetectProbe: detectAnswer({
-          globals: ['consentApi'],
-          scripts: [],
-          scriptUrls: [],
-          dom: [],
-          cookies: ['real_cookie_banner-v:3_blog:1_path:sim'],
-        }),
-      }),
-    );
+    const detection = await detect(realCookieBanner, {
+      globals: ['consentApi'],
+      cookies: ['real_cookie_banner-v:3_blog:1_path:sim'],
+    });
     expect(detection?.signals).toEqual([
       'global:consentApi',
       'cookie:real_cookie_banner-v:3_blog:1_path:sim',
@@ -433,17 +384,7 @@ describe('detection signals', () => {
   });
 
   it('counterexample: a cookie name with the vendor prefix is kept as the page set it', async () => {
-    const detection = await complianz.detect(
-      stubPage({
-        cmpDetectProbe: detectAnswer({
-          globals: ['complianz'],
-          scripts: [],
-          scriptUrls: [],
-          dom: ['#cmplz-cookiebanner-container'],
-          cookies: ['cmplz_marketing'],
-        }),
-      }),
-    );
+    const detection = await detect(complianz, { ...complianzDetection, cookies: ['cmplz_marketing'] });
     expect(detection?.signals).toEqual([
       'global:complianz',
       'dom:#cmplz-cookiebanner-container',
@@ -454,18 +395,10 @@ describe('detection signals', () => {
   it.each(['7.1.0?sid=zq7', '1.2.1234567890.1700000000', '49.15112345678'])(
     'a forged version global is no version: %j',
     async (forged) => {
-      const detection = await complianz.detect(
-        stubPage({
-          cmpDetectProbe: detectAnswer({
-            globals: ['complianz'],
-            versions: { 'complianz.version': forged },
-            scripts: [],
-            scriptUrls: [],
-            dom: ['#cmplz-cookiebanner-container'],
-            cookies: [],
-          }),
-        }),
-      );
+      const detection = await detect(complianz, {
+        ...complianzDetection,
+        versions: { 'complianz.version': forged },
+      });
       expect(detection?.version).toBeNull();
     },
   );
@@ -499,15 +432,27 @@ describe('TCF geo signal', () => {
 });
 
 describe('a failed click or reload keeps its kind only', () => {
-  const clickPage = (err: Error) =>
-    ({
-      locator: () => ({
-        count: async () => 1,
-        click: async () => {
-          throw err;
-        },
-      }),
-    }) as unknown as Page;
+  const clickPage = (err: Error) => {
+    const dispose = async () => {};
+    const element = {
+      evaluateHandle: async () => ({ evaluate: async () => false, dispose }),
+      click: async () => {
+        throw err;
+      },
+      dispose,
+    };
+    const locator = {
+      count: async () => 1,
+      and: () => locator,
+      elementHandle: async () => element,
+      evaluate: async () => true,
+    };
+    return {
+      locator: () => locator,
+      getByRole: () => locator,
+      exposeBinding: async () => ({ dispose }),
+    } as unknown as Page;
+  };
 
   it.each([
     [
@@ -531,7 +476,13 @@ describe('a failed click or reload keeps its kind only', () => {
       'click-failed',
     ],
   ])('%s', async (_case, message, error) => {
-    expect(await clickButton(clickPage(new Error(message)), { selector: '#accept' })).toEqual({
+    expect(
+      await clickButton(clickPage(new Error(message)), {
+        selector: '#accept',
+        name: 'Accept',
+        role: 'button',
+      }),
+    ).toEqual({
       clicked: false,
       error,
     });
@@ -566,19 +517,7 @@ describe('a failed click or reload keeps its kind only', () => {
 describe('stored detection signals', () => {
   it('recognizes a vendor cookie while masking its identifier', async () => {
     const cookie = 'cmplz_123e4567-e89b-12d3-a456-426614174000';
-    const detection = await complianz.detect(
-      stubPage({
-        cmpDetectProbe: {
-          globals: [],
-          scripts: [],
-          dom: [],
-          cookies: [cookie],
-          storage: [],
-          versions: {},
-          scriptUrls: [],
-        },
-      }),
-    );
+    const detection = await detect(complianz, { cookies: [cookie] });
     expect(detection?.recognitionConfidence).toBe('medium');
     expect(detection?.signals).toEqual(['cookie:[redacted]']);
   });

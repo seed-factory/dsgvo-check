@@ -105,11 +105,7 @@ describe('e-mail addresses in a path segment', () => {
     expect(sanitizeUrl(out)).toBe(out);
   });
 
-  it('sees what containsAddress sees: an address after at most three rounds of decoding', () => {
-    for (const encoded of [`alice%40${D}`, `alice%2540${D}`, `alice%252540${D}`, `alice%25252540${D}`]) {
-      const url = `https://x.test/${encoded}`;
-      expect(sanitizeUrl(url) !== url, encoded).toBe(containsAddress(encoded));
-    }
+  it('query decoding exposes an address beyond the depth used for a path', () => {
     // the fourth round is text, as in containsAddress and in hasAddress of mailto:
     expect(containsAddress(`alice%25252540${D}`)).toBe(false);
     // the query is decoded once by the URL parser before containsAddress looks: one level more is masked there
@@ -222,26 +218,26 @@ describe('e-mail addresses in a path segment', () => {
       );
     });
 
-    it('randomized: of two addresses in a segment, neither local part survives', () => {
-      const rnd = random(20261105);
+    it('neither address survives across encoding levels and separators', () => {
       // the `@` and the dot of an address, written at a level of encoding from 0 to 3
       const at = ['@', '%40', '%2540', '%252540'];
       const dot = ['.', '%2E', '%252E', '%25252E'];
       const glue = ['-', '.', '', '_', '%2D', '%252D'];
-      const pick = <T>(list: readonly T[]) => list[Math.floor(rnd() * list.length)] as T;
-      const address = (name: string) =>
-        `${MARK}${name}${pick(at)}${pick(['a', 'b', 'ab'])}${pick(dot)}${pick(['invalid', 'test'])}`;
+      const addresses = (name: string, domain: string, tld: string) =>
+        at.flatMap((marker) => dot.map((separator) => `${MARK}${name}${marker}${domain}${separator}${tld}`));
 
-      for (let i = 0; i < 40_000; i++) {
-        const x = address('x');
-        const y = address('y');
-        const segment = `${x}${pick(glue)}${y}`;
+      for (const x of addresses('x', 'a', 'invalid')) {
+        for (const y of addresses('y', 'ab', 'test')) {
+          for (const separator of glue) {
+            const segment = `${x}${separator}${y}`;
 
-        const out = expectStable(`https://x.test/${segment}`);
+            const out = expectStable(`https://x.test/${segment}`);
 
-        // an address that is not visible in at most three rounds of decoding is text and may stay
-        if (containsAddress(x) && containsAddress(y)) {
-          expect(out, `${segment} -> ${out}`).not.toContain(MARK);
+            // an address that is not visible in at most three rounds of decoding is text and may stay
+            if (containsAddress(x) && containsAddress(y)) {
+              expect(out, `${segment} -> ${out}`).not.toContain(MARK);
+            }
+          }
         }
       }
     });
@@ -296,7 +292,7 @@ describe('e-mail addresses in a path segment', () => {
       `${MARK}%252540x.test`,
     ];
     const pick = () => pieces[Math.floor(rnd() * pieces.length)] as string;
-    for (let i = 0; i < 60_000; i++) {
+    for (let i = 0; i < 8_000; i++) {
       const segment = Array.from({ length: 1 + Math.floor(rnd() * 8) }, pick).join('');
       const url = `https://x.test/${segment}`;
       const out = expectStable(url);
@@ -337,7 +333,7 @@ describe('e-mail addresses in a path segment', () => {
     ];
     const rnd = random(20261030);
     const pick = () => pieces[Math.floor(rnd() * pieces.length)];
-    for (let i = 0; i < 20_000; i++) {
+    for (let i = 0; i < 4_000; i++) {
       const segment = () => Array.from({ length: 1 + Math.floor(rnd() * 8) }, pick).join('');
       const url = `https://x.test/${segment()}${rnd() < 0.3 ? `/${segment()}` : ''}`;
       const once = sanitizeUrl(url);

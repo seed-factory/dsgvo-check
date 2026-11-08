@@ -1,6 +1,7 @@
 /** A legal candidate already queued for another document kind does not consume its next candidate. */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+
+import { describe, expect, it } from 'vitest';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { collect } from '../helpers.ts';
 import { html, LOREM, send, site } from '../site-dir.ts';
 
@@ -15,10 +16,8 @@ const COMBINED = html(
 const START = (footer: string) =>
   html('Start', `<main><h1>Start</h1><p>${LOREM.repeat(3)}</p></main><footer>${footer}</footer>`);
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     handlers: [
       site('crossqueue.example.test', {
         '/': send(
@@ -46,16 +45,12 @@ beforeAll(async () => {
         '/legal/': send(COMBINED),
       }),
     ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
+  };
 });
 
 describe('a retry leaves the queued candidates of the other document kind intact', () => {
   it('the next Impressum candidate is queued as the policy: the page is read for both kinds', async () => {
-    const run = await collect(server, { url: 'https://crossqueue.example.test/' });
+    const run = await collect(server(), { url: 'https://crossqueue.example.test/' });
 
     const docs = run.result.sections.documents?.documents ?? [];
     const confirmed = docs.filter((d) => !d.errors.includes('unconfirmed'));
@@ -75,7 +70,7 @@ describe('a retry leaves the queued candidates of the other document kind intact
   });
 
   it('counterexample: a next candidate that is not queued is followed as before', async () => {
-    const run = await collect(server, { url: 'https://freshnext.example.test/' });
+    const run = await collect(server(), { url: 'https://freshnext.example.test/' });
 
     const attempts = run.result.sections.documents?.attempts ?? [];
     expect(attempts.filter((a) => a.kind === 'impressum').map((a) => a.outcome)).toEqual([

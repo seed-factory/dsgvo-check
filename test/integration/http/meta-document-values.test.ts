@@ -3,12 +3,12 @@
  * reduced like a response header (URLs sanitized, unlisted values `[redacted]`, no cookies). An inert refresh is no
  * redirect for TLS-01 either. Markers start with `zq7`.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
 import { closedPort, collectorContext, withRoutes } from './helpers.ts';
 import { GOOD_HEADERS, page } from './sites.ts';
@@ -25,12 +25,11 @@ const httpPage = (host: string, body: string) => ({
   body: page('Start', body),
 });
 
-let server: FixtureServer;
 let closed: number;
 const collector = createHttpCollector({ minIntervalMs: 20 });
 
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(
+  () => ({
     routes: [
       httpPage(
         'www.metaval.test',
@@ -104,16 +103,14 @@ beforeAll(async () => {
         ),
       },
     ],
-  });
-  closed = await closedPort();
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+  }),
+  async () => {
+    closed = await closedPort();
+  },
+);
 
 afterEach(() => {
-  expect(server.unexpected).toEqual([]);
+  expect(server().unexpected).toEqual([]);
 });
 
 async function collectHttpOnly(host: string): Promise<HttpSection> {
@@ -121,7 +118,7 @@ async function collectHttpOnly(host: string): Promise<HttpSection> {
   const res = await collector(
     collectorContext(
       `http://${host}/`,
-      withRoutes(server.network(), { [`${host}:443`]: closed, [bare]: closed }),
+      withRoutes(server().network(), { [`${host}:443`]: closed, [bare]: closed }),
     ),
   );
   expect(res.fatal).toBeUndefined();

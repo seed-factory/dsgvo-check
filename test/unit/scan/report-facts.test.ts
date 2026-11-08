@@ -1,10 +1,9 @@
 /** Facts the scan adds to the report for the reporters: egress source as a code, banner clicks and screenshots. */
 import { describe, expect, it } from 'vitest';
 import type { Evidence } from '../../../src/core/report/schema.ts';
-import { scan } from '../../../src/scan.ts';
 import { fakeCollectors } from '../../utils/scan-harness.ts';
 import { makeBrowser, makeCmp, makeHttp, makePage, makePhase } from '../../utils/snapshot-builder.ts';
-import { opts } from './fixtures.ts';
+import { scanWith } from './fixtures.ts';
 
 const START = 'https://www.example.de/';
 const visit = (phase: 'A' | 'B' | 'C') => makePage({ url: START, phase, role: 'start' });
@@ -95,8 +94,8 @@ function withConsentRun(over: {
 
 describe('scan — facts for the report', () => {
   it('stores the egress source as a code, which the reporters word in their language', async () => {
-    const unknown = await scan(opts());
-    const asserted = await scan(opts({ assumeRegion: 'eea' }));
+    const unknown = await scanWith();
+    const asserted = await scanWith({ assumeRegion: 'eea' });
 
     expect(unknown.report.scan.environment?.egress.source).toBe('not-determined');
     expect(asserted.report.scan.environment?.egress).toMatchObject({
@@ -111,9 +110,9 @@ describe('scan — facts for the report', () => {
     [true, false],
     [false, false],
   ] as const)('records the banner clicks: accept clicked %s, confirmed %s', async (clicked, verified) => {
-    const { report } = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: clicked, acceptVerified: verified }) }),
-    );
+    const { report } = await scanWith({
+      collectors: withConsentRun({ acceptClicked: clicked, acceptVerified: verified }),
+    });
 
     expect(report.scan.coverage?.consentActions).toEqual([
       { action: 'reject', clicked: true, verified: true },
@@ -122,12 +121,12 @@ describe('scan — facts for the report', () => {
   });
 
   it('a reject saved in the settings layer is recorded with its path; a first-layer reject has none', async () => {
-    const settings = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true, viaSettings: true }) }),
-    );
-    const first = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }) }),
-    );
+    const settings = await scanWith({
+      collectors: withConsentRun({ acceptClicked: true, acceptVerified: true, viaSettings: true }),
+    });
+    const first = await scanWith({
+      collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }),
+    });
 
     expect(settings.report.scan.coverage?.consentActions?.[0]).toEqual({
       action: 'reject',
@@ -143,12 +142,12 @@ describe('scan — facts for the report', () => {
   });
 
   it('composes the disclaimer from the click outcome: no claim of a performed phase C without an accept', async () => {
-    const failed = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: false, acceptVerified: false }) }),
-    );
-    const done = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }) }),
-    );
+    const failed = await scanWith({
+      collectors: withConsentRun({ acceptClicked: false, acceptVerified: false }),
+    });
+    const done = await scanWith({
+      collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }),
+    });
 
     expect(failed.report.disclaimer.text).not.toMatch(
       /Phase C \(Annahme im Einwilligungsbanner\) wurde durchgeführt/,
@@ -160,9 +159,9 @@ describe('scan — facts for the report', () => {
   });
 
   it('keeps a banner screenshot that no finding cites as evidence of the report', async () => {
-    const { report } = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true, screenshot: true }) }),
-    );
+    const { report } = await scanWith({
+      collectors: withConsentRun({ acceptClicked: true, acceptVerified: true, screenshot: true }),
+    });
     const shots = (report.evidence ?? []).filter((e) => e.type === 'screenshot') as Array<
       Extract<Evidence, { type: 'screenshot' }>
     >;
@@ -179,9 +178,9 @@ describe('scan — facts for the report', () => {
   });
 
   it('says nothing about screenshots when none was taken', async () => {
-    const { report } = await scan(
-      opts({ collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }) }),
-    );
+    const { report } = await scanWith({
+      collectors: withConsentRun({ acceptClicked: true, acceptVerified: true }),
+    });
     expect(report.disclaimer.text).not.toMatch(/Bildschirmfoto/);
   });
 });

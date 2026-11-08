@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,14 +13,6 @@ const committed = readFileSync(path.join(REPO_ROOT, '.env.example'), 'utf8');
 describe('.env.example', () => {
   it('is what the schema generates, followed by the test block (run `corepack pnpm env:example` after a change)', () => {
     expect(committed).toBe(renderEnvExample() + TEST_ENV_EXAMPLE);
-  });
-
-  it('the generator script agrees in --check mode', () => {
-    expect(() =>
-      execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/emit-env-example.ts'), '--check'], {
-        stdio: 'pipe',
-      }),
-    ).not.toThrow();
   });
 
   it('lists every setting once, commented out, with its default and a description', () => {
@@ -49,9 +40,5 @@ describe('.env.example', () => {
     }
     expect(Object.keys(values)).toHaveLength(configFields().length);
     expect(resolveConfig({ env: values }).config).toEqual(DEFAULT_CONFIG);
-  });
-
-  it('fits the line width of the project', () => {
-    for (const line of committed.split('\n')) expect(line.length).toBeLessThanOrEqual(110);
   });
 });

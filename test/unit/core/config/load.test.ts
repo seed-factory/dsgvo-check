@@ -79,43 +79,35 @@ describe('resolveConfig: sources and precedence', () => {
 });
 
 describe('resolveConfig: values', () => {
-  it.each([
-    ['DSGVO_CHECK_SCAN_FAIL_ON', 'warning', (c: typeof DEFAULT_CONFIG) => c.scan.failOn, 'warning'],
-    ['DSGVO_CHECK_SCAN_TIMEOUT_MS', '90000', (c: typeof DEFAULT_CONFIG) => c.scan.timeoutMs, 90_000],
+  type EnvCase = [
+    variable: string,
+    value: string,
+    select: (config: typeof DEFAULT_CONFIG) => unknown,
+    expected: unknown,
+  ];
+
+  it.each<EnvCase>([
+    ['DSGVO_CHECK_SCAN_FAIL_ON', 'warning', (c) => c.scan.failOn, 'warning'],
+    ['DSGVO_CHECK_SCAN_TIMEOUT_MS', '90000', (c) => c.scan.timeoutMs, 90_000],
     [
       'DSGVO_CHECK_BROWSER_SCREENSHOT_MAX_VIEWPORT_SHARE',
       '0.4',
-      (c: typeof DEFAULT_CONFIG) => c.browser.screenshotMaxViewportShare,
+      (c) => c.browser.screenshotMaxViewportShare,
       0.4,
     ],
-    [
-      'DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS',
-      ' 2000 ',
-      (c: typeof DEFAULT_CONFIG) => c.browser.navigationPauseMs,
-      2_000,
-    ],
-    [
-      'DSGVO_CHECK_CMP_BLOCKING_COVERED_RATIO',
-      '1',
-      (c: typeof DEFAULT_CONFIG) => c.cmp.blockingCoveredRatio,
-      1,
-    ],
+    ['DSGVO_CHECK_BROWSER_NAVIGATION_PAUSE_MS', ' 2000 ', (c) => c.browser.navigationPauseMs, 2_000],
+    ['DSGVO_CHECK_CMP_BLOCKING_COVERED_RATIO', '1', (c) => c.cmp.blockingCoveredRatio, 1],
     [
       'DSGVO_CHECK_REPORT_FORMATS',
       'console, json ,html,',
-      (c: typeof DEFAULT_CONFIG) => c.report.formats,
+      (c) => c.report.formats,
       ['console', 'json', 'html'],
     ],
-    [
-      'DSGVO_CHECK_DNS_SERVERS',
-      '1.1.1.1, 9.9.9.9:5353',
-      (c: typeof DEFAULT_CONFIG) => c.dns.servers,
-      ['1.1.1.1', '9.9.9.9:5353'],
-    ],
+    ['DSGVO_CHECK_DNS_SERVERS', '1.1.1.1, 9.9.9.9:5353', (c) => c.dns.servers, ['1.1.1.1', '9.9.9.9:5353']],
     [
       'DSGVO_CHECK_PROXY',
       'http://user:secret@proxy.example:3128',
-      (c: typeof DEFAULT_CONFIG) => c.scan.proxy,
+      (c) => c.scan.proxy,
       'http://user:secret@proxy.example:3128',
     ],
   ])('%s=%s', (name, value, pick, expected) => {

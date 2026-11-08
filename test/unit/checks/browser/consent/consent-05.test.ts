@@ -16,11 +16,11 @@ import {
   page,
   phase,
   req,
+  runSiteCheck,
   SHOP_HOST,
   START,
   settingsRejectCmp,
   settingsRejectPlan,
-  site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 
@@ -61,14 +61,11 @@ const runB = (
   cmp = cmpWith(rejectB()),
   knownGaps: string[] = [],
 ) =>
-  runCheck(
-    consent05,
-    site({
-      phases: [phase('A'), phase('B', { click: click('reject'), requests, ...extra })],
-      cmp,
-      knownGaps,
-    }),
-  );
+  runSiteCheck(consent05, {
+    phases: [phase('A'), phase('B', { click: click('reject'), requests, ...extra })],
+    cmp,
+    knownGaps,
+  });
 
 const gaAfter = (id: string, p = {}) =>
   req(id, 'https://www.google-analytics.com/g/collect?v=2&cid=[redacted]&en=page_view', {
@@ -135,15 +132,15 @@ describe('CONSENT-05 after a confirmed reject', () => {
   it('no click; phase B missing → inconclusive', () => {
     const noClick = runB([], {}, cmpWith({ phase: 'B', facts: [cmpFacts()] }));
     expect(noClick).toMatchObject({ status: 'inconclusive', reason: 'no-reject-click' });
-    const noB = runCheck(
-      consent05,
-      site({ phases: [phase('A')], cmp: cmpWith({ phase: 'A', facts: [cmpFacts({ phase: 'A' })] }) }),
-    );
+    const noB = runSiteCheck(consent05, {
+      phases: [phase('A')],
+      cmp: cmpWith({ phase: 'A', facts: [cmpFacts({ phase: 'A' })] }),
+    });
     expect(noB).toMatchObject({ status: 'inconclusive', reason: 'phase-b-missing' });
   });
 
   it('no banner on any page: nothing to reject, so not applicable rather than inconclusive', () => {
-    const r = runCheck(consent05, site({ phases: [phase('A'), phase('B', { requests: [gaAfter('b')] })] }));
+    const r = runSiteCheck(consent05, { phases: [phase('A'), phase('B', { requests: [gaAfter('b')] })] });
     expect(r).toMatchObject({ status: 'not_applicable', reason: 'no-banner' });
     expect(observationsOf(r)).toEqual([]);
   });
@@ -317,31 +314,25 @@ describe('CONSENT-05 on the control pages after the reject', () => {
     extra: Partial<Parameters<typeof phase>[1]> = {},
     knownGaps: string[] = [],
   ) =>
-    runCheck(
-      consent05,
-      site({
-        phases: [
-          phase('A'),
-          phase('B', {
-            click: click('reject'),
-            reloaded: true,
-            pages: consentPages(
-              'B',
-              control.map(([url]) => url),
-            ),
-            requests: hits.map((pageUrl, i) => gaAfter(`b${i}`, { pageUrl })),
-            ...extra,
-          }),
-        ],
-        cmp: cmpWith(
-          rejectB({}, [
-            cmpFacts(),
-            ...control.map(([url, inEffect]) => controlPageFacts(url, 'B', inEffect)),
-          ]),
-        ),
-        knownGaps,
-      }),
-    );
+    runSiteCheck(consent05, {
+      phases: [
+        phase('A'),
+        phase('B', {
+          click: click('reject'),
+          reloaded: true,
+          pages: consentPages(
+            'B',
+            control.map(([url]) => url),
+          ),
+          requests: hits.map((pageUrl, i) => gaAfter(`b${i}`, { pageUrl })),
+          ...extra,
+        }),
+      ],
+      cmp: cmpWith(
+        rejectB({}, [cmpFacts(), ...control.map(([url, inEffect]) => controlPageFacts(url, 'B', inEffect))]),
+      ),
+      knownGaps,
+    });
 
   it('violation: GA4 with identifier on a control page that reads the stored reject back', () => {
     const r = runCheck(consent05, scenario('violation-tracking-on-control-page-after-reject.json'));
@@ -473,14 +464,11 @@ describe('CONSENT-05 after a reject saved in the settings layer of a first layer
     'settings-save-not-found',
     'settings-control-not-found',
   ])('nothing saved (%s): no reject click, the reason is a limitation with words', (reason) => {
-    const r = runCheck(
-      consent05,
-      site({
-        phases: [phase('A'), phase('B', { requests: [gaAfter('B-1', { afterClick: false })] })],
-        cmp: settingsRejectCmp({ pressed: false }),
-        plan: settingsRejectPlan(reason),
-      }),
-    );
+    const r = runSiteCheck(consent05, {
+      phases: [phase('A'), phase('B', { requests: [gaAfter('B-1', { afterClick: false })] })],
+      cmp: settingsRejectCmp({ pressed: false }),
+      plan: settingsRejectPlan(reason),
+    });
     expect(r).toMatchObject({
       status: 'inconclusive',
       reason: 'no-reject-click',
@@ -502,10 +490,11 @@ describe('CONSENT-05 after a reject saved in the settings layer of a first layer
       error: 'target-not-found',
       path: 'settings',
     };
-    const r = runCheck(
-      consent05,
-      site({ phases: [phase('A'), phase('B')], cmp: failed, plan: settingsRejectPlan() }),
-    );
+    const r = runSiteCheck(consent05, {
+      phases: [phase('A'), phase('B')],
+      cmp: failed,
+      plan: settingsRejectPlan(),
+    });
     expect(r).toMatchObject({
       status: 'inconclusive',
       reason: 'no-reject-click',
@@ -518,17 +507,14 @@ describe('CONSENT-05 after a reject saved in the settings layer of a first layer
   });
 
   it('counterexample: a first layer without reject and no settings layer tried keeps the bare no-reject-click', () => {
-    const r = runCheck(
-      consent05,
-      site({
-        phases: [phase('A'), phase('B')],
-        cmp: cmpWith({
-          phase: 'B',
-          facts: [cmpFacts()],
-          click: { action: 'reject', clicked: false, button: null },
-        }),
+    const r = runSiteCheck(consent05, {
+      phases: [phase('A'), phase('B')],
+      cmp: cmpWith({
+        phase: 'B',
+        facts: [cmpFacts()],
+        click: { action: 'reject', clicked: false, button: null },
       }),
-    );
+    });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'no-reject-click' });
     expect(r.outcome?.limitations ?? []).toEqual([]);
   });

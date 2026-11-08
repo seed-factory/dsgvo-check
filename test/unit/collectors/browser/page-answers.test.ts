@@ -6,7 +6,6 @@
  */
 import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import type { RawDocument } from '../../../../src/collectors/browser/in-page/document.ts';
 import type { RawDomFacts } from '../../../../src/collectors/browser/in-page/dom.ts';
 import {
   checkedRawDocument,
@@ -20,9 +19,8 @@ import {
   parseLinkHeader,
 } from '../../../../src/collectors/browser/pages/dom-facts.ts';
 import { revealBelowFold } from '../../../../src/collectors/browser/pages/reveal.ts';
-import { bannerBox } from '../../../../src/collectors/browser/phases/screenshot.ts';
 import type { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
-import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
+import { legalPage, POLICY, privacyContext, rawPolicy } from './legal/fakes.ts';
 
 const target = { etld1: 'example.test', host: 'www.example.test' };
 const START = 'https://www.example.test/';
@@ -262,23 +260,7 @@ describe('the Link response header', () => {
   });
 });
 
-const POLICY = 'Wir verarbeiten personenbezogene Daten nach der DSGVO. '.repeat(20);
-const docCtx = {
-  id: 'doc-privacy-1',
-  kind: 'privacy' as const,
-  phase: 'A' as const,
-  url: 'https://www.example.test/datenschutz/',
-  foundVia: 'link' as const,
-  status: 200,
-  contentType: 'text/html; charset=utf-8',
-};
-const docPage = (main: unknown): Page =>
-  ({
-    url: () => docCtx.url,
-    evaluate: async () => main,
-    frames: () => [],
-    mainFrame: () => null,
-  }) as unknown as Page;
+const docCtx = privacyContext('https://www.example.test/datenschutz/');
 
 describe('the language of a legal document', () => {
   it.each([
@@ -312,7 +294,7 @@ describe('legal documents read from a page whose script answers for the page cod
   };
 
   it('nothing of the hostile answer is stored; a part of an unknown origin counts as hidden', async () => {
-    const doc = await extractDocument(docPage(hostile), docCtx);
+    const doc = await extractDocument(legalPage(docCtx.url, hostile), docCtx);
 
     expect(JSON.stringify(doc)).not.toContain('zq8');
     expect(JSON.stringify(doc)).not.toContain('alice@');
@@ -326,10 +308,7 @@ describe('legal documents read from a page whose script answers for the page cod
   });
 
   it('counterexample: a normal answer keeps its places, origins and counts', () => {
-    const normal: RawDocument = {
-      lang: 'de',
-      title: 'Datenschutzerklärung',
-      h1: 'Datenschutzerklärung',
+    const normal = rawPolicy({
       headingPlaces: { chrome: ['Menü'], content: ['Datenschutzerklärung'] },
       parts: [{ section: 'Datenschutzerklärung', text: POLICY, origin: 'expandable', place: 'content' }],
       expandablesFound: 2,
@@ -337,57 +316,12 @@ describe('legal documents read from a page whose script answers for the page cod
       expandablesIgnored: 0,
       textLength: POLICY.length,
       truncated: true,
-    };
+    });
     expect(checkedRawDocument(normal)).toEqual(normal);
   });
 });
 
-describe('the banner box and the document height measured in the page', () => {
-  const withButton = makeCmpFacts({
-    firstLayer: {
-      bannerPresent: true,
-      bannerVisible: true,
-      buttons: [
-        {
-          role: 'button',
-          name: 'Ablehnen',
-          tag: 'button',
-          kind: 'reject',
-          kindConfidence: 'high',
-          layer: 1,
-          box: { x: 100, y: 700, width: 100, height: 30 },
-          visibleAtFirstScreen: true,
-          actionableAtFirstScreen: true,
-          contrast: null,
-        },
-      ],
-      purAbo: false,
-      closeMeansAccept: null,
-    },
-  });
-  const answering = (answer: unknown) => ({ evaluate: async () => answer }) as unknown as Page;
-
-  it.each([
-    [
-      { box: null, reason: 'zq8 alice@example.com' },
-      { box: null, reason: 'container-unreadable' },
-    ],
-    [
-      { box: { x: 'zq8', y: 0, width: 10, height: 10 }, reason: 'ok' },
-      { box: null, reason: 'container-unreadable' },
-    ],
-    [
-      { box: null, reason: 'no-unique-container' },
-      { box: null, reason: 'no-unique-container' },
-    ],
-    [
-      { box: { x: 0, y: 600, width: 1366, height: 168 }, reason: 'ok' },
-      { box: { x: 0, y: 600, width: 1366, height: 168 }, reason: 'ok' },
-    ],
-  ])('%j → %j', async (answer, expected) => {
-    expect(await bannerBox(answering(answer), withButton)).toEqual(expected);
-  });
-
+describe('the document height measured in the page', () => {
   it('a height that is no number is no measurement: the reveal step fails in its own words', async () => {
     const page = {
       evaluate: async () => ({ heightPx: 'zq8 alice@example.com', scrollY: 0, locked: false }),

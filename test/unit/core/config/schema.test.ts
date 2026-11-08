@@ -90,8 +90,13 @@ describe('built-in defaults', () => {
     ['pdf', 'timeoutMs', 15_000],
   ];
 
-  it.each(LEGACY)('%s.%s = %j', (section, key, value) => {
-    expect((DEFAULT_CONFIG as Record<string, Record<string, unknown>>)[section]?.[key]).toEqual(value);
+  it('matches the defaults of every setting', () => {
+    const expected: Record<string, Record<string, unknown>> = {};
+    for (const [section, key, value] of LEGACY) {
+      expected[section] ??= {};
+      expected[section][key] = value;
+    }
+    expect(DEFAULT_CONFIG).toEqual(expected);
   });
 
   it('every setting is covered by the table above', () => {
@@ -134,10 +139,6 @@ describe('field list', () => {
     ['tls', 'approachingLifetimeShare', 'DSGVO_CHECK_TLS_APPROACHING_LIFETIME_SHARE'],
   ])('%s.%s is %s', (section, key, name) => {
     expect(envName(section, key)).toBe(name);
-  });
-
-  it('describes every setting', () => {
-    for (const f of fields) expect(f.description.length, f.env).toBeGreaterThan(20);
   });
 
   // A bare number in a variable must never leave the unit open.

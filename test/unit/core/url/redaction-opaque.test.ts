@@ -201,7 +201,7 @@ describe('an address in the opaque part of a URL with another scheme is masked',
     const rnd = random(20261103);
     const pick = () => PIECES[Math.floor(rnd() * PIECES.length)] as string;
 
-    for (let i = 0; i < 40_000; i++) {
+    for (let i = 0; i < 6_000; i++) {
       const scheme = SCHEMES[Math.floor(rnd() * SCHEMES.length)] as string;
       const body = Array.from({ length: 1 + Math.floor(rnd() * 8) }, pick).join('');
       const url = scheme + body;

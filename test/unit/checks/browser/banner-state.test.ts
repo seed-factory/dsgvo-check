@@ -11,6 +11,7 @@ import { consent03 } from '../../../../src/checks/browser/consent-03.ts';
 import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
 import { embed03 } from '../../../../src/checks/browser/embed-03.ts';
+import type { BannerState } from '../../../../src/checks/browser/signals.ts';
 import type { CmpSection } from '../../../../src/cmp/types.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../src/core/data/messages.ts';
@@ -61,76 +62,61 @@ const CASES: Array<[string, AnyCheck, Partial<PhaseRecord>]> = [
 /** CMP facts not recorded on any page: the phase is there, its facts are empty. */
 const NOT_OBSERVED: CmpSection = { phases: [{ phase: 'A', facts: [] }] };
 
-/** CMP facts and the `bannerFound` param they give; found or not stay booleans, as in reports written before. */
-/** A banner-shaped box the heuristic dismissed on two pages. */
-const UNRECOGNIZED: CmpSection = candidateCmp(bannerCandidate());
-
-const CMP: Array<[string, CmpSection, boolean | 'not-observed' | 'unrecognized']> = [
-  ['not recorded', NOT_OBSERVED, 'not-observed'],
-  ['without a banner', noBannerCmp(), false],
-  ['with a recognised CMP', cmpWith({ phase: 'B', facts: [cmpFacts()] }), true],
-  ['with a banner observed but not recognised', UNRECOGNIZED, 'unrecognized'],
-];
-
-const finding = (check: AnyCheck, input: Partial<PhaseRecord>, cmp: CmpSection) => {
-  const [o] = observationsOf(runCheck(check, site({ phases: [phase('A', input)], cmp })));
-  expect(o, 'the input gives a finding').toBeDefined();
-  return o!;
+const UNRECOGNIZED = candidateCmp(bannerCandidate());
+const BANNER_CLAIM =
+  /kein Einwilligungsbanner gefunden|no consent banner found|mit dem Einwilligungsbanner|with the consent banner/;
+const NOT_EVALUATED = {
+  de: /[Vv]or jeder Interaktion,? \(?Einwilligungsbanner nicht ausgewertet/,
+  en: /[Bb]efore any interaction,? \(?consent banner not evaluated/,
 };
 
+type ExpectedCopy = { de: RegExp; en: RegExp; forbidden: RegExp; phase?: Partial<PhaseRecord> };
+const CMP: Array<[string, CmpSection, BannerState, ExpectedCopy?]> = [
+  ['not recorded', NOT_OBSERVED, 'not-observed', { ...NOT_EVALUATED, forbidden: BANNER_CLAIM }],
+  ['without a banner', noBannerCmp(), false],
+  ['with a recognised CMP', cmpWith({ phase: 'B', facts: [cmpFacts()] }), true],
+  [
+    'with a banner observed but not recognised',
+    UNRECOGNIZED,
+    'unrecognized',
+    {
+      de: /[Vv]or jeder Interaktion,? \(?Einwilligungsbanner beobachtet, aber nicht erkannt/,
+      en: /[Bb]efore any interaction,? \(?consent banner observed but not recognised/,
+      forbidden: BANNER_CLAIM,
+    },
+  ],
+  [
+    'with shared banner links in an older snapshot',
+    noBannerCmp(),
+    'undetermined',
+    {
+      ...NOT_EVALUATED,
+      forbidden: /beobachtet, aber|observed but/,
+      phase: { pages: pagesWithLinks({ [START]: [bannerLink()], [IMPRESSUM]: [bannerLink()] }) },
+    },
+  ],
+];
+
 describe('banner state in the texts of findings before an interaction', () => {
+  const texts = { de: loadTexts('de'), en: loadTexts('en') };
+
   it.each(
     CASES.flatMap(([id, check, input]) =>
-      CMP.map(([facts, cmp, value]) => [id, facts, check, input, cmp, value] as const),
+      CMP.map(([facts, cmp, value, copy]) => [id, facts, check, input, cmp, value, copy] as const),
     ),
-  )('%s with CMP facts %s', (_id, _facts, check, input, cmp, value) => {
-    expect(finding(check, input, cmp).params.bannerFound).toBe(value);
+  )('%s with CMP facts %s', (_id, _facts, check, input, cmp, value, copy) => {
+    const snap = site({ phases: [phase('A', { ...input, ...copy?.phase })], cmp });
+    const [finding] = observationsOf(runCheck(check, snap));
+    expect(finding?.params.bannerFound).toBe(value);
+    if (!copy || !finding) return;
+
+    const key = `${finding.checkId}.${finding.variant}`;
+    for (const lang of ['de', 'en'] as const) {
+      const { body } = renderMessage(texts[lang], key, finding.params);
+      expect(body, lang).toMatch(copy[lang]);
+      expect(body, lang).not.toMatch(copy.forbidden);
+    }
   });
-
-  it.each(CASES)(
-    '%s: a banner that was not evaluated is neither named nor said to be missing',
-    (_id, check, input) => {
-      const o = finding(check, input, NOT_OBSERVED);
-      const key = `${o.checkId}.${o.variant}`;
-      const de = renderMessage(loadTexts('de'), key, o.params).body;
-      const en = renderMessage(loadTexts('en'), key, o.params).body;
-      expect(de).toMatch(/[Vv]or jeder Interaktion,? \(?Einwilligungsbanner nicht ausgewertet/);
-      expect(en).toMatch(/[Bb]efore any interaction,? \(?consent banner not evaluated/);
-      expect(`${de}\n${en}`).not.toMatch(/kein Einwilligungsbanner gefunden|no consent banner found/);
-      expect(`${de}\n${en}`).not.toMatch(/mit dem Einwilligungsbanner|with the consent banner/);
-    },
-  );
-
-  it.each(CASES)(
-    '%s: a banner observed but not recognised is named as such, neither as missing nor as interacted with',
-    (_id, check, input) => {
-      const o = finding(check, input, UNRECOGNIZED);
-      const key = `${o.checkId}.${o.variant}`;
-      const de = renderMessage(loadTexts('de'), key, o.params).body;
-      const en = renderMessage(loadTexts('en'), key, o.params).body;
-      expect(de).toMatch(/[Vv]or jeder Interaktion,? \(?Einwilligungsbanner beobachtet, aber nicht erkannt/);
-      expect(en).toMatch(/[Bb]efore any interaction,? \(?consent banner observed but not recognised/);
-      expect(`${de}\n${en}`).not.toMatch(/kein Einwilligungsbanner gefunden|no consent banner found/);
-      expect(`${de}\n${en}`).not.toMatch(/mit dem Einwilligungsbanner|with the consent banner/);
-    },
-  );
-
-  it.each(CASES)(
-    '%s: shared banner links of an older snapshot leave the banner undetermined, not observed',
-    (_id, check, input) => {
-      const pages = pagesWithLinks({ [START]: [bannerLink()], [IMPRESSUM]: [bannerLink()] });
-      const [o] = observationsOf(
-        runCheck(check, site({ phases: [phase('A', { ...input, pages })], cmp: noBannerCmp() })),
-      );
-      expect(o?.params.bannerFound).toBe('undetermined');
-      const key = `${o!.checkId}.${o!.variant}`;
-      const de = renderMessage(loadTexts('de'), key, o!.params).body;
-      const en = renderMessage(loadTexts('en'), key, o!.params).body;
-      expect(de).toMatch(/[Vv]or jeder Interaktion,? \(?Einwilligungsbanner nicht ausgewertet/);
-      expect(en).toMatch(/[Bb]efore any interaction,? \(?consent banner not evaluated/);
-      expect(`${de}\n${en}`).not.toMatch(/beobachtet, aber|observed but/);
-    },
-  );
 
   it('CONSENT-03 stays inconclusive on the same snapshot, so the other texts do not contradict it', () => {
     const [, , input] = CASES[0]!;

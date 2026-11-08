@@ -1,8 +1,3 @@
-/**
- * Content below the first screen: after the first-screen facts of a page the viewport is enlarged to the document
- * height, without any scroll or input event, so a lazy map far down the contact page loads in phase A and again after
- * the click in B and C. The banner facts and the screenshot keep the first screen.
- */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PhaseRecord } from '../../../../src/core/snapshot/browser.ts';
 import { derive } from '../../../../src/derive/index.ts';
@@ -133,7 +128,7 @@ describe('content below the first screen', () => {
     });
   });
 
-  it('the banner facts and the screenshot are taken on the first screen, before any reveal', () => {
+  it('the banner facts are taken on the first screen, before any reveal', () => {
     const facts = (run.result.sections.cmp?.phases ?? []).flatMap((p) => p.facts);
     expect(facts.length).toBeGreaterThan(0);
     for (const f of facts)
@@ -144,9 +139,6 @@ describe('content below the first screen', () => {
     for (const b of first?.firstLayer.buttons ?? []) {
       expect((b.box?.y ?? 0) + (b.box?.height ?? 0)).toBeLessThanOrEqual(768);
     }
-    const [shot] = run.result.sections.browser?.screenshots ?? [];
-    expect(shot).toMatchObject({ phase: 'B', width: 1366 });
-    expect(shot?.height).toBeLessThanOrEqual(768);
   });
 
   it('B shows the start page below its first screen only after the click, on the reload', () => {

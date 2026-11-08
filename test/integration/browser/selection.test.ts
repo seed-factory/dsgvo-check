@@ -1,21 +1,14 @@
 /** Page selection is deterministic, keeps reasons, honours robots.txt for additional pages and maxPages. */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+
+import { describe, expect, it } from 'vitest';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { collect } from './helpers.ts';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/selection'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({ sites: ['browser/selection'] }));
 
 describe('page selection', () => {
   it('start, Impressum, Datenschutz, Kontakt and two extras of different templates; robots.txt respected', async () => {
-    const run = await collect(server);
+    const run = await collect(server());
     const plan = run.result.sections.plan;
     expect(plan?.pages.map((p) => [p.order, p.url, p.role, p.source, p.reasons, p.robotsAllowed])).toEqual([
       [0, 'https://www.example.test/', 'start', 'start', ['start'], undefined],
@@ -40,23 +33,27 @@ describe('page selection', () => {
     expect(run.result.probes?.map((p) => [p.purpose, p.target])).toEqual([
       ['robots.txt', 'https://www.example.test/robots.txt'],
     ]);
-    expect(server.requestsTo('www.example.test').some((r) => r.path.startsWith('/ueber-uns'))).toBe(false);
-    expect(server.unexpected).toEqual([]);
+    expect(
+      server()
+        .requestsTo('www.example.test')
+        .some((r) => r.path.startsWith('/ueber-uns')),
+    ).toBe(false);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('is deterministic across runs', async () => {
-    const a = await collect(server);
-    const b = await collect(server);
+    const a = await collect(server());
+    const b = await collect(server());
     expect(b.result.sections.plan).toEqual(a.result.sections.plan);
   });
 
   it('maxPages limits additional pages; legal pages are always visited', async () => {
-    const run = await collect(server, { maxPages: 2 });
+    const run = await collect(server(), { maxPages: 2 });
     expect(run.result.sections.plan?.pages.map((p) => p.role)).toEqual(['start', 'impressum', 'privacy']);
   });
 
   it('the shared request cap truncates recording and stops further navigation', async () => {
-    const run = await collect(server, { deps: { requestLimit: 3, phases: ['A', 'B', 'C'] } });
+    const run = await collect(server(), { deps: { requestLimit: 3, phases: ['A', 'B', 'C'] } });
     const b = run.result.sections.browser;
     expect(run.result.status).toBe('partial');
     expect(b?.requestCap).toMatchObject({ limit: 3, truncated: true });
@@ -71,7 +68,7 @@ describe('page selection', () => {
 
   it('keeps at least 1.5 s between navigations with production pacing', async () => {
     const { FAST_TIMING } = await import('./helpers.ts');
-    const run = await collect(server, {
+    const run = await collect(server(), {
       maxPages: 2,
       deps: { timing: { ...FAST_TIMING, navigationPauseMs: 1_500 } },
     });

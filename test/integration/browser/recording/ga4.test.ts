@@ -2,22 +2,19 @@
  * A fake GA4 tag fires before consent: the hit shows the identifier redacted (name and stored-identifier match
  * extracted before redaction) and the `_ga` cookie without its value.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { REPO_URL } from '../../../../src/core/runtime/user-agent.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { type CollectRun, collect, persisted, TEST_SANDBOX } from '../helpers.ts';
 
-let server: FixtureServer;
 let run: CollectRun;
 
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/ga4'] });
-  run = await collect(server);
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(
+  () => ({ sites: ['browser/ga4'] }),
+  async (server) => {
+    run = await collect(server);
+  },
+);
 
 describe('GA4 before consent (phase A)', () => {
   it('records the hit with cid redacted and safe features kept', () => {
@@ -90,7 +87,9 @@ describe('GA4 before consent (phase A)', () => {
       timezoneId: 'Europe/Berlin',
     });
 
-    const seen = server.requestsTo('www.example.test').filter((r) => r.path === '/');
+    const seen = server()
+      .requestsTo('www.example.test')
+      .filter((r) => r.path === '/');
     expect(seen[0]?.userAgent).toBe(b?.engine.userAgent);
   });
 
@@ -122,6 +121,6 @@ describe('GA4 before consent (phase A)', () => {
         .map((p) => p.url),
     ).toEqual([]);
     for (const p of a?.pages ?? []) expect(p.navigation.dwellMs).toBeGreaterThanOrEqual(400);
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 });

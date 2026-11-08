@@ -5,6 +5,7 @@ import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { Collectors } from '../../../src/core/snapshot/collector.ts';
 import type { HttpHop } from '../../../src/core/snapshot/http.ts';
 import type { TlsEndpoint } from '../../../src/core/snapshot/tls.ts';
+import { scan } from '../../../src/scan.ts';
 import type { ScanOptions } from '../../../src/scan-options.ts';
 import { fakeCollectors, publicLookup, testDataDir } from '../../utils/scan-harness.ts';
 import {
@@ -130,8 +131,8 @@ export const abortAware =
       );
     });
 
-export function opts(over: Partial<ScanOptions> = {}): ScanOptions {
-  return {
+export function scanWith(over: Partial<ScanOptions> = {}) {
+  return scan({
     url: 'https://www.example.de/',
     dataDir,
     registry: registry(),
@@ -140,7 +141,7 @@ export function opts(over: Partial<ScanOptions> = {}): ScanOptions {
     now: () => FIXED_NOW,
     log: silentLogger,
     ...over,
-  };
+  });
 }
 
 /** A TLS collector whose probe of the target was refused with `authorizationError`, the refusal under test. */

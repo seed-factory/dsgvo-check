@@ -2,38 +2,24 @@
  * The seam between the page reader (`documentInPage` sorts headings into chrome and content) and `extractDocument`,
  * which confirms the type only by content headings, in the main document and same-origin frames. Fake page, no browser.
  */
-import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { RawDocument } from '../../../../../src/collectors/browser/in-page/document.ts';
 import { extractDocument } from '../../../../../src/collectors/browser/legal/documents.ts';
+import { legalPage, rawPolicy } from './fakes.ts';
 
 const TEXT = 'Angaben gemäß § 5 DDG: Beispiel GmbH, Musterstraße 1, 10115 Berlin. '.repeat(4);
 
-function raw(over: Partial<RawDocument>): RawDocument {
-  return {
-    lang: 'de',
+const raw = (over: Partial<RawDocument> = {}) =>
+  rawPolicy({
     title: 'Muster GmbH',
     h1: '',
     parts: [{ section: 'Leistungen', text: TEXT, origin: 'visible' }],
-    expandablesFound: 0,
-    expandablesWithContent: 0,
     textLength: TEXT.length,
-    truncated: false,
     ...over,
-  };
-}
+  });
 
-function fakePage(main: RawDocument, frames: RawDocument[] = []): Page {
-  const url = 'https://www.example.test/impressum';
-  const mainFrame = { url: () => url, evaluate: async () => main };
-  const children = frames.map((f, i) => ({ url: () => `${url}/frame-${i}`, evaluate: async () => f }));
-  return {
-    url: () => url,
-    evaluate: async () => main,
-    frames: () => [mainFrame, ...children],
-    mainFrame: () => mainFrame,
-  } as unknown as Page;
-}
+const withHeading = (headingPlaces?: RawDocument['headingPlaces']) =>
+  raw({ parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }], headingPlaces });
 
 const ctx = {
   id: 'doc-impressum-1',
@@ -46,60 +32,38 @@ const ctx = {
 };
 
 describe('extractDocument: only headings of the content confirm the type', () => {
+  const read = (main: RawDocument, children: RawDocument[] = []) =>
+    extractDocument(
+      legalPage(
+        ctx.url,
+        main,
+        children.map((doc, i) => [`${ctx.url}/frame-${i}`, doc]),
+      ),
+      ctx,
+    );
+
+  const chrome = { chrome: ['Impressum'], content: [] };
+  const content = { chrome: [], content: ['Impressum'] };
+
   it('a section heading that the reader placed in the chrome does not confirm the type', async () => {
-    const page = fakePage(
-      raw({
-        parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }],
-        headingPlaces: { chrome: ['Impressum'], content: [] },
-      }),
-    );
-    expect((await extractDocument(page, ctx)).errors).toContain('unconfirmed');
+    expect((await read(withHeading(chrome))).errors).toContain('unconfirmed');
   });
 
-  it('counterexample: the same heading placed in the content confirms it', async () => {
-    const page = fakePage(
-      raw({
-        parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }],
-        headingPlaces: { chrome: [], content: ['Impressum'] },
-      }),
-    );
-    expect((await extractDocument(page, ctx)).errors).toEqual([]);
+  it.each([
+    ['in the content', content],
+    ['in the chrome and in the content', { ...content, chrome: chrome.chrome }],
+    ['from a reader without places', undefined],
+  ] as const)('a heading %s confirms the type', async (_name, headingPlaces) => {
+    expect((await read(withHeading(headingPlaces))).errors).toEqual([]);
   });
 
-  it('counterexample: a heading in the chrome and in the content (a footer column next to the real one) stays', async () => {
-    const page = fakePage(
-      raw({
-        parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }],
-        headingPlaces: { chrome: ['Impressum'], content: ['Impressum'] },
-      }),
-    );
-    expect((await extractDocument(page, ctx)).errors).toEqual([]);
-  });
-
-  it('a chrome heading of a same-origin frame does not confirm the type either; a content heading does', async () => {
-    const chromeFrame = fakePage(raw({}), [
-      raw({
-        parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }],
-        headingPlaces: { chrome: ['Impressum'], content: [] },
-      }),
-    ]);
-    expect((await extractDocument(chromeFrame, ctx)).errors).toContain('unconfirmed');
-    const contentFrame = fakePage(raw({}), [
-      raw({
-        parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }],
-        headingPlaces: { chrome: [], content: ['Impressum'] },
-      }),
-    ]);
-    expect((await extractDocument(contentFrame, ctx)).errors).toEqual([]);
-  });
-
-  it('a reader without places (an older result) leaves every heading in force', async () => {
-    const page = fakePage(raw({ parts: [{ section: 'Impressum', text: TEXT, origin: 'visible' }] }));
-    expect((await extractDocument(page, ctx)).errors).toEqual([]);
+  it('a same-origin frame confirms the type only through its content heading', async () => {
+    expect((await read(raw(), [withHeading(chrome)])).errors).toContain('unconfirmed');
+    expect((await read(raw(), [withHeading(content)])).errors).toEqual([]);
   });
 
   it('the h1 passed on by the reader decides with the title: h1 of the content confirms, no h1 does not', async () => {
-    expect((await extractDocument(fakePage(raw({ h1: 'Impressum' })), ctx)).errors).toEqual([]);
-    expect((await extractDocument(fakePage(raw({ h1: '' })), ctx)).errors).toContain('unconfirmed');
+    expect((await read(raw({ h1: 'Impressum' }))).errors).toEqual([]);
+    expect((await read(raw({ h1: '' }))).errors).toContain('unconfirmed');
   });
 });

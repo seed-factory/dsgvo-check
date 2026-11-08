@@ -123,7 +123,6 @@ async function runCollector<S extends object>(
   }
 }
 
-/** Notes the outcome of a collector that returned before the deadline. */
 function recordResult<S extends object>(
   name: CollectorName,
   r: CollectorResult<S>,
@@ -241,7 +240,7 @@ export function tlsFallbackEntry(
 
   return {
     entry: { reason: 'tls-invalid', url: raw.final, via: raw.start },
-    record: { reason: 'tls-invalid', url: sanitizeUrl(raw.final), via: chain.startUrl },
+    record: { reason: 'tls-invalid', url: chain.final.url, via: chain.startUrl },
   };
 }
 
@@ -460,7 +459,6 @@ function fallbackFailed(snapshot: Snapshot, error: CollectorError): void {
 /** Reason of a browser skipped because its start page on the redirect target of a refused certificate failed. */
 export const TLS_FALLBACK_FAILED = 'tls-fallback-failed';
 
-/** Runs the browser collector and merges its sections. */
 async function runBrowserCollector(
   snapshot: Snapshot,
   collector: Collectors['browser'],
@@ -489,7 +487,7 @@ async function runBrowserCollector(
  * collector of its own in `collection`: a failure leaves the scanned domain's section as it was and is noted in it,
  * so MAIL-* say that the further domains are unknown instead of silently checking fewer.
  */
-async function runDnsFollowUp(
+function runDnsFollowUp(
   snapshot: Snapshot,
   collector: Collectors['dnsFollowUp'],
   ctx: CollectorContext,
@@ -497,29 +495,17 @@ async function runDnsFollowUp(
   log: Logger,
   graceMs: number,
 ): Promise<void> {
-  const t0 = performance.now();
-  const failed = (code: string, message: string) => {
-    log.warn(`DNS follow-up: ${message}`);
-    if (!snapshot.dns) return;
-    snapshot.dns.mailDomainStage = {
-      contacts: 'not-collected',
-      durationMs: Math.round(performance.now() - t0),
-      error: { code, message },
-    };
-  };
-  try {
-    const pending = collector(ctx);
-    const res = await untilDeadline(pending, ctx.signal);
-    // After the deadline the stage stops at its next query; what it handed over within the grace period is kept, and
-    // the scan reports the timeout like one in any other collector.
-    if (res.timedOut) state.timedOut = true;
-    const value = res.timedOut ? await withinGrace(pending, graceMs) : res.value;
-    if (!value) return failed('timeout', 'no result within the grace period after the global timeout');
-    if (value.diagnostics) snapshot.diagnostics.push(...value.diagnostics);
-    if (value.sections.dns) snapshot.dns = value.sections.dns;
-  } catch (err) {
-    failed('collector-exception', errorMessage(err));
-  }
+  return runFollowUp(collector, ctx, state, graceMs, {
+    accept(value) {
+      if (value.diagnostics) snapshot.diagnostics.push(...value.diagnostics);
+      if (value.sections.dns) snapshot.dns = value.sections.dns;
+    },
+    fail(error, elapsedMs) {
+      log.warn(`DNS follow-up: ${error.message}`);
+      if (snapshot.dns)
+        snapshot.dns.mailDomainStage = { contacts: 'not-collected', durationMs: elapsedMs(), error };
+    },
+  });
 }
 
 /**
@@ -528,7 +514,7 @@ async function runDnsFollowUp(
  * section and is noted in it, so TLS-01 says that the forms of further pages are unknown instead of reading their
  * absence as clean.
  */
-async function runFormTwins(
+function runFormTwins(
   snapshot: Snapshot,
   collector: Collectors['httpFormTwins'],
   ctx: CollectorContext,
@@ -536,27 +522,50 @@ async function runFormTwins(
   log: Logger,
   graceMs: number,
 ): Promise<void> {
+  return runFollowUp(collector, ctx, state, graceMs, {
+    accept(value) {
+      addSideOutputs(snapshot, value);
+      if (value.sections.http) snapshot.http = value.sections.http;
+    },
+    fail(error, elapsedMs) {
+      log.warn(`http:// addresses of pages with a form: ${error.message}`);
+      if (snapshot.http) {
+        snapshot.http.formTwinStage = {
+          budget: ctx.config.http.formTwinPages,
+          candidates: null,
+          durationMs: elapsedMs(),
+          error,
+        };
+      }
+    },
+  });
+}
+
+async function runFollowUp<S>(
+  collector: (ctx: CollectorContext) => Promise<CollectorResult<S>>,
+  ctx: CollectorContext,
+  state: CollectState,
+  graceMs: number,
+  handlers: {
+    accept(value: CollectorResult<S>): void;
+    fail(error: CollectorError, elapsedMs: () => number): void;
+  },
+): Promise<void> {
   const t0 = performance.now();
-  const failed = (code: string, message: string) => {
-    log.warn(`http:// addresses of pages with a form: ${message}`);
-    if (!snapshot.http) return;
-    snapshot.http.formTwinStage = {
-      budget: ctx.config.http.formTwinPages,
-      candidates: null,
-      durationMs: Math.round(performance.now() - t0),
-      error: { code, message },
-    };
-  };
+  const elapsedMs = () => Math.round(performance.now() - t0);
+  const fail = (code: string, message: string) => handlers.fail({ code, message }, elapsedMs);
+
   try {
     const pending = collector(ctx);
     const res = await untilDeadline(pending, ctx.signal);
+    // After the deadline the stage stops at its next query; what it handed over within the grace period is kept, and
+    // the scan reports the timeout like one in any other collector.
     if (res.timedOut) state.timedOut = true;
     const value = res.timedOut ? await withinGrace(pending, graceMs) : res.value;
-    if (!value) return failed('timeout', 'no result within the grace period after the global timeout');
-    addSideOutputs(snapshot, value);
-    if (value.sections.http) snapshot.http = value.sections.http;
+    if (!value) return fail('timeout', 'no result within the grace period after the global timeout');
+    handlers.accept(value);
   } catch (err) {
-    failed('collector-exception', errorMessage(err));
+    fail('collector-exception', errorMessage(err));
   }
 }
 

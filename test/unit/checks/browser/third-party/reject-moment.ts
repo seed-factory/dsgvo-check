@@ -1,7 +1,3 @@
-/**
- * EMBED-01, -02 and -03 take the moment of their loads from the same reject facts (src/checks/browser/reject-moment.ts),
- * so each of them runs the same moment rows with its own kind of load.
- */
 import { expect } from 'vitest';
 import type { CmpSection } from '../../../../../src/cmp/types.ts';
 import type { Observation } from '../../../../../src/core/evaluation/check.ts';
@@ -53,6 +49,7 @@ export interface MomentCase {
   cmp: CmpSection;
   /** The params of the one finding; null: no finding. */
   want: MomentParams | null;
+  checksTimingBoundary?: true;
 }
 
 /**
@@ -83,12 +80,14 @@ export function momentCases(o: {
     },
     {
       name: 'loads only after the confirmed reject',
+      checksTimingBoundary: true,
       phases: [phaseA(), rejectPhase(control, [load('b', onControl)])],
       cmp: confirmed,
       want: { moment: 'after-reject', rejectConfirmed: true, afterRejectPageCount: 1, afterReject: true },
     },
     {
       name: 'counterexample: phase B before its click is no load after the reject',
+      checksTimingBoundary: true,
       phases: [phaseA(), rejectPhase(control, [load('b', { phase: 'B', afterClick: false })])],
       cmp: confirmed,
       want: BEFORE,
@@ -101,6 +100,7 @@ export function momentCases(o: {
     },
     {
       name: 'counterexample: a failed attempt after the reject is no load',
+      checksTimingBoundary: true,
       phases: [
         phaseA([load('a')]),
         rejectPhase(control, [load('b', { ...AFTER_CLICK, state: 'failed', status: undefined })]),
@@ -110,6 +110,7 @@ export function momentCases(o: {
     },
     {
       name: 'a page that shows the banner again after the reject is not counted',
+      checksTimingBoundary: true,
       phases: [
         phaseA([load('a')]),
         rejectPhase(control, [load('b', { ...AFTER_CLICK, pageUrl: START }), load('c', onControl)]),
@@ -119,6 +120,7 @@ export function momentCases(o: {
     },
     {
       name: 'loads after the reject only on a page that shows the banner again do not confirm the reject',
+      checksTimingBoundary: true,
       phases: [phaseA([load('a')]), rejectPhase(control, [load('c', onControl)])],
       cmp: bannerAgain,
       want: beforeAndAfter(false, 0),

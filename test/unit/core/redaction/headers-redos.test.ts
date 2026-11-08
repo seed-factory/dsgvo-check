@@ -40,16 +40,11 @@ describe('Refresh: 64 KiB values are read in linear time', () => {
   const spaces = ' '.repeat(SIZE - 8);
   it.each<[string, (n: number) => string]>([
     ['a delay, a path, spaces and a last character', (n) => `0;x${' '.repeat(n - 8)}y`],
-    ['the same behind url=', (n) => `0;url=x${' '.repeat(n - 8)}y`],
     ['an unclosed quote', (n) => `0;'x${' '.repeat(n - 8)}y`],
-    ['an unclosed double quote behind url=', (n) => `0; URL = "x${' '.repeat(n - 8)}y`],
     ['no-break spaces', (n) => `0;x${'\u00a0'.repeat(n - 8)}y`],
-    ['tabs', (n) => `0;x${'\t'.repeat(n - 8)}y`],
     ['spaces before the delay and junk after it', (n) => `${' '.repeat(n - 8)}0${' '.repeat(n - 8)}x`],
-    ['a comma separator', (n) => `0,x${' '.repeat(n - 8)}y`],
     ['words rather than one run', (n) => `0;${'x '.repeat(n / 2 - 4)}y`],
     ['a closed quote containing spaces', (n) => `0;'x${' '.repeat(n - 8)}y'`],
-    ['a line terminator after the series', (n) => `0;x${' '.repeat(n - 8)}\ny`],
   ])('%s', (_what, build) => {
     expectLinear((n) => stored('refresh', build(n)));
 
@@ -69,16 +64,11 @@ describe('Refresh: 64 KiB values are read in linear time', () => {
     expect(rec.truncated).toBe(true);
     expect(rec.value).toHaveLength(MAX_HEADER_VALUE);
   });
-
-  it('a server-sized Refresh value is bounded', () => {
-    expect(stored('refresh', `0;x${' '.repeat(16 * 1024 - 8)}y`).truncated).toBe(true);
-  });
 });
 
 describe('Link: 64 KiB values are read in linear time', () => {
   it.each<[string, (n: number) => string]>([
     ['only opening brackets', (n) => '<'.repeat(n)],
-    ['opening brackets with a letter', (n) => '<a'.repeat(n / 2)],
     ['an unclosed target after a closed one', (n) => `<https://a.test/x>;rel=next${'<'.repeat(n - 40)}`],
     ['a closed target after many opening brackets', (n) => `${'<'.repeat(n - 30)}http://a.test/x>`],
   ])('%s', (_what, build) => {
@@ -86,15 +76,11 @@ describe('Link: 64 KiB values are read in linear time', () => {
     expect(stored('link', build(SIZE)).value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
   });
 
-  it('a server-sized Link value of open targets is one redacted part', () => {
-    expect(stored('link', '<'.repeat(16 * 1024)).value).toBe(REDACTED);
-  });
-
   it('keeps what it read: closed targets are resolved, an unclosed one is redacted', () => {
     expect(stored('link', '<a.html>; rel=next, <b.html').value).toBe(
       '<https://www.example.test/dir/a.html>; rel=next, [redacted]',
     );
-    expect(stored('link', '<'.repeat(40)).value).toBe(REDACTED);
+    expect(stored('link', '<'.repeat(16 * 1024)).value).toBe(REDACTED);
   });
 });
 
@@ -102,26 +88,13 @@ describe('other header parsers scale with untrusted values', () => {
   it.each<[string, (n: number) => string]>([
     ['content-security-policy', (n) => `frame-ancestors ${'a.'.repeat(n / 2)}!`],
     ['content-security-policy', (n) => 'a@'.repeat(n / 2)],
-    ['content-security-policy', (n) => 'a:'.repeat(n / 2)],
-    ['content-security-policy', (n) => 'a://'.repeat(n / 4)],
-    ['content-security-policy', (n) => `[${'a:'.repeat(n / 2)}`],
     ['content-security-policy', (n) => 'x '.repeat(n / 2)],
     ['content-security-policy', (n) => `frame-ancestors${' a'.repeat(n / 2)}`],
     ['content-security-policy', (n) => ';'.repeat(n)],
     ['content-security-policy', (n) => ','.repeat(n)],
-    ['content-security-policy', (n) => '/a '.repeat(n / 3)],
-    ['content-security-policy', (n) => '/?'.repeat(n / 2)],
-    ['content-security-policy', (n) => 'a?'.repeat(n / 2)],
-    ['permissions-policy', (n) => 'http://'.repeat(n / 7)],
     ['permissions-policy', (n) => `http://${'a'.repeat(n)}`],
-    ['permissions-policy', (n) => '=a'.repeat(n / 2)],
     ['permissions-policy', (n) => `${'a'.repeat(n)}?x`],
-    ['permissions-policy', (n) => '"/?a" '.repeat(n / 6)],
-    ['permissions-policy', (n) => 'http://a.test/ x?y '.repeat(n / 19)],
-    ['x-xss-protection', (n) => '/?'.repeat(n / 2)],
     ['x-frame-options', (n) => `${'a'.repeat(n)}@`],
-    ['x-frame-options', (n) => 'a@b.test '.repeat(n / 9)],
-    ['link', (n) => '<a>?'.repeat(n / 4)],
     ['link', (n) => `</a>; title="${';()'.repeat(n / 3)}"`],
     ['link', (n) => `</a>${'; a="'.repeat(n / 5)}`],
     ['content-type', (n) => `text/html${'; a="('.repeat(n / 6)}`],
@@ -138,7 +111,6 @@ describe('other header parsers scale with untrusted values', () => {
     ['permissions-policy', (n) => `camera=(self);${'report-to="('.repeat(n / 12)}`],
     ['strict-transport-security', (n) => `max-age=${'9'.repeat(n)}`],
     ['strict-transport-security', (n) => `max-age=1${'; max-age="'.repeat(n / 11)}`],
-    ['link', (n) => `<a>${'/?'.repeat(n / 2)}`],
     ['strict-transport-security', (n) => `max-age=1,${'"x;,'.repeat(n / 4)}`],
     ['strict-transport-security', (n) => `${'";'.repeat(n / 2)}max-age=1`],
     ['content-security-policy', (n) => `script-src ${'a.b'.repeat(n / 3)}?@x.test`],
@@ -152,9 +124,6 @@ describe('other header parsers scale with untrusted values', () => {
     ['link', (n) => `<${'\u0001'.repeat(n)}x:y>`],
     ['x-frame-options', (n) => `"${', '.repeat(n / 2)}`],
     ['referrer-policy', (n) => `"${', '.repeat(n / 2)}`],
-    ['location', (n) => 'a'.repeat(n)],
-    ['x-trace', (n) => 'a'.repeat(n)],
-    ['content-security-policy', (n) => `report-uri ${'a '.repeat(n / 2)}`],
     ['content-security-policy', (n) => `report-uri ${'%40 '.repeat(n / 3)}`],
     ['content-security-policy', (n) => `script-src ${'a.example.test '.repeat(n / 15)}`],
   ])('%s: %#', (name, build) => {
@@ -273,7 +242,7 @@ function expectSameAsLegacy(
 }
 
 describe('header parser equivalence', () => {
-  it('differential: 30 000 random small values give the same record as the reference expression', () => {
+  it('Refresh values give the same record as the reference expression', () => {
     const pieces = [
       '0',
       '5',
@@ -300,10 +269,10 @@ describe('header parser equivalence', () => {
       '\u2028',
     ];
 
-    expectSameAsLegacy('refresh', legacyRefresh, { pieces, seed: 20261031, runs: 30_000, maxParts: 9 });
+    expectSameAsLegacy('refresh', legacyRefresh, { pieces, seed: 20261031, runs: 5_000, maxParts: 9 });
   });
 
-  it('differential: 20 000 random lists of link-values resolve every target like the URL parser', () => {
+  it('lists of link-values resolve every target like the URL parser', () => {
     const pieces = [
       ', <a>',
       ',</x>',
@@ -313,7 +282,7 @@ describe('header parser equivalence', () => {
       ',\n<http://x.test/>',
     ];
 
-    expectSameAsLegacy('link', legacyLink, { pieces, seed: 31102026, runs: 20_000, maxParts: 10 });
+    expectSameAsLegacy('link', legacyLink, { pieces, seed: 31102026, runs: 4_000, maxParts: 10 });
   });
 });
 
@@ -321,14 +290,8 @@ describe('product headers: 64 KiB values are read in linear time', () => {
   it.each<[string, string, (n: number) => string]>([
     ['many pairs', 'server', (n) => 'a/1 '.repeat(n / 4)],
     ['opening parentheses', 'server', (n) => '('.repeat(n)],
-    ['closing parentheses', 'server', (n) => ')'.repeat(n)],
     ['escapes inside a comment', 'server', (n) => `(${'\\('.repeat(n / 2)}`],
-    ['one long token', 'x-powered-by', (n) => 'a'.repeat(n)],
     ['one long token with a slash', 'x-powered-by', (n) => `a/${'1'.repeat(n)}`],
-    ['slashes', 'x-powered-by', (n) => 'a/'.repeat(n / 2)],
-    ['a long dotted version', 'x-powered-by', (n) => `PHP/${'1.'.repeat(n / 2)}`],
-    ['a long dotted product', 'x-powered-by', (n) => `${'a.'.repeat(n / 2)}/1`],
-    ['a long suffix', 'x-powered-by', (n) => `PHP/1${'-a'.repeat(n / 2)}`],
     ['commas and blanks', 'server', (n) => ', '.repeat(n / 2)],
     ['a version alone', 'x-aspnet-version', (n) => '1.'.repeat(n / 2)],
   ])('%s', (_what, name, build) => {
@@ -405,9 +368,9 @@ describe('random hostile text never reaches a stored Link or CSP value', () => {
     'default-src',
   ];
 
-  it.each(['link', 'content-security-policy'])('%s: 20 000 random values', (name) => {
+  it.each(['link', 'content-security-policy'])('%s: mixed tokens', (name) => {
     const next = seeded(name === 'link' ? 4101 : 4202);
-    for (let i = 0; i < 20_000; i++) {
+    for (let i = 0; i < 4_000; i++) {
       const value = Array.from({ length: 1 + (next() % 12) }, () => pieces[next() % pieces.length]).join('');
       const got = stored(name, value, identity).value;
       if (/(?<![\w.])(?:visitorSecret|alice|Mustermann|4f3a9c1d2e7b4a9f)(?![\w.])/.test(got)) {

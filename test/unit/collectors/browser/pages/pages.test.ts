@@ -12,21 +12,25 @@ import {
   languageContext,
 } from '../../../../../src/collectors/browser/pages/pages.ts';
 import { parseRobots } from '../../../../../src/collectors/browser/pages/robots.ts';
-import { loadPageRules } from '../../../../../src/collectors/browser/rules.ts';
 import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { link, plan, START, scope, u } from '../../../../utils/candidate-links.ts';
 
+type LinkFields = Omit<Partial<CandidateLink>, 'raw' | 'text'>;
+const siteLink = (path: string, text: string, fields: LinkFields = {}) =>
+  link({ raw: u(path), text, ...fields });
+const languageSwitch = (path: string, label: string) => siteLink(path, label, { region: 'header' });
+
 const LINKS: CandidateLink[] = [
-  link({ raw: 'https://www.example.test/leistungen/webdesign', text: 'Webdesign', region: 'nav' }),
-  link({ raw: 'https://www.example.test/ueber-uns', text: 'Über uns', region: 'nav' }),
-  link({ raw: 'https://www.example.test/blog/', text: 'Blog', region: 'nav' }),
-  link({ raw: 'https://www.example.test/blog/post-1', text: 'Neuer Beitrag', region: 'main' }),
-  link({ raw: 'https://www.example.test/kontakt', text: 'Kontakt', region: 'nav' }),
-  link({ raw: 'https://www.example.test/shop/warenkorb', text: 'Warenkorb', region: 'header' }),
-  link({ raw: 'https://www.example.test/team.pdf', text: 'Team (PDF)', region: 'main' }),
-  link({ raw: 'https://www.example.test/impressum', text: 'Impressum' }),
-  link({ raw: 'https://www.example.test/?page_id=3', text: 'Datenschutzerklärung' }),
-  link({ raw: 'https://www.example.test/datenschutz-einstellungen', text: 'Datenschutz-Einstellungen' }),
+  siteLink('/leistungen/webdesign', 'Webdesign', { region: 'nav' }),
+  siteLink('/ueber-uns', 'Über uns', { region: 'nav' }),
+  siteLink('/blog/', 'Blog', { region: 'nav' }),
+  siteLink('/blog/post-1', 'Neuer Beitrag', { region: 'main' }),
+  siteLink('/kontakt', 'Kontakt', { region: 'nav' }),
+  siteLink('/shop/warenkorb', 'Warenkorb', { region: 'header' }),
+  siteLink('/team.pdf', 'Team (PDF)', { region: 'main' }),
+  siteLink('/impressum', 'Impressum'),
+  siteLink('/?page_id=3', 'Datenschutzerklärung'),
+  siteLink('/datenschutz-einstellungen', 'Datenschutz-Einstellungen'),
   link({ raw: 'https://other.example/impressum', text: 'Impressum Partner', region: 'main' }),
   link({ raw: 'mailto:info@example.test', text: 'E-Mail', hrefKind: 'mailto' }),
 ];
@@ -39,21 +43,21 @@ describe('selectPages', () => {
     expect(p.impressum).toMatchObject({
       status: 'page',
       choice: {
-        url: 'https://www.example.test/impressum',
+        url: u('/impressum'),
         role: 'impressum',
         reasons: ['footer-link:impressum'],
       },
     });
     // The navigation URL keeps the real query; the planned URL is sanitized.
-    expect(p.privacy.choice?.raw).toBe('https://www.example.test/?page_id=3');
-    expect(p.privacy.choice?.url).toBe('https://www.example.test/?page_id=[redacted]');
+    expect(p.privacy.choice?.raw).toBe(u('/?page_id=3'));
+    expect(p.privacy.choice?.url).toBe(u('/?page_id=[redacted]'));
     expect(p.contact).toMatchObject({
-      url: 'https://www.example.test/kontakt',
+      url: u('/kontakt'),
       reasons: ['nav-link:kontakt'],
     });
     expect(extrasOf(p)).toEqual([
-      ['https://www.example.test/ueber-uns', ['keyword:über uns']],
-      ['https://www.example.test/blog/', ['keyword:blog']],
+      [u('/ueber-uns'), ['keyword:über uns']],
+      [u('/blog/'), ['keyword:blog']],
     ]);
   });
 
@@ -67,35 +71,30 @@ describe('selectPages', () => {
     const robots = parseRobots('User-agent: *\nDisallow: /ueber-uns\nDisallow: /impressum');
     const p = plan(LINKS, { maxPages: 5, robots });
     expect(p.impressum.status).toBe('page'); // legal pages are always visited
-    expect(p.extras.map((e) => e.url)).toEqual(['https://www.example.test/blog/']);
+    expect(p.extras.map((e) => e.url)).toEqual([u('/blog/')]);
     expect(p.extras[0]?.robotsAllowed).toBe(true);
   });
 
   it('falls back to sitemap entries with distinct templates', () => {
-    const p = plan([link({ raw: 'https://www.example.test/impressum', text: 'Impressum' })], {
-      sitemapLocs: [
-        'https://www.example.test/produkte/a',
-        'https://www.example.test/produkte/b',
-        'https://cdn.other.example/x',
-        'https://www.example.test/referenzen',
-      ],
+    const p = plan([siteLink('/impressum', 'Impressum')], {
+      sitemapLocs: [u('/produkte/a'), u('/produkte/b'), 'https://cdn.other.example/x', u('/referenzen')],
     });
     expect(p.extras.map((e) => [e.url, e.source, e.reasons])).toEqual([
-      ['https://www.example.test/produkte/a', 'sitemap', ['sitemap']],
-      ['https://www.example.test/referenzen', 'sitemap', ['sitemap']],
+      [u('/produkte/a'), 'sitemap', ['sitemap']],
+      [u('/referenzen'), 'sitemap', ['sitemap']],
     ]);
     expect(p.privacy.status).toBe('none');
   });
 
   it('classifies # / javascript: / PDF / offsite legal links', () => {
     const p = plan([
-      link({ raw: 'https://www.example.test/#', text: 'Impressum', hrefKind: 'fragment' }),
-      link({ raw: 'https://www.example.test/dse.pdf', text: 'Datenschutz' }),
+      siteLink('/#', 'Impressum', { hrefKind: 'fragment' }),
+      siteLink('/dse.pdf', 'Datenschutz'),
     ]);
     expect(p.impressum.status).toBe('unresolved');
     expect(p.privacy).toMatchObject({
       status: 'pdf',
-      choice: { url: 'https://www.example.test/dse.pdf' },
+      choice: { url: u('/dse.pdf') },
     });
     expect(
       findLegalLink(
@@ -108,34 +107,34 @@ describe('selectPages', () => {
 
   it('proposes hop pages (Rechtliches, Über uns) when a legal link is missing', () => {
     const p = plan([
-      link({ raw: 'https://www.example.test/rechtliches', text: 'Rechtliches' }),
-      link({ raw: 'https://www.example.test/ueber-uns', text: 'Über uns', region: 'nav' }),
+      siteLink('/rechtliches', 'Rechtliches'),
+      siteLink('/ueber-uns', 'Über uns', { region: 'nav' }),
     ]);
     expect(p.hops.map((h) => [h.url, h.reasons])).toEqual([
-      ['https://www.example.test/rechtliches', ['hop:rechtliches']],
-      ['https://www.example.test/ueber-uns', ['hop:über uns']],
+      [u('/rechtliches'), ['hop:rechtliches']],
+      [u('/ueber-uns'), ['hop:über uns']],
     ]);
   });
 });
 
 /** The legal links of a site under `prefix`, so that the budget left for extras is the scan's. */
 const legal = (prefix = '') => [
-  link({ raw: u(`${prefix}/impressum/`), text: 'Impressum' }),
-  link({ raw: u(`${prefix}/datenschutz/`), text: 'Datenschutz' }),
+  siteLink(`${prefix}/impressum/`, 'Impressum'),
+  siteLink(`${prefix}/datenschutz/`, 'Datenschutz'),
 ];
 
 describe('locale prefixes and language versions', () => {
   it('a /de/ start page leaves its own sections open: history and location pages, never the language roots', () => {
     const p = plan(
       [
-        link({ raw: u('/de/'), text: 'DE', region: 'header' }),
-        link({ raw: u('/en/'), text: 'EN', region: 'header' }),
-        link({ raw: u('/es/'), text: 'ES', region: 'header' }),
-        link({ raw: u('/de/kontakt/'), text: 'Kontakt' }),
-        link({ raw: u('/de/kontakt/anfahrt/'), text: 'Anfahrt' }),
-        link({ raw: u('/de/unternehmen/geschichte/'), text: 'Unsere Geschichte' }),
-        link({ raw: u('/de/unternehmen/karriere/'), text: 'Karriere' }),
-        link({ raw: u('/de/unternehmen/news/'), text: 'News' }),
+        languageSwitch('/de/', 'DE'),
+        languageSwitch('/en/', 'EN'),
+        languageSwitch('/es/', 'ES'),
+        siteLink('/de/kontakt/', 'Kontakt'),
+        siteLink('/de/kontakt/anfahrt/', 'Anfahrt'),
+        siteLink('/de/unternehmen/geschichte/', 'Unsere Geschichte'),
+        siteLink('/de/unternehmen/karriere/', 'Karriere'),
+        siteLink('/de/unternehmen/news/', 'News'),
         ...legal('/de'),
       ],
       { startRaw: u('/de/') },
@@ -150,9 +149,9 @@ describe('locale prefixes and language versions', () => {
 
   it('links that only switch the language never fill the budget, so the sitemap is asked', () => {
     const links = [
-      link({ raw: u('/en/'), text: 'EN', region: 'header' }),
-      link({ raw: u('/fr/'), text: 'FR', region: 'header' }),
-      link({ raw: u('/en/products/'), text: 'Products', region: 'nav' }),
+      languageSwitch('/en/', 'EN'),
+      languageSwitch('/fr/', 'FR'),
+      siteLink('/en/products/', 'Products', { region: 'nav' }),
       ...legal('/de'),
     ];
     const fromLinks = plan(links, { startRaw: u('/de/') });
@@ -172,10 +171,10 @@ describe('locale prefixes and language versions', () => {
   it('without a locale on the start page, labelled language switches and their sections are alternates', () => {
     const p = plan(
       [
-        link({ raw: u('/en/'), text: 'EN', region: 'header' }),
-        link({ raw: u('/fr/accueil/'), text: 'Français', region: 'header' }),
-        link({ raw: u('/en/about-us/'), text: 'About us' }),
-        link({ raw: u('/ueber-uns/'), text: 'Über uns', region: 'nav' }),
+        languageSwitch('/en/', 'EN'),
+        languageSwitch('/fr/accueil/', 'Français'),
+        siteLink('/en/about-us/', 'About us'),
+        siteLink('/ueber-uns/', 'Über uns', { region: 'nav' }),
         ...legal(),
       ],
       { sitemapLocs: [u('/en/team/'), u('/fr/equipe/')] },
@@ -188,12 +187,12 @@ describe('locale prefixes and language versions', () => {
     (label) => {
       const p = plan(
         [
-          link({ raw: u('/de/'), text: label, region: 'header' }),
-          link({ raw: u('/en/'), text: 'EN', region: 'header' }),
-          link({ raw: u('/de/kontakt/'), text: 'Kontakt', region: 'nav' }),
-          link({ raw: u('/de/geschichte/'), text: 'Geschichte', region: 'nav' }),
-          link({ raw: u('/de/anfahrt/'), text: 'Anfahrt', region: 'nav' }),
-          link({ raw: u('/en/history/'), text: 'History', region: 'nav' }),
+          languageSwitch('/de/', label),
+          languageSwitch('/en/', 'EN'),
+          siteLink('/de/kontakt/', 'Kontakt', { region: 'nav' }),
+          siteLink('/de/geschichte/', 'Geschichte', { region: 'nav' }),
+          siteLink('/de/anfahrt/', 'Anfahrt', { region: 'nav' }),
+          siteLink('/en/history/', 'History', { region: 'nav' }),
           ...legal('/de'),
         ],
         { startLang: 'de-DE', sitemapLocs: [u('/de/team/')] },
@@ -209,16 +208,16 @@ describe('locale prefixes and language versions', () => {
 
   it('counterexample: a region of the start language behind its switch stays another version', () => {
     const ctx = languageContext({ raw: START, lang: 'de-DE' }, [
-      link({ raw: u('/de-at/'), text: 'DE-AT', region: 'header' }),
-      link({ raw: u('/de/'), text: 'DE', region: 'header' }),
+      languageSwitch('/de-at/', 'DE-AT'),
+      languageSwitch('/de/', 'DE'),
     ]);
     expect(ctx.alternatePrefixes).toEqual(new Set(['de-at']));
   });
 
   it('counterexample: without a locale on the start page, /it/ "IT-Service" is a section and stays eligible', () => {
     const p = plan([
-      link({ raw: u('/it/'), text: 'IT-Service', region: 'nav' }),
-      link({ raw: u('/en/'), text: 'EN', region: 'header' }),
+      siteLink('/it/', 'IT-Service', { region: 'nav' }),
+      languageSwitch('/en/', 'EN'),
       ...legal(),
     ]);
     expect(extrasOf(p)).toEqual([[u('/it/'), ['keyword:service']]]);
@@ -227,8 +226,8 @@ describe('locale prefixes and language versions', () => {
   it('a page marked as another language by one of its links stays out, also as a sitemap entry', () => {
     const p = plan(
       [
-        link({ raw: u('/team-en/'), text: 'Team', hreflang: 'en' }),
-        link({ raw: u('/team-en/'), text: 'Our team', region: 'nav' }),
+        siteLink('/team-en/', 'Team', { hreflang: 'en' }),
+        siteLink('/team-en/', 'Our team', { region: 'nav' }),
         ...legal(),
       ],
       { startLang: 'de', sitemapLocs: [u('/team-en/'), u('/leistungen/')] },
@@ -239,8 +238,8 @@ describe('locale prefixes and language versions', () => {
   it('a link marked with the hreflang of another language is an alternate, one of the same language is not', () => {
     const p = plan(
       [
-        link({ raw: u('/team-en/'), text: 'Team', hreflang: 'en' }),
-        link({ raw: u('/team/'), text: 'Team', region: 'nav', hreflang: 'de' }),
+        siteLink('/team-en/', 'Team', { hreflang: 'en' }),
+        siteLink('/team/', 'Team', { region: 'nav', hreflang: 'de' }),
         ...legal(),
       ],
       { startLang: 'de-DE' },
@@ -248,93 +247,39 @@ describe('locale prefixes and language versions', () => {
     expect(extrasOf(p)).toEqual([[u('/team/'), ['keyword:team']]]);
   });
 
-  const ALTERNATES: Array<[string, string, Partial<CandidateLink>, string | undefined, boolean]> = [
-    ['another prefix than the start page', '/de/', { raw: u('/en/'), text: 'EN' }, undefined, true],
-    [
-      'another region of the same language',
-      '/de/',
-      { raw: u('/de-at/produkte/'), text: 'Produkte' },
-      undefined,
-      true,
-    ],
-    ['the prefix of the start page', '/de/', { raw: u('/de/produkte/'), text: 'Produkte' }, undefined, false],
-    ['a language root named by its code', '/', { raw: u('/en/'), text: 'EN' }, undefined, true],
-    [
-      'a language root named only by its accessible name',
-      '/',
-      { raw: u('/en/'), text: '', accessibleName: 'English' },
-      undefined,
-      true,
-    ],
-    ['a language root without any name', '/', { raw: u('/pl/'), text: '' }, undefined, true],
-    [
-      'a language root shown as a flag named by a sentence',
-      '/',
-      { raw: u('/en/'), text: '', accessibleName: 'Switch to English' },
-      undefined,
-      true,
-    ],
-    ['a section with a two-letter name', '/', { raw: u('/it/'), text: 'IT-Service' }, undefined, false],
-    ['a language name on a locale root', '/', { raw: u('/en/'), text: 'English' }, undefined, true],
-    [
-      'a language name on the root of a localized site',
-      '/en/',
-      { raw: u('/'), text: 'Deutsch' },
-      undefined,
-      true,
-    ],
-    [
-      'a course page named after a language',
-      '/',
-      { raw: u('/kurse/englisch/'), text: 'Englisch' },
-      undefined,
-      false,
-    ],
-    [
-      'a language code as the whole label, any path',
-      '/',
-      { raw: u('/home-en.html'), text: 'EN' },
-      undefined,
-      true,
-    ],
-    ['a region form with an underscore', '/en_gb/', { raw: u('/de_de/'), text: 'Deutsch' }, undefined, true],
-    ['hreflang of another language', '/', { raw: u('/team/'), text: 'Team', hreflang: 'en' }, 'de', true],
-    [
-      'hreflang of the start language',
-      '/',
-      { raw: u('/team/'), text: 'Team', hreflang: 'de-at' },
-      'de',
-      false,
-    ],
-    ['x-default', '/', { raw: u('/team/'), text: 'Team', hreflang: 'x-default' }, 'de', false],
+  type AlternateCase = [
+    name: string,
+    candidate: [path: string, text: string, fields?: LinkFields],
+    expected: boolean,
+    start?: { path?: string; lang?: string },
+  ];
+  it.each<AlternateCase>([
+    ['another prefix', ['/en/', 'EN'], true, { path: '/de/' }],
+    ['another region of the same language', ['/de-at/produkte/', 'Produkte'], true, { path: '/de/' }],
+    ['the same prefix', ['/de/produkte/', 'Produkte'], false, { path: '/de/' }],
+    ['accessible name only', ['/en/', '', { accessibleName: 'English' }], true, undefined],
+    ['a language root without any name', ['/pl/', ''], true, undefined],
+    ['a flag named by a sentence', ['/en/', '', { accessibleName: 'Switch to English' }], true, undefined],
+    ['a section with a two-letter name', ['/it/', 'IT-Service'], false, undefined],
+    ['a language name on a locale root', ['/en/', 'English'], true, undefined],
+    ['a language name at the root of a localized site', ['/', 'Deutsch'], true, { path: '/en/' }],
+    ['a course page named after a language', ['/kurse/englisch/', 'Englisch'], false, undefined],
+    ['a language code as the whole label, any path', ['/home-en.html', 'EN'], true, undefined],
+    ['a region form with an underscore', ['/de_de/', 'Deutsch'], true, { path: '/en_gb/' }],
+    ['hreflang of another language', ['/team/', 'Team', { hreflang: 'en' }], true, { lang: 'de' }],
+    ['hreflang of the start language', ['/team/', 'Team', { hreflang: 'de-at' }], false, { lang: 'de' }],
+    ['x-default', ['/team/', 'Team', { hreflang: 'x-default' }], false, { lang: 'de' }],
     [
       'hreflang of the start language on another region prefix',
-      '/de/',
-      { raw: u('/de-at/team/'), text: 'Team', hreflang: 'de-at' },
-      'de',
+      ['/de-at/team/', 'Team', { hreflang: 'de-at' }],
       true,
+      { path: '/de/', lang: 'de' },
     ],
-    ['a language name in its own script', '/', { raw: u('/uk/'), text: 'Українська' }, 'de', true],
-  ];
-  it.each(ALTERNATES)('%s (start page %s)', (_, startPath, l, startLang, expected) => {
-    const candidate = link({ text: '', ...l, raw: l.raw as string });
-    const ctx = languageContext({ raw: u(startPath), ...(startLang ? { lang: startLang } : {}) }, [
-      candidate,
-    ]);
+    ['a language name in its own script', ['/uk/', 'Українська'], true, { lang: 'de' }],
+  ])('%s', (_name, fields, expected, { path = '/', lang } = {}) => {
+    const candidate = siteLink(...fields);
+    const ctx = languageContext({ raw: u(path), ...(lang ? { lang } : {}) }, [candidate]);
     expect(isLanguageAlternate(candidate, ctx)).toBe(expected);
-  });
-});
-
-describe('the language dictionary', () => {
-  const rules = loadPageRules().languages;
-  const start = languageContext({ raw: u('/'), lang: 'de' }, []);
-
-  it.each([...rules.localePrefixes])('a root /%s/ labelled with its code is a language switch', (code) => {
-    expect(isLanguageAlternate({ raw: u(`/${code}/`), text: code.toUpperCase() }, start)).toBe(true);
-  });
-
-  it.each([...rules.switchLabels])('a link "%s" into a locale prefix is a language switch', (label) => {
-    expect(isLanguageAlternate({ raw: u('/en/start/'), text: label }, start)).toBe(true);
   });
 });
 
@@ -342,10 +287,10 @@ describe('extra pages by keyword group', () => {
   it('one page per group, while one section may give pages of different groups', () => {
     const p = plan(
       [
-        link({ raw: u('/unternehmen/geschichte'), text: 'Unsere Geschichte', region: 'main' }),
-        link({ raw: u('/unternehmen/team'), text: 'Team', region: 'main' }),
-        link({ raw: u('/blog/a'), text: 'Blog', region: 'main' }),
-        link({ raw: u('/news/b'), text: 'News', region: 'main' }),
+        siteLink('/unternehmen/geschichte', 'Unsere Geschichte', { region: 'main' }),
+        siteLink('/unternehmen/team', 'Team', { region: 'main' }),
+        siteLink('/blog/a', 'Blog', { region: 'main' }),
+        siteLink('/news/b', 'News', { region: 'main' }),
         ...legal(),
       ],
       { maxPages: 10 },
@@ -359,9 +304,9 @@ describe('extra pages by keyword group', () => {
 
   it('within a group a text match beats a path match, then the region decides', () => {
     const p = plan([
-      link({ raw: u('/historie/'), text: 'Mehr erfahren', region: 'footer' }),
-      link({ raw: u('/firma/'), text: 'Firmengeschichte', region: 'nav' }),
-      link({ raw: u('/chronik/'), text: 'Chronik', region: 'main' }),
+      siteLink('/historie/', 'Mehr erfahren', { region: 'footer' }),
+      siteLink('/firma/', 'Firmengeschichte', { region: 'nav' }),
+      siteLink('/chronik/', 'Chronik', { region: 'main' }),
       ...legal(),
     ]);
     expect(extrasOf(p)).toEqual([[u('/firma/'), ['keyword:geschichte']]]);
@@ -370,8 +315,8 @@ describe('extra pages by keyword group', () => {
   it('a robots.txt refusal passes the group on to its next page', () => {
     const p = plan(
       [
-        link({ raw: u('/geschichte/'), text: 'Geschichte', region: 'nav' }),
-        link({ raw: u('/chronik/'), text: 'Chronik', region: 'main' }),
+        siteLink('/geschichte/', 'Geschichte', { region: 'nav' }),
+        siteLink('/chronik/', 'Chronik', { region: 'main' }),
         ...legal(),
       ],
       { robots: parseRobots('User-agent: *\nDisallow: /geschichte/') },
@@ -379,11 +324,8 @@ describe('extra pages by keyword group', () => {
     expect(extrasOf(p)).toEqual([[u('/chronik/'), ['keyword:chronik']]]);
   });
 
-  it.each([
-    ['Speisekarte', '/speisekarte'],
-    ['Kontaktlinsen', '/kontaktlinsen'],
-  ])('counterexample: "%s" is no contact page and gives no keyword page', (text, path) => {
-    const p = plan([link({ raw: u(path), text, region: 'main' }), ...legal()]);
+  it('a menu does not count as a contact page or a map keyword match', () => {
+    const p = plan([siteLink('/speisekarte', 'Speisekarte', { region: 'main' }), ...legal()]);
     expect(p.contact).toBeNull();
     expect(p.extras).toEqual([]);
   });
@@ -402,23 +344,23 @@ describe('the extras budget follows --max-pages', () => {
 
     const withPdf = plan([
       ...groups,
-      link({ raw: u('/impressum/'), text: 'Impressum' }),
-      link({ raw: u('/dse.pdf'), text: 'Datenschutz' }),
+      siteLink('/impressum/', 'Impressum'),
+      siteLink('/dse.pdf', 'Datenschutz'),
     ]);
     // A PDF link is read without a visit: the start page, the Impressum and 4 extras.
     expect(withPdf.extrasWanted).toBe(4);
   });
 
   const MANY = [
-    link({ raw: u('/kontakt/'), text: 'Kontakt', region: 'nav' }),
-    link({ raw: u('/videos/'), text: 'Videos', region: 'nav' }),
-    link({ raw: u('/anfahrt/'), text: 'Anfahrt', region: 'nav' }),
-    link({ raw: u('/geschichte/'), text: 'Geschichte', region: 'nav' }),
-    link({ raw: u('/ueber-uns/'), text: 'Über uns', region: 'nav' }),
-    link({ raw: u('/team/'), text: 'Team', region: 'nav' }),
-    link({ raw: u('/karriere/'), text: 'Karriere', region: 'nav' }),
-    link({ raw: u('/referenzen/'), text: 'Referenzen', region: 'nav' }),
-    link({ raw: u('/blog/'), text: 'Blog', region: 'nav' }),
+    siteLink('/kontakt/', 'Kontakt', { region: 'nav' }),
+    siteLink('/videos/', 'Videos', { region: 'nav' }),
+    siteLink('/anfahrt/', 'Anfahrt', { region: 'nav' }),
+    siteLink('/geschichte/', 'Geschichte', { region: 'nav' }),
+    siteLink('/ueber-uns/', 'Über uns', { region: 'nav' }),
+    siteLink('/team/', 'Team', { region: 'nav' }),
+    siteLink('/karriere/', 'Karriere', { region: 'nav' }),
+    siteLink('/referenzen/', 'Referenzen', { region: 'nav' }),
+    siteLink('/blog/', 'Blog', { region: 'nav' }),
     ...legal(),
   ];
 
@@ -449,8 +391,8 @@ describe('the extras budget follows --max-pages', () => {
     );
     const p = plan([
       ...pages,
-      link({ raw: u('/impressum-datenschutz/'), text: 'Impressum' }),
-      link({ raw: u('/impressum-datenschutz/'), text: 'Datenschutz' }),
+      siteLink('/impressum-datenschutz/', 'Impressum'),
+      siteLink('/impressum-datenschutz/', 'Datenschutz'),
     ]);
     expect(p.impressum.choice?.url).toBe(u('/impressum-datenschutz/'));
     expect(p.privacy.choice?.url).toBe(u('/impressum-datenschutz/'));
@@ -462,9 +404,9 @@ describe('the extras budget follows --max-pages', () => {
 
 describe('legal links of another language version', () => {
   const links = [
-    link({ raw: u('/de/impressum/'), text: 'Impressum' }),
-    link({ raw: u('/en/privacy/'), text: 'Privacy Policy', hreflang: 'en' }),
-    link({ raw: u('/de/datenschutz/'), text: 'Datenschutz' }),
+    siteLink('/de/impressum/', 'Impressum'),
+    siteLink('/en/privacy/', 'Privacy Policy', { hreflang: 'en' }),
+    siteLink('/de/datenschutz/', 'Datenschutz'),
   ];
 
   it('the policy of the start page language is chosen before an English one linked first', () => {
@@ -514,10 +456,13 @@ describe('control-page signals', () => {
     ],
     ['a nested frame', { src: 'https://www.google.com/maps/embed?pb=x', box: box(0, 0, 600, 300), depth: 2 }],
     ['a first-party frame', { src: u('/widget'), box: box(0, 0, 600, 300), depth: 1 }],
-  ])('%s is no control signal: the page is chosen only for replication', (_, frame) => {
-    const page = candidate('/a', { iframes: [frame] });
-    expect(page.signals).toEqual({ thirdPartyIframes: 0, placeholders: 0, newThirdPartyHosts: 0, embeds: 0 });
-    expect(chooseControlPages([page]).map((p) => p.reasons)).toEqual([['replication']]);
+  ])('%s is no control signal', (_, frame) => {
+    expect(signals({ iframes: [frame] })).toEqual({
+      thirdPartyIframes: 0,
+      placeholders: 0,
+      newThirdPartyHosts: 0,
+      embeds: 0,
+    });
   });
 
   it('a map frame is an iframe signal and a catalog embed', () => {
@@ -580,14 +525,14 @@ describe('chooseControlPages', () => {
 
   it('prefers pages with embeds, placeholders and new third parties; then other non-legal pages', () => {
     const pages = chooseControlPages([
-      page('https://www.example.test/impressum', 'impressum', 1),
-      page('https://www.example.test/blog/', 'nav', 2),
-      page('https://www.example.test/kontakt', 'contact', 3, { thirdPartyIframes: 1, newThirdPartyHosts: 2 }),
-      page('https://www.example.test/video', 'nav', 4, { placeholders: 1 }),
+      page(u('/impressum'), 'impressum', 1),
+      page(u('/blog/'), 'nav', 2),
+      page(u('/kontakt'), 'contact', 3, { thirdPartyIframes: 1, newThirdPartyHosts: 2 }),
+      page(u('/video'), 'nav', 4, { placeholders: 1 }),
     ]);
     expect(pages.map((p) => [p.url, p.reasons])).toEqual([
-      ['https://www.example.test/kontakt', ['iframe-signal', 'network-signal', 'role:contact']],
-      ['https://www.example.test/video', ['placeholder-signal']],
+      [u('/kontakt'), ['iframe-signal', 'network-signal', 'role:contact']],
+      [u('/video'), ['placeholder-signal']],
     ]);
   });
 
@@ -600,7 +545,7 @@ describe('chooseControlPages', () => {
   it('pages on the origin of the click page come first, even with weaker signals', () => {
     const pages = chooseControlPages(
       [
-        page('https://www.example.test/kontakt', 'contact', 1, { thirdPartyIframes: 1, embeds: 1 }),
+        page(u('/kontakt'), 'contact', 1, { thirdPartyIframes: 1, embeds: 1 }),
         page('https://example.test/team', 'nav', 2),
         page('https://example.test/impressum', 'impressum', 3),
       ],
@@ -614,29 +559,29 @@ describe('chooseControlPages', () => {
 
   it('the origin is the one the page was shown on, after redirects', () => {
     const redirected = {
-      ...page('https://www.example.test/team', 'nav', 1),
+      ...page(u('/team'), 'nav', 1),
       finalUrl: 'https://example.test/team',
     };
-    const pages = chooseControlPages([page('https://www.example.test/blog', 'nav', 2), redirected], {
+    const pages = chooseControlPages([page(u('/blog'), 'nav', 2), redirected], {
       max: 1,
       clickOrigin: 'https://example.test',
     });
-    expect(pages.map((p) => p.url)).toEqual(['https://www.example.test/team']);
+    expect(pages.map((p) => p.url)).toEqual([u('/team')]);
   });
 
   it('pages of another origin are taken only when no page of the click origin is left, and are marked', () => {
     const pages = chooseControlPages(
       [
-        page('https://www.example.test/kontakt', 'contact', 1, { thirdPartyIframes: 1 }),
+        page(u('/kontakt'), 'contact', 1, { thirdPartyIframes: 1 }),
         page('https://example.test/blog', 'nav', 2),
-        page('https://www.example.test/team', 'nav', 3),
+        page(u('/team'), 'nav', 3),
       ],
       { max: 3, clickOrigin: 'https://example.test' },
     );
     expect(pages.map((p) => [p.url, p.reasons])).toEqual([
       ['https://example.test/blog', ['replication']],
-      ['https://www.example.test/kontakt', ['iframe-signal', 'role:contact', 'other-origin']],
-      ['https://www.example.test/team', ['replication', 'other-origin']],
+      [u('/kontakt'), ['iframe-signal', 'role:contact', 'other-origin']],
+      [u('/team'), ['replication', 'other-origin']],
     ]);
   });
 });

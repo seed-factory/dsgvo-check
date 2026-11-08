@@ -148,6 +148,7 @@ export class CmpBridge {
   private readonly errors: CollectorError[];
   private readonly phase: BrowserPhase;
   private readonly classify: ClassifyOptions;
+  private readonly scanSignal?: AbortSignal;
 
   constructor(
     api: CmpApi,
@@ -155,12 +156,14 @@ export class CmpBridge {
     errors: CollectorError[],
     phase: BrowserPhase,
     classify: ClassifyOptions,
+    scanSignal?: AbortSignal,
   ) {
     this.api = api;
     this.timeoutMs = timeoutMs;
     this.errors = errors;
     this.phase = phase;
     this.classify = classify;
+    this.scanSignal = scanSignal;
   }
 
   private async call<T>(
@@ -182,6 +185,21 @@ export class CmpBridge {
       }
       return null;
     }
+  }
+
+  private callAction<T>(
+    what: string,
+    url: string,
+    fn: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T | null> {
+    const deadline = new AbortController();
+    const signal = this.scanSignal ? AbortSignal.any([deadline.signal, this.scanSignal]) : deadline.signal;
+    return this.call(
+      what,
+      url,
+      () => fn(signal),
+      () => deadline.abort(),
+    );
   }
 
   detect(page: Page, url: string, waitMs = 0): Promise<Detected | null> {
@@ -223,9 +241,11 @@ export class CmpBridge {
     url: string,
   ): Promise<ClickOutcome | null> {
     const target = planned ? clickTarget(planned, action) : null;
-    return this.call(action, url, () => {
-      if (adapter.act) return adapter.act(page, action, target);
-      return action === 'reject' ? adapter.reject(page, { target }) : adapter.accept(page, { target });
+    return this.callAction(action, url, (signal) => {
+      if (adapter.act) return adapter.act(page, action, target, { signal });
+      return action === 'reject'
+        ? adapter.reject(page, { target, signal })
+        : adapter.accept(page, { target, signal });
     });
   }
 
@@ -246,8 +266,8 @@ export class CmpBridge {
   ): Promise<SettingsLayerFacts | null> {
     const open = adapter.openSettings;
     if (!open) return null;
-    const layer = await this.call('settings', url, () =>
-      open.call(adapter, page, clickTarget(opener, 'settings'), { timeoutMs: waitMs }),
+    const layer = await this.callAction('settings', url, (signal) =>
+      open.call(adapter, page, clickTarget(opener, 'settings'), { timeoutMs: waitMs, signal }),
     );
     return layer ? normalizeSettings(layer) : null;
   }

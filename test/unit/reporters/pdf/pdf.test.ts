@@ -5,9 +5,7 @@ import { reporterLimits } from '../../../../src/core/config/limits.ts';
 import { parseConfigInput } from '../../../../src/core/config/load.ts';
 import { uiText } from '../../../../src/core/data/messages.ts';
 import type { ReporterContext } from '../../../../src/core/report/reporter.ts';
-import { renderHtml } from '../../../../src/reporters/html.ts';
 import { renderPdf } from '../../../../src/reporters/pdf.ts';
-import { sampleFullReport } from '../../../utils/report/fixtures.ts';
 import { reporterContext } from '../../../utils/report/reporter-inputs.ts';
 
 const ctx = (): ReporterContext => reporterContext('en', { outDir: '/nonexistent-report-output' });
@@ -41,8 +39,7 @@ describe('PDF conversion of the finished HTML report', () => {
   it('prints exactly the rendered HTML in A4 with backgrounds and localized footer, then closes Chromium', async () => {
     const fake = browserDouble();
     const context = ctx();
-    const html = renderHtml(sampleFullReport(), context);
-    expect(html).not.toMatch(/T[0-9]_/);
+    const html = '<!doctype html><p>report</p>';
 
     const pdf = await renderPdf(html, context, { chromium: fake.chromium, timeoutMs: 1_234 });
 
@@ -108,27 +105,23 @@ describe('PDF conversion of the finished HTML report', () => {
     expect(fake.context.route).toHaveBeenCalledWith('**/*', expect.any(Function));
   });
 
-  it.each([
-    ['data:image/png;base64,AA==', true],
-    ['about:blank', true],
-    ['https://example.invalid/resource', false],
-    ['http://example.invalid/resource', false],
-    ['file:///tmp/private.txt', false],
-  ] as const)('the route handler lets %s through: %s', async (url, allowed) => {
+  it('allows embedded data and blocks network and local files while printing', async () => {
     const fake = browserDouble();
     await renderPdf('<!doctype html><p>report</p>', ctx(), { chromium: fake.chromium, sandbox: 'off' });
-    const abort = vi.fn(async () => undefined);
-    const proceed = vi.fn(async () => undefined);
-    const route = {
-      request: () => ({ url: () => url }),
-      abort,
-      continue: proceed,
-    } as unknown as Route;
-
-    await fake.route()?.(route);
-
-    expect(proceed).toHaveBeenCalledTimes(allowed ? 1 : 0);
-    expect(abort).toHaveBeenCalledTimes(allowed ? 0 : 1);
+    const route = fake.route()!;
+    for (const [url, allowed] of [
+      ['data:image/png;base64,AA==', true],
+      ['about:blank', true],
+      ['https://example.invalid/resource', false],
+      ['http://example.invalid/resource', false],
+      ['file:///tmp/private.txt', false],
+    ] as const) {
+      const abort = vi.fn(async () => undefined);
+      const proceed = vi.fn(async () => undefined);
+      await route({ request: () => ({ url: () => url }), abort, continue: proceed } as unknown as Route);
+      expect(proceed, url).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(abort, url).toHaveBeenCalledTimes(allowed ? 0 : 1);
+    }
   });
 
   it('escapes and sanitizes the footer supplied by text data', async () => {

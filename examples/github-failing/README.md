@@ -1,52 +1,29 @@
-# Example: dsgvo-check stops a GitHub pipeline
+# Example of a failing GitHub check
 
-A deliberately "red" build. The workflow publishes a small demo page to GitHub Pages and scans it with the
-dsgvo-check Action in a separate job. The page contains two deliberate findings:
+The example workflow publishes a demo site to GitHub Pages, then scans the deployed URL in a separate job.
+It uses the default `critical` threshold.
 
-| Check      | Severity | Why                                                                      |
-| ---------- | -------- | ------------------------------------------------------------------------ |
-| `LEGAL-01` | critical | No link to an Impressum or a Datenschutzerklärung was found.             |
-| `EMBED-01` | warning  | The font is loaded from `fonts.googleapis.com`, not from the own server. |
+| Check      | Severity   | What the scanner observes                    |
+| ---------- | ---------- | -------------------------------------------- |
+| `LEGAL-01` | `critical` | No link to an Impressum or a privacy policy. |
+| `EMBED-01` | `warning`  | A font request to `fonts.googleapis.com`.    |
 
-With `fail-on: critical` (the default), the critical `LEGAL-01` finding gives exit code `1` and the job fails. The Job
-Summary lists the findings; the full report (`report.json`, `report.html`, `summary.md`) is uploaded as the artifact
-`dsgvo-check-report` and kept for 14 days. The texts describe technical observations, not legal advice.
+## Run it
 
-```
-examples/github-failing/
-├── .github/workflows/dsgvo-check.yml   # deploy to Pages, then scan in a separate job
-└── site/index.html                     # demo page with the two findings
-```
+1. Copy the [workflow](.github/workflows/dsgvo-check.yml) and the [demo site](site/) to a test repository, preserving
+   the directory layout.
+2. Choose a published dsgvo-check Action tag and set it in the workflow.
+3. In the repository settings, set the GitHub Pages source to **GitHub Actions**.
+4. Push to `main` or run the workflow manually.
 
-## Try it
+The scan exits with code 1 because the `LEGAL-01` finding reaches the threshold. The failed job still provides
+a Job Summary and a `dsgvo-check-report` artifact with `report.json`, `report.html` and `summary.md` for 14 days.
 
-1. Create a repository and copy this directory into it (including `.github/`).
-2. In the workflow, set the Action release tag to use (`seed-factory/dsgvo-check@v0.1.0`).
-3. In the repository settings, enable GitHub Pages with the source "GitHub Actions".
-4. Push to `main`. The `deploy` job publishes the page, the `dsgvo-check` job fails with exit code 1.
+## Make the scan pass
 
-Expected Job Summary (shortened):
+Add an Impressum and privacy policy and link to them from the demo page. This clears the critical finding.
+Serve the font locally and remove the Google Fonts link to clear the warning as well.
 
-```
-## dsgvo-check – https://<user>.github.io/<repo>/ · Textentwurf
-
-Scan vollständig · Exit-Code 1 (`threshold`)
-
-| kritisch | Warnung | Hinweis | Prüfungsfehler | Nicht eindeutig |
-| 1 | 1 | … | 0 | … |
-```
-
-## Turn it green
-
-- Add `impressum.html` and `datenschutz.html` and link them from every page (fixes `LEGAL-01`).
-- Self-host the font: serve it from `site/fonts/` and drop the Google Fonts link (fixes `EMBED-01`). It is only a
-  warning, so it fails the build with `fail-on: warning`, not with `critical`.
-
-## Notes
-
-- Keep the scan in its own job with `permissions: contents: read` and no secrets: the scanner opens untrusted pages.
-  The Action hardens the container itself, see the [README](../../README.md#github-action).
-- To report without failing the build, use `fail-on: none` (only scan errors give exit code 2), or
-  `continue-on-error: true` on the step and read `steps.<id>.outputs.exit-code`.
-- GitHub-hosted runners are not guaranteed to be in the EU, so banners that depend on the visitor's location can
-  behave differently there; see the `Messumgebung` section of `report.html`.
+For a reporting-only job, set `fail-on: none`. Scan errors can still fail the job. To check the exact status in a
+later workflow step, use `steps.scan.outputs.exit-code`.
+[Action inputs and scan isolation](../../README.md#github-action)

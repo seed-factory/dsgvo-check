@@ -23,6 +23,13 @@ describe('the code of a failed navigation', () => {
     ['page.goto: net::ERR_4F3A9C1D2E7B at https://x.example.test/', 'navigation-error'],
     ['page.goto: something at https://x.example.test/?net::ERR_ZQ8SECRET', 'navigation-error'],
     ['net::ERR_ZQ8SECRET', 'navigation-error'],
+    ['page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.example.test/', 'ERR_HTTP2_PROTOCOL_ERROR'],
+    ['page.goto: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH', 'ERR_SSL_VERSION_OR_CIPHER_MISMATCH'],
+    ['net::ERR_QUIC_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR'],
+    ['page.goto: net::ERR_CERT_DATE_INVALID at https://x/', 'ERR_CERT_DATE_INVALID'],
+    ['page.goto: Timeout 30000ms exceeded.', 'timeout'],
+    ['page.goto: Download is starting', 'download'],
+    ['something else', 'navigation-error'],
   ])('%s → %s', (message, code) => {
     expect(navigationErrorCode(message)).toBe(code);
   });
@@ -62,6 +69,9 @@ describe('a navigation that ends on a document outside http(s)', () => {
       goto: async () => response,
       reload: async () => response,
       waitForLoadState: async () => undefined,
+      waitForNavigation: () => new Promise(() => {}),
+      on: () => undefined,
+      once: () => undefined,
       url: () => finalUrl,
       frames: () => [],
       evaluate: async () => domAnswer(title),

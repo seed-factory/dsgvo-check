@@ -1,8 +1,3 @@
-// Phases B and C on the start page: observe, first screen (+ banner screenshot in B), click reject (B) or accept (C)
-// via the CMP adapter, verify, reload and verify again (B), then the control pages. The content below the first screen
-// is shown only after the click and its facts: the click needs the first layer as the visitor sees it. A first layer
-// without any reject is rejected in B through the settings layer when the adapter describes one: the click moment is
-// then the save, so what loads between opening the settings and saving them counts as before the reject.
 import type { Page } from 'playwright-core';
 import { isClickError } from '../../../cmp/click-errors.ts';
 import type { ClickOutcome, CmpAdapter, CmpButton, CmpFacts } from '../../../cmp/types.ts';
@@ -14,14 +9,10 @@ import { inputEventsInPage } from '../in-page/input.ts';
 import { navigate } from '../pages/navigate.ts';
 import { navigationErrorCode, type VisitResult, type VisitSpec, valueWithin } from '../pages/visit.ts';
 import { waitForQuiet } from '../recording/quiet.ts';
-import { pageCallFailure, sleep, withTimeout } from '../util.ts';
-import { bannerScreenshot } from './screenshot.ts';
+import { sleep } from '../util.ts';
 
 /** Upper bound of reading the press times of one frame; the CMP call timeout applies when it is shorter. */
 const PRESS_READ_TIMEOUT_MS = 2_000;
-/** Exception texts of a failed banner screenshot are cut here. */
-const SCREENSHOT_ERROR_MAX_CHARS = 200;
-
 const planTarget = (b: CmpButton, cmpId: string): ClickPlanTarget => ({
   cmpId,
   name: b.name,
@@ -211,7 +202,6 @@ async function rejectViaSettings(
 const cmpWaitMs = (c: BrowserCollection): number =>
   Math.min(c.ctx.config.cmp.waitMs, c.timing.cmpCallTimeoutMs);
 
-/** Detects the CMP and measures the first screen; phase B also takes the banner screenshot. */
 async function observeFirstScreen(
   c: BrowserCollection,
   s: Session,
@@ -226,7 +216,14 @@ async function observeFirstScreen(
 
   const first = await s.cmp.extract(s.page, adapter, 'first-screen', url);
   if (first) {
-    if (phase === 'B' && c.ctx.options.screenshots) await screenshot(c, s, first, url);
+    if (
+      phase === 'B' &&
+      c.ctx.options.screenshots &&
+      first.firstLayer.bannerPresent &&
+      first.firstLayer.bannerVisible
+    ) {
+      s.record.errors.push({ code: 'screenshot-skipped', message: 'privacy-unverifiable', phase, url });
+    }
     s.cmpFacts.facts.push(first);
   }
   return { adapter, first };
@@ -420,42 +417,4 @@ async function pressTime(c: BrowserCollection, page: Page, after: number): Promi
     }
   }
   return best;
-}
-
-async function screenshot(
-  c: BrowserCollection,
-  s: Session,
-  facts: CmpFacts,
-  pageUrl: SanitizedUrl,
-): Promise<void> {
-  try {
-    const shot = await withTimeout(
-      bannerScreenshot(s.page, facts, {
-        artifactsDir: c.ctx.artifactsDir,
-        artifactsRelDir: c.ctx.artifactsRelDir,
-        phase: s.phase,
-        pageUrl,
-        limits: {
-          maxBytes: c.ctx.config.browser.screenshotMaxBytes,
-          maxViewportShare: c.ctx.config.browser.screenshotMaxViewportShare,
-        },
-      }),
-      c.timing.cmpCallTimeoutMs,
-      'banner screenshot',
-    );
-    if ('record' in shot) {
-      c.screenshots.push(shot.record);
-      facts.screenshotId = shot.record.id;
-    } else if (shot.skipped !== 'no-banner') {
-      // No unique container within the viewport share limit → no image.
-      noteScreenshotSkipped(s, pageUrl, shot.skipped);
-    }
-  } catch (err) {
-    // The banner box is read in the page: only the kind of failure is kept, see pageCallFailure.
-    noteScreenshotSkipped(s, pageUrl, `error: ${pageCallFailure(err).slice(0, SCREENSHOT_ERROR_MAX_CHARS)}`);
-  }
-}
-
-function noteScreenshotSkipped(s: Session, pageUrl: SanitizedUrl, message: string): void {
-  s.record.errors.push({ code: 'screenshot-skipped', message, phase: s.phase, url: pageUrl });
 }

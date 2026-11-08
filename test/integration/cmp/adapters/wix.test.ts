@@ -164,9 +164,8 @@ describeCmpScenarios(
     });
 
     describe('the reject through the settings layer of a first layer without one', () => {
-      /** The first screen of `url`, the opener core chose on it and, when there is one, the layer it opened. */
-      async function settingsOf(url: string) {
-        const { page, adapter } = await env.openRecognized(url, 'wix');
+      async function settingsOf(file = '') {
+        const { page, adapter } = await env.openRecognized(`https://www.wix.test/${file}`, 'wix');
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
         const first = await extract(page, adapter, 'first-screen', { phase: 'B' });
         const opener = chooseSettingsOpener(first, loadLexicon(), DEFAULT_CLASSIFY);
@@ -176,9 +175,12 @@ describeCmpScenarios(
         return { page, adapter, first, opener, layer };
       }
 
+      const saveChoice = (layer: Parameters<typeof chooseSettingsSave>[0] | undefined) =>
+        chooseSettingsSave(layer!, loadLexicon());
+
       it('"Cookie-Einstellungen" opens the layer with every optional group off; its save is a reject the policy confirms after the reload', async () => {
         const since = Date.now();
-        const { page, adapter, opener, layer } = await settingsOf('https://www.wix.test/no-decline.html');
+        const { page, adapter, opener, layer } = await settingsOf('no-decline.html');
 
         expect(adapter.rejectsViaSettings).toBe(true);
         expect(opener?.target?.name).toBe('Cookie-Einstellungen');
@@ -201,7 +203,7 @@ describeCmpScenarios(
           ['Auswahl bestätigen', 'save'],
         ]);
         expect((await adapter.firstLayer(page)).bannerVisible).toBe(true);
-        const save = chooseSettingsSave(layer!, loadLexicon());
+        const save = saveChoice(layer);
         expect(save.target?.name).toBe('Auswahl bestätigen');
         // Opening the settings records no answer: the policy is still the default before the save.
         expect((await adapter.state(page))[0]).toMatchObject({
@@ -218,13 +220,10 @@ describeCmpScenarios(
       });
 
       it('counterexample: an optional group already on → nothing is saved (preselected-groups) and the switch stays on', async () => {
-        const { page, adapter, layer } = await settingsOf('https://www.wix.test/no-decline-preselected.html');
+        const { page, adapter, layer } = await settingsOf('no-decline-preselected.html');
 
         expect(layer?.groups.filter((g) => g.checked && !g.disabled)).toHaveLength(1);
-        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
-          target: null,
-          reason: 'preselected-groups',
-        });
+        expect(saveChoice(layer)).toEqual({ target: null, reason: 'preselected-groups' });
         expect(await analyticsSwitchOn(page)).toBe(true);
         expect((await adapter.state(page))[0]).toMatchObject({
           origin: 'default',
@@ -233,39 +232,30 @@ describeCmpScenarios(
       });
 
       it('counterexample: a hidden copy of the layer with every switch off comes first; the shown layer has analytics on → nothing is saved', async () => {
-        const { layer } = await settingsOf('https://www.wix.test/no-decline-hidden-copy.html');
+        const { layer } = await settingsOf('no-decline-hidden-copy.html');
 
         expect(layer).toMatchObject({ opened: true, containerUnambiguous: true });
         expect(layer?.groups.filter((g) => g.checked && !g.disabled)).toHaveLength(1);
-        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
-          target: null,
-          reason: 'preselected-groups',
-        });
+        expect(saveChoice(layer)).toEqual({ target: null, reason: 'preselected-groups' });
       });
 
       it('counterexample: analytics on and locked like the essential switch → nothing is saved', async () => {
-        const { layer } = await settingsOf('https://www.wix.test/no-decline-locked-on.html');
+        const { layer } = await settingsOf('no-decline-locked-on.html');
 
         expect(layer?.groups.filter((g) => g.checked && g.disabled)).toHaveLength(2);
         expect(layer?.essentialGroups).toBe(1);
-        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
-          target: null,
-          reason: 'preselected-groups',
-        });
+        expect(saveChoice(layer)).toEqual({ target: null, reason: 'preselected-groups' });
       });
 
       it('counterexample: two save controls in the layer → no save control is chosen', async () => {
-        const { layer } = await settingsOf('https://www.wix.test/no-decline-two-saves.html');
+        const { layer } = await settingsOf('no-decline-two-saves.html');
 
         expect(layer?.buttons.filter((b) => b.vendorRole === 'save')).toHaveLength(2);
-        expect(chooseSettingsSave(layer!, loadLexicon())).toEqual({
-          target: null,
-          reason: 'settings-save-not-found',
-        });
+        expect(saveChoice(layer)).toEqual({ target: null, reason: 'settings-save-not-found' });
       });
 
       it('counterexample: a settings control of the page outside the banner is never the opener', async () => {
-        const { first, opener, layer } = await settingsOf('https://www.wix.test/settings-outside.html');
+        const { first, opener, layer } = await settingsOf('settings-outside.html');
 
         expect(first.firstLayer.buttons.map((b) => b.name)).not.toContain('Cookie-Einstellungen');
         expect(opener).toEqual({ target: null, reason: 'settings-control-not-found' });
@@ -273,15 +263,15 @@ describeCmpScenarios(
       });
 
       it('counterexample: a first layer with "Alle ablehnen" never opens the settings', async () => {
-        const { opener, layer } = await settingsOf('https://www.wix.test/');
+        const { opener, layer } = await settingsOf();
 
         expect(opener).toBeNull();
         expect(layer).toBeUndefined();
       });
 
       it('a save that stores no answer leaves the policy at its default: the reject is not confirmed', async () => {
-        const { page, adapter, layer } = await settingsOf('https://www.wix.test/no-decline-unsaved.html');
-        const save = chooseSettingsSave(layer!, loadLexicon());
+        const { page, adapter, layer } = await settingsOf('no-decline-unsaved.html');
+        const save = saveChoice(layer);
         expect((await adapter.act!(page, 'reject', asTarget(save.target!))).clicked).toBe(true);
 
         const verify = await adapter.verify(page, 'reject', { timeoutMs: 1_000 });

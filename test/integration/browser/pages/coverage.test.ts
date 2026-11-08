@@ -3,33 +3,30 @@
  * CMP's helper frame above the page is no control signal, and phase B revisits the pages with the map and the video
  * thumbnail after the reject.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect, FAST_TIMING } from '../helpers.ts';
 
 const START = 'https://www.example.test/de/';
 const u = (path: string) => `https://www.example.test${path}`;
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/page-coverage'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({ sites: ['browser/page-coverage'] }));
 
 const languageRootRequests = () =>
-  server.requestsTo('www.example.test').filter((r) => /^\/(en|es)(\/|$)/.test(r.path));
+  server()
+    .requestsTo('www.example.test')
+    .filter((r) => /^\/(en|es)(\/|$)/.test(r.path));
 
 describe('page coverage: phases A, B and C', () => {
   let run: CollectRun;
 
   beforeAll(async () => {
-    server.reset();
-    run = await collect(server, { url: START, deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] } });
+    server().reset();
+    run = await collect(server(), {
+      url: START,
+      deps: { cmp: stubCmpApi(), phases: ['A', 'B', 'C'] },
+    });
   });
 
   const phase = (p: 'A' | 'B' | 'C') => run.result.sections.browser?.phases.find((x) => x.phase === p);
@@ -49,7 +46,7 @@ describe('page coverage: phases A, B and C', () => {
 
   it('the language roots are never requested', () => {
     expect(languageRootRequests()).toEqual([]);
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('every page of A shows the helper frame above the page; it gives no control signal', () => {
@@ -94,14 +91,14 @@ describe('page coverage: phases A, B and C', () => {
 
 describe('page coverage: limits', () => {
   it('is deterministic across runs', async () => {
-    const a = await collect(server, { url: START });
-    const b = await collect(server, { url: START });
+    const a = await collect(server(), { url: START });
+    const b = await collect(server(), { url: START });
     expect(b.result.sections.plan).toEqual(a.result.sections.plan);
   });
 
   it('--max-pages 4 leaves no extras; the legal pages are visited all the same', async () => {
-    server.reset();
-    const run = await collect(server, { url: START, maxPages: 4 });
+    server().reset();
+    const run = await collect(server(), { url: START, maxPages: 4 });
     expect(run.result.sections.plan?.pages.map((p) => [p.role, p.url])).toEqual([
       ['start', START],
       ['impressum', u('/de/impressum/')],
@@ -112,12 +109,12 @@ describe('page coverage: limits', () => {
   });
 
   it('the control-page setting decides how many pages B and C revisit', async () => {
-    const run = await collect(server, { url: START, config: { browser: { maxControlPages: 1 } } });
+    const run = await collect(server(), { url: START, config: { browser: { maxControlPages: 1 } } });
     expect(run.result.sections.plan?.controlPages.map((p) => p.url)).toEqual([u('/de/kontakt/')]);
   });
 
   it('keeps at least 1.5 s between navigations with production pacing', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: START,
       maxPages: 2,
       deps: { timing: { ...FAST_TIMING, navigationPauseMs: 1_500 } },

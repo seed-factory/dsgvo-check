@@ -1,8 +1,6 @@
-/** SUMMARY.md: the canary summary as markdown tables. */
 import {
   type CanarySummary,
   CHECK_STATUSES,
-  type CheckAggregate,
   type DurationStats,
   GROUP_LABEL,
   GROUPS,
@@ -13,7 +11,6 @@ import {
 import { DETECTED_CMPS } from './load.ts';
 import { EXPECTED_CMPS, KNOWN_CMPS } from './sites.ts';
 
-/** What a table section says when it has no rows. */
 const NONE = '_none_';
 
 function cell(v: string | number | null | undefined): string {
@@ -45,7 +42,6 @@ function keyedTable(
   )}`;
 }
 
-/** Markdown blocks of one section; the sections are joined by blank lines. */
 type Blocks = string[];
 
 function titleSection(s: CanarySummary): Blocks {
@@ -123,27 +119,24 @@ function checksSection(s: CanarySummary): Blocks {
     'Share = inconclusive / (results − skipped).',
   ];
 
-  const checkIds = Object.keys(all.checks);
-  if (checkIds.length === 0) return [...out, '_no check results_'];
+  const checks = Object.entries(all.checks);
+  if (checks.length === 0) return [...out, '_no check results_'];
 
   out.push(
     table(
       ['check', ...CHECK_STATUSES, 'inconclusive share', 'EU/EEA', 'non-EU'],
-      checkIds.map((id) => {
-        const c = all.checks[id] as CheckAggregate;
-        return [
-          id,
-          ...CHECK_STATUSES.map((st) => c.statuses[st]),
-          pct(c.inconclusiveShare),
-          pct(s.groups['eu-eea'].checks[id]?.inconclusiveShare ?? null),
-          pct(s.groups['non-eu'].checks[id]?.inconclusiveShare ?? null),
-        ];
-      }),
+      checks.map(([id, check]) => [
+        id,
+        ...CHECK_STATUSES.map((status) => check.statuses[status]),
+        pct(check.inconclusiveShare),
+        pct(s.groups['eu-eea'].checks[id]?.inconclusiveShare ?? null),
+        pct(s.groups['non-eu'].checks[id]?.inconclusiveShare ?? null),
+      ]),
     ),
   );
 
-  const reasonRows = checkIds.flatMap((id) =>
-    Object.entries((all.checks[id] as CheckAggregate).reasons).map(([k, n]) => [id, k, n] as const),
+  const reasonRows = checks.flatMap(([id, check]) =>
+    Object.entries(check.reasons).map(([reason, count]) => [id, reason, count]),
   );
 
   out.push(
@@ -208,7 +201,6 @@ function topErrorsSection(s: CanarySummary): Blocks {
   ];
 }
 
-/** Only with `--with-sites`: one row per site. */
 function sitesSection(s: CanarySummary): Blocks {
   if (!s.sites) return [];
   return [

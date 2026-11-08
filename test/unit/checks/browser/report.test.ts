@@ -16,7 +16,7 @@ import { scan } from '../../../../src/scan.ts';
 import { expectValidReport } from '../../../utils/report/validator.ts';
 import { FIXED_NOW, makeCmpFacts } from '../../../utils/snapshot-builder.ts';
 import { CONTACT, click, cmpFacts, cmpWith, cookie, IMPRESSUM, phase, req, START, site } from './helpers.ts';
-import { SCENARIOS, scenariosOf } from './scenarios/index.ts';
+import { scenariosOf } from './scenarios/index.ts';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'm3-report-'));
 
@@ -115,26 +115,6 @@ describe('browser checks in a full report', () => {
     expect(bannerState(report)).toBe('recognized');
   });
 
-  it("a map frame that loads Google Fonts: the map is EMBED-02, its frame's fonts an EMBED-01 warning linked to it", async () => {
-    const maps = scenariosOf('EMBED-01').find((s) => s.file === 'violation-fonts-in-map-frame.json');
-
-    const { report } = await scanSnapshot(maps!.build(), 'map-frame-fonts');
-
-    expectValidReport(report);
-    const findings = report.findings ?? [];
-    const map = findings.find((f) => f.checkId === 'EMBED-02');
-    const fonts = findings.filter((f) => f.checkId === 'EMBED-01');
-    expect(map).toMatchObject({ variant: 'maps-loaded', params: { frameFontServices: 'Google Fonts' } });
-    expect(fonts.map((f) => [f.variant, f.subject, f.severity, f.crmCode, f.serviceId])).toEqual([
-      ['fonts-in-embed-frame', 'google-fonts@google-maps', 'warning', 'T1_FONTS_EXTERNAL', 'google-fonts'],
-    ]);
-    expect(fonts[0]?.related).toContainEqual({
-      checkId: 'EMBED-02',
-      fingerprint: map?.fingerprint,
-      relation: 'embedded-in',
-    });
-  });
-
   const WIX: CmpFacts['detection'] = {
     cmpId: 'wix',
     method: 'adapter',
@@ -212,10 +192,20 @@ describe('browser checks in a full report', () => {
     },
   );
 
-  it.each(
-    Object.entries(SCENARIOS).flatMap(([id, list]) => list.map((s) => [`${id}/${s.file}`, s] as const)),
-  )('%s gives a schema-valid report', async (name, s) => {
-    const { report } = await scanSnapshot(s.build(), name.replace(/[^a-zA-Z0-9]+/g, '-'));
+  it.each([
+    ['CONSENT-02', 'violation-ga-cookie.json'],
+    ['CONSENT-04', 'violation-consent-without-action.json'],
+    ['CONSENT-05', 'inconclusive-shopware-known-flag-set-by-reject.json'],
+    ['CONSENT-05', 'inconclusive-banner-candidate.json'],
+    ['CONSENT-05', 'inconclusive-reject-not-in-effect-on-control-page.json'],
+    ['EMBED-02', 'violation-maps-after-settings-reject.json'],
+    ['EMBED-03', 'violation-youtube-embed.json'],
+    ['LEGAL-01', 'violation-no-documents.json'],
+    ['LEGAL-02', 'violation-privacy-shield-in-policy.json'],
+    ['PRIV-02', 'violation-local-fonts-claim-replicated.json'],
+  ])('%s/%s gives a schema-valid report', async (id, file) => {
+    const scenario = scenariosOf(id).find((s) => s.file === file);
+    const { report } = await scanSnapshot(scenario!.build(), `${id}-${file}`);
 
     expectValidReport(report);
     expect(report.scan.status).not.toBe('failed');

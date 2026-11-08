@@ -1,15 +1,9 @@
-/**
- * Phases B and C with a stub CMP on the fixture site (observe, screenshot, reject, verify, reload, control pages,
- * accept), plus one test with the real CMP subsystem (`src/cmp/index.ts`) on a site without banner. The Kontakt page
- * embeds a map frame that loads Google Fonts and is not blocked by the banner, so it loads again after the reject.
- */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { embed01 } from '../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../src/checks/browser/embed-02.ts';
-import { sha256Hex } from '../../../../src/collectors/browser/util.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../src/core/data/messages.ts';
 import type { RequestRecord } from '../../../../src/core/snapshot/browser.ts';
@@ -210,26 +204,15 @@ describe('phases B and C with a recognized CMP (stub adapter)', () => {
     );
   });
 
-  it('B: banner screenshot of the first screen only (≤ 200 KB, ≤ 50 % viewport)', () => {
-    const shots = run.result.sections.browser?.screenshots ?? [];
-    expect(shots).toHaveLength(1);
-    const shot = shots[0]!;
-
-    expect(shot).toMatchObject({
-      phase: 'B',
-      kind: 'banner',
-      path: 'artifacts/banner-B.jpg',
-      viewport: 'desktop',
-    });
-    expect(shot.width).toBe(1366);
-    expect(shot.height).toBeGreaterThan(100);
-    expect(shot.width * shot.height).toBeLessThanOrEqual(0.5 * 1366 * 768);
-
-    const file = path.join(run.artifactsDir, 'banner-B.jpg');
-    expect(statSync(file).size).toBeLessThanOrEqual(200 * 1024);
-    expect(sha256Hex(readFileSync(file))).toBe(shot.sha256);
+  it('B: records a visible banner and why its screenshot was skipped', () => {
     const first = run.result.sections.cmp?.phases.find((p) => p.phase === 'B')?.facts[0];
-    expect(first?.screenshotId).toBe(shot.id);
+    expect(first?.firstLayer.bannerVisible).toBe(true);
+    expect(first?.screenshotId).toBeUndefined();
+    expect(phase('B')?.errors).toContainEqual(
+      expect.objectContaining({ code: 'screenshot-skipped', message: 'privacy-unverifiable' }),
+    );
+    expect(run.result.sections.browser?.screenshots).toEqual([]);
+    expect(existsSync(path.join(run.artifactsDir, 'banner-B.jpg'))).toBe(false);
   });
 
   it('C: accept on the start page; tracking starts after the click (tRef click) and on control pages', () => {

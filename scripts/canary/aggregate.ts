@@ -3,7 +3,13 @@
  * machine codes are scrubbed of hosts); `withSites` adds a per-site table for local analysis only.
  */
 import { type CheckStatus, type Severity, SeveritySchema } from '../../src/core/report/schema.ts';
-import { type Confidence, DETECTED_CMPS, type DetectedCmpId, type SiteResult } from './load.ts';
+import {
+  type Confidence,
+  DETECTED_CMPS,
+  type DetectedCmpId,
+  type ReportLike,
+  type SiteResult,
+} from './load.ts';
 import type { SiteMeta, SiteRef } from './results.ts';
 import { EXPECTED_CMPS, type ExpectedCmp, KNOWN_CMPS, type KnownCmp, type Region } from './sites.ts';
 
@@ -261,17 +267,22 @@ function tallyScanOutcome(
   return meta.scanDurationMs ?? meta.durationMs;
 }
 
-function tallyFindings(g: GroupAggregate, r: SiteResult): void {
-  const severities = new Set<string>();
-
-  for (const f of r.report?.findings ?? []) {
-    if (!(SEVERITIES as readonly string[]).includes(f.severity)) continue;
-    g.findings.total++;
-    g.findings.bySeverity[f.severity as Severity]++;
-    severities.add(f.severity);
+function severityCounts(findings: ReportLike['findings']): Record<Severity, number> {
+  const counts = zeros(SEVERITIES);
+  for (const { severity } of findings ?? []) {
+    if ((SEVERITIES as readonly string[]).includes(severity)) counts[severity as Severity]++;
   }
+  return counts;
+}
 
-  for (const s of severities) g.findings.sitesWithSeverity[s as Severity]++;
+function tallyFindings(g: GroupAggregate, r: SiteResult): void {
+  const counts = severityCounts(r.report?.findings);
+  for (const severity of SEVERITIES) {
+    const count = counts[severity];
+    g.findings.total += count;
+    g.findings.bySeverity[severity] += count;
+    if (count > 0) g.findings.sitesWithSeverity[severity]++;
+  }
 }
 
 function emptyCheckAggregate(): CheckAggregate {
@@ -474,16 +485,6 @@ function topErrors(results: readonly SiteResult[], scrub: (s: string) => string,
     .slice(0, limit);
 }
 
-function severityCounts(r: SiteResult): Record<Severity, number> {
-  const counts = zeros(SEVERITIES);
-  if (!evaluable(r)) return counts;
-
-  for (const f of r.report?.findings ?? []) {
-    if ((SEVERITIES as readonly string[]).includes(f.severity)) counts[f.severity as Severity]++;
-  }
-  return counts;
-}
-
 function siteRows(results: readonly SiteResult[]): SiteRow[] {
   return results.map((r) => {
     const status = scanStatusOf(r);
@@ -503,7 +504,7 @@ function siteRows(results: readonly SiteResult[]): SiteRow[] {
       durationMs: r.meta ? (r.meta.scanDurationMs ?? r.meta.durationMs) : null,
       failureCode: status === 'failed' ? (r.report?.scan?.failure?.code ?? 'unknown') : null,
       runnerError: r.meta?.error?.code ?? null,
-      findings: severityCounts(r),
+      findings: severityCounts(evaluable(r) ? r.report?.findings : undefined),
       diagnostics: siteDiagnostics(r),
     };
   });

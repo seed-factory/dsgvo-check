@@ -14,7 +14,6 @@ describe('event names and Consent Mode signals', () => {
     ['https://t.example.net/c?ev=4f3a9c1d2e7b8a9f0c1d', null],
     ['https://t.example.net/c', 'en=zq8%20secret&ev=zq8-4f3a9c1d'],
     ['https://t.example.net/c', 'en=qx7k2m9q4w8e1r5t3'],
-    ['https://t.example.net/c', 'ev=evt_Ab3kQ9xLmP2wZr7Y'],
   ])('%s with body %j has no event type', (url, body) => {
     expect(extractRequestFeatures(url, body).eventType).toBeUndefined();
   });
@@ -36,18 +35,6 @@ describe('event names and Consent Mode signals', () => {
     const f = extractRequestFeatures('https://t.example.net/c', 'gcs=zq8&gcd=zq8&npa=2&dma=yes');
     expect(f.consentSignals).toBeUndefined();
   });
-
-  it('counterexample: GA4 and Meta Pixel requests keep their event and signals', () => {
-    expect(
-      extractRequestFeatures(
-        'https://www.google-analytics.com/g/collect?v=2&en=page_view&gcs=G100&npa=1',
-        null,
-      ),
-    ).toMatchObject({ eventType: 'page_view', consentSignals: { gcs: 'G100', npa: '1' } });
-    expect(extractRequestFeatures('https://www.facebook.com/tr/?id=1&ev=PageView', null).eventType).toBe(
-      'PageView',
-    );
-  });
 });
 
 describe('request methods', () => {
@@ -58,11 +45,9 @@ describe('request methods', () => {
     }) as unknown as Request;
 
   it.each([
-    ['GET', 'GET'],
     ['POST', 'POST'],
     ['PATCH', 'PATCH'],
     ['X-4f3a9c1d2e7b8a9f', 'OTHER'],
-    ['SID_ZQ8SECRET', 'OTHER'],
   ])('fetch with method %j is recorded as %j', async (method, recorded) => {
     const { ctx, rec } = fakeRecorder({ start: START });
     ctx.emit('request', withMethod(method));

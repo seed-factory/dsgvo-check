@@ -18,7 +18,12 @@ import { loadDataDir } from '../../../../../src/core/data/load.ts';
 const lex = loadLegalLexicon();
 const raw = (
   loadDataDir('legal') as {
-    legal: { kinds: Record<LegalKind, { languages: Record<string, { labels?: string[] }> }> };
+    legal: {
+      kinds: Record<
+        LegalKind,
+        { languages: Record<string, { labels?: string[]; keys?: string[]; generic?: string[] }> }
+      >;
+    };
   }
 ).legal;
 const labelsOf = (kind: LegalKind) =>
@@ -34,37 +39,25 @@ describe('legal lexicon data', () => {
     }
   });
 
-  it.each(labelsOf('privacy'))(
-    'privacy label (%s) "%s" is an exact match of the privacy kind',
-    (_, label) => {
-      expect(matchLegalLink(lex, 'privacy', { text: label, path: '' })).toMatchObject({
-        tier: 0,
-        byText: true,
-      });
-    },
-  );
-
-  it.each(labelsOf('impressum'))(
-    'impressum label (%s) "%s" is an exact match of the impressum kind',
-    (_, label) => {
-      expect(matchLegalLink(lex, 'impressum', { text: label, path: '' })).toMatchObject({
-        tier: 0,
-        byText: true,
-      });
-    },
-  );
-
-  it('a label of one kind is not a link of the other kind', () => {
-    for (const [, label] of labelsOf('privacy'))
-      expect(matchLegalLink(lex, 'impressum', { text: label, path: '' }), label).toBeNull();
-    for (const [, label] of labelsOf('impressum'))
-      expect(matchLegalLink(lex, 'privacy', { text: label, path: '' }), label).toBeNull();
+  it.each(['privacy', 'impressum'] as const)('%s labels are exact links and document markers', (kind) => {
+    const other = kind === 'privacy' ? 'impressum' : 'privacy';
+    for (const [lang, label] of labelsOf(kind)) {
+      const input = { text: label, path: '' };
+      const location = `${lang}/${label}`;
+      expect(matchLegalLink(lex, kind, input), location).toMatchObject({ tier: 0, byText: true });
+      expect(matchLegalLink(lex, other, input), location).toBeNull();
+      expect(markerLanguages(lex, kind, [label]), location).not.toEqual([]);
+    }
   });
 
-  it('every canonical label is also a marker of its kind (so a page under that title is a document)', () => {
-    for (const kind of ['impressum', 'privacy'] as const)
-      for (const [lang, label] of labelsOf(kind))
-        expect(markerLanguages(lex, kind, [label]), `${kind}/${lang}/${label}`).not.toEqual([]);
+  it('keys and topic words in the dictionary match their document kind', () => {
+    for (const kind of ['privacy', 'impressum'] as const) {
+      for (const [lang, entry] of Object.entries(raw.kinds[kind].languages)) {
+        for (const text of [...(entry.keys ?? []), ...(entry.generic ?? [])]) {
+          expect(matchLegalLink(lex, kind, { text, path: '' }), `${lang}/${text}`).not.toBeNull();
+        }
+      }
+    }
   });
 
   it('navigation: contact and hop keys exist, "legal" and "about" are strict', () => {

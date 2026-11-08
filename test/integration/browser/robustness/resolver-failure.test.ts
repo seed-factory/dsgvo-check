@@ -3,9 +3,9 @@
  * injected lookup fails with EAI_AGAIN. A transient failure must not mark the start page `unresolved` and lose B/C.
  */
 import { type BrowserType, chromium, type LaunchOptions } from 'playwright-core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Lookup } from '../../../../src/core/url/net.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect } from '../helpers.ts';
 import { html, send, site } from '../site-dir.ts';
@@ -14,17 +14,9 @@ const PUBLIC = [{ address: '93.184.215.14', family: 4 as const }];
 
 const START = { '/': send(html('Start', '<main><h1>Start</h1></main>')) };
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
-    handlers: [site('flaky.example.test', START), site('gone.example.test', START)],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({
+  handlers: [site('flaky.example.test', START), site('gone.example.test', START)],
+}));
 
 /**
  * Lookup that works until the third browser launch (probe = 1, phase A = 2, phase B = 3) and then fails with
@@ -56,7 +48,7 @@ const bStart = (run: CollectRun) => phaseB(run)?.pages[0];
 
 /** Phases A and B of `host` with the failing resolver `r`; the guard's pauses between lookups are short. */
 function collectWithFailingResolver(host: string, r: ReturnType<typeof resolverFailingInPhaseB>) {
-  return collect(server, {
+  return collect(server(), {
     url: `https://${host}/`,
     maxPages: 1,
     deps: { cmp: stubCmpApi(), phases: ['A', 'B'], chromium: r.spy, lookupBackoffMs: [30, 30] },
@@ -106,6 +98,10 @@ describe('a start page refused in phase B because the resolver hiccuped', () => 
     const diag = run.result.diagnostics?.find((d) => d.code === 'SCAN-PRIVATE-REQUEST-BLOCKED');
     expect(diag?.params).toMatchObject({ count: 2, addressClass: 'unresolved', lookupCodes: 'ENOTFOUND' });
     // Nothing reached the host.
-    expect(server.requestsTo('gone.example.test').filter((q) => q.path === '/').length).toBe(1);
+    expect(
+      server()
+        .requestsTo('gone.example.test')
+        .filter((q) => q.path === '/').length,
+    ).toBe(1);
   });
 });

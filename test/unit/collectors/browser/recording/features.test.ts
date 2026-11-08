@@ -9,12 +9,12 @@ import {
 describe('extractRequestFeatures', () => {
   it('GA4 hit: cid is an identifier, en is the event, consent signals are kept', () => {
     const f = extractRequestFeatures(
-      'https://www.google-analytics.com/g/collect?v=2&tid=G-TEST&cid=111.222&en=page_view&gcs=G100&gcd=13l3l3l3l1',
+      'https://www.google-analytics.com/g/collect?v=2&tid=G-TEST&cid=111.222&en=page_view&gcs=G100&gcd=13l3l3l3l1&npa=1',
       null,
     );
     expect(f.identifierNames).toEqual(['cid']);
     expect(f.eventType).toBe('page_view');
-    expect(f.consentSignals).toEqual({ gcs: 'G100', gcd: '13l3l3l3l1' });
+    expect(f.consentSignals).toEqual({ gcs: 'G100', gcd: '13l3l3l3l1', npa: '1' });
     expect(f.identifierValues).toEqual(['111.222']);
   });
 

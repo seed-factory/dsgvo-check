@@ -6,20 +6,17 @@
  * does or does not reach, a CMP whose crawler test does not take the scanner's User-Agent for a bot, and its widget
  * that never opens.
  */
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ConfigInput } from '../../../src/core/config/schema.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
-import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { bannerState } from '../../../src/reporters/front-page.ts';
-import { writeReports } from '../../../src/reporters/write.ts';
-import { type ScanResult, scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import type { ScanResult } from '../../../src/scan.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
-import { FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';
+import { scanFixture, useScan, writeFixtureReports } from './helpers.ts';
 
 const BROWSER_CHECKS = [
   'CONSENT-01',
@@ -37,30 +34,22 @@ const BROWSER_CHECKS = [
 /** Value parts of the `_ga` cookie / `cid` set by the fake gtag (must never reach a report). */
 const GA_CLIENT_ID = '987654321';
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
-    sites: [
-      'pipeline/consent-shop',
-      'cmp/cookiebot',
-      'browser/ga4',
-      'pipeline/wix-shop',
-      'cmp/wix',
-      'pipeline/shopware-shop',
-      'pipeline/cookieman-shop',
-      'cmp/cookieman',
-      'cmp/ccm19',
-    ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({
+  sites: [
+    'pipeline/consent-shop',
+    'cmp/cookiebot',
+    'browser/ga4',
+    'pipeline/wix-shop',
+    'cmp/wix',
+    'pipeline/shopware-shop',
+    'pipeline/cookieman-shop',
+    'cmp/cookieman',
+    'cmp/ccm19',
+  ],
+}));
 
 afterEach(() => {
-  expect(server.unexpected).toEqual([]);
+  expect(server().unexpected).toEqual([]);
 });
 
 /**
@@ -73,25 +62,17 @@ async function run(
   pathname = '/',
 ): Promise<{ r: ScanResult; report: FullReport; outDir: string; files: string }> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-pipeline-'));
-  const r = await scan({
+  const r = await scanFixture(server(), {
     url: `https://${host}${pathname}`,
-    network: server.network(),
-    log: silentLogger,
-    sandbox: TEST_SANDBOX,
     outDir,
     checks: BROWSER_CHECKS,
-    collectors: { browser: createBrowserCollector({ timing: FAST_TIMING }) },
-    ...(config ? { config } : {}),
+    config,
   });
-  const w = await writeReports(r, { outDir, formats: ['console', 'json', 'html', 'summary'], lang: 'de' });
-  expect(w.errors).toEqual([]);
+  const { html, summary, json, console: consoleOutput } = await writeFixtureReports(r, outDir);
   expectValidReport(r.report);
   expect(r.report.scan.status).toBe('complete');
 
-  const html = readFileSync(path.join(outDir, 'report.html'), 'utf8');
-  const summary = readFileSync(path.join(outDir, 'summary.md'), 'utf8');
-  const json = readFileSync(path.join(outDir, 'report.json'), 'utf8');
-  const consoleText = w.console ?? '';
+  const consoleText = consoleOutput ?? '';
   // CRM codes belong in the JSON only.
   for (const text of [html, summary, consoleText]) expect(text).not.toMatch(/T[0-9]_/);
   const files = [html, summary, json, consoleText].join('\n');
@@ -102,9 +83,20 @@ async function run(
 
 const ids = (report: FullReport) => report.findings.map((f) => `${f.checkId}.${f.variant}`).sort();
 const check = (report: FullReport, id: string) => report.checks.find((c) => c.id === id);
+const cmpPhase = (r: ScanResult, phase: 'A' | 'B' | 'C') =>
+  r.snapshot?.cmp?.phases.find((p) => p.phase === phase);
 const firstScreen = (r: ScanResult, phase: 'A' | 'B' | 'C') =>
-  r.snapshot?.cmp?.phases.find((p) => p.phase === phase)?.facts.find((f) => f.moment === 'first-screen');
-const cmpPhase = (r: ScanResult, phase: 'B' | 'C') => r.snapshot?.cmp?.phases.find((p) => p.phase === phase);
+  cmpPhase(r, phase)?.facts.find((f) => f.moment === 'first-screen');
+const variantsFor = (report: FullReport, id: string) =>
+  report.findings.filter((f) => f.checkId === id).map((f) => f.variant);
+
+const expectGaAfterReject = (report: FullReport, params?: { rejectPath: 'settings' }) =>
+  expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
+    variant: 'tracking-after-reject',
+    severity: 'critical',
+    serviceId: 'google-analytics',
+    ...(params && { params }),
+  });
 
 const expectInconclusive = (report: FullReport, id: string, reason: string) =>
   expect(check(report, id)).toMatchObject({ status: 'inconclusive', reason });
@@ -125,23 +117,19 @@ function expectConsent05OnConfirmedReject(report: FullReport): void {
 
 describe('full browser pipeline on the Cookiebot simulator', () => {
   describe('consent respected: reject clicked, tracker only after accept', () => {
-    let scanned: Awaited<ReturnType<typeof run>>;
-
-    beforeAll(async () => {
-      scanned = await run('www.consent-shop.test');
-    });
+    const scanned = useScan(() => run('www.consent-shop.test'));
 
     it('exits 0 without a critical finding', () => {
-      expect(scanned.r.exitCode).toBe(0);
-      expect(scanned.report.findings.filter((f) => f.severity === 'critical')).toEqual([]);
+      expect(scanned().r.exitCode).toBe(0);
+      expect(scanned().report.findings.filter((f) => f.severity === 'critical')).toEqual([]);
     });
 
     it('clicks reject in phase B and accept in phase C, both through the Cookiebot adapter', () => {
-      expectClicks(scanned.r, 'cookiebot', 'Ablehnen', 'Alle zulassen');
+      expectClicks(scanned().r, 'cookiebot', 'Ablehnen', 'Alle zulassen');
     });
 
     it('completes CONSENT-04 without a finding and runs all three phases', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
 
       expect(check(report, 'CONSENT-04')?.status).toBe('completed');
       expect(ids(report).filter((x) => x.startsWith('CONSENT-04'))).toEqual([]);
@@ -154,7 +142,7 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
 
     // Google Analytics appears only after accept (inventory) and is named in the privacy policy.
     it("inventories Google Analytics; the only other finding is the CMP's own third-party resource", () => {
-      const { report } = scanned;
+      const { report } = scanned();
 
       expect(ids(report)).toContain('TRACK-01.service-inventory');
       expect(ids(report).filter((x) => /^(CONSENT-0[125]|PRIV-01)\./.test(x))).toEqual([
@@ -196,9 +184,7 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
   it('cookie notice the heuristic dismisses (one keyword, a settings button) → no "no banner" finding, the reject stays open', async () => {
     const { r, report, files } = await run('www.notice-shop.test');
 
-    const candidates = r.snapshot?.cmp?.phases
-      .find((p) => p.phase === 'A')
-      ?.facts.map((f) => f.firstLayer.bannerCandidate);
+    const candidates = cmpPhase(r, 'A')?.facts.map((f) => f.firstLayer.bannerCandidate);
     expect(candidates?.length).toBeGreaterThanOrEqual(2);
     expect(candidates?.every((c) => c?.reason === 'keywords' && c.controls.includes('settings'))).toBe(true);
 
@@ -217,7 +203,7 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
     expect(files).not.toContain('Der Scan wurde vollständig durchgeführt.');
   });
 
-  it('blocking banner without reject → CONSENT-04 blocking-no-reject with banner screenshot, exit 1', async () => {
+  it('blocking banner without reject → CONSENT-04 blocking-no-reject, exit 1', async () => {
     const { r, report, outDir, files } = await run('www.blocking-shop.test');
 
     expect(r.exitCode).toBe(1);
@@ -227,9 +213,9 @@ describe('full browser pipeline on the Cookiebot simulator', () => {
     expectInconclusive(report, 'CONSENT-05', 'no-reject-click');
 
     const shot = report.evidence.find((e) => e.type === 'screenshot');
-    expect(shot).toMatchObject({ path: 'artifacts/banner-B.jpg' });
-    expect(existsSync(path.join(outDir, 'artifacts/banner-B.jpg'))).toBe(true);
-    expect(files).toContain('data:image/jpeg;base64,');
+    expect(shot).toBeUndefined();
+    expect(existsSync(path.join(outDir, 'artifacts/banner-B.jpg'))).toBe(false);
+    expect(files).not.toContain('data:image/jpeg;base64,');
   });
 });
 
@@ -255,16 +241,22 @@ function expectBannerRecognized({ report, files }: { report: FullReport; files: 
   expect(report.checks.filter((c) => bannerReasons.includes(c.reason ?? ''))).toEqual([]);
 }
 
+const WIX_DENIED = { functional: 'denied', analytics: 'denied', advertising: 'denied' };
+
+function expectWixDenials(r: ScanResult) {
+  const b = cmpPhase(r, 'B');
+  expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
+  expect(b?.verify?.method).toContain('api:all-denied');
+  expect(b?.verify?.stateAfter).toMatchObject([{ ready: 'ready', origin: 'action', categories: WIX_DENIED }]);
+  return b;
+}
+
 describe('full browser pipeline on the Wix simulator', () => {
   describe('first layer with "Cookie-Einstellungen", "Zustimmen" and × only: the reject is saved in the settings layer', () => {
-    let scanned: Awaited<ReturnType<typeof run>>;
-
-    beforeAll(async () => {
-      scanned = await run('www.wix-nodecline-shop.test');
-    });
+    const scanned = useScan(() => run('www.wix-nodecline-shop.test'));
 
     it('recognises Wix and reports CONSENT-04 nonblocking-no-reject as critical, which fails the run', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
 
       expect(firstScreen(r, 'B')?.detection).toMatchObject({
         cmpId: 'wix',
@@ -285,7 +277,7 @@ describe('full browser pipeline on the Wix simulator', () => {
     });
 
     it('the first layer has no reject target and × is never one; B opens "Cookie-Einstellungen" and presses "Auswahl bestätigen"', () => {
-      const { r } = scanned;
+      const { r } = scanned();
 
       const kinds = firstScreen(r, 'B')?.firstLayer.buttons.map((b) => [b.name, b.kind]);
       expect(kinds).toEqual([
@@ -337,19 +329,14 @@ describe('full browser pipeline on the Wix simulator', () => {
     });
 
     it('confirms the save as the reject: every policy category denied by it and stored after the reload; CONSENT-05 rests on it', () => {
-      const { r, report } = scanned;
-      const b = cmpPhase(r, 'B');
-
-      expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
-      expect(b?.verify?.method).toContain('api:all-denied');
-      const denied = { functional: 'denied', analytics: 'denied', advertising: 'denied' };
-      expect(b?.verify?.stateAfter).toMatchObject([{ ready: 'ready', origin: 'action', categories: denied }]);
+      const { r, report } = scanned();
+      expectWixDenials(r);
       expectConsent05OnConfirmedReject(report);
       expect(ids(report).filter((x) => x.startsWith('CONSENT-05'))).toEqual([]);
     });
 
     it('what loads while the settings are open is before the reject: the settings stylesheet has no click, the reload has', () => {
-      const { r } = scanned;
+      const { r } = scanned();
       const derived = r.snapshot?.derived?.requests ?? [];
       const b = r.snapshot?.browser?.phases.find((p) => p.phase === 'B');
       const timing = (id: string) => derived.find((c) => c.requestId === id)?.timing;
@@ -366,7 +353,7 @@ describe('full browser pipeline on the Wix simulator', () => {
     });
 
     it('the coverage names the reject through the settings, and the banner recognised in every text', () => {
-      const { report, files } = scanned;
+      const { report, files } = scanned();
 
       expect(report.scan.coverage?.consentActions?.[0]).toEqual({
         action: 'reject',
@@ -375,12 +362,12 @@ describe('full browser pipeline on the Wix simulator', () => {
         path: 'settings',
       });
       expect(files).toContain('Ablehnen über die Einstellungen ausgelöst und bestätigt');
-      expectBannerRecognized(scanned);
+      expectBannerRecognized(scanned());
     });
 
     // The saved choice lives in the value of the platform cookie; only its name may be recorded.
     it('no value of the cookie the save wrote reaches the snapshot or a report', () => {
-      const { r, files } = scanned;
+      const { r, files } = scanned();
       const snapshot = JSON.stringify(r.snapshot);
 
       expect(r.snapshot?.browser?.phases.flatMap((p) => p.cookies).map((c) => c.name)).toContain(
@@ -395,15 +382,8 @@ describe('full browser pipeline on the Wix simulator', () => {
 
     expect(cmpPhase(r, 'B')?.click).toMatchObject({ clicked: true, path: 'settings' });
     expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
-    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
-      variant: 'tracking-after-reject',
-      severity: 'critical',
-      serviceId: 'google-analytics',
-      params: { rejectPath: 'settings' },
-    });
-    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
-      'nonblocking-no-reject',
-    ]);
+    expectGaAfterReject(report, { rejectPath: 'settings' });
+    expect(variantsFor(report, 'CONSENT-04')).toEqual(['nonblocking-no-reject']);
     expect(report.findings.find((f) => f.checkId === 'EMBED-02')).toMatchObject({
       variant: 'maps-loaded',
       params: { moment: 'before-and-after-reject', rejectConfirmed: true, rejectPath: 'settings' },
@@ -433,9 +413,7 @@ describe('full browser pipeline on the Wix simulator', () => {
     expect(cmpPhase(r, 'B')?.verify).toBeUndefined();
     expectInconclusive(report, 'CONSENT-05', 'no-reject-click');
     expect(check(report, 'CONSENT-05')?.limitations).toEqual(['preselected-groups']);
-    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
-      'nonblocking-no-reject',
-    ]);
+    expect(variantsFor(report, 'CONSENT-04')).toEqual(['nonblocking-no-reject']);
     expect(scanned.files).toContain('optionale Kategorien dort bereits eingeschaltet');
     expectBannerRecognized(scanned);
   });
@@ -447,39 +425,28 @@ describe('full browser pipeline on the Wix simulator', () => {
     expect(cmpPhase(r, 'B')?.click).toMatchObject({ clicked: true, path: 'settings' });
     expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: false });
     expectInconclusive(report, 'CONSENT-05', 'reject-not-confirmed');
-    expect(report.findings.filter((f) => f.checkId === 'CONSENT-04').map((f) => f.variant)).toEqual([
-      'nonblocking-no-reject',
-    ]);
+    expect(variantsFor(report, 'CONSENT-04')).toEqual(['nonblocking-no-reject']);
     expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
     expect(files).toContain('Ablehnen über die Einstellungen ausgelöst, nicht bestätigt');
     expectBannerRecognized(scanned);
   });
 
   describe('visible "Alle ablehnen", confirmed by the platform policy', () => {
-    let scanned: Awaited<ReturnType<typeof run>>;
-
-    beforeAll(async () => {
-      scanned = await run('www.wix-shop.test');
-    });
+    const scanned = useScan(() => run('www.wix-shop.test'));
 
     it('clicks "Alle ablehnen" in phase B and "Zustimmen" in phase C through the Wix adapter', () => {
-      expectClicks(scanned.r, 'wix', 'Alle ablehnen', 'Zustimmen');
+      expectClicks(scanned().r, 'wix', 'Alle ablehnen', 'Zustimmen');
     });
 
     it('confirms the reject: every policy category denied by our click and still stored after the reload', () => {
-      const b = cmpPhase(scanned.r, 'B');
-
-      expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
-      expect(b?.verify?.method).toContain('api:all-denied');
-      const denied = { functional: 'denied', analytics: 'denied', advertising: 'denied' };
-      expect(b?.verify?.stateAfter).toMatchObject([{ ready: 'ready', origin: 'action', categories: denied }]);
+      const b = expectWixDenials(scanned().r);
       const afterReload = b?.facts.filter((f) => f.moment === 'after-reload').flatMap((f) => f.state);
-      expect(afterReload).toMatchObject([{ ready: 'ready', origin: 'stored', categories: denied }]);
+      expect(afterReload).toMatchObject([{ ready: 'ready', origin: 'stored', categories: WIX_DENIED }]);
     });
 
     // Wix keeps dataToThirdParty on after "Alle ablehnen"; it is no choice of the banner.
     it('dataToThirdParty, still on after the reject, makes it neither ineffective nor consent without action', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
 
       const states = (r.snapshot?.cmp?.phases ?? []).flatMap((p) => [
         ...p.facts.flatMap((f) => f.state),
@@ -492,13 +459,13 @@ describe('full browser pipeline on the Wix simulator', () => {
     });
 
     it('CONSENT-03, -04 and -05 find nothing; the run exits 0 and names the banner recognised', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
 
       expect(ids(report).filter((x) => /^CONSENT-0[345]\./.test(x))).toEqual([]);
       expect(check(report, 'CONSENT-03')?.status).toBe('completed');
       expectConsent05OnConfirmedReject(report);
       expect(r.exitCode).toBe(0);
-      expectBannerRecognized(scanned);
+      expectBannerRecognized(scanned());
     });
   });
 
@@ -506,11 +473,7 @@ describe('full browser pipeline on the Wix simulator', () => {
     const { r, report } = await run('www.wix-leaky-shop.test');
 
     expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
-    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
-      variant: 'tracking-after-reject',
-      severity: 'critical',
-      serviceId: 'google-analytics',
-    });
+    expectGaAfterReject(report);
     expect(r.exitCode).toBe(1);
   });
 
@@ -551,20 +514,23 @@ const findingsOf = (report: FullReport, checkId: string) =>
     .map((f) => [f.serviceId ?? null, f.variant, f.severity])
     .sort();
 
+function expectUnconfirmedShopwareReject(r: ScanResult, report: FullReport, reason: string, variant: string) {
+  expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: false, reason });
+  expectInconclusive(report, 'CONSENT-05', 'reject-not-confirmed');
+  expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
+  expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, variant, 'warning']]);
+}
+
 describe('full browser pipeline on the Shopware simulator', () => {
   describe('"Nur technisch notwendige" sets the answer cookie only, accept sets the permission cookies late', () => {
-    let scanned: Awaited<ReturnType<typeof run>>;
-
-    beforeAll(async () => {
-      scanned = await run('www.shopware-shop.test');
-    });
+    const scanned = useScan(() => run('www.shopware-shop.test'));
 
     it('clicks reject in phase B and accept in phase C through the Shopware adapter', () => {
-      expectClicks(scanned.r, 'shopware', 'Nur technisch notwendige', 'Alle Cookies akzeptieren');
+      expectClicks(scanned().r, 'shopware', 'Nur technisch notwendige', 'Alle Cookies akzeptieren');
     });
 
     it('confirms the reject: answered by our click, no known permission cookie, the same after the reload', () => {
-      const b = cmpPhase(scanned.r, 'B');
+      const b = cmpPhase(scanned().r, 'B');
 
       expect(b?.verify).toMatchObject({ action: 'reject', verified: true, persistedAfterReload: true });
       expect(b?.verify?.method).toContain('cookie:known-flags-absent');
@@ -577,27 +543,27 @@ describe('full browser pipeline on the Shopware simulator', () => {
     });
 
     it('confirms the accept although the answer comes after the offcanvas fetch, so the overview has no caveat', () => {
-      const c = cmpPhase(scanned.r, 'C');
+      const c = cmpPhase(scanned().r, 'C');
 
       expect(c?.verify).toMatchObject({ action: 'accept', verified: true });
       expect(c?.verify?.method).toContain('cookie:known-flags-present');
       expect(c?.verify?.stateAfter[0]?.categories).toMatchObject({ 'google-analytics-enabled': 'granted' });
-      expect(scanned.files).not.toContain('Annahme nicht bestätigt');
+      expect(scanned().files).not.toContain('Annahme nicht bestätigt');
     });
 
     it('CONSENT-03, -04 and -05 find nothing, CONSENT-05 rests on the confirmed reject; exit 0, banner recognised', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
 
       expect(ids(report).filter((x) => /^CONSENT-0[345]\./.test(x))).toEqual([]);
       expect(check(report, 'CONSENT-04')?.status).toBe('completed');
       expect(check(report, 'CONSENT-04')?.limitations ?? []).not.toContain('reject-unverified');
       expectConsent05OnConfirmedReject(report);
       expect(r.exitCode).toBe(0);
-      expectBannerRecognized(scanned);
+      expectBannerRecognized(scanned());
     });
 
     it('no value of a permission cookie reaches the snapshot or a report', () => {
-      expectNoShopwareValues(scanned);
+      expectNoShopwareValues(scanned());
     });
   });
 
@@ -620,14 +586,8 @@ describe('full browser pipeline on the Shopware simulator', () => {
     const { r, report } = await run('www.shopware-noanswer-shop.test');
 
     expect(cmpPhase(r, 'B')?.click?.clicked).toBe(true);
-    expect(cmpPhase(r, 'B')?.verify).toMatchObject({
-      verified: false,
-      reason: 'cookie:no-response-recorded',
-    });
-    expectInconclusive(report, 'CONSENT-05', 'reject-not-confirmed');
-    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
     // The state after the click shows no answer: the reject is reported as not confirmed, a warning that does not gate.
-    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'reject-ineffective', 'warning']]);
+    expectUnconfirmedShopwareReject(r, report, 'cookie:no-response-recorded', 'reject-ineffective');
     expect(r.exitCode).toBe(0);
   });
 
@@ -635,7 +595,6 @@ describe('full browser pipeline on the Shopware simulator', () => {
     const scanned = await run('www.shopware-denyflag-shop.test');
     const { r, report } = scanned;
 
-    expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: false, reason: 'cookie:not-all-denied' });
     expect(cmpPhase(r, 'B')?.verify?.stateAfter[0]?.categories).toMatchObject({
       'google-analytics-enabled': 'granted',
     });
@@ -647,10 +606,8 @@ describe('full browser pipeline on the Shopware simulator', () => {
         c.kind === 'hit',
     );
     expect(gaAfterReject?.length ?? 0).toBeGreaterThan(0);
-    expectInconclusive(report, 'CONSENT-05', 'reject-not-confirmed');
-    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
     // The state after the click grants analytics: CONSENT-04 names the reject not confirmed.
-    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'reject-ineffective', 'warning']]);
+    expectUnconfirmedShopwareReject(r, report, 'cookie:not-all-denied', 'reject-ineffective');
     expectNoShopwareValues(scanned);
   });
 
@@ -659,13 +616,9 @@ describe('full browser pipeline on the Shopware simulator', () => {
     const scanned = await run('www.shopware-answered-shop.test');
     const { r, report } = scanned;
 
-    const verify = cmpPhase(r, 'B')?.verify;
-    expect(verify).toMatchObject({ verified: false, reason: 'cookie:unchanged-after-click' });
-    expect(verify?.method).not.toContain('verified-after-reload-only');
-    expectInconclusive(report, 'CONSENT-05', 'reject-not-confirmed');
-    expect(findingsOf(report, 'CONSENT-05')).toEqual([]);
+    expect(cmpPhase(r, 'B')?.verify?.method).not.toContain('verified-after-reload-only');
     // Granted before any choice. After the click nothing is granted, so the reject is unverified, not ineffective.
-    expect(findingsOf(report, 'CONSENT-04')).toEqual([[null, 'consent-without-action', 'warning']]);
+    expectUnconfirmedShopwareReject(r, report, 'cookie:unchanged-after-click', 'consent-without-action');
     expect(check(report, 'CONSENT-04')?.limitations).toContain('reject-unverified');
     expectNoShopwareValues(scanned);
   });
@@ -678,20 +631,16 @@ const gaInventory = (report: FullReport) =>
 
 describe('full browser pipeline on the cookieman simulator, start page on the bare domain, other pages on www', () => {
   describe('answer cookie bound to the start host: the pages on www show the banner again', () => {
-    let scanned: Awaited<ReturnType<typeof run>>;
-
-    beforeAll(async () => {
-      scanned = await run('cookieman-shop.test');
-    });
+    const scanned = useScan(() => run('cookieman-shop.test'));
 
     it('rejects and accepts on the start page through the cookieman adapter; the reject is confirmed there', () => {
-      const { r } = scanned;
+      const { r } = scanned();
       expectClicks(r, 'cookieman', 'Alle Cookies ablehnen', 'Alle Cookies akzeptieren');
       expect(cmpPhase(r, 'B')?.verify).toMatchObject({ verified: true, persistedAfterReload: true });
     });
 
     it('revisits control pages on www only, where the banner shows again without an answer after both clicks', () => {
-      const { r } = scanned;
+      const { r } = scanned();
       const control = r.snapshot?.plan.browser?.controlPages.map((p) => new URL(p.url).hostname) ?? [];
       expect(control.length).toBeGreaterThan(0);
       expect(new Set(control)).toEqual(new Set(['www.cookieman-shop.test']));
@@ -706,7 +655,7 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
     });
 
     it('Google Analytics on the www pages after the reject is no CONSENT-05 finding; those pages are left out', () => {
-      const { r, report } = scanned;
+      const { r, report } = scanned();
       expect(ids(report).filter((x) => x.startsWith('CONSENT-05'))).toEqual([]);
       const c05 = check(report, 'CONSENT-05');
       expect(c05?.limitations).toContain('reject-not-in-effect');
@@ -718,7 +667,7 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
     });
 
     it('TRACK-01 counts the www pages for neither click and names both limitations', () => {
-      const { report } = scanned;
+      const { report } = scanned();
       expect(check(report, 'TRACK-01')).toMatchObject({
         status: 'partial',
         limitations: ['accept-not-in-effect', 'reject-not-in-effect'],
@@ -731,8 +680,8 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
     });
 
     it('the report words the pages left out', () => {
-      expect(scanned.files).toContain('Seiten nach der Ablehnung nicht ausgewertet');
-      expect(scanned.files).toContain('Seiten nach der Zustimmung nicht ausgewertet');
+      expect(scanned().files).toContain('Seiten nach der Ablehnung nicht ausgewertet');
+      expect(scanned().files).toContain('Seiten nach der Zustimmung nicht ausgewertet');
     });
   });
 
@@ -746,11 +695,7 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
       expect(f.firstLayer.bannerVisible).toBe(false);
       expect(f.state).toMatchObject([{ origin: 'stored', decision: { responded: true } }]);
     }
-    expect(report.findings.find((f) => f.checkId === 'CONSENT-05')).toMatchObject({
-      variant: 'tracking-after-reject',
-      severity: 'critical',
-      serviceId: 'google-analytics',
-    });
+    expectGaAfterReject(report);
     expect(check(report, 'CONSENT-05')?.limitations).not.toContain('reject-not-in-effect');
     expect(check(report, 'TRACK-01')?.limitations).toEqual([]);
     expect(gaInventory(report)?.params).toMatchObject({
@@ -760,18 +705,18 @@ describe('full browser pipeline on the cookieman simulator, start page on the ba
   });
 });
 
+const expectCheckOutcomes = (report: FullReport, expected: Array<[string, string, string | null]>) =>
+  expect(expected.map(([id]) => [id, check(report, id)?.status, check(report, id)?.reason ?? null])).toEqual(
+    expected,
+  );
+
 // CCM19 keeps its widget closed for a User-Agent its crawler test takes for a bot (` (+http`); the scanner's honest
 // User-Agent is none, so the widget opens and the consent checks read it as a visitor would.
 describe("full browser pipeline on the CCM19 simulator, whose crawler test does not match the scanner's User-Agent", () => {
-  const CONSENT_CHECKS = ['CONSENT-01', 'CONSENT-02', 'CONSENT-03', 'CONSENT-04', 'CONSENT-05', 'EMBED-01'];
-  let scanned: Awaited<ReturnType<typeof run>>;
-
-  beforeAll(async () => {
-    scanned = await run('www.ccm19.test');
-  });
+  const scanned = useScan(() => run('www.ccm19.test'));
 
   it('records the opened widget without a bot signal and clicks the reject', () => {
-    const { r } = scanned;
+    const { r } = scanned();
     const first = firstScreen(r, 'B');
 
     expect(first?.firstLayer.bannerVisible).toBe(true);
@@ -784,11 +729,9 @@ describe("full browser pipeline on the CCM19 simulator, whose crawler test does 
   });
 
   it('the consent checks read the opened widget: none names a bot, and the reports carry no crawler text', () => {
-    const { report, files } = scanned;
+    const { report, files } = scanned();
 
-    expect(
-      CONSENT_CHECKS.map((id) => [id, check(report, id)?.status, check(report, id)?.reason ?? null]),
-    ).toEqual([
+    expectCheckOutcomes(report, [
       ['CONSENT-01', 'completed', null],
       ['CONSENT-02', 'completed', null],
       // The simulator is one page, fewer than CONSENT-03 needs.
@@ -806,14 +749,10 @@ describe("full browser pipeline on the CCM19 simulator, whose crawler test does 
 });
 
 describe('full browser pipeline on a CCM19 page whose widget never opens', () => {
-  let scanned: Awaited<ReturnType<typeof run>>;
-
-  beforeAll(async () => {
-    scanned = await run('www.ccm19.test', { cmp: { waitMs: 1_500 } }, '/not-opened.html');
-  });
+  const scanned = useScan(() => run('www.ccm19.test', { cmp: { waitMs: 1_500 } }, '/not-opened.html'));
 
   it('records the closed widget on B without a bot signal and clicks nothing', () => {
-    const { r } = scanned;
+    const { r } = scanned();
 
     expect(firstScreen(r, 'B')?.firstLayer.dialogNotOpened).toBe(true);
     expect(r.snapshot?.cmp?.phases.flatMap((p) => p.facts.flatMap((f) => f.botSignals))).toEqual([]);
@@ -821,14 +760,8 @@ describe('full browser pipeline on a CCM19 page whose widget never opens', () =>
   });
 
   it('the consent checks and the reports say the banner was not opened, without naming a crawler test', () => {
-    const { report, files } = scanned;
-    expect(
-      ['CONSENT-03', 'CONSENT-04', 'CONSENT-05'].map((id) => [
-        id,
-        check(report, id)?.status,
-        check(report, id)?.reason ?? null,
-      ]),
-    ).toEqual([
+    const { report, files } = scanned();
+    expectCheckOutcomes(report, [
       // One page, fewer than CONSENT-03 needs.
       ['CONSENT-03', 'inconclusive', 'insufficient-pages'],
       ['CONSENT-04', 'inconclusive', 'cmp-dialog-not-opened'],

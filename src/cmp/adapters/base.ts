@@ -4,12 +4,20 @@
  * target on exactly one element.
  */
 import type { Page } from 'playwright-core';
+import { sleep } from '../../collectors/browser/util.ts';
 import { hasStoredNameSyntax, isCategoryKey, isStoredName } from '../../core/redaction/page-names.ts';
 import { sanitizeUrl } from '../../core/url/url.ts';
+import {
+  abortedClick,
+  CLICK_TIMEOUT_MS,
+  clickButton,
+  clickSignal,
+  rememberClickDocument,
+} from '../action.ts';
 import { type AdapterData, supportedVersionsOf } from '../adapters-data.ts';
 import { adapterData } from '../adapters-file.ts';
 import { classifyFirstLayer } from '../classify.ts';
-import { type ClickError, clickFailure, noTarget, reloadFailure } from '../click-errors.ts';
+import { type ClickError, noTarget, reloadFailure } from '../click-errors.ts';
 import {
   cleanVersion,
   confidenceFromSignals,
@@ -30,8 +38,8 @@ import type {
   CategoryState,
   ClickOutcome,
   ClickTarget,
+  CmpActionOptions,
   CmpAdapter,
-  CmpButton,
   CmpDetection,
   CmpFacts,
   ConsentStateFact,
@@ -42,8 +50,6 @@ import type {
   VerifyOptions,
   VerifyResult,
 } from '../types.ts';
-
-const CLICK_TIMEOUT_MS = 5000;
 
 /** Default wait in `verify` for the reload, the adapter's readiness and an answer the CMP records late. */
 const VERIFY_TIMEOUT_MS = 8000;
@@ -236,42 +242,21 @@ export async function tcfGeoSignals(page: Page): Promise<GeoSignal[]> {
   return [{ cmpId: 'tcf', signal: 'tcf:gdprApplies=false', ...(known ? { detail: `cmpId=${id}` } : {}) }];
 }
 
-/** Click one element by its selector: exactly one match, `locator.click()` with actionability checks, no `force`. */
-export async function clickButton(
-  page: Page,
-  button: Pick<CmpButton, 'selector'>,
-  timeoutMs = CLICK_TIMEOUT_MS,
-): Promise<{ clicked: boolean; error?: ClickError }> {
-  if (!button.selector) return { clicked: false, error: 'no-selector' };
-
-  const locator = page.locator(button.selector);
-  let n: number;
-  try {
-    n = await locator.count();
-  } catch {
-    return { clicked: false, error: 'invalid-selector' };
-  }
-  if (n !== 1) return { clicked: false, error: n === 0 ? 'target-not-found' : 'target-ambiguous' };
-
-  try {
-    await locator.click({ timeout: timeoutMs });
-    return { clicked: true };
-  } catch (err) {
-    return { clicked: false, error: clickFailure(err) };
-  }
-}
-
 export async function waitUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,
   stepMs = WAIT_STEP_MS,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const end = Date.now() + timeoutMs;
-  for (;;) {
-    if (await check().catch(() => false)) return true;
+  while (!signal?.aborted) {
+    const ready = await check().catch(() => false);
+    if (signal?.aborted) return false;
+    if (ready) return true;
     if (Date.now() >= end) return false;
-    await new Promise((r) => setTimeout(r, stepMs));
+    await sleep(stepMs, signal);
   }
+  return false;
 }
 
 /** Document identity (`performance.timeOrigin` changes with every navigation/reload). */
@@ -344,6 +329,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     },
 
     async extract(page, moment, opts: ExtractOptions = {}): Promise<CmpFacts> {
+      if (moment === 'first-screen') rememberClickDocument(page);
       const lexicon = opts.lexicon ?? loadLexicon();
       const now = opts.now ?? (() => new Date());
       const takenAt = now().toISOString();
@@ -399,11 +385,10 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
       return (await measureBanner(page, data().banner, loadLexicon(), cfg.closeMeansAccept)).firstLayer;
     },
 
-    act: (page, action, target, opts = {}) => execute(page, action, target, opts.timeoutMs),
+    act: (page, action, target, opts = {}) => execute(page, action, target, opts),
     reject: (page, opts) => decideOrExecute(page, 'reject', opts),
     accept: (page, opts) => decideOrExecute(page, 'accept', opts),
-    openSettings: (page, opener, opts = {}) =>
-      openSettings(page, opener, opts.timeoutMs ?? VERIFY_TIMEOUT_MS),
+    openSettings: (page, opener, opts = {}) => openSettings(page, opener, opts),
 
     async verify(page, action, opts: VerifyOptions = {}): Promise<VerifyResult> {
       const timeoutMs = opts.timeoutMs ?? VERIFY_TIMEOUT_MS;
@@ -492,8 +477,10 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
   async function openSettings(
     page: Page,
     opener: ClickTarget,
-    timeoutMs: number,
+    opts: CmpActionOptions,
   ): Promise<SettingsLayerFacts> {
+    const timeoutMs = opts.timeoutMs ?? VERIFY_TIMEOUT_MS;
+    const signal = clickSignal(page, timeoutMs, opts.signal);
     const layer = data().settingsLayer;
     const closed = (error?: ClickError): SettingsLayerFacts => ({
       takenAt: new Date().toISOString(),
@@ -507,7 +494,7 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     });
     if (!layer) return closed('no-settings-layer');
 
-    const res = await clickButton(page, opener, Math.min(timeoutMs, CLICK_TIMEOUT_MS));
+    const res = await clickButton(page, opener, Math.min(timeoutMs, CLICK_TIMEOUT_MS), signal);
     if (!res.clicked) return closed(res.error ?? 'click-failed');
 
     const lexicon = loadLexicon();
@@ -524,19 +511,25 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
       previous: null,
       last: null,
     };
-    const settled = await waitUntil(async () => {
-      const m = await measure();
-      seen.last = m;
-      const layerNow = m.firstLayer;
-      const ready =
-        layerNow.bannerVisible &&
-        layerNow.containerAnimating !== true &&
-        layerNow.buttons.some((b) => b.box !== null);
-      const signature = ready ? geometrySignature(layerNow) : null;
-      const still = signature !== null && signature === seen.previous;
-      seen.previous = signature;
-      return still;
-    }, timeoutMs);
+    const settled = await waitUntil(
+      async () => {
+        const m = await measure();
+        seen.last = m;
+        const layerNow = m.firstLayer;
+        const ready =
+          layerNow.bannerVisible &&
+          layerNow.containerAnimating !== true &&
+          layerNow.buttons.some((b) => b.box !== null);
+        const signature = ready ? geometrySignature(layerNow) : null;
+        const still = signature !== null && signature === seen.previous;
+        seen.previous = signature;
+        return still;
+      },
+      timeoutMs,
+      WAIT_STEP_MS,
+      signal,
+    );
+    if (signal.aborted) return closed(abortedClick(signal).error);
     // A layer that showed but never settled is read as it was last measured; its controls decide on their own whether
     // anything can be saved.
     const measured = seen.last;
@@ -560,12 +553,16 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     page: Page,
     action: 'reject' | 'accept',
     target: ClickTarget | null,
-    timeoutMs?: number,
+    opts: CmpActionOptions,
   ): Promise<ClickOutcome> {
     if (!target) return { action, clicked: false, button: null, error: noTarget(action) };
+    const timeoutMs = opts.timeoutMs ?? CLICK_TIMEOUT_MS;
+    const signal = clickSignal(page, timeoutMs, opts.signal);
+    if (signal.aborted) return { action, button: null, ...abortedClick(signal) };
     const before = await adapter.state(page);
+    if (signal.aborted) return { action, button: null, ...abortedClick(signal) };
     const document = await documentOrigin(page);
-    const res = await clickButton(page, target, timeoutMs);
+    const res = await clickButton(page, target, timeoutMs, signal);
     if (res.clicked && document !== null) clicks.set(page, { document, before });
     return {
       action,
@@ -589,15 +586,17 @@ export function defineAdapter(spec: AdapterSpec): CmpAdapter {
     action: 'reject' | 'accept',
     opts: ActOptions = {},
   ): Promise<ClickOutcome> {
-    if (opts.target !== undefined) return execute(page, action, opts.target, opts.timeoutMs);
+    if (opts.target !== undefined) return execute(page, action, opts.target, opts);
     if (!opts.facts) return { action, clicked: false, button: null, error: 'no-target' satisfies ClickError };
     const cls = classifyFirstLayer(opts.facts, opts.lexicon ?? loadLexicon(), {
       blockingCoveredRatio: opts.blockingCoveredRatio,
     });
     const target = (action === 'reject' ? cls.targets?.reject : cls.targets?.accept) ?? null;
     if (!target) return { action, clicked: false, button: null, error: noTarget(action, cls.variant) };
-    return execute(page, action, target, opts.timeoutMs);
+    return execute(page, action, target, opts);
   }
 
   return adapter;
 }
+
+export { clickButton };

@@ -12,8 +12,16 @@ import {
   subjects,
 } from '../../core/api.ts';
 import type { BrowserSection, DomRegion, LinkFact, PageVisit } from '../../core/snapshot/browser.ts';
-import type { HttpHop, HttpSection, RedirectChain } from '../../core/snapshot/http.ts';
-import { browserAcceptsTls, hstsOf, isHttpStub, isRedirect, isSuccess } from './shared.ts';
+import type { HttpSection, RedirectChain } from '../../core/snapshot/http.ts';
+import {
+  browserAcceptsTls,
+  HTTP_NOT_SERVING_OUTCOMES,
+  hstsOf,
+  isHttpStub,
+  isRedirect,
+  isSuccess,
+  redirectChainEvidence,
+} from './shared.ts';
 
 const ID = 'TLS-01';
 
@@ -24,12 +32,6 @@ const ID = 'TLS-01';
  * its www and its registrable domain on the standard port.
  */
 type LinkedHostState = 'served' | 'upgraded' | 'hsts' | 'not-serving' | 'unknown' | 'not-probed';
-
-const NOT_SERVING: ReadonlySet<RedirectChain['outcome']> = new Set([
-  'connection-refused',
-  'dns-error',
-  'tls-error',
-]);
 
 /** The most prominent link speaks for its host: visible first, then by region, then in page order. */
 const REGION_RANK: Readonly<Record<DomRegion, number>> = {
@@ -145,7 +147,7 @@ function linkedHostState(http: HttpSection, host: LinkedHost): LinkedHostState {
   if (!probe) return 'not-probed';
   const hops = probe.hops;
   const last = hops.at(-1);
-  if (!last) return NOT_SERVING.has(probe.outcome) ? 'not-serving' : 'unknown';
+  if (!last) return HTTP_NOT_SERVING_OUTCOMES.has(probe.outcome) ? 'not-serving' : 'unknown';
 
   if (last.url.startsWith('https:')) {
     // A chain cut on an https redirect may still lead back to http.
@@ -197,20 +199,6 @@ function linkEvidence(links: readonly SeenLink[]): EvidenceInput[] {
   return out;
 }
 
-function chainEvidence(c: RedirectChain): EvidenceInput {
-  return {
-    type: 'redirect-chain',
-    phase: 'http',
-    startUrl: c.startUrl,
-    hops: c.hops.map((h: HttpHop) => ({
-      url: h.url,
-      status: h.status,
-      ...(h.location ? { location: h.location } : {}),
-    })),
-    outcome: c.outcome,
-  };
-}
-
 function hostObservation(http: HttpSection, host: LinkedHost): Observation | null {
   const state = linkedHostState(http, host);
   if (state === 'hsts' || state === 'not-serving') return null;
@@ -240,7 +228,7 @@ function hostObservation(http: HttpSection, host: LinkedHost): Observation | nul
     subject: subjects.httpLink(hostLabel(host)),
     phases: ['A'],
     pages,
-    evidence: [...(probe ? [chainEvidence(probe)] : []), ...linkEvidence(links)],
+    evidence: [...(probe ? [redirectChainEvidence(probe)] : []), ...linkEvidence(links)],
     // The https answers checked for HSTS are those on the way of the redirect, which may lead to another host.
     params: upgraded
       ? {

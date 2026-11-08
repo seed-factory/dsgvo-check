@@ -4,19 +4,17 @@
  * other only the frame of an embedded Google Map does: no use of Google Fonts by the site, but fonts from a
  * third-party server that EMBED-01 reports for the map's frame.
  */
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { browserChecks } from '../../../src/checks/browser/index.ts';
-import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
-import { silentLogger } from '../../../src/core/runtime/logger.ts';
-import { writeReports } from '../../../src/reporters/write.ts';
-import { type ScanResult, scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import type { ScanResult } from '../../../src/scan.ts';
+import type { FixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
-import { FAST_TIMING, TEST_SANDBOX } from '../browser/helpers.ts';
+import { scanFixture, writeFixtureReports } from './helpers.ts';
 
 const BROWSER_CHECKS = browserChecks.map((c) => c.id);
 
@@ -24,43 +22,25 @@ async function run(
   server: FixtureServer,
 ): Promise<{ r: ScanResult; report: FullReport; json: string; userFacing: string[] }> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'dsgvo-policy-claims-'));
-  const r = await scan({
-    url: 'https://www.example.test/',
-    network: server.network(),
-    log: silentLogger,
-    sandbox: TEST_SANDBOX,
-    outDir,
-    checks: BROWSER_CHECKS,
-    collectors: { browser: createBrowserCollector({ timing: FAST_TIMING }) },
-  });
-  const w = await writeReports(r, { outDir, formats: ['console', 'json', 'html', 'summary'], lang: 'de' });
-  expect(w.errors).toEqual([]);
+  const r = await scanFixture(server, { url: 'https://www.example.test/', outDir, checks: BROWSER_CHECKS });
+  const { json, html, summary, console: consoleText } = await writeFixtureReports(r, outDir);
   expectValidReport(r.report);
-  const read = (f: string) => readFileSync(path.join(outDir, f), 'utf8');
-  return {
-    r,
-    report: r.report as FullReport,
-    json: read('report.json'),
-    userFacing: [read('report.html'), read('summary.md'), w.console ?? ''],
-  };
+  return { r, report: r.report as FullReport, json, userFacing: [html, summary, consoleText ?? ''] };
 }
 
 const check = (report: FullReport, id: string) => report.checks.find((c) => c.id === id);
 const findingsOf = (report: FullReport, id: string) => report.findings.filter((f) => f.checkId === id);
 
 describe('a policy stating local Google Fonts while every page loads them from Google', () => {
-  let server: FixtureServer;
   let scanned: Awaited<ReturnType<typeof run>>;
-
-  beforeAll(async () => {
-    server = await startFixtureServer({ sites: ['browser/fonts-claim'] });
-    scanned = await run(server);
-  });
-  afterAll(async () => {
-    await server?.close();
-  });
+  const server = useFixtureServer(
+    () => ({ sites: ['browser/fonts-claim'] }),
+    async (server) => {
+      scanned = await run(server);
+    },
+  );
   afterEach(() => {
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('reports PRIV-02 contradiction-replicated as critical next to the EMBED-01 load, exit 1', () => {
@@ -110,22 +90,19 @@ describe('a policy stating local Google Fonts while every page loads them from G
 });
 
 describe('the same statement on a site serving its own font, with a Google Map that loads Google Fonts', () => {
-  let server: FixtureServer;
   let scanned: Awaited<ReturnType<typeof run>>;
-
-  beforeAll(async () => {
-    server = await startFixtureServer({ sites: ['browser/fonts-local'] });
-    scanned = await run(server);
-  });
-  afterAll(async () => {
-    await server?.close();
-  });
+  const server = useFixtureServer(
+    () => ({ sites: ['browser/fonts-local'] }),
+    async (server) => {
+      scanned = await run(server);
+    },
+  );
   afterEach(() => {
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('the map frame did load the Google Fonts stylesheet', () => {
-    expect(server.requestsTo('fonts.googleapis.com').length).toBeGreaterThan(0);
+    expect(server().requestsTo('fonts.googleapis.com').length).toBeGreaterThan(0);
     const fontRequests = scanned.r.snapshot?.browser?.phases
       .flatMap((p) => p.requests)
       .filter((q) => q.host === 'fonts.googleapis.com');

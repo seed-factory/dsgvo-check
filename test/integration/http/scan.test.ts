@@ -1,5 +1,6 @@
 /** `scan` with the real HTTP and TLS collectors and only the http checks; a spy browser collector must stay unused. */
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { httpChecks } from '../../../src/checks/http/index.ts';
 import { loadTexts } from '../../../src/core/data/load.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
@@ -11,7 +12,7 @@ import { renderConsole } from '../../../src/reporters/console.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { closedPort, withRoutes } from './helpers.ts';
 import { ALL_ROUTES } from './sites.ts';
@@ -19,7 +20,6 @@ import { ALL_ROUTES } from './sites.ts';
 const browserSpy = vi.hoisted(() => vi.fn(async () => ({ status: 'skipped' as const, sections: {} })));
 vi.mock('../../../src/collectors/browser/index.ts', () => ({ collectBrowser: browserSpy }));
 
-let server: FixtureServer;
 let closed: number;
 const registry = new CheckRegistry(httpChecks);
 
@@ -28,14 +28,12 @@ function full(r: Report): FullReport {
   return r as FullReport;
 }
 
-beforeAll(async () => {
-  server = await startFixtureServer({ routes: ALL_ROUTES, tls: { 'www.expired.test': 'expired' } });
-  closed = await closedPort();
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(
+  () => ({ routes: ALL_ROUTES, tls: { 'www.expired.test': 'expired' } }),
+  async () => {
+    closed = await closedPort();
+  },
+);
 
 /** A scan with the real HTTP and TLS collectors against the fixture server; `failOn` is optional. */
 function httpScan(url: string, network: NetworkConfig, failOn?: 'warning') {
@@ -48,8 +46,8 @@ describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
     let report: FullReport;
 
     beforeAll(async () => {
-      server.reset();
-      result = await httpScan('https://www.redirect.test/', server.network(), 'warning');
+      server().reset();
+      result = await httpScan('https://www.redirect.test/', server().network(), 'warning');
       report = full(result.report);
     });
 
@@ -80,7 +78,7 @@ describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
       expect(result.snapshot?.collection.browser).toMatchObject({ status: 'not-run' });
       expect(browserSpy).not.toHaveBeenCalled();
       expect(result.snapshot?.plan.probes.length).toBe(8);
-      expect(server.unexpected).toEqual([]);
+      expect(server().unexpected).toEqual([]);
     });
   });
 
@@ -95,8 +93,8 @@ describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
     });
 
     beforeAll(async () => {
-      server.reset();
-      result = await httpScan('https://www.powered.test/', server.network());
+      server().reset();
+      result = await httpScan('https://www.powered.test/', server().network());
       report = full(result.report);
     });
 
@@ -136,14 +134,14 @@ describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
       }
       expect(renderJson(result.report)).toContain('PHP/7.2.34');
       expect(renderHtml(result.report, ctx('de'))).toContain('7.2.34');
-      expect(server.unexpected).toEqual([]);
+      expect(server().unexpected).toEqual([]);
     });
   });
 
   it('expired certificate and http content: critical findings, exit 1 (threshold)', async () => {
     const result = await httpScan(
       'https://www.expired.test/',
-      withRoutes(server.network(), { 'expired.test': closed }),
+      withRoutes(server().network(), { 'expired.test': closed }),
     );
 
     expectValidReport(result.report);
@@ -168,7 +166,7 @@ describe('scan with HDR-01, HDR-02, TLS-01, TLS-02', () => {
   it('target down on 80 and 443: failed report, exit 2 (unreachable)', async () => {
     const result = await httpScan(
       'https://www.down.test/',
-      withRoutes(server.network(), { 'www.down.test': closed, 'down.test': closed }),
+      withRoutes(server().network(), { 'www.down.test': closed, 'down.test': closed }),
     );
 
     expectValidReport(result.report);

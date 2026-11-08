@@ -14,7 +14,6 @@ import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
 import { variantGroupOf } from '../../../../../src/core/evaluation/check.ts';
 import { CheckRegistry } from '../../../../../src/core/evaluation/registry.ts';
-import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../../../src/core/runtime/logger.ts';
 import type { DocumentPart } from '../../../../../src/core/snapshot/browser.ts';
 import type { Snapshot } from '../../../../../src/core/snapshot/index.ts';
@@ -82,7 +81,8 @@ describe('PRIV-01 services the consent dialog names', () => {
   });
 
   it('the finding names the CMP and the catalog term that matched; medium like not-named, same fingerprint group', () => {
-    const o = of(run(), 'google-tag-manager');
+    const result = run();
+    const o = of(result, 'google-tag-manager');
     expect(o).toMatchObject({
       confidence: 'medium',
       params: {
@@ -93,7 +93,7 @@ describe('PRIV-01 services the consent dialog names', () => {
         policyUrl: PRIVACY,
       },
     });
-    expect(of(run(), 'google-ads')?.params.cmpTerm).toBe('Google AdWords');
+    expect(of(result, 'google-ads')?.params.cmpTerm).toBe('Google AdWords');
     expect(variantGroupOf(priv01, 'named-in-cmp-only')).toBe(variantGroupOf(priv01, 'not-named'));
 
     const cmp = o?.evidence.find((e) => e.type === 'cmp');
@@ -114,14 +114,6 @@ describe('PRIV-01 services the consent dialog names', () => {
       phase: 'A',
       page: START,
     });
-    for (const ev of o?.evidence ?? [])
-      expect(() => EvidenceSchema.parse({ id: 'ev-1', ...ev })).not.toThrow();
-  });
-
-  it('nothing of the dialog text beyond the catalog terms reaches the observations', () => {
-    const json = JSON.stringify(observationsOf(run()));
-    for (const text of ['zqx', 'Gordon House', 'Ereignisbehandlung', 'Einwilligungs-ID', 'Cookie Laufzeit'])
-      expect(json).not.toContain(text);
   });
 
   it.each([

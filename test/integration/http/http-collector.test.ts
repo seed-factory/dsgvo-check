@@ -1,8 +1,9 @@
 /** The HTTP collector against local HTTP/HTTPS servers (test PKI), followed by the pure checks on its section. */
+
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import zlib from 'node:zlib';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
 import { hdr02 } from '../../../src/checks/http/hdr-02.ts';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
@@ -16,7 +17,8 @@ import type { CollectorContext } from '../../../src/core/snapshot/collector.ts';
 import type { HostVariant, HttpSection } from '../../../src/core/snapshot/http.ts';
 import type { TlsSection } from '../../../src/core/snapshot/tls.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import type { FixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import {
   makeSnapshot,
   makeTarget,
@@ -24,10 +26,9 @@ import {
   runCheck,
   variantsOf,
 } from '../../utils/snapshot-builder.ts';
-import { closedPort, collectorContext, httpProxy, silentServer, withRoutes } from './helpers.ts';
+import { closedPort, collectorContext, httpProxy, withRoutes, withSilentServer } from './helpers.ts';
 import { ALL_ROUTES } from './sites.ts';
 
-let server: FixtureServer;
 let closed: number;
 const fast = createHttpCollector({ minIntervalMs: 20 });
 /** Production pacing: at most 2 requests per second to one host. */
@@ -35,32 +36,39 @@ const PACER_INTERVAL_MS = 500;
 /** Slack for descheduling and GC when request starts are compared with the pacing interval. */
 const START_JITTER_MS = 50;
 
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(
+  () => ({
     routes: ALL_ROUTES,
     tls: { 'www.expired.test': 'expired', 'www.moved.test': 'expired', 'shop.sib.test': 'expired' },
-  });
-  closed = await closedPort();
-});
+  }),
+  async () => {
+    closed = await closedPort();
+  },
+);
 
-afterAll(async () => {
-  await server?.close();
-});
+async function collectFrom(context: CollectorContext, collector = fast) {
+  const result = await collector(context);
+  return { result, http: result.sections.http as HttpSection };
+}
 
-async function collect(
+function collect(
   url: string,
   routes: Record<string, number> = {},
   collector = fast,
   ctx: Partial<CollectorContext> = {},
 ) {
-  return collector(collectorContext(url, withRoutes(server.network(), routes), ctx));
+  return collectFrom(collectorContext(url, withRoutes(server().network(), routes), ctx), collector);
 }
 
-type Collected = Awaited<ReturnType<typeof collect>>;
+type HttpResult = Awaited<ReturnType<typeof fast>>;
+const closedRoutes = (...targets: string[]) => Object.fromEntries(targets.map((target) => [target, closed]));
+
+const snapshotFor = (url: string, http: HttpSection, tls?: TlsSection) =>
+  makeSnapshot({ target: makeTarget(url), http, ...(tls ? { tls } : {}) });
 
 /** Runs the two checks that read the HTTP section on a snapshot of `url`. */
 const evaluate = (url: string, http: HttpSection) => {
-  const snapshot = makeSnapshot({ target: makeTarget(url), http });
+  const snapshot = snapshotFor(url, http);
   return { hdr: runCheck(hdr01, snapshot), tls: runCheck(tls01, snapshot) };
 };
 
@@ -68,6 +76,8 @@ const evaluate = (url: string, http: HttpSection) => {
 function chainOf(http: HttpSection, hostVariant: HostVariant, scheme: 'http' | 'https') {
   return http.chains.find((c) => c.hostVariant === hostVariant && c.scheme === scheme);
 }
+
+const startDocument = (http: HttpSection) => http.documents.find((doc) => doc.role === 'start');
 
 /** Asserts that consecutive timestamps (ms) are at least `minGapMs` apart. */
 function expectGapsAtLeast(times: number[], minGapMs: number) {
@@ -150,12 +160,12 @@ describe('HTTP collector: http → https redirect site', () => {
   const startUrl = 'https://www.redirect.test/';
   /** The client calls `now` once per request, right after the pacer released it: the start of every request. */
   const requestStarts: number[] = [];
-  let result: Collected;
+  let result: HttpResult;
   let http: HttpSection;
   let elapsedMs: number;
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     const now = () => {
       const d = new Date();
       requestStarts.push(d.getTime());
@@ -163,10 +173,8 @@ describe('HTTP collector: http → https redirect site', () => {
     };
     const t0 = Date.now();
 
-    result = await collect(startUrl, {}, createHttpCollector(), { now });
-
+    ({ result, http } = await collect(startUrl, {}, createHttpCollector(), { now }));
     elapsedMs = Date.now() - t0;
-    http = result.sections.http as HttpSection;
   });
 
   it('finishes ok and records the chains for target and apex over http and https', () => {
@@ -181,7 +189,7 @@ describe('HTTP collector: http → https redirect site', () => {
   });
 
   it('records the http → https hops and the TLS facts of the final response, without cookie values', () => {
-    const targetHttp = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'http');
+    const targetHttp = chainOf(http, 'target', 'http');
 
     expect(targetHttp?.hops.map((h) => [h.url, h.status, h.location ?? null])).toEqual([
       ['http://www.redirect.test/', 301, 'https://www.redirect.test/'],
@@ -207,13 +215,13 @@ describe('HTTP collector: http → https redirect site', () => {
   });
 
   it('sends only the honest UA token and never a cookie back to the server', () => {
-    expect(new Set(server.requests.map((r) => r.userAgent))).toEqual(new Set([uaToken()]));
-    expect(server.requests.flatMap((r) => r.cookieNames)).toEqual([]);
-    expect(server.unexpected).toEqual([]);
+    expect(new Set(server().requests.map((r) => r.userAgent))).toEqual(new Set([uaToken()]));
+    expect(server().requests.flatMap((r) => r.cookieNames)).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('requests each URL once per scan (the four chains share https://www.redirect.test)', () => {
-    const requested = server.requests.map((r) => `${r.scheme}://${r.host}${r.path}`);
+    const requested = server().requests.map((r) => `${r.scheme}://${r.host}${r.path}`);
 
     expect(requested.sort()).toEqual([
       'http://redirect.test/',
@@ -224,7 +232,7 @@ describe('HTTP collector: http → https redirect site', () => {
       'https://www.redirect.test/impressum',
     ]);
     expect(result.probes?.length).toBe(6);
-    expect(http.requestsIssued).toBe(server.requests.length);
+    expect(http.requestsIssued).toBe(server().requests.length);
   });
 
   // ≤ 2 requests per second per host: starts to www.redirect.test are ≥ 500 ms apart. Measured at the client, where the
@@ -240,7 +248,9 @@ describe('HTTP collector: http → https redirect site', () => {
   });
 
   it('spreads the arrivals at the server too, not bunched', () => {
-    const arrivals = server.requestsTo('www.redirect.test').map((r) => r.at);
+    const arrivals = server()
+      .requestsTo('www.redirect.test')
+      .map((r) => r.at);
 
     expect(arrivals.length).toBe(4);
     // Wider than the client-side gap: arrival trails the start by handshakes and machine load.
@@ -263,8 +273,8 @@ describe('HTTP collector: headers that name the server software', () => {
   let http: HttpSection;
 
   beforeAll(async () => {
-    server.reset();
-    http = (await collect(startUrl)).sections.http as HttpSection;
+    server().reset();
+    ({ http } = await collect(startUrl));
   });
 
   const productHeaders = (role: string) =>
@@ -289,11 +299,11 @@ describe('HTTP collector: headers that name the server software', () => {
 
   it('the comment with the operating system is stored nowhere in the section', () => {
     expect(JSON.stringify(http)).not.toContain('Ubuntu');
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('HDR-02 reports each header, product and version once, with the pages united', () => {
-    const r = runCheck(hdr02, makeSnapshot({ target: makeTarget(startUrl), http }));
+    const r = runCheck(hdr02, snapshotFor(startUrl, http));
 
     expect(r.status).toBe('completed');
     expect(
@@ -317,17 +327,12 @@ describe('HTTP collector: headers that name the server software', () => {
   });
 
   it('counterexample: a version only in the markup (meta generator, meta http-equiv) is not stored or reported', async () => {
-    server.reset();
-    const res = await collect('https://www.markup.test/', { 'markup.test': closed });
-    const section = res.sections.http as HttpSection;
-    const start = section.documents.find((d) => d.role === 'start');
-
-    expect(start?.metaHttpEquiv).toEqual([{ name: 'x-powered-by', value: '[redacted]' }]);
-    expect(JSON.stringify(section)).not.toMatch(/7\.2\.34|6\.4\.2/);
-    const r = runCheck(
-      hdr02,
-      makeSnapshot({ target: makeTarget('https://www.markup.test/'), http: section }),
-    );
+    server().reset();
+    const url = 'https://www.markup.test/';
+    const { http } = await collect(url, closedRoutes('markup.test'));
+    expect(startDocument(http)?.metaHttpEquiv).toEqual([{ name: 'x-powered-by', value: '[redacted]' }]);
+    expect(JSON.stringify(http)).not.toMatch(/7\.2\.34|6\.4\.2/);
+    const r = runCheck(hdr02, snapshotFor(url, http));
     expect(r.status).toBe('completed');
     expect(variantsOf(r)).toEqual([]);
   });
@@ -335,9 +340,8 @@ describe('HTTP collector: headers that name the server software', () => {
 
 describe('HTTP collector: problem sites', () => {
   it('http without redirect and a form on the http page', async () => {
-    const res = await collect('https://www.plain.test/', { 'plain.test': closed });
-
-    const http = res.sections.http as HttpSection;
+    const url = 'https://www.plain.test/';
+    const { http } = await collect(url, closedRoutes('plain.test'));
     const httpHop = chainOf(http, 'target', 'http')?.final;
     expect(httpHop).toMatchObject({
       status: 200,
@@ -348,25 +352,18 @@ describe('HTTP collector: problem sites', () => {
     });
     expect(httpHop?.clientRedirect).toBeUndefined();
     expect(http.chains.find((c) => c.hostVariant === 'apex')?.outcome).toBe('connection-refused');
-    expect(variantsOf(evaluate('https://www.plain.test/', http).tls)).toEqual([
-      'form-on-http-page',
-      'no-redirect',
-    ]);
-    expect(server.unexpected).toEqual([]);
+    expect(variantsOf(evaluate(url, http).tls)).toEqual(['form-on-http-page', 'no-redirect']);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('http content while port 443 is closed → TLS-01 https-unavailable (critical)', async () => {
-    const res = await collect('http://www.httponly.test/', {
-      'www.httponly.test:443': closed,
-      'httponly.test': closed,
-    });
-
-    expect(res.fatal).toBeUndefined();
-    const http = res.sections.http as HttpSection;
+    const url = 'http://www.httponly.test/';
+    const { result, http } = await collect(url, closedRoutes('www.httponly.test:443', 'httponly.test'));
+    expect(result.fatal).toBeUndefined();
     const https = chainOf(http, 'target', 'https');
     expect(https).toMatchObject({ outcome: 'connection-refused', hops: [] });
     expect(https?.error?.code).toBe('ECONNREFUSED');
-    const { tls, hdr } = evaluate('http://www.httponly.test/', http);
+    const { tls, hdr } = evaluate(url, http);
     expect(variantsOf(tls)).toEqual(['https-unavailable']);
     expect(tls.outcome?.observations[0]?.params).toMatchObject({ reason: 'unavailable' });
     // The start document is the http page: HSTS is not evaluated on http.
@@ -374,118 +371,98 @@ describe('HTTP collector: problem sites', () => {
   });
 
   it('a WAF challenge instead of the start page → SCAN-HTTP-BLOCKED, HDR-01 and HDR-02 inconclusive (blocked)', async () => {
-    const res = await collect('https://www.challenge.test/', { 'challenge.test': closed });
-
-    const http = res.sections.http as HttpSection;
-    const start = http.documents.find((d) => d.role === 'start');
+    const url = 'https://www.challenge.test/';
+    const { result: res, http } = await collect(url, closedRoutes('challenge.test'));
+    const start = startDocument(http);
     expect(start).toMatchObject({ status: 429, error: { code: 'blocked' } });
     expect(start?.error?.message).toContain('header:x-vercel-mitigated');
     expect(res.diagnostics).toEqual([
       {
         code: 'SCAN-HTTP-BLOCKED',
         affects: ['HDR-01', 'HDR-02'],
-        params: expect.objectContaining({ count: 1, page: 'https://www.challenge.test/' }),
+        params: expect.objectContaining({ count: 1, page: url }),
       },
     ]);
     // One 429 is no throttling: the challenge is answered once, not retried.
     expect(http.throttled).toBe(false);
-    const { hdr } = evaluate('https://www.challenge.test/', http);
+    const { hdr } = evaluate(url, http);
     expect(hdr).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
     expect(variantsOf(hdr)).toEqual([]);
-    const versions = runCheck(
-      hdr02,
-      makeSnapshot({ target: makeTarget('https://www.challenge.test/'), http }),
-    );
+    const versions = runCheck(hdr02, snapshotFor(url, http));
     expect(versions).toMatchObject({ status: 'inconclusive', reason: 'blocked' });
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('legal pages: the link text decides before the path', async () => {
-    const res = await collect('https://www.builder.test/', { 'builder.test': closed });
-
-    const documents = (res.sections.http as HttpSection).documents;
-    expect(documents.map((d) => [d.role, d.url])).toEqual([
+    const { result, http } = await collect('https://www.builder.test/', closedRoutes('builder.test'));
+    expect(http.documents.map((d) => [d.role, d.url])).toEqual([
       ['start', 'https://www.builder.test/'],
       ['impressum', 'https://www.builder.test/seite-3'],
       ['privacy', 'https://www.builder.test/impressum-2'],
     ]);
-    expect(res.diagnostics).toBeUndefined();
-    expect(server.unexpected).toEqual([]);
+    expect(result.diagnostics).toBeUndefined();
+    expect(server().unexpected).toEqual([]);
   });
 
   it('https with an expired certificate: request still made, Node verdict recorded', async () => {
-    const res = await collect('https://www.expired.test/', { 'expired.test': closed });
-
-    const http = res.sections.http as HttpSection;
+    const url = 'https://www.expired.test/';
+    const { http } = await collect(url, closedRoutes('expired.test'));
     expect(chainOf(http, 'target', 'https')?.final).toMatchObject({
       status: 200,
       tlsAuthorized: false,
       tlsAuthorizationError: 'CERT_HAS_EXPIRED',
     });
-    const { tls, hdr } = evaluate('https://www.expired.test/', http);
+    const { tls, hdr } = evaluate(url, http);
     expect(variantsOf(tls)).toEqual(['https-unavailable']);
     expect(tls.outcome?.observations[0]?.params).toMatchObject({ reason: 'invalid' });
     expect(hdr).toMatchObject({ status: 'inconclusive', reason: 'tls-invalid' });
   });
 
   it('meta refresh to https on a small http page → client-side-redirect-only', async () => {
-    const res = await collect('https://www.meta.test/', { 'meta.test': closed });
-
-    const http = res.sections.http as HttpSection;
+    const url = 'https://www.meta.test/';
+    const { http } = await collect(url, closedRoutes('meta.test'));
     expect(chainOf(http, 'target', 'http')?.final?.clientRedirect).toEqual({
       kind: 'meta',
-      url: 'https://www.meta.test/',
+      url,
     });
-    expect(variantsOf(evaluate('https://www.meta.test/', http).tls)).toEqual(['client-side-redirect-only']);
+    expect(variantsOf(evaluate(url, http).tls)).toEqual(['client-side-redirect-only']);
   });
 
-  it('redirect loop stops after 5 redirects', async () => {
-    const res = await collect('https://www.loop.test/', { 'loop.test': closed });
-
-    const chain = chainOf(res.sections.http as HttpSection, 'target', 'http');
+  it.each([
+    ['redirect loop stops after 5 redirects', undefined, 6],
+    ['the redirect limit comes from the settings', 2, 3],
+  ])('%s', async (_name, maxRedirects, hops) => {
+    const ctx = maxRedirects === undefined ? {} : { config: parseConfigInput({ http: { maxRedirects } }) };
+    const { http } = await collect('https://www.loop.test/', closedRoutes('loop.test'), fast, ctx);
+    const chain = chainOf(http, 'target', 'http');
     expect(chain?.outcome).toBe('redirect-limit');
-    expect(chain?.hops).toHaveLength(6);
-  });
-
-  it('the redirect limit comes from the settings', async () => {
-    const res = await collect('https://www.loop.test/', { 'loop.test': closed }, fast, {
-      config: parseConfigInput({ http: { maxRedirects: 2 } }),
-    });
-
-    const chain = chainOf(res.sections.http as HttpSection, 'target', 'http');
-    expect(chain?.outcome).toBe('redirect-limit');
-    expect(chain?.hops).toHaveLength(3);
+    expect(chain?.hops).toHaveLength(hops);
   });
 
   it('the gap between requests to one host comes from the settings', async () => {
-    server.reset();
+    server().reset();
     const t0 = Date.now();
 
-    const res = await collect('https://www.redirect.test/', {}, createHttpCollector(), {
+    const { result: res } = await collect('https://www.redirect.test/', {}, createHttpCollector(), {
       config: parseConfigInput({ http: { minIntervalMs: 700 } }),
     });
 
     expect(res.status).toBe('ok');
-    expect(server.requestsTo('www.redirect.test')).toHaveLength(4);
+    expect(server().requestsTo('www.redirect.test')).toHaveLength(4);
     // Four requests to www.redirect.test: three gaps of the configured length.
     expect(Date.now() - t0).toBeGreaterThanOrEqual(3 * 700 - START_JITTER_MS);
   });
 
   describe('three 429 of one host → Retry-After pause, one retry, then that host only is stopped', () => {
-    let res: Collected;
+    let res: HttpResult;
     let http: HttpSection;
 
     beforeAll(async () => {
-      server.reset();
-      addOverloadedHost(server);
+      server().reset();
+      addOverloadedHost(server());
 
-      res = await collect(
-        'https://busy.test/',
-        {},
-        createHttpCollector({ minIntervalMs: 20, maxRetryAfterMs: 300 }),
-      );
-
-      http = res.sections.http as HttpSection;
+      const collector = createHttpCollector({ minIntervalMs: 20, maxRetryAfterMs: 300 });
+      ({ result: res, http } = await collect('https://busy.test/', {}, collector));
     });
 
     it('marks the scan throttled and partial, naming the stopped host', () => {
@@ -496,7 +473,7 @@ describe('HTTP collector: problem sites', () => {
     });
 
     it('retries the third 429 once, after the (capped) Retry-After pause', () => {
-      const busy = server.requestsTo('busy.test');
+      const busy = server().requestsTo('busy.test');
       const urls = busy.map((r) => `${r.scheme}://${r.host}${r.path}`);
 
       const retried = urls.filter((u, i) => urls.indexOf(u) !== i);
@@ -508,30 +485,28 @@ describe('HTTP collector: problem sites', () => {
 
     it('sends nothing more to the stopped host after the failed retry', () => {
       // 3 + 1 retry (+ ≤ 1 already in flight).
-      expect(server.requestsTo('busy.test').length).toBeLessThanOrEqual(5);
+      expect(server().requestsTo('busy.test').length).toBeLessThanOrEqual(5);
     });
 
     it('does not let the 429 of one host touch the healthy host (or reset its counter)', () => {
-      expect(server.requestsTo('www.busy.test')).toHaveLength(2);
+      expect(server().requestsTo('www.busy.test')).toHaveLength(2);
       const statuses = http.chains.filter((c) => c.host === 'www.busy.test').map((c) => c.hops[0]?.status);
       expect(statuses.filter((status) => status !== 301)).toEqual([]);
     });
 
     it('counts every request it issued', () => {
-      expect(http.requestsIssued).toBe(server.requests.length);
+      expect(http.requestsIssued).toBe(server().requests.length);
     });
   });
 
   it('a gzip bomb is decoded only up to the cap and marked truncated', async () => {
     const bomb = await gzipBombServer();
     try {
-      const res = await collect('http://www.bomb.test/', {
+      const { http } = await collect('http://www.bomb.test/', {
         'www.bomb.test:80': bomb.port,
-        'www.bomb.test:443': closed,
-        'bomb.test': closed,
+        ...closedRoutes('www.bomb.test:443', 'bomb.test'),
       });
-
-      const hop = chainOf(res.sections.http as HttpSection, 'target', 'http')?.final;
+      const hop = chainOf(http, 'target', 'http')?.final;
       expect(hop?.status).toBe(200);
       expect(hop?.bodyBytes).toBe(MAX_DECODED_BYTES);
       expect(hop?.bodyTruncated).toBe(true);
@@ -541,78 +516,66 @@ describe('HTTP collector: problem sites', () => {
   });
 
   it('both ports of the target closed → fatal unreachable', async () => {
-    const res = await collect('https://www.down.test/', { 'www.down.test': closed, 'down.test': closed });
+    const { result: res } = await collect(
+      'https://www.down.test/',
+      closedRoutes('www.down.test', 'down.test'),
+    );
 
     expect(res.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-unreachable' });
     const outcomes = res.sections.http?.chains.map((c) => c.outcome);
     expect(outcomes?.filter((outcome) => outcome !== 'connection-refused')).toEqual([]);
   });
 
-  it('a server that never answers → timeout outcome, TLS-01 inconclusive', async () => {
-    const silent = await silentServer();
-    try {
+  const slowUrl = 'https://www.slow.test/';
+  const collectSlow = (port: number, collector: typeof fast, ctx: Partial<CollectorContext> = {}) =>
+    collect(slowUrl, { 'www.slow.test': port, 'slow.test': closed }, collector, ctx);
+
+  it('a server that never answers → timeout outcome, TLS-01 inconclusive', () =>
+    withSilentServer(async (port) => {
       const collector = createHttpCollector({
         minIntervalMs: 20,
         timeouts: { connectMs: 1_000, headersMs: 500, bodyMs: 500, requestMs: 1_500 },
       });
 
-      const res = await collect(
-        'https://www.slow.test/',
-        { 'www.slow.test': silent.port, 'slow.test': closed },
-        collector,
-      );
-
-      const http = res.sections.http as HttpSection;
+      const { result: res, http } = await collectSlow(port, collector);
       expect(chainOf(http, 'target', 'http')?.outcome).toBe('timeout');
       expect(res.fatal).toMatchObject({ reason: 'unreachable' });
-      const snapshot = makeSnapshot({ target: makeTarget('https://www.slow.test/'), http });
+      const snapshot = snapshotFor(slowUrl, http);
       expect(runCheck(tls01, snapshot)).toMatchObject({ status: 'inconclusive', reason: 'timeout' });
-    } finally {
-      await silent.close();
-    }
-  });
+    }));
 
-  it('the scan deadline aborts promptly', async () => {
-    const silent = await silentServer();
-    try {
+  it('the scan deadline aborts promptly', () =>
+    withSilentServer(async (port) => {
       const ac = new AbortController();
       const t0 = Date.now();
       setTimeout(() => ac.abort(new Error('scan timeout')), 300);
 
-      const res = await createHttpCollector({ minIntervalMs: 20 })(
-        collectorContext(
-          'https://www.slow.test/',
-          withRoutes(server.network(), { 'www.slow.test': silent.port, 'slow.test': closed }),
-          { signal: ac.signal },
-        ),
-      );
+      const collector = createHttpCollector({ minIntervalMs: 20 });
+      const { result: res } = await collectSlow(port, collector, { signal: ac.signal });
 
       expect(Date.now() - t0).toBeLessThan(3_000);
       expect(res.status).toBe('partial');
       expect(res.fatal).toBeUndefined();
-    } finally {
-      await silent.close();
-    }
-  });
+    }));
 });
 
 describe('HTTP collector: explicit target port', () => {
-  it('the start document is fetched from the origin with its port; standard ports stay separate probes', async () => {
-    server.reset();
-
-    const res = await collect('https://www.port.test:8443/', {
-      'www.port.test:8443': server.httpsPort,
-      'www.port.test:80': closed,
-      'www.port.test:443': closed,
-      'port.test': closed,
+  const url = 'https://www.port.test:8443/';
+  const collectOrigin = (port: number) =>
+    collect(url, {
+      'www.port.test:8443': port,
+      ...closedRoutes('www.port.test:80', 'www.port.test:443', 'port.test'),
     });
 
+  it('the start document is fetched from the origin with its port; standard ports stay separate probes', async () => {
+    server().reset();
+
+    const { result: res, http } = await collectOrigin(server().httpsPort);
     expect(res.fatal).toBeUndefined();
-    const http = res.sections.http as HttpSection;
-    const start = http.documents.find((d) => d.role === 'start');
+    const start = startDocument(http);
     expect(start).toMatchObject({
-      url: 'https://www.port.test:8443/',
-      finalUrl: 'https://www.port.test:8443/',
+      url,
+      finalUrl: url,
       status: 200,
     });
     expect(start?.error).toBeUndefined();
@@ -632,18 +595,12 @@ describe('HTTP collector: explicit target port', () => {
       'https:connection-refused',
     ]);
 
-    expect(variantsOf(evaluate('https://www.port.test:8443/', http).tls)).toEqual([]);
-    expect(server.unexpected).toEqual([]);
+    expect(variantsOf(evaluate(url, http).tls)).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('origin port closed → fatal unreachable (even though nothing else answers either)', async () => {
-    const res = await collect('https://www.port.test:8443/', {
-      'www.port.test:8443': closed,
-      'www.port.test:80': closed,
-      'www.port.test:443': closed,
-      'port.test': closed,
-    });
-
+    const { result: res } = await collectOrigin(closed);
     expect(res.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-unreachable' });
   });
 });
@@ -651,19 +608,18 @@ describe('HTTP collector: explicit target port', () => {
 describe('HTTP collector: final host on another domain', () => {
   describe('www.origin.test redirects to www.moved.test, whose certificate has expired', () => {
     const startUrl = 'https://www.origin.test/';
-    let res: Collected;
+    let res: HttpResult;
     let http: HttpSection;
     let tls: TlsSection;
 
     beforeAll(async () => {
-      server.reset();
-      const routes = { 'origin.test': closed, 'moved.test': closed };
+      server().reset();
+      const routes = closedRoutes('origin.test', 'moved.test');
 
-      res = await collect(startUrl, routes);
-      http = res.sections.http as HttpSection;
+      ({ result: res, http } = await collect(startUrl, routes));
 
       const tlsResult = await createTlsCollector({ timeoutMs: 3_000 })(
-        collectorContext(startUrl, withRoutes(server.network(), routes)),
+        collectorContext(startUrl, withRoutes(server().network(), routes)),
       );
       tls = tlsResult.sections.tls as TlsSection;
     });
@@ -696,7 +652,7 @@ describe('HTTP collector: final host on another domain', () => {
     });
 
     it('lets TLS-02 report the expired certificate', () => {
-      const snapshot = makeSnapshot({ target: makeTarget(startUrl), http, tls });
+      const snapshot = snapshotFor(startUrl, http, tls);
       // The fixture server issues its certificates relative to the real clock, so the check has to read the same clock
       // (the fixed check clock of `runCheck` would call a certificate issued tomorrow "not yet valid").
       const r = runCheck(tls02, snapshot, { now: new Date() });
@@ -708,14 +664,12 @@ describe('HTTP collector: final host on another domain', () => {
     });
 
     it('sends no request the fixture server does not know', () => {
-      expect(server.unexpected).toEqual([]);
+      expect(server().unexpected).toEqual([]);
     });
   });
 
   it("a sibling subdomain as final host is probed; its www/apex are already the TLS collector's", async () => {
-    const res = await collect('https://www.sib.test/', { 'sib.test': closed });
-
-    const http = res.sections.http as HttpSection;
+    const { http } = await collect('https://www.sib.test/', closedRoutes('sib.test'));
     expect(http.finalTls?.map((e) => `${e.role}/${e.hostVariant}:${e.host}`)).toEqual([
       'final/target:shop.sib.test',
     ]);
@@ -723,9 +677,8 @@ describe('HTTP collector: final host on another domain', () => {
   });
 
   it('a redirect within target/www/apex probes nothing extra', async () => {
-    const res = await collect('https://www.redirect.test/');
-
-    expect((res.sections.http as HttpSection).finalTls).toBeUndefined();
+    const { result: res, http } = await collect('https://www.redirect.test/');
+    expect(http.finalTls).toBeUndefined();
     expect(res.probes?.map((p) => p.kind).filter((kind) => kind !== 'http')).toEqual([]);
   });
 });
@@ -740,23 +693,23 @@ describe('HTTP collector without test routing', () => {
   });
 
   it('SSRF guard: a host resolving only to loopback is not contacted', async () => {
-    server.reset();
+    server().reset();
 
-    const res = await fast(collectorContext('https://www.redirect.test/', direct({})));
-
-    const http = res.sections.http as HttpSection;
+    const { result: res, http } = await collectFrom(
+      collectorContext('https://www.redirect.test/', direct({})),
+    );
     const notBlocked = http.chains.filter(
       (c) => !(c.outcome === 'error' && c.error?.code === 'private-address'),
     );
     expect(notBlocked.map((c) => `${c.id}:${c.outcome}`)).toEqual([]);
-    expect(server.requests).toEqual([]);
+    expect(server().requests).toEqual([]);
     expect(res.fatal).toBeUndefined();
   });
 
   it('through an HTTP proxy (TLS verdict unknown behind the proxy)', async () => {
-    const proxy = await httpProxy(server.httpPort, server.httpsPort);
+    const proxy = await httpProxy(server().httpPort, server().httpsPort);
     try {
-      const res = await fast(
+      const { http } = await collectFrom(
         collectorContext(
           'https://www.redirect.test/',
           direct({
@@ -768,7 +721,6 @@ describe('HTTP collector without test routing', () => {
         ),
       );
 
-      const http = res.sections.http as HttpSection;
       const https = chainOf(http, 'target', 'https');
       expect(https?.final).toMatchObject({ status: 200, tlsAuthorized: null, connectedIp: null });
       expect(proxy.targets).toContain('http://www.redirect.test/');

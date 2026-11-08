@@ -20,6 +20,7 @@ import {
   cmpWith,
   firstLayer,
   phase,
+  runSiteCheck,
   type SiteSpec,
   settingsClick,
   settingsRejectCmp,
@@ -74,6 +75,13 @@ const visibleBanner = (p: Partial<CmpFacts> = {}) =>
 const bannerSite = (p: Partial<CmpFacts> = {}, spec: SiteSpec = {}) =>
   site({ cmp: cmpWith({ phase: 'B', facts: [visibleBanner(p)] }), ...spec });
 
+const runClassifiedBanner = (
+  classifier: Parameters<typeof createConsent04>[0],
+  facts?: Partial<CmpFacts>,
+  spec?: SiteSpec,
+  ctx?: Parameters<typeof runCheck>[2],
+) => runCheck(createConsent04(classifier), bannerSite(facts, spec), ctx);
+
 describe('CONSENT-04 first layer (classifier injected)', () => {
   it('violation (fixture): CMP state granted without action', () => {
     const r = runCheck(consent04, scenario('violation-consent-without-action.json'));
@@ -101,7 +109,7 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
   });
 
   it('supported CMP with high recognition: the classifier verdict becomes the variant (blocking-no-reject)', () => {
-    const r = runCheck(createConsent04(fixed('blocking-no-reject')), bannerSite());
+    const r = runClassifiedBanner(fixed('blocking-no-reject'));
     expect(r.status).toBe('completed');
     const [o] = observationsOf(r);
     expect(o).toMatchObject({ variant: 'blocking-no-reject', confidence: 'high' });
@@ -128,21 +136,18 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
   });
 
   it('classifier "ok" → no finding; pur-abo flag is reported in addition', () => {
-    expect(variantsOf(runCheck(createConsent04(fixed('ok')), bannerSite()))).toEqual([]);
-    const flagged = runCheck(
-      createConsent04(fixed('blocking-no-reject', { flags: ['pur-abo'] })),
-      bannerSite(),
-    );
+    expect(variantsOf(runClassifiedBanner(fixed('ok')))).toEqual([]);
+    const flagged = runClassifiedBanner(fixed('blocking-no-reject', { flags: ['pur-abo'] }));
     expect(variantsOf(flagged)).toEqual(['blocking-no-reject', 'pur-abo']);
   });
 
   it('classifier medium confidence is passed on (assess caps the level)', () => {
-    const r = runCheck(createConsent04(fixed('blocking-no-reject', { confidence: 'medium' })), bannerSite());
+    const r = runClassifiedBanner(fixed('blocking-no-reject', { confidence: 'medium' }));
     expect(observationsOf(r)[0]?.confidence).toBe('medium');
   });
 
   it('classifier says "banner-not-recognized" of a banner an adapter recognised with high confidence → inconclusive, the text says so', () => {
-    const r = runCheck(createConsent04(fixed('banner-not-recognized')), bannerSite());
+    const r = runClassifiedBanner(fixed('banner-not-recognized'));
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
     const [o] = observationsOf(r);
     expect(o?.params).toMatchObject({ cmp: 'cookiebot', bannerRecognized: true });
@@ -158,18 +163,16 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     const det = visibleBanner().detection;
 
     it('medium recognition → banner-not-recognized', () => {
-      const medium = runCheck(
-        createConsent04(fixed('blocking-no-reject')),
-        bannerSite({ detection: { ...det, recognitionConfidence: 'medium' } }),
-      );
+      const medium = runClassifiedBanner(fixed('blocking-no-reject'), {
+        detection: { ...det, recognitionConfidence: 'medium' },
+      });
       expect(variantsOf(medium)).toEqual(['banner-not-recognized']);
     });
 
     it('version out of range → cmp-not-supported', () => {
-      const version = runCheck(
-        createConsent04(fixed('blocking-no-reject')),
-        bannerSite({ detection: { ...det, versionSupported: false } }),
-      );
+      const version = runClassifiedBanner(fixed('blocking-no-reject'), {
+        detection: { ...det, versionSupported: false },
+      });
       expect(version).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-supported' });
       expect(observationsOf(version)[0]?.params).toMatchObject({ cmp: 'cookiebot' });
     });
@@ -216,14 +219,11 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
     'a first layer without reject saved in the settings layer (%s): nonblocking-no-reject only',
     (_case, confirmed) => {
       const run = (cmp: ReturnType<typeof settingsRejectCmp>) =>
-        runCheck(
-          consent04,
-          site({
-            phases: [phase('A'), phase('B', { click: settingsClick() })],
-            cmp,
-            plan: settingsRejectPlan(),
-          }),
-        );
+        runSiteCheck(consent04, {
+          phases: [phase('A'), phase('B', { click: settingsClick() })],
+          cmp,
+          plan: settingsRejectPlan(),
+        });
       const r = run(settingsRejectCmp({ confirmed }));
       expect(variantsOf(r)).toEqual(['nonblocking-no-reject']);
       expect(r.outcome?.limitations ?? []).not.toContain('reject-unverified');
@@ -327,33 +327,27 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
   });
 
   it('a granted state attributed to an action (origin action) on the first screen is not "without action"', () => {
-    const r = runCheck(
-      createConsent04(fixed('ok')),
-      bannerSite({
-        state: [
-          { source: 'api', ready: 'ready', categories: { marketing: 'granted' }, origin: 'action' },
-          { source: 'api', ready: 'ready', categories: { marketing: 'granted' }, origin: 'special-branch' },
-        ],
-      }),
-    );
+    const r = runClassifiedBanner(fixed('ok'), {
+      state: [
+        { source: 'api', ready: 'ready', categories: { marketing: 'granted' }, origin: 'action' },
+        { source: 'api', ready: 'ready', categories: { marketing: 'granted' }, origin: 'special-branch' },
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 
   it('counterexample: necessary-only grant or default-denied is not consent-without-action', () => {
-    const r = runCheck(
-      createConsent04(fixed('ok')),
-      bannerSite({
-        state: [
-          {
-            source: 'api',
-            ready: 'ready',
-            categories: { necessary: 'granted', statistics: 'denied' },
-            origin: 'default',
-          },
-          { source: 'api', ready: 'loading', categories: { marketing: 'granted' }, origin: 'default' },
-        ],
-      }),
-    );
+    const r = runClassifiedBanner(fixed('ok'), {
+      state: [
+        {
+          source: 'api',
+          ready: 'ready',
+          categories: { necessary: 'granted', statistics: 'denied' },
+          origin: 'default',
+        },
+        { source: 'api', ready: 'loading', categories: { marketing: 'granted' }, origin: 'default' },
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 
@@ -376,23 +370,20 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
         origin: 'default',
         decision: { responded: false, method: 'unknown' },
       } as const;
-      const r = runCheck(
-        consent04,
-        site({ phases: [phase('A'), phase('B')], cmp: unopenedDialogCmp({ state: [granted] }) }),
-      );
+      const r = runSiteCheck(consent04, {
+        phases: [phase('A'), phase('B')],
+        cmp: unopenedDialogCmp({ state: [granted] }),
+      });
 
       expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-dialog-not-opened' });
       expect(observationsOf(r)).toEqual([]);
     });
 
     it('a flag on facts of phase A, taken without waiting for the banner, does not decide', () => {
-      const r = runCheck(
-        consent04,
-        site({
-          phases: [phase('A')],
-          cmp: cmpWith({ phase: 'A', facts: [unopenedDialogFacts({ phase: 'A' })] }),
-        }),
-      );
+      const r = runSiteCheck(consent04, {
+        phases: [phase('A')],
+        cmp: cmpWith({ phase: 'A', facts: [unopenedDialogFacts({ phase: 'A' })] }),
+      });
 
       expect(r).toMatchObject({ status: 'inconclusive', reason: 'first-layer-not-visible' });
     });
@@ -415,9 +406,14 @@ describe('CONSENT-04 first layer (classifier injected)', () => {
         },
       },
     });
-    const r = runCheck(createConsent04(fixed('blocking-no-reject')), bannerSite({}, { plan }), {
-      options: { strict: false, assumeRegion: null, fromSnapshot: true },
-    });
+    const r = runClassifiedBanner(
+      fixed('blocking-no-reject'),
+      {},
+      { plan },
+      {
+        options: { strict: false, assumeRegion: null, fromSnapshot: true },
+      },
+    );
     expect(r.outcome?.limitations).toContain('lexicon-changed-since-scan');
   });
 
@@ -466,10 +462,9 @@ describe('CONSENT-04 evidence: vendorRole', () => {
       vendorRole: 'save',
     };
     const plain = button('Alle akzeptieren', 'accept');
-    const r = runCheck(
-      createConsent04(fixed('blocking-no-reject')),
-      bannerSite({ firstLayer: firstLayer({ buttons: [save, plain] }) }),
-    );
+    const r = runClassifiedBanner(fixed('blocking-no-reject'), {
+      firstLayer: firstLayer({ buttons: [save, plain] }),
+    });
 
     const cmpEv = observationsOf(r)[0]?.evidence.find((e) => e.type === 'cmp');
     expect(cmpEv).toBeDefined();

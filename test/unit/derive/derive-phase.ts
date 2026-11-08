@@ -1,5 +1,5 @@
 /** derive over a snapshot of www.example.de whose browser recorded the given phases, most often one phase A. */
-import type { PhaseRecord } from '../../../src/core/snapshot/browser.ts';
+import type { PhaseRecord, RequestRecord } from '../../../src/core/snapshot/browser.ts';
 import type { TargetInfo } from '../../../src/core/snapshot/index.ts';
 import { type DeriveOptions, derive } from '../../../src/derive/index.ts';
 import {
@@ -17,9 +17,13 @@ export const snap = (phases: PhaseRecord[], target: TargetInfo = makeTarget('htt
 export const deriveA = (phase: Partial<PhaseRecord>, opts?: DeriveOptions, target?: TargetInfo) =>
   derive(snap([makePhase('A', phase)], target), opts);
 
+export const derivePhases = (...phases: PhaseRecord[]) => derive(snap(phases));
+
+export const deriveRequests = (...requests: RequestRecord[]) => deriveA({ requests });
+
 type RequestExtra = Omit<Parameters<typeof makeRequest>[0], 'url'>;
 
 /** Requests of one phase A page, derived; `extra` sets the collector facts (identifier names, resource type). */
 export const requestsOf = (...items: Array<[string, RequestExtra?]>) =>
-  deriveA({ requests: items.map(([url, extra = {}], i) => makeRequest({ id: `r${i}`, url, ...extra })) })
+  deriveRequests(...items.map(([url, extra = {}], i) => makeRequest({ id: `r${i}`, url, ...extra })))
     .requests;

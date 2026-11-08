@@ -116,6 +116,48 @@ function errorCodeOfErrorPage(finalUrl: string, title: string, text: string): st
 /** Awaits response metadata within the page budget; on a cut the fallback is used and the limitation recorded. */
 type Bounded = <T>(code: string, what: string, p: Promise<T>, fallback: T) => Promise<T>;
 
+type CommittedResponse = Promise<Response | null>;
+interface DocumentNavigation {
+  response: CommittedResponse | null;
+}
+
+const navigations = new WeakMap<Page, DocumentNavigation>();
+
+function documentNavigation(page: Page): DocumentNavigation {
+  const existing = navigations.get(page);
+  if (existing) return existing;
+
+  const navigation: DocumentNavigation = { response: null };
+  navigations.set(page, navigation);
+  let stopped = false;
+  let pending: CommittedResponse;
+
+  const arm = () => {
+    const waiting = page.waitForNavigation({ waitUntil: 'commit', timeout: 0 });
+    pending = waiting;
+    void waiting.catch(() => {
+      if (pending === waiting && !stopped && !page.isClosed()) arm();
+    });
+  };
+
+  const stop = () => {
+    stopped = true;
+  };
+  page.once('close', stop);
+  page.once('crash', stop);
+  page.on('framenavigated', (frame) => {
+    if (frame !== page.mainFrame() || stopped) return;
+    const previous = /^https?:/i.test(frame.url()) ? navigation.response : null;
+    navigation.response = pending.then(
+      (response) => response ?? previous,
+      () => null,
+    );
+    arm();
+  });
+  arm();
+  return navigation;
+}
+
 interface Loaded {
   resp: Response | null;
   error?: string;
@@ -204,7 +246,8 @@ interface PageContent {
   title: string;
   text: string;
   scripts: string[];
-  domError?: string | undefined;
+  domError?: string;
+  retry?: boolean;
 }
 
 function emptyContent(): PageContent {
@@ -217,34 +260,77 @@ async function readContent(
   liveHeaders: readonly HeaderRecord[],
   limitations: Array<{ code: string; message: string }>,
 ): Promise<PageContent> {
-  const content = emptyContent();
-  for (let attempt = 0; attempt < DOM_READ_ATTEMPTS && !content.dom; attempt++) {
-    try {
-      const r = await withTimeout(
-        collectDom(i.page, i.target, liveHeaders),
-        i.timing.cmpCallTimeoutMs,
-        'DOM facts',
-      );
-      content.dom = r.dom;
-      content.candidates = r.candidates;
-      content.title = r.raw.title;
-      content.text = r.raw.textSample;
-      content.scripts = r.raw.scripts.map((x) => x.src).filter(Boolean);
-      content.domError = undefined;
-    } catch (err) {
-      // collectDom runs in the page: only the kind of failure is kept (see pageCallFailure); the raw text only decides.
-      const domError = pageCallFailure(err);
-      content.domError = domError;
-      if (err instanceof TimeoutError) {
-        limitations.push({ code: 'dom-collect-timeout', message: domError });
-        break;
-      }
-      // The page navigated itself (JS/meta redirect) while we read it: wait for the new document once.
-      if (!/context was destroyed|navigat/i.test(firstLine(errorText(err)))) break;
+  try {
+    const r = await withTimeout(
+      collectDom(i.page, i.target, liveHeaders),
+      i.timing.cmpCallTimeoutMs,
+      'DOM facts',
+    );
+    return {
+      dom: r.dom,
+      candidates: r.candidates,
+      title: r.raw.title,
+      text: r.raw.textSample,
+      scripts: r.raw.scripts.map((x) => x.src).filter(Boolean),
+    };
+  } catch (err) {
+    const domError = pageCallFailure(err);
+    if (err instanceof TimeoutError) {
+      limitations.push({ code: 'dom-collect-timeout', message: domError });
+      return { ...emptyContent(), domError };
+    }
+    return {
+      ...emptyContent(),
+      domError,
+      retry: /context was destroyed|navigat/i.test(firstLine(errorText(err))),
+    };
+  }
+}
+
+async function readDocument(
+  i: VisitInput,
+  s: VisitSpec,
+  loaded: Loaded,
+  navigation: DocumentNavigation,
+  bounded: Bounded,
+  limitations: Array<{ code: string; message: string }>,
+) {
+  if (loaded.error) {
+    return {
+      response: await readResponse(loaded.resp, s.rawUrl, bounded),
+      content: emptyContent(),
+      rawFinalUrl: s.rawUrl,
+    };
+  }
+
+  const responseOf = (commit: CommittedResponse) =>
+    bounded('response-headers-timeout', 'document response', commit, null);
+  for (let attempt = 0; attempt < DOM_READ_ATTEMPTS; attempt++) {
+    const commit = navigation.response;
+    const resp = commit ? await responseOf(commit) : loaded.resp;
+    const response = await readResponse(resp, s.rawUrl, bounded);
+    const content = /html|xml|^$/i.test(response.contentType)
+      ? await readContent(i, response.liveHeaders, limitations)
+      : emptyContent();
+    const latest = navigation.response;
+    const sameDocument =
+      latest === commit ||
+      (resp !== null &&
+        latest !== null &&
+        (await responseOf(latest)) === resp &&
+        navigation.response === latest);
+    if (sameDocument && (!content.retry || attempt + 1 === DOM_READ_ATTEMPTS)) {
+      return { response, content, rawFinalUrl: i.page.url() };
+    }
+    if (attempt + 1 < DOM_READ_ATTEMPTS) {
       await i.page.waitForLoadState('load', { timeout: i.timing.loadTimeoutMs }).catch(() => undefined);
     }
   }
-  return content;
+  return {
+    response: await readResponse(null, s.rawUrl, bounded),
+    content: { ...emptyContent(), domError: 'execution context destroyed' },
+    rawFinalUrl: i.page.url(),
+  };
 }
 
 function notEvaluableReasonOf(p: {
@@ -274,6 +360,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
     return r.value;
   };
 
+  const navigation = documentNavigation(i.page);
   const loaded = await loadPage(i, s, t0);
   let error = loaded.error;
 
@@ -288,14 +375,7 @@ export async function visitPage(i: VisitInput, s: VisitSpec): Promise<VisitResul
   // budget allows it. The phase end and `dispose()` abandon what is left.
   await bounded('recorder-flush-timeout', 'network records', i.recorder.flush({ signal: i.signal }), true);
 
-  const response = await readResponse(loaded.resp, s.rawUrl, bounded);
-  let content =
-    !error && /html|xml|^$/i.test(response.contentType)
-      ? await readContent(i, response.liveHeaders, limitations)
-      : emptyContent();
-
-  // Read after the DOM: a JS/meta redirect during the quiet window changes the final URL.
-  let rawFinalUrl = error ? s.rawUrl : i.page.url();
+  let { response, content, rawFinalUrl } = await readDocument(i, s, loaded, navigation, bounded, limitations);
   if (!error && !/^https?:/i.test(rawFinalUrl)) {
     // The browser ended on its own error page (`chrome-error://`) or left http(s) (a `blob:` or `data:` document the
     // page opened): a failed navigation, nothing read from the page belongs to the site.

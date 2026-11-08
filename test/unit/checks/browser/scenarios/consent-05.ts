@@ -1,4 +1,4 @@
-import type { CmpFacts } from '../../../../../src/cmp/types.ts';
+import type { CmpFacts, CmpSection } from '../../../../../src/cmp/types.ts';
 import {
   bannerCandidate,
   CONTACT,
@@ -127,42 +127,34 @@ const afterSettingsSave = (hits: boolean) =>
       : [ga.hit('B-1', { phase: 'B', afterClick: false, tStartMs: 800 })],
   });
 
+const settingsSite = (options: { hitAfterSave: boolean; confirmed?: boolean }) =>
+  site({
+    phases: [phase('A'), afterSettingsSave(options.hitAfterSave)],
+    cmp: settingsRejectCmp({ confirmed: options.confirmed }),
+    plan: settingsRejectPlan(),
+  });
+
 const settingsScenarios: Scenario[] = [
   {
     file: 'violation-tracking-after-settings-reject.json',
     description:
       'No reject on the first layer; the reject was saved in the settings layer with every optional group off and confirmed by the platform policy; afterwards a GA4 page_view with identifier',
     expect: { status: 'completed', variants: ['tracking-after-reject'] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterSettingsSave(true)],
-        cmp: settingsRejectCmp(),
-        plan: settingsRejectPlan(),
-      }),
+    build: () => settingsSite({ hitAfterSave: true }),
   },
   {
     file: 'clean-settings-reject.json',
     description:
       'Reject saved in the settings layer and confirmed; GA4 sent its page_view only before the save, while the settings were open',
     expect: { status: 'completed', variants: [] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterSettingsSave(false)],
-        cmp: settingsRejectCmp(),
-        plan: settingsRejectPlan(),
-      }),
+    build: () => settingsSite({ hitAfterSave: false }),
   },
   {
     file: 'inconclusive-settings-reject-not-confirmed.json',
     description:
       'The save in the settings layer left the platform policy at its default: reject not confirmed, the GA4 page_view after it is no finding',
     expect: { status: 'inconclusive', variants: [], reason: 'reject-not-confirmed' },
-    build: () =>
-      site({
-        phases: [phase('A'), afterSettingsSave(true)],
-        cmp: settingsRejectCmp({ confirmed: false }),
-        plan: settingsRejectPlan(),
-      }),
+    build: () => settingsSite({ hitAfterSave: true, confirmed: false }),
   },
   {
     file: 'inconclusive-settings-preselected-groups.json',
@@ -201,6 +193,14 @@ const afterRejectOn = (control: string[], hitsOn: string[]) =>
     ),
   });
 
+const rejectOnControlPages = (pages: Record<string, boolean>, hitsOn: string[]) =>
+  site({
+    phases: [phase('A'), afterRejectOn(Object.keys(pages), hitsOn)],
+    cmp: rejectWithControlPages(
+      Object.entries(pages).map(([url, inEffect]) => controlPageFacts(url, 'B', inEffect)),
+    ),
+  });
+
 /**
  * Each control page counts only where the CMP facts recorded there show the reject in effect: a control page that shows
  * the banner again without an answer (a consent cookie bound to the host of the click page) is no page after the reject.
@@ -211,51 +211,32 @@ const controlPageScenarios: Scenario[] = [
     description:
       'Reject confirmed; the contact page reads the stored reject back, and GA4 sends a page_view with identifier there',
     expect: { status: 'completed', variants: ['tracking-after-reject'] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterRejectOn([CONTACT], [CONTACT])],
-        cmp: rejectWithControlPages([controlPageFacts(CONTACT, 'B', true)]),
-      }),
+    build: () => rejectOnControlPages({ [CONTACT]: true }, [CONTACT]),
   },
   {
     file: 'inconclusive-reject-not-in-effect-on-control-page.json',
     description:
       'Reject confirmed on the start page; the control page on another host shows the banner again without an answer, so its GA4 page_view is no tracking after the reject and the page is not evaluated',
     expect: { status: 'partial', variants: [] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterRejectOn([CONTACT, OTHER_HOST_PAGE], [OTHER_HOST_PAGE])],
-        cmp: rejectWithControlPages([
-          controlPageFacts(CONTACT, 'B', true),
-          controlPageFacts(OTHER_HOST_PAGE, 'B', false),
-        ]),
-      }),
+    build: () => rejectOnControlPages({ [CONTACT]: true, [OTHER_HOST_PAGE]: false }, [OTHER_HOST_PAGE]),
   },
   {
     file: 'clean-control-pages-after-reject.json',
     description: 'Reject confirmed; both control pages read the stored reject back and send nothing',
     expect: { status: 'completed', variants: [] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterRejectOn([CONTACT, IMPRESSUM], [])],
-        cmp: rejectWithControlPages([
-          controlPageFacts(CONTACT, 'B', true),
-          controlPageFacts(IMPRESSUM, 'B', true),
-        ]),
-      }),
+    build: () => rejectOnControlPages({ [CONTACT]: true, [IMPRESSUM]: true }, []),
   },
   {
     file: 'violation-tracking-on-other-host-with-shared-reject.json',
     description:
       'Counterexample: the control page on another host of the site reads the stored reject back (a consent cookie for the whole domain), so its GA4 page_view counts after the reject',
     expect: { status: 'completed', variants: ['tracking-after-reject'] },
-    build: () =>
-      site({
-        phases: [phase('A'), afterRejectOn([OTHER_HOST_PAGE], [OTHER_HOST_PAGE])],
-        cmp: rejectWithControlPages([controlPageFacts(OTHER_HOST_PAGE, 'B', true)]),
-      }),
+    build: () => rejectOnControlPages({ [OTHER_HOST_PAGE]: true }, [OTHER_HOST_PAGE]),
   },
 ];
+
+const siteWithoutRejectClick = (cmp: CmpSection) =>
+  site({ phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })], cmp });
 
 /** Without a recognised banner nothing was clicked: a banner observed but not recognised leaves the reject open. */
 const bannerScenarios: Scenario[] = [
@@ -264,43 +245,27 @@ const bannerScenarios: Scenario[] = [
     description:
       'The heuristic dismissed a fixed box with one consent keyword and a settings button on start and Impressum: no reject was clicked',
     expect: { status: 'inconclusive', variants: [], reason: 'banner-not-recognized' },
-    build: () =>
-      site({
-        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
-        cmp: candidateCmp(bannerCandidate()),
-      }),
+    build: () => siteWithoutRejectClick(candidateCmp(bannerCandidate())),
   },
   {
     file: 'clean-no-banner.json',
     description: 'Counterexample: no banner and no candidate on any page: there is no reject to evaluate',
     expect: { status: 'not_applicable', variants: [], reason: 'no-banner' },
-    build: () =>
-      site({
-        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
-        cmp: noBannerCmp(['A', 'B']),
-      }),
+    build: () => siteWithoutRejectClick(noBannerCmp(['A', 'B'])),
   },
   {
     file: 'inconclusive-cmp-dialog-not-opened.json',
     description:
       'CCM19 recognised, its dialog in the page but not opened for the scanner: no reject was clicked, the reason says why',
     expect: { status: 'inconclusive', variants: [], reason: 'cmp-dialog-not-opened' },
-    build: () =>
-      site({
-        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
-        cmp: unopenedDialogCmp(),
-      }),
+    build: () => siteWithoutRejectClick(unopenedDialogCmp()),
   },
   {
     file: 'inconclusive-cmp-bot-user-agent.json',
     description:
       "The same closed CCM19 dialog, and CCM19's own crawler test matched the scanner's User-Agent: no reject was clicked, the reason names the crawler test",
     expect: { status: 'inconclusive', variants: [], reason: 'cmp-bot-user-agent' },
-    build: () =>
-      site({
-        phases: [phase('A'), phase('B', { requests: [ga.hit('B-1', { phase: 'B' })] })],
-        cmp: unopenedDialogCmp({ botSignals: [crawlerTestSignal] }),
-      }),
+    build: () => siteWithoutRejectClick(unopenedDialogCmp({ botSignals: [crawlerTestSignal] })),
   },
 ];
 

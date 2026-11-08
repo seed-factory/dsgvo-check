@@ -6,7 +6,7 @@
  * where they send. Field values reach no output.
  */
 import zlib from 'node:zlib';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createFormTwinCollector } from '../../../src/collectors/http/form-twins.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
@@ -22,7 +22,7 @@ import type { Snapshot } from '../../../src/core/snapshot/index.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
 import { renderJson } from '../../../src/reporters/json.ts';
 import { scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { testDataDir } from '../../utils/scan-harness.ts';
 import {
   makeBrowser,
@@ -163,7 +163,6 @@ const EDGE_ROUTES = [
   })),
 ];
 
-let server: FixtureServer;
 let closed: number;
 
 /** The contact page as a gzip stream without its second half: the form at the end never comes out. */
@@ -172,47 +171,45 @@ const HALF_GZIP = (() => {
   return gz.subarray(0, gz.length >> 1);
 })();
 
-beforeAll(async () => {
-  server = await startFixtureServer({ routes: [...ROUTES, ...EDGE_ROUTES] });
-  server.addHandler({
-    host: EDGE,
-    scheme: 'http',
-    path: '/halb/',
-    handle: (_req, res) => {
-      res.writeHead(200, {
-        'content-type': 'text/html; charset=utf-8',
-        'content-encoding': 'gzip',
-        'content-length': String(HALF_GZIP.length),
-      });
-      res.end(HALF_GZIP);
-    },
-  });
-  closed = await closedPort();
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(
+  () => ({ routes: [...ROUTES, ...EDGE_ROUTES] }),
+  async (server) => {
+    server.addHandler({
+      host: EDGE,
+      scheme: 'http',
+      path: '/halb/',
+      handle: (_req, res) => {
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-encoding': 'gzip',
+          'content-length': String(HALF_GZIP.length),
+        });
+        res.end(HALF_GZIP);
+      },
+    });
+    closed = await closedPort();
+  },
+);
 
 /** The apex refuses connections: www is the site. */
-const network = () => withRoutes(server.network(), { 'comments.test': closed, 'edge.test': closed });
+const network = () => withRoutes(server().network(), { 'comments.test': closed, 'edge.test': closed });
 
 describe('forms over http: the HTTP collector and the step after the browser', () => {
   const lines: string[] = [];
   const twinStarts: number[] = [];
   let http: HttpSection;
   let extended: HttpSection;
-  let twinRequests: typeof server.requests;
+  let twinRequests: ReturnType<typeof server>['requests'];
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     const log = createLogger('debug', (l) => lines.push(l));
     const first = await createHttpCollector({ minIntervalMs: 20 })(
       collectorContext(SITE, network(), { log }),
     );
     http = first.sections.http as HttpSection;
 
-    const before = server.requests.length;
+    const before = server().requests.length;
     const now = () => {
       const d = new Date();
       twinStarts.push(d.getTime());
@@ -221,7 +218,7 @@ describe('forms over http: the HTTP collector and the step after the browser', (
     const snapshot = { http, browser: phaseA() } as Partial<Snapshot> as Snapshot;
     const second = await createFormTwinCollector()(collectorContext(SITE, network(), { log, now, snapshot }));
     extended = second.sections.http as HttpSection;
-    twinRequests = server.requests.slice(before);
+    twinRequests = server().requests.slice(before);
   });
 
   it('the start page is read in full: the comment form after 70 KiB, with where it sends', () => {
@@ -254,11 +251,11 @@ describe('forms over http: the HTTP collector and the step after the browser', (
       `GET http://${HOST}/kontakt/`,
       `GET http://${HOST}/blog/post-1/`,
     ]);
-    expect(server.requests.every((r) => r.method === 'GET')).toBe(true);
+    expect(server().requests.every((r) => r.method === 'GET')).toBe(true);
     expect(
-      server.requests.some((r) => r.path.includes('wp-comments-post') || r.path.includes('senden')),
+      server().requests.some((r) => r.path.includes('wp-comments-post') || r.path.includes('senden')),
     ).toBe(false);
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 
   it('starts the requests to the host at least 500 ms apart', () => {
@@ -305,10 +302,10 @@ describe('forms over http: pages with a form and permalinks share the budget', (
     });
   let extended: HttpSection;
   let probes: unknown[];
-  let stepRequests: typeof server.requests;
+  let stepRequests: ReturnType<typeof server>['requests'];
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     const first = await createHttpCollector({ minIntervalMs: 20 })(collectorContext(SITE, network()));
     const http = first.sections.http as HttpSection;
     // The start page links both posts by their date; the contact page has a form that takes data.
@@ -332,7 +329,7 @@ describe('forms over http: pages with a form and permalinks share the budget', (
         }),
       ],
     });
-    const before = server.requests.length;
+    const before = server().requests.length;
     const config = defaultConfig();
     const second = await createFormTwinCollector({ minIntervalMs: 20 })(
       collectorContext(SITE, network(), {
@@ -342,7 +339,7 @@ describe('forms over http: pages with a form and permalinks share the budget', (
     );
     extended = second.sections.http as HttpSection;
     probes = second.probes ?? [];
-    stepRequests = server.requests.slice(before);
+    stepRequests = server().requests.slice(before);
   });
 
   it('the page with a form first, then the first permalink; the second waits for a larger budget', () => {
@@ -377,10 +374,10 @@ describe('forms over http: pages with a form and permalinks share the budget', (
 
 describe('forms over http: what the step cannot read, and a host that is overloaded', () => {
   let extended: HttpSection;
-  let stepRequests: typeof server.requests;
+  let stepRequests: ReturnType<typeof server>['requests'];
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     const edgeSite = `https://${EDGE}/`;
     const first = await createHttpCollector({ minIntervalMs: 20 })(collectorContext(edgeSite, network()));
     const http = first.sections.http as HttpSection;
@@ -404,7 +401,7 @@ describe('forms over http: what the step cannot read, and a host that is overloa
         }),
       ],
     });
-    const before = server.requests.length;
+    const before = server().requests.length;
     const snapshot = { http, browser } as Partial<Snapshot> as Snapshot;
     const config = defaultConfig();
     const second = await createFormTwinCollector({ minIntervalMs: 20 })(
@@ -414,7 +411,7 @@ describe('forms over http: what the step cannot read, and a host that is overloa
       }),
     );
     extended = second.sections.http as HttpSection;
-    stepRequests = server.requests.slice(before);
+    stepRequests = server().requests.slice(before);
   });
 
   it.each([
@@ -475,7 +472,7 @@ describe('forms over http in a whole scan', () => {
   let snapshot: Snapshot | null;
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     browserCollector.section = phaseA();
     const result = await scan({
       url: SITE,
@@ -501,7 +498,7 @@ describe('forms over http in a whole scan', () => {
   });
 
   it('sends only GET and keeps no field value in the snapshot, the reports or the logs', () => {
-    expect(server.requests.every((r) => r.method === 'GET')).toBe(true);
+    expect(server().requests.every((r) => r.method === 'GET')).toBe(true);
     const ctx = { texts: loadTexts('de'), lang: 'de' as const, outDir: '/nonexistent-out', color: false };
     const outputs = [JSON.stringify(snapshot), renderJson(report), renderHtml(report, ctx), lines.join('\n')];
     for (const out of outputs) {

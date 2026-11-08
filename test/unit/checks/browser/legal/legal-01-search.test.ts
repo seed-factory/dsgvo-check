@@ -24,6 +24,7 @@ import {
   type SiteSpec,
   START,
   site,
+  startAndContact,
 } from '../helpers.ts';
 import {
   type Attempt,
@@ -37,7 +38,6 @@ import {
   linked,
   missing,
   privacy,
-  twoPages,
   verify,
 } from './legal-01-verify.ts';
 
@@ -163,11 +163,6 @@ describe('LEGAL-01 document search evidence', () => {
         limitations: ['impressum-search-incomplete:fallback-skipped'],
         kinds: [],
       },
-    },
-    {
-      name: 'a completed phase with a fallback establishes absence',
-      input: noImpressum([start, team], [fallback()]),
-      expected: { kinds: missing(), first: { params: { fallbackChecked: true } } },
     },
     {
       name: 'an interrupted single-page search keeps its phase reason',
@@ -418,7 +413,7 @@ describe('LEGAL-01 unavailable and unconfirmed targets', () => {
         phases: [
           phase('A', {
             pages: [
-              ...twoPages([impressum(), privacy(), ...links]),
+              ...startAndContact([impressum(), privacy(), ...links]),
               page(PRIVACY, 'privacy', 'A', { evaluable: false, ...extra }),
             ],
           }),

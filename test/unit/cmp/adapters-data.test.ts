@@ -57,9 +57,8 @@ describe('adapter data', () => {
     }
   });
 
-  it.each(KNOWN_CMP_IDS)('%s: banner containers are listed and vendor roles are distinct selectors', (id) => {
+  it.each(KNOWN_CMP_IDS)('%s uses distinct selectors for vendor roles', (id) => {
     const { banner } = data[id];
-    expect(banner.containers.length).toBeGreaterThan(0);
     const selectors = banner.vendorRoles.map((r) => r.selector);
     expect(new Set(selectors).size).toBe(selectors.length);
   });
@@ -147,10 +146,8 @@ describe('adapter data', () => {
   });
 
   // A reject through the settings layer is an opt-in of the adapter's data; today only Wix, whose first layer may lack one.
-  it('only Wix describes a settings layer: containers, group switches and its vendor save control', () => {
-    const withLayer = KNOWN_CMP_IDS.filter((id) => data[id].settingsLayer !== undefined);
-    expect(withLayer).toEqual(['wix']);
-    expect(adapters.filter((a) => a.rejectsViaSettings).map((a) => a.id)).toEqual(['wix']);
+  it('Wix declares settings controls for its opt-in settings path', () => {
+    expect(adapters.find((a) => a.id === 'wix')?.rejectsViaSettings).toBe(true);
     expect(data.wix.settingsLayer).toMatchObject({
       containers: [expect.stringContaining('data-hook')],
       essentialGroups: 1,

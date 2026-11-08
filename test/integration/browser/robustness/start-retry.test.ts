@@ -3,13 +3,10 @@
  * with code, attempt, duration, pause and navigation id in the snapshot and log. Synthetic hosts only.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
+import type { DynamicHandler } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { type CollectRun, collect, FAST_TIMING } from '../helpers.ts';
 import { html } from '../site-dir.ts';
 
@@ -77,30 +74,25 @@ const HOSTS = {
 // Short enough to keep the test fast; the retry pause (`retryDelayMs`) is 200 ms in FAST_TIMING.
 const TIMING = { ...FAST_TIMING, navigationTimeoutMs: 1_500 };
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
-    handlers: [
-      startPage(HOSTS.timeoutThenOk, ['stall', 'ok']),
-      startPage(HOSTS.unavailableThenOk, [503, 'ok']),
-      startPage(HOSTS.clean, ['ok']),
-      startPage(HOSTS.timeoutTwice, ['stall']),
-      startPage(HOSTS.silentThenOk, ['silent', 'ok']),
-      startPage(HOSTS.silentTwice, ['silent']),
-    ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({
+  handlers: [
+    startPage(HOSTS.timeoutThenOk, ['stall', 'ok']),
+    startPage(HOSTS.unavailableThenOk, [503, 'ok']),
+    startPage(HOSTS.clean, ['ok']),
+    startPage(HOSTS.timeoutTwice, ['stall']),
+    startPage(HOSTS.silentThenOk, ['silent', 'ok']),
+    startPage(HOSTS.silentTwice, ['silent']),
+  ],
+}));
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const rootHits = (host: string) => server.requestsTo(host).filter((r) => r.path === '/');
+const rootHits = (host: string) =>
+  server()
+    .requestsTo(host)
+    .filter((r) => r.path === '/');
 const phaseAOf = (run: CollectRun) => run.result.sections.browser?.phases[0];
 const startVisits = (run: CollectRun) => phaseAOf(run)?.pages.filter((p) => p.role === 'start') ?? [];
 const errorsWithCode = (run: CollectRun, code: string) =>
@@ -115,7 +107,7 @@ describe('start page repeated after a failed navigation', () => {
     beforeAll(async () => {
       const warn = vi.spyOn(silentLogger, 'warn');
 
-      run = await collect(server, { url: `https://${host}/`, deps: { timing: TIMING } });
+      run = await collect(server(), { url: `https://${host}/`, deps: { timing: TIMING } });
 
       logLines = warn.mock.calls.map((c) => String(c[0]));
     });
@@ -154,7 +146,7 @@ describe('start page repeated after a failed navigation', () => {
   });
 
   it('503, then a good answer: the same record with the status as the code', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: `https://${HOSTS.unavailableThenOk}/`,
       deps: { timing: TIMING },
     });
@@ -168,7 +160,10 @@ describe('start page repeated after a failed navigation', () => {
   });
 
   it('timeout twice: unreachable after two attempts, the first one is in the snapshot, the second is the visit', async () => {
-    const run = await collect(server, { url: `https://${HOSTS.timeoutTwice}/`, deps: { timing: TIMING } });
+    const run = await collect(server(), {
+      url: `https://${HOSTS.timeoutTwice}/`,
+      deps: { timing: TIMING },
+    });
 
     expect(run.result.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-unreachable' });
     // Two attempts, not three.
@@ -179,7 +174,10 @@ describe('start page repeated after a failed navigation', () => {
   });
 
   it('no answer at all, then a good answer: the repeat is a second request, not an instant ERR_ABORTED', async () => {
-    const run = await collect(server, { url: `https://${HOSTS.silentThenOk}/`, deps: { timing: TIMING } });
+    const run = await collect(server(), {
+      url: `https://${HOSTS.silentThenOk}/`,
+      deps: { timing: TIMING },
+    });
 
     // Recovery needs a distinct request; reusing an unfinished navigation could abort without contacting the server.
     expect(run.result.fatal).toBeUndefined();
@@ -192,7 +190,10 @@ describe('start page repeated after a failed navigation', () => {
   });
 
   it('no answer twice: unreachable with the reason timeout after two real attempts, never ERR_ABORTED', async () => {
-    const run = await collect(server, { url: `https://${HOSTS.silentTwice}/`, deps: { timing: TIMING } });
+    const run = await collect(server(), {
+      url: `https://${HOSTS.silentTwice}/`,
+      deps: { timing: TIMING },
+    });
 
     expect(run.result.fatal).toMatchObject({ reason: 'unreachable', code: 'start-page-unreachable' });
     expect(rootHits(HOSTS.silentTwice)).toHaveLength(2);
@@ -206,7 +207,7 @@ describe('start page repeated after a failed navigation', () => {
   it('counterexample: a start page that loads at once has no retry record and no retry log line', async () => {
     const warn = vi.spyOn(silentLogger, 'warn');
 
-    const run = await collect(server, { url: `https://${HOSTS.clean}/`, deps: { timing: TIMING } });
+    const run = await collect(server(), { url: `https://${HOSTS.clean}/`, deps: { timing: TIMING } });
 
     expect(run.result.fatal).toBeUndefined();
     expect(rootHits(HOSTS.clean)).toHaveLength(1);
@@ -218,6 +219,6 @@ describe('start page repeated after a failed navigation', () => {
   });
 
   it('touches only declared hosts', () => {
-    expect(server.unexpected).toEqual([]);
+    expect(server().unexpected).toEqual([]);
   });
 });

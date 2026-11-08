@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { consent03 } from '../../../../../src/checks/browser/consent-03.ts';
 import { consent04 } from '../../../../../src/checks/browser/consent-04.ts';
 import { consent05 } from '../../../../../src/checks/browser/consent-05.ts';
+import { bannerState } from '../../../../../src/checks/browser/signals.ts';
 import type { BannerCandidateFact, CmpFacts, CmpSection } from '../../../../../src/cmp/types.ts';
 import { defaultConfig } from '../../../../../src/core/config/schema.ts';
 import { checkThresholds } from '../../../../../src/core/config/thresholds.ts';
@@ -159,103 +160,88 @@ const NOT_OBSERVED: Array<[string, Case]> = [
 ];
 
 describe('a banner observed but not recognised', () => {
-  describe('CONSENT-03', () => {
-    it.each(OBSERVED)('%s: inconclusive, no "no banner" finding', (_name, c) => {
-      const r = runCheck(consent03, snapshot(c));
-      expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-candidate-unrecognized' });
-      expect(variantsOf(r)).toEqual([]);
-    });
+  it.each([
+    ...OBSERVED.map(([name, input]) => [name, input, 'unrecognized'] as const),
+    ...NOT_OBSERVED.map(([name, input]) => [name, input, false] as const),
+    ...UNDETERMINED.map(([name, input]) => [name, input, 'undetermined'] as const),
+  ])('%s', (_name, input, expected) => {
+    const { browser } = snapshot(input);
+    const { minCandidatePages } = checkThresholds(defaultConfig()).cmp;
+    expect(bannerState(input.cmp, browser!, minCandidatePages)).toBe(expected);
+  });
 
-    it.each(NOT_OBSERVED)('counterexample, %s: the no-banner finding stays', (_name, c) => {
-      expect(variantsOf(runCheck(consent03, snapshot(c)))).toEqual(['no-banner-consent-services']);
-    });
+  it('an unrecognized candidate blocks a no-banner finding and is reported as info', () => {
+    const snap = snapshot(OBSERVED[0]![1]);
+    const missing = runCheck(consent03, snap);
+    expect(missing).toMatchObject({ status: 'inconclusive', reason: 'banner-candidate-unrecognized' });
+    expect(variantsOf(missing)).toEqual([]);
 
-    it.each(UNDETERMINED)('an older snapshot, %s: inconclusive, the banner undetermined', (_name, c) => {
-      const r = runCheck(consent03, snapshot(c));
-      expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-undetermined' });
-      expect(variantsOf(r)).toEqual([]);
-    });
-
-    it('the settings decide on how many subpages a candidate must show; the start page always counts', () => {
-      const base = checkThresholds(defaultConfig());
-      const thresholds = { ...base, cmp: { ...base.cmp, minCandidatePages: 3 } };
-      const twoSubpages = snapshot({ cmp: candidate({}, [IMPRESSUM, PRIVACY]) });
-      expect(variantsOf(runCheck(consent03, twoSubpages, { thresholds }))).toEqual([
-        'no-banner-consent-services',
-      ]);
-      expect(runCheck(consent03, snapshot({ cmp: candidate({}, [START]) }), { thresholds })).toMatchObject({
-        status: 'inconclusive',
-        reason: 'banner-candidate-unrecognized',
-      });
-    });
-
-    it('without anything loaded that needs consent there is nothing to conclude: completed', () => {
-      const r = runCheck(consent03, site({ cmp: candidate() }));
-      expect(r).toMatchObject({ status: 'completed' });
-      expect(variantsOf(r)).toEqual([]);
+    const design = runCheck(consent04, snap);
+    expect(design).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
+    expect(variantsOf(design)).toEqual(['banner-not-recognized']);
+    expect(runCheck(consent05, snap)).toMatchObject({
+      status: 'inconclusive',
+      reason: 'banner-not-recognized',
     });
   });
 
-  describe('CONSENT-04', () => {
-    it.each(OBSERVED)('%s: info "Banner nicht erkannt", inconclusive', (_name, c) => {
-      const r = runCheck(consent04, snapshot(c));
-      expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
-      expect(variantsOf(r)).toEqual(['banner-not-recognized']);
-    });
-
-    it.each(NOT_OBSERVED)('counterexample, %s: no banner, not applicable', (_name, c) => {
-      expect(runCheck(consent04, snapshot(c))).toMatchObject({
+  it('counterexample: without a candidate, the no-banner finding stays', () => {
+    const snap = snapshot(NOT_OBSERVED[0]![1]);
+    expect(variantsOf(runCheck(consent03, snap))).toEqual(['no-banner-consent-services']);
+    for (const check of [consent04, consent05]) {
+      expect(runCheck(check, snap), check.id).toMatchObject({
         status: 'not_applicable',
         reason: 'no-banner',
       });
-    });
+    }
+  });
 
-    it('the info names the features of the candidate as its evidence, not the buttons of a banner that was not read', () => {
-      const [o] = observationsOf(runCheck(consent04, snapshot({ cmp: candidate() })));
-      const cmpEvidence = o?.evidence.filter((e) => e.type === 'cmp') ?? [];
-      expect(cmpEvidence).toHaveLength(1);
-      expect(cmpEvidence[0]).toMatchObject({ candidate: bannerCandidate(), cmpId: null });
-      expect(cmpEvidence[0]).not.toHaveProperty('buttons');
-      expect(cmpEvidence[0]).not.toHaveProperty('blocking');
-      expect(o?.classification?.source).toBe('heuristic');
+  it('legacy banner links alone leave all three checks inconclusive', () => {
+    const snap = snapshot(UNDETERMINED[0]![1]);
+    for (const check of [consent03, consent04, consent05]) {
+      const result = runCheck(check, snap);
+      expect(result, check.id).toMatchObject({ status: 'inconclusive', reason: 'banner-undetermined' });
+      expect(variantsOf(result), check.id).toEqual([]);
+    }
+  });
 
-      for (const lang of ['de', 'en'] as const) {
-        const body = renderMessage(
-          loadTexts(lang),
-          'CONSENT-04.banner-not-recognized',
-          o?.params as never,
-        ).body;
-        expect(body).not.toMatch(/gemessenen Fakten|measured facts/);
-        expect(body).toMatch(/bannerähnlich|banner-like/);
-      }
-    });
-
-    it.each(UNDETERMINED)('an older snapshot, %s: inconclusive without a finding', (_name, c) => {
-      const r = runCheck(consent04, snapshot(c));
-      expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-undetermined' });
-      expect(variantsOf(r)).toEqual([]);
+  it('the settings decide on how many subpages a candidate must show; the start page always counts', () => {
+    const base = checkThresholds(defaultConfig());
+    const thresholds = { ...base, cmp: { ...base.cmp, minCandidatePages: 3 } };
+    const twoSubpages = snapshot({ cmp: candidate({}, [IMPRESSUM, PRIVACY]) });
+    expect(variantsOf(runCheck(consent03, twoSubpages, { thresholds }))).toEqual([
+      'no-banner-consent-services',
+    ]);
+    expect(runCheck(consent03, snapshot({ cmp: candidate({}, [START]) }), { thresholds })).toMatchObject({
+      status: 'inconclusive',
+      reason: 'banner-candidate-unrecognized',
     });
   });
 
-  describe('CONSENT-05', () => {
-    it.each(OBSERVED)('%s: the reject was not clicked, inconclusive', (_name, c) => {
-      const r = runCheck(consent05, snapshot(c));
-      expect(r).toMatchObject({ status: 'inconclusive', reason: 'banner-not-recognized' });
-    });
+  it('without anything loaded that needs consent there is nothing to conclude: completed', () => {
+    const r = runCheck(consent03, site({ cmp: candidate() }));
+    expect(r).toMatchObject({ status: 'completed' });
+    expect(variantsOf(r)).toEqual([]);
+  });
 
-    it.each(NOT_OBSERVED)('counterexample, %s: no banner, not applicable', (_name, c) => {
-      expect(runCheck(consent05, snapshot(c))).toMatchObject({
-        status: 'not_applicable',
-        reason: 'no-banner',
-      });
-    });
+  it('the info names the features of the candidate as its evidence, not the buttons of a banner that was not read', () => {
+    const [o] = observationsOf(runCheck(consent04, snapshot({ cmp: candidate() })));
+    const cmpEvidence = o?.evidence.filter((e) => e.type === 'cmp') ?? [];
+    expect(cmpEvidence).toHaveLength(1);
+    expect(cmpEvidence[0]).toMatchObject({ candidate: bannerCandidate(), cmpId: null });
+    expect(cmpEvidence[0]).not.toHaveProperty('buttons');
+    expect(cmpEvidence[0]).not.toHaveProperty('blocking');
+    expect(o?.classification?.source).toBe('heuristic');
 
-    it.each(UNDETERMINED)('an older snapshot, %s: inconclusive, the banner undetermined', (_name, c) => {
-      expect(runCheck(consent05, snapshot(c))).toMatchObject({
-        status: 'inconclusive',
-        reason: 'banner-undetermined',
-      });
-    });
+    for (const lang of ['de', 'en'] as const) {
+      const body = renderMessage(
+        loadTexts(lang),
+        'CONSENT-04.banner-not-recognized',
+        o?.params as never,
+      ).body;
+      expect(body).not.toMatch(/gemessenen Fakten|measured facts/);
+      expect(body).toMatch(/bannerähnlich|banner-like/);
+    }
   });
 });
 

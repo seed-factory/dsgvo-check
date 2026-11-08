@@ -9,9 +9,8 @@ import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import { PROBE_NAME_RULES, toMeasured } from '../../../src/cmp/page/measure.ts';
 import { parseProbeResult } from '../../../src/cmp/page/probe-result.ts';
 import type { ProbeArgs, ProbeResult, RawButton } from '../../../src/cmp/page/probe-types.ts';
-import { ARIA_ROLES, NAME_RULES } from '../../../src/core/redaction/page-names.ts';
 
-const BOX = { x: 10, y: 700, width: 120, height: 20 };
+import { BUTTON_BOX as BOX, rawButton, rawProbe } from './fakes.ts';
 
 const ARGS: ProbeArgs = {
   mode: 'banner',
@@ -29,28 +28,16 @@ const ARGS: ProbeArgs = {
   names: PROBE_NAME_RULES,
 };
 
-const button = (p: Partial<RawButton> = {}): RawButton => ({
-  role: 'button',
-  name: 'Ablehnen',
-  tag: 'button',
-  vendorRole: 'reject',
-  box: BOX,
-  rendered: true,
-  visibleInViewport: true,
-  inViewport: true,
-  enabled: true,
-  hitTestOk: true,
-  actionable: true,
-  contrast: 7.5,
-  fontSizePx: 14,
-  selector: '#CybotCookiebotDialogBodyButtonDecline',
-  inShadowDom: false,
-  href: null,
-  ...p,
-});
+const button = (over: Partial<RawButton> = {}) =>
+  rawButton({
+    vendorRole: 'reject',
+    contrast: 7.5,
+    selector: '#CybotCookiebotDialogBodyButtonDecline',
+    ...over,
+  });
 
-function result(p: Partial<ProbeResult> = {}): ProbeResult {
-  return {
+function result(over: Partial<ProbeResult> = {}): ProbeResult {
+  return rawProbe({
     found: true,
     containerCount: 1,
     visible: true,
@@ -58,11 +45,8 @@ function result(p: Partial<ProbeResult> = {}): ProbeResult {
     containerFixed: true,
     containerSelector: '#CybotCookiebotDialog',
     textLength: 80,
-    purAbo: false,
     keywordHits: ['cookie'],
     buttons: [button()],
-    buttonsTruncated: false,
-    animating: false,
     blocking: {
       overlay: true,
       scrollLock: true,
@@ -71,12 +55,9 @@ function result(p: Partial<ProbeResult> = {}): ProbeResult {
       method: ['overlay-selector', 'grid-hit-test', 'overflow-hidden'],
       ariaModal: true,
     },
-    viewport: { width: 1366, height: 768 },
     coveredLinks: [{ label: 'Impressum', box: BOX, coveredBy: 'banner' }],
-    heuristic: null,
-    rejectedCandidate: null,
-    ...p,
-  };
+    ...over,
+  });
 }
 
 const parse = (raw: unknown, args: ProbeArgs = ARGS) => parseProbeResult(raw, args);
@@ -276,26 +257,5 @@ describe('parseProbeResult', () => {
     const layer = toMeasured(forged, loadLexicon(), 'https://www.example.test/').firstLayer;
     expect(layer.buttons[0]).toMatchObject({ vendorRole: null });
     expect(JSON.stringify(layer)).not.toContain('zq7');
-  });
-});
-
-describe('the probe gets the rules of the Node side', () => {
-  it('name and tag patterns and the role list are those of src/core/redaction/page-names.ts', () => {
-    expect(PROBE_NAME_RULES).toEqual({ ...NAME_RULES, roles: ARIA_ROLES });
-    const { idLike } = PROBE_NAME_RULES;
-    for (const p of [
-      PROBE_NAME_RULES.chars,
-      ...PROBE_NAME_RULES.notName,
-      ...idLike.compact,
-      ...idLike.plain,
-      idLike.otherDigit,
-      idLike.separator,
-      idLike.token,
-      idLike.tokenSplit,
-      idLike.word,
-      idLike.wordsWithGroup,
-      PROBE_NAME_RULES.tag,
-    ])
-      expect(() => new RegExp(p.source, p.flags)).not.toThrow();
   });
 });

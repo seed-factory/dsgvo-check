@@ -6,7 +6,7 @@ import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import type { CollectorContext, Collectors } from '../../../src/core/snapshot/collector.ts';
 import { sanitizeUrl } from '../../../src/core/url/url.ts';
-import { scan } from '../../../src/scan.ts';
+import type { ScanResult } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import {
   makeBrowser,
@@ -22,10 +22,10 @@ import {
   browserCheck,
   httpHop,
   httpsHop,
-  opts,
   RAW_FINAL,
   refusedTls,
   STORED_FINAL,
+  scanWith,
   TARGET,
   tlsCheck,
   VIA,
@@ -47,16 +47,14 @@ function spyBrowser() {
 describe('scan — invalid certificate on the target', () => {
   it('invalid certificate on the target → browser not started, browser checks skipped (tls-blocked)', async () => {
     const spy = spyBrowser();
-    const result = await scan(
-      opts({
-        collectors: {
-          ...withBrowser,
-          browser: spy.browser,
-          tls: refusedTls({ authorizationError: 'CERT_HAS_EXPIRED' }),
-        },
-        registry: new CheckRegistry([browserCheck, tlsCheck]),
-      }),
-    );
+    const result = await scanWith({
+      collectors: {
+        ...withBrowser,
+        browser: spy.browser,
+        tls: refusedTls({ authorizationError: 'CERT_HAS_EXPIRED' }),
+      },
+      registry: new CheckRegistry([browserCheck, tlsCheck]),
+    });
     expect(spy.started).toBe(false);
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'skipped',
@@ -77,17 +75,15 @@ describe('scan — invalid certificate on the target', () => {
 
   it('invalid certificate on an explicit target port → tls-blocked as well', async () => {
     const spy = spyBrowser();
-    const result = await scan(
-      opts({
-        url: 'https://www.example.de:8443/',
-        collectors: {
-          ...withBrowser,
-          browser: spy.browser,
-          tls: refusedTls({ port: 8443, authorizationError: 'CERT_HAS_EXPIRED' }),
-        },
-        registry: new CheckRegistry([browserCheck, tlsCheck]),
-      }),
-    );
+    const result = await scanWith({
+      url: 'https://www.example.de:8443/',
+      collectors: {
+        ...withBrowser,
+        browser: spy.browser,
+        tls: refusedTls({ port: 8443, authorizationError: 'CERT_HAS_EXPIRED' }),
+      },
+      registry: new CheckRegistry([browserCheck, tlsCheck]),
+    });
     expect(spy.started).toBe(false);
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({ reason: 'tls-blocked' });
   });
@@ -102,12 +98,10 @@ describe('scan — invalid certificate on the target', () => {
     async ({ code, hostnameMatches, started }) => {
       const spy = spyBrowser();
       const tls = refusedTls({ authorizationError: code, chainComplete: false, hostnameMatches });
-      const result = await scan(
-        opts({
-          collectors: { ...withBrowser, browser: spy.browser, tls },
-          registry: new CheckRegistry([browserCheck, tlsCheck]),
-        }),
-      );
+      const result = await scanWith({
+        collectors: { ...withBrowser, browser: spy.browser, tls },
+        registry: new CheckRegistry([browserCheck, tlsCheck]),
+      });
       expect(spy.started).toBe(started);
       expect(result.report.diagnostics?.some((d) => d.code === 'SCAN-TLS-BLOCKED')).toBe(!started);
     },
@@ -165,17 +159,15 @@ describe('scan — invalid certificate, plain-http address redirects to another 
   }
 
   const registry = () => new CheckRegistry([browserCheck, tls02]);
-  const fallbackScan = (collectors: Partial<Collectors>, over: Parameters<typeof opts>[0] = {}) =>
-    scan(
-      opts({
-        url: TARGET,
-        collectors: { ...withBrowser, http: redirectingHttp(), tls: brokenTls, ...collectors },
-        registry: registry(),
-        ...over,
-      }),
-    );
-  const codes = (r: Awaited<ReturnType<typeof scan>>) => r.report.diagnostics?.map((d) => d.code) ?? [];
-  const tls02Variants = (r: Awaited<ReturnType<typeof scan>>) =>
+  const fallbackScan = (collectors: Partial<Collectors>, over: Parameters<typeof scanWith>[0] = {}) =>
+    scanWith({
+      url: TARGET,
+      collectors: { ...withBrowser, http: redirectingHttp(), tls: brokenTls, ...collectors },
+      registry: registry(),
+      ...over,
+    });
+  const codes = (r: ScanResult) => r.report.diagnostics?.map((d) => d.code) ?? [];
+  const tls02Variants = (r: ScanResult) =>
     (r.report.findings ?? []).filter((f) => f.checkId === 'TLS-02').map((f) => `${f.variant}:${f.severity}`);
 
   it('starts the browser on the raw redirect target and runs the browser checks there', async () => {
@@ -233,15 +225,13 @@ describe('scan — invalid certificate, plain-http address redirects to another 
     const explode = async () => {
       throw new Error('collectors must not run on replay');
     };
-    const replay = await scan(
-      opts({
-        url: undefined,
-        fromSnapshot: file,
-        registry: registry(),
-        collectors: { browser: explode, http: explode, tls: explode, dns: explode },
-        config: { scan: { tlsFallback: 'off' } },
-      }),
-    );
+    const replay = await scanWith({
+      url: undefined,
+      fromSnapshot: file,
+      registry: registry(),
+      collectors: { browser: explode, http: explode, tls: explode, dns: explode },
+      config: { scan: { tlsFallback: 'off' } },
+    });
 
     expect(readFileSync(file, 'utf8')).not.toContain('raw-fixture-7');
     expect(replay.report.diagnostics).toEqual(first.report.diagnostics);

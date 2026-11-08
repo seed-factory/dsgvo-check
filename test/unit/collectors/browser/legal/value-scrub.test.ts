@@ -3,11 +3,11 @@
  * script writing `document.cookie` into the page) is stored and hashed without it. Words, VAT numbers and other text
  * stay. Markers start with `zq8`.
  */
-import type { Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { extractDocument, storedText } from '../../../../../src/collectors/browser/legal/documents.ts';
 import { valueScrubber } from '../../../../../src/collectors/browser/legal/scrub.ts';
 import { sha256Hex } from '../../../../../src/collectors/browser/util.ts';
+import { legalPage, POLICY, privacyContext, rawPolicy } from './fakes.ts';
 
 /** Cookiebot's consent cookie as the browser holds it: URL-encoded, the stamp inside a JS object literal. */
 const COOKIEBOT =
@@ -196,36 +196,33 @@ describe('values and text chosen to make the scrub slow', () => {
 });
 
 describe('a legal document read with the values of the visitor', () => {
-  const POLICY = 'Wir verarbeiten personenbezogene Daten nach der DSGVO. '.repeat(20);
   const DECLARATION = 'Ihre Einwilligungs-ID: zq8Bc12dEf34+/GhIjKlMnOpQ== Ihre Einwilligung gilt ab sofort.';
-  const page = {
-    url: () => 'https://www.example.test/datenschutz/',
-    evaluate: async () => ({
-      lang: 'de',
-      title: 'Datenschutzerklärung',
-      h1: 'Datenschutzerklärung',
+  const ctx = privacyContext('https://www.example.test/datenschutz/', 'text/html');
+  const page = legalPage(
+    ctx.url,
+    rawPolicy({
       headingPlaces: { chrome: [], content: ['Datenschutzerklärung', 'Cookie-ID zq8uid0042a1b2'] },
       parts: [
         { section: 'Datenschutzerklärung', text: POLICY, origin: 'visible', place: 'content' },
         { section: 'Cookie-ID zq8uid0042a1b2', text: DECLARATION, origin: 'visible', place: 'content' },
       ],
-      expandablesFound: 0,
-      expandablesWithContent: 0,
       textLength: POLICY.length + DECLARATION.length,
-      truncated: false,
     }),
-    frames: () => [],
-    mainFrame: () => null,
-  } as unknown as Page;
-  const ctx = {
-    id: 'doc-privacy-1',
-    kind: 'privacy' as const,
-    phase: 'A' as const,
-    url: 'https://www.example.test/datenschutz/',
-    foundVia: 'link' as const,
-    status: 200,
-    contentType: 'text/html',
-  };
+  );
+  const impressumPage = (url: string, text: string) =>
+    legalPage(
+      url,
+      rawPolicy({
+        title: 'Impressum',
+        h1: 'Impressum',
+        headingPlaces: { chrome: [], content: ['Impressum'] },
+        parts: [
+          { section: 'Impressum', text: POLICY, origin: 'visible', place: 'content' },
+          { section: 'Kontakt', text, origin: 'visible', place: 'content' },
+        ],
+        textLength: POLICY.length + text.length,
+      }),
+    );
 
   it('parts, headings and the hash hold no value of the visitor', async () => {
     const doc = await extractDocument(page, ctx, [COOKIEBOT, 'zq8uid0042a1b2']);
@@ -242,25 +239,7 @@ describe('a legal document read with the values of the visitor', () => {
   it('an address of the site in a value keeps the address mask: the local part goes, the domain stays', async () => {
     const IMPRESSUM =
       'E-Mail: max.mustermann@autohaus24online.de, Website: https://www.autohaus24online.de/de/impressum/ Ende.';
-    const impressum = {
-      ...page,
-      url: () => 'https://www.autohaus24online.de/impressum/',
-      evaluate: async () => ({
-        lang: 'de',
-        title: 'Impressum',
-        h1: 'Impressum',
-        headingPlaces: { chrome: [], content: ['Impressum'] },
-        parts: [
-          { section: 'Impressum', text: POLICY, origin: 'visible', place: 'content' },
-          { section: 'Kontakt', text: IMPRESSUM, origin: 'visible', place: 'content' },
-        ],
-        expandablesFound: 0,
-        expandablesWithContent: 0,
-        textLength: POLICY.length + IMPRESSUM.length,
-        truncated: false,
-      }),
-    } as unknown as Page;
-
+    const impressum = impressumPage('https://www.autohaus24online.de/impressum/', IMPRESSUM);
     const doc = await extractDocument(impressum, { ...ctx, kind: 'impressum' }, [BORLABS]);
 
     expect(JSON.stringify(doc)).not.toContain('max.mustermann');
@@ -272,25 +251,7 @@ describe('a legal document read with the values of the visitor', () => {
 
   it('the registrable domain of the scan counts as the site too, for a document on another host', async () => {
     const IMPRESSUM = 'E-Mail: max.mustermann@autohaus24online.de, mehr unter www.autohaus24online.de Ende.';
-    const elsewhere = {
-      ...page,
-      url: () => 'https://rechtliches.example.test/impressum/',
-      evaluate: async () => ({
-        lang: 'de',
-        title: 'Impressum',
-        h1: 'Impressum',
-        headingPlaces: { chrome: [], content: ['Impressum'] },
-        parts: [
-          { section: 'Impressum', text: POLICY, origin: 'visible', place: 'content' },
-          { section: 'Kontakt', text: IMPRESSUM, origin: 'visible', place: 'content' },
-        ],
-        expandablesFound: 0,
-        expandablesWithContent: 0,
-        textLength: POLICY.length + IMPRESSUM.length,
-        truncated: false,
-      }),
-    } as unknown as Page;
-
+    const elsewhere = impressumPage('https://rechtliches.example.test/impressum/', IMPRESSUM);
     const doc = await extractDocument(
       elsewhere,
       { ...ctx, kind: 'impressum', siteDomain: 'autohaus24online.de' },

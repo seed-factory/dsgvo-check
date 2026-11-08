@@ -3,6 +3,7 @@
 // persistent profile. Fatal start-page conditions go into `fatal`. The phases live in `phase-a.ts` and
 // `consent-phase.ts` and share the `BrowserCollection` state, so its members are not private.
 import type { BrowserContext, BrowserType, Page } from 'playwright-core';
+import { clickGuardInit } from '../../cmp/page/action-guard.ts';
 import type { CmpAdapter, CmpFacts, CmpPhaseFacts, CmpSection } from '../../cmp/types.ts';
 import { browserUserAgent } from '../../core/runtime/user-agent.ts';
 import type {
@@ -11,7 +12,6 @@ import type {
   DocumentsSection,
   PhaseRecord,
   PlannedPage,
-  ScreenshotRecord,
 } from '../../core/snapshot/browser.ts';
 import type {
   BrowserSections,
@@ -168,7 +168,6 @@ export class BrowserCollection {
    * not repeated on later pages, each of which would wait for the same timeout; the section says it failed.
    */
   private dialogRead = false;
-  readonly screenshots: ScreenshotRecord[] = [];
   private readonly errors: CollectorError[] = [];
   readonly diagnostics: DiagnosticInput[] = [];
   readonly probes: ProbeRecord[] = [];
@@ -402,6 +401,7 @@ export class BrowserCollection {
     await browser.context.addInitScript(cookieHookInit);
     await browser.context.addInitScript(storageHookInit);
     await browser.context.addInitScript(inputHookInit);
+    if (phase !== 'A') await browser.context.addInitScript(clickGuardInit);
     const page = browser.context.pages()[0] ?? (await browser.context.newPage());
     const guard = await this.installGuard(browser.context, recorder);
 
@@ -413,9 +413,14 @@ export class BrowserCollection {
       page,
       recorder,
       jar: this.newJar(recorder, { etld1, host }, record),
-      cmp: new CmpBridge(this.deps.cmp, this.timing.cmpCallTimeoutMs, record.errors, phase, {
-        blockingCoveredRatio: this.ctx.config.cmp.blockingCoveredRatio,
-      }),
+      cmp: new CmpBridge(
+        this.deps.cmp,
+        this.timing.cmpCallTimeoutMs,
+        record.errors,
+        phase,
+        { blockingCoveredRatio: this.ctx.config.cmp.blockingCoveredRatio },
+        this.ctx.signal,
+      ),
       guard,
       record,
       cmpFacts: { phase, facts: [] },
@@ -766,7 +771,7 @@ export class BrowserCollection {
       phases: this.phases,
       requestCap: { ...this.counter },
       guard: { ...this.guard },
-      screenshots: this.screenshots,
+      screenshots: [],
       knownGaps: [...this.knownGaps].sort(),
       errors: this.errors,
     };

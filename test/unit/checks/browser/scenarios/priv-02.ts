@@ -124,6 +124,14 @@ const botCmp = (): CmpSection =>
     facts: [cmpFacts({ phase: 'A', botSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isSpider' }] })],
   });
 
+const statementPolicy = (text: string, part?: Parameters<typeof fontsPart>[1]) =>
+  policyWith(fontsPart(text, part));
+const localFontsPolicy = () => statementPolicy(LOCAL_CLAIM);
+const mapsConsentPolicy = () =>
+  statementPolicy('Google Maps wird erst geladen, wenn Sie zustimmen.', {
+    section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps',
+  });
+
 export const scenarios: Scenario[] = [
   {
     file: 'violation-local-fonts-claim-replicated.json',
@@ -137,14 +145,14 @@ export const scenarios: Scenario[] = [
           afterReject([bAfterClick('B-1')]),
         ],
         cmp: rejectCmp({ confirmed: true }),
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
   {
     file: 'clean-local-fonts-true.json',
     description: 'Same statement; the fonts come from the site itself, nothing from a Google host',
     expect: { status: 'completed', variants: [] },
-    build: () => site({ phases: [selfHostedFonts()], documents: policyWith(fontsPart(LOCAL_CLAIM)) }),
+    build: () => site({ phases: [selfHostedFonts()], documents: localFontsPolicy() }),
   },
   {
     file: 'inconclusive-claim-hedged.json',
@@ -194,7 +202,7 @@ export const variantScenarios: Scenario[] = [
             mapFrameRequest('C-3', 'https://fonts.gstatic.com/s/roboto/v30/frame.woff2', 'font'),
           ]),
         ],
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
   {
@@ -220,7 +228,7 @@ export const variantScenarios: Scenario[] = [
     build: () =>
       site({
         phases: [phase('A', { requests: [fontsCss('A-1')] })],
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
   {
@@ -244,11 +252,7 @@ export const variantScenarios: Scenario[] = [
             ],
           }),
         ],
-        documents: policyWith(
-          fontsPart('Google Maps wird erst geladen, wenn Sie zustimmen.', {
-            section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps',
-          }),
-        ),
+        documents: mapsConsentPolicy(),
       }),
   },
   {
@@ -261,11 +265,7 @@ export const variantScenarios: Scenario[] = [
           phase('A'),
           acceptPhase([cAfterClick('C-1', MAP_FRAME, { pageUrl: CONTACT, resourceType: 'document' })]),
         ],
-        documents: policyWith(
-          fontsPart('Google Maps wird erst geladen, wenn Sie zustimmen.', {
-            section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps',
-          }),
-        ),
+        documents: mapsConsentPolicy(),
       }),
   },
   {
@@ -289,7 +289,7 @@ export const variantScenarios: Scenario[] = [
             }),
           ]),
         ],
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
   {
@@ -301,7 +301,7 @@ export const variantScenarios: Scenario[] = [
       site({
         phases: [phase('A', { requests: [fontsCss('A-1')] })],
         cmp: botCmp(),
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
 
@@ -313,10 +313,8 @@ export const variantScenarios: Scenario[] = [
     expect: { status: 'completed', variants: ['wording-to-review'] },
     build: () =>
       fontsOnTwoPages(
-        policyWith(
-          fontsPart(
-            `${LOCAL_CLAIM} Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen.`,
-          ),
+        statementPolicy(
+          `${LOCAL_CLAIM} Dazu muss Ihr Browser eine Verbindung zu den Servern von Google aufbauen.`,
         ),
       ),
   },
@@ -349,7 +347,7 @@ export const variantScenarios: Scenario[] = [
             ],
           }),
         ],
-        documents: policyWith(fontsPart(LOCAL_CLAIM)),
+        documents: localFontsPolicy(),
       }),
   },
   {
@@ -359,10 +357,8 @@ export const variantScenarios: Scenario[] = [
     expect: { status: 'completed', variants: [] },
     build: () =>
       fontsOnTwoPages(
-        policyWith(
-          fontsPart(
-            'Font Awesome ist bei uns lokal installiert. Zu Servern von Fonticons, Inc. wird dabei keine Verbindung aufgebaut.',
-          ),
+        statementPolicy(
+          'Font Awesome ist bei uns lokal installiert. Zu Servern von Fonticons, Inc. wird dabei keine Verbindung aufgebaut.',
         ),
       ),
   },
@@ -388,14 +384,7 @@ export const variantScenarios: Scenario[] = [
     file: 'clean-maps-claim-fonts-loaded.json',
     description: 'Counterexample: a consent statement about Google Maps while only Google Fonts load',
     expect: { status: 'completed', variants: [] },
-    build: () =>
-      fontsOnTwoPages(
-        policyWith(
-          fontsPart('Google Maps wird erst geladen, wenn Sie zustimmen.', {
-            section: 'Datenschutzerklärung > 5. Plugins und Tools > Google Maps',
-          }),
-        ),
-      ),
+    build: () => fontsOnTwoPages(mapsConsentPolicy()),
   },
   {
     file: 'inconclusive-pdf.json',
@@ -425,10 +414,8 @@ export const variantScenarios: Scenario[] = [
     expect: { status: 'completed', variants: ['contradiction-replicated'] },
     build: () =>
       fontsOnTwoPages(
-        policyWith(
-          fontsPart(
-            `${LOCAL_CLAIM} Wenn Sie externe Inhalte zulassen, baut Ihr Browser eine Verbindung zu den Servern von Google auf.`,
-          ),
+        statementPolicy(
+          `${LOCAL_CLAIM} Wenn Sie externe Inhalte zulassen, baut Ihr Browser eine Verbindung zu den Servern von Google auf.`,
         ),
       ),
   },

@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { loadTexts } from '../../../src/core/data/load.ts';
 import { templateParams, uiText } from '../../../src/core/data/messages.ts';
-import type { FullReport, MessageParams, Report } from '../../../src/core/report/schema.ts';
+import type {
+  ConsentAction,
+  FullReport,
+  MessageParams,
+  Report,
+  SandboxMode,
+} from '../../../src/core/report/schema.ts';
 import { renderConsole } from '../../../src/reporters/console.ts';
 import { DISCLAIMER_KEYS, disclaimerParagraphs, disclaimerText } from '../../../src/reporters/disclaimer.ts';
 import { renderHtml } from '../../../src/reporters/html.ts';
@@ -19,6 +25,58 @@ const para = (key: string, params: MessageParams = {}, lang: 'de' | 'en' = 'de')
 
 type Mutate = (r: FullReport) => void;
 
+const screenshots =
+  (enabled: boolean): Mutate =>
+  (r) => {
+    r.scan.options!.screenshots = enabled;
+  };
+
+const unknownEgress: Mutate = (r) => {
+  r.scan.environment.egress = { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' };
+};
+
+const assertedEgress: Mutate = (r) => {
+  r.scan.environment.egress = {
+    mode: 'direct',
+    region: 'asserted',
+    assertedRegion: 'de',
+    source: 'laut Nutzerangabe (--assume-region)',
+  };
+  r.scan.options!.assumeRegion = 'de';
+};
+
+const proxy =
+  (mode: 'proxy' | 'direct'): Mutate =>
+  (r) => {
+    r.scan.options!.proxy = mode === 'proxy';
+    r.scan.environment.egress.mode = mode;
+  };
+
+const sandbox =
+  (mode: SandboxMode, active: boolean): Mutate =>
+  (r) => {
+    r.scan.options!.sandbox = mode;
+    r.scan.environment.sandbox = { mode, active };
+  };
+
+const scanStatus =
+  (status: FullReport['scan']['status']): Mutate =>
+  (r) => {
+    r.scan.status = status;
+  };
+
+const consent =
+  (action: ConsentAction['action'], clicked: boolean, verified: boolean | null): Mutate =>
+  (r) => {
+    r.scan.coverage.consentActions = [{ action, clicked, verified }];
+  };
+
+const draft =
+  (enabled: boolean): Mutate =>
+  (r) => {
+    r.disclaimer.draft = enabled;
+  };
+
 interface Case {
   key: string;
   params?: MessageParams;
@@ -29,13 +87,9 @@ interface Case {
 const CASES: Case[] = [
   {
     key: 'disclaimer.screenshots',
-    on: (r) => {
-      r.scan.options!.screenshots = true;
-    },
+    on: screenshots(true),
     off: [
-      (r) => {
-        r.scan.options!.screenshots = false;
-      },
+      screenshots(false),
       // the option was on, but no image was taken
       (r) => {
         r.evidence = r.evidence.filter((e) => e.type !== 'screenshot');
@@ -68,19 +122,9 @@ const CASES: Case[] = [
   },
   {
     key: 'disclaimer.egressUnknown',
-    on: (r) => {
-      r.scan.environment.egress = { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' };
-    },
+    on: unknownEgress,
     off: [
-      (r) => {
-        r.scan.environment.egress = {
-          mode: 'direct',
-          region: 'asserted',
-          assertedRegion: 'de',
-          source: 'laut Nutzerangabe (--assume-region)',
-        };
-        r.scan.options!.assumeRegion = 'de';
-      },
+      assertedEgress,
       // no active CONSENT check
       (r) => {
         r.checks = r.checks.filter((c) => !c.id.startsWith('CONSENT-'));
@@ -93,64 +137,30 @@ const CASES: Case[] = [
   {
     key: 'disclaimer.egressAsserted',
     params: { region: 'de' },
-    on: (r) => {
-      r.scan.environment.egress = {
-        mode: 'direct',
-        region: 'asserted',
-        assertedRegion: 'de',
-        source: 'laut Nutzerangabe (--assume-region)',
-      };
-      r.scan.options!.assumeRegion = 'de';
-    },
+    on: assertedEgress,
     off: [
       (r) => {
-        r.scan.environment.egress = { mode: 'direct', region: 'unknown', source: 'nicht festgestellt' };
+        unknownEgress(r);
         r.scan.options!.assumeRegion = null;
       },
     ],
   },
   {
     key: 'disclaimer.proxy',
-    on: (r) => {
-      r.scan.options!.proxy = true;
-      r.scan.environment.egress.mode = 'proxy';
-    },
-    off: [
-      (r) => {
-        r.scan.options!.proxy = false;
-        r.scan.environment.egress.mode = 'direct';
-      },
-    ],
+    on: proxy('proxy'),
+    off: [proxy('direct')],
   },
   {
     key: 'disclaimer.sandboxOff',
-    on: (r) => {
-      r.scan.options!.sandbox = 'off';
-      r.scan.environment.sandbox = { mode: 'off', active: false };
-    },
-    off: [
-      (r) => {
-        r.scan.options!.sandbox = 'require';
-        r.scan.environment.sandbox = { mode: 'require', active: true };
-      },
-      (r) => {
-        r.scan.options!.sandbox = 'container';
-        r.scan.environment.sandbox = { mode: 'container', active: false };
-      },
-    ],
+    on: sandbox('off', false),
+    off: [sandbox('require', true), sandbox('container', false)],
   },
   {
     // the exit reasons in words; findings above the threshold are no gap of the scan
     key: 'disclaimer.incomplete',
     params: { status: 'partial', hasReasons: true, reasons: 'Prüfung MAIL-01 fehlgeschlagen' },
-    on: (r) => {
-      r.scan.status = 'partial';
-    },
-    off: [
-      (r) => {
-        r.scan.status = 'complete';
-      },
-    ],
+    on: scanStatus('partial'),
+    off: [scanStatus('complete')],
   },
   {
     key: 'disclaimer.phaseC',
@@ -160,24 +170,16 @@ const CASES: Case[] = [
         for (const p of r.scan.coverage.pages) p.phases = p.phases.filter((ph) => ph !== 'C');
       },
       // phase C ran, but the accept click did not take place
-      (r) => {
-        r.scan.coverage.consentActions = [{ action: 'accept', clicked: false, verified: null }];
-      },
+      consent('accept', false, null),
       // no phase C at all
-      (r) => {
-        r.scan.coverage.consentActions = [{ action: 'reject', clicked: true, verified: true }];
-      },
+      consent('reject', true, true),
     ],
   },
   {
     key: 'disclaimer.phaseCFailed',
-    on: (r) => {
-      r.scan.coverage.consentActions = [{ action: 'accept', clicked: false, verified: null }];
-    },
+    on: consent('accept', false, null),
     off: [
-      (r) => {
-        r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: true }];
-      },
+      consent('accept', true, true),
       (r) => {
         r.scan.coverage.consentActions = [];
       },
@@ -185,14 +187,8 @@ const CASES: Case[] = [
   },
   {
     key: 'disclaimer.draft',
-    on: (r) => {
-      r.disclaimer.draft = true;
-    },
-    off: [
-      (r) => {
-        r.disclaimer.draft = false;
-      },
-    ],
+    on: draft(true),
+    off: [draft(false)],
   },
 ];
 
@@ -321,12 +317,8 @@ describe('disclaimer paragraphs: each condition in both states', () => {
   });
 
   it('an accept the banner did not confirm is said so in the paragraph of phase C', () => {
-    const confirmed = report((r) => {
-      r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: true }];
-    });
-    const unconfirmed = report((r) => {
-      r.scan.coverage.consentActions = [{ action: 'accept', clicked: true, verified: false }];
-    });
+    const confirmed = report(consent('accept', true, true));
+    const unconfirmed = report(consent('accept', true, false));
 
     expect(disclaimerParagraphs(confirmed, ctx().texts)).toContain(
       para('disclaimer.phaseC', { verified: true }),
@@ -354,9 +346,7 @@ describe('disclaimer paragraphs: each condition in both states', () => {
   });
 
   it('leaves the draft paragraph out where the report prints its own draft line', () => {
-    const r = report((x) => {
-      x.disclaimer.draft = true;
-    });
+    const r = report(draft(true));
 
     expect(disclaimerParagraphs(r, ctx().texts)).toContain(para('disclaimer.draft'));
     expect(disclaimerParagraphs(r, ctx().texts, { withoutDraft: true })).not.toContain(

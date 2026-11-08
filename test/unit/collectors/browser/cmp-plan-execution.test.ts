@@ -13,6 +13,7 @@ import { type CmpApi, CmpBridge } from '../../../../src/collectors/browser/cmp-b
 import type { ClickPlan } from '../../../../src/core/snapshot/browser.ts';
 import type { CollectorError } from '../../../../src/core/snapshot/common.ts';
 import { DEFAULT_CLASSIFY } from '../../../utils/classify.ts';
+import { layerButton } from '../../cmp/fakes.ts';
 
 const page = {} as Page;
 const api = {} as CmpApi;
@@ -122,20 +123,14 @@ describe('CmpBridge and the settings layer', () => {
     takenAt: '2026-11-07T10:00:00.000Z',
     opened: true,
     buttons: [
-      {
-        role: 'button',
-        name,
-        tag: 'button',
+      layerButton(name, {
         kind: 'save',
         kindConfidence: 'high',
-        layer: 1,
         box: null,
-        visibleAtFirstScreen: true,
-        actionableAtFirstScreen: true,
         contrast: null,
         selector: '#save',
         vendorRole: 'save',
-      },
+      }),
     ],
     containerUnambiguous: true,
     buttonsTruncated: false,

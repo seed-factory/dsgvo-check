@@ -12,57 +12,42 @@ import { detectTrustStore } from '../../../../src/core/snapshot/index.ts';
 
 const run = promisify(execFile);
 
+const SYSTEM_CA = '--use-system-ca';
+const NO_SYSTEM_CA = '--no-use-system-ca';
+const nodeOptions = (...flags: string[]) => ({ NODE_OPTIONS: flags.join(' ') });
+const systemCa = (value: string) => ({ NODE_USE_SYSTEM_CA: value });
+
 describe('detectTrustStore over injected settings', () => {
   it.each([
     // the two scenarios
-    ['command line: enabled, then disabled', {}, ['--use-system-ca', '--no-use-system-ca'], 'node-bundled'],
+    ['command line: enabled, then disabled', {}, [SYSTEM_CA, NO_SYSTEM_CA], 'node-bundled'],
     ['NODE_OPTIONS with the flag in double quotes', { NODE_OPTIONS: '"--use-system-ca"' }, [], 'system'],
     // order and negation
-    ['command line: disabled, then enabled', {}, ['--no-use-system-ca', '--use-system-ca'], 'system'],
-    [
-      'NODE_OPTIONS: enabled, then disabled',
-      { NODE_OPTIONS: '--use-system-ca --no-use-system-ca' },
-      [],
-      'node-bundled',
-    ],
-    [
-      'NODE_OPTIONS: disabled, then enabled',
-      { NODE_OPTIONS: '--no-use-system-ca --use-system-ca' },
-      [],
-      'system',
-    ],
+    ['command line: disabled, then enabled', {}, [NO_SYSTEM_CA, SYSTEM_CA], 'system'],
+    ['NODE_OPTIONS: enabled, then disabled', nodeOptions(SYSTEM_CA, NO_SYSTEM_CA), [], 'node-bundled'],
+    ['NODE_OPTIONS: disabled, then enabled', nodeOptions(NO_SYSTEM_CA, SYSTEM_CA), [], 'system'],
     [
       'the command line wins over NODE_OPTIONS (enabled → disabled)',
-      { NODE_OPTIONS: '--use-system-ca' },
-      ['--no-use-system-ca'],
+      nodeOptions(SYSTEM_CA),
+      [NO_SYSTEM_CA],
       'node-bundled',
     ],
     [
       'the command line wins over NODE_OPTIONS (disabled → enabled)',
-      { NODE_OPTIONS: '--no-use-system-ca' },
-      ['--use-system-ca'],
+      nodeOptions(NO_SYSTEM_CA),
+      [SYSTEM_CA],
       'system',
     ],
     // NODE_USE_SYSTEM_CA is only the starting value
-    [
-      'NODE_USE_SYSTEM_CA=1, switched off on the command line',
-      { NODE_USE_SYSTEM_CA: '1' },
-      ['--no-use-system-ca'],
-      'node-bundled',
-    ],
+    ['NODE_USE_SYSTEM_CA=1, switched off on the command line', systemCa('1'), [NO_SYSTEM_CA], 'node-bundled'],
     [
       'NODE_USE_SYSTEM_CA=1, switched off in NODE_OPTIONS',
-      { NODE_USE_SYSTEM_CA: '1', NODE_OPTIONS: '--no-use-system-ca' },
+      { ...systemCa('1'), ...nodeOptions(NO_SYSTEM_CA) },
       [],
       'node-bundled',
     ],
-    [
-      'NODE_USE_SYSTEM_CA=0, switched on on the command line',
-      { NODE_USE_SYSTEM_CA: '0' },
-      ['--use-system-ca'],
-      'system',
-    ],
-    ['NODE_USE_SYSTEM_CA=1 alone', { NODE_USE_SYSTEM_CA: '1' }, [], 'system'],
+    ['NODE_USE_SYSTEM_CA=0, switched on on the command line', systemCa('0'), [SYSTEM_CA], 'system'],
+    ['NODE_USE_SYSTEM_CA=1 alone', systemCa('1'), [], 'system'],
     // spelling Node accepts
     ['underscores in the option name', { NODE_OPTIONS: '--use_system_ca' }, [], 'system'],
     ['a value after =, which Node reads as "on"', {}, ['--use-system-ca=1'], 'system'],
@@ -92,10 +77,10 @@ describe('detectTrustStore over injected settings', () => {
       ['--use-system-ca-extra'],
       'node-bundled',
     ],
-    ['NODE_USE_SYSTEM_CA is read only as 1', { NODE_USE_SYSTEM_CA: 'true' }, [], 'node-bundled'],
+    ['NODE_USE_SYSTEM_CA is read only as 1', systemCa('true'), [], 'node-bundled'],
     [
       'NODE_USE_SYSTEM_CA=0 next to a longer option name',
-      { NODE_USE_SYSTEM_CA: '0', NODE_OPTIONS: '--use-system-cache' },
+      { ...systemCa('0'), ...nodeOptions('--use-system-cache') },
       [],
       'node-bundled',
     ],
@@ -112,7 +97,7 @@ describe('detectTrustStore over injected settings', () => {
     [
       '--use-bundled-ca next to --use-system-ca adds the system roots',
       {},
-      ['--use-system-ca', '--use-bundled-ca'],
+      [SYSTEM_CA, '--use-bundled-ca'],
       'system',
     ],
   ] as const)('%s', (_label, env, execArgv, expected) => {
@@ -121,9 +106,9 @@ describe('detectTrustStore over injected settings', () => {
 
   it('counterexamples that already held: nothing set, the plain flag, the plain variable', () => {
     expect(detectTrustStore({}, [])).toBe('node-bundled');
-    expect(detectTrustStore({}, ['--use-system-ca'])).toBe('system');
-    expect(detectTrustStore({ NODE_OPTIONS: '--use-system-ca' }, [])).toBe('system');
-    expect(detectTrustStore({ NODE_USE_SYSTEM_CA: '1' }, [])).toBe('system');
+    expect(detectTrustStore({}, [SYSTEM_CA])).toBe('system');
+    expect(detectTrustStore(nodeOptions(SYSTEM_CA), [])).toBe('system');
+    expect(detectTrustStore(systemCa('1'), [])).toBe('system');
   });
 });
 
@@ -155,47 +140,29 @@ async function inChild(flags: string[], nodeOptions: string | null, extraEnv: Re
 describe.skipIf(!systemStoreDiffers)('the label equals the CA set of a real Node process', () => {
   it.each([
     ['baseline', [], null, {}, 'node-bundled'],
-    ['--use-system-ca', ['--use-system-ca'], null, {}, 'system'],
-    [
-      '--use-system-ca --no-use-system-ca',
-      ['--use-system-ca', '--no-use-system-ca'],
-      null,
-      {},
-      'node-bundled',
-    ],
-    ['--no-use-system-ca --use-system-ca', ['--no-use-system-ca', '--use-system-ca'], null, {}, 'system'],
+    ['--use-system-ca', [SYSTEM_CA], null, {}, 'system'],
+    ['--use-system-ca --no-use-system-ca', [SYSTEM_CA, NO_SYSTEM_CA], null, {}, 'node-bundled'],
+    ['--no-use-system-ca --use-system-ca', [NO_SYSTEM_CA, SYSTEM_CA], null, {}, 'system'],
     ['NODE_OPTIONS="--use-system-ca" in double quotes', [], '"--use-system-ca"', {}, 'system'],
     ["NODE_OPTIONS='--use-system-ca' in single quotes", [], "'--use-system-ca'", {}, 'node-bundled'],
-    ['NODE_OPTIONS yes, command line no', ['--no-use-system-ca'], '--use-system-ca', {}, 'node-bundled'],
-    ['NODE_OPTIONS no, command line yes', ['--use-system-ca'], '--no-use-system-ca', {}, 'system'],
+    ['NODE_OPTIONS yes, command line no', [NO_SYSTEM_CA], '--use-system-ca', {}, 'node-bundled'],
+    ['NODE_OPTIONS no, command line yes', [SYSTEM_CA], '--no-use-system-ca', {}, 'system'],
     ['NODE_OPTIONS yes then no', [], '--use-system-ca --no-use-system-ca', {}, 'node-bundled'],
     ['NODE_OPTIONS no then yes', [], '--no-use-system-ca --use-system-ca', {}, 'system'],
-    ['NODE_USE_SYSTEM_CA=1', [], null, { NODE_USE_SYSTEM_CA: '1' }, 'system'],
-    [
-      'NODE_USE_SYSTEM_CA=1 and --no-use-system-ca',
-      ['--no-use-system-ca'],
-      null,
-      { NODE_USE_SYSTEM_CA: '1' },
-      'node-bundled',
-    ],
+    ['NODE_USE_SYSTEM_CA=1', [], null, systemCa('1'), 'system'],
+    ['NODE_USE_SYSTEM_CA=1 and --no-use-system-ca', [NO_SYSTEM_CA], null, systemCa('1'), 'node-bundled'],
     [
       'NODE_USE_SYSTEM_CA=1 and NODE_OPTIONS=--no-use-system-ca',
       [],
       '--no-use-system-ca',
-      { NODE_USE_SYSTEM_CA: '1' },
+      systemCa('1'),
       'node-bundled',
     ],
-    [
-      'NODE_USE_SYSTEM_CA=0 and --use-system-ca',
-      ['--use-system-ca'],
-      null,
-      { NODE_USE_SYSTEM_CA: '0' },
-      'system',
-    ],
-    ['NODE_USE_SYSTEM_CA=true', [], null, { NODE_USE_SYSTEM_CA: 'true' }, 'node-bundled'],
+    ['NODE_USE_SYSTEM_CA=0 and --use-system-ca', [SYSTEM_CA], null, systemCa('0'), 'system'],
+    ['NODE_USE_SYSTEM_CA=true', [], null, systemCa('true'), 'node-bundled'],
     ['--use_system_ca', ['--use_system_ca'], null, {}, 'system'],
     ['--use-system-ca=false', ['--use-system-ca=false'], null, {}, 'system'],
-    ['--use-system-ca --use-bundled-ca', ['--use-system-ca', '--use-bundled-ca'], null, {}, 'system'],
+    ['--use-system-ca --use-bundled-ca', [SYSTEM_CA, '--use-bundled-ca'], null, {}, 'system'],
   ] as const)(
     '%s',
     async (_label, flags, nodeOptions, extraEnv, expected) => {

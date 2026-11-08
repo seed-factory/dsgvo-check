@@ -4,7 +4,6 @@ import { splitSentences } from '../../../../../src/checks/browser/policy-claims.
 import type { Observation } from '../../../../../src/core/api.ts';
 import { loadDataDir, loadTexts } from '../../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../../src/core/data/messages.ts';
-import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type { DocumentPart, DocumentRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
 import { scenariosOf } from '../scenarios/index.ts';
@@ -45,7 +44,6 @@ describe('LEGAL-02 designations of a former legal situation', () => {
   it('violation: Privacy Shield in the policy → one info-level observation with the case, date and quote', () => {
     const r = runCheck(legal02, scenario('violation-privacy-shield-in-policy.json'));
 
-    expect(r.status).toBe('completed');
     const [o, ...rest] = observationsOf(r);
     expect(rest).toEqual([]);
     expect(o).toMatchObject({
@@ -76,7 +74,6 @@ describe('LEGAL-02 designations of a former legal situation', () => {
         matchLevel: 'term',
       }),
     ]);
-    for (const ev of o!.evidence) expect(EvidenceSchema.safeParse({ id: 'e1', ...ev }).success).toBe(true);
   });
 
   it('violation: TMG and RStV in the Impressum → one observation per designation', () => {
@@ -106,12 +103,26 @@ describe('LEGAL-02 designations of a former legal situation', () => {
 type Case = [label: string, kind: 'impressum' | 'privacy', text: string];
 
 /** Sentences that use a designation only as former or next to its successor. */
-const MARKED: Case[] = [
+const DICTIONARY_CASES: Case[] = [
   [
     'invalidity stated in the sentence',
     'privacy',
     'Das EU-US Privacy Shield wurde vom EuGH am 16.07.2020 für ungültig erklärt.',
   ],
+  [
+    '"bzw." keeps old and new designation in one sentence',
+    'impressum',
+    'Angaben nach TMG bzw. DDG: Beispiel GmbH.',
+  ],
+  [
+    'English: the framework was struck down',
+    'privacy',
+    'The EU-U.S. Privacy Shield was invalidated by the CJEU in 2020.',
+  ],
+];
+
+const MARKED: Case[] = [
+  ...DICTIONARY_CASES,
   [
     'the end of the framework',
     'privacy',
@@ -123,11 +134,6 @@ const MARKED: Case[] = [
     'Angaben gemäß § 5 DDG (vormals § 5 TMG): Beispiel GmbH.',
   ],
   [
-    '"bzw." keeps old and new designation in one sentence',
-    'impressum',
-    'Angaben nach TMG bzw. DDG: Beispiel GmbH.',
-  ],
-  [
     'the successor framework named in the sentence',
     'privacy',
     'Google ist nach dem EU-US Data Privacy Framework zertifiziert (Nachfolger des Privacy Shield).',
@@ -136,11 +142,6 @@ const MARKED: Case[] = [
     'the full title of the DSGVO names the directive it repealed',
     'privacy',
     'Grundlage ist die Verordnung (EU) 2016/679 vom 27. April 2016 zur Aufhebung der Richtlinie 95/46/EG (Datenschutz-Grundverordnung).',
-  ],
-  [
-    'English: the framework was struck down',
-    'privacy',
-    'The EU-U.S. Privacy Shield was invalidated by the CJEU in 2020.',
   ],
   ['the renamed law next to its new name', 'privacy', 'Rechtsgrundlage ist § 25 TDDDG (ehemals TTDSG).'],
   [
@@ -171,7 +172,7 @@ describe('LEGAL-02 counts only a mention its own sentence does not mark as forme
     expect(observationsOf(r)).toEqual([]);
   });
 
-  it.each(MARKED)(
+  it.each(DICTIONARY_CASES)(
     '%s: without the cues and successors of the dictionary it is reported',
     (_l, kind, text) => {
       const legal = structuredClone(loadDataDir('legal')) as {

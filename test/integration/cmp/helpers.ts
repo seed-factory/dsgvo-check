@@ -6,6 +6,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { signalKinds } from '../../../src/cmp/detection.ts';
 import { extract, loadLexicon, waitForBanner, waitForCmp } from '../../../src/cmp/index.ts';
+import { clickGuardInit } from '../../../src/cmp/page/action-guard.ts';
 import type { ClickOutcome, CmpAdapter, CmpFacts, KnownCmpId, VerifyResult } from '../../../src/cmp/types.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { launchTestBrowser, type TestBrowser } from '../../utils/browser.ts';
@@ -26,6 +27,7 @@ export async function openSession(
   ua: string = CHROME_UA,
 ): Promise<Session> {
   const browser = await launchTestBrowser(server, { args: [`--user-agent=${ua}`] });
+  await browser.context.addInitScript(clickGuardInit);
   const page = browser.context.pages()[0] ?? (await browser.context.newPage());
   await page.goto(url, { waitUntil: 'load' });
   return { browser, page };
@@ -182,60 +184,46 @@ export function describeCmpScenarios(
       expect(facts.botSignals).toEqual([]);
     });
 
-    it('reject: clicks only the unambiguous reject, the banner closes, the state is read before and after the reload', async () => {
-      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
+    it.each(['reject', 'accept'] as const)(
+      '%s: clicks the choice and verifies the state after reload',
+      async (action) => {
+        const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
+        const { click } = await decideAndAct(page, adapter, action);
+        expect(click.clicked).toBe(true);
+        if (action === 'reject') {
+          expect(click.error).toBeUndefined();
+          expect(click.button?.kind).toBe('reject');
+        } else {
+          expect(click.button?.name).toMatch(s.acceptName);
+        }
 
-      const { click } = await decideAndAct(page, adapter, 'reject');
+        const verify = await adapter.verify(page, action);
+        expectVerifiedByState(verify);
+        if (action === 'reject') {
+          expect(verify.method).toContain('ui-closed');
+          expect(verify.stateAfter.map((st) => st.origin)).toEqual(
+            expect.arrayContaining(['action', 'stored']),
+          );
+          expect((await adapter.extract(page, 'after-reload')).firstLayer.bannerVisible).toBe(false);
+        }
+      },
+    );
 
-      expect(click.error).toBeUndefined();
-      expect(click.clicked).toBe(true);
-      expect(click.button?.kind).toBe('reject');
-      const verify = await adapter.verify(page, 'reject');
-      expectVerifiedByState(verify);
-      expect(verify.method).toContain('ui-closed');
-      expect(verify.stateAfter.map((st) => st.origin)).toContain('action');
-      expect(verify.stateAfter.map((st) => st.origin)).toContain('stored');
-      const after = await adapter.extract(page, 'after-reload');
-      expect(after.firstLayer.bannerVisible).toBe(false);
-    });
-
-    const blockingUrl = s.blockingUrl;
-    if (blockingUrl) {
-      it('blocking variant without reject on the first layer → blocking-no-reject, nothing is clicked', async () => {
-        const { page, adapter } = await env.openRecognized(blockingUrl, s.id);
+    for (const [url, variant, blocking] of [
+      [s.blockingUrl, 'blocking-no-reject', expect.arrayContaining([true])],
+      [s.nonblockingNoRejectUrl, 'nonblocking-no-reject', [false, false, false]],
+    ] as const) {
+      if (!url) continue;
+      it(`${variant}: nothing is clicked without a first-layer reject`, async () => {
+        const { page, adapter } = await env.openRecognized(url, s.id);
         expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
 
         const facts = await extract(page, adapter, 'first-screen');
-
         const { overlay, scrollLock, inert } = facts.blocking;
-        expect([overlay, scrollLock, inert]).toContain(true);
-        await expectNoRejectClicked(page, adapter, facts, 'blocking-no-reject');
+        expect([overlay, scrollLock, inert]).toEqual(blocking);
+        await expectNoRejectClicked(page, adapter, facts, variant);
       });
     }
-
-    const nonblockingUrl = s.nonblockingNoRejectUrl;
-    if (nonblockingUrl) {
-      it('bar without reject on the first layer → nonblocking-no-reject, nothing is clicked', async () => {
-        const { page, adapter } = await env.openRecognized(nonblockingUrl, s.id);
-        expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
-
-        const facts = await extract(page, adapter, 'first-screen');
-
-        const { overlay, scrollLock, inert } = facts.blocking;
-        expect([overlay, scrollLock, inert]).toEqual([false, false, false]);
-        await expectNoRejectClicked(page, adapter, facts, 'nonblocking-no-reject');
-      });
-    }
-
-    it('accept: clicks accept, then reads the state again after the reload', async () => {
-      const { page, adapter } = await env.openRecognized(s.okUrl, s.id, { banner: true });
-
-      const { click } = await decideAndAct(page, adapter, 'accept');
-
-      expect(click.clicked).toBe(true);
-      expect(click.button?.name).toMatch(s.acceptName);
-      expectVerifiedByState(await adapter.verify(page, 'accept'));
-    });
 
     // The adapter executes the target core chose and decides nothing itself.
     it('act(page, action, target) clicks exactly the target chosen by classifyFirstLayer', async () => {

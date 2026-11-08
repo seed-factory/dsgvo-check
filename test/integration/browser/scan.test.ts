@@ -2,29 +2,22 @@
  * The real browser collector inside `scan`: the report is valid (Ajv), coverage lists the visited pages and the
  * environment shows the browser; fatal start pages fail the scan.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import { scan } from '../../../src/scan.ts';
-import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { fakeCollectors, testDataDir } from '../../utils/scan-harness.ts';
 import { BROWSER_PROBE_CHECK, FAST_TIMING, TEST_SANDBOX } from './helpers.ts';
 
-let server: FixtureServer;
 const dataDir = testDataDir({ ruleset: { 'TEST-01': { seen: 'info' } } });
 
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/ga4', 'browser/fatal'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
+const server = useFixtureServer(() => ({ sites: ['browser/ga4', 'browser/fatal'] }));
 
 const base = () => ({
-  network: server.network(),
+  network: server().network(),
   registry: new CheckRegistry([BROWSER_PROBE_CHECK]),
   dataDir,
   log: silentLogger,

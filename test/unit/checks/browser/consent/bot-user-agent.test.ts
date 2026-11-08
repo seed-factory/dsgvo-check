@@ -14,6 +14,7 @@ import { embed01 } from '../../../../../src/checks/browser/embed-01.ts';
 import { embed02 } from '../../../../../src/checks/browser/embed-02.ts';
 import { embed03 } from '../../../../../src/checks/browser/embed-03.ts';
 import { priv02 } from '../../../../../src/checks/browser/priv-02.ts';
+import { consentSignals, signalOutcome } from '../../../../../src/checks/browser/signals.ts';
 import {
   BOT_USER_AGENT_SIGNAL,
   type BotSignal,
@@ -40,10 +41,7 @@ import {
 } from '../helpers.ts';
 import { THUMBNAIL, VIDEOS, videoPages } from '../scenarios/embed-03.ts';
 import { fontsCss, fontsOnTwoPages, fontsPart, LOCAL_CLAIM, policyWith } from '../scenarios/priv-02.ts';
-import { ga } from '../scenarios/shared.ts';
-
-const LABEL = 'CCM19 isBotBrowser (app.js)';
-const userAgentSignal: BotSignal = { cmpId: 'ccm19', signal: BOT_USER_AGENT_SIGNAL, detail: LABEL };
+import { crawlerTestSignal, ga } from '../scenarios/shared.ts';
 
 /** A GA hit with an identifier before any interaction, which would be a finding of CONSENT-01 and CONSENT-03. */
 const tracked = (cmp: CmpSection) =>
@@ -206,82 +204,57 @@ const SIGNAL_CHECKS: Array<[string, AnyCheck, FindingInput]> = [
   ],
 ];
 /** The checks that report a dialog the CMP did not open for the scanner. */
-const DIALOG_CHECKS = ['CONSENT-03', 'CONSENT-04', 'CONSENT-05'];
+const DIALOG_CHECKS = [consent03, consent04, consent05];
 
 const botDiagnostics = (r: ReturnType<typeof runCheck>) =>
   (r.outcome?.diagnostics ?? []).filter((d) => d.code === 'SCAN-BOTMODE');
 
-describe.each(SIGNAL_CHECKS)('%s and a CMP crawler test that matched the scanner', (id, check) => {
-  it('inconclusive: the closed dialog with the crawler signal gives the reason that names it, no observation', () => {
-    const r = runCheck(check, tracked(unopenedDialogCmp({ botSignals: [userAgentSignal] })));
+const OTHER_BOT: BotSignal = { cmpId: 'ccm19', signal: 'ccm19:bot-branch' };
 
-    expect({ status: r.status, reason: r.reason }).toEqual({
-      status: 'inconclusive',
-      reason: 'cmp-bot-user-agent',
-    });
-    expect(r.outcome?.observations).toEqual([]);
-    expect(botDiagnostics(r)).toEqual([
-      {
-        code: 'SCAN-BOTMODE',
-        affects: [id],
-        params: { signal: BOT_USER_AGENT_SIGNAL, cause: 'user-agent', test: LABEL },
-      },
-    ]);
-  });
-
-  it('counterexample: the same closed dialog without the crawler signal keeps its own reason', () => {
+it.each(DIALOG_CHECKS.map((check) => [check.id, check] as const))(
+  '%s: the same closed dialog without the crawler signal keeps its own reason',
+  (_id, check) => {
     const r = runCheck(check, tracked(unopenedDialogCmp()));
-
-    expect(r.reason).not.toBe('cmp-bot-user-agent');
+    expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-dialog-not-opened' });
     expect(botDiagnostics(r)).toEqual([]);
-    if (DIALOG_CHECKS.includes(id)) {
-      expect({ status: r.status, reason: r.reason }).toEqual({
-        status: 'inconclusive',
-        reason: 'cmp-dialog-not-opened',
-      });
-    }
-  });
+  },
+);
 
-  it('counterexample: another bot signal of the CMP stays the general bot mode', () => {
-    const other: BotSignal = { cmpId: 'ccm19', signal: 'ccm19:bot-branch' };
-    const r = runCheck(check, tracked(unopenedDialogCmp({ botSignals: [other] })));
+it('counterexample: another bot signal of the CMP stays the general bot mode', () => {
+  const r = runCheck(consent04, tracked(unopenedDialogCmp({ botSignals: [OTHER_BOT] })));
+  expect(r).toMatchObject({ status: 'inconclusive', reason: 'bot-mode' });
+  expect(botDiagnostics(r)).toEqual([
+    { code: 'SCAN-BOTMODE', affects: [consent04.id], params: { signal: OTHER_BOT.signal } },
+  ]);
+});
 
-    expect({ status: r.status, reason: r.reason }).toEqual({ status: 'inconclusive', reason: 'bot-mode' });
-    expect(botDiagnostics(r)).toEqual([
-      { code: 'SCAN-BOTMODE', affects: [id], params: { signal: 'ccm19:bot-branch' } },
-    ]);
-  });
+it('clean: a banner the CMP opened for the scanner gives no bot reason', () => {
+  const r = runCheck(
+    consent04,
+    site({
+      phases: [phase('A'), phase('B')],
+      cmp: cmpWith(
+        { phase: 'A', facts: [visibleBanner({ phase: 'A' })] },
+        { phase: 'B', facts: [visibleBanner()] },
+      ),
+      plan: makeBrowserPlan(),
+    }),
+  );
 
-  it('clean: a banner the CMP opened for the scanner gives no bot reason', () => {
-    const r = runCheck(
-      check,
-      site({
-        phases: [phase('A'), phase('B')],
-        cmp: cmpWith(
-          { phase: 'A', facts: [visibleBanner({ phase: 'A' })] },
-          { phase: 'B', facts: [visibleBanner()] },
-        ),
-        plan: makeBrowserPlan(),
-      }),
-    );
-
-    expect(r.reason).not.toBe('cmp-bot-user-agent');
-    expect(r.reason).not.toBe('bot-mode');
-    expect(botDiagnostics(r)).toEqual([]);
-  });
+  expect(r.reason).not.toBe('cmp-bot-user-agent');
+  expect(r.reason).not.toBe('bot-mode');
+  expect(botDiagnostics(r)).toEqual([]);
 });
 
 describe('the crawler signal among other bot signals', () => {
   it('names the crawler test, which explains the closed dialog', () => {
-    const r = runCheck(
-      consent04,
-      tracked(
-        unopenedDialogCmp({ botSignals: [{ cmpId: 'ccm19', signal: 'ccm19:bot-branch' }, userAgentSignal] }),
-      ),
-    );
+    const r = runCheck(consent04, tracked(unopenedDialogCmp({ botSignals: [OTHER_BOT, crawlerTestSignal] })));
 
     expect(r.reason).toBe('cmp-bot-user-agent');
-    expect(botDiagnostics(r)[0]?.params).toMatchObject({ cause: 'user-agent', test: LABEL });
+    expect(botDiagnostics(r)[0]?.params).toMatchObject({
+      cause: 'user-agent',
+      test: crawlerTestSignal.detail,
+    });
   });
 });
 
@@ -299,7 +272,9 @@ const withSignal = (cmp: CmpSection, ph: 'A' | 'B', signal: Partial<CmpFacts>): 
 const SPIDER: BotSignal = { cmpId: 'cookiebot', signal: 'cookiebot:isSpider' };
 
 /** A direct signal in the CMP facts of one phase, the reason it gives and its diagnostic (without `affects`). */
-const SIGNALS: Array<[string, 'A' | 'B', Partial<CmpFacts>, string, Omit<DiagnosticInput, 'affects'>]> = [
+type SignalCase = [string, 'A' | 'B', Partial<CmpFacts>, string, Omit<DiagnosticInput, 'affects'>];
+
+const CHECK_SIGNALS: SignalCase[] = [
   [
     'a bot signal in phase A (cookiebot:isSpider)',
     'A',
@@ -307,6 +282,16 @@ const SIGNALS: Array<[string, 'A' | 'B', Partial<CmpFacts>, string, Omit<Diagnos
     'bot-mode',
     { code: 'SCAN-BOTMODE', params: { signal: 'cookiebot:isSpider' } },
   ],
+  [
+    'a geo signal in phase B (out of region)',
+    'B',
+    { geoSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isOutOfRegion' }] },
+    'geo',
+    { code: 'SCAN-GEO', params: { signal: 'cookiebot:isOutOfRegion' } },
+  ],
+];
+
+const OTHER_PHASE_SIGNALS: SignalCase[] = [
   [
     'a bot signal in phase B (cookiebot:isSpider)',
     'B',
@@ -321,16 +306,26 @@ const SIGNALS: Array<[string, 'A' | 'B', Partial<CmpFacts>, string, Omit<Diagnos
     'geo',
     { code: 'SCAN-GEO', params: { signal: 'tcf:gdprApplies=false' } },
   ],
-  [
-    'a geo signal in phase B (out of region)',
-    'B',
-    { geoSignals: [{ cmpId: 'cookiebot', signal: 'cookiebot:isOutOfRegion' }] },
-    'geo',
-    { code: 'SCAN-GEO', params: { signal: 'cookiebot:isOutOfRegion' } },
-  ],
 ];
 
-describe.each(SIGNAL_CHECKS)('%s and a direct bot or geo signal of the CMP', (id, check, finding) => {
+describe.each(SIGNAL_CHECKS)('%s and CMP bot and geo signals', (id, check, finding) => {
+  it('inconclusive: the closed dialog with the crawler signal gives the reason that names it, no observation', () => {
+    const r = runCheck(check, tracked(unopenedDialogCmp({ botSignals: [crawlerTestSignal] })));
+
+    expect({ status: r.status, reason: r.reason }).toEqual({
+      status: 'inconclusive',
+      reason: 'cmp-bot-user-agent',
+    });
+    expect(r.outcome?.observations).toEqual([]);
+    expect(botDiagnostics(r)).toEqual([
+      {
+        code: 'SCAN-BOTMODE',
+        affects: [id],
+        params: { signal: BOT_USER_AGENT_SIGNAL, cause: 'user-agent', test: crawlerTestSignal.detail },
+      },
+    ]);
+  });
+
   it('counterexample: the same input without a signal gives the finding', () => {
     const r = runCheck(check, finding.site(finding.cmp));
 
@@ -338,7 +333,7 @@ describe.each(SIGNAL_CHECKS)('%s and a direct bot or geo signal of the CMP', (id
     expect(variantsOf(r)).toEqual([finding.variant]);
   });
 
-  it.each(SIGNALS)(
+  it.each(CHECK_SIGNALS)(
     '%s → inconclusive with its diagnostic, no observation',
     (_name, ph, signal, reason, diagnostic) => {
       const r = runCheck(check, finding.site(withSignal(finding.cmp, ph, signal)));
@@ -349,3 +344,16 @@ describe.each(SIGNAL_CHECKS)('%s and a direct bot or geo signal of the CMP', (id
     },
   );
 });
+
+it.each(OTHER_PHASE_SIGNALS)(
+  '%s gives its diagnostic through the shared signal evaluation',
+  (_name, ph, signal, reason, diagnostic) => {
+    const signals = consentSignals(withSignal(withoutBanner, ph, signal), ['A', 'B']);
+    expect(signalOutcome(consent04.id, signals)).toEqual({
+      status: 'inconclusive',
+      reason,
+      observations: [],
+      diagnostics: [{ ...diagnostic, affects: [consent04.id] }],
+    });
+  },
+);

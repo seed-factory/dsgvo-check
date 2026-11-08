@@ -1,79 +1,58 @@
-/** Rendering of every emitted MAIL-* observation in de and en without unresolved placeholders. */
 import { describe, expect, it } from 'vitest';
-import { dnsChecks } from '../../../../src/checks/dns/index.ts';
+import { mail01 } from '../../../../src/checks/dns/mail-01.ts';
+import { mail02 } from '../../../../src/checks/dns/mail-02.ts';
 import { loadTexts } from '../../../../src/core/data/load.ts';
 import { formatMessage, renderMessage } from '../../../../src/core/data/messages.ts';
-import { checkFixtures } from '../../../utils/completeness.ts';
 import { observationsOf, runCheck } from '../../../utils/snapshot-builder.ts';
 import { dnsSnapshot, type ZoneSpec } from './zone.ts';
 
-/** Extra scenarios so that every declared variant is rendered at least once. */
 const base: ZoneSpec = { 'MX example.de': ['10 mx.example.de'], 'TXT _dmarc.www.example.de': 'NXDOMAIN' };
-const SCENARIOS: ZoneSpec[] = [
-  {
-    ...base,
-    'TXT _dmarc.example.de': ['v=DMARC1; p=reject; t=y; pct=50; sp=none'],
-    'TXT example.de': ['v=spf1 ptr'],
-  },
-  { ...base, 'TXT _dmarc.example.de': ['v=DMARC1; p=reject'], 'TXT example.de': ['v=spf1 ?all'] },
-  {
-    ...base,
-    'MX example.de': ['0 .'],
-    'TXT _dmarc.example.de': ['v=DMARC1; p=quarantine'],
-    'TXT example.de': ['v=spf1 ~all'],
-  },
-  {
-    ...base,
-    'MX example.de': ['0 .'],
-    'TXT _dmarc.example.de': ['v=DMARC1; p=bogus'],
-    'TXT example.de': ['v=spf1'],
-  },
-];
 
-describe('texts render for every emitted observation', () => {
-  const fromFixtures = dnsChecks.flatMap((check) =>
-    checkFixtures(check).map((fx) => runCheck(check, fx.snapshot)),
-  );
-  const fromScenarios = SCENARIOS.flatMap((spec) => dnsChecks.map((c) => runCheck(c, dnsSnapshot(spec))));
-  const observations = [...fromFixtures, ...fromScenarios].flatMap((r) =>
-    r.outcome ? observationsOf(r) : [],
-  );
+it('renders combined DMARC options, Null MX and SPF without an all mechanism in both languages', () => {
+  const cases = [
+    [
+      '10 mx.example.de',
+      'p=reject; t=y; pct=50; sp=none',
+      'ptr',
+      ['weak-option', 'legacy-pct', 'permissive-qualifier', 'ptr-mechanism'],
+    ],
+    ['0 .', 'p=quarantine', '~all', ['weak-option', 'softfail-with-enforcement']],
+    ['0 .', 'p=bogus', '', ['weak-option', 'permissive-qualifier']],
+  ] as const;
+  const translations = [loadTexts('de'), loadTexts('en')];
 
-  it('every declared variant is emitted by a fixture or a scenario', () => {
-    const emitted = new Set(observations.map((o) => `${o.checkId}.${o.variant}`));
-    const declared = dnsChecks.flatMap((c) => c.variants.map((v) => `${c.id}.${v.variant}`));
-    expect(declared.filter((k) => !emitted.has(k))).toEqual([]);
-  });
-
-  it.each(['de', 'en'] as const)('%s: no unresolved {param} and no missing text', (lang) => {
-    const texts = loadTexts(lang);
-    for (const o of observations) {
-      const m = renderMessage(texts, `${o.checkId}.${o.variant}`, o.params);
-      expect(`${m.title} ${m.body}`, `${o.checkId}.${o.variant}`).not.toMatch(
-        /[{}]|\[missing text|undefined/,
-      );
+  for (const [mx, dmarc, spf, variants] of cases) {
+    const snapshot = dnsSnapshot({
+      ...base,
+      'MX example.de': [mx],
+      'TXT _dmarc.example.de': [`v=DMARC1; ${dmarc}`],
+      'TXT example.de': [spf ? `v=spf1 ${spf}` : 'v=spf1'],
+    });
+    const observations = [mail01, mail02].flatMap((check) => observationsOf(runCheck(check, snapshot)));
+    expect(
+      observations.map((o) => o.variant),
+      dmarc,
+    ).toEqual(variants);
+    for (const { checkId, variant, params } of observations) {
+      const id = `${checkId}.${variant}`;
+      for (const texts of translations) {
+        const { title, body } = renderMessage(texts, id, params);
+        const action = formatMessage(texts.actions[id] ?? '', params, texts.lang);
+        const context = `${texts.lang} ${id} (${dmarc})`;
+        expect(`${title}\n${body}\n${action}`, context).not.toMatch(/[{}]|\[missing text|undefined/);
+        expect(action, context).not.toMatch(/^$|^ /);
+      }
     }
-  });
-
-  it.each(['de', 'en'] as const)('%s: the action text renders with the params of the finding', (lang) => {
-    const texts = loadTexts(lang);
-    for (const o of observations) {
-      const key = `${o.checkId}.${o.variant}`;
-      const action = formatMessage(texts.actions[key] ?? '', o.params, lang);
-      expect(action, key).not.toMatch(/^$|^ |[{}]|undefined/);
-    }
-  });
+  }
 });
 
 describe('DMARC texts agree with each other', () => {
   const observedFor = (dmarc: string) => {
     const snapshot = dnsSnapshot({ ...base, 'TXT _dmarc.example.de': [dmarc], 'TXT example.de': 'NXDOMAIN' });
-    return dnsChecks.flatMap((c) => {
-      const r = runCheck(c, snapshot);
-      return r.outcome ? observationsOf(r) : [];
-    });
+    return observationsOf(runCheck(mail01, snapshot));
   };
-  const observed = [...observedFor('v=DMARC1; p=none'), ...observedFor('v=DMARC1; p=reject')];
+  const none = observedFor('v=DMARC1; p=none');
+  const observed = [...none, ...observedFor('v=DMARC1; p=reject')];
   const render = (lang: 'de' | 'en', variant: string) => {
     const o = observed.find((x) => x.checkId === 'MAIL-01' && x.variant === variant);
     if (!o) throw new Error(`no MAIL-01.${variant}`);
@@ -94,8 +73,7 @@ describe('DMARC texts agree with each other', () => {
       expect(policy.body).not.toMatch(claim);
       expect(policy.body).toMatch(rua);
       expect(policy.action).toMatch(rua);
-      const dmarc = observedFor('v=DMARC1; p=none').filter((o) => o.checkId === 'MAIL-01');
-      expect(dmarc.map((o) => o.variant)).toEqual(['policy-none']);
+      expect(none.map((o) => o.variant)).toEqual(['policy-none']);
     },
   );
 

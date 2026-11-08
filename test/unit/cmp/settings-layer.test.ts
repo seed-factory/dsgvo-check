@@ -9,26 +9,17 @@ import { chooseSettingsOpener, chooseSettingsSave } from '../../../src/cmp/setti
 import type { CmpButton, CmpDetection, CmpFacts, SettingsLayerFacts } from '../../../src/cmp/types.ts';
 import { DEFAULT_CLASSIFY } from '../../utils/classify.ts';
 import { makeCmpFacts } from '../../utils/snapshot-builder.ts';
+import { layerButton } from './fakes.ts';
 
 const lexicon = loadLexicon();
 
-function btn(name: string, p: Partial<CmpButton> = {}): CmpButton {
-  return {
-    role: 'button',
-    name,
-    tag: 'button',
-    kind: 'other',
-    kindConfidence: 'low',
-    layer: 1,
+const btn = (name: string, over: Partial<CmpButton> = {}) =>
+  layerButton(name, {
     box: { x: 100, y: 700, width: 160, height: 40 },
-    visibleAtFirstScreen: true,
-    actionableAtFirstScreen: true,
-    contrast: 7,
     selector: `[data-hook="${name.replace(/\W+/g, '-')}"]`,
     vendorRole: null,
-    ...p,
-  };
-}
+    ...over,
+  });
 
 const wix: CmpDetection = {
   cmpId: 'wix',

@@ -11,12 +11,18 @@ import {
   validateTemplate,
 } from '../../src/core/data/messages.ts';
 import type { AnyCheck } from '../../src/core/evaluation/check.ts';
-import { scenarioFixture, scenariosOf } from '../unit/checks/browser/scenarios/index.ts';
+import {
+  SCENARIOS,
+  scenarioFixture,
+  scenariosOf,
+  VARIANT_SCENARIOS,
+} from '../unit/checks/browser/scenarios/index.ts';
 import { DNS_FIXTURES, dnsFixture } from '../unit/checks/dns/fixtures.ts';
+import { findFixtureLeaks } from './fixture-redaction.ts';
 import { fixtureFrom, loadFixtures, runCheck, type SnapshotFixture, variantsOf } from './snapshot-builder.ts';
 
 /** Fixtures of a check: browser and dns ones are built from TS tables, the http ones are JSON files. */
-export function checkFixtures(check: AnyCheck): SnapshotFixture[] {
+function checkFixtures(check: AnyCheck, problems?: string[]): SnapshotFixture[] {
   if (check.module === 'dns') {
     return (DNS_FIXTURES[check.id] ?? []).map((f) =>
       fixtureFrom(f.file, dnsFixture(f), `test/unit/checks/dns/fixtures.ts (${check.id}/${f.file})`),
@@ -24,13 +30,17 @@ export function checkFixtures(check: AnyCheck): SnapshotFixture[] {
   }
   if (check.module !== 'browser') return loadFixtures(check.module, check.id);
 
-  return scenariosOf(check.id).map((s) =>
-    fixtureFrom(
+  return scenariosOf(check.id).map((s) => {
+    const raw = scenarioFixture(s);
+    if (problems) {
+      for (const leak of findFixtureLeaks(raw)) problems.push(`${check.id}/${s.file}: ${leak}`);
+    }
+    return fixtureFrom(
       s.file,
-      scenarioFixture(s),
+      raw,
       `test/unit/checks/browser/scenarios/${check.id.toLowerCase()}.ts (${check.id}/${s.file})`,
-    ),
-  );
+    );
+  });
 }
 
 export interface CompletenessData {
@@ -151,8 +161,7 @@ function fixtureCoverageProblems(check: AnyCheck, files: readonly string[]): str
   return problems;
 }
 
-/** A name the texts reference and the finding does not carry would be printed as `{name}`. */
-const UNFORMATTED = /\{[A-Za-z]\w*\}/;
+const UNFORMATTED = /\{[A-Za-z]\w*\}|[{}]|\[missing text|undefined/;
 
 /**
  * Title, body and action of every observation format with its own params. The action is formatted like the finding
@@ -171,9 +180,14 @@ function textParamProblems(
       const m = texts[lang].messages[key];
       const parts = { title: m?.title, body: m?.body, action: texts[lang].actions[key] };
       for (const [part, template] of Object.entries(parts)) {
-        const left = template ? UNFORMATTED.exec(formatMessage(template, o.params, lang)) : null;
-        if (left)
-          problems.add(`${check.id}/${fixture}: ${lang} ${part} of ${key} leaves ${left[0]} unformatted`);
+        if (template === undefined) continue;
+        const rendered = formatMessage(template, o.params, lang);
+        const prefix = `${check.id}/${fixture}: ${lang} ${part} of ${key}`;
+        const left = UNFORMATTED.exec(rendered);
+        if (left) problems.add(`${prefix} leaves ${left[0]} unformatted`);
+        if (part === 'action' && (rendered === '' || rendered.startsWith(' '))) {
+          problems.add(`${prefix} is blank or starts with a space`);
+        }
       }
     }
   }
@@ -217,11 +231,17 @@ function fixtureRunProblems(
 
 export function completenessProblems(checks: readonly AnyCheck[], d: CompletenessData): string[] {
   const problems = unregisteredChecks(new Set(checks.map((c) => c.id)), d);
+  if (d.runFixtures !== false) {
+    const browserIds = new Set(checks.filter((check) => check.module === 'browser').map((check) => check.id));
+    for (const id of Object.keys({ ...SCENARIOS, ...VARIANT_SCENARIOS })) {
+      if (!browserIds.has(id)) problems.push(`browser fixtures: unregistered check ${id}`);
+    }
+  }
 
   for (const check of checks) {
     problems.push(...rulesetProblems(check, d), ...textProblems(check, d));
 
-    const fixtures = d.runFixtures === false ? [] : checkFixtures(check);
+    const fixtures = d.runFixtures === false ? [] : checkFixtures(check, problems);
     const files = d.fixtures ? d.fixtures(check) : fixtures.map((f) => f.name);
     problems.push(...fixtureCoverageProblems(check, files));
 

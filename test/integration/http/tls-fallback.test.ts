@@ -5,7 +5,7 @@
  * browser checks skipped without failing the scan.
  */
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { tls02 } from '../../../src/checks/http/tls-02.ts';
 import { createBrowserCollector } from '../../../src/collectors/browser/index.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
@@ -13,8 +13,9 @@ import type { FullReport, Report } from '../../../src/core/report/schema.ts';
 import { silentLogger } from '../../../src/core/runtime/logger.ts';
 import type { NetworkConfig } from '../../../src/core/url/net.ts';
 import { type ScanResult, scan } from '../../../src/scan.ts';
-import { type FixtureServer, SITES_DIR, startFixtureServer } from '../../fixture-server/server.ts';
+import { SITES_DIR } from '../../fixture-server/server.ts';
 import { cleanLegalPages } from '../../fixture-server/sites.ts';
+import { useFixtureServer } from '../../fixture-server/use-fixture-server.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { testDataDir } from '../../utils/scan-harness.ts';
 import { stubCmpApi } from '../browser/consent/stub-cmp.ts';
@@ -36,11 +37,10 @@ const redirect = (host: string, location: string) => ({
   body: '',
 });
 
-let server: FixtureServer;
 const dataDir = testDataDir({ ruleset: { 'TEST-01': { seen: 'info' } } });
 
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     sites: ['browser/cmp-stub'],
     hosts: { 'site.example.test': path.join(SITES_DIR, 'browser/cmp-stub/www') },
     tls: {
@@ -68,14 +68,10 @@ beforeAll(async () => {
       // the apex of the targets' registrable domain, probed by the HTTP and TLS collectors
       { host: 'example.test', path: '/', status: 404, headers: html, body: page('404') },
     ],
-  });
+  };
 });
 
-afterAll(async () => {
-  await server?.close();
-});
-
-function fallbackScan(host: string, network: NetworkConfig = server.network()): Promise<ScanResult> {
+function fallbackScan(host: string, network: NetworkConfig = server().network()): Promise<ScanResult> {
   return scan({
     url: `https://${host}/`,
     network,
@@ -100,13 +96,15 @@ function full(r: Report): FullReport {
 
 /** Documents (not subresources) the browser requested from `host`, in order. */
 const browserDocuments = (host: string) =>
-  server
+  server()
     .requestsTo(host)
     .filter((r) => r.userAgent?.includes('Chrome/') && /\/(\?.*)?$/.test(r.path))
     .sort((a, b) => a.at - b.at);
 
 const browserRequests = (host: string) =>
-  server.requestsTo(host).filter((r) => r.userAgent?.includes('Chrome/'));
+  server()
+    .requestsTo(host)
+    .filter((r) => r.userAgent?.includes('Chrome/'));
 
 const tls02Hosts = (report: FullReport) =>
   report.findings
@@ -119,7 +117,7 @@ describe('refused certificate, http redirect to a host with valid certificates',
   let report: FullReport;
 
   beforeAll(async () => {
-    server.reset();
+    server().reset();
     r = await fallbackScan('broken.example.test');
     report = full(r.report);
   });
@@ -174,7 +172,7 @@ describe('refused certificate, http redirect to a host with valid certificates',
 describe('refused certificate, http redirect the browser checks do not follow', () => {
   it('to a host resolving to a private address (guard on): the browser opens nothing there', async () => {
     const network: NetworkConfig = {
-      ...server.network(),
+      ...server().network(),
       allowPrivateAddresses: false,
       lookup: async (host) => [
         { address: host === 'intranet.example.test' ? '127.0.0.1' : '93.184.215.14', family: 4 },

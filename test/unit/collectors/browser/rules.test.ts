@@ -1,5 +1,6 @@
 /** The browser collector's lists are data (test/data/browser): what the compiled rules accept, and that callers can replace them. */
 import { describe, expect, it } from 'vitest';
+import { normalizePageLabel } from '../../../../src/collectors/browser/pages/language.ts';
 import { type CandidateLink, selectPages } from '../../../../src/collectors/browser/pages/pages.ts';
 import {
   loadDomPatterns,
@@ -113,8 +114,12 @@ describe('page rules', () => {
     ).toThrow(/pages\.extraGroups: duplicate group id "a"/);
   });
 
-  it('locale prefixes are language codes; the words "karte" and "unternehmen" are no keywords', () => {
-    for (const code of rules.languages.localePrefixes) expect(code).toMatch(/^[a-z]{2,3}$/);
+  it('the language dictionary stores switch labels in the form used for matching', () => {
+    const labels = [...rules.languages.switchLabels];
+    expect(labels).toEqual(labels.map(normalizePageLabel));
+  });
+
+  it('the words "karte" and "unternehmen" are no keywords', () => {
     const words = rules.extraGroups.flatMap((g) => g.words);
     expect(words).not.toContain('karte');
     expect(words).not.toContain('unternehmen');

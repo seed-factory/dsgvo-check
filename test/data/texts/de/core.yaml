@@ -129,7 +129,7 @@ ui:
   cli.assumeRegion: "Standort laut Nutzerangabe: eea|de"
   cli.strict: nicht eindeutige Ergebnisse, Sandbox off und ungeprüfte Region führen zu Exit-Code 2
   cli.sandbox: "Chromium-Sandbox: require|off|container (container nur im Docker-Image)"
-  cli.noScreenshots: keine Screenshots des Banners
+  cli.noScreenshots: Bannerbilder deaktivieren (Aufnahme ist ausgesetzt)
   cli.saveSnapshot: Rohdaten-Snapshot speichern
   cli.fromSnapshot: Snapshot neu auswerten, ohne die Website aufzurufen
   cli.checks: "nur diese Prüfungen, z. B. EMBED-01,HDR-01"

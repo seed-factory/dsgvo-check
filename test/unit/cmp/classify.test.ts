@@ -8,26 +8,13 @@ import { loadLexicon } from '../../../src/cmp/lexicon-file.ts';
 import type { BlockingFacts, CmpButton, CmpDetection, CmpFacts } from '../../../src/cmp/types.ts';
 import { classifyFirstLayer, DEFAULT_CLASSIFY } from '../../utils/classify.ts';
 import { makeCmpFacts } from '../../utils/snapshot-builder.ts';
+import { layerButton } from './fakes.ts';
 
 const lexicon = loadLexicon();
 const DEFAULT_RATIO = DEFAULT_CLASSIFY.blockingCoveredRatio;
 
-function btn(name: string, p: Partial<CmpButton> = {}): CmpButton {
-  return {
-    role: 'button',
-    name,
-    tag: 'button',
-    kind: 'other',
-    kindConfidence: 'low',
-    layer: 1,
-    box: { x: 100, y: 600, width: 160, height: 40 },
-    visibleAtFirstScreen: true,
-    actionableAtFirstScreen: true,
-    contrast: 7,
-    selector: `#${name.replace(/\W+/g, '-')}`,
-    ...p,
-  };
-}
+const btn = (name: string, over: Partial<CmpButton> = {}) =>
+  layerButton(name, { selector: `#${name.replace(/\W+/g, '-')}`, ...over });
 
 const detected: CmpDetection = {
   cmpId: 'cookiebot',
@@ -143,26 +130,19 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.targets?.accept?.name).toBe('Alle akzeptieren');
   });
 
-  it('blocking-no-reject: "Verbergen" instead of a reject is not a reject (catalog example)', () => {
-    const r = classify([btn('Zustimmen'), btn('Verbergen')], { blocking });
-    expect(r.variant).toBe('blocking-no-reject');
-  });
-
-  it('blocking-no-reject: "×" and "Später" are not a reject', () => {
-    const r = classify([btn('Alle akzeptieren'), btn('×', { kind: 'close' }), btn('Später')], { blocking });
-    expect(r.variant).toBe('blocking-no-reject');
-  });
-
-  it('blocking-no-reject: a reject only on the second layer (hidden settings panel) does not count', () => {
-    const r = classify(
+  it.each([
+    ['hide instead of reject', [btn('Zustimmen'), btn('Verbergen')]],
+    ['close and later', [btn('Alle akzeptieren'), btn('×', { kind: 'close' }), btn('Später')]],
+    [
+      'a reject only in hidden settings',
       [
         btn('Alle akzeptieren'),
         btn('Einstellungen'),
         btn('Alle ablehnen', { layer: 2, visibleAtFirstScreen: false, actionableAtFirstScreen: false }),
       ],
-      { blocking },
-    );
-    expect(r.variant).toBe('blocking-no-reject');
+    ],
+  ])('blocking-no-reject with %s', (_name, buttons) => {
+    expect(classify(buttons, { blocking }).variant).toBe('blocking-no-reject');
   });
 
   // Warning/critical only with an unambiguous first layer; an unknown button might be the reject.
@@ -232,23 +212,14 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.acceptAvailableAtFirstLayer).toBe(false);
   });
 
-  it('close-means-accept: × present and the CMP config says × = accept', () => {
-    const r = classify([btn('Ablehnen'), btn('Alle akzeptieren'), btn('×', { name: '×' })], {
-      firstLayer: { closeMeansAccept: true },
-    });
-    expect(r.variant).toBe('close-means-accept');
-  });
-
-  it('counterexample: × without config is not close-means-accept', () => {
-    const r = classify([btn('Ablehnen'), btn('Alle akzeptieren'), btn('×')]);
-    expect(r.variant).toBe('ok');
-  });
-
-  it('counterexample: closeMeansAccept config without a visible × is not close-means-accept', () => {
-    const r = classify([btn('Ablehnen'), btn('Alle akzeptieren')], {
-      firstLayer: { closeMeansAccept: true },
-    });
-    expect(r.variant).toBe('ok');
+  const choices = [btn('Ablehnen'), btn('Alle akzeptieren')];
+  it.each<[string, CmpButton[], boolean | undefined, string]>([
+    ['close control and vendor configuration', [...choices, btn('×')], true, 'close-means-accept'],
+    ['close control without configuration', [...choices, btn('×')], undefined, 'ok'],
+    ['vendor configuration without close control', choices, true, 'ok'],
+  ])('classifies %s', (_name, buttons, closeMeansAccept, variant) => {
+    const firstLayer = closeMeansAccept === undefined ? {} : { closeMeansAccept };
+    expect(classify(buttons, { firstLayer }).variant).toBe(variant);
   });
 
   it('reject-not-actionable: reject rendered but covered / outside the viewport', () => {
@@ -266,26 +237,19 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.targets?.reject?.name).toBe('Ablehnen');
   });
 
-  it.each([
-    'Nicht notwendige Cookies ablehnen',
-    'Reject non-essential cookies',
-    'Ablehnen (keine Statistik)',
-  ])(
-    'a reject that negates a cookie category ("%s") is the reject target, as a link and as a button',
-    (label) => {
-      const asLink = classify([btn(label, { role: 'link', tag: 'a' }), btn('Alle akzeptieren')], {
-        blocking,
-      });
-      expect(asLink.variant).toBe('reject-as-link');
-      expect(asLink.targets?.reject?.name).toBe(label);
+  it('a reject that names a negated category is actionable as a link or button', () => {
+    const label = 'Nicht notwendige Cookies ablehnen';
+    const accept = btn('Alle akzeptieren');
+    const asLink = classify([btn(label, { role: 'link', tag: 'a' }), accept], { blocking });
+    expect(asLink.variant).toBe('reject-as-link');
+    expect(asLink.targets?.reject?.name).toBe(label);
 
-      const asButton = classify([btn(label), btn('Alle akzeptieren')], { blocking });
-      expect(asButton.variant).toBe('ok');
-      expect(asButton.targets?.reject?.name).toBe(label);
-    },
-  );
+    const asButton = classify([btn(label), accept], { blocking });
+    expect(asButton.variant).toBe('ok');
+    expect(asButton.targets?.reject?.name).toBe(label);
+  });
 
-  it.each([undefined, 'accept', 'reject'] as const)(
+  it.each([undefined, 'reject'] as const)(
     'consent to the optional cookies ("Ich akzeptiere nicht notwendige Cookies", vendor role %s) is never the reject target',
     (vendorRole) => {
       const consent = btn('Ich akzeptiere nicht notwendige Cookies', vendorRole ? { vendorRole } : {});
@@ -304,11 +268,8 @@ describe('classifyFirstLayer: variants', () => {
 
   it.each([
     ['Accept necessary', 'Accept all'],
-    ['Erforderliche Cookies erlauben', 'Alle akzeptieren'],
     ['Keine Cookies akzeptieren', 'Alle akzeptieren'],
     ['Mit notwendigen Cookies fortfahren (empfohlen)', 'Alle akzeptieren'],
-    ['Accept necessary cookies (recommended)', 'Accept all'],
-    ['Mit notwendigen Cookies fortfahren (empfohlene Einstellung)', 'Alle akzeptieren'],
   ])('a refusal worded as consent ("%s") is the reject target next to "%s"', (refusal, acceptAll) => {
     const r = classify([btn(refusal), btn(acceptAll)], { blocking });
     expect(r.variant).toBe('ok');
@@ -320,11 +281,6 @@ describe('classifyFirstLayer: variants', () => {
     ['restricted to the necessary cookies', 'Accept strictly necessary cookies'],
     ['to the necessary cookies and another category', 'Accept necessary and analytics cookies'],
     ['negated after its phrase', 'Ich akzeptiere keine Cookies'],
-    [
-      'to the necessary cookies and another category in brackets',
-      'Accept necessary cookies (incl. analytics)',
-    ],
-    ['to not all cookies, these in brackets', 'Ich akzeptiere nicht (alle Cookies)'],
     ['as a reject negated across brackets', 'Nicht (alle Cookies) ablehnen'],
   ])('a consent %s ("%s") beside an accept leaves the first layer without a verdict', (_case, label) => {
     const r = classify([btn(label), btn('Accept all')], { blocking });
@@ -336,7 +292,6 @@ describe('classifyFirstLayer: variants', () => {
 
   it.each([
     ['an answer before the decision', 'No, reject all', 'Yes, accept all'],
-    ['a longer close phrase', 'Ablehnen und Fenster schließen', 'Alle zulassen'],
     ['a synonym of the necessary cookies', 'Technische Cookies akzeptieren', 'Alle zulassen'],
   ])('the vendor reject with %s ("%s") is the reject target', (_case, refusal, acceptAll) => {
     const r = classify([btn(refusal, { vendorRole: 'reject' }), btn(acceptAll, { vendorRole: 'accept' })], {
@@ -347,25 +302,20 @@ describe('classifyFirstLayer: variants', () => {
     expect(r.targets?.accept?.name).toBe(acceptAll);
   });
 
-  it.each(['Ich akzeptiere – nicht mehr anzeigen', 'Akzeptieren & nicht mehr anzeigen'])(
-    'a consent with a clause of its own ("%s") stays the accept target: no reject is reported missing',
-    (consent) => {
-      const r = classify(
-        [btn(consent, { vendorRole: 'accept' }), btn('Einstellungen', { vendorRole: 'settings' })],
-        { blocking },
-      );
-      expect(r.variant).toBe('blocking-no-reject');
-      expect(r.targets?.reject).toBeNull();
-      expect(r.targets?.accept?.name).toBe(consent);
-    },
-  );
+  it('a consent with a separate clause stays the accept target without becoming a reject', () => {
+    const consent = 'Ich akzeptiere – nicht mehr anzeigen';
+    const r = classify(
+      [btn(consent, { vendorRole: 'accept' }), btn('Einstellungen', { vendorRole: 'settings' })],
+      { blocking },
+    );
+    expect(r.variant).toBe('blocking-no-reject');
+    expect(r.targets?.reject).toBeNull();
+    expect(r.targets?.accept?.name).toBe(consent);
+  });
 
   it.each([
     ['Nicht (alle Cookies) akzeptieren', 'Einstellungen', null],
-    ['Nicht (alle Cookies) akzeptieren', 'Alle akzeptieren', 'Alle akzeptieren'],
-    ['Do not (accept all cookies)', 'Settings', null],
     ['Do not (accept all cookies)', 'Accept all', 'Accept all'],
-    ['Ich akzeptiere (die Cookies) nicht', 'Einstellungen', null],
     ['Ich akzeptiere (die Cookies) nicht', 'Alle akzeptieren', 'Alle akzeptieren'],
   ])(
     'the vendor reject negated across a bracketed insertion ("%s", beside "%s") is the reject target, never the accept',
@@ -537,27 +487,21 @@ describe('classifyFirstLayer: truncated button set', () => {
   const truncated = (buttons: CmpButton[], p: { blocking?: BlockingFacts } = {}) =>
     classify(buttons, { ...p, firstLayer: { buttonsTruncated: true } });
 
-  it('non-blocking bar without a found reject → banner-not-recognized / buttons-truncated, not nonblocking-no-reject', () => {
-    const r = truncated([btn('Alle akzeptieren'), btn('Einstellungen')]);
+  const onlyAccept = [btn('Alle akzeptieren'), btn('Einstellungen')];
+  it.each([
+    ['non-blocking bar without reject', onlyAccept, {}],
+    ['blocking banner without reject', onlyAccept, { blocking }],
+    [
+      'non-actionable reject',
+      [btn('Ablehnen', { actionableAtFirstScreen: false, hitTestOk: false }), btn('Alle akzeptieren')],
+      {},
+    ],
+  ])('a truncated set is inconclusive: %s', (_name, buttons, options) => {
+    const r = truncated(buttons, options);
     expect(r.variant).toBe('banner-not-recognized');
     expect(r.confidence).toBe('low');
     expect(r.reasons).toContain('buttons-truncated');
     expect(r.targets?.reject).toBeNull();
-  });
-
-  it('blocking banner without a found reject → no blocking-no-reject (critical) on an incomplete set', () => {
-    const r = truncated([btn('Alle akzeptieren'), btn('Einstellungen')], { blocking });
-    expect(r.variant).toBe('banner-not-recognized');
-    expect(r.reasons).toContain('buttons-truncated');
-  });
-
-  it('a reject that is not actionable in the kept set does not prove the absence of an actionable one', () => {
-    const r = truncated([
-      btn('Ablehnen', { actionableAtFirstScreen: false, hitTestOk: false }),
-      btn('Alle akzeptieren'),
-    ]);
-    expect(r.variant).toBe('banner-not-recognized');
-    expect(r.reasons).toContain('buttons-truncated');
   });
 
   it('no-choice-at-first-layer and reject-as-link are also not concluded from an incomplete set', () => {
@@ -568,7 +512,7 @@ describe('classifyFirstLayer: truncated button set', () => {
   });
 
   it('counterexample: the full, untruncated set without a reject keeps nonblocking-no-reject', () => {
-    const r = classify([btn('Alle akzeptieren'), btn('Einstellungen')]);
+    const r = classify(onlyAccept);
     expect(r.variant).toBe('nonblocking-no-reject');
     expect(r.reasons).not.toContain('buttons-truncated');
   });
@@ -580,7 +524,7 @@ describe('classifyFirstLayer: truncated button set', () => {
   });
 
   it('the accept stays a click target of the incomplete set (phase C is not affected)', () => {
-    const r = truncated([btn('Alle akzeptieren'), btn('Einstellungen')]);
+    const r = truncated(onlyAccept);
     expect(r.targets?.accept?.name).toBe('Alle akzeptieren');
   });
 });

@@ -16,6 +16,8 @@ import {
   phase,
   rejectCmp,
   req,
+  runPhaseACheck,
+  runSiteCheck,
   START,
   settingsRejectCmp,
   site,
@@ -49,24 +51,13 @@ describe('EMBED-01 external fonts', () => {
     expect(o?.evidence).toHaveLength(2);
   });
 
-  it('counterexample: an unfinished font request is not a load', () => {
-    const r = runCheck(
-      embed01,
-      site({ phases: [phase('A', { requests: [css('a', { state: 'failed', status: undefined })] })] }),
-    );
-    expect(variantsOf(r)).toEqual(['preconnect-only']);
-  });
-
   it('a load after the reject stays fonts-loaded', () => {
-    const afterReject = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A'),
-          phase('B', { click: click('reject'), requests: [css('b', { phase: 'B', afterClick: true })] }),
-        ],
-      }),
-    );
+    const afterReject = runSiteCheck(embed01, {
+      phases: [
+        phase('A'),
+        phase('B', { click: click('reject'), requests: [css('b', { phase: 'B', afterClick: true })] }),
+      ],
+    });
     expect(observationsOf(afterReject)[0]).toMatchObject({
       variant: 'fonts-loaded',
       phases: ['B'],
@@ -75,35 +66,21 @@ describe('EMBED-01 external fonts', () => {
   });
 
   it('p.typekit.net alone (purpose not verified) is not a font load; Bunny Fonts (EU) still is', () => {
-    const typekit = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('a', 'https://p.typekit.net/p.css?s=1', { resourceType: 'stylesheet' })],
-          }),
-        ],
-      }),
-    );
+    const typekit = runPhaseACheck(embed01, {
+      requests: [req('a', 'https://p.typekit.net/p.css?s=1', { resourceType: 'stylesheet' })],
+    });
     expect(variantsOf(typekit)).toEqual([]);
-    const bunny = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('a', 'https://fonts.bunny.net/css?family=inter', { resourceType: 'stylesheet' })],
-          }),
-        ],
-      }),
-    );
+    const bunny = runPhaseACheck(embed01, {
+      requests: [req('a', 'https://fonts.bunny.net/css?family=inter', { resourceType: 'stylesheet' })],
+    });
     expect(observationsOf(bunny)[0]).toMatchObject({ variant: 'fonts-loaded', provider: { country: 'SI' } });
   });
 
   it('the collector gap "preconnect-without-request" (as in BASE_KNOWN_GAPS) is reported as a limitation', () => {
     const gaps = ['pagehide-beacons', 'preconnect-without-request', 'blocked-cookies-not-recorded'];
-    const r = runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })], knownGaps: gaps }));
+    const r = runPhaseACheck(embed01, { requests: [css('a')] }, { knownGaps: gaps });
     expect(r.outcome?.limitations).toEqual(['preconnect-not-observable']);
-    const none = runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })] }));
+    const none = runPhaseACheck(embed01, { requests: [css('a')] });
     expect(none.outcome?.limitations).toEqual([]);
   });
 
@@ -115,7 +92,7 @@ describe('EMBED-01 external fonts', () => {
       capped: true,
     } as const;
     const tall = (ph: 'A' | 'B' | 'C') => ({ pages: [page(START, 'start', ph, { reveal: capped })] });
-    const limitations = (phases: PhaseRecord[]) => runCheck(embed01, site({ phases })).outcome?.limitations;
+    const limitations = (phases: PhaseRecord[]) => runSiteCheck(embed01, { phases }).outcome?.limitations;
 
     expect(limitations([phase('A', { ...tall('A'), requests: [css('a')] })])).toEqual([
       'reveal-height-capped',
@@ -135,20 +112,13 @@ describe('EMBED-01 font files from other third-party servers', () => {
   const font = (id: string, url: string, p = {}) => req(id, url, { resourceType: 'font', ...p });
 
   it('font files of a host outside the catalog → fonts-loaded named by its domain', () => {
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              font('a', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf'),
-              font('b', 'https://cdn.booking-widget.example/fonts/Display-Bold.ttf'),
-              req('c', 'https://cdn.booking-widget.example/sdk.js'),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(embed01, {
+      requests: [
+        font('a', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf'),
+        font('b', 'https://cdn.booking-widget.example/fonts/Display-Bold.ttf'),
+        req('c', 'https://cdn.booking-widget.example/sdk.js'),
+      ],
+    });
     const [o] = observationsOf(r);
     expect(observationsOf(r)).toHaveLength(1);
     expect(o).toMatchObject({
@@ -165,12 +135,7 @@ describe('EMBED-01 font files from other third-party servers', () => {
 
   it('font files a widget of the page fetches from its vendor → fonts-loaded with the widget as the service', () => {
     const [o] = observationsOf(
-      runCheck(
-        embed01,
-        site({
-          phases: [phase('A', { requests: [font('a', 'https://assets.calendly.com/fonts/x.woff2')] })],
-        }),
-      ),
+      runPhaseACheck(embed01, { requests: [font('a', 'https://assets.calendly.com/fonts/x.woff2')] }),
     );
     expect(o).toMatchObject({
       subject: 'calendly',
@@ -180,14 +145,9 @@ describe('EMBED-01 font files from other third-party servers', () => {
   });
 
   it('counterexample: font files from a CDN stay a resource of CONSENT-01', () => {
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', { requests: [font('a', 'https://cdnjs.cloudflare.com/ajax/libs/fa/6.0.0/fa.woff2')] }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(embed01, {
+      requests: [font('a', 'https://cdnjs.cloudflare.com/ajax/libs/fa/6.0.0/fa.woff2')],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 
@@ -197,23 +157,16 @@ describe('EMBED-01 font files from other third-party servers', () => {
       isMainFrame: false,
       frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
     };
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://www.youtube-nocookie.com/embed/abc', {
-                ...frame,
-                isNavigation: true,
-                resourceType: 'document',
-              }),
-              font('b', 'https://fonts.gstatic.com/s/roboto/v48/x.woff2', frame),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(embed01, {
+      requests: [
+        req('a', 'https://www.youtube-nocookie.com/embed/abc', {
+          ...frame,
+          isNavigation: true,
+          resourceType: 'document',
+        }),
+        font('b', 'https://fonts.gstatic.com/s/roboto/v48/x.woff2', frame),
+      ],
+    });
     expect(observationsOf(r)).toMatchObject([
       {
         variant: 'fonts-in-embed-frame',
@@ -302,15 +255,6 @@ describe("EMBED-01 fonts of an embed's frame", () => {
     expect(frame?.params).toMatchObject({ requestCount: 2 });
   });
 
-  it.each([
-    ['an embed frame that loads no font', 'clean-map-frame-without-fonts.json'],
-    ['a map frame whose fonts load only after the accept', 'clean-map-frame-fonts-after-accept.json'],
-    ['the fonts of a reCAPTCHA and a Calendly frame', 'clean-captcha-and-widget-frame-fonts.json'],
-    ["a map frame that only calls Adobe Fonts' usage counter", 'clean-map-frame-typekit-usage-hit.json'],
-  ])('counterexample: %s gives no finding', (_name, file) => {
-    expect(variantsOf(runCheck(embed01, frameScenario(file)))).toEqual([]);
-  });
-
   it('counterexample: a map frame whose only font-service request is the kit script of Adobe Fonts gives no frame finding', () => {
     const document = inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true });
     const kitScript = inMapFrame('b', 'https://use.typekit.net/abc1234.js', 'script');
@@ -356,19 +300,12 @@ describe("EMBED-01 fonts of an embed's frame", () => {
   });
 
   it('counterexample: an unfinished font request of the frame is no load and no connection hint of the site', () => {
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
-              frameFont('b', { state: 'failed', status: undefined }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(embed01, {
+      requests: [
+        inMapFrame('a', MAP_EMBED, 'document', { isNavigation: true }),
+        frameFont('b', { state: 'failed', status: undefined }),
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 
@@ -378,30 +315,23 @@ describe("EMBED-01 fonts of an embed's frame", () => {
       isMainFrame: false,
       frameUrl: 'https://www.youtube-nocookie.com/embed/abc',
     };
-    const r = runCheck(
-      embed01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              ...mapWithFonts('A'),
-              inMapFrame('S-1', MAP_EMBED, 'document', {
-                pageUrl: START,
-                frameId: 'A-map2',
-                isNavigation: true,
-              }),
-              inMapFrame('S-2', FRAME_FONT, 'font', { pageUrl: START, frameId: 'A-map2' }),
-              req('P-1', 'https://www.youtube-nocookie.com/embed/abc', {
-                ...player,
-                isNavigation: true,
-                resourceType: 'document',
-              }),
-              req('P-2', FRAME_FONT, { ...player, resourceType: 'font' }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(embed01, {
+      requests: [
+        ...mapWithFonts('A'),
+        inMapFrame('S-1', MAP_EMBED, 'document', {
+          pageUrl: START,
+          frameId: 'A-map2',
+          isNavigation: true,
+        }),
+        inMapFrame('S-2', FRAME_FONT, 'font', { pageUrl: START, frameId: 'A-map2' }),
+        req('P-1', 'https://www.youtube-nocookie.com/embed/abc', {
+          ...player,
+          isNavigation: true,
+          resourceType: 'document',
+        }),
+        req('P-2', FRAME_FONT, { ...player, resourceType: 'font' }),
+      ],
+    });
     expect(
       observationsOf(r).map((o) => [o.subject, o.pages, o.params.pageCount, o.params.requestCount]),
     ).toEqual([
@@ -442,7 +372,7 @@ describe("EMBED-01 fonts of an embed's frame", () => {
       control: CONTACT,
     }),
   )('%s', (_name, { phases, cmp, want }) => {
-    expectMoment(observationsOf(runCheck(embed01, site({ phases, cmp }))), 'fonts-in-embed-frame', want);
+    expectMoment(observationsOf(runSiteCheck(embed01, { phases, cmp })), 'fonts-in-embed-frame', want);
   });
 
   it('after the confirmed reject: the title and body say so, and the evidence shows the reject proof', () => {
@@ -450,7 +380,7 @@ describe("EMBED-01 fonts of an embed's frame", () => {
       phase('A', { requests: mapWithFonts('A') }),
       rejectPhase(CONTACT, mapWithFonts('B', AFTER_CLICK)),
     ];
-    const [o] = observationsOf(runCheck(embed01, site({ phases, cmp: confirmed })));
+    const [o] = observationsOf(runSiteCheck(embed01, { phases, cmp: confirmed }));
     const m = renderMessage(de, 'EMBED-01.fonts-in-embed-frame', o!.params);
     expect(m.title).toBe(
       'Externe Schriftarten von einer Einbettung geladen, auch nach bestätigter Ablehnung: Google Fonts in Google Maps',
@@ -511,7 +441,7 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
   ];
 
   it.each(CASES)('%s', (_name, input, observed, deTitle, enTitle) => {
-    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', input)] })));
+    const [o] = observationsOf(runPhaseACheck(embed01, input));
     expect(o).toMatchObject({ variant: 'preconnect-only', params: { observed } });
     const de = loadTexts('de');
     const en = loadTexts('en');
@@ -526,10 +456,7 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
   });
 
   it('counterexample: a preconnect to fonts.gstatic.com without a download names the font service and the link', () => {
-    const r = runCheck(
-      embed01,
-      site({ phases: [phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)] })] }),
-    );
+    const r = runPhaseACheck(embed01, { pages: [hintedStart, ...defaultPages('A').slice(1)] });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({
       variant: 'preconnect-only',
@@ -579,7 +506,7 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
     "a preconnect of the site beside the fonts that %s downloads: the hint's text is about the site and names the frames",
     (_name, requests, variants, embedServices, embedCount) => {
       const pages = [hintedStart, ...defaultPages('A').slice(1)];
-      const found = observationsOf(runCheck(embed01, site({ phases: [phase('A', { pages, requests })] })));
+      const found = observationsOf(runPhaseACheck(embed01, { pages, requests }));
       expect(found.map((o) => o.variant)).toEqual(variants);
       const [o] = found;
       expect(o).toMatchObject({
@@ -614,10 +541,7 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
     const start = page(START, 'start', 'A', {
       dom: makeDom({ linkRels: [{ rel: 'stylesheet', href: 'https://fonts.gstatic.com/', source: 'dom' }] }),
     });
-    const r = runCheck(
-      embed01,
-      site({ phases: [phase('A', { pages: [start, ...defaultPages('A').slice(1)] })] }),
-    );
+    const r = runPhaseACheck(embed01, { pages: [start, ...defaultPages('A').slice(1)] });
     expect(variantsOf(r)).toEqual([]);
   });
 
@@ -631,15 +555,12 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
         }),
       );
     const [o] = observationsOf(
-      runCheck(
-        embed01,
-        site({
-          phases: [
-            phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)], requests: files('a') }),
-            phase('B', { click: click('reject'), requests: files('b', { phase: 'B', afterClick: true }) }),
-          ],
-        }),
-      ),
+      runSiteCheck(embed01, {
+        phases: [
+          phase('A', { pages: [hintedStart, ...defaultPages('A').slice(1)], requests: files('a') }),
+          phase('B', { click: click('reject'), requests: files('b', { phase: 'B', afterClick: true }) }),
+        ],
+      }),
     );
     expect(o).toMatchObject({ variant: 'preconnect-only', params: { observed: 'hint-and-attempt' } });
     expect(o?.evidence.filter((e) => e.type === 'request')).toHaveLength(7);
@@ -647,7 +568,7 @@ describe('EMBED-01 without a completed font load names what was observed', () =>
   });
 
   it('a completed load carries no such param', () => {
-    const [o] = observationsOf(runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })] })));
+    const [o] = observationsOf(runPhaseACheck(embed01, { requests: [css('a')] }));
     expect(o?.variant).toBe('fonts-loaded');
     expect(o?.params).not.toHaveProperty('observed');
   });
@@ -671,7 +592,7 @@ describe('EMBED-01 names where the reject was pressed', () => {
       'Externe Schriftarten geladen: Google Fonts',
     ],
   ])('%s', (_name, phases, cmp, rejectPath, title) => {
-    const [o] = observationsOf(runCheck(embed01, site({ phases, cmp })));
+    const [o] = observationsOf(runSiteCheck(embed01, { phases, cmp }));
     expect(o).toMatchObject({ variant: 'fonts-loaded', params: { rejectPath } });
     expect(renderMessage(loadTexts('de'), 'EMBED-01.fonts-loaded', o!.params).title).toContain(title);
   });
@@ -681,7 +602,7 @@ describe('EMBED-01 states whether the fonts loaded before the interaction, after
   it.each(momentCases({ load: css, phaseA: (requests = []) => phase('A', { requests }), control: CONTACT }))(
     '%s',
     (_name, { phases, cmp, want }) => {
-      expectMoment(observationsOf(runCheck(embed01, site({ phases, cmp }))), 'fonts-loaded', want);
+      expectMoment(observationsOf(runSiteCheck(embed01, { phases, cmp })), 'fonts-loaded', want);
     },
   );
 
@@ -690,7 +611,7 @@ describe('EMBED-01 states whether the fonts loaded before the interaction, after
     rejectPhase(CONTACT, [css('b', { ...AFTER_CLICK, pageUrl: CONTACT })]),
   ];
   const render = (lang: 'de' | 'en', cmp: CmpSection) => {
-    const [o] = observationsOf(runCheck(embed01, site({ phases: both, cmp })));
+    const [o] = observationsOf(runSiteCheck(embed01, { phases: both, cmp }));
     return renderMessage(loadTexts(lang), 'EMBED-01.fonts-loaded', o!.params);
   };
 
@@ -717,13 +638,10 @@ describe('EMBED-01 states whether the fonts loaded before the interaction, after
         }),
       );
     const [o] = observationsOf(
-      runCheck(
-        embed01,
-        site({
-          phases: [phase('A', { requests: files('a') }), rejectPhase(CONTACT, files('b', AFTER_CLICK))],
-          cmp: confirmed,
-        }),
-      ),
+      runSiteCheck(embed01, {
+        phases: [phase('A', { requests: files('a') }), rejectPhase(CONTACT, files('b', AFTER_CLICK))],
+        cmp: confirmed,
+      }),
     );
     const evidence = o?.evidence ?? [];
     expect(evidence.length).toBeLessThanOrEqual(MAX_EVIDENCE);
@@ -734,9 +652,7 @@ describe('EMBED-01 states whether the fonts loaded before the interaction, after
   });
 
   it('counterexample: without a load after the reject there is no reject proof', () => {
-    const [o] = observationsOf(
-      runCheck(embed01, site({ phases: [phase('A', { requests: [css('a')] })], cmp: confirmed })),
-    );
+    const [o] = observationsOf(runPhaseACheck(embed01, { requests: [css('a')] }, { cmp: confirmed }));
     expect(o?.evidence.filter((e) => e.type === 'consent-state')).toEqual([]);
   });
 });

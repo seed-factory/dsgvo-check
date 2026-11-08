@@ -1,6 +1,8 @@
 /** Pure HTML heuristics used by the HTTP collector; integration tests cover the collector itself. */
-import { describe, expect, it } from 'vitest';
-import type { FetchResult } from '../../../../src/collectors/http/client.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { redirectChainEvidence } from '../../../../src/checks/http/shared.ts';
+import { type FetchResult, HttpClient } from '../../../../src/collectors/http/client.ts';
+import { ProbeError } from '../../../../src/collectors/http/errors.ts';
 import {
   detectClientRedirect,
   detectForm,
@@ -8,8 +10,13 @@ import {
   findLegalLinks,
   parseAttributes,
 } from '../../../../src/collectors/http/html.ts';
-import { toHop } from '../../../../src/collectors/http/index.ts';
+import { createHttpCollector, toHop } from '../../../../src/collectors/http/index.ts';
+import { readResponseHead } from '../../../../src/collectors/http/response-head.ts';
 import { htmlSection } from '../../../../src/collectors/http/rules.ts';
+import { defaultConfig } from '../../../../src/core/config/schema.ts';
+import { silentLogger } from '../../../../src/core/runtime/logger.ts';
+import { makeSnapshot, makeTarget } from '../../../utils/snapshot-builder.ts';
+import { chain } from './tls-01-fixtures.ts';
 
 const BASE = 'http://www.example.test/start';
 
@@ -149,85 +156,91 @@ describe('findLegalLinks', () => {
     });
   });
 
+  const a = (href: string, text: string) => `<a href="${href}">${text}</a>`;
+
   it.each([
     [
       'a link named Datenschutz is not the Impressum by its path',
-      '<a href="/impressum-und-mehr">Datenschutz</a>',
+      a('/impressum-und-mehr', 'Datenschutz'),
       {
-        privacy: 'http://www.example.test/impressum-und-mehr',
+        privacy: '/impressum-und-mehr',
       },
     ],
     [
       'a link named Impressum is not the privacy policy by its path',
-      '<a href="/datenschutz-info">Impressum</a>',
+      a('/datenschutz-info', 'Impressum'),
       {
-        impressum: 'http://www.example.test/datenschutz-info',
+        impressum: '/datenschutz-info',
       },
     ],
     [
       'a page linked for both documents is the Impressum only',
-      '<a href="/rechtliches">Impressum &amp; Datenschutz</a>',
+      a('/rechtliches', 'Impressum &amp; Datenschutz'),
       {
-        impressum: 'http://www.example.test/rechtliches',
+        impressum: '/rechtliches',
       },
     ],
     [
       'a page linked for both documents gives way to a later link named for the privacy policy alone',
       '<a href="/impressum-datenschutz">Impressum &amp; Datenschutz</a><a href="/datenschutz">Datenschutzerklärung</a>',
       {
-        impressum: 'http://www.example.test/impressum-datenschutz',
-        privacy: 'http://www.example.test/datenschutz',
+        impressum: '/impressum-datenschutz',
+        privacy: '/datenschutz',
       },
     ],
     [
       'a page linked for both documents gives way to a later privacy path match',
       '<a href="/rechtliches">Impressum &amp; Datenschutz</a><a href="/datenschutz"><svg></svg></a>',
       {
-        impressum: 'http://www.example.test/rechtliches',
-        privacy: 'http://www.example.test/datenschutz',
+        impressum: '/rechtliches',
+        privacy: '/datenschutz',
       },
     ],
     [
       'a page linked for both documents after the Impressum link is the privacy policy',
       '<a href="/impressum">Impressum</a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
       {
-        impressum: 'http://www.example.test/impressum',
-        privacy: 'http://www.example.test/rechtliches',
+        impressum: '/impressum',
+        privacy: '/rechtliches',
       },
     ],
     [
       'a page linked for both documents comes before a privacy link found only by its path',
       '<a href="/impressum">Impressum</a><a href="/datenschutz"><svg></svg></a><a href="/rechtliches">Impressum &amp; Datenschutz</a>',
       {
-        impressum: 'http://www.example.test/impressum',
-        privacy: 'http://www.example.test/rechtliches',
+        impressum: '/impressum',
+        privacy: '/rechtliches',
       },
     ],
     [
       'an anchor on the Impressum page is the Impressum only',
       '<a href="/impressum">Impressum</a><a href="/impressum#datenschutz">Datenschutz</a>',
       {
-        impressum: 'http://www.example.test/impressum',
+        impressum: '/impressum',
       },
     ],
     [
       'a link is kept without the anchor it jumps to',
       '<a href="/impressum#top">Impressum</a><a href="/datenschutz#cookies">Datenschutz</a>',
       {
-        impressum: 'http://www.example.test/impressum',
-        privacy: 'http://www.example.test/datenschutz',
+        impressum: '/impressum',
+        privacy: '/datenschutz',
       },
     ],
     [
       'a path match still counts when no text names the document',
       '<a href="/impressum"><svg></svg></a><a href="/datenschutz"><img alt=""></a>',
       {
-        impressum: 'http://www.example.test/impressum',
-        privacy: 'http://www.example.test/datenschutz',
+        impressum: '/impressum',
+        privacy: '/datenschutz',
       },
     ],
   ])('%s', (_, html, expected) => {
-    expect(findLegalLinks(html, BASE)).toEqual(expected);
+    expect(findLegalLinks(html, BASE)).toEqual(
+      Object.fromEntries(
+        Object.entries(expected).map(([kind, path]) => [kind, `http://www.example.test${path}`]),
+      ),
+    );
   });
 
   it('ignores mailto and javascript links', () => {
@@ -306,6 +319,131 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
     };
   }
 
+  const pageHop = (body: string, overrides?: Partial<FetchResult>) => toHop(response(page(body), overrides));
+  const form = (attributes: string) => `<form ${attributes}><textarea></textarea></form>`;
+
+  describe('redirect targets in snapshots and evidence', () => {
+    it.each([
+      ['javascript:alert(visitorSecret)', 'javascript:[redacted]'],
+      ['/u/alice@intranet', '[redacted]', 'http://www.example.test/[redacted]'],
+      ['/next?session=visitorSecret', 'http://www.example.test/next?session=[redacted]'],
+      ['https://www.example.test/next?id=G-123', 'https://www.example.test/next?id=G-123'],
+    ])('keeps only the redacted Location for %s', (location, header, expected = header) => {
+      const fetched = response('', { status: 302, ...readResponseHead({ location }, PAGE_URL) });
+      expect(fetched.location).toBe(new URL(location, PAGE_URL).href);
+
+      const hop = toHop(fetched);
+      expect(hop.headers).toEqual([{ name: 'location', value: header }]);
+      expect(hop.location).toBe(expected);
+      expect(redirectChainEvidence(chain(PAGE_URL, [hop]))).toMatchObject({ hops: [{ location: expected }] });
+    });
+
+    it.each(['ok', 'connection-refused'] as const)(
+      'keeps the raw redirect path only for navigation when the next request is %s',
+      async (outcome) => {
+        const raw = new URL('/u/alice@intranet/start', PAGE_URL).href;
+        const legal = new URL('legal', raw).href;
+        const notice = new URL('notice', legal).href;
+        const privacy = new URL('/datenschutz', raw).href;
+        const stored = 'http://www.example.test/[redacted]';
+        const formBody = '<form method="post"><input name="email"></form>';
+        const get = vi.spyOn(HttpClient.prototype, 'get').mockImplementation(async (url) => {
+          if (url === PAGE_URL) {
+            return response('', { url, status: 302, ...readResponseHead({ location: raw }, url) });
+          }
+          if (url === raw) {
+            if (outcome === 'connection-refused') {
+              throw new ProbeError('ECONNREFUSED', `connection refused at ${url}`);
+            }
+            const links = '<a href="legal">Impressum</a><a href="/datenschutz">Datenschutz</a>';
+            return response(page(formBody + links), { url });
+          }
+          if (url === legal) {
+            return response('', { url, status: 302, ...readResponseHead({ location: 'notice' }, url) });
+          }
+          return response(page(formBody), { url });
+        });
+        const target = makeTarget(PAGE_URL);
+        const lookup = vi.fn(async () => []);
+
+        try {
+          const result = await createHttpCollector()({
+            target,
+            snapshot: makeSnapshot({ target }),
+            network: { lookup, proxy: null, allowPrivateAddresses: false, dnsServers: [] },
+            config: defaultConfig(),
+            userAgent: { http: 'scanner test', token: 'scanner test' },
+            signal: new AbortController().signal,
+            deadline: Date.now() + 10_000,
+            options: { maxPages: 1, screenshots: false, sandbox: 'off', lang: 'de', assumeRegion: null },
+            artifactsDir: '/unused-artifacts',
+            artifactsRelDir: 'artifacts',
+            now: () => new Date('2026-10-30T12:00:00.000Z'),
+            log: silentLogger,
+          });
+          expect(lookup).not.toHaveBeenCalled();
+          expect(get).toHaveBeenCalledWith(raw, expect.any(Number));
+
+          const http = result.sections.http!;
+          const redirect = http.chains.find((c) => c.hostVariant === 'target' && c.scheme === 'http')!;
+          expect(redirect.outcome).toBe(outcome);
+          if (outcome === 'ok') {
+            expect(redirect.final).toMatchObject({ url: stored, forms: [{ action: stored }] });
+            expect(result.handover?.chainUrls?.[redirect.id]?.final).toBe(raw);
+            expect(http.documents.find((d) => d.role === 'start')?.finalUrl).toBe(stored);
+            for (const target of [legal, notice, privacy]) {
+              expect(get).toHaveBeenCalledWith(target, expect.any(Number));
+            }
+            expect(result.probes).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ purpose: 'security-headers:impressum', target: stored }),
+                expect.objectContaining({ purpose: 'security-headers:privacy', target: privacy }),
+              ]),
+            );
+            expect(http.documents.find((d) => d.role === 'impressum')).toMatchObject({
+              url: stored,
+              finalUrl: stored,
+              forms: [{ action: stored }],
+            });
+          } else {
+            expect(redirect.error?.url).toBe(stored);
+          }
+          expect(redirect.hops[0]?.location).toBe(stored);
+          const persisted = { http, probes: result.probes, evidence: redirectChainEvidence(redirect) };
+          expect(JSON.stringify(persisted)).not.toContain('alice');
+        } finally {
+          get.mockRestore();
+        }
+      },
+    );
+
+    it.each([
+      [
+        '<meta http-equiv="refresh" content="0;url=/u/alice@intranet">',
+        'meta',
+        'http://www.example.test/[redacted]',
+      ],
+      [
+        '<script>location.href = "https://www.example.test/u/alice@intranet"</script>',
+        'js',
+        'https://www.example.test/[redacted]',
+      ],
+      [
+        '<meta http-equiv="refresh" content="0;url=/next?session=visitorSecret">',
+        'meta',
+        'http://www.example.test/next?session=[redacted]',
+      ],
+      [
+        '<script>location.href = "https://www.example.test/next"</script>',
+        'js',
+        'https://www.example.test/next',
+      ],
+      ['<meta http-equiv="refresh" content="0;url=javascript:alert(visitorSecret)">', 'meta', null],
+    ])('redacts the URL of a client redirect in %s', (markup, kind, url) => {
+      expect(pageHop(markup).clientRedirect).toEqual({ kind, url });
+    });
+  });
+
   it('a comment form after 70 KiB of a 90 KiB page is found, with where it sends its input', () => {
     const html = page(`${filler(70 * KIB)}${COMMENT_FORM}${filler(20 * KIB)}`);
     expect(Buffer.byteLength(html)).toBeGreaterThan(90 * KIB);
@@ -331,12 +469,12 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
   });
 
   it('a body cut before the form says so: no form seen, inspection truncated', () => {
-    const hop = toHop(response(page(filler(80 * KIB)), { bodyTruncated: true }));
+    const hop = pageHop(filler(80 * KIB), { bodyTruncated: true });
     expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'truncated' });
   });
 
   it('a form in the part of a cut body that was read still counts', () => {
-    const hop = toHop(response(page(`${filler(10 * KIB)}${COMMENT_FORM}`), { bodyTruncated: true }));
+    const hop = pageHop(`${filler(10 * KIB)}${COMMENT_FORM}`, { bodyTruncated: true });
     expect(hop).toMatchObject({ hasForm: true, formInspection: 'truncated' });
   });
 
@@ -371,73 +509,55 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
       '<textarea>&lt;form&gt;<form method="post"><input name="email"></form></textarea>',
     ],
   ])('%s after 64 KiB is no data form', (_name, markup) => {
-    const hop = toHop(response(page(`${filler(70 * KIB)}${markup}`)));
+    const hop = pageHop(`${filler(70 * KIB)}${markup}`);
     expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'complete' });
   });
 
   it.each([
-    ['no action: the page itself', '<form method="post"><textarea></textarea></form>', PAGE_URL, 'http'],
-    [
-      'an empty action: the page itself',
-      '<form action="" method="post"><textarea></textarea></form>',
-      PAGE_URL,
-      'http',
-    ],
-    [
-      'a relative action',
-      '<form action="../senden" method="post"><textarea></textarea></form>',
-      'http://www.example.test/senden',
-      'http',
-    ],
+    ['no action: the page itself', form('method="post"'), PAGE_URL, 'http'],
+    ['an empty action: the page itself', form('action="" method="post"'), PAGE_URL, 'http'],
+    ['a relative action', form('action="../senden" method="post"'), 'http://www.example.test/senden', 'http'],
     [
       'an https action',
-      '<form action="https://www.example.test/senden" method="post"><textarea></textarea></form>',
+      form('action="https://www.example.test/senden" method="post"'),
       'https://www.example.test/senden',
       'https',
     ],
     [
       'a query in the action is redacted',
-      '<form action="/senden?token=abc123&amp;v=2" method="post"><textarea></textarea></form>',
+      form('action="/senden?token=abc123&amp;v=2" method="post"'),
       'http://www.example.test/senden?token=[redacted]&v=2',
       'http',
     ],
-    [
-      'a javascript: action is no address',
-      '<form action="javascript:void(0)"><textarea></textarea></form>',
-      null,
-      'other',
-    ],
+    ['a javascript: action is no address', form('action="javascript:void(0)"'), null, 'other'],
     [
       'a mailto: action is no address',
-      '<form action="mailto:info@example.test" method="post"><textarea></textarea></form>',
+      form('action="mailto:info@example.test" method="post"'),
       null,
       'other',
     ],
   ])('action: %s', (_name, markup, action, actionScheme) => {
-    expect(toHop(response(page(markup))).forms).toEqual([
-      { action, actionScheme, method: expect.any(String) },
-    ]);
+    expect(pageHop(markup).forms).toEqual([{ action, actionScheme, method: expect.any(String) }]);
   });
 
   it('markup inside an attribute value is no form, and nothing of the value is kept', () => {
     const hidden =
       '<input type="hidden" name="payload" value=\'<form action="/private-field-value"><textarea></textarea></form>\'>';
-    const hop = toHop(response(page(hidden)));
+    const hop = pageHop(hidden);
     expect(hop).toMatchObject({ hasForm: false, forms: [], formInspection: 'complete' });
     expect(JSON.stringify(hop)).not.toContain('private-field-value');
   });
 
   it('a ">" in a quoted attribute of the form tag does not end it: action and method are read', () => {
-    const markup =
-      '<form aria-label="a > b" action="https://forms.example.test/send" method="post"><textarea></textarea></form>';
-    expect(toHop(response(page(markup))).forms).toEqual([
+    const markup = form('aria-label="a > b" action="https://forms.example.test/send" method="post"');
+    expect(pageHop(markup).forms).toEqual([
       { action: 'https://forms.example.test/send', actionScheme: 'https', method: 'post' },
     ]);
   });
 
   it('a field after a quoted ">" in an earlier field still counts', () => {
     const markup = '<form method="post"><input type="submit" value="Weiter >"><input name="email"></form>';
-    expect(toHop(response(page(markup))).hasForm).toBe(true);
+    expect(pageHop(markup).hasForm).toBe(true);
   });
 
   it.each([
@@ -478,7 +598,7 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
       'http',
     ],
   ])('base URL: %s', (_name, markup, action, actionScheme) => {
-    expect(toHop(response(page(markup))).forms).toEqual([{ action, actionScheme, method: 'post' }]);
+    expect(pageHop(markup).forms).toEqual([{ action, actionScheme, method: 'post' }]);
   });
 
   it.each([
@@ -487,12 +607,12 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
     ['put', 'get'],
     ['', 'get'],
   ])('method %j is read as %s', (method, expected) => {
-    const hop = toHop(response(page(`<form method="${method}"><textarea></textarea></form>`)));
+    const hop = pageHop(form(`method="${method}"`));
     expect(hop.forms?.[0]?.method).toBe(expected);
   });
 
   it('keeps at most five forms and no field name or value', () => {
-    const hop = toHop(response(page(COMMENT_FORM.repeat(8))));
+    const hop = pageHop(COMMENT_FORM.repeat(8));
     expect(hop.hasForm).toBe(true);
     expect(hop.forms).toHaveLength(5);
     const stored = JSON.stringify(hop);
@@ -507,7 +627,7 @@ describe('form facts of a plain-http page: the whole body that was read', () => 
     ['an error page', { status: 404 }],
     ['a page that is no HTML', { contentType: 'application/pdf' }],
   ])('%s is not inspected for forms', (_name, p) => {
-    const hop = toHop(response(page(COMMENT_FORM), p));
+    const hop = pageHop(COMMENT_FORM, p);
     expect(hop.hasForm).toBeUndefined();
     expect(hop.forms).toBeUndefined();
     expect(hop.formInspection).toBeUndefined();

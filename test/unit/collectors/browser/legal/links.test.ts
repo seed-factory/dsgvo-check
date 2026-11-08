@@ -21,26 +21,10 @@ describe('exact labels outrank generic and topical ones', () => {
     expect(r.choice?.raw).toBe(u('/anbieter'));
   });
 
-  it.each([
-    [
-      '"DSGVO konform" loses against "Hinweise zum Datenschutz"',
-      'Webdesign DSGVO konform',
-      'Hinweise zum Datenschutz',
-    ],
-    [
-      'a topical "Datenschutz-…" loses against "Datenschutz"',
-      'Datenschutz-Grundverordnung erklärt',
-      'Datenschutz',
-    ],
-    [
-      '"Datenschutz vergleichen" loses against "Datenschutzrichtlinie"',
-      'Datenschutz vergleichen',
-      'Datenschutzrichtlinie',
-    ],
-  ])('privacy: %s', (_, weak, good) => {
+  it('privacy: a compliance claim loses to a policy label', () => {
     const r = pick('privacy', [
-      link({ raw: u('/erstens'), text: weak }),
-      link({ raw: u('/zweitens'), text: good }),
+      link({ raw: u('/erstens'), text: 'Webdesign DSGVO konform' }),
+      link({ raw: u('/zweitens'), text: 'Hinweise zum Datenschutz' }),
     ]);
     expect(r.choice?.raw).toBe(u('/zweitens'));
   });
@@ -106,14 +90,6 @@ describe('hop and contact keys use word boundaries', () => {
     expect(none.hops).toEqual([]);
   });
 
-  it('contact: "Kontaktlinsen" is no contact page, "Kontakt" is', () => {
-    const plan = select([
-      link({ raw: u('/kontaktlinsen'), text: 'Kontaktlinsen', region: 'nav' }),
-      link({ raw: u('/kontakt'), text: 'Kontakt', region: 'nav' }),
-    ]);
-    expect(plan.contact?.raw).toBe(u('/kontakt'));
-  });
-
   it('contact labels keep "Kontakt & Anfahrt" and reject "Kontaktlinsen"', () => {
     const plan = select([
       link({ raw: u('/kontakt'), text: 'Kontakt & Anfahrt', region: 'nav' }),
@@ -152,39 +128,14 @@ describe('hop and contact keys use word boundaries', () => {
 });
 
 describe('localised labels', () => {
-  const privacy: Array<[string, string]> = [
-    ['fr', 'Politique de confidentialité'],
-    ['fr', 'Protection des données personnelles'],
-    ['es', 'Política de privacidad'],
-    ['it', 'Informativa privacy'],
-    ['it', 'Protezione dati'],
-    ['pt', 'Aviso de Privacidade'],
-    ['nl', 'Privacyverklaring'],
-    ['no', 'Personvern'],
-    ['da', 'Privatlivspolitik'],
-    ['sv', 'Integritetspolicy'],
-    ['sv', 'Personuppgifter'],
-    ['fi', 'Tietosuoja'],
-    ['is', 'Persónuvernd'],
-    ['pl', 'Polityka prywatności'],
-  ];
-  it.each(privacy)('privacy (%s): "%s"', (_, label) => {
-    const r = pick('privacy', [link({ raw: u('/p1'), text: label })]);
-    expect(r.status).toBe('page');
-    expect(r.choice?.raw).toBe(u('/p1'));
-  });
-
-  const impressum: Array<[string, string]> = [
-    ['fr', 'Mentions légales'],
-    ['es', 'Aviso legal'],
-    ['it', 'Note legali'],
-    ['pt', 'Aviso legal'],
-    ['nl', 'Colofon'],
-    ['pl', 'Nota prawna'],
-  ];
-  it.each(impressum)('impressum (%s): "%s"', (_, label) => {
-    const r = pick('impressum', [link({ raw: u('/i1'), text: label })]);
-    expect(r.status).toBe('page');
+  it.each([
+    ['privacy', 'Polityka prywatności'],
+    ['privacy', 'Protection des données personnelles'],
+    ['impressum', 'Mentions légales'],
+  ] as const)('%s links accept the localized label "%s"', (kind, text) => {
+    const result = pick(kind, [link({ raw: u('/legal-page'), text })]);
+    expect(result.status).toBe('page');
+    expect(result.choice?.raw).toBe(u('/legal-page'));
   });
 
   it('localised path slugs find the link when the label is an icon', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defaultHttpPort, isHttpUrl, parseUrl } from '../../../../src/core/url/url.ts';
+import { defaultHttpPort, parseUrl } from '../../../../src/core/url/url.ts';
 
-describe('isHttpUrl', () => {
+describe('parseUrl with HTTP-only filtering', () => {
   it.each([
     ['http://example.test/', true],
     ['https://example.test/', true],
@@ -11,13 +11,7 @@ describe('isHttpUrl', () => {
     ['javascript:void(0)', false],
     ['ws://example.test/', false],
   ])('%s → %s', (raw, http) => {
-    expect(isHttpUrl(new URL(raw))).toBe(http);
-  });
-
-  it('is what `parseUrl(…, httpOnly)` keeps', () => {
-    expect(parseUrl('https://example.test/', undefined, true)?.href).toBe('https://example.test/');
-    expect(parseUrl('ftp://example.test/', undefined, true)).toBeNull();
-    expect(parseUrl('ftp://example.test/')?.protocol).toBe('ftp:');
+    expect(parseUrl(raw, undefined, true)?.href ?? null).toBe(http ? raw : null);
   });
 });
 

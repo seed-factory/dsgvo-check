@@ -1,3 +1,4 @@
+import type { PhaseRecord } from '../../../../../src/core/snapshot/browser.ts';
 import { makeDom, makeLink } from '../../../../utils/snapshot-builder.ts';
 import {
   CONTACT,
@@ -15,6 +16,32 @@ import {
 } from '../helpers.ts';
 import { ORIGIN_IMG, type Scenario } from './shared.ts';
 
+const MAP_EMBED = 'https://www.google.com/maps/embed?pb=[redacted]';
+
+const mapsOnContact = (id: string, request: Parameters<typeof req>[2] = {}) =>
+  req(id, MAP_EMBED, {
+    pageUrl: CONTACT,
+    resourceType: 'document',
+    isNavigation: true,
+    isMainFrame: false,
+    frameUrl: MAP_EMBED,
+    ...request,
+  });
+
+const mapsBeforeAndAfterReject = (reject: PhaseRecord['click']) => [
+  phase('A', { requests: [mapsOnContact('A-1')] }),
+  phase('B', {
+    click: reject,
+    reloaded: true,
+    pages: [
+      page(START, 'start', 'B'),
+      page(START, 'start', 'B', { reload: true }),
+      page(CONTACT, 'contact', 'B'),
+    ],
+    requests: [mapsOnContact('B-1', { phase: 'B', afterClick: true })],
+  }),
+];
+
 export const scenarios: Scenario[] = [
   {
     file: 'violation-maps-contact.json',
@@ -25,13 +52,7 @@ export const scenarios: Scenario[] = [
         phases: [
           phase('A', {
             requests: [
-              req('A-1', 'https://www.google.com/maps/embed?pb=[redacted]', {
-                pageUrl: CONTACT,
-                resourceType: 'document',
-                isNavigation: true,
-                isMainFrame: false,
-                frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
-              }),
+              mapsOnContact('A-1'),
               req('A-2', 'https://maps.googleapis.com/maps/vt?pb=[redacted]', {
                 pageUrl: CONTACT,
                 resourceType: 'image',
@@ -46,67 +67,23 @@ export const scenarios: Scenario[] = [
     description:
       'The Kontakt page embeds Google Maps before any interaction and again as a control page after the reject, which the CMP state confirms',
     expect: { status: 'completed', variants: ['maps-loaded'] },
-    build: () => {
-      const map = (id: string, p = {}) =>
-        req(id, 'https://www.google.com/maps/embed?pb=[redacted]', {
-          pageUrl: CONTACT,
-          resourceType: 'document',
-          isNavigation: true,
-          isMainFrame: false,
-          frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
-          ...p,
-        });
-      return site({
-        phases: [
-          phase('A', { requests: [map('A-1')] }),
-          phase('B', {
-            click: click('reject'),
-            reloaded: true,
-            pages: [
-              page(START, 'start', 'B'),
-              page(START, 'start', 'B', { reload: true }),
-              page(CONTACT, 'contact', 'B'),
-            ],
-            requests: [map('B-1', { phase: 'B', afterClick: true })],
-          }),
-        ],
+    build: () =>
+      site({
+        phases: mapsBeforeAndAfterReject(click('reject')),
         cmp: rejectCmp({ confirmed: true, pages: { [CONTACT]: 'in-effect' } }),
-      });
-    },
+      }),
   },
   {
     file: 'violation-maps-after-settings-reject.json',
     description:
       'No reject on the first layer; the reject was saved in the settings layer and confirmed, and Kontakt still embeds Google Maps before any interaction and as a control page after it',
     expect: { status: 'completed', variants: ['maps-loaded'] },
-    build: () => {
-      const map = (id: string, p = {}) =>
-        req(id, 'https://www.google.com/maps/embed?pb=[redacted]', {
-          pageUrl: CONTACT,
-          resourceType: 'document',
-          isNavigation: true,
-          isMainFrame: false,
-          frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
-          ...p,
-        });
-      return site({
-        phases: [
-          phase('A', { requests: [map('A-1')] }),
-          phase('B', {
-            click: settingsClick(),
-            reloaded: true,
-            pages: [
-              page(START, 'start', 'B'),
-              page(START, 'start', 'B', { reload: true }),
-              page(CONTACT, 'contact', 'B'),
-            ],
-            requests: [map('B-1', { phase: 'B', afterClick: true })],
-          }),
-        ],
+    build: () =>
+      site({
+        phases: mapsBeforeAndAfterReject(settingsClick()),
         cmp: settingsRejectCmp(),
         plan: settingsRejectPlan(),
-      });
-    },
+      }),
   },
   {
     file: 'clean-two-click-placeholder.json',

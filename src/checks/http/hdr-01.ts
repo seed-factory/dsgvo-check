@@ -15,9 +15,11 @@ import {
 } from '../../core/api.ts';
 import type { DocumentResponse } from '../../core/snapshot/http.ts';
 import {
-  BLOCKED_DOCUMENT,
   browserAcceptsTls,
   evidenceValue,
+  headerDocumentCoverage,
+  headerStartDocument,
+  headerStartFailure,
   headerValues,
   hstsOf,
   isSuccess,
@@ -206,26 +208,9 @@ function evaluable(doc: DocumentResponse): boolean {
   );
 }
 
-const isBlocked = (doc: DocumentResponse): boolean => doc.error?.code === BLOCKED_DOCUMENT;
-
-/** The start page decides whether the headers can be judged at all; null when they can. */
 function startPageOutcome(start: DocumentResponse): CheckOutcome | null {
-  // A bot or WAF challenge answered instead of the site (the collector raised SCAN-HTTP-BLOCKED): nothing to judge.
-  if (isBlocked(start)) {
-    return {
-      status: 'inconclusive',
-      reason: 'blocked',
-      ...(start.status !== null ? { limitations: [`status:${start.status}`] } : {}),
-      observations: [],
-    };
-  }
-  if (start.error || start.status === null) {
-    return {
-      status: 'inconclusive',
-      reason: start.error?.code === 'timeout' ? 'timeout' : 'start-page-unavailable',
-      observations: [],
-    };
-  }
+  const failure = headerStartFailure(start);
+  if (failure) return failure;
   if (!isSuccess(start.status)) {
     return {
       status: 'inconclusive',
@@ -285,15 +270,10 @@ export const hdr01 = defineCheck({
   ],
   run(slice) {
     const docs = slice.http.documents;
-    const start = docs.find((d) => d.role === 'start');
-    if (!start) throw new Error('http section has no start document');
-    const unusable = startPageOutcome(start);
+    const unusable = startPageOutcome(headerStartDocument(docs));
     if (unusable) return unusable;
 
-    const evaluated = docs.filter(evaluable);
-    const limitations = docs
-      .filter((d) => !evaluable(d))
-      .map((d) => `${isBlocked(d) ? 'document-blocked' : 'document-unavailable'}:${d.role}`);
+    const { evaluated, limitations } = headerDocumentCoverage(docs, evaluable);
     if (slice.http.throttled) limitations.push('throttled');
 
     const byMechanism = new Map<string, Observation>();

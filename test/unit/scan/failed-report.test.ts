@@ -4,11 +4,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { disclaimerParagraphs } from '../../../src/core/data/disclaimer.ts';
 import { loadTexts } from '../../../src/core/data/load.ts';
-import { scan } from '../../../src/scan.ts';
 import type { ScanOptions } from '../../../src/scan-options.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { nxdomainLookup } from '../../utils/scan-harness.ts';
-import { opts, withBrowser } from './fixtures.ts';
+import { scanWith, withBrowser } from './fixtures.ts';
 
 describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)', () => {
   it.each([
@@ -55,7 +54,7 @@ describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)'
       'internal-error',
     ],
   ] as const)('%s', async (_name, over, reason, code) => {
-    const result = await scan(opts(over as Partial<ScanOptions>));
+    const result = await scanWith(over as Partial<ScanOptions>);
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('failed');
     expect(result.report.summary.exitReasons).toContain(reason);
@@ -69,18 +68,16 @@ describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)'
     ['sandbox-unavailable', null],
     ['browser-unavailable', null],
   ] as const)('collector fatal %s → failed, results gathered so far are kept', async (reason, diag) => {
-    const result = await scan(
-      opts({
-        collectors: {
-          ...withBrowser,
-          browser: async () => ({
-            status: 'error',
-            sections: {},
-            fatal: { reason, code: `x-${reason}` },
-          }),
-        },
-      }),
-    );
+    const result = await scanWith({
+      collectors: {
+        ...withBrowser,
+        browser: async () => ({
+          status: 'error',
+          sections: {},
+          fatal: { reason, code: `x-${reason}` },
+        }),
+      },
+    });
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('failed');
     // TEST-02 (http) still ran and its finding is kept
@@ -92,20 +89,20 @@ describe('scan — fatal paths produce a valid minimal failed report (5.1, 5.2)'
 
 describe('scan — the in-memory report carries the composed disclaimer', () => {
   it('conditional paragraphs are part of report.disclaimer.text, not only of the written files', async () => {
-    const result = await scan(opts({ sandbox: 'off' }));
+    const result = await scanWith({ sandbox: 'off' });
     const text = result.report.disclaimer.text;
     expect(text).toMatch(/--sandbox off/);
     expect(text).toMatch(/eigener oder im Auftrag betreuter Websites/);
   });
 
   it('the minimal failed report too', async () => {
-    const result = await scan(opts({ url: 'ftp://example.de/' }));
+    const result = await scanWith({ url: 'ftp://example.de/' });
     expect(result.report.scan.status).toBe('failed');
     expect(result.report.disclaimer.text).toMatch(/Der Scan wurde nicht durchgeführt/);
   });
 
   it('rendering again after the exit reasons changed replaces the paragraph instead of adding a second one', async () => {
-    const { report } = await scan(opts({ url: 'ftp://example.de/' }));
+    const { report } = await scanWith({ url: 'ftp://example.de/' });
     report.summary.exitReasons = [...report.summary.exitReasons, 'report-write-failed'];
     const paragraphs = disclaimerParagraphs(report, loadTexts('de'));
     const incomplete = paragraphs.filter((p) => p.startsWith('Der Scan wurde nicht'));

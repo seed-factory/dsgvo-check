@@ -49,20 +49,19 @@ export async function closedPort(): Promise<number> {
 }
 
 /** A TCP server that accepts connections and never answers (handshake / header timeouts). */
-export async function silentServer(): Promise<{ port: number; close(): Promise<void> }> {
+export async function withSilentServer(run: (port: number) => Promise<void>): Promise<void> {
   const sockets = new Set<net.Socket>();
   const s = net.createServer((c) => {
     sockets.add(c);
     c.on('error', () => undefined);
   });
   await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()));
-  return {
-    port: (s.address() as AddressInfo).port,
-    close: async () => {
-      for (const c of sockets) c.destroy();
-      await new Promise<void>((r) => s.close(() => r()));
-    },
-  };
+  try {
+    await run((s.address() as AddressInfo).port);
+  } finally {
+    for (const c of sockets) c.destroy();
+    await new Promise<void>((r) => s.close(() => r()));
+  }
 }
 
 /**

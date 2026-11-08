@@ -10,7 +10,6 @@ import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
 import type { FullReport } from '../../../src/core/report/schema.ts';
 import type { CollectorContext, HttpCollector } from '../../../src/core/snapshot/collector.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
-import { scan } from '../../../src/scan.ts';
 import {
   makeBrowser,
   makeChain,
@@ -20,7 +19,7 @@ import {
   makePage,
   makePhase,
 } from '../../utils/snapshot-builder.ts';
-import { browserCheck, opts, withBrowser } from './fixtures.ts';
+import { browserCheck, scanWith, withBrowser } from './fixtures.ts';
 
 /** http:// of the target redirects to https, which works: TLS-01 has nothing of its own to report. */
 const HTTP: HttpSection = makeHttp({
@@ -85,29 +84,27 @@ describe('scan — the http:// addresses of pages with a form', () => {
   it('run after the browser and the DNS follow-up, with both sections in the context; its section replaces the first', async () => {
     const calls: string[] = [];
     let seen: CollectorContext | null = null;
-    const result = await scan(
-      opts({
-        registry: new CheckRegistry([tls01, mail01, browserCheck]),
-        collectors: {
-          ...withBrowser,
-          http: httpStage,
-          dns: async () => ({ status: 'ok', sections: { dns: makeDns({ domain: 'example.de' }) } }),
-          browser: async () => {
-            calls.push('browser');
-            return browserStage();
-          },
-          dnsFollowUp: async () => {
-            calls.push('dnsFollowUp');
-            return { status: 'ok', sections: {} };
-          },
-          httpFormTwins: async (ctx) => {
-            calls.push('httpFormTwins');
-            seen = ctx;
-            return twinStep(ctx);
-          },
+    const result = await scanWith({
+      registry: new CheckRegistry([tls01, mail01, browserCheck]),
+      collectors: {
+        ...withBrowser,
+        http: httpStage,
+        dns: async () => ({ status: 'ok', sections: { dns: makeDns({ domain: 'example.de' }) } }),
+        browser: async () => {
+          calls.push('browser');
+          return browserStage();
         },
-      }),
-    );
+        dnsFollowUp: async () => {
+          calls.push('dnsFollowUp');
+          return { status: 'ok', sections: {} };
+        },
+        httpFormTwins: async (ctx) => {
+          calls.push('httpFormTwins');
+          seen = ctx;
+          return twinStep(ctx);
+        },
+      },
+    });
 
     expect(calls).toEqual(['browser', 'dnsFollowUp', 'httpFormTwins']);
     const ctx = seen as CollectorContext | null;
@@ -125,19 +122,17 @@ describe('scan — the http:// addresses of pages with a form', () => {
   });
 
   it('a failing step keeps the HTTP section and notes the failure: TLS-01 says the further pages are unknown', async () => {
-    const result = await scan(
-      opts({
-        registry: new CheckRegistry([tls01, browserCheck]),
-        collectors: {
-          ...withBrowser,
-          http: httpStage,
-          browser: browserStage,
-          httpFormTwins: async () => {
-            throw new Error('client gone');
-          },
+    const result = await scanWith({
+      registry: new CheckRegistry([tls01, browserCheck]),
+      collectors: {
+        ...withBrowser,
+        http: httpStage,
+        browser: browserStage,
+        httpFormTwins: async () => {
+          throw new Error('client gone');
         },
-      }),
-    );
+      },
+    });
 
     expect(result.report.scan.status).not.toBe('failed');
     expect(result.snapshot?.http?.chains).toEqual(HTTP.chains);
@@ -153,42 +148,40 @@ describe('scan — the http:// addresses of pages with a form', () => {
   });
 
   it('the deadline during the step → SCAN-TIMEOUT; what it handed over in the grace period is kept', async () => {
-    const result = await scan(
-      opts({
-        registry: new CheckRegistry([tls01, browserCheck]),
-        timeoutMs: 100,
-        abortGraceMs: 500,
-        collectors: {
-          ...withBrowser,
-          http: httpStage,
-          browser: browserStage,
-          httpFormTwins: (ctx) =>
-            new Promise((resolve) => {
-              ctx.signal.addEventListener('abort', () => {
-                const http = ctx.snapshot.http as HttpSection;
-                resolve({
-                  status: 'partial',
-                  sections: {
-                    http: {
-                      ...http,
-                      twins: [
-                        {
-                          page: 'https://www.example.de/kontakt/',
-                          url: 'http://www.example.de/kontakt/',
-                          hop: null,
-                          outcome: 'timeout',
-                          error: { code: 'timeout', message: 'scan deadline reached' },
-                        },
-                      ],
-                      formTwinStage: STAGE,
-                    },
+    const result = await scanWith({
+      registry: new CheckRegistry([tls01, browserCheck]),
+      timeoutMs: 100,
+      abortGraceMs: 500,
+      collectors: {
+        ...withBrowser,
+        http: httpStage,
+        browser: browserStage,
+        httpFormTwins: (ctx) =>
+          new Promise((resolve) => {
+            ctx.signal.addEventListener('abort', () => {
+              const http = ctx.snapshot.http as HttpSection;
+              resolve({
+                status: 'partial',
+                sections: {
+                  http: {
+                    ...http,
+                    twins: [
+                      {
+                        page: 'https://www.example.de/kontakt/',
+                        url: 'http://www.example.de/kontakt/',
+                        hop: null,
+                        outcome: 'timeout',
+                        error: { code: 'timeout', message: 'scan deadline reached' },
+                      },
+                    ],
+                    formTwinStage: STAGE,
                   },
-                });
+                },
               });
-            }),
-        },
-      }),
-    );
+            });
+          }),
+      },
+    });
 
     expect(result.report.scan.status).toBe('partial');
     expect(result.report.diagnostics?.map((d) => d.code)).toContain('SCAN-TIMEOUT');
@@ -204,19 +197,17 @@ describe('scan — the http:// addresses of pages with a form', () => {
     ['the browser ran, but no HTTP check asked for the HTTP section', [browserCheck]],
   ])('does not run when %s', async (_name, checks) => {
     let called = false;
-    await scan(
-      opts({
-        registry: new CheckRegistry(checks),
-        collectors: {
-          ...withBrowser,
-          http: httpStage,
-          httpFormTwins: async () => {
-            called = true;
-            return { status: 'ok', sections: {} };
-          },
+    await scanWith({
+      registry: new CheckRegistry(checks),
+      collectors: {
+        ...withBrowser,
+        http: httpStage,
+        httpFormTwins: async () => {
+          called = true;
+          return { status: 'ok', sections: {} };
         },
-      }),
-    );
+      },
+    });
     expect(called).toBe(false);
   });
 });

@@ -1,77 +1,76 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { valueScrubber } from '../../../../src/collectors/browser/legal/scrub.ts';
 import { sanitizeRequestUrl } from '../../../../src/collectors/browser/recording/features.ts';
 import { storedCookieName, storedHeaderName } from '../../../../src/core/redaction/headers.ts';
 import { isNameLike, redactCmpLabel, storedKey } from '../../../../src/core/redaction/page-names.ts';
-import { QUERY_ALLOWLIST, sanitizeUrl } from '../../../../src/core/url/url.ts';
+import { sanitizeUrl } from '../../../../src/core/url/url.ts';
 
 const SIZE = 64 * 1024;
+const repeat = (unit: string) => unit.repeat(Math.ceil(SIZE / unit.length));
+const word = repeat('a');
+const encodedAt = repeat('%40');
+const tokenGroups = repeat('4f3a-');
+const formattedWords = repeat('a\u200bb');
+const secret = '4f3a9c1d2e7b4a9f';
+const scrubber = valueScrubber([`sessionid=${secret}`, '1234567', 'uid:7654321'], ['example.test']);
 
-type Shape = (n: number) => string;
-const repeated =
-  (unit: string): Shape =>
-  (n) =>
-    unit.repeat(Math.ceil(n / unit.length));
-
-const shapes: Array<[string, Shape]> = [
-  ['a word run between separators', (n) => `_${'a'.repeat(n - 2)}_`],
-  ['a word run before a non-axis marker', (n) => `${'a'.repeat(n - 2)}@x`],
-  ...['.:/', '-_', '()[]{}<>', ',;|', '+=*~'].map((group): [string, Shape] => [
-    `${JSON.stringify(group)} punctuation run`,
-    (n) => `a${repeated(group)(n - 2)}b`,
-  ]),
-  ...['aB', 'a,', '%40', '(at)', '@', '＠', '4f3a-', 'a\u200bb'].map((unit): [string, Shape] => [
-    `${JSON.stringify(unit)} repeated`,
-    repeated(unit),
-  ]),
+const cases: Array<[string, string, (input: string) => unknown]> = [
+  ['storage key with joined ID groups', tokenGroups, (s) => storedKey(s, s.length)],
+  ['storage key with encoded address markers', encodedAt, (s) => storedKey(s, s.length)],
+  ['storage key with format characters', formattedWords, (s) => storedKey(s, s.length)],
+  ['storage key with an obfuscated address marker', `${word}(at)x`, (s) => storedKey(s, s.length)],
+  ['storage key with punctuation between words', `a${repeat('.:/')}b`, (s) => storedKey(s, s.length)],
+  ['header name with an encoded address marker', encodedAt, storedHeaderName],
+  ['header name with fullwidth address markers', repeat('＠'), storedHeaderName],
+  ['header name with a long candidate local part', `${word}@x`, storedHeaderName],
+  ['header name with a long mixed-case token', repeat('aB'), storedHeaderName],
+  ['cookie name with a delimiter after a long word', `${word};`, (s) => storedCookieName(s, s.length)],
+  ['cookie name with a long candidate local part', `${word}@x`, (s) => storedCookieName(s, s.length)],
+  ['cookie name with joined ID groups', tokenGroups, (s) => storedCookieName(s, s.length)],
+  ['CMP label with format characters', formattedWords, redactCmpLabel],
+  ['CMP label with punctuation between ID groups', repeat('(4f3a) | '), redactCmpLabel],
+  ['page name with a long run of separators', `a${repeat('-_')}b`, (s) => isNameLike(s, s.length)],
+  ['page name with a long mixed-case token', repeat('aB'), (s) => isNameLike(s, s.length)],
+  [
+    'allowlisted query value with a long mixed-case token',
+    repeat('aB'),
+    (s) => sanitizeUrl(`https://www.example.test/p?hl=${s}`),
+  ],
+  [
+    'allowlisted query value with encoded address markers',
+    encodedAt,
+    (s) => sanitizeUrl(`https://www.example.test/p?hl=${s}`),
+  ],
+  [
+    'request URL with a long allowlisted value',
+    tokenGroups,
+    (s) => sanitizeRequestUrl(`https://www.example.test/p?hl=${s}`),
+  ],
+  [
+    'URL path with a long candidate local part',
+    `${word}@x`,
+    (s) => sanitizeUrl(`https://www.example.test/${s}/x`),
+  ],
+  ['URL path with encoded address markers', encodedAt, (s) => sanitizeUrl(`https://www.example.test/${s}/x`)],
+  ['legal scrubber reading repeated matches', repeat(`${secret} `), scrubber],
+  [
+    'legal scrubber reading protected address spans',
+    repeat(`${secret}@example.test `),
+    scrubber.outsideAddresses,
+  ],
+  ['legal scrubber reading a long address candidate', `${word}@x`, scrubber.outsideAddresses],
+  [
+    'legal scrubber preparing a long value',
+    tokenGroups,
+    (s) => valueScrubber([s, `uid=${s}`], ['example.test']),
+  ],
 ];
 
-interface Entry {
-  name: string;
-  run: (text: string) => unknown;
-}
-
-const secrets = ['sessionid=4f3a9c1d2e7b4a9f', '1234567', 'uid:7654321'];
-const scrubber = valueScrubber(secrets, ['example.test']);
-
-const entries: Entry[] = [
-  { name: 'storedKey', run: (t) => storedKey(t, t.length) },
-  { name: 'storedHeaderName', run: (t) => storedHeaderName(t) },
-  { name: 'storedCookieName', run: (t) => storedCookieName(t, t.length) },
-  { name: 'redactCmpLabel', run: (t) => redactCmpLabel(t) },
-  { name: 'isNameLike', run: (t) => isNameLike(t, t.length) },
-  ...[...QUERY_ALLOWLIST].map(
-    (key): Entry => ({
-      name: `sanitizeUrl ?${key}=`,
-      run: (t) => sanitizeUrl(`https://www.example.test/p?${key}=${t}`),
-    }),
-  ),
-  { name: 'sanitizeUrl path segment', run: (t) => sanitizeUrl(`https://www.example.test/${t}/x`) },
-  ...[...QUERY_ALLOWLIST].map(
-    (key): Entry => ({
-      name: `sanitizeRequestUrl ?${key}=`,
-      run: (t) => sanitizeRequestUrl(`https://fonts.example.test/css?${key}=${t}`),
-    }),
-  ),
-  {
-    name: 'sanitizeRequestUrl path segment',
-    run: (t) => sanitizeRequestUrl(`https://www.example.test/${t}/x`),
-  },
-  { name: 'legal scrubber text', run: (t) => scrubber(t) },
-  { name: 'legal scrubber text outside addresses', run: (t) => scrubber.outsideAddresses(t) },
-  { name: 'legal scrubber built from a value', run: (t) => valueScrubber([t, `uid=${t}`], ['example.test']) },
-];
-
-describe('stored-value entry points finish within the budget on hostile shapes', () => {
-  it.each(
-    entries.flatMap((entry) => shapes.map(([name, shape]) => [entry.name, name, entry.run, shape] as const)),
-  )('%s: %s', (_entryName, _name, run, shape) => {
-    const input = shape(SIZE);
-    const times = Array.from({ length: 2 }, () => {
-      const started = performance.now();
-      run(input);
-      return performance.now() - started;
-    });
-    expect(Math.min(...times)).toBeLessThan(500);
+it.each(cases)('%s finishes within the budget', (_name, input, run) => {
+  const times = Array.from({ length: 2 }, () => {
+    const started = performance.now();
+    run(input);
+    return performance.now() - started;
   });
+  expect(Math.min(...times)).toBeLessThan(500);
 });

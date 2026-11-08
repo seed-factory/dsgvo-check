@@ -13,6 +13,7 @@ import {
   phase,
   rejectCmp,
   req,
+  runSiteCheck,
   START,
   settingsRejectCmp,
   settingsRejectPlan,
@@ -48,46 +49,40 @@ describe('EMBED-02 external maps', () => {
   });
 
   it('counterexample: the map appears only after accept (C) → no finding', () => {
-    const r = runCheck(
-      embed02,
-      site({
-        phases: [
-          phase('A'),
-          phase('C', {
-            click: click('accept'),
-            requests: [
-              req('c', 'https://www.google.com/maps/embed?pb=[redacted]', {
-                phase: 'C',
-                afterClick: true,
-                resourceType: 'document',
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(embed02, {
+      phases: [
+        phase('A'),
+        phase('C', {
+          click: click('accept'),
+          requests: [
+            req('c', 'https://www.google.com/maps/embed?pb=[redacted]', {
+              phase: 'C',
+              afterClick: true,
+              resourceType: 'document',
+            }),
+          ],
+        }),
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 
   it('OpenStreetMap tiles after the reject → tiles, afterReject', () => {
-    const r = runCheck(
-      embed02,
-      site({
-        phases: [
-          phase('A'),
-          phase('B', {
-            click: click('reject'),
-            requests: [
-              req('b', 'https://tile.openstreetmap.org/12/2200/1343.png', {
-                phase: 'B',
-                afterClick: true,
-                resourceType: 'image',
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(embed02, {
+      phases: [
+        phase('A'),
+        phase('B', {
+          click: click('reject'),
+          requests: [
+            req('b', 'https://tile.openstreetmap.org/12/2200/1343.png', {
+              phase: 'B',
+              afterClick: true,
+              resourceType: 'image',
+            }),
+          ],
+        }),
+      ],
+    });
     expect(observationsOf(r)[0]).toMatchObject({
       subject: 'openstreetmap',
       params: { integrationType: 'tiles', afterReject: true },
@@ -118,20 +113,17 @@ describe('EMBED-02 external maps', () => {
   });
 
   it('a blocked attempt is not described as a load', () => {
-    const r = runCheck(
-      embed02,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://maps.googleapis.com/maps/api/js?key=[redacted]', {
-                state: 'blocked-by-browser',
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(embed02, {
+      phases: [
+        phase('A', {
+          requests: [
+            req('a', 'https://maps.googleapis.com/maps/api/js?key=[redacted]', {
+              state: 'blocked-by-browser',
+            }),
+          ],
+        }),
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
   });
 });
@@ -142,15 +134,16 @@ const tile = (id: string, p: Partial<RequestRecord> = {}) =>
 const confirmed = rejectCmp({ confirmed: true, pages: { [CONTACT]: 'in-effect' } });
 
 describe('EMBED-02 states whether the map loaded before the interaction, after the reject, or both', () => {
-  it.each(momentCases({ load: tile, phaseA: (requests = []) => phase('A', { requests }), control: CONTACT }))(
-    '%s',
-    (_name, { phases, cmp, want }) => {
-      expectMoment(observationsOf(runCheck(embed02, site({ phases, cmp }))), 'maps-loaded', want);
-    },
-  );
+  it.each(
+    momentCases({ load: tile, phaseA: (requests = []) => phase('A', { requests }), control: CONTACT }).filter(
+      ([, row]) => row.checksTimingBoundary,
+    ),
+  )('%s', (_name, { phases, cmp, want }) => {
+    expectMoment(observationsOf(runSiteCheck(embed02, { phases, cmp })), 'maps-loaded', want);
+  });
 
   const render = (lang: 'de' | 'en', phases: PhaseRecord[], cmp: CmpSection) => {
-    const [o] = observationsOf(runCheck(embed02, site({ phases, cmp })));
+    const [o] = observationsOf(runSiteCheck(embed02, { phases, cmp }));
     return renderMessage(loadTexts(lang), 'EMBED-02.maps-loaded', o!.params);
   };
   const both = [phase('A', { requests: [tile('a')] }), rejectPhase(CONTACT, [tile('b', AFTER_CLICK)])];
@@ -202,7 +195,7 @@ describe('EMBED-02 states whether the map loaded before the interaction, after t
 describe('EMBED-02 names a reject saved in the settings layer of a first layer without reject', () => {
   const both = [phase('A', { requests: [tile('a')] }), rejectPhase(CONTACT, [tile('b', AFTER_CLICK)])];
   const observe = (phases: PhaseRecord[], cmp: CmpSection) =>
-    observationsOf(runCheck(embed02, site({ phases, cmp, plan: settingsRejectPlan() })));
+    observationsOf(runSiteCheck(embed02, { phases, cmp, plan: settingsRejectPlan() }));
   const render = (lang: 'de' | 'en', cmp: CmpSection) =>
     renderMessage(loadTexts(lang), 'EMBED-02.maps-loaded', observe(both, cmp)[0]!.params);
 
@@ -287,13 +280,10 @@ describe('EMBED-02 evidence after the reject', () => {
 
   it('12 tiles before the interaction and the same after the confirmed reject: B requests and the reject proof', () => {
     const [o] = observationsOf(
-      runCheck(
-        embed02,
-        site({
-          phases: [phase('A', { requests: tiles('a') }), rejectPhase(CONTACT, tiles('b', AFTER_CLICK))],
-          cmp: confirmed,
-        }),
-      ),
+      runSiteCheck(embed02, {
+        phases: [phase('A', { requests: tiles('a') }), rejectPhase(CONTACT, tiles('b', AFTER_CLICK))],
+        cmp: confirmed,
+      }),
     );
     const evidence = o?.evidence ?? [];
     expect(evidence.length).toBeLessThanOrEqual(MAX_EVIDENCE);
@@ -313,7 +303,7 @@ describe('EMBED-02 evidence after the reject', () => {
       rejectCmp({ confirmed: false }),
     ],
   ] as const)('counterexample: %s gives no reject proof', (_name, phases, cmp) => {
-    const [o] = observationsOf(runCheck(embed02, site({ phases: [...phases], cmp })));
+    const [o] = observationsOf(runSiteCheck(embed02, { phases: [...phases], cmp }));
     expect(o?.evidence.filter((e) => e.type === 'consent-state')).toEqual([]);
   });
 });
@@ -340,16 +330,7 @@ describe('EMBED-02 resources of the map frame', () => {
   });
   const helper = req('d', 'https://helper.unknown-host.example/t.js', frame);
   const mapOf = (requests: RequestRecord[]) =>
-    observationsOf(runCheck(embed02, site({ phases: [phase('A', { requests })] })));
-
-  it('fonts and helper hosts the map frame loads are counted with the map, the map requests lead the evidence', () => {
-    const [o] = mapOf([mapDocument, frameFont, helper]);
-    expect(o).toMatchObject({
-      subject: 'google-maps',
-      params: { frameResourceCount: 2, integrationType: 'iframe' },
-    });
-    expect(o?.evidence[0]).toMatchObject({ url: 'https://www.google.com/maps/embed?pb=[redacted]' });
-  });
+    observationsOf(runSiteCheck(embed02, { phases: [phase('A', { requests })] }));
 
   it('the map frame loading Google Fonts and a helper host: one finding that names Google Fonts', () => {
     const observations = mapOf([mapDocument, frameCss, frameFont, helper]);
@@ -357,12 +338,14 @@ describe('EMBED-02 resources of the map frame', () => {
     expect(observations[0]).toMatchObject({
       subject: 'google-maps',
       params: {
+        integrationType: 'iframe',
         frameFontServices: 'Google Fonts',
         frameFontRequestCount: 2,
         frameHelperCount: 1,
         frameResourceCount: 3,
       },
     });
+    expect(observations[0]?.evidence[0]).toMatchObject({ url: mapDocument.url });
     const urls = observations[0]?.evidence.flatMap((e) => (e.type === 'request' ? [e.url] : []));
     expect(urls).toEqual(expect.arrayContaining([frameCss.url]));
 

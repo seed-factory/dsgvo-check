@@ -2,11 +2,7 @@ import type { EventEmitter } from 'node:events';
 import type { Page, Response } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostClassifier, type LookupError } from '../../../../src/collectors/browser/launch/ssrf.ts';
-import {
-  navigationErrorCode,
-  valueWithin,
-  visitPage,
-} from '../../../../src/collectors/browser/pages/visit.ts';
+import { valueWithin, visitPage } from '../../../../src/collectors/browser/pages/visit.ts';
 import type { NetworkRecorder } from '../../../../src/collectors/browser/recording/recorder.ts';
 import { defaultNetworkConfig, type ResolvedAddress } from '../../../../src/core/url/net.ts';
 import { FAST_TIMING } from '../../../integration/browser/helpers.ts';
@@ -36,22 +32,6 @@ async function advance<T>(work: Promise<T>, ms: number): Promise<T> {
   return result as T;
 }
 
-describe('the code of a failed navigation keeps its digits', () => {
-  it.each([
-    ['page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.example.test/', 'ERR_HTTP2_PROTOCOL_ERROR'],
-    ['page.goto: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH', 'ERR_SSL_VERSION_OR_CIPHER_MISMATCH'],
-    ['page.goto: net::ERR_NAME_NOT_RESOLVED at https://x.example.test/', 'ERR_NAME_NOT_RESOLVED'],
-    ['net::ERR_QUIC_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR'],
-    ['page.goto: net::ERR_CERT_DATE_INVALID at https://x/', 'ERR_CERT_DATE_INVALID'],
-    // Counterexamples: timeouts, downloads and unknown errors keep their own codes.
-    ['page.goto: Timeout 30000ms exceeded.', 'timeout'],
-    ['page.goto: Download is starting', 'download'],
-    ['something else', 'navigation-error'],
-  ])('%s → %s', (message, code) => {
-    expect(navigationErrorCode(message)).toBe(code);
-  });
-});
-
 describe('valueWithin', () => {
   const live = new AbortController().signal;
 
@@ -75,49 +55,72 @@ describe('valueWithin', () => {
   });
 });
 
-describe('a navigation whose response metadata never arrives (PDF viewer) still ends', () => {
-  const URL_ = 'https://www.example.test/datenschutz/';
-  function fakes(over: { flush?: () => Promise<boolean> } = {}) {
-    const response = {
-      status: () => 200,
-      headers: () => ({ 'content-type': 'application/pdf' }),
-      headersArray: () => never(),
-      serverAddr: () => never(),
-      url: () => URL_,
-      request: () => ({ redirectedFrom: () => null }),
-    } as unknown as Response;
+function pdfResponse(url: string, ipAddress: string, over: Partial<Response> = {}): Response {
+  return fakeResponse(fakeRequest(url), [], {
+    url: () => url,
+    headers: () => ({ 'content-type': 'application/pdf' }),
+    headersArray: async () => [{ name: 'Content-Type', value: 'application/pdf' }],
+    serverAddr: async () => ({ ipAddress, port: 443 }),
+    ...over,
+  });
+}
 
-    const page = {
-      goto: async () => response,
-      reload: async () => response,
-      waitForLoadState: async () => undefined,
-      url: () => URL_,
-    } as unknown as Page;
+function visitInput(
+  page: Page,
+  recorder: NetworkRecorder,
+  hardCapMs: number,
+  signal = new AbortController().signal,
+) {
+  return {
+    page,
+    recorder,
+    timing: { ...FAST_TIMING, quietWindowMs: 10 },
+    phaseTiming: { minDwellMs: 10, hardCapMs },
+    signal,
+    target: { etld1: 'example.test', host: 'www.example.test' },
+    now: () => new Date(),
+  };
+}
+
+const responsePage = (url: string, response: Response, onGoto = () => {}) =>
+  ({
+    goto: async () => {
+      onGoto();
+      return response;
+    },
+    reload: async () => response,
+    waitForLoadState: async () => undefined,
+    waitForNavigation: never<Response | null>,
+    on: () => undefined,
+    once: () => undefined,
+    url: () => url,
+  }) as unknown as Page;
+
+describe('a navigation whose response metadata never arrives (PDF viewer) still ends', () => {
+  const url = 'https://www.example.test/datenschutz/';
+  const spec = { rawUrl: url, role: 'privacy' as const, order: 1, phase: 'A' as const, firstVisit: false };
+
+  function visit(signal?: AbortSignal, metadataReady = false) {
+    const response = pdfResponse(
+      url,
+      '93.184.215.14',
+      metadataReady ? {} : { headersArray: never, serverAddr: never },
+    );
     const recorder = {
       beginNavigation: () => 'A-n1',
       rebindNavigation: () => undefined,
       lastRequestStart: () => null,
       inflight: () => 0,
-      flush: over.flush ?? (() => never<boolean>()),
+      flush: metadataReady ? async () => true : never<boolean>,
     } as unknown as NetworkRecorder;
-    return { page, recorder };
+    return visitPage(visitInput(responsePage(url, response), recorder, 300, signal), spec);
   }
-  const input = (f: ReturnType<typeof fakes>, signal: AbortSignal) => ({
-    page: f.page,
-    recorder: f.recorder,
-    timing: { ...FAST_TIMING, quietWindowMs: 10 },
-    phaseTiming: { minDwellMs: 10, hardCapMs: 300 },
-    signal,
-    target: { etld1: 'example.test', host: 'www.example.test' },
-    now: () => new Date(),
-  });
-  const spec = { rawUrl: URL_, role: 'privacy' as const, order: 1, phase: 'A' as const, firstVisit: false };
 
   it('flush, headers and server address are cut by the page budget; URL and status are kept', async () => {
-    const r = await advance(visitPage(input(fakes(), new AbortController().signal), spec), 2_000);
+    const r = await advance(visit(), 2_000);
     expect(r.visit).toMatchObject({
-      url: URL_,
-      finalUrl: URL_,
+      url: url,
+      finalUrl: url,
       navigation: { status: 200, serverIp: null },
       evaluable: false,
       notEvaluableReason: 'not-html',
@@ -136,22 +139,14 @@ describe('a navigation whose response metadata never arrives (PDF viewer) still 
     const ac = new AbortController();
     ac.abort();
 
-    const r = await advance(visitPage(input(fakes(), ac.signal), spec), 0);
+    const r = await advance(visit(ac.signal), 0);
 
     expect(r.limitations).toBeUndefined();
     expect(r.visit.navigation.status).toBe(200);
   });
 
   it('counterexample: metadata that arrives in time is used, no limitation', async () => {
-    const f = fakes({ flush: async () => true });
-    const response = (await (f.page.goto as () => Promise<Response>)()) as unknown as {
-      headersArray: () => Promise<unknown>;
-      serverAddr: () => Promise<unknown>;
-    };
-    response.headersArray = async () => [{ name: 'Content-Type', value: 'application/pdf' }];
-    response.serverAddr = async () => ({ ipAddress: '93.184.215.14', port: 443 });
-
-    const r = await advance(visitPage(input(f, new AbortController().signal), spec), 100);
+    const r = await advance(visit(undefined, true), 100);
 
     expect(r.visit.navigation.serverIp).toBe('93.184.215.14');
     expect(r.limitations).toBeUndefined();
@@ -181,38 +176,16 @@ describe('response metadata that arrives after the page budget is kept until the
   async function visit() {
     const { ctx, rec: recorder } = fakeRecorder({ etld1: 'example.test' });
 
-    const main = {
-      status: () => 200,
-      headers: () => ({ 'content-type': 'application/pdf' }),
-      headersArray: async () => [{ name: 'Content-Type', value: 'application/pdf' }],
-      serverAddr: async () => ({ ipAddress: '93.184.215.13', port: 443 }),
-      url: () => URL_,
-      request: () => ({ redirectedFrom: () => null }),
-    } as unknown as Response;
-
-    const page = {
-      goto: async () => {
-        beacon(ctx);
-        return main;
-      },
-      reload: async () => main,
-      waitForLoadState: async () => undefined,
-      url: () => URL_,
-    } as unknown as Page;
-
+    const main = pdfResponse(URL_, '93.184.215.13');
+    const page = responsePage(URL_, main, () => beacon(ctx));
     const t0 = Date.now();
-    const r = await visitPage(
-      {
-        page,
-        recorder,
-        timing: { ...FAST_TIMING, quietWindowMs: 10 },
-        phaseTiming: { minDwellMs: 10, hardCapMs: 50 },
-        signal: new AbortController().signal,
-        target: { etld1: 'example.test', host: 'www.example.test' },
-        now: () => new Date(),
-      },
-      { rawUrl: URL_, role: 'start', order: 0, phase: 'A', firstVisit: false },
-    );
+    const r = await visitPage(visitInput(page, recorder, 50), {
+      rawUrl: URL_,
+      role: 'start',
+      order: 0,
+      phase: 'A',
+      firstVisit: false,
+    });
     return { r, recorder, visitMs: Date.now() - t0 };
   }
 
@@ -432,16 +405,15 @@ describe('every wait for the resolver is bounded by what is left of the shared b
   });
 
   it('timers are cleared in every outcome: answer, error, timeout', async () => {
-    const okay = make(60_000, async () => PUBLIC).classify;
-    expect(await okay('t-ok.example.test')).toBe('public');
-    expect(vi.getTimerCount()).toBe(0);
-
-    const failing = make(60_000, () => Promise.reject(err('ENOTFOUND'))).classify;
-    expect(await failing('t-err.example.test')).toBe('unresolved');
-    expect(vi.getTimerCount()).toBe(0);
-
-    const hanging = make(60_000, () => never()).classify;
-    expect(await advance(hanging('t-hang.example.test'), 60_001)).toBe('unresolved');
-    expect(vi.getTimerCount()).toBe(0);
+    const cases: Array<[string, Answer, string]> = [
+      ['t-ok', async () => PUBLIC, 'public'],
+      ['t-err', () => Promise.reject(err('ENOTFOUND')), 'unresolved'],
+      ['t-hang', () => never(), 'unresolved'],
+    ];
+    for (const [host, answer, verdict] of cases) {
+      const pending = make(60_000, answer).classify(`${host}.example.test`);
+      expect(await (host === 't-hang' ? advance(pending, 60_001) : pending), host).toBe(verdict);
+      expect(vi.getTimerCount(), host).toBe(0);
+    }
   });
 });

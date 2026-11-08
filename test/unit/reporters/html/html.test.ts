@@ -17,17 +17,16 @@ import type {
   RedirectChainEvidence,
 } from '../../../../src/core/report/schema.ts';
 import { renderHtml } from '../../../../src/reporters/html.ts';
-import { buildReportView, findingText } from '../../../../src/reporters/report-view.ts';
+import { findingText } from '../../../../src/reporters/report-view.ts';
 import { escapeHtml } from '../../../../src/reporters/template.ts';
 import { HOSTILE_TEXT, sampleFailedReport, sampleFullReport } from '../../../utils/report/fixtures.ts';
 import { cspOf, htmlSafetyProblems, tagsOf } from '../../../utils/report/html-safety.ts';
 import { reporterContext, withTrackerHitMessage } from '../../../utils/report/reporter-inputs.ts';
+import { findingOf } from './front-page-fixtures.ts';
 import { reportLabelKeys, usedReportLabelKeys } from './report-label-keys.ts';
 
 const ctx = (lang: 'de' | 'en' = 'de', outDir = '/nonexistent-out'): ReporterContext =>
   withTrackerHitMessage(reporterContext(lang, { outDir }));
-
-const fp = (n: number) => `sha256:${n.toString(16).padStart(64, '0')}`;
 
 const XSS = [
   '<script>alert(1)</script>',
@@ -111,40 +110,19 @@ describe('HTML report: document and CSP', () => {
 });
 
 describe('HTML report: sections and content', () => {
-  const SECTION_HEADINGS_DE = [
-    'Zusammenfassung',
-    'Befunde',
-    'Diagnose',
-    'Messumgebung',
-    'Abdeckung',
-    'Hinweise zum Bericht',
-  ];
+  const headings = {
+    de: ['Zusammenfassung', 'Befunde', 'Diagnose', 'Messumgebung', 'Abdeckung', 'Hinweise zum Bericht'],
+    en: ['Summary', 'Findings', 'Diagnostics', 'Measurement environment', 'Coverage', 'Notes on this report'],
+  };
 
-  it('has all sections (de) with the draft stamp', () => {
-    const html = renderHtml(sampleFullReport(), ctx());
-
-    for (const h of SECTION_HEADINGS_DE) {
-      expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
-    }
-    expect(html).toContain('Textentwurf');
-    expect(html).toContain('keine Rechtsberatung');
-  });
-
-  it('uses English labels for --lang en', () => {
-    const html = renderHtml(sampleFullReport(), ctx('en'));
-
-    expect(html).toMatch(/^<!doctype html>\n<html lang="en">/);
-    for (const h of [
-      'Summary',
-      'Findings',
-      'Diagnostics',
-      'Measurement environment',
-      'Coverage',
-      'Notes on this report',
-    ]) {
-      expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
-    }
-    expect(html).toContain('Draft text');
+  it.each([
+    ['has all sections (de) with the draft stamp', 'de', ['Textentwurf', 'keine Rechtsberatung']],
+    ['uses English labels for --lang en', 'en', ['Draft text']],
+  ] as const)('%s', (_label, lang, text) => {
+    const html = renderHtml(sampleFullReport(), ctx(lang));
+    if (lang === 'en') expect(html).toMatch(/^<!doctype html>\n<html lang="en">/);
+    for (const h of headings[lang]) expect(html).toMatch(new RegExp(`<h2[^>]*>${h}</h2>`));
+    for (const t of text) expect(html).toContain(t);
   });
 
   it('summarizes status, exit code, reasons and counts', () => {
@@ -234,29 +212,39 @@ describe('HTML report: sections and content', () => {
     expect(all).toContain('sourceUrl');
   });
 
-  it('names where the form of a page served over http sends, on its own and in a list of pages', () => {
+  const evidenceById = (r: FullReport, id: string) => r.evidence.find((e) => e.id === id)!;
+
+  function reportShowing(...evidenceIds: string[]): FullReport {
     const r = sampleFullReport();
-    const page = r.evidence.find((e) => e.id === 'ev-page')!;
-    const form = {
+    r.findings[0]!.evidenceIds = evidenceIds;
+    return r;
+  }
+
+  function formReport(role: 'http-form' | 'http-form-permalink', url: string): FullReport {
+    const r = reportShowing('ev-page');
+    Object.assign(evidenceById(r, 'ev-page'), {
       status: 200,
-      role: 'http-form',
+      role,
       evaluable: undefined,
       reason: undefined,
+      url,
       formAction: 'http://www.example.de/wp-comments-post.php',
-    };
-    Object.assign(page, { ...form, url: 'http://www.example.de/blog/post-1/' });
-    r.findings[0]!.evidenceIds = ['ev-page'];
+    });
+    return r;
+  }
+
+  it('names where the form of a page served over http sends, on its own and in a list of pages', () => {
+    const r = formReport('http-form', 'http://www.example.de/blog/post-1/');
     const single = renderHtml(r, ctx());
     expect(single).toContain('Seite mit Formular über http');
     expect(single).toContain('>Ziel des Formulars<');
     expect(single).toContain('wp-comments-post.php');
 
     r.evidence.push({
-      ...page,
-      ...form,
+      ...evidenceById(r, 'ev-page'),
       id: 'ev-page-2',
       url: 'http://www.example.de/kontakt/',
-    } as typeof page);
+    } as Evidence);
     r.findings[0]!.evidenceIds = ['ev-page', 'ev-page-2'];
     expect(renderHtml(r, ctx())).toContain('Formular sendet an http://www.example.de/wp-comments-post.php');
     const en = renderHtml(r, ctx('en'));
@@ -265,26 +253,14 @@ describe('HTML report: sections and content', () => {
   });
 
   it('labels the http address of a linked post with a form as such', () => {
-    const r = sampleFullReport();
-    const page = r.evidence.find((e) => e.id === 'ev-page')!;
-    Object.assign(page, {
-      status: 200,
-      role: 'http-form-permalink',
-      evaluable: undefined,
-      reason: undefined,
-      url: 'http://www.example.de/2025/02/beitrag/',
-      formAction: 'http://www.example.de/wp-comments-post.php',
-    });
-    r.findings[0]!.evidenceIds = ['ev-page'];
+    const r = formReport('http-form-permalink', 'http://www.example.de/2025/02/beitrag/');
     expect(renderHtml(r, ctx())).toContain('http-Adresse eines verlinkten Beitrags mit Formular');
     expect(renderHtml(r, ctx('en'))).toContain('http address of a linked post with a form');
   });
 
   it('words the match of a dictionary term and labels the kind of statement a quote makes', () => {
-    const r = sampleFullReport();
-    const match = r.evidence.find((e) => e.id === 'ev-match')!;
-    Object.assign(match, { matchLevel: 'term', claim: 'no-connection' });
-    r.findings[0]!.evidenceIds = ['ev-match'];
+    const r = reportShowing('ev-match');
+    Object.assign(evidenceById(r, 'ev-match'), { matchLevel: 'term', claim: 'no-connection' });
 
     const de = renderHtml(r, ctx());
     expect(de).toContain('>Angabe<');
@@ -324,13 +300,11 @@ describe('HTML report: sections and content', () => {
   });
 
   it('names what phase B recorded before its click as such, in the evidence and in the phases of the finding', () => {
-    const r = sampleFullReport();
+    const r = reportShowing('ev-request');
     r.scan.coverage.consentActions = [{ action: 'reject', clicked: true, verified: false }];
-    const request = r.evidence.find((e) => e.id === 'ev-request')!;
-    Object.assign(request, { phase: 'B', beforeClick: true });
-    const shot = r.evidence.find((e) => e.id === 'ev-screenshot')!;
-    Object.assign(shot, { phase: 'B', beforeClick: true });
-    r.findings[0]!.evidenceIds = ['ev-request'];
+    const request = evidenceById(r, 'ev-request');
+    for (const ev of [request, evidenceById(r, 'ev-screenshot')])
+      Object.assign(ev, { phase: 'B', beforeClick: true });
     r.findings[1]!.evidenceIds = ['ev-screenshot'];
 
     const html = renderHtml(r, ctx());
@@ -343,18 +317,6 @@ describe('HTML report: sections and content', () => {
     expect(renderHtml(r, ctx())).toContain(
       'A (vor einer Interaktion), B (nach Ablehnung, vom Banner nicht bestätigt)',
     );
-  });
-
-  it('never renders crmCode or other T[0-9]_ strings, even from external data', () => {
-    const r = sampleFullReport();
-    (r.evidence[1] as { name: string }).name = 'T1_TRACKING_COOKIE';
-    r.findings[0]!.params = { service: 'T2_SOMETHING' };
-    const html = renderHtml(r, ctx());
-
-    expect(html).not.toMatch(/T[0-9]_/);
-    // displayed as "T1_TRACKING_COOKIE", but the literal crm pattern never appears in the file
-    expect(html).toContain('T1&#95;TRACKING_COOKIE');
-    expect(html).not.toContain('crmCode');
   });
 
   it('does not render cookie or storage values even if a report carries them', () => {
@@ -376,7 +338,7 @@ describe('HTML report: sections and content', () => {
     expect(html).toContain('Zielhost konnte nicht aufgelöst werden.');
     expect(html).toContain('Website nicht erreichbar');
     expect(html).toContain('nicht verfügbar');
-    for (const h of SECTION_HEADINGS_DE) {
+    for (const h of headings.de) {
       expect(html).toContain(`>${h}</h2>`);
     }
   });
@@ -399,16 +361,8 @@ describe('HTML report: sections and content', () => {
 
 describe('HTML report: grouping by service', () => {
   /** A finding of the check and variant its message id names, without evidence. */
-  const finding = (
-    n: number,
-    messageId: string,
-    severity: Finding['severity'],
-    serviceId?: string,
-  ): Finding => {
-    const [checkId, variant] = messageId.split('.') as [string, string];
-    const base = { ...sampleFullReport().findings[1]!, fingerprint: fp(n), evidenceIds: [], related: [] };
-    return { ...base, checkId, variant, messageId, severity, ...(serviceId ? { serviceId } : {}) };
-  };
+  const finding = (n: number, messageId: string, severity: Finding['severity'], serviceId?: string) =>
+    findingOf(n, messageId, severity, { legalNoteId: 'CONSENT-04', ...(serviceId ? { serviceId } : {}) });
 
   it('groups findings by serviceId, strongest group first, unassigned last', () => {
     const r = sampleFullReport();
@@ -504,10 +458,13 @@ describe('HTML report: banner screenshots', () => {
     return r;
   }
 
+  const screenshotHtml = (outDir: string, file: string, checksum: string) =>
+    renderHtml(withScreenshot(file, checksum), ctx('de', outDir));
+
   it('embeds the banner screenshot as a data: URI', () => {
     const outDir = setup({ 'artifacts/banner-B.jpg': JPEG });
 
-    const html = renderHtml(withScreenshot('artifacts/banner-B.jpg', sha(JPEG)), ctx('de', outDir));
+    const html = screenshotHtml(outDir, 'artifacts/banner-B.jpg', sha(JPEG));
 
     expect(html).toContain(`src="data:image/jpeg;base64,${JPEG.toString('base64')}"`);
     expect(htmlSafetyProblems(html)).toEqual([]);
@@ -515,10 +472,7 @@ describe('HTML report: banner screenshots', () => {
 
   it('accepts a sha256: prefix and PNG files', () => {
     const outDir = setup({ 'artifacts/banner-B.png': PNG });
-    const html = renderHtml(
-      withScreenshot('artifacts/banner-B.png', `sha256:${sha(PNG)}`),
-      ctx('de', outDir),
-    );
+    const html = screenshotHtml(outDir, 'artifacts/banner-B.png', `sha256:${sha(PNG)}`);
 
     expect(html).toContain('src="data:image/png;base64,');
   });
@@ -526,12 +480,9 @@ describe('HTML report: banner screenshots', () => {
   it('does not embed files outside the artifacts directory', () => {
     const outDir = setup({ 'secret.jpg': JPEG });
 
-    const parentTraversal = renderHtml(
-      withScreenshot('../secret.jpg', sha(JPEG)),
-      ctx('de', path.join(outDir, 'sub')),
-    );
-    const outsideArtifacts = renderHtml(withScreenshot('secret.jpg', sha(JPEG)), ctx('de', outDir));
-    const absolutePath = renderHtml(withScreenshot('/etc/passwd', sha(JPEG)), ctx('de', outDir));
+    const parentTraversal = screenshotHtml(path.join(outDir, 'sub'), '../secret.jpg', sha(JPEG));
+    const outsideArtifacts = screenshotHtml(outDir, 'secret.jpg', sha(JPEG));
+    const absolutePath = screenshotHtml(outDir, '/etc/passwd', sha(JPEG));
 
     expect(parentTraversal).not.toContain('data:image');
     expect(outsideArtifacts).not.toContain('data:image');
@@ -543,7 +494,7 @@ describe('HTML report: banner screenshots', () => {
     const outDir = setup({ 'outside.jpg': JPEG });
     symlinkSync(path.join(outDir, 'outside.jpg'), path.join(outDir, 'artifacts/link.jpg'));
 
-    const html = renderHtml(withScreenshot('artifacts/link.jpg', sha(JPEG)), ctx('de', outDir));
+    const html = screenshotHtml(outDir, 'artifacts/link.jpg', sha(JPEG));
 
     expect(html).not.toContain('data:image');
   });
@@ -552,11 +503,8 @@ describe('HTML report: banner screenshots', () => {
     const fake = Buffer.from('<svg/>');
     const outDir = setup({ 'artifacts/banner-B.jpg': JPEG, 'artifacts/fake.jpg': fake });
 
-    const wrongChecksum = renderHtml(
-      withScreenshot('artifacts/banner-B.jpg', 'f'.repeat(64)),
-      ctx('de', outDir),
-    );
-    const notAnImage = renderHtml(withScreenshot('artifacts/fake.jpg', sha(fake)), ctx('de', outDir));
+    const wrongChecksum = screenshotHtml(outDir, 'artifacts/banner-B.jpg', 'f'.repeat(64));
+    const notAnImage = screenshotHtml(outDir, 'artifacts/fake.jpg', sha(fake));
 
     expect(wrongChecksum).not.toContain('data:image');
     expect(notAnImage).not.toContain('data:image');
@@ -677,12 +625,6 @@ describe('HTML report: template and presentation data', () => {
     const styles = [...template.matchAll(/<style>([\s\S]*?)<\/style>/g)];
     expect(styles).toHaveLength(1);
     expect(styles[0]![1]).not.toContain('{{');
-    expect(styles[0]![1]).toContain('size:A4');
-    expect(styles[0]![1]).toContain('details::details-content');
-
-    for (const match of template.matchAll(/{{t "([^"]+)"/g)) {
-      for (const lang of ['de', 'en'] as const) expect(loadTexts(lang).ui[match[1]!], match[1]).toBeDefined();
-    }
 
     const withoutDirectives = template
       .replace(/{{[\s\S]*?}}/g, '')
@@ -691,22 +633,9 @@ describe('HTML report: template and presentation data', () => {
     expect(withoutDirectives).not.toMatch(/[a-zA-ZÀ-ž]/);
   });
 
-  it('every JSON finding is represented and the view never copies crmCode fields', () => {
+  it('renders every JSON finding with its text and fingerprint', () => {
     const report = sampleFullReport();
     const context = ctx();
-    const view = buildReportView(report, context);
-    const keys: string[] = [];
-    const visit = (value: unknown) => {
-      if (!value || typeof value !== 'object') return;
-      for (const [key, child] of Object.entries(value)) {
-        keys.push(key);
-        visit(child);
-      }
-    };
-    visit(view);
-
-    expect(keys).not.toContain('crmCode');
-
     const html = renderHtml(report, context);
     for (const finding of report.findings) {
       expect(html).toContain(escapeHtml(finding.checkId));

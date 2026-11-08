@@ -63,10 +63,9 @@ function runtimeImports(source: string): string[] {
   return out;
 }
 
-/** Every module reachable through relative imports from `entry`, with its runtime import specifiers. */
-function closure(entry: string): Map<string, string[]> {
+function reachableImports(entries: readonly string[]): Map<string, string[]> {
   const seen = new Map<string, string[]>();
-  const stack = [entry];
+  const stack = [...entries];
 
   while (stack.length > 0) {
     const file = stack.pop() as string;
@@ -98,48 +97,39 @@ describe('import graph of checks', () => {
   });
 
   it('positive control: the CMP entry point (adapters, data loader) does reach node:fs', () => {
-    const specs = [...closure(path.join(ROOT, 'src/cmp/index.ts')).values()].flat();
+    const specs = [...reachableImports([path.join(ROOT, 'src/cmp/index.ts')]).values()].flat();
 
     expect(specs).toContain('node:fs');
   });
 
-  const files = walk(CHECKS_DIR);
-  it.each(files.map((f) => [path.relative(ROOT, f), f]))(
-    '%s reaches no browser, network or fs module',
-    (_, f) => {
-      const graph = closure(f);
-      const offending: string[] = [];
-
-      for (const [file, specs] of graph) {
-        for (const s of specs)
-          if (FORBIDDEN.includes(s)) offending.push(`${path.relative(ROOT, file)} → ${s}`);
-      }
-
-      expect(offending).toEqual([]);
-    },
-  );
-
   // A check reads the settings that matter to it from `ctx.thresholds`; a default taken from the config would make the
   // verdict depend on something other than the snapshot and the context.
   const CONFIG_DIR = path.join(ROOT, 'src/core/config') + path.sep;
-  it.each(files.map((f) => [path.relative(ROOT, f), f]))('%s reaches no module of the settings', (_, f) => {
-    const reached = [...closure(f).keys()].filter((file) => file.startsWith(CONFIG_DIR));
-
-    expect(reached.map((file) => path.relative(ROOT, file))).toEqual([]);
+  it('checks reach no browser, network, filesystem or settings modules', () => {
+    const violations: string[] = [];
+    for (const [file, specs] of reachableImports(walk(CHECKS_DIR))) {
+      const relative = path.relative(ROOT, file);
+      if (file.startsWith(CONFIG_DIR)) violations.push(`settings module reached: ${relative}`);
+      for (const spec of specs) {
+        if (FORBIDDEN.includes(spec)) violations.push(`${relative} → ${spec}`);
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });
 
 describe('import graph of the core', () => {
   const UPPER = ['src/checks', 'src/collectors', 'src/reporters'].map((d) => path.join(ROOT, d) + path.sep);
-  it.each(walk(path.join(ROOT, 'src/core')).map((f) => [path.relative(ROOT, f), f]))(
-    '%s imports no check, collector or reporter',
-    (_, f) => {
-      const specs = [...readFileSync(f, 'utf8').matchAll(/from\s*['"](\.[^'"]+)['"]/g)].map(
-        (m) => m[1] as string,
-      );
-      const upper = specs.filter((s) => UPPER.some((d) => path.resolve(path.dirname(f), s).startsWith(d)));
-
-      expect(upper).toEqual([]);
-    },
-  );
+  it('core modules import no check, collector or reporter', () => {
+    const violations: string[] = [];
+    for (const file of walk(path.join(ROOT, 'src/core'))) {
+      for (const [, spec] of readFileSync(file, 'utf8').matchAll(/from\s*['"](\.[^'"]+)['"]/g)) {
+        const target = path.resolve(path.dirname(file), spec!);
+        if (UPPER.some((dir) => target.startsWith(dir))) {
+          violations.push(`${path.relative(ROOT, file)} → ${spec}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
 });

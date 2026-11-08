@@ -27,6 +27,7 @@ export const CLICK_ERRORS = [
   'invalid-selector',
   'target-not-found',
   'target-ambiguous',
+  'target-changed',
   'no-target',
   'no-settings-layer',
   ...withKinds('click-failed'),

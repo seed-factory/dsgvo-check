@@ -43,7 +43,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return p && p.nodeType === 11 && p.host ? p.host : null;
   };
 
-  /** The element or one of its ancestors (through shadow hosts) satisfies the test. */
   const hasAncestor = (el: DElement, test: (c: DElement) => boolean, limit: number): boolean => {
     for (let c: DElement | null = el, i = 0; c && i < limit; i++, c = parentEl(c)) {
       if (test(c)) return true;
@@ -52,14 +51,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   };
 
   const MAX_COMPOSED_STEPS = 2000;
-  const composedContains = (anc: DElement, n: DElement | null): boolean => {
-    let c: DElement | null = n;
-    for (let i = 0; c && i < MAX_COMPOSED_STEPS; i++) {
-      if (c === anc) return true;
-      c = parentEl(c);
-    }
-    return false;
-  };
+  const composedContains = (ancestor: DElement, node: DElement | null): boolean =>
+    node !== null && hasAncestor(node, (element) => element === ancestor, MAX_COMPOSED_STEPS);
 
   const NAME_MAX_LENGTH = 200;
   const clean = (s: string, max = NAME_MAX_LENGTH): string => s.replace(/\s+/g, ' ').trim().slice(0, max);
@@ -74,7 +67,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const isFixedPosition = (s: DStyle): boolean => s.position === 'fixed' || s.position === 'sticky';
 
-  /** Safety cap against huge pages. */
   const MAX_SHADOW_ROOTS = 200;
   const shadowRoots: DShadowRoot[] = [];
   const collectShadows = (root: DQueryRoot) => {
@@ -197,7 +189,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const textOf = (node: DNode, mode: TextMode, depth = 0, outerClip: Box | null = null): string => {
     if (depth > MAX_TEXT_DEPTH) return '';
 
-    // The element whose text is read may clip its own overflow.
     const clip =
       outerClip ??
       (mode === 'visible' && depth === 0 && isElement(node) && clipsOverflow(node, style(node))
@@ -437,10 +428,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
         : m.tokens.length > 0 && hasPhrase(tokens, m.tokens),
     );
 
-  /** The accessible name contains an accept/reject/settings/save phrase of the lexicon. */
   const isLexiconControl = (el: DElement): boolean => tokensMatch(nameTokens(el), phraseMatchers);
 
-  /** The accessible name contains an accept or reject phrase of the lexicon (a real choice). */
   const isChoiceControl = (el: DElement): boolean => tokensMatch(nameTokens(el), choiceMatchers);
 
   /** A choice without subscription or payment wording: "Newsletter abonnieren und akzeptieren" is no consent choice. */
@@ -549,7 +538,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     const fg = parseColor(style(el).color);
     if (!fg) return null;
 
-    // Background layers from the element up to the first opaque one.
     const layers: Rgba[] = [];
     let c: DElement | null = el;
     for (let i = 0; c && i < MAX_ANCESTOR_STEPS; i++) {
@@ -679,25 +667,12 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return chain.join(' >> ');
   };
 
-  const keywordRes = args.keywords.map((k) => {
-    try {
-      return new RegExp(k, 'iu');
-    } catch {
-      return null;
-    }
-  });
+  const keywordRes = args.keywords.map((source) => compileRule({ source, flags: 'iu' }));
   const keywordHitsOf = (text: string): string[] =>
     args.keywords.filter((_k, i) => keywordRes[i]?.test(text) === true);
 
-  const cookieKeywordRes = (args.cookieKeywords ?? []).map((k) => {
-    try {
-      return new RegExp(k, 'giu');
-    } catch {
-      return null;
-    }
-  });
+  const cookieKeywordRes = (args.cookieKeywords ?? []).map((source) => compileRule({ source, flags: 'giu' }));
   const negationTokens = (args.negations ?? []).map((n) => n.split(' ')).filter((n) => n.length > 0);
-  /** Characters before a cookie word read for a negation in front of it. */
   const NEGATION_LOOKBACK = 40;
   /** The text right before `at` ends with a negation ("keine Cookies", "no cookies"). */
   const negatedAt = (text: string, at: number): boolean => {
@@ -714,9 +689,9 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     cookieKeywordRes.some((re) => !!re && [...text.matchAll(re)].some((m) => !negatedAt(text, m.index ?? 0)));
 
   const isPurAbo = (text: string): boolean =>
-    args.purAbo.some((p) => {
+    args.purAbo.some((source) => {
       try {
-        return new RegExp(p, 'iu').test(text);
+        return compileRule({ source, flags: 'iu' })?.test(text) === true;
       } catch {
         return false;
       }
@@ -760,10 +735,8 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return hidden;
   };
 
-  /** Controls looked at per candidate when asking whether it offers a choice. */
   const MAX_CONTROLS_SCANNED = 80;
 
-  /** Whether one of the element's first controls, outside navigation landmarks, passes the test. */
   const hasControlOutsideNavigation = (
     el: DElement,
     controlEls: DElement[],
@@ -780,7 +753,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const NON_BANNER_TAGS = ['html', 'body', 'head', 'script', 'style', 'link', 'meta', 'noscript', 'template'];
   const LABEL_MAX_LENGTH = 120;
 
-  /** How the element could be a banner: a dialog, a fixed/sticky box or a static cookie notice; null for anything else. */
   const bannerShape = (el: DElement): BannerShape | null => {
     const tag = el.tagName.toLowerCase();
     if (NON_BANNER_TAGS.includes(tag)) return null;
@@ -817,7 +789,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   /** A banner shows on at least this share of the first screen, a dialog too (a 1 px dialog is screen-reader text). */
   const MIN_FLOATING_AREA_RATIO = 0.02;
   const MAX_STATIC_AREA_RATIO = 0.4;
-  /** Hit points per side over the part of a candidate in the first screen. */
   const CANDIDATE_HIT_STEPS = 3;
 
   /**
@@ -841,20 +812,15 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const CANDIDATE_TEXT_CAP = 8000;
   const STATIC_NOTICE_MAX_TEXT = 1500;
 
-  const containerNameRes = (args.bannerContainerNames ?? []).map((n) => {
-    try {
-      return new RegExp(n, 'iu');
-    } catch {
-      return null;
-    }
-  });
+  const containerNameRes = (args.bannerContainerNames ?? []).map((source) =>
+    compileRule({ source, flags: 'iu' }),
+  );
   /** The id or class names a banner container (test/data/cmp/probe.yaml). */
   const isNamedContainer = (el: DElement): boolean => {
     const names = `${el.id} ${el.getAttribute('class') ?? ''}`;
     return containerNameRes.some((re) => re?.test(names) === true);
   };
 
-  /** Lexicon classes of the first controls outside navigation landmarks, in a fixed order. */
   const CANDIDATE_KIND_ORDER = [...CONTROL_KINDS, 'other'] as const;
   const candidateControls = (el: DElement, controlEls: DElement[]): Rejected['controls'] => {
     const kinds = new Set<string>();
@@ -930,7 +896,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     // A non-modal candidate must offer a choice: a control that the lexicon knows (navigation links do not count).
     if (!dialogish && phraseMatchers.length > 0 && !hasControl(isLexiconControl)) return reject('no-control');
 
-    // A dialog weighs 2, a fixed box 1, up to 4 keyword hits count, and any control adds 1.
     const score = (dialogish ? 2 : 0) + (fixed ? 1 : 0) + Math.min(hits.length, 4) + (controls > 0 ? 1 : 0);
     const signals = [
       ...(dialogish ? ['heuristic:dialog'] : []),
@@ -983,7 +948,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
   };
 
-  /** Safety cap against huge pages. */
   const MAX_SCANNED_ELEMENTS = 6000;
   /**
    * Past the cap, the last elements of the document are scanned too: a banner is often appended at the end of a long
@@ -1004,7 +968,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   };
 
   const DIALOG_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog';
-  /** Safety cap of the dialogs and fixed boxes looked at before the capped scan. */
   const MAX_PRIORITY_ELEMENTS = 300;
   /** Hit points per side of the viewport, edges included: a thin bar at the bottom edge is hit too. */
   const PRIORITY_GRID_STEPS = 7;
@@ -1091,7 +1054,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     const visibleInViewport = !!box && visibleArea(box) > 0;
     const enabled = !el.disabled && el.getAttribute('aria-disabled') !== 'true';
 
-    // Whatever sits at the centre of the control must be the control or inside it.
     let hitTestOk = false;
     if (inViewport && style(el).pointerEvents !== 'none') {
       const hit = deepElementFromPoint(cx, cy);
@@ -1120,7 +1082,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
   };
 
-  /** Controls ranked before the `maxButtons` cut. */
   const RANK_POOL = 2000;
 
   /**
@@ -1212,7 +1173,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     };
   };
 
-  /** A rendered element that matches one of the CMP's overlay selectors and fills the viewport. */
   const hasOverlaySelectorMatch = (): boolean => {
     for (const sel of args.overlays) {
       for (const el of deepQueryAll(sel)) {
@@ -1228,7 +1188,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const HIT_GRID_COLS = 8;
   const HIT_GRID_ROWS = 6;
 
-  /** Hit test on a grid over the viewport: which points lie on the banner, which under its overlay. */
   const hitTestGrid = (root: DElement, underOverlay: (hit: DElement) => boolean) => {
     let total = 0;
     let covered = 0;
@@ -1252,7 +1211,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
 
   const isOverflowLocked = (s: DStyle): boolean => s.overflowY === 'hidden' || s.overflowY === 'clip';
 
-  /** A scroll-locked page counts as locked only when it is taller than the viewport by more than this. */
   const TALL_PAGE_MARGIN_PX = 40;
 
   /** `locked` is false for an overflow-hidden page that is not taller than the viewport (nothing to scroll anyway). */
@@ -1282,7 +1240,6 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
     return false;
   };
 
-  /** Share of grid points under the banner's overlay that makes the overlay blocking. */
   const OVERLAY_GRID_SHARE = 0.5;
 
   const measureBlocking = (

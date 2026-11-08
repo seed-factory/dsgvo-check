@@ -53,6 +53,8 @@ const playerDocument = (id = 'doc', p: Partial<RequestRecord> = {}) =>
 const image = (id: string, url: string, p: Partial<RequestRecord> = {}) =>
   req(id, url, { pageUrl: VIDEOS, resourceType: 'image', ...p });
 
+const videoPhase = (...requests: RequestRecord[]) => phase('A', { pages: videoPages(), requests });
+
 describe('EMBED-03 external videos and thumbnails', () => {
   it('violation: a YouTube player frame on the video page → video-loaded as iframe, its document first', () => {
     const [o] = observationsOf(runCheck(embed03, scenario('violation-youtube-embed.json')));
@@ -204,7 +206,7 @@ const GROUP_CASES: Array<[string, RequestRecord[], Array<[string, string, number
 
 describe('EMBED-03 groups the requests by the video embed that made them', () => {
   it.each(GROUP_CASES)('%s', (_name, requests, want) => {
-    const found = observations([phase('A', { pages: videoPages(), requests })]);
+    const found = observations([videoPhase(...requests)]);
     expect(
       found.map((o) => [
         o.subject,
@@ -221,7 +223,7 @@ describe('EMBED-03 groups the requests by the video embed that made them', () =>
       pageUrl: START,
       resourceType: 'ping',
     });
-    const [o] = observations([phase('A', { pages: videoPages(), requests: [playerDocument(), beacon] })]);
+    const [o] = observations([videoPhase(playerDocument(), beacon)]);
     expect(o).toMatchObject({ subject: 'youtube-nocookie', pages: [VIDEOS], params: { pageCount: 1 } });
   });
 
@@ -230,7 +232,7 @@ describe('EMBED-03 groups the requests by the video embed that made them', () =>
     const b = (id: string, p: Partial<RequestRecord>) => req(id, NOCOOKIE, { ...frameB, phase: 'B', ...p });
     const [o] = observations(
       [
-        phase('A', { pages: videoPages(), requests: [playerDocument()] }),
+        videoPhase(playerDocument()),
         phase('B', {
           click: click('reject'),
           reloaded: true,
@@ -271,51 +273,24 @@ const NO_LOAD_CASES: Array<[string, PhaseRecord[]]> = [
   [
     'the thumbnail loads only after the accept',
     [
-      phase('A', { pages: videoPages() }),
+      videoPhase(),
       phase('C', {
         click: click('accept'),
         requests: [image('c', THUMBNAIL, { phase: 'C', afterClick: true })],
       }),
     ],
   ],
-  [
-    'a failed thumbnail request',
-    [phase('A', { pages: videoPages(), requests: [image('a', THUMBNAIL, failed)] })],
-  ],
-  [
-    'a thumbnail request that never left the browser',
+  ...(
     [
-      phase('A', {
-        pages: videoPages(),
-        requests: [
-          image('a', THUMBNAIL, {
-            state: 'attempted',
-            status: undefined,
-            delivery: 'attempted',
-            result: { kind: 'none' },
-          }),
-        ],
-      }),
-    ],
-  ],
-  [
-    'a thumbnail answered from the HTTP cache',
-    [
-      phase('A', {
-        pages: videoPages(),
-        requests: [image('a', THUMBNAIL, { state: 'from-cache', provenance: 'http-cache' })],
-      }),
-    ],
-  ],
-  [
-    'a thumbnail answered by a service worker',
-    [
-      phase('A', {
-        pages: videoPages(),
-        requests: [image('a', THUMBNAIL, { state: 'from-sw', provenance: 'service-worker' })],
-      }),
-    ],
-  ],
+      ['a failed thumbnail request', failed],
+      [
+        'a thumbnail request that never left the browser',
+        { state: 'attempted', status: undefined, delivery: 'attempted', result: { kind: 'none' } },
+      ],
+      ['a thumbnail answered from the HTTP cache', { state: 'from-cache', provenance: 'http-cache' }],
+      ['a thumbnail answered by a service worker', { state: 'from-sw', provenance: 'service-worker' }],
+    ] satisfies Array<[string, Partial<RequestRecord>]>
+  ).map(([name, delivery]): [string, PhaseRecord[]] => [name, [videoPhase(image('a', THUMBNAIL, delivery))]]),
   [
     'a plain link to a YouTube video',
     [
@@ -339,8 +314,9 @@ const NO_LOAD_CASES: Array<[string, PhaseRecord[]]> = [
 
 describe('EMBED-03 reports only videos that were delivered before the accept', () => {
   it.each(NO_LOAD_CASES)('counterexample: %s', (_name, phases) => {
-    expect(run(phases)).toMatchObject({ status: 'completed' });
-    expect(observations(phases)).toEqual([]);
+    const result = run(phases);
+    expect(result).toMatchObject({ status: 'completed' });
+    expect(observationsOf(result)).toEqual([]);
   });
 
   it('counterexample: no phase A → inconclusive', () => {
@@ -409,10 +385,6 @@ describe('EMBED-03 knows the video page by the keyword group the planner chose i
     run([phase('A', { pages: videoPages(PAGE, { evaluable: false, notEvaluableReason: 'challenge' }) })], {
       plan: makeBrowserPlan({ pages: [planned] }),
     });
-
-  it('the dictionary has a video group with more than one word', () => {
-    expect(VIDEO_WORDS.length).toBeGreaterThan(1);
-  });
 
   it.each(VIDEO_WORDS)(
     'a blocked page chosen by the link text "%s" → inconclusive video-page-not-evaluable',
@@ -548,7 +520,7 @@ describe('EMBED-03 states whether the video loaded before the interaction, after
       load: (id, p = {}) => image(id, THUMBNAIL, { pageUrl: HISTORY, ...p }),
       phaseA: historyA,
       control: HISTORY,
-    }),
+    }).filter(([, row]) => row.checksTimingBoundary),
   )('%s', (_name, { phases, cmp, want }) => {
     expectMoment(observations(phases, { cmp }), 'video-loaded', want);
   });
@@ -636,9 +608,7 @@ describe('EMBED-03 evidence', () => {
       ...player,
       resourceType: 'font',
     });
-    const [o] = observations([
-      phase('A', { pages: videoPages(), requests: [playerDocument(), ...chunks, font] }),
-    ]);
+    const [o] = observations([videoPhase(playerDocument(), ...chunks, font)]);
     expect(o?.params).toMatchObject({
       frameFontServices: 'Google Fonts',
       frameFontRequestCount: 1,

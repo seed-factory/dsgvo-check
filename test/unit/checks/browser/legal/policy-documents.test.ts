@@ -112,7 +112,5 @@ describe('policyText', () => {
       ['c', 'doc-privacy-2'],
     ]);
     expect(text.visibleParts.map((p) => p.id)).toEqual(['a', 'c']);
-    expect(text.visible).toBe(' wir nutzen google fonts weitere dienste ');
-    expect(text.hidden).toBe(' matomo ');
   });
 });

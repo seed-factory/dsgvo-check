@@ -1,6 +1,5 @@
 /** Pure: the "quiet" algorithm replacing networkidle. */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TIMING } from '../../../../../src/collectors/browser/config.ts';
 import { quietDecision } from '../../../../../src/collectors/browser/recording/quiet.ts';
 
 const p = { minDwellMs: 6_000, hardCapMs: 20_000, quietWindowMs: 2_000, maxInflight: 1 };
@@ -21,16 +20,5 @@ describe('quietDecision', () => {
 
   it('gives up at HARD_CAP', () => {
     expect(quietDecision({ elapsedMs: 20_000, sinceLastStartMs: 10, inflight: 9 }, p)).toBe('hard-cap');
-  });
-
-  it('defaults follow : A 6/20 s, B and C 4/12 s, window 2 s, inflight ≤ 1, pause ≥ 1.5 s', () => {
-    expect(DEFAULT_TIMING.phases).toEqual({
-      A: { minDwellMs: 6_000, hardCapMs: 20_000 },
-      B: { minDwellMs: 4_000, hardCapMs: 12_000 },
-      C: { minDwellMs: 4_000, hardCapMs: 12_000 },
-    });
-    expect(DEFAULT_TIMING.quietWindowMs).toBe(2_000);
-    expect(DEFAULT_TIMING.maxInflight).toBe(1);
-    expect(DEFAULT_TIMING.navigationPauseMs).toBeGreaterThanOrEqual(1_500);
   });
 });

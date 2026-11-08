@@ -1,63 +1,56 @@
-/** Request kind, tracking stage and integration are looked up from small tables; unlisted values take the default. */
-import { describe, expect, it } from 'vitest';
-import { integrationFromKind, kindFromResourceType, stageFromKind } from '../../../src/derive/index.ts';
-import type { RequestKind, ServiceCategory } from '../../../src/derive/types.ts';
+import { expect, it } from 'vitest';
+import { requestsOf } from './derive-phase.ts';
 
-describe('kindFromResourceType', () => {
-  it.each<[string, ServiceCategory, RequestKind]>([
-    ['script', 'analytics', 'library'],
-    ['stylesheet', 'fonts', 'stylesheet'],
-    ['font', 'fonts', 'font'],
-    ['document', 'maps', 'embed'],
-    ['image', 'analytics', 'hit'],
-    ['image', 'maps', 'tile'],
-    ['image', 'cdn', 'image'],
-    ['xhr', 'ads', 'hit'],
-    ['beacon', 'session-recording', 'hit'],
-    ['websocket', 'analytics', 'hit'],
-    ['fetch', 'cdn', 'resource'],
-    ['ping', 'social', 'resource'],
-    ['eventsource', 'chat', 'resource'],
-    ['other', 'ads', 'resource'],
-    ['media', 'video', 'resource'],
-    ['', 'analytics', 'resource'],
-    ['toString', 'analytics', 'resource'],
-  ])('%s of %s → %s', (resourceType, category, kind) => {
-    expect(kindFromResourceType(resourceType, category)).toBe(kind);
-  });
-});
+it('classifies loaded resources and tracking events in the derived snapshot', () => {
+  const hosts = {
+    ads: 'securepubads.g.doubleclick.net',
+    analytics: 'www.google-analytics.com',
+    cdn: 'cdn.jsdelivr.net',
+    chat: 'tawk.to',
+    fonts: 'use.typekit.net',
+    maps: 'www.openstreetmap.org',
+    'session-recording': 'hotjar.com',
+    social: 'facebook.net',
+    video: 'www.youtube-nocookie.com',
+  };
+  const cases = [
+    ['script', 'analytics', 'library', 'loaded'],
+    ['stylesheet', 'fonts', 'stylesheet', 'loaded'],
+    ['font', 'fonts', 'font', 'loaded'],
+    ['document', 'maps', 'embed', 'loaded', 'iframe'],
+    ['script', 'maps', 'library', 'loaded', 'js-api'],
+    ['image', 'analytics', 'hit', 'event-sent'],
+    ['image', 'maps', 'tile', 'loaded', 'tiles'],
+    ['image', 'cdn', 'image', 'loaded'],
+    ['xhr', 'ads', 'hit', 'event-sent'],
+    ['beacon', 'session-recording', 'hit', 'event-sent'],
+    ['websocket', 'analytics', 'hit', 'event-sent'],
+    ['fetch', 'cdn', 'resource', 'loaded'],
+    ['ping', 'social', 'resource', 'loaded'],
+    ['eventsource', 'chat', 'resource', 'loaded'],
+    ['other', 'ads', 'resource', 'loaded'],
+    ['media', 'video', 'resource', 'loaded', 'other'],
+    ['document', 'video', 'embed', 'loaded', 'iframe'],
+    ['script', 'video', 'library', 'loaded', 'js-api'],
+    ['image', 'video', 'image', 'loaded', 'other'],
+    ['document', 'analytics', 'embed', 'loaded'],
+    ['', 'analytics', 'resource', 'loaded'],
+    ['toString', 'analytics', 'resource', 'loaded'],
+  ] as const;
 
-describe('stageFromKind', () => {
-  it.each<[RequestKind, string]>([
-    ['hit', 'event-sent'],
-    ['config', 'initialised'],
-    ['library', 'loaded'],
-    ['embed', 'loaded'],
-    ['stylesheet', 'loaded'],
-    ['font', 'loaded'],
-    ['tile', 'loaded'],
-    ['image', 'loaded'],
-    ['resource', 'loaded'],
-  ])('%s → %s', (kind, stage) => {
-    expect(stageFromKind(kind)).toBe(stage);
-  });
-});
+  const requests = requestsOf(
+    ...cases.map(([resourceType, category]): [string, { resourceType: string }] => [
+      `https://${hosts[category]}/unlisted-asset`,
+      { resourceType },
+    ]),
+  );
 
-describe('integrationFromKind', () => {
-  it.each<[ServiceCategory, RequestKind, string | undefined]>([
-    ['maps', 'embed', 'iframe'],
-    ['video', 'embed', 'iframe'],
-    ['maps', 'library', 'js-api'],
-    ['video', 'library', 'js-api'],
-    ['maps', 'tile', 'tiles'],
-    ['maps', 'image', 'static'],
-    // A video image is a thumbnail only by its catalog signature (a player's beacon image is none).
-    ['video', 'image', 'other'],
-    ['maps', 'hit', 'other'],
-    ['video', 'resource', 'other'],
-    ['analytics', 'embed', undefined],
-    ['cdn', 'image', undefined],
-  ])('%s %s → %s', (category, kind, integration) => {
-    expect(integrationFromKind(category, kind)).toBe(integration);
-  });
+  expect(requests).toHaveLength(cases.length);
+  for (const [index, [resourceType, category, kind, stage, integration]] of cases.entries()) {
+    const request = requests[index]!;
+    expect(
+      [request.category, request.kind, request.stage, request.integration],
+      `${category}: ${resourceType}`,
+    ).toEqual([category, kind, stage, integration]);
+  }
 });

@@ -2,9 +2,9 @@
  * SSRF boundary: documents (top-level, frames, popups) to loopback, link-local/metadata or private addresses, or to
  * names that do not resolve locally, are not loaded unless `allowPrivateAddresses`. A fake lookup declares fixture hosts public.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { Lookup } from '../../../../src/core/url/net.ts';
-import { type FixtureServer, startFixtureServer } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect } from '../helpers.ts';
 
@@ -16,24 +16,19 @@ const lookup: Lookup = async (host) => {
     : [{ address: '93.184.215.14', family: 4 }];
 };
 
-let server: FixtureServer;
+const server = useFixtureServer(() => ({ sites: ['browser/ssrf'] }));
 
-beforeAll(async () => {
-  server = await startFixtureServer({ sites: ['browser/ssrf'] });
-});
-
-afterAll(async () => {
-  await server?.close();
-});
-
-const metadataHits = () => server.requestsTo('169.254.169.254').map((r) => r.path);
+const metadataHits = () =>
+  server()
+    .requestsTo('169.254.169.254')
+    .map((r) => r.path);
 
 describe('SSRF guard (documents and frames)', () => {
   describe('frames to 169.254.169.254, 127.0.0.1, a private address and an unresolvable name', () => {
     let run: CollectRun;
 
     beforeAll(async () => {
-      run = await collect(server, { network: { allowPrivateAddresses: false, lookup } });
+      run = await collect(server(), { network: { allowPrivateAddresses: false, lookup } });
     });
 
     it('blocks every one of them, nested frames included, and loads the public target normally', () => {
@@ -54,8 +49,8 @@ describe('SSRF guard (documents and frames)', () => {
     });
 
     it('never reaches the internal hosts', () => {
-      expect(server.requestsTo('intranet.example.test')).toEqual([]);
-      expect(server.requestsTo('unresolvable.example.test')).toEqual([]);
+      expect(server().requestsTo('intranet.example.test')).toEqual([]);
+      expect(server().requestsTo('unresolvable.example.test')).toEqual([]);
       expect(metadataHits()).toEqual([]);
     });
 
@@ -74,7 +69,7 @@ describe('SSRF guard (documents and frames)', () => {
   });
 
   it('a start page redirecting to the metadata address ends the scan as invalid input', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: 'https://redir.example.test/',
       network: { allowPrivateAddresses: false, lookup },
     });
@@ -90,7 +85,7 @@ describe('SSRF guard (documents and frames)', () => {
   });
 
   it('a start host that itself is not public is named as such, without a redirect that did not happen', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: 'https://intranet.example.test/',
       maxPages: 1,
       network: { allowPrivateAddresses: false, lookup },
@@ -100,21 +95,21 @@ describe('SSRF guard (documents and frames)', () => {
       code: 'start-page-not-public',
       params: { redirected: 'no' },
     });
-    expect(server.requestsTo('intranet.example.test')).toEqual([]);
+    expect(server().requestsTo('intranet.example.test')).toEqual([]);
   });
 
   it('is off when private addresses are allowed (tests only)', async () => {
-    const run = await collect(server, { maxPages: 1 });
+    const run = await collect(server(), { maxPages: 1 });
 
     expect(run.result.sections.browser?.guard).toEqual({ enabled: false, blocked: 0 });
-    expect(server.requestsTo('intranet.example.test').length).toBeGreaterThan(0);
+    expect(server().requestsTo('intranet.example.test').length).toBeGreaterThan(0);
   });
 });
 
 describe('SSRF guard covers new windows', () => {
   it('window.open / target=_blank without a user gesture never reach internal addresses', async () => {
-    server.reset();
-    const run = await collect(server, {
+    server().reset();
+    const run = await collect(server(), {
       url: 'https://popup.example.test/',
       maxPages: 1,
       network: { allowPrivateAddresses: false, lookup },
@@ -122,14 +117,14 @@ describe('SSRF guard covers new windows', () => {
 
     expect(run.result.status).not.toBe('error');
     expect(metadataHits()).toEqual([]);
-    expect(server.requestsTo('intranet.example.test')).toEqual([]);
+    expect(server().requestsTo('intranet.example.test')).toEqual([]);
     // Popup documents do not appear as page traffic of the scan either.
     expect(run.requests.filter((r) => r.url.includes('via-popup') || r.url.includes('via-form'))).toEqual([]);
   });
 
   it('a popup opened by the CMP click (user gesture) is blocked as well', async () => {
-    server.reset();
-    const run = await collect(server, {
+    server().reset();
+    const run = await collect(server(), {
       url: 'https://popup-click.example.test/',
       maxPages: 1,
       deps: { cmp: stubCmpApi(), phases: ['A', 'B'] },

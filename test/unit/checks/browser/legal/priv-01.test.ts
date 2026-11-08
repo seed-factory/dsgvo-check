@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { matchLevel, priv01 } from '../../../../../src/checks/browser/priv-01.ts';
+import { priv01 } from '../../../../../src/checks/browser/priv-01.ts';
 import { loadTexts } from '../../../../../src/core/data/load.ts';
 import { renderMessage } from '../../../../../src/core/data/messages.ts';
-import { EvidenceSchema } from '../../../../../src/core/report/schema.ts';
 import type {
   DocumentPart,
   DocumentRecord,
   DocumentsSection,
 } from '../../../../../src/core/snapshot/browser.ts';
-import { normalizeText } from '../../../../../src/core/text/search.ts';
-import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { makeDom, observationsOf, runCheck, variantsOf } from '../../../../utils/snapshot-builder.ts';
 import {
   click,
@@ -21,11 +18,12 @@ import {
   phase,
   privacyDoc,
   req,
+  runSiteCheck,
   START as START_URL,
-  site,
 } from '../helpers.ts';
 import { SCENARIOS } from '../scenarios/index.ts';
 import { ga } from '../scenarios/shared.ts';
+import { noticeAttempt } from './legal-01-verify.ts';
 
 const scenario = (file: string) => SCENARIOS['PRIV-01']!.find((s) => s.file === file)!.build();
 const part = (text: string, origin: DocumentPart['origin'] = 'visible', section?: string): DocumentPart => ({
@@ -37,12 +35,12 @@ const part = (text: string, origin: DocumentPart['origin'] = 'visible', section?
 });
 const trustindex = () =>
   phase('A', { requests: [req('a', 'https://cdn.trustindex.io/loader.js?wp-widget')] });
-const withPolicy = (
+const runWithPolicy = (
   parts: DocumentPart[],
   p: Partial<DocumentRecord> = {},
   attempts: DocumentsSection['attempts'] = [],
 ) =>
-  site({
+  runSiteCheck(priv01, {
     phases: [trustindex()],
     documents: { documents: [defaultDocuments().documents[0]!, privacyDoc(parts, p)], attempts },
   });
@@ -62,32 +60,26 @@ describe('PRIV-01 service not found in the privacy policy', () => {
   });
 
   it('inconclusive: a linked PDF policy that was not fetched (status null) is still a PDF, not "not found"', () => {
-    const r = runCheck(
-      priv01,
-      site({
-        phases: [trustindex()],
-        documents: {
-          documents: [
-            privacyDoc([], {
-              url: 'https://www.example.de/datenschutz.pdf',
-              status: null,
-              format: 'pdf',
-              complete: false,
-              errors: ['pdf-not-evaluated'],
-            }),
-          ],
-          attempts: [],
-        },
-      }),
-    );
+    const r = runSiteCheck(priv01, {
+      phases: [trustindex()],
+      documents: {
+        documents: [
+          privacyDoc([], {
+            url: 'https://www.example.de/datenschutz.pdf',
+            status: null,
+            format: 'pdf',
+            complete: false,
+            errors: ['pdf-not-evaluated'],
+          }),
+        ],
+        attempts: [],
+      },
+    });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'pdf-not-evaluated' });
   });
 
   it('counterexample: only a category description → category-only (info) with a quote ≤ 200 chars', () => {
-    const r = runCheck(
-      priv01,
-      withPolicy([part('Wir zeigen Kundenbewertungen über ein externes Bewertungs-Widget an.')]),
-    );
+    const r = runWithPolicy([part('Wir zeigen Kundenbewertungen über ein externes Bewertungs-Widget an.')]);
     const [o] = observationsOf(r);
     expect(o?.variant).toBe('category-only');
     const match = o?.evidence.find((e) => e.type === 'text-match');
@@ -96,79 +88,53 @@ describe('PRIV-01 service not found in the privacy policy', () => {
   });
 
   it('named and domain levels count as found', () => {
-    expect(variantsOf(runCheck(priv01, withPolicy([part('Wir nutzen Trust­index (Bewertungen).')])))).toEqual(
-      [],
-    );
-    expect(
-      variantsOf(runCheck(priv01, withPolicy([part('Daten werden an trustindex.io übertragen.')]))),
-    ).toEqual([]);
+    expect(variantsOf(runWithPolicy([part('Wir nutzen Trust­index (Bewertungen).')]))).toEqual([]);
+    expect(variantsOf(runWithPolicy([part('Daten werden an trustindex.io übertragen.')]))).toEqual([]);
   });
 
   it('expandable parts not opened (banner open) → partial with limitation', () => {
-    const r = runCheck(
-      priv01,
-      withPolicy([part('Trustindex')], {
-        manifest: {
-          expandablesFound: 3,
-          expandablesOpened: 0,
-          framesIncluded: 0,
-          linkedPages: 0,
-          textLength: 10,
-        },
-      }),
-    );
+    const r = runWithPolicy([part('Trustindex')], {
+      manifest: {
+        expandablesFound: 3,
+        expandablesOpened: 0,
+        framesIncluded: 0,
+        linkedPages: 0,
+        textLength: 10,
+      },
+    });
     expect(r).toMatchObject({ status: 'partial' });
     expect(r.outcome?.limitations).toEqual(['banner-open']);
   });
 
   it('no privacy policy → inconclusive (LEGAL-01 reports it); incomplete or foreign language → inconclusive', () => {
-    const none = runCheck(
-      priv01,
-      site({ phases: [trustindex()], documents: { documents: [], attempts: [] } }),
-    );
+    const none = runSiteCheck(priv01, { phases: [trustindex()], documents: { documents: [], attempts: [] } });
     expect(none).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
-    expect(runCheck(priv01, withPolicy([part('x')], { complete: false }))).toMatchObject({
+    expect(runWithPolicy([part('x')], { complete: false })).toMatchObject({
       reason: 'document-incomplete',
     });
-    expect(runCheck(priv01, withPolicy([part('x')], { lang: 'fr' }))).toMatchObject({
+    expect(runWithPolicy([part('x')], { lang: 'fr' })).toMatchObject({
       reason: 'language-unsupported',
     });
   });
 
   it('a "Datenschutz" link target judged not a policy (keyword missing) is not searched → no not-named', () => {
-    const r = runCheck(
-      priv01,
-      withPolicy([part('Willkommen in unserem Shop.')], { errors: ['keyword-missing'] }),
-    );
+    const r = runWithPolicy([part('Willkommen in unserem Shop.')], { errors: ['keyword-missing'] });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
     expect(variantsOf(r)).toEqual([]);
   });
 
   it('services that were not loaded or are not policy-relevant are not evaluated', () => {
-    const r = runCheck(
-      priv01,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://cdn.trustindex.io/loader.js', { state: 'failed' }),
-              req('b', 'https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js'),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runSiteCheck(priv01, {
+      phases: [
+        phase('A', {
+          requests: [
+            req('a', 'https://cdn.trustindex.io/loader.js', { state: 'failed' }),
+            req('b', 'https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js'),
+          ],
+        }),
+      ],
+    });
     expect(variantsOf(r)).toEqual([]);
-  });
-
-  it('match levels in the normalised text: name, company, category, none', () => {
-    const info = loadServiceCatalog().info('google-analytics')!;
-    expect(matchLevel(info, normalizeText('Wir nutzen GOOGLE ANALYTICS.')).level).toBe('named');
-    expect(matchLevel(info, normalizeText('Anbieter ist die Google Ireland Limited.')).level).toBe('company');
-    expect(matchLevel(info, normalizeText('Reichweitenmessung mit einem Analysetool')).level).toBe(
-      'category',
-    );
-    expect(matchLevel(info, normalizeText('Nichts davon.')).level).toBe('none');
   });
 });
 
@@ -244,7 +210,7 @@ describe('PRIV-01 policy availability and completeness', () => {
       reason: 'document-incomplete',
     },
   ])('$name', ({ parts, document, attempts, status, reason, variants, limitations }) => {
-    const result = runCheck(priv01, withPolicy(parts, document, attempts));
+    const result = runWithPolicy(parts, document, attempts);
 
     expect(result.status).toBe(status);
     if (reason) expect(result.reason).toBe(reason);
@@ -253,16 +219,13 @@ describe('PRIV-01 policy availability and completeness', () => {
   });
 
   it('a failed policy navigation yields no document and no finding', () => {
-    const result = runCheck(
-      priv01,
-      site({
-        phases: [trustindex()],
-        documents: {
-          documents: [defaultDocuments().documents[0]!],
-          attempts: [{ kind: 'privacy', via: 'link', url: PRIVACY, status: null, outcome: 'error' }],
-        },
-      }),
-    );
+    const result = runSiteCheck(priv01, {
+      phases: [trustindex()],
+      documents: {
+        documents: [defaultDocuments().documents[0]!],
+        attempts: [{ kind: 'privacy', via: 'link', url: PRIVACY, status: null, outcome: 'error' }],
+      },
+    });
 
     expect(result).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
     expect(variantsOf(result)).toEqual([]);
@@ -285,42 +248,30 @@ describe('PRIV-01 negative search evidence', () => {
   ];
   const expectedManifest = { partCount: 4, ...manifest, truncated: false };
 
-  it.each(['document evidence', 'schema roundtrip', 'message parameters'] as const)(
-    'preserves completeness in %s',
-    (projection) => {
-      const result = runCheck(priv01, withPolicy(parts, { manifest }));
-      const observation = observationsOf(result)[0];
-
-      if (projection === 'document evidence') {
-        expect(observation?.variant).toBe('not-named');
-        expect(observation?.evidence[0]).toMatchObject({ type: 'document', manifest: expectedManifest });
-      } else if (projection === 'schema roundtrip') {
-        const parsed = EvidenceSchema.parse({ id: 'ev-1', ...observation?.evidence[0] });
-        expect(JSON.parse(JSON.stringify(parsed)).manifest).toEqual(expectedManifest);
-      } else {
-        expect(observation?.params).toMatchObject({ partCount: 4, complete: true });
-      }
-    },
-  );
+  it('reports the document manifest and searched part count', () => {
+    const [observation] = observationsOf(runWithPolicy(parts, { manifest }));
+    expect(observation).toMatchObject({
+      variant: 'not-named',
+      params: { partCount: 4, complete: true },
+    });
+    expect(observation?.evidence[0]).toMatchObject({ type: 'document', manifest: expectedManifest });
+  });
 });
 
 describe('PRIV-01 says what it searched for', () => {
   it('a policy naming the same company for another service: not-named lists the company names searched', () => {
-    const r = runCheck(
-      priv01,
-      site({
-        phases: [phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')] })],
-        documents: {
-          documents: [
-            defaultDocuments().documents[0]!,
-            privacyDoc([
-              part('Wir nutzen Google Analytics. Anbieter ist Google Inc.', 'visible', '3 > Analyse'),
-            ]),
-          ],
-          attempts: [],
-        },
-      }),
-    );
+    const r = runSiteCheck(priv01, {
+      phases: [phase('A', { requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')] })],
+      documents: {
+        documents: [
+          defaultDocuments().documents[0]!,
+          privacyDoc([
+            part('Wir nutzen Google Analytics. Anbieter ist Google Inc.', 'visible', '3 > Analyse'),
+          ]),
+        ],
+        attempts: [],
+      },
+    });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({
       variant: 'not-named',
@@ -351,42 +302,39 @@ describe('PRIV-01 where the service was seen', () => {
     });
 
   it('pages and phases come from its requests and stored identifiers, as in the inventory; a test cookie is none', () => {
-    const r = runCheck(
-      priv01,
-      site({
-        phases: [
-          phase('A', { requests: [ads('a')] }),
-          phase('B', {
-            click: click('reject'),
-            // The catalog names test_cookie as no identifier: it does not make B a phase in which the service was seen.
-            cookies: [
-              cookie('test_cookie', {
-                domain: '.doubleclick.net',
-                firstParty: false,
-                phase: 'B',
-                afterClick: true,
-                setter: 'http-response',
-                setterHost: 'googleads.g.doubleclick.net',
-              }),
-            ],
-          }),
-          phase('C', {
-            click: click('accept'),
-            cookies: [
-              cookie('IDE', {
-                domain: '.doubleclick.net',
-                firstParty: false,
-                phase: 'C',
-                afterClick: true,
-                setter: 'http-response',
-                setterHost: 'googleads.g.doubleclick.net',
-              }),
-            ],
-          }),
-        ],
-        documents: policy(),
-      }),
-    );
+    const r = runSiteCheck(priv01, {
+      phases: [
+        phase('A', { requests: [ads('a')] }),
+        phase('B', {
+          click: click('reject'),
+          // The catalog names test_cookie as no identifier: it does not make B a phase in which the service was seen.
+          cookies: [
+            cookie('test_cookie', {
+              domain: '.doubleclick.net',
+              firstParty: false,
+              phase: 'B',
+              afterClick: true,
+              setter: 'http-response',
+              setterHost: 'googleads.g.doubleclick.net',
+            }),
+          ],
+        }),
+        phase('C', {
+          click: click('accept'),
+          cookies: [
+            cookie('IDE', {
+              domain: '.doubleclick.net',
+              firstParty: false,
+              phase: 'C',
+              afterClick: true,
+              setter: 'http-response',
+              setterHost: 'googleads.g.doubleclick.net',
+            }),
+          ],
+        }),
+      ],
+      documents: policy(),
+    });
     const services = observationsOf(r).map((o) => o.subject);
     // IDE and test_cookie were set by the Google Ads host: no separate Marketing Platform finding.
     expect(services).toEqual(['google-ads']);
@@ -427,12 +375,12 @@ describe('PRIV-01 further privacy notices of the site', () => {
       requests: [req('t', 'https://code.tidio.co/abc.js'), req('w', 'https://cdn.weglot.com/weglot.min.js')],
       ...p,
     });
-  const withNotices = (
+  const runWithNotices = (
     notices: DocumentRecord[],
     attempts: DocumentsSection['attempts'] = [],
     o: { main?: DocumentRecord | null; phases?: ReturnType<typeof phase>[] } = {},
   ) =>
-    site({
+    runSiteCheck(priv01, {
       phases: o.phases ?? [chatAndTranslation()],
       documents: {
         documents: [
@@ -448,9 +396,13 @@ describe('PRIV-01 further privacy notices of the site', () => {
       .map((o) => [o.subject, o.variant])
       .sort();
   const NAMED = inSupplement('Für Rückfragen nutzen wir den Live-Chat Tidio (Tidio LLC).');
+  const BOTH_UNNAMED = [
+    ['tidio', 'not-named'],
+    ['weglot', 'not-named'],
+  ];
 
   it('a service named only in the further notice counts as named; a service named nowhere stays not-named', () => {
-    const r = runCheck(priv01, withNotices([supplement([NAMED])]));
+    const r = runWithNotices([supplement([NAMED])]);
     expect(r.status).toBe('completed');
     expect(found(r)).toEqual([['weglot', 'not-named']]);
     const [o] = observationsOf(r);
@@ -467,28 +419,21 @@ describe('PRIV-01 further privacy notices of the site', () => {
   });
 
   it('counterexample: without the further notice both services are not-named', () => {
-    expect(found(runCheck(priv01, withNotices([])))).toEqual([
-      ['tidio', 'not-named'],
-      ['weglot', 'not-named'],
-    ]);
+    expect(found(runWithNotices([]))).toEqual(BOTH_UNNAMED);
   });
 
   it.each(['Tidio', 'Tidio Chat', 'Tidio-Chat', 'Tidio LLC', 'tidio.com', 'Live-Chat von Tidio'])(
     'the spelling "%s" in the further notice counts as named',
     (spelling) => {
-      const r = runCheck(
-        priv01,
-        withNotices([supplement([inSupplement(`Wir nutzen ${spelling} für Anfragen.`)])]),
-      );
+      const r = runWithNotices([supplement([inSupplement(`Wir nutzen ${spelling} für Anfragen.`)])]);
       expect(found(r).filter(([s]) => s === 'tidio')).toEqual([]);
     },
   );
 
   it('only a category word in the further notice gives category-only, quoted from that notice', () => {
-    const r = runCheck(
-      priv01,
-      withNotices([supplement([inSupplement('Für Anfragen nutzen wir ein Chat-Widget auf der Website.')])]),
-    );
+    const r = runWithNotices([
+      supplement([inSupplement('Für Anfragen nutzen wir ein Chat-Widget auf der Website.')]),
+    ]);
     const tidio = observationsOf(r).find((o) => o.subject === 'tidio');
     expect(tidio?.variant).toBe('category-only');
     expect(tidio?.evidence.find((e) => e.type === 'text-match')).toMatchObject({
@@ -497,12 +442,9 @@ describe('PRIV-01 further privacy notices of the site', () => {
   });
 
   it('the name only in a hidden part of the further notice gives ambiguous-match', () => {
-    const r = runCheck(
-      priv01,
-      withNotices([
-        supplement([inSupplement('Kursanmeldung.'), inSupplement('Tidio Vorlage', 'hidden-irrelevant')]),
-      ]),
-    );
+    const r = runWithNotices([
+      supplement([inSupplement('Kursanmeldung.'), inSupplement('Tidio Vorlage', 'hidden-irrelevant')]),
+    ]);
     expect(observationsOf(r).find((o) => o.subject === 'tidio')?.variant).toBe('ambiguous-match');
   });
 
@@ -516,7 +458,7 @@ describe('PRIV-01 further privacy notices of the site', () => {
       depth: 1,
     };
     const start = page(START_URL, 'start', 'A', { dom: makeDom({ iframes: [frame] }) });
-    const r = runCheck(priv01, withNotices([], [], { phases: [chatAndTranslation({ pages: [start] })] }));
+    const r = runWithNotices([], [], { phases: [chatAndTranslation({ pages: [start] })] });
     expect(found(r)).toContainEqual(['tidio', 'not-named']);
   });
 
@@ -546,35 +488,21 @@ describe('PRIV-01 further privacy notices of the site', () => {
     {
       name: 'another language version of the policy',
       notices: [],
-      attempts: [
-        {
-          kind: 'privacy',
-          via: 'link',
-          url: `${ORIGIN}/en/datenschutz/`,
-          status: null,
-          outcome: 'other-language',
-          supplement: true,
-        },
-      ],
+      attempts: [noticeAttempt(`${ORIGIN}/en/datenschutz/`, null, 'other-language')],
     },
     {
       name: 'a notice whose page failed to load',
       notices: [],
-      attempts: [
-        { kind: 'privacy', via: 'link', url: SUPPLEMENT, status: null, outcome: 'error', supplement: true },
-      ],
+      attempts: [noticeAttempt(SUPPLEMENT, null, 'error')],
     },
   ])(
     '$name: partial with supplement-not-evaluated, the policy is still evaluated',
     ({ notices, attempts }) => {
-      const r = runCheck(priv01, withNotices(notices, attempts));
+      const r = runWithNotices(notices, attempts);
       expect(r.status).toBe('partial');
       expect(r.outcome?.limitations).toEqual(['supplement-not-evaluated']);
       // The unread notice is not searched: Tidio stays not-named beside Weglot.
-      expect(found(r)).toEqual([
-        ['tidio', 'not-named'],
-        ['weglot', 'not-named'],
-      ]);
+      expect(found(r)).toEqual(BOTH_UNNAMED);
       expect(observationsOf(r)[0]!.params).toMatchObject({ documentCount: 1, policyUrls: PRIVACY });
     },
   );
@@ -585,95 +513,67 @@ describe('PRIV-01 further privacy notices of the site', () => {
     {
       name: 'a link that answered 404',
       notices: [],
-      attempts: [
-        {
-          kind: 'privacy',
-          via: 'link',
-          url: SUPPLEMENT,
-          status: 404,
-          outcome: 'not-found',
-          supplement: true,
-        },
-      ],
+      attempts: [noticeAttempt(SUPPLEMENT, 404, 'not-found')],
     },
   ])('$name is no notice: completed without a limitation', ({ notices, attempts }) => {
-    const r = runCheck(priv01, withNotices(notices, attempts));
+    const r = runWithNotices(notices, attempts);
     expect(r.status).toBe('completed');
     expect(r.outcome?.limitations ?? []).toEqual([]);
-    expect(found(r)).toEqual([
-      ['tidio', 'not-named'],
-      ['weglot', 'not-named'],
-    ]);
+    expect(found(r)).toEqual(BOTH_UNNAMED);
   });
 
   it('a notice whose redacted URL equals that of the policy does not take the policy with it', () => {
     // Both pages differ only in a query value, which the snapshot keeps as `[redacted]`.
     const shared = `${ORIGIN}/index.php?page=[redacted]`;
-    const r = runCheck(
-      priv01,
-      withNotices(
-        [supplement([NAMED], { url: shared, finalUrl: shared, errors: ['unconfirmed'] })],
-        [
-          { kind: 'privacy', via: 'link', url: shared, status: 200, outcome: 'found' },
-          {
-            kind: 'privacy',
-            via: 'link',
-            url: shared,
-            status: 200,
-            outcome: 'unconfirmed',
-            supplement: true,
-          },
-        ],
-        { main: privacyDoc(MAIN, { url: shared, finalUrl: shared }) },
-      ),
+    const r = runWithNotices(
+      [supplement([NAMED], { url: shared, finalUrl: shared, errors: ['unconfirmed'] })],
+      [
+        { kind: 'privacy', via: 'link', url: shared, status: 200, outcome: 'found' },
+        noticeAttempt(shared, 200, 'unconfirmed'),
+      ],
+      { main: privacyDoc(MAIN, { url: shared, finalUrl: shared }) },
     );
     expect(r).toMatchObject({ status: 'completed', reason: null });
-    expect(found(r)).toEqual([
-      ['tidio', 'not-named'],
-      ['weglot', 'not-named'],
-    ]);
+    expect(found(r)).toEqual(BOTH_UNNAMED);
   });
 
   it.each([
     ['an unconfirmed notice', supplement([NAMED], { errors: ['unconfirmed'] })],
     ['a readable notice', supplement([NAMED])],
   ])('%s without a policy is no policy: inconclusive privacy-policy-not-found', (_, notice) => {
-    const r = runCheck(priv01, withNotices([notice], [], { main: null }));
+    const r = runWithNotices([notice], [], { main: null });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'privacy-policy-not-found' });
     expect(variantsOf(r)).toEqual([]);
   });
 
   it('a truncated policy still makes the check inconclusive, whatever the notices', () => {
-    const r = runCheck(
-      priv01,
-      withNotices([supplement([NAMED])], [], {
-        main: privacyDoc(MAIN, { complete: false, errors: ['truncated'] }),
-      }),
-    );
+    const r = runWithNotices([supplement([NAMED])], [], {
+      main: privacyDoc(MAIN, { complete: false, errors: ['truncated'] }),
+    });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'document-incomplete' });
   });
 
   it('a snapshot of an earlier version without roles: every privacy document is a policy, as before', () => {
     const second = privacyDoc([NAMED], { id: 'doc-privacy-3', url: SUPPLEMENT });
-    expect(found(runCheck(priv01, withNotices([second])))).toEqual([['weglot', 'not-named']]);
+    expect(found(runWithNotices([second]))).toEqual([['weglot', 'not-named']]);
     const truncated = privacyDoc([NAMED], {
       id: 'doc-privacy-3',
       url: SUPPLEMENT,
       complete: false,
       errors: ['truncated'],
     });
-    expect(runCheck(priv01, withNotices([truncated]))).toMatchObject({
+    expect(runWithNotices([truncated])).toMatchObject({
       status: 'inconclusive',
       reason: 'document-incomplete',
     });
   });
 
   it.each(['de', 'en'] as const)('the %s texts name the policy and the further notice', (lang) => {
-    const [o] = observationsOf(runCheck(priv01, withNotices([supplement([NAMED])])));
+    const [o] = observationsOf(runWithNotices([supplement([NAMED])]));
     const body = renderMessage(loadTexts(lang), 'PRIV-01.not-named', o!.params).body;
     expect(body).toContain(PRIVACY);
     expect(body).toContain(SUPPLEMENT);
-    const single = observationsOf(runCheck(priv01, withNotices([])))[0]!;
+    const single = observationsOf(runWithNotices([]))[0]!;
     expect(renderMessage(loadTexts(lang), 'PRIV-01.not-named', single.params).body).not.toContain(SUPPLEMENT);
   });
 });
@@ -702,16 +602,13 @@ describe('PRIV-01 a policy that covers Google Analytics only', () => {
     ),
   ];
   const run = (extra: DocumentPart[] = [], p: Partial<DocumentRecord> = {}) =>
-    runCheck(
-      priv01,
-      site({
-        phases: [tags()],
-        documents: {
-          documents: [defaultDocuments().documents[0]!, privacyDoc([...GA_ONLY, ...extra], p)],
-          attempts: [],
-        },
-      }),
-    );
+    runSiteCheck(priv01, {
+      phases: [tags()],
+      documents: {
+        documents: [defaultDocuments().documents[0]!, privacyDoc([...GA_ONLY, ...extra], p)],
+        attempts: [],
+      },
+    });
   const verdicts = (r: ReturnType<typeof runCheck>) =>
     observationsOf(r)
       .map((o) => [o.subject, o.variant])

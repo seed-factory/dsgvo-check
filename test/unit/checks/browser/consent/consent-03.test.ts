@@ -12,6 +12,8 @@ import {
   firstLayer,
   phase,
   req,
+  runPhaseACheck,
+  runSiteCheck,
   START,
   site,
   storage,
@@ -56,7 +58,7 @@ describe('CONSENT-03 no consent dialog', () => {
   });
 
   it('region not asserted → warning variant even with strong tracking', () => {
-    const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] }));
+    const r = runPhaseACheck(consent03, { requests: [gaHit()] });
     expect(observationsOf(r)[0]).toMatchObject({
       variant: 'no-banner-consent-services',
       params: { regionAsserted: false },
@@ -64,31 +66,20 @@ describe('CONSENT-03 no consent dialog', () => {
   });
 
   it('a recognised CMP anywhere means a banner exists', () => {
-    const r = runCheck(
+    const r = runPhaseACheck(
       consent03,
-      site({
-        phases: [phase('A', { requests: [gaHit()] })],
-        cmp: cmpWith({ phase: 'B', facts: [cmpFacts()] }),
-      }),
+      { requests: [gaHit()] },
+      { cmp: cmpWith({ phase: 'B', facts: [cmpFacts()] }) },
     );
     expect(r).toMatchObject({ status: 'completed' });
     expect(variantsOf(r)).toEqual([]);
   });
 
   it('an embed writing storage needs consent: YouTube localStorage before interaction → warning variant', () => {
-    const r = runCheck(
-      consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [req('a', 'https://www.youtube.com/embed/abc', { resourceType: 'document' })],
-            storage: [
-              storage('yt-remote-device-id', { origin: 'https://www.youtube.com', firstParty: false }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(consent03, {
+      requests: [req('a', 'https://www.youtube.com/embed/abc', { resourceType: 'document' })],
+      storage: [storage('yt-remote-device-id', { origin: 'https://www.youtube.com', firstParty: false })],
+    });
     expect(observationsOf(r)[0]).toMatchObject({
       variant: 'no-banner-consent-services',
       params: { services: 'YouTube' },
@@ -96,14 +87,14 @@ describe('CONSENT-03 no consent dialog', () => {
   });
 
   it('tracking storage alone is strong tracking', () => {
-    const r = runCheck(
+    const r = runPhaseACheck(
       consent03,
-      site({
-        phases: [phase('A', { cookies: [cookie('_fbp')] })],
+      { cookies: [cookie('_fbp')] },
+      {
         environment: {
           egress: { mode: 'direct', region: 'asserted', assertedRegion: 'eea', source: 'laut Nutzerangabe' },
         },
-      }),
+      },
     );
     expect(variantsOf(r)).toEqual(['no-banner-strong-tracking']);
   });
@@ -113,18 +104,14 @@ describe('CONSENT-03 no consent dialog', () => {
   } as const;
 
   it('a cookieless Consent Mode ping is no strong tracking → warning variant even with an asserted region', () => {
-    const r = runCheck(
+    const r = runPhaseACheck(
       consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              gaHit('a', { url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]' }),
-            ],
-          }),
+      {
+        requests: [
+          gaHit('a', { url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]' }),
         ],
-        environment: asserted,
-      }),
+      },
+      { environment: asserted },
     );
     expect(observationsOf(r).map((o) => [o.variant, o.params.strongTracking])).toEqual([
       ['no-banner-consent-services', false],
@@ -132,21 +119,17 @@ describe('CONSENT-03 no consent dialog', () => {
   });
 
   it('analogue: a denied ping whose identifier matches stored data is strong tracking', () => {
-    const r = runCheck(
+    const r = runPhaseACheck(
       consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              gaHit('a', {
-                url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]',
-                matchesStoredIdentifier: true,
-              }),
-            ],
+      {
+        requests: [
+          gaHit('a', {
+            url: 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]',
+            matchesStoredIdentifier: true,
           }),
         ],
-        environment: asserted,
-      }),
+      },
+      { environment: asserted },
     );
     expect(variantsOf(r)).toEqual(['no-banner-strong-tracking']);
   });
@@ -163,40 +146,27 @@ describe('CONSENT-03 no consent dialog', () => {
   });
 
   it('a first-party tracking endpoint (tag gateway) without a banner counts as tracking', () => {
-    const r = runCheck(
-      consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', `${START}metrics/g/collect?v=2&tid=G-1&cid=[redacted]`, {
-                resourceType: 'ping',
-                identifierPresent: true,
-                identifierNames: ['cid'],
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(consent03, {
+      requests: [
+        req('a', `${START}metrics/g/collect?v=2&tid=G-1&cid=[redacted]`, {
+          resourceType: 'ping',
+          identifierPresent: true,
+          identifierNames: ['cid'],
+        }),
+      ],
+    });
     expect(observationsOf(r).map((o) => [o.variant, o.params.services])).toEqual([
       ['no-banner-consent-services', 'Google Analytics'],
     ]);
   });
 
   it('one evaluable page is not enough → inconclusive', () => {
-    const r = runCheck(
-      consent03,
-      site({ phases: [phase('A', { pages: defaultPages('A').slice(0, 1), requests: [gaHit()] })] }),
-    );
+    const r = runPhaseACheck(consent03, { pages: defaultPages('A').slice(0, 1), requests: [gaHit()] });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'insufficient-pages' });
   });
 
   it('no CMP facts recorded → inconclusive (absence is not established)', () => {
-    const r = runCheck(
-      consent03,
-      site({ phases: [phase('A', { requests: [gaHit()] })], cmp: { phases: [] } }),
-    );
+    const r = runSiteCheck(consent03, { phases: [phase('A', { requests: [gaHit()] })], cmp: { phases: [] } });
     expect(r).toMatchObject({ status: 'inconclusive', reason: 'cmp-not-observed' });
   });
 
@@ -207,7 +177,7 @@ describe('CONSENT-03 no consent dialog', () => {
     ['heuristic:fixed', ['heuristic:keywords:2']],
   ])('counterexample: a heuristic candidate with signal %s is a banner, not "no banner"', (signal, more) => {
     const cmp = cmpWith({ phase: 'A', facts: [heuristicCandidate([signal, ...more])] });
-    const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })], cmp }));
+    const r = runPhaseACheck(consent03, { requests: [gaHit()] }, { cmp });
     expect(r).toMatchObject({ status: 'completed' });
     expect(variantsOf(r)).toEqual([]);
   });
@@ -218,12 +188,10 @@ describe('CONSENT-03 no consent dialog', () => {
       heuristicCandidate(['heuristic:frame-candidate'], { consentFrameUnresolved: true });
 
     it('tracking before interaction and an unresolved consent frame: inconclusive, no no-banner finding', () => {
-      const r = runCheck(
+      const r = runPhaseACheck(
         consent03,
-        site({
-          phases: [phase('A', { requests: [gaHit()] })],
-          cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }),
-        }),
+        { requests: [gaHit()] },
+        { cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }) },
       );
       expect(r).toMatchObject({ status: 'inconclusive', reason: 'consent-frame-unresolved' });
       expect(r.outcome?.limitations).toContain('consent-frame-unresolved');
@@ -231,24 +199,22 @@ describe('CONSENT-03 no consent dialog', () => {
     });
 
     it('counterexample: without such a candidate the same tracking still gives the no-banner finding', () => {
-      const r = runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] }));
+      const r = runPhaseACheck(consent03, { requests: [gaHit()] });
       expect(variantsOf(r)).toEqual(['no-banner-consent-services']);
     });
 
     it('a resolved banner anywhere keeps "a banner exists" (completed, no finding), frame candidate or not', () => {
-      const r = runCheck(
+      const r = runPhaseACheck(
         consent03,
-        site({
-          phases: [phase('A', { requests: [gaHit()] })],
-          cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }, { phase: 'B', facts: [cmpFacts()] }),
-        }),
+        { requests: [gaHit()] },
+        { cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }, { phase: 'B', facts: [cmpFacts()] }) },
       );
       expect(r).toMatchObject({ status: 'completed' });
       expect(variantsOf(r)).toEqual([]);
     });
 
     it('no tracking observed: nothing to conclude either way, no spurious inconclusive', () => {
-      const r = runCheck(consent03, site({ cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }) }));
+      const r = runSiteCheck(consent03, { cmp: cmpWith({ phase: 'A', facts: [frameCandidate()] }) });
       expect(r).toMatchObject({ status: 'completed' });
     });
   });
@@ -259,21 +225,11 @@ describe('CONSENT-03 names what was stored apart from the services', () => {
     renderMessage(loadTexts(lang), `CONSENT-03.${o.variant}`, o.params as never).body;
 
   it('services with requests and only some of them storing: the stored entries are listed on their own', () => {
-    const r = runCheck(
-      consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              gaHit('a'),
-              req('b', 'https://www.googleadservices.com/pagead/conversion/123/?label=x'),
-            ],
-            cookies: [cookie('_gcl_au')],
-            storage: [storage('_gcl_ls')],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(consent03, {
+      requests: [gaHit('a'), req('b', 'https://www.googleadservices.com/pagead/conversion/123/?label=x')],
+      cookies: [cookie('_gcl_au')],
+      storage: [storage('_gcl_ls')],
+    });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({
       variant: 'no-banner-consent-services',
@@ -293,7 +249,7 @@ describe('CONSENT-03 names what was stored apart from the services', () => {
   });
 
   it('counterexample: requests without any storage say that no identifier or embed storage was observed', () => {
-    const [o] = observationsOf(runCheck(consent03, site({ phases: [phase('A', { requests: [gaHit()] })] })));
+    const [o] = observationsOf(runPhaseACheck(consent03, { requests: [gaHit()] }));
     expect(o?.params).toMatchObject({ storedCount: 0, stored: null });
     expect(body('de', o!)).toContain(
       'Außer Einträgen auf der Allowlist wurde keine Speicherung von Analyse- oder Marketing-Kennungen oder durch eingebettete Dienste beobachtet.',
@@ -304,22 +260,15 @@ describe('CONSENT-03 names what was stored apart from the services', () => {
   });
 
   it('an entry of a listed service that the catalog lists as no identifier: the text does not say the service stored nothing', () => {
-    const r = runCheck(
-      consent03,
-      site({
-        phases: [
-          phase('A', {
-            requests: [
-              req('a', 'https://static.hotjar.com/c/hotjar-123.js?sv=6'),
-              req('b', 'https://in.hotjar.com/api/v2/client/sites/123/visit-data?sv=6', {
-                resourceType: 'xhr',
-              }),
-            ],
-            cookies: [cookie('_hjFirstSeen')],
-          }),
-        ],
-      }),
-    );
+    const r = runPhaseACheck(consent03, {
+      requests: [
+        req('a', 'https://static.hotjar.com/c/hotjar-123.js?sv=6'),
+        req('b', 'https://in.hotjar.com/api/v2/client/sites/123/visit-data?sv=6', {
+          resourceType: 'xhr',
+        }),
+      ],
+      cookies: [cookie('_hjFirstSeen')],
+    });
     const [o] = observationsOf(r);
     expect(o).toMatchObject({
       variant: 'no-banner-consent-services',

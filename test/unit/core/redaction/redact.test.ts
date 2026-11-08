@@ -3,8 +3,7 @@
  * the snapshot; domains and service names stay (PRIV-01 matching), the function is idempotent. Addresses: address-redaction.test.ts.
  */
 import { describe, expect, it } from 'vitest';
-import * as api from '../../../../src/core/api.ts';
-import { maskEmails, maskMailto, redactText } from '../../../../src/core/redaction/redact.ts';
+import { maskEmails, maskMailto, redactText } from '../../../../src/core/api.ts';
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { sanitizeUrl } from '../../../../src/core/url/url.ts';
 import { expectLinearGrowth } from '../../../utils/scaling.ts';
@@ -272,12 +271,5 @@ describe('maskEmails and maskMailto', () => {
     );
     expect(maskMailto('mailto:?subject=x&body=alice@example.test')).toBe(`mailto:${REDACTED}`);
     expect(maskMailto('alice@example.test')).toBe(`mailto:${REDACTED}@example.test`);
-  });
-});
-
-describe('api.ts exports the masks for checks and collectors (import boundary)', () => {
-  it('exports redactText and maskMailto', () => {
-    expect(api.redactText('info@example.test')).toBe(`${REDACTED}@example.test`);
-    expect(api.maskMailto('mailto:info@example.test')).toBe(`mailto:${REDACTED}@example.test`);
   });
 });

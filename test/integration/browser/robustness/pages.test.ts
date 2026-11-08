@@ -2,17 +2,14 @@
  * Navigations that end somewhere other than an HTML page: the browser's own error page and an inline PDF.
  * Synthetic hosts only (`*.example.test`), served by dynamic handlers of the fixture server.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { legal01 } from '../../../../src/checks/browser/legal-01.ts';
 import { createBrowserCollector } from '../../../../src/collectors/browser/index.ts';
 import { CheckRegistry } from '../../../../src/core/evaluation/registry.ts';
 import { silentLogger } from '../../../../src/core/runtime/logger.ts';
 import { scan } from '../../../../src/scan.ts';
-import {
-  type DynamicHandler,
-  type FixtureServer,
-  startFixtureServer,
-} from '../../../fixture-server/server.ts';
+import type { DynamicHandler } from '../../../fixture-server/server.ts';
+import { useFixtureServer } from '../../../fixture-server/use-fixture-server.ts';
 import { fakeCollectors, testDataDir } from '../../../utils/scan-harness.ts';
 import { stubCmpApi } from '../consent/stub-cmp.ts';
 import { type CollectRun, collect, FAST_TIMING, TEST_SANDBOX } from '../helpers.ts';
@@ -80,7 +77,7 @@ function laterBlockSite(host: string): DynamicHandler {
 function scanLegal01(url: string) {
   return scan({
     url,
-    network: server.network(),
+    network: server().network(),
     registry: new CheckRegistry([legal01]),
     dataDir: testDataDir({ ruleset: {} }),
     log: silentLogger,
@@ -91,10 +88,8 @@ function scanLegal01(url: string) {
   });
 }
 
-let server: FixtureServer;
-
-beforeAll(async () => {
-  server = await startFixtureServer({
+const server = useFixtureServer(() => {
+  return {
     handlers: [
       // The privacy page answers 200, then the page itself redirects into an endless 302 loop: the browser ends on
       // its own error page (chrome-error) although the first response was a 200.
@@ -226,11 +221,7 @@ beforeAll(async () => {
         ),
       }),
     ],
-  });
-});
-
-afterAll(async () => {
-  await server?.close();
+  };
 });
 
 describe('the browser error page is a failed navigation, not a page and not a document', () => {
@@ -239,7 +230,7 @@ describe('the browser error page is a failed navigation, not a page and not a do
     ['an endless redirect loop on the navigation itself', 'hardloop.example.test'],
   ] as const) {
     it(name, async () => {
-      const run = await collect(server, { url: `https://${host}/` });
+      const run = await collect(server(), { url: `https://${host}/` });
 
       const phase = run.result.sections.browser?.phases[0];
       const privacy = phase?.pages.find((p) => p.role === 'privacy');
@@ -282,7 +273,10 @@ describe('an inline PDF behind a legal link does not stall phase A', () => {
   it('phase A completes with all pages and phase B runs; no time-budget stop', async () => {
     const t0 = Date.now();
 
-    const run = await collect(server, { url: 'https://pdf.example.test/', deps: { phases: ['A', 'B'] } });
+    const run = await collect(server(), {
+      url: 'https://pdf.example.test/',
+      deps: { phases: ['A', 'B'] },
+    });
 
     const phases = run.result.sections.browser?.phases ?? [];
     expect(phases.map((p) => p.phase)).toEqual(['A', 'B']);
@@ -305,7 +299,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   const blocked = (run: CollectRun) => run.result.diagnostics?.filter((d) => d.code === 'SCAN-BLOCKED') ?? [];
 
   it('a 403 on the fallback probe /impressum: the page, affects the legal checks, the mail checks and TLS-01 (no HDR-01)', async () => {
-    const run = await collect(server, { url: 'https://probe403.example.test/' });
+    const run = await collect(server(), { url: 'https://probe403.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -325,7 +319,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('a challenge on the privacy page: affects LEGAL-01, LEGAL-02, PRIV-01, PRIV-02 and TLS-01', async () => {
-    const run = await collect(server, { url: 'https://challenge.example.test/' });
+    const run = await collect(server(), { url: 'https://challenge.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -338,7 +332,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('a challenge on the contact page while no Impressum link is known: affects the legal checks and the mail checks too', async () => {
-    const run = await collect(server, { url: 'https://contactblock.example.test/' });
+    const run = await collect(server(), { url: 'https://contactblock.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -359,7 +353,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('counterexample: the same challenge on the contact page with both legal links: EMBED-02 and TLS-01 only', async () => {
-    const run = await collect(server, { url: 'https://contactblock-linked.example.test/' });
+    const run = await collect(server(), { url: 'https://contactblock-linked.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -371,7 +365,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('a challenge on a privacy page also read as the Impressum: affects the checks of both documents', async () => {
-    const run = await collect(server, { url: 'https://combinedblock.example.test/' });
+    const run = await collect(server(), { url: 'https://combinedblock.example.test/' });
 
     const d = blocked(run);
     expect(d).toHaveLength(1);
@@ -393,7 +387,7 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('a challenge only on the start page of phase B: affects CONSENT-04 and CONSENT-05', async () => {
-    const run = await collect(server, {
+    const run = await collect(server(), {
       url: 'https://laterblock.example.test/',
       maxPages: 1,
       deps: { cmp: stubCmpApi(), phases: ['A', 'B'] },
@@ -410,14 +404,14 @@ describe('SCAN-BLOCKED names the page and the checks it affects', () => {
   });
 
   it('counterexample: a clean site has no SCAN-BLOCKED', async () => {
-    const run = await collect(server, { url: 'https://plain.example.test/' });
+    const run = await collect(server(), { url: 'https://plain.example.test/' });
     expect(blocked(run)).toEqual([]);
   });
 });
 
 describe('a page of the wrong type behind the first legal link is followed by the next candidate', () => {
   it('the first "Datenschutz" link leads to a news page: unconfirmed, then the policy is found', async () => {
-    const run = await collect(server, { url: 'https://candidates.example.test/' });
+    const run = await collect(server(), { url: 'https://candidates.example.test/' });
 
     const attempts = run.result.sections.documents?.attempts.filter((a) => a.kind === 'privacy') ?? [];
     expect(attempts.map((a) => a.outcome)).toEqual(['unconfirmed', 'found']);
@@ -428,7 +422,9 @@ describe('a page of the wrong type behind the first legal link is followed by th
 
     // No fallback probe was needed.
     expect(
-      server.requestsTo('candidates.example.test').filter((r) => r.path.startsWith('/datenschutz')),
+      server()
+        .requestsTo('candidates.example.test')
+        .filter((r) => r.path.startsWith('/datenschutz')),
     ).toEqual([]);
 
     const docs = run.result.sections.documents?.documents.filter((d) => d.kind === 'privacy') ?? [];
@@ -449,7 +445,7 @@ describe('a page of the wrong type behind the first legal link is followed by th
   });
 
   it('counterexample: a single link to a page of the wrong type stays unconfirmed (no invented document)', async () => {
-    const run = await collect(server, { url: 'https://probe403.example.test/' });
+    const run = await collect(server(), { url: 'https://probe403.example.test/' });
 
     expect(run.result.sections.documents?.attempts.map((a) => a.outcome)).not.toContain('unconfirmed');
   });

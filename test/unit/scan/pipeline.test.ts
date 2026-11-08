@@ -4,15 +4,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { defineCheck } from '../../../src/core/evaluation/check.ts';
 import { CheckRegistry } from '../../../src/core/evaluation/registry.ts';
-import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { fakeCollectors } from '../../utils/scan-harness.ts';
 import { makeBrowser, makeDocumentResponse, makeHttp } from '../../utils/snapshot-builder.ts';
-import { browserCheck, emptyPhase, httpCheck, opts, withBrowser } from './fixtures.ts';
+import { browserCheck, emptyPhase, httpCheck, scanWith, withBrowser } from './fixtures.ts';
 
 describe('scan — pipeline', () => {
   it('runs collectors, derive, checks, assess and gate', async () => {
-    const result = await scan(opts());
+    const result = await scanWith();
 
     expect(result.report.scan.status).toBe('complete');
     expect(result.exitCode).toBe(1);
@@ -28,26 +27,24 @@ describe('scan — pipeline', () => {
   });
 
   it('without the browser, the final URL comes from the HTTP start document', async () => {
-    const result = await scan(
-      opts({
-        checks: ['TEST-02'],
-        collectors: fakeCollectors({
-          http: async () => ({
-            status: 'ok',
-            sections: {
-              http: makeHttp({
-                documents: [
-                  makeDocumentResponse({
-                    url: 'https://www.example.de/',
-                    finalUrl: 'https://example.de/home?sid=1',
-                  }),
-                ],
-              }),
-            },
-          }),
+    const result = await scanWith({
+      checks: ['TEST-02'],
+      collectors: fakeCollectors({
+        http: async () => ({
+          status: 'ok',
+          sections: {
+            http: makeHttp({
+              documents: [
+                makeDocumentResponse({
+                  url: 'https://www.example.de/',
+                  finalUrl: 'https://example.de/home?sid=1',
+                }),
+              ],
+            }),
+          },
         }),
       }),
-    );
+    });
 
     expect(result.snapshot?.target.finalUrl).toBe('https://example.de/home?sid=[redacted]');
     expect(result.snapshot?.target.finalHost).toBe('example.de');
@@ -55,31 +52,29 @@ describe('scan — pipeline', () => {
   });
 
   it('the browser final URL wins over the HTTP one', async () => {
-    const result = await scan(
-      opts({
-        collectors: {
-          ...withBrowser,
-          http: async () => ({
-            status: 'ok',
-            sections: {
-              http: makeHttp({
-                documents: [
-                  makeDocumentResponse({ url: 'https://www.example.de/', finalUrl: 'https://x.example.de/' }),
-                ],
-              }),
-            },
-          }),
-        },
-      }),
-    );
+    const result = await scanWith({
+      collectors: {
+        ...withBrowser,
+        http: async () => ({
+          status: 'ok',
+          sections: {
+            http: makeHttp({
+              documents: [
+                makeDocumentResponse({ url: 'https://www.example.de/', finalUrl: 'https://x.example.de/' }),
+              ],
+            }),
+          },
+        }),
+      },
+    });
 
     expect(result.snapshot?.target.finalUrl).toBe('https://www.example.de/start');
   });
 
   it('fail-on warning / none', async () => {
-    expect((await scan(opts({ failOn: 'none' }))).exitCode).toBe(0);
+    expect((await scanWith({ failOn: 'none' })).exitCode).toBe(0);
 
-    const onlyHttp = await scan(opts({ failOn: 'warning', checks: ['TEST-02'] }));
+    const onlyHttp = await scanWith({ failOn: 'warning', checks: ['TEST-02'] });
 
     expect(onlyHttp.exitCode).toBe(1);
     expect(onlyHttp.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
@@ -105,20 +100,18 @@ describe('scan — pipeline', () => {
       },
     });
 
-    await scan(opts({ collectors: spy, checks: ['TEST-02'] }));
+    await scanWith({ collectors: spy, checks: ['TEST-02'] });
 
     expect(called).toEqual(['http']);
   });
 
   it('collector skipped (stub) → dependent checks skipped with its reason; no effect on exit code', async () => {
-    const result = await scan(
-      opts({
-        collectors: fakeCollectors({
-          browser: async () => ({ status: 'skipped', reason: 'not-implemented', sections: {} }),
-        }),
-        checks: ['TEST-01'],
+    const result = await scanWith({
+      collectors: fakeCollectors({
+        browser: async () => ({ status: 'skipped', reason: 'not-implemented', sections: {} }),
       }),
-    );
+      checks: ['TEST-01'],
+    });
 
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'skipped',
@@ -128,7 +121,7 @@ describe('scan — pipeline', () => {
   });
 
   it('collector ok without its section → relevant check error → exit 2 (check-error)', async () => {
-    const result = await scan(opts({ collectors: fakeCollectors(), checks: ['TEST-01'] }));
+    const result = await scanWith({ collectors: fakeCollectors(), checks: ['TEST-01'] });
 
     expect(result.report.checks?.find((c) => c.id === 'TEST-01')).toMatchObject({
       status: 'error',
@@ -149,7 +142,7 @@ describe('scan — pipeline', () => {
     });
     const reg = () => new CheckRegistry([browserCheck, throwing]);
 
-    const result = await scan(opts({ registry: reg(), failOn: 'warning' }));
+    const result = await scanWith({ registry: reg(), failOn: 'warning' });
 
     expect(result.report.checks?.find((c) => c.id === 'TEST-02')).toMatchObject({
       status: 'error',
@@ -159,34 +152,30 @@ describe('scan — pipeline', () => {
     expect(result.report.summary.exitReasons).toEqual(['threshold', 'check-error:TEST-02']);
 
     // TEST-02 can reach only `warning`: under --fail-on critical it is not relevant.
-    const notRelevant = await scan(opts({ registry: reg() }));
+    const notRelevant = await scanWith({ registry: reg() });
     expect(notRelevant.report.summary.exitReasons).toEqual(['threshold']);
   });
 
   it('sandbox off → SCAN-SANDBOX-OFF; --strict turns it into 2', async () => {
-    const soft = await scan(opts({ sandbox: 'off', checks: ['TEST-02'], failOn: 'critical' }));
+    const soft = await scanWith({ sandbox: 'off', checks: ['TEST-02'], failOn: 'critical' });
 
     expect(soft.report.diagnostics?.map((d) => d.code)).toContain('SCAN-SANDBOX-OFF');
     expect(soft.exitCode).toBe(0);
 
-    const strict = await scan(
-      opts({ sandbox: 'off', checks: ['TEST-02'], strict: true, assumeRegion: 'de' }),
-    );
+    const strict = await scanWith({ sandbox: 'off', checks: ['TEST-02'], strict: true, assumeRegion: 'de' });
 
     expect(strict.exitCode).toBe(2);
     expect(strict.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
 
   it('sandbox container inside the image → no SCAN-SANDBOX-OFF, no strict:sandbox-off, no sandbox-off paragraph', async () => {
-    const result = await scan(
-      opts({
-        sandbox: 'container',
-        insideContainer: true,
-        checks: ['TEST-02'],
-        strict: true,
-        assumeRegion: 'de',
-      }),
-    );
+    const result = await scanWith({
+      sandbox: 'container',
+      insideContainer: true,
+      checks: ['TEST-02'],
+      strict: true,
+      assumeRegion: 'de',
+    });
 
     expect(result.report.scan.status).toBe('complete');
     expect(result.report.diagnostics?.map((d) => d.code) ?? []).not.toContain('SCAN-SANDBOX-OFF');
@@ -201,7 +190,7 @@ describe('scan — pipeline', () => {
   });
 
   it('sandbox container from the settings alone is checked the same way', async () => {
-    const result = await scan(opts({ config: { browser: { sandbox: 'container' } } }));
+    const result = await scanWith({ config: { browser: { sandbox: 'container' } } });
 
     expect(result.exitCode).toBe(2);
     if (result.report.scan.status === 'failed') {
@@ -212,20 +201,18 @@ describe('scan — pipeline', () => {
   it('save-snapshot / --from-snapshot: replay without collectors gives the same findings', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');
-    const first = await scan(opts({ saveSnapshot: file }));
+    const first = await scanWith({ saveSnapshot: file });
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.derived).toBeUndefined();
 
     const explode = async () => {
       throw new Error('collectors must not run on replay');
     };
-    const replay = await scan(
-      opts({
-        url: undefined,
-        fromSnapshot: file,
-        collectors: { browser: explode, http: explode, tls: explode, dns: explode },
-      }),
-    );
+    const replay = await scanWith({
+      url: undefined,
+      fromSnapshot: file,
+      collectors: { browser: explode, http: explode, tls: explode, dns: explode },
+    });
 
     expect(replay.report.findings?.map((f) => f.fingerprint)).toEqual(
       first.report.findings?.map((f) => f.fingerprint),
@@ -239,7 +226,7 @@ describe('scan — pipeline', () => {
   it('--from-snapshot dates the report to the capture and keeps the evaluation time beside it', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'snap-'));
     const file = path.join(dir, 'site.snapshot.json');
-    await scan(opts({ saveSnapshot: file }));
+    await scanWith({ saveSnapshot: file });
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     saved.createdAt = '2026-01-02T03:04:05.678Z';
     saved.collection = {
@@ -251,7 +238,7 @@ describe('scan — pipeline', () => {
     writeFileSync(file, JSON.stringify(saved));
 
     const evaluatedAt = new Date('2026-03-04T05:06:07.000Z');
-    const replay = await scan(opts({ url: undefined, fromSnapshot: file, now: () => evaluatedAt }));
+    const replay = await scanWith({ url: undefined, fromSnapshot: file, now: () => evaluatedAt });
 
     expect(replay.report.scan.startedAt).toBe('2026-01-02T03:04:05.678Z');
     // http, tls and dns run side by side, the browser after them.
@@ -261,23 +248,27 @@ describe('scan — pipeline', () => {
   });
 
   it('a scan of the site itself has no evaluation time of its own', async () => {
-    const result = await scan(opts());
+    const result = await scanWith();
     expect(result.report.scan.evaluatedAt).toBeUndefined();
   });
 });
 
 describe('scan — --strict under --fail-on none (5.2: --strict acts independently)', () => {
   it('sandbox off → 2 with strict:sandbox-off', async () => {
-    const result = await scan(
-      opts({ failOn: 'none', strict: true, sandbox: 'off', assumeRegion: 'de', checks: ['TEST-02'] }),
-    );
+    const result = await scanWith({
+      failOn: 'none',
+      strict: true,
+      sandbox: 'off',
+      assumeRegion: 'de',
+      checks: ['TEST-02'],
+    });
 
     expect(result.exitCode).toBe(2);
     expect(result.report.summary.exitReasons).toEqual(['strict:sandbox-off']);
   });
 
   it('nothing strict-relevant → 0', async () => {
-    const result = await scan(opts({ failOn: 'none', strict: true, assumeRegion: 'de' }));
+    const result = await scanWith({ failOn: 'none', strict: true, assumeRegion: 'de' });
 
     expect(result.exitCode).toBe(0);
   });
@@ -299,16 +290,14 @@ describe('scan — one monotonic time scale for evidence (5.3 tMs)', () => {
         return { status: 'ok' as const, sections };
       };
 
-    const result = await scan(
-      opts({
-        collectors: fakeCollectors({
-          http: clocked('http', { http: makeHttp() }) as never,
-          browser: clocked('browser', {
-            browser: makeBrowser({ phases: [{ ...emptyPhase('A') }] }),
-          }) as never,
-        }),
+    const result = await scanWith({
+      collectors: fakeCollectors({
+        http: clocked('http', { http: makeHttp() }) as never,
+        browser: clocked('browser', {
+          browser: makeBrowser({ phases: [{ ...emptyPhase('A') }] }),
+        }) as never,
       }),
-    );
+    });
 
     expect(result.report.scan.status).not.toBe('failed');
     const browser = seen.find((s) => s.name === 'browser');

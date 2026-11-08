@@ -174,7 +174,6 @@ function stateEvidence(s: ConsentStateFact, f: Pick<CmpFacts, 'phase' | 'pageUrl
   };
 }
 
-/** The banner screenshot of phase B is taken on the first screen, before the reject is clicked. */
 function screenshotEvidence(browser: BrowserSection, f: CmpFacts): EvidenceInput[] {
   const shot = f.screenshotId ? browser.screenshots.find((s) => s.id === f.screenshotId) : undefined;
   if (!shot) return [];

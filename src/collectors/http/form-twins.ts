@@ -7,6 +7,7 @@
 // requests per second and host).
 
 import { isSuccess } from '../../checks/http/shared.ts';
+import { linkTarget } from '../../core/redaction/header-grammar.ts';
 import { type FormFact, isHttpHref, type PageVisit } from '../../core/snapshot/browser.ts';
 import type { CollectorContext, HttpCollector } from '../../core/snapshot/collector.ts';
 import type {
@@ -23,7 +24,14 @@ import { parseUrl, sanitizeUrl } from '../../core/url/url.ts';
 import { httpChallenge } from './challenge.ts';
 import type { HttpClient } from './client.ts';
 import { outcomeOf, ProbeError } from './errors.ts';
-import { createClient, DOCUMENT_READ_BYTES, errorOf, type HttpCollectorOptions, toHop } from './index.ts';
+import {
+  createClient,
+  DOCUMENT_READ_BYTES,
+  errorOf,
+  type HttpCollectorOptions,
+  storedRedirectTarget,
+  toHop,
+} from './index.ts';
 
 export interface FormTwinCandidate {
   /** The page as phase A stored it; for a permalink, the address as linked. */
@@ -43,6 +51,8 @@ const asksForAddress = (f: FormFact): boolean => f.hasEmailField || f.hasPasswor
 
 /** Where the stored address was redacted, it is no longer the address of the page. */
 const REDACTION_MARKS = [REDACTED, encodeURIComponent(REDACTED)].map((m) => m.toLowerCase());
+
+const fullyMaskedTarget = (url: string): boolean => linkTarget(url, url, sanitizeUrl) === REDACTED;
 
 /** Answers after which the step sends nothing more to the host, so that it never reaches the client's retry. */
 const OVERLOAD_STATUSES: ReadonlySet<number> = new Set([429, 503]);
@@ -68,7 +78,7 @@ function twinUrl(stored: string): string | null {
   if (!u) return null;
   if (u.search !== '' || u.port !== '' || u.username !== '' || u.password !== '') return null;
   const lower = stored.toLowerCase();
-  if (REDACTION_MARKS.some((m) => lower.includes(m))) return null;
+  if (REDACTION_MARKS.some((m) => lower.includes(m)) || fullyMaskedTarget(stored)) return null;
   u.protocol = 'http:';
   u.hash = '';
   return u.href;
@@ -129,11 +139,14 @@ export function selectFormTwins(snapshot: Pick<Snapshot, 'http' | 'browser'>): F
   const permalinks: FormTwinCandidate[] = [];
   for (const page of startFirst(pages)) {
     if (!readable(page)) continue;
+    const linkedFrom = fullyMaskedTarget(page.finalUrl)
+      ? storedRedirectTarget(page.finalUrl, page.finalUrl)
+      : page.finalUrl;
     for (const link of page.dom.links) {
       if (link.permalink !== true || link.href === null || !isHttpHref(link.hrefKind)) continue;
       const url = twinUrl(link.href);
       if (url === null || visited.has(url) || !take(url)) continue;
-      permalinks.push({ page: link.href, url, source: 'permalink', linkedFrom: page.finalUrl });
+      permalinks.push({ page: link.href, url, source: 'permalink', linkedFrom });
     }
   }
   return [...first, ...rest, ...permalinks];

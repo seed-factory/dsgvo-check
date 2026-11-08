@@ -84,6 +84,10 @@ const THROTTLED = { http: { throttled: true, throttledHosts: ['www.example.test'
 
 const urls = (s: ReturnType<typeof snapshot>) => selectFormTwins(s).map((c) => c.url);
 
+const contactPage = () => visit('/kontakt/', [CONTACT]);
+const onContact = (chains?: RedirectChain[], options?: Parameters<typeof snapshot>[2]) =>
+  snapshot([contactPage()], chains, options);
+
 describe('selectFormTwins', () => {
   it('takes the pages with a form that takes data, as their http:// address, the page kept as visited', () => {
     const s = snapshot([
@@ -126,6 +130,19 @@ describe('selectFormTwins', () => {
     expect(urls(s)).toEqual(['http://www.example.test/kontakt/']);
   });
 
+  it('does not probe a browser path that the HTTP redirect stored only as a mask', () => {
+    const s = snapshot([visit('/u/alice@intranet/form/', [CONTACT]), contactPage()], undefined, {
+      documents: [
+        makeDocumentResponse({
+          url: 'http://www.example.test/[redacted]',
+          role: 'impressum',
+          foundVia: 'link',
+        }),
+      ],
+    });
+    expect(urls(s)).toEqual(['http://www.example.test/kontakt/']);
+  });
+
   it('a page the browser saw over http is its own http:// address', () => {
     const s = snapshot([
       makePage({
@@ -139,7 +156,7 @@ describe('selectFormTwins', () => {
 
   it('each address once, also when two pages end on it', () => {
     const s = snapshot([
-      visit('/kontakt/', [CONTACT]),
+      contactPage(),
       visit('/kontakt-alt/', [CONTACT], { finalUrl: 'https://www.example.test/kontakt/' }),
     ]);
     expect(urls(s)).toEqual(['http://www.example.test/kontakt/']);
@@ -157,32 +174,18 @@ describe('selectFormTwins', () => {
   });
 
   it.each<[string, () => Parameters<typeof selectFormTwins>[0]]>([
-    [
-      'the http:// root redirects to https',
-      () => snapshot([visit('/kontakt/', [CONTACT])], [redirectedRoot('www.example.test')]),
-    ],
+    ['the http:// root redirects to https', () => onContact([redirectedRoot('www.example.test')])],
     [
       'the http:// root timed out',
-      () =>
-        snapshot(
-          [visit('/kontakt/', [CONTACT])],
-          [httpChain('www.example.test', [], { outcome: 'timeout' })],
-        ),
+      () => onContact([httpChain('www.example.test', [], { outcome: 'timeout' })]),
     ],
-    [
-      'the http:// root answered 404',
-      () => snapshot([visit('/kontakt/', [CONTACT])], [httpChain('www.example.test', [{ status: 404 }])]),
-    ],
+    ['the http:// root answered 404', () => onContact([httpChain('www.example.test', [{ status: 404 }])])],
     [
       'the http:// root was probed only on an explicit port',
-      () =>
-        snapshot([visit('/kontakt/', [CONTACT])], [httpChain('www.example.test', undefined, { port: 8080 })]),
+      () => onContact([httpChain('www.example.test', undefined, { port: 8080 })]),
     ],
     ['the host was not probed', () => snapshot([visit('https://shop.example.test/kasse/', [CONTACT])])],
-    [
-      'the host throttled the HTTP collector',
-      () => snapshot([visit('/kontakt/', [CONTACT])], undefined, THROTTLED),
-    ],
+    ['the host throttled the HTTP collector', () => onContact(undefined, THROTTLED)],
     ['only a site search', () => snapshot([visit('/suche/', [SEARCH])])],
     [
       'a form with nothing to type in (hidden fields and a button)',
@@ -229,7 +232,7 @@ describe('selectFormTwins', () => {
     [
       'the address was already fetched as a linked document',
       () =>
-        snapshot([visit('/kontakt/', [CONTACT])], undefined, {
+        onContact(undefined, {
           documents: [
             makeDocumentResponse({
               url: 'http://www.example.test/kontakt/',
@@ -277,6 +280,23 @@ describe('selectFormTwins: permalinks of the visited pages', () => {
     const s = snapshot([start([permalink(POST)]), visit('/impressum/', [SEARCH], { role: 'impressum' })]);
     expect(selectFormTwins(s)).toEqual([
       { page: POST, url: POST_TWIN, source: 'permalink', linkedFrom: SITE },
+    ]);
+  });
+
+  it('rejects a masked permalink and masks the source path of an ordinary permalink', () => {
+    const s = snapshot([
+      linking('/u/alice@intranet/start', [
+        permalink('https://www.example.test/u/alice%40intranet/post/'),
+        permalink(POST),
+      ]),
+    ]);
+    expect(selectFormTwins(s)).toEqual([
+      {
+        page: POST,
+        url: POST_TWIN,
+        source: 'permalink',
+        linkedFrom: 'https://www.example.test/[redacted]',
+      },
     ]);
   });
 

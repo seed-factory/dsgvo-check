@@ -1,21 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { scan } from '../../../src/scan.ts';
 import { expectValidReport } from '../../utils/report/validator.ts';
 import { makeBrowser, makePage, makePhase } from '../../utils/snapshot-builder.ts';
-import { abortAware, opts, withBrowser } from './fixtures.ts';
+import { abortAware, scanWith, withBrowser } from './fixtures.ts';
 
 const startVisit = (phase: 'A' | 'B' = 'A') => makePage({ url: 'https://www.example.de/', phase });
 
 describe('scan — global timeout (5.2)', () => {
   it('global timeout before phase A finished on the start page → failed, SCAN-TIMEOUT, exit 2 (timeout)', async () => {
-    const result = await scan(
-      opts({
-        timeoutMs: 150,
-        abortGraceMs: 20,
-        collectors: { ...withBrowser, browser: () => new Promise(() => {}) },
-        checks: ['TEST-01'],
-      }),
-    );
+    const result = await scanWith({
+      timeoutMs: 150,
+      abortGraceMs: 20,
+      collectors: { ...withBrowser, browser: () => new Promise(() => {}) },
+      checks: ['TEST-01'],
+    });
 
     expect(result.report.scan.status).toBe('failed');
 
@@ -34,14 +31,12 @@ describe('scan — global timeout (5.2)', () => {
   });
 
   it('before phase A finished on the start page: fatal timeout even with --fail-on none; earlier findings kept', async () => {
-    const result = await scan(
-      opts({
-        failOn: 'none',
-        timeoutMs: 100,
-        abortGraceMs: 200,
-        collectors: { ...withBrowser, browser: abortAware(() => ({})) },
-      }),
-    );
+    const result = await scanWith({
+      failOn: 'none',
+      timeoutMs: 100,
+      abortGraceMs: 200,
+      collectors: { ...withBrowser, browser: abortAware(() => ({})) },
+    });
 
     expect(result.exitCode).toBe(2);
     expect(result.report.scan.status).toBe('failed');
@@ -54,29 +49,27 @@ describe('scan — global timeout (5.2)', () => {
   });
 
   it('a fatal signal of a collector cut by the deadline does not replace the timeout', async () => {
-    const result = await scan(
-      opts({
-        timeoutMs: 100,
-        abortGraceMs: 200,
-        collectors: {
-          ...withBrowser,
-          browser: (ctx) =>
-            new Promise((resolve) => {
-              ctx.signal.addEventListener('abort', () =>
-                resolve({
-                  status: 'error',
-                  sections: {},
-                  fatal: {
-                    reason: 'unreachable',
-                    code: 'start-page-unreachable',
-                    params: { reason: 'closed by abort' },
-                  },
-                }),
-              );
-            }),
-        },
-      }),
-    );
+    const result = await scanWith({
+      timeoutMs: 100,
+      abortGraceMs: 200,
+      collectors: {
+        ...withBrowser,
+        browser: (ctx) =>
+          new Promise((resolve) => {
+            ctx.signal.addEventListener('abort', () =>
+              resolve({
+                status: 'error',
+                sections: {},
+                fatal: {
+                  reason: 'unreachable',
+                  code: 'start-page-unreachable',
+                  params: { reason: 'closed by abort' },
+                },
+              }),
+            );
+          }),
+      },
+    });
 
     expect(result.report.scan.status).toBe('failed');
     if (result.report.scan.status === 'failed') expect(result.report.scan.failure.code).toBe('scan-timeout');
@@ -85,24 +78,22 @@ describe('scan — global timeout (5.2)', () => {
   });
 
   it('after the start page in phase A: facts the collector returns after the abort are kept (partial)', async () => {
-    const result = await scan(
-      opts({
-        timeoutMs: 100,
-        abortGraceMs: 500,
-        collectors: {
-          ...withBrowser,
-          browser: abortAware(() => ({
-            browser: makeBrowser({
-              phases: [
-                makePhase('A', { pages: [startVisit()] }),
-                makePhase('B', { status: 'failed', reason: 'timeout' }),
-              ],
-            }),
-            finalUrl: 'https://www.example.de/start',
-          })),
-        },
-      }),
-    );
+    const result = await scanWith({
+      timeoutMs: 100,
+      abortGraceMs: 500,
+      collectors: {
+        ...withBrowser,
+        browser: abortAware(() => ({
+          browser: makeBrowser({
+            phases: [
+              makePhase('A', { pages: [startVisit()] }),
+              makePhase('B', { status: 'failed', reason: 'timeout' }),
+            ],
+          }),
+          finalUrl: 'https://www.example.de/start',
+        })),
+      },
+    });
 
     expect(result.report.scan.status).toBe('partial');
 
@@ -116,19 +107,17 @@ describe('scan — global timeout (5.2)', () => {
   });
 
   it('after the start page in phase A with --fail-on none → partial, 0', async () => {
-    const result = await scan(
-      opts({
-        failOn: 'none',
-        timeoutMs: 100,
-        abortGraceMs: 500,
-        collectors: {
-          ...withBrowser,
-          browser: abortAware(() => ({
-            browser: makeBrowser({ phases: [makePhase('A', { pages: [startVisit()] })] }),
-          })),
-        },
-      }),
-    );
+    const result = await scanWith({
+      failOn: 'none',
+      timeoutMs: 100,
+      abortGraceMs: 500,
+      collectors: {
+        ...withBrowser,
+        browser: abortAware(() => ({
+          browser: makeBrowser({ phases: [makePhase('A', { pages: [startVisit()] })] }),
+        })),
+      },
+    });
 
     expect(result.report.scan.status).toBe('partial');
     expect(result.exitCode).toBe(0);
@@ -137,13 +126,11 @@ describe('scan — global timeout (5.2)', () => {
   it('a collector that ignores the abort is given up after the grace period', async () => {
     const t0 = Date.now();
 
-    const result = await scan(
-      opts({
-        timeoutMs: 100,
-        abortGraceMs: 50,
-        collectors: { ...withBrowser, browser: () => new Promise(() => {}) },
-      }),
-    );
+    const result = await scanWith({
+      timeoutMs: 100,
+      abortGraceMs: 50,
+      collectors: { ...withBrowser, browser: () => new Promise(() => {}) },
+    });
 
     expect(Date.now() - t0).toBeLessThan(2_000);
     expect(result.report.summary.exitReasons).toContain('timeout');
@@ -151,14 +138,12 @@ describe('scan — global timeout (5.2)', () => {
   });
 
   it('without the browser (no phase A planned) a timeout is not fatal', async () => {
-    const result = await scan(
-      opts({
-        checks: ['TEST-02'],
-        timeoutMs: 100,
-        abortGraceMs: 20,
-        collectors: { ...withBrowser, http: () => new Promise(() => {}) },
-      }),
-    );
+    const result = await scanWith({
+      checks: ['TEST-02'],
+      timeoutMs: 100,
+      abortGraceMs: 20,
+      collectors: { ...withBrowser, http: () => new Promise(() => {}) },
+    });
 
     expect(result.report.scan.status).toBe('partial');
     expect(result.report.summary.exitReasons).toEqual([]);

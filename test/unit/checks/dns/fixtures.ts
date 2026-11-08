@@ -44,11 +44,22 @@ const q = (
 ): Query => ({ type, qname, purpose, ...rest });
 
 const txt = (value: string): DnsAnswer => ({ type: 'TXT', value, chunks: [value] });
-const mxOf = (exchange: string): DnsAnswer => ({ type: 'MX', value: exchange, priority: 10 });
+const mx = (domain: string, exchange = `mx.${domain}`): Query =>
+  q('MX', domain, 'mx', { answers: [{ type: 'MX', value: exchange, priority: 10 }] });
 const NX = { rcode: 'NXDOMAIN' } as const;
 
-/** The SPF lookup of example.de answered by these records. */
-const spf = (...records: string[]): Query => q('TXT', 'example.de', 'spf', { answers: records.map(txt) });
+const dmarc = (
+  domain: string,
+  step = 0,
+  response: { rcode?: DnsRcode; answers?: DnsAnswer[]; attempts?: number } = NX,
+): Query =>
+  q('TXT', `_dmarc.${domain}`, step === 0 ? 'dmarc' : 'dmarc-tree-walk', { ...response, treeWalkStep: step });
+
+const spfAt = (domain: string, ...records: string[]): Query =>
+  q('TXT', domain, 'spf', { answers: records.map(txt) });
+const spf = (...records: string[]) => spfAt('example.de', ...records);
+const spfInclude = (domain: string, record: string): Query =>
+  q('TXT', domain, 'spf-include', { answers: [txt(record)] });
 
 /**
  * www.example.de without a record of its own; `_dmarc.example.de` decides: its record (several records as an array),
@@ -63,18 +74,12 @@ function siteDmarc(org: string | string[] | { rcode: DnsRcode; attempts: number 
         : Array.isArray(org)
           ? { answers: org.map(txt) }
           : org;
-  return [
-    q('MX', 'example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
-    q('TXT', '_dmarc.www.example.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
-    q('TXT', '_dmarc.example.de', 'dmarc-tree-walk', { ...answer, treeWalkStep: 1 }),
-    q('TXT', '_dmarc.de', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
-  ];
+  return [mx('example.de'), dmarc('www.example.de'), dmarc('example.de', 1, answer), dmarc('de', 2)];
 }
 
 const REJECT = 'v=DMARC1; p=reject; rua=mailto:[redacted]@example.de';
 const STAGE: MailDomainStage = { ...IMPRESSUM_STAGE, durationMs: 4 };
 
-/** The domain of the start page after a redirect to www.example.net. */
 const FINAL: MailDomainTarget = {
   domain: 'example.net',
   host: 'www.example.net',
@@ -85,10 +90,19 @@ const FINAL: MailDomainTarget = {
   budget: { limit: 30, used: 4 },
 };
 
-/** MX and the DMARC walk of example-mail.de: no record there, none at the TLD. */
-const CONTACT_WITHOUT_DMARC: Query[] = [
-  q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-  q('TXT', '_dmarc.example-mail.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
+const contactStage = () => ({ mailDomains: [contact('example-mail.de')], mailDomainStage: STAGE });
+const finalStage = () => ({ mailDomains: [FINAL], mailDomainStage: STAGE });
+const CONTACT_WITHOUT_DMARC = [mx('example-mail.de'), dmarc('example-mail.de')];
+const contactDmarc = (response?: Parameters<typeof dmarc>[2]) => [
+  ...siteDmarc(REJECT),
+  mx('example-mail.de'),
+  dmarc('example-mail.de', 0, response),
+];
+const FINAL_WITHOUT_DMARC = [
+  mx('example.net'),
+  dmarc('www.example.net'),
+  dmarc('example.net', 1),
+  dmarc('net', 2),
 ];
 
 /** MAIL-01 on the further mail domains: each domain on its own, the scanned domain's result unchanged. */
@@ -98,48 +112,30 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
     description:
       'The scanned domain enforces DMARC, the domain of an Impressum address has no record: record-not-found for that domain only',
     expect: { status: 'completed', variants: ['record-not-found'] },
-    queries: [...siteDmarc(REJECT), ...CONTACT_WITHOUT_DMARC],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    queries: contactDmarc(),
+    ...contactStage(),
   },
   {
     file: 'clean-contact-domain-reject.json',
     description: 'The Impressum address domain publishes p=reject with rua: no finding for either domain',
     expect: { status: 'completed', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-      q('TXT', '_dmarc.example-mail.de', 'dmarc', {
-        answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example-mail.de')],
-        treeWalkStep: 0,
-      }),
-    ],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    queries: contactDmarc({ answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example-mail.de')] }),
+    ...contactStage(),
   },
   {
     file: 'inconclusive-contact-domain-servfail.json',
     description:
       'SERVFAIL after retry on the Impressum address domain: partial (mail-domain-unresolved), no "no record" for it, the scanned domain still evaluated',
     expect: { status: 'partial', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-      q('TXT', '_dmarc.example-mail.de', 'dmarc', { rcode: 'SERVFAIL', attempts: 2, treeWalkStep: 0 }),
-    ],
-    mailDomains: [contact('example-mail.de', { status: 'checked' })],
-    mailDomainStage: STAGE,
+    queries: contactDmarc({ rcode: 'SERVFAIL', attempts: 2 }),
+    ...contactStage(),
   },
   {
     file: 'counterexample-contact-subdomain-inherits.json',
     description:
       'Counterexample: the address domain mail.example.de has no record of its own, its organizational domain example.de has p=reject: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      q('MX', 'mail.example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
-      q('TXT', '_dmarc.mail.example.de', 'dmarc', { ...NX, treeWalkStep: 0 }),
-    ],
+    queries: [...siteDmarc(REJECT), mx('mail.example.de', 'mx.example.de'), dmarc('mail.example.de')],
     mailDomains: [contact('mail.example.de', { orgDomain: 'example.de' })],
     mailDomainStage: STAGE,
   },
@@ -150,13 +146,9 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
     expect: { status: 'completed', variants: ['record-not-found'] },
     queries: [
       ...siteDmarc('v=DMARC1; p=quarantine; rua=mailto:[redacted]@example.de'),
-      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
-      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
-      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
-      q('TXT', '_dmarc.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
+      ...FINAL_WITHOUT_DMARC,
     ],
-    mailDomains: [FINAL],
-    mailDomainStage: STAGE,
+    ...finalStage(),
   },
   {
     file: 'counterexample-final-enforced-entry-missing.json',
@@ -165,15 +157,11 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
     expect: { status: 'completed', variants: ['record-not-found'] },
     queries: [
       ...siteDmarc(null),
-      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
-      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
-      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', {
-        answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example.net')],
-        treeWalkStep: 1,
-      }),
+      mx('example.net'),
+      dmarc('www.example.net'),
+      dmarc('example.net', 1, { answers: [txt('v=DMARC1; p=reject; rua=mailto:[redacted]@example.net')] }),
     ],
-    mailDomains: [FINAL],
-    mailDomainStage: STAGE,
+    ...finalStage(),
   },
   {
     file: 'inconclusive-mail-domains-not-collected.json',
@@ -189,11 +177,7 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
     description:
       'A free-mail domain is left out without a note; a domain over dns.maxMailDomains makes the result partial (mail-domains-capped)',
     expect: { status: 'partial', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-      q('TXT', '_dmarc.example-mail.de', 'dmarc', { answers: [txt(REJECT)], treeWalkStep: 0 }),
-    ],
+    queries: contactDmarc({ answers: [txt(REJECT)] }),
     mailDomains: [
       contact('gmx.de', { status: 'skipped', reason: 'free-mail', budget: { limit: 30, used: 0 } }),
       contact('example-mail.de'),
@@ -206,13 +190,15 @@ const MAIL_01_FURTHER_DOMAINS: DnsFixture[] = [
 /** SPF of the scanned domain: -all with one include. */
 const SITE_SPF_FAIL: Query[] = [
   spf('v=spf1 include:_spf.provider.example -all'),
-  q('TXT', '_spf.provider.example', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+  spfInclude('_spf.provider.example', 'v=spf1 ip4:192.0.2.0/24 -all'),
 ];
+const CONTACT_SPF_BASE = [...siteDmarc(REJECT), ...SITE_SPF_FAIL, ...CONTACT_WITHOUT_DMARC];
 
 /** The include the base MAIL-02 fixtures name: IPv4 and IPv6 ranges, -all. */
-const PROVIDER_INCLUDE = q('TXT', '_spf.provider.example', 'spf-include', {
-  answers: [txt('v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all')],
-});
+const PROVIDER_INCLUDE = spfInclude(
+  '_spf.provider.example',
+  'v=spf1 ip4:192.0.2.0/24 ip6:2001:db8::/32 -all',
+);
 
 /** One more include than the 10 DNS lookups RFC 7208 allows. */
 const ELEVEN_INCLUDES = Array.from({ length: 11 }, (_, i) => `s${i}.provider.example`);
@@ -225,41 +211,26 @@ const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
       'The Impressum address domain ends its SPF with ?all: permissive-qualifier for that domain only',
     expect: { status: 'completed', variants: ['permissive-qualifier'] },
     queries: [
-      ...siteDmarc(REJECT),
-      ...SITE_SPF_FAIL,
-      ...CONTACT_WITHOUT_DMARC,
-      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 a mx ?all')] }),
+      ...CONTACT_SPF_BASE,
+      spfAt('example-mail.de', 'v=spf1 a mx ?all'),
       q('A', 'example-mail.de', 'spf-void-check', { answers: [{ type: 'A', value: '192.0.2.20' }] }),
     ],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    ...contactStage(),
   },
   {
     file: 'clean-contact-fail-all.json',
     description: 'The Impressum address domain ends its SPF with -all: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      ...SITE_SPF_FAIL,
-      ...CONTACT_WITHOUT_DMARC,
-      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
-    ],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    queries: [...CONTACT_SPF_BASE, spfAt('example-mail.de', 'v=spf1 ip4:192.0.2.0/24 -all')],
+    ...contactStage(),
   },
   {
     file: 'inconclusive-contact-spf-servfail.json',
     description:
       'SERVFAIL after retry on the SPF of the Impressum address domain: partial (mail-domain-unresolved), never record-not-found',
     expect: { status: 'partial', variants: [] },
-    queries: [
-      ...siteDmarc(REJECT),
-      ...SITE_SPF_FAIL,
-      ...CONTACT_WITHOUT_DMARC,
-      q('TXT', 'example-mail.de', 'spf', { rcode: 'SERVFAIL', attempts: 2 }),
-    ],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    queries: [...CONTACT_SPF_BASE, q('TXT', 'example-mail.de', 'spf', { rcode: 'SERVFAIL', attempts: 2 })],
+    ...contactStage(),
   },
   {
     file: 'violation-final-softfail.json',
@@ -269,14 +240,10 @@ const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
     queries: [
       ...siteDmarc(REJECT),
       ...SITE_SPF_FAIL,
-      q('MX', 'example.net', 'mx', { answers: [mxOf('mx.example.net')] }),
-      q('TXT', '_dmarc.www.example.net', 'dmarc', { ...NX, treeWalkStep: 0 }),
-      q('TXT', '_dmarc.example.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 1 }),
-      q('TXT', '_dmarc.net', 'dmarc-tree-walk', { ...NX, treeWalkStep: 2 }),
-      q('TXT', 'example.net', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
+      ...FINAL_WITHOUT_DMARC,
+      spfAt('example.net', 'v=spf1 ip4:192.0.2.0/24 ~all'),
     ],
-    mailDomains: [FINAL],
-    mailDomainStage: STAGE,
+    ...finalStage(),
   },
   {
     file: 'counterexample-softfail-other-domain-enforced.json',
@@ -286,12 +253,11 @@ const MAIL_02_FURTHER_DOMAINS: DnsFixture[] = [
     queries: [
       ...siteDmarc(null),
       spf('v=spf1 ip4:192.0.2.0/24 ~all'),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-      q('TXT', '_dmarc.example-mail.de', 'dmarc', { answers: [txt(REJECT)], treeWalkStep: 0 }),
-      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+      mx('example-mail.de'),
+      dmarc('example-mail.de', 0, { answers: [txt(REJECT)] }),
+      spfAt('example-mail.de', 'v=spf1 ip4:192.0.2.0/24 -all'),
     ],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    ...contactStage(),
   },
 ];
 
@@ -334,22 +300,30 @@ function dkimQueries(
 }
 
 const key = (record: string) => ({ answers: [txt(record)] });
+const rsaAnswer = (bits: number) => key(dkimRecord(rsaKey(bits)));
 
 /** Microsoft 365: its MX host and its SPF include, which together make selector1 and selector2 given. */
 const M365_SITE: Query[] = [
-  q('MX', 'example.de', 'mx', { answers: [mxOf('example-de.mail.protection.outlook.com')] }),
+  mx('example.de', 'example-de.mail.protection.outlook.com'),
   spf('v=spf1 include:spf.protection.outlook.com -all'),
   q('TXT', 'spf.protection.outlook.com', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
 ];
 
 /** A domain with its own mail server: no provider recognised, the plan is the common names. */
-const OWN_MX_SITE: Query[] = [
-  q('MX', 'example.de', 'mx', { answers: [mxOf('mx.example.de')] }),
-  spf('v=spf1 ip4:192.0.2.0/24 -all'),
-];
+const OWN_MX_SITE: Query[] = [mx('example.de'), spf('v=spf1 ip4:192.0.2.0/24 -all')];
 
 const SITE_M365_PLAN = dkimPlan('example.de', M365_ROWS);
 const SITE_COMMON_PLAN = dkimPlan('example.de', COMMON_SELECTORS);
+
+const m365Dkim = (answers?: Parameters<typeof dkimQueries>[1]) => ({
+  queries: [...M365_SITE, ...dkimQueries(M365_ROWS, answers)],
+  dkimPlan: SITE_M365_PLAN,
+});
+
+const ownMxDkim = (answers?: Parameters<typeof dkimQueries>[1]) => ({
+  queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS, answers)],
+  dkimPlan: SITE_COMMON_PLAN,
+});
 
 const MAIL_03: DnsFixture[] = [
   {
@@ -357,30 +331,26 @@ const MAIL_03: DnsFixture[] = [
     description:
       'Microsoft 365 MX and SPF include; selector1, selector2 and every probed common name NXDOMAIN: given-selector-missing',
     expect: { status: 'completed', variants: ['given-selector-missing'] },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS)],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim(),
   },
   {
     file: 'clean-given-selector-key.json',
     description: 'Microsoft 365: selector1 publishes an RSA key of 2048 bits: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS, { selector1: key(dkimRecord(rsaKey(2048))) })],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({ selector1: rsaAnswer(2048) }),
   },
   {
     file: 'error-given-selector-servfail.json',
     description: 'SERVFAIL after retry on selector1, no key elsewhere: error, never given-selector-missing',
     expect: { status: 'error', variants: [], reason: 'exception' },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS, { selector1: { rcode: 'SERVFAIL', attempts: 2 } })],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({ selector1: { rcode: 'SERVFAIL', attempts: 2 } }),
   },
   {
     file: 'counterexample-key-on-other-selector.json',
     description:
       'Counterexample: the Microsoft 365 selectors are NXDOMAIN, but the common name s1 publishes a key: the domain signs with another selector, no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS, { s1: key(dkimRecord(rsaKey(2048))) })],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({ s1: rsaAnswer(2048) }),
   },
   {
     file: 'counterexample-m365-inbound-only.json',
@@ -388,7 +358,7 @@ const MAIL_03: DnsFixture[] = [
       'Counterexample: Microsoft 365 MX without its SPF include (mail sent elsewhere): its selectors are not given, only selectors-not-found',
     expect: { status: 'completed', variants: ['selectors-not-found'] },
     queries: [
-      q('MX', 'example.de', 'mx', { answers: [mxOf('example-de.mail.protection.outlook.com')] }),
+      mx('example.de', 'example-de.mail.protection.outlook.com'),
       spf('v=spf1 ip4:192.0.2.0/24 -all'),
       ...dkimQueries(COMMON_SELECTORS),
     ],
@@ -407,14 +377,10 @@ const MAIL_03: DnsFixture[] = [
     description:
       'Microsoft 365: both selectors publish a withdrawn key (empty p=), no other key: inconclusive (key-revoked), no finding',
     expect: { status: 'inconclusive', variants: [], reason: 'key-revoked' },
-    queries: [
-      ...M365_SITE,
-      ...dkimQueries(M365_ROWS, {
-        selector1: key('v=DKIM1; k=rsa; p='),
-        selector2: key('v=DKIM1; k=rsa; p='),
-      }),
-    ],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({
+      selector1: key('v=DKIM1; k=rsa; p='),
+      selector2: key('v=DKIM1; k=rsa; p='),
+    }),
   },
   {
     file: 'inconclusive-given-selector-capped.json',
@@ -438,76 +404,61 @@ const MAIL_03: DnsFixture[] = [
     description:
       'selector1 publishes a record of another DKIM version, no other key: inconclusive (key-unparsable), never given-selector-missing',
     expect: { status: 'inconclusive', variants: [], reason: 'key-unparsable' },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS, { selector1: key(`v=DKIM2; p=${rsaKey(2048)}`) })],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({ selector1: key(`v=DKIM2; p=${rsaKey(2048)}`) }),
   },
   {
     file: 'violation-key-rsa-768.json',
     description:
       'The selector default publishes an RSA key of 768 bits: key-too-short (RFC 8301 requires 1024)',
     expect: { status: 'completed', variants: ['key-too-short'] },
-    queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS, { default: key(dkimRecord(rsaKey(768))) })],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim({ default: rsaAnswer(768) }),
   },
   {
     file: 'clean-key-rsa-1024-boundary.json',
     description: 'An RSA key of exactly 1024 bits at the default threshold of 1024: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS, { default: key(dkimRecord(rsaKey(1024))) })],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim({ default: rsaAnswer(1024) }),
   },
   {
     file: 'counterexample-ed25519.json',
     description: 'Counterexample: an Ed25519 key (32 bytes) has no RSA length: no key-too-short',
     expect: { status: 'completed', variants: [] },
-    queries: [
-      ...OWN_MX_SITE,
-      ...dkimQueries(COMMON_SELECTORS, { default: key(dkimRecord(ED25519_KEY, 'ed25519')) }),
-    ],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim({ default: key(dkimRecord(ED25519_KEY, 'ed25519')) }),
   },
   {
     file: 'counterexample-revoked-and-valid.json',
     description:
       'Counterexample: selector2 is revoked (empty p=) while selector1 has a key of 2048 bits, the usual key rotation: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [
-      ...M365_SITE,
-      ...dkimQueries(M365_ROWS, {
-        selector1: key(dkimRecord(rsaKey(2048))),
-        selector2: key('v=DKIM1; k=rsa; p='),
-      }),
-    ],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({
+      selector1: rsaAnswer(2048),
+      selector2: key('v=DKIM1; k=rsa; p='),
+    }),
   },
   {
     file: 'inconclusive-key-unparsable.json',
     description:
       'A key record whose p= is not a readable key, no other key: inconclusive (key-unparsable), neither key-too-short nor a missing key',
     expect: { status: 'inconclusive', variants: [], reason: 'key-unparsable' },
-    queries: [...M365_SITE, ...dkimQueries(M365_ROWS, { selector1: key('v=DKIM1; k=rsa; p=MIIBIjANBgkq') })],
-    dkimPlan: SITE_M365_PLAN,
+    ...m365Dkim({ selector1: key('v=DKIM1; k=rsa; p=MIIBIjANBgkq') }),
   },
   {
     file: 'violation-selectors-not-found.json',
     description: 'Own MX, no provider recognised, every probed selector NXDOMAIN: selectors-not-found (info)',
     expect: { status: 'completed', variants: ['selectors-not-found'] },
-    queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS)],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim(),
   },
   {
     file: 'clean-common-selector-key.json',
     description: 'The common name dkim publishes a key of 2048 bits: no finding',
     expect: { status: 'completed', variants: [] },
-    queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS, { dkim: key(dkimRecord(rsaKey(2048))) })],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim({ dkim: rsaAnswer(2048) }),
   },
   {
     file: 'error-common-selector-timeout.json',
     description: 'TIMEOUT after retry on s2, no key elsewhere: error, never selectors-not-found',
     expect: { status: 'error', variants: [], reason: 'exception' },
-    queries: [...OWN_MX_SITE, ...dkimQueries(COMMON_SELECTORS, { s2: { rcode: 'TIMEOUT', attempts: 2 } })],
-    dkimPlan: SITE_COMMON_PLAN,
+    ...ownMxDkim({ s2: { rcode: 'TIMEOUT', attempts: 2 } }),
   },
   {
     file: 'counterexample-google-not-fixed.json',
@@ -515,7 +466,7 @@ const MAIL_03: DnsFixture[] = [
       'Counterexample: Google Workspace MX and SPF, selector google NXDOMAIN: the customer can change that prefix, so only selectors-not-found',
     expect: { status: 'completed', variants: ['selectors-not-found'] },
     queries: [
-      q('MX', 'example.de', 'mx', { answers: [mxOf('smtp.google.com')] }),
+      mx('example.de', 'smtp.google.com'),
       spf('v=spf1 include:_spf.google.com ~all'),
       q('TXT', '_spf.google.com', 'spf-include', { answers: [txt('v=spf1 ip4:192.0.2.0/24 ~all')] }),
       ...dkimQueries([['google', 'provider:google-workspace', false], ...COMMON_SELECTORS]),
@@ -565,19 +516,14 @@ const MAIL_03: DnsFixture[] = [
     expect: { status: 'completed', variants: ['given-selector-missing'] },
     queries: [
       ...OWN_MX_SITE,
-      ...dkimQueries(COMMON_SELECTORS, { default: key(dkimRecord(rsaKey(2048))) }),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('example-mail-de.mail.protection.outlook.com')] }),
-      q('TXT', 'example-mail.de', 'spf', {
-        answers: [txt('v=spf1 include:spf.protection.outlook.com -all')],
-      }),
-      q('TXT', 'spf.protection.outlook.com', 'spf-include', {
-        answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')],
-      }),
+      ...dkimQueries(COMMON_SELECTORS, { default: rsaAnswer(2048) }),
+      mx('example-mail.de', 'example-mail-de.mail.protection.outlook.com'),
+      spfAt('example-mail.de', 'v=spf1 include:spf.protection.outlook.com -all'),
+      spfInclude('spf.protection.outlook.com', 'v=spf1 ip4:192.0.2.0/24 -all'),
       ...dkimQueries(M365_ROWS, {}, 'example-mail.de'),
     ],
     dkimPlan: [...SITE_COMMON_PLAN, ...dkimPlan('example-mail.de', M365_ROWS)],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    ...contactStage(),
   },
   {
     file: 'inconclusive-contact-domain-servfail.json',
@@ -586,14 +532,13 @@ const MAIL_03: DnsFixture[] = [
     expect: { status: 'partial', variants: [] },
     queries: [
       ...OWN_MX_SITE,
-      ...dkimQueries(COMMON_SELECTORS, { default: key(dkimRecord(rsaKey(2048))) }),
-      q('MX', 'example-mail.de', 'mx', { answers: [mxOf('mx.example-mail.de')] }),
-      q('TXT', 'example-mail.de', 'spf', { answers: [txt('v=spf1 ip4:192.0.2.0/24 -all')] }),
+      ...dkimQueries(COMMON_SELECTORS, { default: rsaAnswer(2048) }),
+      mx('example-mail.de'),
+      spfAt('example-mail.de', 'v=spf1 ip4:192.0.2.0/24 -all'),
       ...dkimQueries(COMMON_SELECTORS, { mail: { rcode: 'SERVFAIL', attempts: 2 } }, 'example-mail.de'),
     ],
     dkimPlan: [...SITE_COMMON_PLAN, ...dkimPlan('example-mail.de', COMMON_SELECTORS)],
-    mailDomains: [contact('example-mail.de')],
-    mailDomainStage: STAGE,
+    ...contactStage(),
   },
 ];
 
