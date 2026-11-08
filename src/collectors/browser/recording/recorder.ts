@@ -2,6 +2,7 @@
 // values stay in memory only for correlation and are cleared by `dispose()`.
 import { isIP } from 'node:net';
 import type { BrowserContext, Request, Response } from 'playwright-core';
+import { storedCookieName } from '../../../core/redaction/headers.ts';
 import type { RequestRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase } from '../../../core/snapshot/common.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
@@ -186,7 +187,7 @@ function recordSentIdentifierCookies(rec: RequestRecord, cookieHeader: string): 
     .filter((n) => n && loadIdentifierRules().cookies.some((re) => re.test(n)));
   if (names.length === 0) return;
 
-  const sent = [...new Set(names)].sort();
+  const sent = [...new Set(names.map((name) => storedCookieName(name)))].sort();
   rec.sentCookieNames = sent;
   rec.identifierPresent = true;
   rec.identifierNames = [...new Set([...(rec.identifierNames ?? []), ...sent])].sort();

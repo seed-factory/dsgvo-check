@@ -6,7 +6,26 @@
 import type { BrowserContext, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import { JarTracker, mapCookie } from '../../../../../src/collectors/browser/recording/jar.ts';
+import { storedCookieName } from '../../../../../src/core/redaction/headers.ts';
+import { storedKey } from '../../../../../src/core/redaction/page-names.ts';
+import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
 import { fakeContext, jarCookie, jarOf, moment, recorded, START, target } from '../fakes.ts';
+
+/** Random base62 ids of 13 to 19 characters with two digits and both cases: longer than a site id, shorter than the ids the name rule masks. */
+function baseIds(count: number, seed = 20261108): string[] {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let state = seed;
+  const next = (n: number): number => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state >>> 8) % n;
+  };
+  const ids: string[] = [];
+  while (ids.length < count) {
+    const id = Array.from({ length: 13 + next(7) }, () => alphabet[next(alphabet.length)]!).join('');
+    if ((id.match(/\d/g) ?? []).length >= 2 && /[a-z]/.test(id) && /[A-Z]/.test(id)) ids.push(id);
+  }
+  return ids;
+}
 
 const attempted = (jar: JarTracker) => jar.cookies.filter((c) => c.state === 'attempted');
 
@@ -151,6 +170,50 @@ describe('Web Storage of a frame', () => {
     return jar.storage;
   };
 
+  it('a storage key that carries an address or a query is stored without them', async () => {
+    const key = 'alice@example.test?sid=4f3a9c1d2e7b4a9f';
+    const storage = await read(
+      storagePage(START, {
+        origin: 'https://www.example.de',
+        local: [{ key, length: 1 }],
+        session: [{ key, length: 1 }],
+        idb: [key],
+      }),
+    );
+    expect(storage.map((s) => s.key)).toEqual(Array(3).fill('[redacted]@example.test?[redacted]'));
+  });
+
+  // An id inside a key is masked, but the literal parts stay, so the service catalog still matches `rc::*` and
+  // `amplitude_unsent_*`.
+  it.each([
+    ['_gcl_ls', 'www.example.de', '_gcl_ls'],
+    ['_uetsid', 'www.example.de', '_uetsid'],
+    ['id5id', 'www.example.de', 'id5id'],
+    ['_cb', 'www.example.de', '_cb'],
+    ['YtIdbMeta', 'www.youtube.com', 'YtIdbMeta'],
+    ['yt-remote-device-id', 'www.youtube.com', 'yt-remote-device-id'],
+    ['ytidb::LAST_RESULT_ENTRY_KEY', 'www.youtube.com', 'ytidb::LAST_RESULT_ENTRY_KEY'],
+    ['rc::a', 'www.google.com', 'rc::a'],
+    ['rc::4f3a9c1d2e7b4a9f4f3a9c1d', 'www.google.com', 'rc::[redacted]'],
+    ['amplitude_unsent_4f3a9c1d2e7b4a9f', 'www.example.de', 'amplitude_unsent_[redacted]'],
+    ['firebase:host:proj.firebaseio.com', 'www.example.de', 'firebase:host:proj.firebaseio.com'],
+    ['_hjid', 'www.example.de', '_hjid'],
+    ['ajs_user_id', 'www.example.de', 'ajs_user_id'],
+  ])('the key %s of %s is stored as %s and still matches its service', async (key, host, stored) => {
+    const catalog = loadServiceCatalog();
+    const before = catalog.matchStorage(key, host)?.service.id ?? null;
+    const storage = await read(
+      storagePage(`https://${host}/`, {
+        origin: `https://${host}`,
+        local: [{ key, length: 1 }],
+        session: [],
+        idb: [],
+      }),
+    );
+    expect(storage.map((s) => s.key)).toEqual([stored]);
+    expect(catalog.matchStorage(storage[0]!.key, host)?.service.id ?? null).toBe(before);
+  });
+
   it('an answer that names another origin is skipped', async () => {
     const storage = await read(
       storagePage(START, {
@@ -203,8 +266,199 @@ describe('values for taking them out of page text', () => {
       page,
     );
 
-    expect(values).toEqual(['zq8c', 'zq8stored']);
+    expect(values).toEqual({ cookies: ['zq8c'], storage: ['zq8stored'] });
     expect(jar.cookies).toEqual([]);
     expect(jar.storage).toEqual([]);
+  });
+});
+
+describe('names of cookies and storage keys: one rule, the raw name stays the key in memory', () => {
+  it.each([
+    ['an address and a query', 'cart_alice@example.test?sid=4f3a9c1d2e7b4a9f', '[redacted]'],
+    ['a local part without a domain', 'alice@intranet', '[redacted]'],
+    ['an obfuscated local part', 'alice(at)intranet', '[redacted]'],
+    ['an encoded address', 'alice%40example.test', '[redacted]'],
+    ['a name with a blank', 'a b', '[redacted]'],
+    ['a UUID', 'session_123e4567_e89b_12d3_a456_426614174000', 'session_[redacted]'],
+    ['an id of ten digits', 'user_1234567890', 'user_[redacted]'],
+    ['an id in hex groups', 'uid_4f3a-9c1d-2e7b-4a9f', 'uid_[redacted]'],
+    [
+      'an id after a word',
+      'optimizely_data$$oeu1612345678901r0$$session_state',
+      'optimizely_data$$oeu[redacted]$$session_state',
+    ],
+    ['counterexample: a site id of seven digits', '_hjSessionUser_1234567', '_hjSessionUser_1234567'],
+    ['counterexample: a property id', '_ga_ABCD1234EF', '_ga_ABCD1234EF'],
+    ['a name with an @ before digits', 'pkg@3.7.1', '[redacted]'],
+    [
+      'counterexample: an encoded @ before a name',
+      'AMCV_1234ABCD5678EFGH9012IJKL%40AdobeOrg',
+      'AMCV_1234ABCD5678EFGH9012IJKL%40AdobeOrg',
+    ],
+  ])('a cookie name: %s', (_case, raw, expected) => {
+    expect(storedCookieName(raw)).toBe(expected);
+  });
+
+  it('a jar cookie and an attempted cookie are stored through it, the jar matches by the raw name', async () => {
+    const raw = 'cart_alice@example.test?sid=4f3a9c1d2e7b4a9f';
+    const rec = mapCookie(jarCookie(raw, 'www.example.de'), moment, target, 0, { setter: 'unknown' });
+    expect(rec.name).toBe('[redacted]');
+
+    const jar = await jarOf(
+      [{ url: START }],
+      [
+        jarCookie('uid_oeu1612345678901', 'www.example.de'),
+        jarCookie('uid_oeu1612345678902', 'www.example.de'),
+      ],
+    );
+    expect(jar.cookies.map((c) => c.name)).toEqual(['uid_oeu[redacted]', 'uid_oeu[redacted]']);
+  });
+
+  it('a name the hook logged up to the limit of its read is seen whole: an address at 190 characters goes', async () => {
+    const name = `${'x'.repeat(190)}alice@example.test`;
+    const jar = await jarOf([
+      {
+        url: START,
+        cookieWrites: [
+          { name, t: Date.now(), script: null, deletion: false, host: 'www.example.de', domain: null },
+        ],
+      },
+    ]);
+    jar.finalize(moment);
+    expect(attempted(jar).map((c) => c.name)).toEqual(['[redacted]']);
+
+    const cut = await jarOf([
+      {
+        url: START,
+        cookieWrites: [
+          {
+            name: name.slice(0, 200),
+            t: Date.now(),
+            script: null,
+            deletion: false,
+            host: 'www.example.de',
+            domain: null,
+          },
+        ],
+      },
+    ]);
+    cut.finalize(moment);
+    expect(JSON.stringify(cut.cookies)).not.toContain('alice');
+  });
+
+  it('a short random id behind a vendor prefix keeps the class of the name', () => {
+    const catalog = loadServiceCatalog();
+    const lost: string[] = [];
+    for (const id of baseIds(2000)) {
+      for (const prefix of ['ucData_', '_hjSession_', '_ga_', 'id_', 'cs_']) {
+        const raw = `${prefix}${id}`;
+        for (const store of [storedKey, storedCookieName]) {
+          const kept = store(raw);
+          const class_ = (n: string) =>
+            [
+              catalog.matchCookie(n, null)?.service.id,
+              catalog.matchStorage(n, null)?.service.id,
+              catalog.allowlistedCookie(n),
+              catalog.allowlistedStorage(n),
+            ].join('|');
+          if (class_(raw) !== class_(kept)) lost.push(`${raw} -> ${kept}`);
+        }
+      }
+    }
+    expect(lost).toEqual([]);
+  });
+
+  it('name patterns retain recognition after storage', () => {
+    const catalog = loadServiceCatalog();
+    const fills = [
+      '1234567',
+      '4f3a9c1d',
+      'abc',
+      '4f3a9c1d2e7b4a9f4f3a9c1d',
+      'ABCD1234EF',
+      '123_456789',
+      'x47472',
+    ];
+    const separated = baseIds(40, 7);
+    const pools = [
+      'Typo3Live443',
+      'App01Prod443',
+      'Exchange2016OWA443',
+      'WWW2Pool443',
+      'IIS10Web443',
+      'Shop1Pool443',
+    ];
+    const real = [
+      '_hjSessionUser_1234567',
+      '__cmpconsentx47472',
+      'TS01dc4fc6',
+      'AMCV_1234ABCD5678EFGH9012IJKL%40AdobeOrg',
+      '_ga_ABCD1234EF',
+      'incap_ses_123_456789',
+    ];
+    // A prefix that ends in a digit (`TS01*`) joins the digits of the id, so a long hex id there is one run with it.
+    const samples = (pattern: string): string[] => {
+      const [name = ''] = pattern.split('@');
+      const joined = /\d$/.test(name.slice(0, Math.max(name.indexOf('*'), 0)));
+      const directlySeparated = /^(?:ucData_|_hjSession_|_ga_)\*$/.test(name);
+      const own = [
+        ...fills,
+        ...(name.startsWith('BIGipServer') ? pools : []),
+        ...(directlySeparated ? separated : []),
+      ];
+      return own.filter((f) => !joined || f.length <= 12).map((f) => name.replaceAll('*', f));
+    };
+    const lost: string[] = [];
+    const check = (
+      what: string,
+      names: readonly string[],
+      store: (n: string) => string,
+      read: (n: string) => string | null,
+    ) => {
+      for (const raw of names) {
+        const kept = store(raw);
+        if (read(raw) !== read(kept)) lost.push(`${what}: ${raw} -> ${kept}`);
+      }
+    };
+    for (const s of catalog.data.services) {
+      for (const pattern of [...s.cookies, ...s.otherCookies]) {
+        const domain = pattern.split('@')[1] ?? null;
+        check(
+          'cookie',
+          samples(pattern),
+          storedCookieName,
+          (n) => catalog.matchCookie(n, domain)?.service.id ?? null,
+        );
+      }
+      for (const pattern of [...s.storageKeys, ...s.otherStorageKeys]) {
+        const domain = pattern.split('@')[1] ?? null;
+        check(
+          'storage',
+          samples(pattern),
+          storedKey,
+          (n) => catalog.matchStorage(n, domain)?.service.id ?? null,
+        );
+      }
+    }
+    for (const list of Object.values(catalog.data.allowlist.cookies))
+      for (const pattern of list)
+        check('allowlist cookie', samples(pattern), storedCookieName, (n) => catalog.allowlistedCookie(n));
+    for (const list of Object.values(catalog.data.allowlist.storage))
+      for (const pattern of list)
+        check('allowlist storage', samples(pattern), storedKey, (n) => catalog.allowlistedStorage(n));
+    check(
+      'real cookie',
+      real,
+      storedCookieName,
+      (n) => catalog.matchCookie(n, null)?.service.id ?? catalog.allowlistedCookie(n),
+    );
+    check(
+      'real key',
+      real,
+      storedKey,
+      (n) => catalog.matchStorage(n, null)?.service.id ?? catalog.allowlistedStorage(n),
+    );
+    expect(lost).toEqual([]);
+    expect(storedCookieName('_hjSessionUser_1234567')).toBe('_hjSessionUser_1234567');
   });
 });

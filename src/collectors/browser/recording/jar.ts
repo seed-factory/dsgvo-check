@@ -3,6 +3,8 @@
 // attributed by name alone: a `Set-Cookie` must match name, domain, path and partition, a script write must come from a
 // document that can set the domain; otherwise the setter is `unknown`. Every in-page read is bounded.
 import type { BrowserContext, Cookie, Frame, Page } from 'playwright-core';
+import { isCookieName, storedCookieName } from '../../../core/redaction/headers.ts';
+import { storedKey } from '../../../core/redaction/page-names.ts';
 import type { CookieRecord, StorageRecord } from '../../../core/snapshot/browser.ts';
 import type { BrowserPhase } from '../../../core/snapshot/common.ts';
 import { parseUrl, registrableDomain } from '../../../core/url/url.ts';
@@ -12,7 +14,7 @@ import {
   storageValuesInPage,
   storageWritesInPage,
 } from '../in-page/storage.ts';
-import { fields, isCookieName, isHostname, list, storedCookiePath } from '../page-values.ts';
+import { fields, isHostname, list, storedCookiePath } from '../page-values.ts';
 import { TimeoutError } from '../util.ts';
 import { sanitizeRequestUrl } from './features.ts';
 import { cookieDomainVerdict, type SetCookieOrigin, settleWithin } from './recorder.ts';
@@ -54,8 +56,6 @@ export interface JarOptions {
 const DEFAULT_EVAL_TIMEOUT_MS = 1_000;
 /** Storage keys read per frame; the rest is not needed to name the origin's storage use. */
 const MAX_STORAGE_KEYS = 200;
-/** Longest storage key or IndexedDB name kept, as the page code cuts them. */
-const MAX_STORAGE_NAME = 200;
 /** A storage value is searched in page text only up to this length: a consent ID sits at the start of its entry. */
 const MAX_STORAGE_VALUE_CHARS = 4_096;
 const SECONDS_PER_DAY = 86_400;
@@ -103,7 +103,7 @@ function checkedStorageWrite(v: unknown): { type: string; key: string; t: number
   const w = fields(v);
   const typeOk = w.type === 'localStorage' || w.type === 'sessionStorage';
   if (!typeOk || typeof w.key !== 'string' || typeof w.t !== 'number' || !Number.isFinite(w.t)) return null;
-  return { type: w.type as string, key: w.key.slice(0, MAX_STORAGE_NAME), t: w.t };
+  return { type: w.type as string, key: storedKey(w.key), t: w.t };
 }
 
 /** Storage keys and IndexedDB names: strings only, cut like the page code cuts them. */
@@ -111,7 +111,7 @@ const storageNames = (v: unknown): string[] =>
   list(v)
     .slice(0, MAX_STORAGE_KEYS)
     .filter((n): n is string => typeof n === 'string' && n !== '')
-    .map((n) => n.slice(0, MAX_STORAGE_NAME));
+    .map((n) => storedKey(n));
 
 /** Storage entries with their value length: a length only as a safe integer of at least 0. */
 const storageEntries = (v: unknown): Array<{ key: string; length?: number }> =>
@@ -120,7 +120,7 @@ const storageEntries = (v: unknown): Array<{ key: string; length?: number }> =>
     .map(fields)
     .filter((e) => typeof e.key === 'string')
     .map((e) => ({
-      key: (e.key as string).slice(0, MAX_STORAGE_NAME),
+      key: storedKey(e.key as string),
       ...(typeof e.length === 'number' && Number.isSafeInteger(e.length) && e.length >= 0
         ? { length: e.length }
         : {}),
@@ -194,7 +194,7 @@ export function mapCookie(
   const persistent = typeof c.expires === 'number' && c.expires > 0;
 
   return {
-    name: c.name,
+    name: storedCookieName(c.name),
     domain,
     firstParty: isFirstParty(domain, target.etld1, target.host),
     path: storedCookiePath(c.path || '/'),
@@ -228,9 +228,12 @@ function cleanSetter(
   return s.setterUrl ? { ...s, setterUrl: sanitizeRequestUrl(s.setterUrl) } : s;
 }
 
-/** The path in the key is the raw one: two paths that are both stored as `[redacted]` stay two cookies. */
-const cookieKey = (r: Pick<CookieRecord, 'name' | 'domain' | 'partitionKey' | 'state'>, rawPath: string) =>
-  `${r.name}|${r.domain}|${rawPath}|${r.partitionKey ?? ''}|${r.state}`;
+/** Name and path in the key are the raw ones: cookies and paths that are stored as `[redacted]` stay separate cookies. */
+const cookieKey = (
+  rawName: string,
+  r: Pick<CookieRecord, 'domain' | 'partitionKey' | 'state'>,
+  rawPath: string,
+) => `${rawName}|${r.domain}|${rawPath}|${r.partitionKey ?? ''}|${r.state}`;
 
 const AFTER = '|after-click';
 
@@ -284,7 +287,7 @@ export class JarTracker {
       seen.add(domainOf);
       this.jarDomains.set(c.name, seen);
 
-      this.addCookie(mapCookie(c, m, this.target, nowSec, this.setterOf(c)), m, c.path || '/');
+      this.addCookie(mapCookie(c, m, this.target, nowSec, this.setterOf(c)), c.name, m, c.path || '/');
     }
 
     await this.readStorage(page, m, dead);
@@ -295,9 +298,10 @@ export class JarTracker {
    * Values of every cookie of the context and of the Web Storage of the page's frames, for taking them out of page
    * text that is about to be stored (legal documents). The caller must not keep or log them.
    */
-  async secretValues(context: BrowserContext, page: Page): Promise<string[]> {
-    const out: string[] = [];
-    for (const c of (await this.bounded(context.cookies(), 'jar.cookies')) ?? []) out.push(c.value);
+  async secretValues(context: BrowserContext, page: Page): Promise<{ cookies: string[]; storage: string[] }> {
+    const cookies: string[] = [];
+    const storage: string[] = [];
+    for (const c of (await this.bounded(context.cookies(), 'jar.cookies')) ?? []) cookies.push(c.value);
 
     const dead = new Set<Frame>();
     const seenOrigins = new Set<string>();
@@ -311,20 +315,21 @@ export class JarTracker {
         frame,
         dead,
       );
-      for (const v of list(values)) if (typeof v === 'string') out.push(v.slice(0, MAX_STORAGE_VALUE_CHARS));
+      for (const v of list(values))
+        if (typeof v === 'string') storage.push(v.slice(0, MAX_STORAGE_VALUE_CHARS));
     }
-    return out;
+    return { cookies, storage };
   }
 
   /** A key seen before gets a second record only when a write follows the click. */
-  private addCookie(rec: CookieRecord, m: Moment, rawPath: string): void {
-    const key = cookieKey(rec, rawPath);
+  private addCookie(rec: CookieRecord, rawName: string, m: Moment, rawPath: string): void {
+    const key = cookieKey(rawName, rec, rawPath);
     if (!this.cookieKeys.has(key)) {
       this.cookieKeys.add(key);
       this.cookies.push(rec);
     } else if (
       m.afterClick &&
-      this.writtenAfterClick(rec.name, rec.domain, rawPath, rec.partitionKey !== null) &&
+      this.writtenAfterClick(rawName, rec.domain, rawPath, rec.partitionKey !== null) &&
       !this.cookieKeys.has(key + AFTER)
     ) {
       this.cookieKeys.add(key + AFTER);
@@ -403,7 +408,7 @@ export class JarTracker {
   ): void {
     const rawPath = where.path ?? '/';
     const rec: CookieRecord = {
-      name,
+      name: storedCookieName(name),
       domain: where.domain,
       firstParty: isFirstParty(where.domain, this.target.etld1, this.target.host),
       // A `Set-Cookie` of any response chooses the path, also one the browser refused.
@@ -428,7 +433,7 @@ export class JarTracker {
       ...momentIds(m),
     };
 
-    const key = cookieKey(rec, rawPath) + suffix;
+    const key = cookieKey(name, rec, rawPath) + suffix;
     if (this.cookieKeys.has(key)) return;
     this.cookieKeys.add(key);
     this.cookies.push(rec);

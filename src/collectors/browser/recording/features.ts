@@ -1,7 +1,7 @@
 // Request features extracted BEFORE redaction: identifier parameter names, event type, Consent Mode signals. Identifier
 // values are returned only for in-memory correlation and must never reach snapshot, report or logs.
 
-import { setCookieName } from '../../../core/redaction/headers.ts';
+import { setCookieName, storedCookieName } from '../../../core/redaction/headers.ts';
 import { safeDecode } from '../../../core/url/email.ts';
 import { QUERY_VALUE_RULES, sanitizeUrl } from '../../../core/url/url.ts';
 import { REQUEST_QUERY_ALLOWLIST } from '../config.ts';
@@ -154,7 +154,7 @@ export function parseSetCookies(headers: readonly string[]): SetCookieAttrs[] {
 }
 
 export function splitSetCookieNames(headers: readonly string[]): string[] {
-  const out: string[] = [];
-  for (const c of parseSetCookies(headers)) if (!out.includes(c.name)) out.push(c.name);
-  return out;
+  const raw: string[] = [];
+  for (const c of parseSetCookies(headers)) if (!raw.includes(c.name)) raw.push(c.name);
+  return raw.map((name) => storedCookieName(name));
 }

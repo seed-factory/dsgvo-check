@@ -14,6 +14,7 @@ import type {
   SettingsLayerFacts,
   VerifyResult,
 } from '../../cmp/types.ts';
+import { redactCmpLabel } from '../../core/redaction/page-names.ts';
 import type { ClickPlan, ClickPlanTarget } from '../../core/snapshot/browser.ts';
 import { CMP_DIALOG_TEXT_MAX_CHARS, type CmpDialogMentions } from '../../core/snapshot/cmp-dialog.ts';
 import type { BrowserPhase, CollectorError, SanitizedUrl } from '../../core/snapshot/common.ts';
@@ -85,7 +86,7 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
   if (facts.detection.frameUrl) facts.detection.frameUrl = sanitizeRequestUrl(facts.detection.frameUrl);
 
   const layer = facts.firstLayer;
-  layer.buttons = layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) }));
+  layer.buttons = layer.buttons.map((b) => ({ ...b, name: redactCmpLabel(redactFreeText(b.name)) }));
   if (layer.legalLinks) {
     layer.legalLinks = layer.legalLinks.map((l) => ({
       text: redactFreeText(l.text),
@@ -95,7 +96,7 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
   if (layer.coveredFooterLinks) {
     layer.coveredFooterLinks = layer.coveredFooterLinks.map((l) => ({
       ...l,
-      label: redactFreeText(l.label),
+      label: redactCmpLabel(redactFreeText(l.label)),
     }));
   }
   return facts;
@@ -103,7 +104,10 @@ export function normalizeFacts(facts: CmpFacts, phase: BrowserPhase, pageUrl: Sa
 
 /** Control names of the settings layer are page text: they pass `redactFreeText` like those of the first layer. */
 export function normalizeSettings(layer: SettingsLayerFacts): SettingsLayerFacts {
-  return { ...layer, buttons: layer.buttons.map((b) => ({ ...b, name: redactFreeText(b.name) })) };
+  return {
+    ...layer,
+    buttons: layer.buttons.map((b) => ({ ...b, name: redactCmpLabel(redactFreeText(b.name)) })),
+  };
 }
 
 /** The catalog services the dialog names; `absent` without a reader or a container; `failed` when it could not be read. */

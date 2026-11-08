@@ -148,3 +148,9 @@ export const outdatedReferencesSection = dataSection(
 export type OutdatedReferences = ReturnType<typeof outdatedReferencesSection.parse>;
 
 export const legalSections = [providerDetailsSection, outdatedReferencesSection] as const;
+
+export const businessMarkersSection = dataSection(
+  'legal',
+  'businessMarkers',
+  z.strictObject({ markers: z.array(z.string().min(1)).min(1) }),
+);

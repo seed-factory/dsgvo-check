@@ -295,7 +295,7 @@ function documentErrors(p: {
 }
 
 /**
- * `secrets`: values of the visitor's cookies and Web Storage at the time of the read, in memory only. A policy can
+ * `secrets` and `storage`: values of the visitor's cookies and of the Web Storage at the time of the read, in memory only. A policy can
  * print them (a consent ID in a cookie declaration, a script writing `document.cookie` into the Impressum), and no
  * free-text redaction tells such an ID from a word, so they are taken out of the text before it is stored or hashed.
  */
@@ -303,6 +303,7 @@ export async function extractDocument(
   page: Page,
   c: DocumentContext & { id: string },
   secrets: readonly string[] = [],
+  storage: readonly string[] = [],
 ): Promise<DocumentRecord> {
   const finalUrl = sanitizeRequestUrl(page.url());
   if (/application\/pdf/i.test(c.contentType)) return { ...pdfDocument(c), finalUrl };
@@ -312,6 +313,7 @@ export async function extractDocument(
   const scrub = valueScrubber(
     secrets,
     [host, c.siteDomain].filter((h): h is string => !!h),
+    storage,
   );
   const main = checkedRawDocument(await page.evaluate(documentInPage, { maxChars: MAX_CHARS, patterns }));
   const read = await readParts(page, c, main, finalUrl, patterns, scrub);

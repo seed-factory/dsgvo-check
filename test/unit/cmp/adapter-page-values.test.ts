@@ -562,3 +562,24 @@ describe('a failed click or reload keeps its kind only', () => {
     expect(JSON.stringify(verify)).not.toContain('zq7');
   });
 });
+
+describe('stored detection signals', () => {
+  it('recognizes a vendor cookie while masking its identifier', async () => {
+    const cookie = 'cmplz_123e4567-e89b-12d3-a456-426614174000';
+    const detection = await complianz.detect(
+      stubPage({
+        cmpDetectProbe: {
+          globals: [],
+          scripts: [],
+          dom: [],
+          cookies: [cookie],
+          storage: [],
+          versions: {},
+          scriptUrls: [],
+        },
+      }),
+    );
+    expect(detection?.recognitionConfidence).toBe('medium');
+    expect(detection?.signals).toEqual(['cookie:[redacted]']);
+  });
+});

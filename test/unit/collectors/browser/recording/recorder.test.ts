@@ -97,6 +97,21 @@ describe('NetworkRecorder: 5.3 request fields', () => {
     });
   });
 
+  it('the names of identifier cookies sent to a third party follow the rule of every other cookie name', async () => {
+    const { ctx, rec } = fakeRecorder({ phase: 'B', etld1: 'example.test' });
+    rec.beginNavigation('https://www.example.test/');
+    const req = request('https://tracker.example.net/collect', {
+      type: 'xhr',
+      allHeaders: async () => ({ cookie: '_ga_alice@example.test=1; _ga=GA1.2.1; _gcl_au%40mail.invalid=2' }),
+    });
+    ctx.emit('request', req);
+    ctx.emit('response', response(req, 200));
+    expect(await rec.flush()).toBe(true);
+    expect(rec.records[0]?.sentCookieNames).toEqual(['[redacted]', '_ga']);
+    expect(rec.records[0]?.identifierNames).toEqual(['[redacted]', '_ga']);
+    expect(JSON.stringify(rec.records)).not.toContain('alice');
+  });
+
   it('an identifier in a path parameter is a feature of the record (read before redaction)', () => {
     const { ctx, rec } = setup();
     rec.beginNavigation('https://www.example.de/');

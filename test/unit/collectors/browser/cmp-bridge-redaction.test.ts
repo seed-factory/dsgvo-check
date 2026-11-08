@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { CmpButton, CmpFacts } from '../../../../src/cmp/types.ts';
-import { normalizeFacts } from '../../../../src/collectors/browser/cmp-bridge.ts';
+import { normalizeFacts, normalizeSettings } from '../../../../src/collectors/browser/cmp-bridge.ts';
 import { makeCmpFacts } from '../../../utils/snapshot-builder.ts';
 
 const button = (name: string, p: Partial<CmpButton> = {}): CmpButton => ({
@@ -81,5 +81,50 @@ describe('normalizeFacts: text copied from the page', () => {
     expect(o.firstLayer.coveredFooterLinks?.[0]?.label).toBe('Impressum');
     expect(o.firstLayer.legalLinks?.[0]?.text).toBe('Datenschutzerklärung');
     expect(o.firstLayer.buttons[1]?.name).toBe('Alle akzeptieren');
+  });
+});
+
+describe('normalizeFacts: identifiers in CMP control labels', () => {
+  it.each([
+    ['an identifier word', 'Accept 4f3a9c1d2e7b4a9f', 'Accept [redacted]'],
+    ['hex groups joined by blanks', 'Accept 4f3a 9c1d 2e7b 4a9f', 'Accept [redacted]'],
+    ['digit groups joined by blanks', 'Einwilligungs-ID 123 456 789', 'Einwilligungs-ID [redacted]'],
+    ['counterexample: an accept label', 'Alle akzeptieren', 'Alle akzeptieren'],
+    ['counterexample: a reject label', 'Nur notwendige Cookies', 'Nur notwendige Cookies'],
+    ['counterexample: a partner count', 'Partner (12)', 'Partner (12)'],
+    ['counterexample: a settings label in capitals', 'DATENSCHUTZEINSTELLUNGEN', 'DATENSCHUTZEINSTELLUNGEN'],
+    ['counterexample: a reject label in capitals', 'NUR-NOTWENDIGE-COOKIES', 'NUR-NOTWENDIGE-COOKIES'],
+  ])('a button label with %s', (_case, label, stored) => {
+    const f = facts();
+    f.firstLayer.buttons[0]!.name = label;
+    expect(normalizeFacts(f, 'B', 'https://www.example.test/').firstLayer.buttons[0]?.name).toBe(stored);
+  });
+
+  it('a covered footer link label loses an identifier word; the text of a legal link keeps its register number', () => {
+    const f = facts();
+    f.firstLayer.coveredFooterLinks![0]!.label = 'Impressum 4f3a9c1d2e7b4a9f';
+    f.firstLayer.legalLinks![0]!.text = 'HRB 123456';
+    const out = normalizeFacts(f, 'B', 'https://www.example.test/');
+    expect(out.firstLayer.coveredFooterLinks![0]!.label).toBe('Impressum [redacted]');
+    expect(out.firstLayer.legalLinks![0]!.text).toBe('HRB 123456');
+  });
+
+  it.each(['DATENSCHUTZERKLAERUNG', 'DATENSCHUTZBESTIMMUNGEN', 'ANBIETERKENNZEICHNUNG'])(
+    'counterexample: a covered footer link %s keeps its label',
+    (label) => {
+      const f = facts();
+      f.firstLayer.coveredFooterLinks![0]!.label = label;
+      expect(
+        normalizeFacts(f, 'B', 'https://www.example.test/').firstLayer.coveredFooterLinks![0]!.label,
+      ).toBe(label);
+    },
+  );
+
+  it('a settings layer button label loses an identifier word', () => {
+    const layer = normalizeSettings({
+      ...makeCmpFacts().firstLayer,
+      buttons: [button('Save 4f3a9c1d2e7b4a9f')],
+    } as never);
+    expect(layer.buttons[0]?.name).toBe('Save [redacted]');
   });
 });

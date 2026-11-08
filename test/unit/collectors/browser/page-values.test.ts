@@ -10,13 +10,13 @@ import {
   formMethod,
   hintRel,
   isConsentSignal,
-  isCookieName,
   isEventName,
   isHostname,
   requestMethod,
   scriptType,
   storedCookiePath,
 } from '../../../../src/collectors/browser/page-values.ts';
+import { isCookieName } from '../../../../src/core/redaction/headers.ts';
 
 describe('link types of an anchor', () => {
   it.each([

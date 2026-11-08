@@ -292,19 +292,40 @@ export function cmpPageProbe(args: ProbeArgs): ProbeResult {
   const tokenRe = compileRule(idLike.token);
   const tokenSplitRe = compileRule(idLike.tokenSplit);
   const wordRe = compileRule(idLike.word);
+  const versionRe = compileRule(idLike.version);
+  const smallNumberRe = compileRule(idLike.smallNumber);
   const wordsWithGroupRe = compileRule(idLike.wordsWithGroup);
+  const lettersSplitRe = compileRule(idLike.lettersSplit);
+  const lettersRe = compileRule(idLike.letters);
 
   /** The steps of `hasIdLikeRun` in page-names.ts; a rule that does not compile makes every value ID-like. */
   const hasIdLikeRun = (v: string): boolean => {
-    if (!otherDigitRe || !separatorRe || !tokenRe || !tokenSplitRe || !wordRe || !wordsWithGroupRe)
+    if (
+      !otherDigitRe ||
+      !separatorRe ||
+      !tokenRe ||
+      !tokenSplitRe ||
+      !wordRe ||
+      !versionRe ||
+      !smallNumberRe ||
+      !wordsWithGroupRe ||
+      !lettersSplitRe ||
+      !lettersRe
+    )
       return true;
     if (!compactRes.every((re) => re !== null) || !plainRes.every((re) => re !== null)) return true;
     const n = v.normalize('NFKC').replace(otherDigitRe, '0');
     const compact = n.replace(separatorRe, '');
     if (compactRes.some((re) => re?.test(compact)) || plainRes.some((re) => re?.test(n))) return true;
     return (n.match(tokenRe) ?? []).some((run) => {
-      const rest = run.split(tokenSplitRe).filter((part) => !wordRe.test(part));
-      return rest.length > 1 || !rest.every((part) => wordsWithGroupRe.test(part));
+      if (!/\d/.test(run))
+        return !run.split(lettersSplitRe).every((part) => part === '' || lettersRe.test(part));
+      const rest = run
+        .replace(versionRe, '-')
+        .split(tokenSplitRe)
+        .filter((part) => part !== '' && !wordRe.test(part));
+      if (rest.length <= 1) return !rest.every((part) => wordsWithGroupRe.test(part));
+      return !(rest.length === 2 && rest.every((part) => smallNumberRe.test(part)));
     });
   };
 

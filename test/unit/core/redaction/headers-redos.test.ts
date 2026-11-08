@@ -86,15 +86,15 @@ describe('Link: 64 KiB values are read in linear time', () => {
     expect(stored('link', build(SIZE)).value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
   });
 
-  it('a server-sized Link value is bounded', () => {
-    expect(stored('link', '<'.repeat(16 * 1024)).value).toBe('<'.repeat(MAX_HEADER_VALUE));
+  it('a server-sized Link value of open targets is one redacted part', () => {
+    expect(stored('link', '<'.repeat(16 * 1024)).value).toBe(REDACTED);
   });
 
-  it('keeps what it read: closed targets are resolved, an unclosed one stays as sent', () => {
+  it('keeps what it read: closed targets are resolved, an unclosed one is redacted', () => {
     expect(stored('link', '<a.html>; rel=next, <b.html').value).toBe(
-      '<https://www.example.test/dir/a.html>; rel=next, <b.html',
+      '<https://www.example.test/dir/a.html>; rel=next, [redacted]',
     );
-    expect(stored('link', '<'.repeat(40)).value).toBe('<'.repeat(40));
+    expect(stored('link', '<'.repeat(40)).value).toBe(REDACTED);
   });
 });
 
@@ -122,8 +122,36 @@ describe('other header parsers scale with untrusted values', () => {
     ['x-frame-options', (n) => `${'a'.repeat(n)}@`],
     ['x-frame-options', (n) => 'a@b.test '.repeat(n / 9)],
     ['link', (n) => '<a>?'.repeat(n / 4)],
+    ['link', (n) => `</a>; title="${';()'.repeat(n / 3)}"`],
+    ['link', (n) => `</a>${'; a="'.repeat(n / 5)}`],
+    ['content-type', (n) => `text/html${'; a="('.repeat(n / 6)}`],
+    ['content-security-policy', (n) => `report-uri ${'/?;,("'.repeat(n / 6)}`],
+    ['permissions-policy', (n) => `a=(${'"; ( '.repeat(n / 5)}`],
+    ['x-xss-protection', (n) => `report=${'"/?;('.repeat(n / 5)}`],
     ['link', (n) => '<a>, http://a.test/?x '.repeat(n / 22)],
+    ['link', (n) => `</a>${'; rel="next \\"'.repeat(n / 13)}`],
+    ['link', (n) => `</a>; anchor="${'/?;,'.repeat(n / 4)}"`],
+    ['link', (n) => `</a>; media="${'(a:b) ,'.repeat(n / 7)}"`],
+    ['content-security-policy', (n) => `report-uri ${'(at) @ '.repeat(n / 6)}`],
+    ['content-security-policy', (n) => `script-src ${'alice (dot) smith (at) mail.invalid '.repeat(n / 36)}`],
+    ['content-security-policy', (n) => `script-src ${'https://a.example.test/u/@/~a@/'.repeat(n / 31)}`],
+    ['permissions-policy', (n) => `camera=(self);${'report-to="('.repeat(n / 12)}`],
+    ['strict-transport-security', (n) => `max-age=${'9'.repeat(n)}`],
+    ['strict-transport-security', (n) => `max-age=1${'; max-age="'.repeat(n / 11)}`],
     ['link', (n) => `<a>${'/?'.repeat(n / 2)}`],
+    ['strict-transport-security', (n) => `max-age=1,${'"x;,'.repeat(n / 4)}`],
+    ['strict-transport-security', (n) => `${'";'.repeat(n / 2)}max-age=1`],
+    ['content-security-policy', (n) => `script-src ${'a.b'.repeat(n / 3)}?@x.test`],
+    ['content-security-policy', (n) => `script-src https://${'a.b/'.repeat(n / 4)}@x.test`],
+    ['content-security-policy', (n) => `script-src ${'a.b %40 '.repeat(n / 8)}`],
+    ['content-security-policy', (n) => `report-uri ${'[redacted]@a.test?'.repeat(n / 18)}`],
+    ['content-type', (n) => `text/html${'; a=@'.repeat(n / 4)}`],
+    ['content-type', (n) => `text/html; ${'a'.repeat(n)}=(at) x`],
+    ['location', (n) => `/${'a@'.repeat(n / 2)}`],
+    ['refresh', (n) => `0;url=\u0001${'\t'.repeat(n)}x:y`],
+    ['link', (n) => `<${'\u0001'.repeat(n)}x:y>`],
+    ['x-frame-options', (n) => `"${', '.repeat(n / 2)}`],
+    ['referrer-policy', (n) => `"${', '.repeat(n / 2)}`],
     ['location', (n) => 'a'.repeat(n)],
     ['x-trace', (n) => 'a'.repeat(n)],
   ])('%s: %#', (name, build) => {
@@ -195,9 +223,9 @@ describe('Link target parsing', () => {
     ['<a>, <b>', '<https://www.example.test/dir/a>, <https://www.example.test/dir/b>'],
     ['<>', '<https://www.example.test/dir/page>'],
     ['<a<b>', '<https://www.example.test/dir/a%3Cb>'],
-    ['<a>>', '<https://www.example.test/dir/a>>'],
-    ['<a', '<a'],
-    ['a>', 'a>'],
+    ['<a>>', '<https://www.example.test/dir/a>[redacted]'],
+    ['<a', REDACTED],
+    ['a>', REDACTED],
     ['', ''],
   ])('%j', (value, expected) => {
     expect(stored('link', value, identity).value).toBe(expected);
@@ -206,7 +234,9 @@ describe('Link target parsing', () => {
 
 function legacyResolve(raw: string): string {
   try {
-    return new URL(raw.trim(), BASE).toString();
+    const url = new URL(raw.trim(), BASE);
+    if (!/^https?:$/.test(url.protocol)) return `${url.protocol}${REDACTED}`;
+    return url.toString();
   } catch {
     return REDACTED;
   }
@@ -240,7 +270,7 @@ function expectSameAsLegacy(
 }
 
 describe('header parser equivalence', () => {
-  it('differential: 30 000 random small values give the same record as the old expression', () => {
+  it('differential: 30 000 random small values give the same record as the reference expression', () => {
     const pieces = [
       '0',
       '5',
@@ -270,20 +300,14 @@ describe('header parser equivalence', () => {
     expectSameAsLegacy('refresh', legacyRefresh, { pieces, seed: 20261031, runs: 30_000, maxParts: 9 });
   });
 
-  it('differential: 20 000 random small values give the same record as the old expression', () => {
+  it('differential: 20 000 random lists of link-values resolve every target like the URL parser', () => {
     const pieces = [
-      '<',
-      '>',
-      'a',
-      '/',
-      ' ',
-      'http://x.test/p',
-      '<http://x.test/>',
-      '"',
-      ',',
-      ';',
-      'rel=next',
-      '\n',
+      ', <a>',
+      ',</x>',
+      ' , <http://x.test/p>; rel=next',
+      ', <>',
+      ', <a<b>; rel="preload"; as=style',
+      ',\n<http://x.test/>',
     ];
 
     expectSameAsLegacy('link', legacyLink, { pieces, seed: 31102026, runs: 20_000, maxParts: 10 });
@@ -311,5 +335,84 @@ describe('product headers: 64 KiB values are read in linear time', () => {
 
     expect(record.value).toBe(REDACTED);
     expect(record.productVersions?.length ?? 0).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the long-value parsers stop once the output passes the limit', () => {
+  const best = (run: () => unknown) => {
+    run();
+    return Math.min(
+      ...Array.from({ length: 7 }, () => {
+        const start = performance.now();
+        run();
+        return performance.now() - start;
+      }),
+    );
+  };
+
+  it.each<[string, string, (n: number) => string]>([
+    ['content-security-policy', 'bare words', (n) => `report-uri ${'a '.repeat(n / 2)}`],
+    ['content-security-policy', 'encoded @', (n) => `report-uri ${'%40 '.repeat(n / 3)}`],
+    ['content-security-policy', 'queries', (n) => `report-uri ${'? '.repeat(n / 2)}`],
+    ['content-security-policy', 'hosts', (n) => `script-src ${'a.example.test '.repeat(n / 15)}`],
+    ['link', 'encoded targets', (n) => '<%>'.repeat(n / 3)],
+    ['link', 'empty targets', (n) => '<>'.repeat(n / 2)],
+  ])('%s: %s, a value 8 times as long costs the same', (name, _what, build) => {
+    const small = best(() => stored(name, build(SIZE / 8)));
+    const large = best(() => stored(name, build(SIZE)));
+    expect(large).toBeLessThan(Math.max(small * 3, 2));
+
+    const record = stored(name, build(SIZE));
+    expect(record.truncated).toBe(true);
+    expect(record.value).toHaveLength(MAX_HEADER_VALUE);
+  });
+});
+
+describe('random hostile text never reaches a stored Link or CSP value', () => {
+  const pieces = [
+    '<a>',
+    ';',
+    ',',
+    '"',
+    '=',
+    ' ',
+    'rel',
+    'next',
+    'title',
+    'anchor',
+    'as',
+    'media',
+    '(',
+    ')',
+    '(at)',
+    '[at]',
+    '@',
+    '(dot)',
+    'visitorSecret',
+    'alice',
+    'Max Mustermann',
+    '4f3a9c1d2e7b4a9f',
+    '/',
+    '?',
+    '#',
+    'x:',
+    'report-uri',
+    'script-src',
+    "'self'",
+    '*',
+    'https:',
+    'a.example.test',
+    'default-src',
+  ];
+
+  it.each(['link', 'content-security-policy'])('%s: 20 000 random values', (name) => {
+    const next = seeded(name === 'link' ? 4101 : 4202);
+    for (let i = 0; i < 20_000; i++) {
+      const value = Array.from({ length: 1 + (next() % 12) }, () => pieces[next() % pieces.length]).join('');
+      const got = stored(name, value, identity).value;
+      if (/(?<![\w.])(?:visitorSecret|alice|Mustermann|4f3a9c1d2e7b4a9f)(?![\w.])/.test(got)) {
+        expect.fail(`${JSON.stringify(value)}: ${got}`);
+      }
+    }
   });
 });

@@ -4,7 +4,7 @@
  * target on exactly one element.
  */
 import type { Page } from 'playwright-core';
-import { isCategoryKey, isStoredName } from '../../core/redaction/page-names.ts';
+import { hasStoredNameSyntax, isCategoryKey, isStoredName } from '../../core/redaction/page-names.ts';
 import { sanitizeUrl } from '../../core/url/url.ts';
 import { type AdapterData, supportedVersionsOf } from '../adapters-data.ts';
 import { adapterData } from '../adapters-file.ts';
@@ -119,9 +119,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 /**
  * The detection probe's answer as the Node side takes it. The probe runs in the page, which can change what it returns:
  * a global, script or selector counts only when it is the vendor's own (adapters.yaml), a cookie or storage name only
- * when it is a name (`isStoredName`: the probe splits `document.cookie` with built-ins the page can replace, so a
- * `name=value` pair may come back as a name) and the vendor's pattern matches it here. Version strings and script URLs
- * are read for a version only.
+ * when it has the syntax of a stored name (`hasStoredNameSyntax`: the probe splits `document.cookie` with built-ins the
+ * page can replace, so a `name=value` pair may come back as a name) and the vendor's pattern matches it here; a name with
+ * an identifier run counts but is stored as `[redacted]`. Version strings and script URLs are read for a version only.
  */
 function detectRawOf(raw: unknown, d: AdapterData['detect']): DetectRaw {
   const r = isRecord(raw) ? raw : {};
@@ -130,7 +130,9 @@ function detectRawOf(raw: unknown, d: AdapterData['detect']): DetectRaw {
   const among = (v: unknown, known: readonly string[]) => strings(v).filter((x) => known.includes(x));
   const named = (v: unknown, patterns: readonly string[]) => {
     const res = patterns.map((p) => new RegExp(p));
-    return strings(v).filter((n) => isStoredName(n) && res.some((re) => re.test(n)));
+    return strings(v)
+      .filter((n) => hasStoredNameSyntax(n) && res.some((re) => re.test(n)))
+      .map((n) => (isStoredName(n) ? n : '[redacted]'));
   };
 
   const versions: Record<string, string> = {};

@@ -120,14 +120,14 @@ describe('HDR-01 security headers', () => {
       'an address and a relative URL with a query',
       'ALLOW-FROM zq7max@example.test',
       "default-src 'self'; report-uri /csp-report?visitor=zq7alice",
-      'ALLOW-FROM [redacted]@example.test',
+      'ALLOW-FROM [redacted]',
       "default-src 'self'; report-uri https://www.example.de/csp-report?visitor=[redacted]",
     ],
     [
       'a query value with a comma, a URL with a quote and an address glued to it',
       'ALLOW-FROM /embed?ids=12,zq7tail',
       "default-src 'self'; report-uri https://r.example.test/csp\"zq7carol@mail.example https://r.example.test/x'?visitor=zq7query",
-      'ALLOW-FROM https://www.example.de/embed?ids=[redacted]',
+      'ALLOW-FROM [redacted],[redacted]',
       "default-src 'self'; report-uri https://r.example.test https://r.example.test",
     ],
   ])(
@@ -156,6 +156,16 @@ describe('HDR-01 security headers', () => {
       expect(JSON.stringify(stored)).not.toContain('zq7');
     },
   );
+
+  it.each([
+    ['x-frame-options', '"x, DENY, y"'],
+    ['x-frame-options', 'ALLOWALL, "a, SAMEORIGIN"'],
+    ['referrer-policy', 'no-referrer, "a, unsafe-url, b"'],
+    ['referrer-policy', 'unsafe-url, "a, no-referrer"'],
+  ])('the verdict of the stored %s is that of the value as sent: %s', (name, value) => {
+    const stored = storedHeaderRecord(name, value, 'https://www.example.de/', (u) => u);
+    expect(findingsOf(runWith(name, stored.value))).toEqual(findingsOf(runWith(name, value)));
+  });
 
   it('counterexample: frame-ancestors only in a meta CSP does not count', () => {
     const r = runCheck(
@@ -189,10 +199,13 @@ describe('HDR-01 security headers', () => {
       value: `default-src 'self'; ${'x'.repeat(2040)}`.slice(0, 2048),
       ...extra,
     });
+    /** `length` characters of `*` sources, which the grammar keeps as sent; a double blank makes up an even length. */
+    const stars = (length: number) =>
+      `${'* '.repeat(Math.ceil(length / 2) - 1)}${length % 2 === 0 ? ' *' : '*'}`;
     /** A CSP of exactly `length` characters without URLs, stored the way the collectors store it. */
     const stored = (length: number, tail = '') => {
-      const head = "default-src 'self'; x-pad ";
-      const value = head + 'a'.repeat(length - head.length - tail.length) + tail;
+      const head = "default-src 'self'; img-src ";
+      const value = head + stars(length - head.length - tail.length) + tail;
       return storedHeaderRecord('content-security-policy', value, 'https://www.example.test/', (u) => u);
     };
     /** The record as an older snapshot stored it: without the frame-ancestors fact. */

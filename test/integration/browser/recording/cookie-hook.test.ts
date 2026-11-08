@@ -100,6 +100,13 @@ describe('cookie-write log', () => {
     });
   });
 
+  it('reads a name as far as a storage key is read, so that an address that starts before 200 characters is whole', async () => {
+    const name = `${'x'.repeat(190)}alice@example.test`;
+    await tab.evaluate(`document.cookie = ${JSON.stringify(`${name}=zq7value6; Path=/`)}`);
+    const writes = await writesOf('www.example.test');
+    expect(writes.map((w) => w.name)).toContain(name);
+  });
+
   it('never holds a cookie value', async () => {
     const all = JSON.stringify([
       ...(await writesOf('www.example.test')),

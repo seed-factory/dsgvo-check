@@ -1,10 +1,12 @@
 /** Target validation, URL sanitizing and registrable-domain helpers. E-mail masking lives in email.ts. */
 import { getDomain } from 'tldts';
+import { hasIdLikeRun } from '../redaction/id-like.ts';
 import { InvalidInputError } from '../runtime/errors.ts';
 import type { TargetInfo } from '../snapshot/index.ts';
 import {
   containsAddress,
   decodeLenient,
+  hasAddressMarker,
   maskAddressPiece,
   maskEmailsInUrl,
   mayHoldAddress,
@@ -74,6 +76,19 @@ const UA_HIT_TYPES: ReadonlySet<string> = new Set([
 /** Version-like value (`v=2`, `v=2.1.0`); long digit runs (timestamps, ids) and hashes do not match. */
 const VERSION = /^\d{1,4}(?:\.\d{1,4}){0,3}$/;
 
+/** A number of a Google Fonts axis or tuple: a weight or size up to 1000, with a fraction, and `..` ranges (`8..144`). */
+const FONT_NUMBER =
+  /(?<![\d.])(?:1000|\d{1,3})(?:\.\d{1,2})?(?:\.\.(?:1000|\d{1,3})(?:\.\d{1,2})?)?(?![\d.])/g;
+/** What follows the `:` or `@` of one family (`Open+Sans:ital,wght@0,400;1,700`): the only place font numbers stand. */
+const FONT_AXES = /[:@][^|]*/g;
+/**
+ * The axis tags and the `@` that start the tuples of one family (`ital,wght@0,400`): the only `@` a font value has. A
+ * run starts where the letters and commas before it end, so a long run without an `@` is scanned once.
+ */
+const FONT_AXIS_TAGS = /(?<![A-Za-z,])[A-Za-z,]+@(?=\d)/g;
+const withoutFontNumbers = (family: string): string =>
+  family.replace(FONT_AXES, (axes) => axes.replace(FONT_NUMBER, ' '));
+
 const isMetaPixel = (u: URL) => /(^|\.)facebook\.com$/i.test(u.hostname) && /^\/tr\/?$/.test(u.pathname);
 
 /** Allowlisted generic names keep their value only in the expected form; anything else is redacted. */
@@ -81,16 +96,21 @@ export const QUERY_VALUE_RULES: Readonly<Record<string, (value: string, url: URL
   id: (value, url) => TAG_ID.test(value) || (isMetaPixel(url) && /^\d{1,20}$/.test(value)),
   tid: (value) => TAG_ID.test(value),
   v: (value) => VERSION.test(value),
+  family: (value) => !hasIdLikeRun(withoutFontNumbers(value)),
   t: (value) => UA_HIT_TYPES.has(value.toLowerCase()),
 };
 
 function keepValue(name: string, value: string, url: URL, allowlist: ReadonlySet<string>): boolean {
   const key = name.toLowerCase();
   if (!allowlist.has(key)) return false;
-  // a visitor's address glued onto an allowlisted value (`?hl=de','alice@example.test`) must not survive
+  // a visitor's address glued onto an allowlisted value (`?hl=de','alice@example.test`) must not survive, nor its local part
   if (containsAddress(value)) return false;
+  if (hasAddressMarker(key === 'family' && value.includes('@') ? value.replace(FONT_AXIS_TAGS, ':') : value))
+    return false;
+  if (/[?=&#]/.test(value) || value.includes('://')) return false;
   const rule = QUERY_VALUE_RULES[key];
-  return rule ? rule(value, url) : true;
+  // a key without a rule keeps a setting, not an id: a UUID or a token behind `?hl=` is a visitor's
+  return rule ? rule(value, url) : !hasIdLikeRun(value);
 }
 
 /** `mailto:local@domain` → `mailto:[redacted]@domain` per recipient; headers (subject, cc, body) are dropped. */

@@ -698,18 +698,48 @@ ihn deshalb für einen Crawler hält und sich nicht öffnet; der Bericht nennt d
   (Linkschemata, Skripttypen, Ereignisnamen, Cookie-Pfade). Als Kennung gelten sechs Ziffern in Folge oder acht
   insgesamt, eine Hex-Folge ab acht Zeichen mit Ziffern und Buchstaben oder ab 16 Zeichen mit Ziffer, auch durch Punkte,
   Bindestriche oder unsichtbare Zeichen getrennt, eine Base64-Folge ab 16 Zeichen mit zwei Ziffern, eine UUID und eine
-  Folge aus Base64-Zeichen, `-` und `_` ab 20 Zeichen mit Ziffer. Diese bleibt ein Name, wenn ihre Teile zwischen `-`
-  und `_` Wörter sind und höchstens ein Teil eine kurze Gruppe aus Buchstaben oder Ziffern ist oder auf sie endet
-  (`CybotCookiebotBannerCloseButtonE2E`, `ch2-open-settings-btn`). Auch ein echter Name mit einer solchen Folge
-  (`post-123456`, `ConsentBanner2024`) gilt nicht als Name; der Klick-Selektor nutzt dann ein anderes Merkmal oder den
-  Pfad im Dokument. Nicht erkannt werden eine Base64-Folge, die Punkte in kurze Stücke teilen, und Buchstaben anderer
-  Schriften, die wie lateinische aussehen (ein kyrillisches `с` in einem Hex-Hash). Einwilligungskategorien mit
-  Schlüsseln, die keine Namen sind, erscheinen zusammengefasst als `other`, ebenso Werte von Anbieter-Einstellungen, die
-  der Anbieter nicht kennt (etwa eine Complianz-Region). Eine CMP-Version bleibt nur aus zwei bis vier Zahlengruppen mit
-  höchstens fünf Ziffern je Gruppe und zusammen weniger als acht Ziffern erhalten. Cookie- und Storage-Namen der
-  CMP-Erkennung bleiben nur als Namen ohne `=` und `;` erhalten. Von Headern wie `Server` und `X-Powered-By` bleiben nur
-  Produkt und Version (`PHP/7.2.34`), ohne Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies
-  der Website: Es wird nach jeder Phase entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
+  Folge aus Base64-Zeichen und Trennern (`-`, `_`, `.`, `:`, `/`, `+`) ab 20 Zeichen. Mit Ziffer bleibt sie ein Name,
+  wenn ihre durch `-`, `_`, `.` und `:` geteilten Teile Wörter sind und höchstens ein Teil eine kurze Gruppe aus
+  Buchstaben oder Ziffern ist oder auf sie endet, oder zwei Teile Zahlen aus ein bis drei Ziffern sind
+  (`CybotCookiebotBannerCloseButtonE2E`, `ch2-open-settings-btn`, `v:3_blog:100`); eine Version mit Punkten
+  (`v1.2.3`) und ein Teil aus Wörtern mit `/` (`group-hover/item`) zählen als Wörter. Ohne Ziffer bleibt sie ein Name,
+  wenn jeder Teil aus camelCase-Wörtern oder einem Wort in Großbuchstaben besteht (`CookiebotOnConsentReady`,
+  `sp_choice_type_SAVE_AND_EXIT`); `uHSRxnPAZmKQVeTWyDBcfGJL` und 24 Großbuchstaben in Folge sind keine Namen. Auch
+  ein echter Name mit einer solchen Folge (`post-123456`, `ConsentBanner2024`) gilt nicht als Name; der Klick-Selektor
+  nutzt dann ein anderes Merkmal oder den Pfad im Dokument. Nicht erkannt werden Buchstaben anderer Schriften, die wie
+  lateinische aussehen (ein kyrillisches `с` in einem Hex-Hash). Einwilligungskategorien mit Schlüsseln, die keine
+  Namen sind, erscheinen zusammengefasst als `other`, ebenso Werte von Anbieter-Einstellungen, die der Anbieter nicht
+  kennt (etwa eine Complianz-Region). Eine CMP-Version bleibt nur aus zwei bis vier Zahlengruppen mit höchstens fünf
+  Ziffern je Gruppe und zusammen weniger als acht Ziffern erhalten. Cookie- und Storage-Namen der CMP-Erkennung zählen
+  nur als Namen ohne `=` und `;`. Enthält ein Name eine Kennungsfolge, zählt er für die Erkennung und wird als
+  `[redacted]` gespeichert. In Beschriftungen von CMP-Schaltflächen wird ein Wort mit Kennungsfolge durch `[redacted]`
+  ersetzt (`Accept 4f3a9c1d2e7b4a9f` wird zu `Accept [redacted]`), ebenso eine Reihe kurzer Hex- oder Ziffergruppen
+  (`4f3a 9c1d 2e7b`), auch in Klammern oder durch Kommas, Semikolons und Striche getrennt; ein Wort aus Buchstaben
+  eines Falls (`DATENSCHUTZEINSTELLUNGEN`) bleibt, und das letzte Wort einer an der Grenze abgeschnittenen
+  Beschriftung entfällt. Schlüssel von Web Storage, Namen von IndexedDB und Cookies behalten keine Adresse (auch nicht
+  kodiert oder abgeschnitten) und keinen Query-Wert; ein lokaler Teil mit `@` oder `(at)` und einem Buchstaben oder `[`
+  dahinter (`alice@intranet`) verliert den lokalen Teil, eine Version wie `pkg@3.7.1` bleibt in einem Schlüssel. Zu `[redacted]` werden nur
+  Kennungen, wie sie ein Besucher hat: eine UUID, eine Hex-Folge ab 16 Zeichen mit Ziffer und Buchstabe (auch in
+  Gruppen mit `-`, `_`, `:` oder `.`), zehn Ziffern in Folge oder in Gruppen, die durch dieselben Zeichen verbunden
+  sind, und eine Base64-Folge ab 20 Zeichen mit mindestens zwei Ziffern und beiden Schreibweisen (`rc::[redacted]`), auch
+  als Base64url mit `-` oder `_` (`V1StGXR8_Z5jdHi6B-myT`).
+  Ein Wort, das an der Kennung klebt, bleibt (`optimizely_data$$oeu[redacted]`); vor einer Base64-Folge bleibt nur ein
+  Präfix aus gewöhnlichen Wörtern, ein zufälliges Präfix geht mit der Kennung. Ein erstes Herstellerpräfix aus Buchstaben
+  (`ucData`, `_hjSession`, `_ga`) vor einer einzelnen kürzeren Kennung bleibt mit ihr (`ucData_hxnJq0hMNeT4UY`). Kürzere
+  Kennungen (`_hjSessionUser_1234567`, `TS01dc4fc6`) bleiben, weil die Website den Namen wählt, er für alle Besucher
+  gleich ist und der Dienstekatalog und die Allowlist ihn daran erkennen. Ein Cookie-Name, der kein Cookie-Token ist oder eine
+  Adresse enthält (auch ein buchstäbliches `@`, `(at)` oder `[at]`, gleich was folgt), wird `[redacted]`; ein
+  kodiertes `%40` ohne Domain bleibt (`AMCV_…%40AdobeOrg`); das Cookie zählt weiter. Aus Rechtstexten entfernt der
+  Scanner Cookie-Werte des Besuchers, auch sechs oder sieben Ziffern oder eine Kennungsfolge ohne Ziffer, aber keine
+  gewöhnlichen Wörter wie `marketing`; aus Web Storage nur Werte ab acht Zeichen mit Ziffer und die Werte von Feldern,
+  die wie eine Kennung heißen (`uid`, `consentId`, `kundennummer`; `clientPhone` und `userAgent` nicht), damit
+  Registernummer und Telefon aus einem Impressum-Cache im Text bleiben. Header-Werte speichert der Scanner nur nach
+  ihrer Grammatik: Schlüsselwörter, URLs und Namen ohne Kennungsfolge, Query-Werte erlaubter Parameter ebenfalls nur
+  ohne Kennungsfolge (mit eigener Form: Tag-IDs und die Meta-Pixel-Nummer in `id`, Schriftzahlen bis 1000 hinter `:`
+  oder `@` in `family`); alles andere ist `[redacted]`, und aufeinanderfolgende unbekannte Einträge einer Liste zählen
+  als einer. Von Headern wie `Server` und `X-Powered-By` bleiben nur Produkt und Version (`PHP/7.2.34`), ohne
+  Kommentare wie `(Ubuntu)`. Das temporäre Browserprofil enthält die Cookies der Website: Es wird nach jeder Phase
+  entfernt, Reste eines mit SIGKILL beendeten Scans räumt der nächste Scan auf.
 - **Messumgebung.** Banner reagieren auf Standort, IP-Reputation und Headless-Merkmale: Ein Scan aus einem
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst; mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2

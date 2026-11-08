@@ -6,7 +6,7 @@
  * finite numbers. A field that does not conform is dropped or neutral; extra fields are dropped.
  */
 import { z } from 'zod';
-import { isAriaRole, isTagName } from '../../core/redaction/page-names.ts';
+import { isAriaRole, isTagName, redactCmpLabel } from '../../core/redaction/page-names.ts';
 import type { CandidateControlKind } from '../types.ts';
 import { BLOCKING_METHODS, type ProbeArgs, type ProbeResult, type RawButton } from './probe-types.ts';
 import { isProbeSelector } from './selector.ts';
@@ -18,6 +18,15 @@ export const UNKNOWN_TAG = 'unknown';
 const NAME_MAX_LENGTH = 200;
 const COVERED_LINK_LABEL_MAX_LENGTH = 80;
 const MAX_COVERED_LINKS = 200;
+
+/**
+ * A control label of the page. The probe cuts it at `NAME_MAX_LENGTH`, so its last word may be the start of an id or an
+ * address (`… 4f3a9c1`, `… alice@exa`) that no mask recognizes: a label at the limit loses that word.
+ */
+function controlLabel(raw: string): string {
+  const text = raw.slice(0, NAME_MAX_LENGTH);
+  return redactCmpLabel(raw.length >= NAME_MAX_LENGTH ? text.replace(/\S*$/, '').trimEnd() : text);
+}
 const MAX_HEURISTIC_SIGNALS = 8;
 const MAX_SWITCHES = 200;
 
@@ -116,7 +125,7 @@ function probeResultSchema(args: ProbeArgs) {
       return {
         ...b,
         role: isAriaRole(b.role) ? b.role : implicitRole(tag),
-        name: b.name.slice(0, NAME_MAX_LENGTH),
+        name: controlLabel(b.name),
         tag,
         vendorRole: b.vendorRole !== null && vendorRoles.has(b.vendorRole) ? b.vendorRole : null,
         selector:
@@ -149,7 +158,7 @@ function probeResultSchema(args: ProbeArgs) {
       .catch({ width: 0, height: 0 }),
     coveredLinks: listOf(
       z.object({
-        label: z.string().max(COVERED_LINK_LABEL_MAX_LENGTH),
+        label: z.string().max(COVERED_LINK_LABEL_MAX_LENGTH).transform(redactCmpLabel),
         box: Box,
         coveredBy: z.enum(['banner', 'overlay']),
       }),

@@ -441,11 +441,12 @@ async function extractBounded(
   // The values of the visitor's cookies and storage, to take them out of the text; dropped once the text is read.
   const read = async (): Promise<DocumentRecord> => {
     const pdf = /application\/pdf/i.test(r.contentType);
-    const secrets = pdf ? [] : await s.jar.secretValues(s.browser.context, s.page);
+    const secrets = pdf ? { cookies: [], storage: [] } : await s.jar.secretValues(s.browser.context, s.page);
     try {
-      return await extractDocument(s.page, context, secrets);
+      return await extractDocument(s.page, context, secrets.cookies, secrets.storage);
     } finally {
-      secrets.length = 0;
+      secrets.cookies.length = 0;
+      secrets.storage.length = 0;
     }
   };
   try {

@@ -292,3 +292,38 @@ describe('a Domain= the response host may not set is no setter and no write afte
     expect(jar.cookies[0]).toMatchObject({ setter: 'http-response', setterHost: '203.0.113.7' });
   });
 });
+
+describe('a cookie name with an address: matched by the name as sent, stored as [redacted]', () => {
+  const NAMES = ['alice@example.test', 'bob@example.test'];
+
+  it('the accepted cookie keeps its setter and no second record is made for the Set-Cookie', async () => {
+    const { rec, send } = liveRecorder();
+    await send('https://www.example.test/a.gif', [`${NAMES[0]}=SECRET; Path=/`]);
+    const jar = new JarTracker(target, rec.setCookieOrigins);
+    await jar.snapshot(fakeContext([jarCookie(NAMES[0] as string, 'www.example.test')]), noFrames, pre);
+    jar.finalize(pre);
+
+    expect(jar.cookies.map((c) => [c.name, c.state, c.setter])).toEqual([
+      ['[redacted]', 'accepted', 'http-response'],
+    ]);
+    expect(rec.records[0]?.setCookieNames).toEqual(['[redacted]']);
+    expect(JSON.stringify([jar.cookies, rec.records])).not.toMatch(/alice|SECRET/);
+  });
+
+  it('a refused cookie is one attempted record, and two such cookies stay two', async () => {
+    const { rec, send } = liveRecorder();
+    await send(
+      'https://www.example.test/a.gif',
+      NAMES.map((name) => `${name}=SECRET; Path=/`),
+    );
+    const jar = new JarTracker(target, rec.setCookieOrigins);
+    await jar.snapshot(fakeContext([]), noFrames, pre);
+    jar.finalize(pre);
+
+    expect(jar.cookies.map((c) => [c.name, c.state])).toEqual([
+      ['[redacted]', 'attempted'],
+      ['[redacted]', 'attempted'],
+    ]);
+    expect(JSON.stringify(jar.cookies)).not.toMatch(/alice|bob/);
+  });
+});

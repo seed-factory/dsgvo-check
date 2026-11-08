@@ -76,9 +76,7 @@ describe('the names of <meta http-equiv> are bounded when they are stored', () =
       'set-cookie',
       'x-ua-compatible',
     ]);
-    expect(out.find((m) => m.name === 'content-security-policy')?.value).toBe(
-      'frame-ancestors portal.invalid',
-    );
+    expect(out.find((m) => m.name === 'content-security-policy')?.value).toBe('frame-ancestors [redacted]');
     expect(out.find((m) => m.name === 'set-cookie')?.value).toBe('[redacted]');
     expect(JSON.stringify(out)).not.toContain('zq7');
   });
@@ -95,12 +93,12 @@ describe('the names of <meta http-equiv> are bounded when they are stored', () =
         name: 'content-security-policy',
         value: "default-src 'self'; report-uri http://www.example.test/csp?visitor=[redacted]",
       },
-      { name: 'x-frame-options', value: 'ALLOW-FROM [redacted]@example.test' },
+      { name: 'x-frame-options', value: 'ALLOW-FROM [redacted]' },
       {
         name: 'link',
-        value: '<http://www.example.test/a.css>; rel=preload, https://cdn.example.test/p?uid=[redacted]',
+        value: '<http://www.example.test/a.css>; rel=preload, [redacted]',
       },
-      { name: 'content-language', value: 'mailto:[redacted]@example.test' },
+      { name: 'content-language', value: '[redacted]' },
     ]);
   });
 
@@ -110,7 +108,7 @@ describe('the names of <meta http-equiv> are bounded when they are stored', () =
       `<meta http-equiv="Content-Security-Policy" content='report-uri https://r.example.test/csp"zq7meta@mail.example'>`,
     ].join('');
     expect(storedMetaHttpEquiv(extractMeta(html).httpEquiv, BASE)).toEqual([
-      { name: 'x-frame-options', value: 'ALLOW-FROM http://www.example.test/embed?ref=[redacted]' },
+      { name: 'x-frame-options', value: 'ALLOW-FROM [redacted],[redacted]' },
       { name: 'content-security-policy', value: 'report-uri https://r.example.test' },
     ]);
   });

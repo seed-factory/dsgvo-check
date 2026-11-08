@@ -3,7 +3,8 @@
  * URLSearchParams iteration is quadratic); a reference loop checks byte-for-byte redaction semantics.
  */
 import { describe, expect, it } from 'vitest';
-import { containsAddress, REDACTED } from '../../../../src/core/url/email.ts';
+import { hasIdLikeRun } from '../../../../src/core/redaction/page-names.ts';
+import { containsAddress, hasAddressMarker, REDACTED } from '../../../../src/core/url/email.ts';
 import { QUERY_ALLOWLIST, QUERY_VALUE_RULES, sanitizeUrl } from '../../../../src/core/url/url.ts';
 import { expectLinearGrowth } from '../../../utils/scaling.ts';
 import { random } from './redaction-helpers.ts';
@@ -78,7 +79,13 @@ function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST
     for (const [k, v] of u.searchParams) {
       const name = k.toLowerCase();
       const rule = QUERY_VALUE_RULES[name];
-      const keep = allowlist.has(name) && !containsAddress(v) && (rule ? rule(v, u) : true);
+      const keep =
+        allowlist.has(name) &&
+        !containsAddress(v) &&
+        !hasAddressMarker(v) &&
+        !/[?=&#]/.test(v) &&
+        !v.includes('://') &&
+        (rule ? rule(v, u) : !hasIdLikeRun(v));
       out.append(containsAddress(k) ? REDACTED : k, keep ? v : REDACTED);
     }
     u.search = out.toString().replaceAll('%5Bredacted%5D', REDACTED);
@@ -87,7 +94,7 @@ function REFERENCE(raw: string, allowlist: ReadonlySet<string> = QUERY_ALLOWLIST
   return u.toString().slice(0, 2048);
 }
 
-describe('query output matches the previous implementation', () => {
+describe('query output matches the reference implementation', () => {
   const pieces = [
     'a',
     'b',

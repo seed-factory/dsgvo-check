@@ -306,3 +306,131 @@ describe('a legal document read with the values of the visitor', () => {
     expect(doc.parts[1]?.text).toBe(DECLARATION);
   });
 });
+
+describe('cookie values in legal text: identifiers are taken out, words of the page stay', () => {
+  it.each([
+    ['six digits', '123456', 'Consent-ID: 123456'],
+    ['seven digits', '1234567', 'Consent-ID: 1234567'],
+    ['24 capitals without a digit', 'ABCDEFGHIJKLMNOPQRSTUVWX', 'Consent-ID: ABCDEFGHIJKLMNOPQRSTUVWX'],
+    ['a mixed-case run without a digit', 'uHSRxnPAZmKQVeTWyDBcfGJL', 'Consent-ID: uHSRxnPAZmKQVeTWyDBcfGJL'],
+  ])('%s are removed', (_case, value, text) => {
+    expect(valueScrubber([value])(text)).toBe('Consent-ID: [redacted]');
+  });
+
+  it('a cookie value of 20 letters or more is removed, whatever words it reads as', () => {
+    const value = 'abcdefghijklmnopqrstuvwxyz';
+    expect(valueScrubber([value])(`Consent-ID: ${value}`)).toBe('Consent-ID: [redacted]');
+    expect(valueScrubber([], [], [value])(`Consent-ID: ${value}`)).toBe(`Consent-ID: ${value}`);
+  });
+
+  it.each(['marketing', 'statistics', 'accepted', 'necessary', 'functional'])(
+    'a cookie value %s leaves the text that contains it unchanged',
+    (value) => {
+      const text = `Marketing, statistics, accepted, necessary and functional cookies: ${value}.`;
+      expect(valueScrubber([value])(text)).toBe(text);
+    },
+  );
+});
+
+describe('weak pieces do not use up the room of strong ones, and site data in storage stays', () => {
+  const crowded = JSON.stringify({
+    recent: Array.from({ length: 60 }, (_, i) => 100_001 + i),
+    consentId: '4f3a9c1d2e7b4a9f',
+  });
+
+  it('a field that reads as an id comes before the numbers around it: ten of them do not use up its room', () => {
+    const numbers = Array.from({ length: 10 }, (_, i) => `p${i}=${100_000 + i * 11_111}`).join('|');
+    const value = `${numbers}|uid=7654321`;
+    expect(valueScrubber([value])('Ihre Nummer: 7654321')).toBe('Ihre Nummer: [redacted]');
+    expect(valueScrubber([], [], [value])('Ihre Nummer: 7654321')).toBe('Ihre Nummer: [redacted]');
+  });
+
+  it('a value full of six-digit numbers still has its id scrubbed', () => {
+    const text = 'Ihre Einwilligungs-ID: 4f3a9c1d2e7b4a9f';
+    expect(valueScrubber([crowded])(text)).toBe('Ihre Einwilligungs-ID: [redacted]');
+    expect(valueScrubber([], [], [crowded])(text)).toBe('Ihre Einwilligungs-ID: [redacted]');
+  });
+
+  const IMPRESSUM = 'Handelsregister: Amtsgericht Berlin HRB 123456. Telefon: +49 30 1234567';
+
+  it.each([
+    ['a JSON cache of the Impressum', '{"company":{"register":"HRB 123456","phone":"+49 30 1234567"}}'],
+    ['a postal code field', '{"zip":"123456"}'],
+    ['a phone field', '{"phone":"1234567"}'],
+    ['client fields that are no ids', '{"clientPhone":"1234567","clientRegister":"123456"}'],
+    ['a field of the user agent', '{"userAgent":"1234567","deviceMemory":"123456"}'],
+    ['a field of a client size', '{"clientHeight":"1234567","sessionStorageSize":"123456"}'],
+  ])('storage value %s leaves the register and phone numbers of the text', (_case, value) => {
+    expect(valueScrubber([], [], [value])(IMPRESSUM)).toBe(IMPRESSUM);
+  });
+
+  it.each([
+    ['a JSON field named consentId', '{"consentId":"1234567"}'],
+    ['a k=v field named uid', 'uid=1234567&theme=dark'],
+    ['a JSON field named visitor_id', "{'visitor_id': '1234567'}"],
+    ['a JSON field named kundennummer', '{"kundennummer":"1234567"}'],
+    ['a JSON field named user', '{"user":"1234567"}'],
+    ['a field named client_id', 'client_id=1234567'],
+    ['a JSON field inside a JSON string', String.raw`{"consent":"{\"uid\":\"1234567\"}"}`],
+    ['a field in quotes escaped twice', String.raw`{\\"sessionId\\":\\"1234567\\"}`],
+  ])('storage value with %s still counts when its key reads as an id', (_case, value) => {
+    expect(valueScrubber([], [], [value])('Ihre Nummer: 1234567')).toBe('Ihre Nummer: [redacted]');
+  });
+
+  it('a cookie value of seven digits is removed from the text, a register number of six digits stays', () => {
+    expect(valueScrubber(['1234567'])(IMPRESSUM)).toBe(
+      'Handelsregister: Amtsgericht Berlin HRB 123456. Telefon: +49 30 [redacted]',
+    );
+  });
+});
+
+describe('storage fields distinguish visitor ids from business fields', () => {
+  it.each(['registerId', 'companyId', 'taxId', 'vatId', 'ustId', 'registerNumber'])(
+    'keeps numbers in %s',
+    (key) => {
+      const text = 'HRB 123456, DE123456789, +49 30 1234567';
+      expect(valueScrubber([], [], [JSON.stringify({ [key]: '123456' })])(text)).toBe(text);
+    },
+  );
+  it.each(['userId', 'visitorID', 'consent_id', 'sessionToken', 'kundennummer'])('scrubs %s', (key) => {
+    expect(valueScrubber([], [], [JSON.stringify({ [key]: '123456' })])('ID: 123456')).toBe('ID: [redacted]');
+  });
+});
+
+describe('business numbers in text', () => {
+  it.each([
+    ['registerId', '123456', 'HRB 123456', 'HRB 123456'],
+    ['vatId', 'DE123456789', 'USt-IdNr.: DE123456789', 'USt-IdNr.: DE123456789'],
+    ['taxNumber', '12/345/67890', 'Steuernummer: 12/345/67890', 'Steuernummer: 12/345/67890'],
+    ['companyId', '123456', 'Amtsgericht Berlin HRB 123456 B', 'Amtsgericht Berlin HRB 123456 B'],
+    ['anonymousId', '123456', 'Ihre ID: 123456', 'Ihre ID: [redacted]'],
+    ['userId', '7654321', 'Kunde 7654321', 'Kunde [redacted]'],
+  ])('%s in %s', (key, value, text, expected) => {
+    expect(valueScrubber([], [], [JSON.stringify({ [key]: value })])(text)).toBe(expected);
+  });
+});
+
+describe('register and tax markers protect numbers in both passes', () => {
+  it.each([
+    'HRB',
+    'HRA',
+    'GnR',
+    'PR',
+    'VR',
+    'USt-IdNr.',
+    'USt-ID',
+    'Umsatzsteuer-Identifikationsnummer',
+    'Steuernummer',
+    'St.-Nr.',
+    'W-IdNr.',
+    'VAT',
+  ])('keeps a number after %s', (marker) => {
+    const scrub = valueScrubber(['123456789']);
+    const text = `${marker}: 123456789`;
+    expect(scrub(text)).toBe(text);
+    expect(scrub.outsideAddresses(text)).toBe(text);
+  });
+  it('does not protect a number after a longer word', () => {
+    expect(valueScrubber(['123456789'])('notHRB: 123456789')).toBe('notHRB: [redacted]');
+  });
+});

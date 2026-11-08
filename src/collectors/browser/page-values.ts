@@ -225,10 +225,3 @@ const MAX_HOSTNAME = 253;
 export function isHostname(v: unknown): v is string {
   return typeof v === 'string' && v.length <= MAX_HOSTNAME && HOSTNAME.test(v);
 }
-
-/** No `=`, `;`, `,`, whitespace or control character: what RFC 6265 leaves out of a cookie name. */
-const COOKIE_NAME = /^[^=;,\s\p{Cc}]{1,200}$/u;
-
-export function isCookieName(v: unknown): v is string {
-  return typeof v === 'string' && COOKIE_NAME.test(v);
-}

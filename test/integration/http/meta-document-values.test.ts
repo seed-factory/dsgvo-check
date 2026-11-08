@@ -7,7 +7,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { hdr01 } from '../../../src/checks/http/hdr-01.ts';
 import { tls01 } from '../../../src/checks/http/tls-01.ts';
 import { createHttpCollector } from '../../../src/collectors/http/index.ts';
-import { MAX_HEADER_VALUE } from '../../../src/core/redaction/headers.ts';
 import type { HttpSection } from '../../../src/core/snapshot/http.ts';
 import { type FixtureServer, startFixtureServer } from '../../fixture-server/server.ts';
 import { makeSnapshot, makeTarget, runCheck, variantsOf } from '../../utils/snapshot-builder.ts';
@@ -140,7 +139,7 @@ describe('the meta values of the document are stored reduced', () => {
     // the refresh keeps its delay and the path, the query is redacted
     expect(by('refresh')?.value).toMatch(/^0; url=http:\/\/www\.metaval\.test\/next\?/);
     // the CSP keeps its directives; the path of the scheme-less source is gone
-    expect(by('content-security-policy')?.value).toBe('frame-ancestors portal.invalid');
+    expect(by('content-security-policy')?.value).toBe('frame-ancestors [redacted]');
     // a cookie of a meta tag is no stored value at all
     expect(by('set-cookie')?.value).toBe('[redacted]');
     expect(by('x-ua-compatible')?.value).toBe('[redacted]');
@@ -232,12 +231,11 @@ describe('large meta values of the start document are read in linear time', () =
     expect(refresh?.truncated).toBe(true);
   });
 
-  it('a link of 56 000 opening brackets: stored cut and flagged, the loop is not held up', async () => {
+  it('a link of 56 000 opening brackets: stored as one redacted part, the loop is not held up', async () => {
     const { value: http, stallMs } = await longestStall(() => collectHttpOnly('www.metaredos-link.test'));
     expect(stallMs).toBeLessThan(STALL_LIMIT_MS);
     const link = start(http)?.metaHttpEquiv.find((m) => m.name === 'link');
-    expect(link?.truncated).toBe(true);
-    expect(link?.value.length).toBeLessThanOrEqual(MAX_HEADER_VALUE);
+    expect(link?.value).toBe('[redacted]');
   });
 
   it('a referrer of 28 000 tokens: the loop is not held up, the keyword is kept and the filler is not', async () => {

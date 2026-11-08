@@ -133,13 +133,12 @@ describe('an address in the opaque part of a URL with another scheme is masked',
   it('the way into the snapshot: Location, Refresh and Link carry such a value through sanitizeUrl', () => {
     const base = 'https://shop.example.test/';
     const stored = (name: string, value: string) => storedHeaderRecord(name, value, base, sanitizeUrl).value;
-    expect(stored('location', `foo:alice@${M}`)).toBe(`foo:${REDACTED}@${M}`);
-    expect(stored('location', `javascript:alert(1)alice@${M}`)).toBe(`javascript:alert(1)${REDACTED}@${M}`);
-    expect(stored('refresh', `0; url=sms:alice%40${M}`)).toBe(`0; url=sms:${REDACTED}@${M}`);
-    expect(stored('refresh', `5;URL='webcal:alice@${M}'`)).toBe(`5; url=webcal:${REDACTED}@${M}`);
-    expect(stored('link', `<xmpp:alice@${M}>; rel="alternate"`)).toBe(
-      `<xmpp:${REDACTED}@${M}>; rel="alternate"`,
-    );
+    expect(stored('location', `foo:alice@${M}`)).toBe(`foo:${REDACTED}`);
+    expect(stored('location', `javascript:alert(1)alice@${M}`)).toBe(`javascript:${REDACTED}`);
+    expect(stored('refresh', `0; url=sms:alice%40${M}`)).toBe(`0; url=sms:${REDACTED}`);
+    expect(stored('refresh', `5;URL='webcal:alice@${M}'`)).toBe(`5; url=webcal:${REDACTED}`);
+    // a target of another scheme than http(s) keeps nothing after the scheme, in Link, Location and Refresh
+    expect(stored('link', `<xmpp:alice@${M}>; rel="alternate"`)).toBe(`<xmpp:${REDACTED}>; rel="alternate"`);
     // a relative target resolves to a path of the page: the path is masked, also when the address is encoded twice
     expect(stored('location', `/alice%2540${M}`)).toBe(`https://shop.example.test/${REDACTED}@${M}`);
   });

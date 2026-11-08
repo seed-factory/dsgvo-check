@@ -134,8 +134,44 @@ describe('parseProbeResult', () => {
     ['a font size that is no number', { fontSizePx: 'zq7' }, { fontSizePx: null }],
     ['a flag that is no boolean', { actionable: 'zq7' }, { actionable: false }],
     ['a name that is no string', { name: { zq7: 1 } }, { name: '' }],
+    ['a name with an identifier word', { name: 'Accept 4f3a9c1d2e7b4a9f' }, { name: 'Accept [redacted]' }],
+    [
+      'a name with a digit-free identifier word',
+      { name: 'OK uHSRxnPAZmKQVeTWyDBcfGJL' },
+      { name: 'OK [redacted]' },
+    ],
+    [
+      'a name with hex groups joined by blanks',
+      { name: 'Accept 4f3a 9c1d 2e7b 4a9f' },
+      { name: 'Accept [redacted]' },
+    ],
+    [
+      'a name cut by the probe in the middle of an id',
+      { name: `${'Bitte fortfahren '.repeat(10)}${'x'.repeat(10)}: uHSRxnPAZmKQVeTWyDBcfGJL`.slice(0, 200) },
+      { name: `${'Bitte fortfahren '.repeat(10)}${'x'.repeat(10)}:` },
+    ],
+    ['a name in capitals', { name: 'DATENSCHUTZEINSTELLUNGEN' }, { name: 'DATENSCHUTZEINSTELLUNGEN' }],
+    ['counterexample: an accept label', { name: 'Alle akzeptieren' }, { name: 'Alle akzeptieren' }],
+    [
+      'counterexample: a reject label',
+      { name: 'Nur notwendige Cookies' },
+      { name: 'Nur notwendige Cookies' },
+    ],
+    ['counterexample: a settings label', { name: 'Einstellungen' }, { name: 'Einstellungen' }],
+    ['counterexample: a partner count', { name: 'Partner (12)' }, { name: 'Partner (12)' }],
   ])('%s', (_case, forged, expected) => {
     expect(firstButton(forged)).toMatchObject(expected);
+  });
+
+  it.each([
+    ['an identifier word', 'Impressum 4f3a9c1d2e7b4a9f', 'Impressum [redacted]'],
+    ['an identifier in capitals-free letters', 'Impressum uHSRxnPAZmKQVeTWyDBcfGJL', 'Impressum [redacted]'],
+    ['counterexample: a footer link in capitals', 'DATENSCHUTZERKLAERUNG', 'DATENSCHUTZERKLAERUNG'],
+    ['counterexample: an Impressum link in capitals', 'ANBIETERKENNZEICHNUNG', 'ANBIETERKENNZEICHNUNG'],
+    ['counterexample: plain words', 'Datenschutzerklärung', 'Datenschutzerklärung'],
+  ])('a covered link label with %s', (_case, label, expected) => {
+    const parsed = parse(result({ coveredLinks: [{ label, box: BOX, coveredBy: 'banner' }] }));
+    expect(parsed.coveredLinks.map((l) => l.label)).toEqual([expected]);
   });
 
   it('drops fields the probe does not return, and buttons that are no objects', () => {

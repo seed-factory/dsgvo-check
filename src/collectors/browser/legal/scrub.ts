@@ -7,9 +7,11 @@
  * The page chooses both the values and the text, and the search runs on the event loop, where no timeout can stop it.
  * So all pieces are searched in one pass (Aho–Corasick): the time grows with the text, not with text times pieces.
  */
+import { loadSection } from '../../../core/data/load.ts';
 import { hasIdLikeRun } from '../../../core/redaction/page-names.ts';
 import { addressSpans, REDACTED, safeDecode } from '../../../core/url/email.ts';
 import { registrableDomain } from '../../../core/url/url.ts';
+import { businessMarkersSection } from './sections.ts';
 
 /**
  * The free-text redaction rewrites a link it sanitizes into the form the URL parser gives it (a lower-case host,
@@ -23,11 +25,15 @@ export interface ValueScrubber {
   outsideAddresses(text: string): string;
 }
 
-/** Shorter pieces, and pieces without a digit, are words of the page as often as they are values. */
+/** Short digit-bearing pieces often are words of the page rather than values. */
 const MIN_SECRET_CHARS = 8;
+/** An ID-like run shorter than this (a 6-digit number, a register or postal number) is no value of a visitor. */
+const MIN_WEAK_SECRET_CHARS = 6;
 /** A piece longer than this is a whole JSON blob or a cache entry, which no page prints. */
 const MAX_SECRET_CHARS = 512;
 const MAX_PIECES_PER_VALUE = 50;
+/** Weak pieces count apart, so that a value full of numbers cannot use up the room of the strong ones. */
+const MAX_WEAK_PIECES_PER_VALUE = 10;
 const MAX_SECRETS = 1_000;
 /** What separates the fields of a cookie or storage value: JSON and JS object syntax, `k=v|k=v` lists, whitespace. */
 const FIELD_SEPARATOR = /[^A-Za-z0-9+/=_.~-]+/;
@@ -38,8 +44,33 @@ const ADDRESS_SEPARATOR = /[/=+]+/;
 const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 const TOP_LABEL = /^[a-z]{2,63}$/i;
 
-const idLike = (piece: string): boolean =>
-  piece.length >= MIN_SECRET_CHARS && piece.length <= MAX_SECRET_CHARS && /\d/.test(piece);
+/** Eight characters or more with a digit: an id, a hash, a stamp. */
+const isStrong = (piece: string): boolean =>
+  piece.length <= MAX_SECRET_CHARS && piece.length >= MIN_SECRET_CHARS && /\d/.test(piece);
+/** A run of this many letters or more with no digit is an encoded id as well as a word: a visitor's value is not read as text. */
+const MIN_LETTER_ID_CHARS = 20;
+const LETTERS_ONLY = /^[A-Za-z]+$/;
+/** An ID-like run that is no strong piece: six or seven digits, a long run of letters without a digit. */
+const isWeak = (piece: string): boolean =>
+  piece.length <= MAX_SECRET_CHARS &&
+  piece.length >= MIN_WEAK_SECRET_CHARS &&
+  !isStrong(piece) &&
+  (hasIdLikeRun(piece) || (piece.length >= MIN_LETTER_ID_CHARS && LETTERS_ONLY.test(piece)));
+
+/**
+ * `key: value`, `"key":"value"` and `key=value` in a stored value: the key, then a value of six characters or more. The
+ * quotes may be escaped, as in JSON inside a JSON string (`{\"uid\":\"1234567\"}`).
+ */
+const FIELD_PAIR =
+  /\\{0,3}["']?([A-Za-z0-9_.-]{1,40})\\{0,3}["']?[ \t]{0,3}[:=][ \t]{0,3}\\{0,3}["']?([A-Za-z0-9+/_.~-]{6,512})/g;
+/**
+ * A key that reads as an identifier: `id`, `uid`, `sid`, `consentId`, `visitor_token`, `user`, `kundennummer`. A word
+ * that names a thing of the visitor counts at the end of the key only, since `clientPhone` and `userAgent` are no ids.
+ */
+const ID_KEY_WORD =
+  /(?:^|[^a-z])(?:id|uid|sid|cid|guid|uuid)$|(?:token|consent|session|visitor|user|client|device|kunden)(?:[_-]?(?:id|key|token|nummer))?$/i;
+const ID_KEY_CAMEL = /[a-z0-9]Id$|[A-Z]ID$/;
+const isIdKey = (key: string): boolean => ID_KEY_WORD.test(key) || ID_KEY_CAMEL.test(key);
 
 /** Two labels or more, the last of letters: `www.autohaus24online.de`. */
 function isHostName(token: string): boolean {
@@ -71,10 +102,23 @@ function siteLabels(host: string, sites: ReadonlySet<string>): number {
  * (`u-4f3a9c1d2e7b.www.site.de`, `/r/Xk2mQ9pLw8eR1tZ3`); a value with one is not taken whole. A host of any other site
  * goes by its labels like any value (`[redacted].tracker.test`).
  */
-function piecesOf(value: string, sites: ReadonlySet<string>): string[] {
-  const pieces = new Set<string>();
+function piecesOf(value: string, sites: ReadonlySet<string>, cookie: boolean): string[] {
+  const strong = new Set<string>();
+  const weak = new Set<string>();
+  const once = safeDecode(value);
+  const forms = new Set([value, once, safeDecode(once)]);
+  // Web Storage holds site data too (a cache of the Impressum has its register and phone numbers), so a weak piece
+  // counts there only as the value of a field that reads as an id; a cookie value is the visitor's whole.
+  const idFieldValues = new Set<string>();
+  for (const form of forms) {
+    for (const m of form.matchAll(FIELD_PAIR)) if (isIdKey(m[1]!)) idFieldValues.add(m[2]!);
+  }
   const add = (p: string) => {
-    if (pieces.size < MAX_PIECES_PER_VALUE && idLike(p)) pieces.add(p);
+    if (isStrong(p)) {
+      if (strong.size < MAX_PIECES_PER_VALUE) strong.add(p);
+    } else if ((cookie || idFieldValues.has(p)) && isWeak(p) && weak.size < MAX_WEAK_PIECES_PER_VALUE) {
+      weak.add(p);
+    }
   };
   const addId = (p: string) => {
     if (hasIdLikeRun(p)) add(p);
@@ -96,8 +140,9 @@ function piecesOf(value: string, sites: ReadonlySet<string>): string[] {
       }
     }
   };
-  const once = safeDecode(value);
-  for (const form of new Set([value, once, safeDecode(once)])) {
+  // The values of id fields come first, so that a value full of other numbers cannot use up the room they need.
+  for (const p of idFieldValues) add(p);
+  for (const form of forms) {
     const fields = form.split(FIELD_SEPARATOR);
     const ofSite = fields.map((f) => f.split(ADDRESS_SEPARATOR).some((t) => siteLabels(t, sites) > 0));
     if (!ofSite.includes(true)) addValue(form.trim());
@@ -113,7 +158,7 @@ function piecesOf(value: string, sites: ReadonlySet<string>): string[] {
       for (const part of field.split(PART_SEPARATOR)) add(part);
     }
   }
-  return [...pieces];
+  return [...strong, ...weak];
 }
 
 /** Code units per state in the transition keys: `state * UNITS + unit`. */
@@ -281,24 +326,56 @@ function deferredSpans(text: string): Array<readonly [number, number]> {
   return spans.sort((a, b) => a[0] - b[0]);
 }
 
+const businessMarkers = loadSection(businessMarkersSection);
+const markerPattern = businessMarkers.markers
+  .map((marker) => marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const BUSINESS_NUMBER = new RegExp(
+  `(?<![\\p{L}\\p{N}])(?:${markerPattern})(?![\\p{L}\\p{N}])\\s*[:.#-]?\\s*[A-Za-z0-9][A-Za-z0-9/.-]*`,
+  'giu',
+);
+
+function businessSpans(text: string): Array<readonly [number, number]> {
+  return Array.from(
+    text.matchAll(BUSINESS_NUMBER),
+    (match) => [match.index, match.index + match[0].length] as const,
+  );
+}
+
 const IDENTITY: ValueScrubber = Object.assign((text: string) => text, {
   outsideAddresses: (text: string) => text,
 });
 
 /**
- * A scrubber for `values` (cookie values first: they hold the consent IDs); identity without values. `sites` are the
- * hosts or registrable domains of the site whose addresses the values may hold: the document's and the scan's.
+ * A scrubber for `values` (cookie values: they hold the consent IDs) and `storageValues`; identity without values.
+ * `sites` are the hosts or registrable domains of the site whose addresses the values may hold: the document's and the
+ * scan's.
  */
-export function valueScrubber(values: readonly string[], sites: readonly string[] = []): ValueScrubber {
+export function valueScrubber(
+  values: readonly string[],
+  sites: readonly string[] = [],
+  storageValues: readonly string[] = [],
+): ValueScrubber {
   const domains = new Set(sites.map(domainOf));
   const secrets = new Set<string>();
-  for (const v of values) {
-    if (secrets.size >= MAX_SECRETS) break;
-    for (const p of piecesOf(v, domains)) secrets.add(p);
+  for (const [list, cookie] of [
+    [values, true],
+    [storageValues, false],
+  ] as const) {
+    for (const v of list) {
+      if (secrets.size >= MAX_SECRETS) break;
+      for (const p of piecesOf(v, domains, cookie)) secrets.add(p);
+    }
   }
   if (secrets.size === 0) return IDENTITY;
   const automaton = automatonOf([...secrets].slice(0, MAX_SECRETS));
-  return Object.assign((text: string) => scrubWith(automaton, text, []), {
-    outsideAddresses: (text: string) => scrubWith(automaton, text, deferredSpans(text)),
+  return Object.assign((text: string) => scrubWith(automaton, text, businessSpans(text)), {
+    outsideAddresses: (text: string) =>
+      scrubWith(
+        automaton,
+        text,
+        [...businessSpans(text), ...deferredSpans(text)].sort((a, b) => a[0] - b[0]),
+      ),
   });
 }

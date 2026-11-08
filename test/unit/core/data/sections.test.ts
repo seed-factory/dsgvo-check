@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { claimsSection } from '../../../../src/checks/browser/policy-claims.ts';
 import { cmpSections } from '../../../../src/cmp/adapters-data.ts';
-import { legalSections } from '../../../../src/collectors/browser/legal/sections.ts';
+import { businessMarkersSection, legalSections } from '../../../../src/collectors/browser/legal/sections.ts';
 import { browserSections } from '../../../../src/collectors/browser/rules.ts';
 import { dnsSections } from '../../../../src/collectors/dns/rules.ts';
 import { httpSections } from '../../../../src/collectors/http/rules.ts';
@@ -22,7 +22,7 @@ const DIRS: Array<{ dir: string; sections: readonly DataSection<unknown>[]; own:
   { dir: 'browser', sections: browserSections, own: [] },
   { dir: 'http', sections: httpSections, own: [] },
   { dir: 'dns', sections: dnsSections, own: [] },
-  { dir: 'legal', sections: [...legalSections, claimsSection], own: ['legal'] },
+  { dir: 'legal', sections: [...legalSections, claimsSection, businessMarkersSection], own: ['legal'] },
 ];
 
 /** Directories whose files have dedicated loaders and tests (ruleset, texts, services, routing, report template). */

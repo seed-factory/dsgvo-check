@@ -30,7 +30,11 @@ export interface ProbeNameRules {
     token: PagePattern;
     tokenSplit: PagePattern;
     word: PagePattern;
+    version: PagePattern;
+    smallNumber: PagePattern;
     wordsWithGroup: PagePattern;
+    lettersSplit: PagePattern;
+    letters: PagePattern;
   };
   tag: PagePattern & { maxLength: number };
   /** The roles a `role` token may name; the first listed token counts, else the implicit role of the element. */

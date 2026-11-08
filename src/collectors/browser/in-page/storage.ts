@@ -19,7 +19,8 @@ export interface RawStorage {
 
 /** Keys, value LENGTHS and IndexedDB database names of this frame; no values. */
 export async function storageInPage(arg: { maxKeys: number }): Promise<RawStorage> {
-  const MAX_NAME_CHARS = 200;
+  // Twice the 200 characters Node keeps: the redaction of an address runs on the longer text, then Node cuts it.
+  const MAX_NAME_CHARS = 400;
   const out: RawStorage = { origin: String(location.origin), local: [], session: [], idb: [] };
   const read = (s: any, into: RawStorage['local']) => {
     for (let i = 0; i < s.length && into.length < arg.maxKeys; i++) {
@@ -91,7 +92,8 @@ export function cookieHookInit(): void {
   const KEY = Symbol.for('dsgvo-check.cookie-writes');
   if (window[KEY]) return;
   const MAX_WRITES = 1000;
-  const MAX_NAME_CHARS = 200;
+  // Twice the 200 characters Node keeps, like the storage keys: an address is masked on the longer text, then cut.
+  const MAX_NAME_CHARS = 400;
   const MAX_DOMAIN_CHARS = 253;
   const log: RawCookieWrite[] = [];
 
@@ -197,7 +199,7 @@ export function storageHookInit(): void {
   const KEY = Symbol.for('dsgvo-check.storage-writes');
   if (window[KEY]) return;
   const MAX_WRITES = 2000;
-  const MAX_NAME_CHARS = 200;
+  const MAX_NAME_CHARS = 400;
   const log: Array<{ type: 'localStorage' | 'sessionStorage'; key: string; t: number }> = [];
   Object.defineProperty(window, KEY, { value: log, enumerable: false });
 

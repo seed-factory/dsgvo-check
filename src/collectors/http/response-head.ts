@@ -1,7 +1,12 @@
 // The head of a response as the snapshot keeps it: headers through the core normalizer shared with the browser, cookie
 // names without values, and the few fields the collector reads itself.
 import type { Dispatcher } from 'undici';
-import { setCookieName, snapshotHeaderRecords } from '../../core/redaction/headers.ts';
+import {
+  setCookieName,
+  snapshotHeaderRecords,
+  storedCookieName,
+  storedHeaderName,
+} from '../../core/redaction/headers.ts';
 import type { HeaderRecord } from '../../core/snapshot/common.ts';
 
 /** Only the cookie names of this header reach the snapshot, never the values. */
@@ -29,7 +34,7 @@ export function snapshotHeaders(
     for (const v of Array.isArray(value) ? value : [value]) {
       if (n === SET_COOKIE) {
         const c = setCookieName(v);
-        if (c !== null) setCookieNames.push(c);
+        if (c !== null) setCookieNames.push(storedCookieName(c));
         continue;
       }
       flat.push({ name: n, value: v });
@@ -40,7 +45,9 @@ export function snapshotHeaders(
   return {
     headers: snapshotHeaderRecords(flat, base),
     setCookieNames,
-    blankHeaderNames: [...new Set(flat.map((h) => h.name))].filter((name) => !filled.has(name)),
+    blankHeaderNames: [...new Set(flat.map((h) => h.name))]
+      .filter((name) => !filled.has(name))
+      .map(storedHeaderName),
   };
 }
 

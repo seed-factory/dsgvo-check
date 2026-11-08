@@ -5,9 +5,62 @@
 import { describe, expect, it } from 'vitest';
 import { REDACTED } from '../../../../src/core/url/email.ts';
 import { QUERY_ALLOWLIST, sanitizeUrl } from '../../../../src/core/url/url.ts';
+import { expectLinearGrowth } from '../../../utils/scaling.ts';
 import { expectStable, M, MARK } from './redaction-helpers.ts';
 
 const SHOP = 'https://shop.example.test';
+
+describe('the family value of a font URL keeps font numbers only', () => {
+  const FONTS = 'https://fonts.googleapis.com/css2';
+  it.each([
+    ['axes with ranges', 'Roboto+Flex:opsz,wght@8..144,100..1000'],
+    ['tuples', 'Open+Sans:ital,wght@0,400;1,700'],
+    ['one family with an axis and a weight', 'Roboto:wght@400'],
+    ['a file name with a scale', 'Roboto@2x.png'],
+  ])('keeps %s', (_case, family) => {
+    const out = sanitizeUrl(`${FONTS}?family=${family}`);
+    expect(decodeURIComponent(out)).toBe(`${FONTS}?family=${family}`);
+  });
+
+  it.each([
+    ['a card-like number', '1234,5678,9012,3456'],
+    ['a phone-like number', '49.30.1234.5678'],
+    ['numbers above 1000 after a colon', 'Roboto:1234,5678,9012,3456'],
+  ])('removes %s', (_case, family) => {
+    expect(sanitizeUrl(`${FONTS}?family=${family}`)).toBe(`${FONTS}?family=${REDACTED}`);
+  });
+});
+
+describe('the family value of a font URL is read in linear time', () => {
+  it.each([
+    ['letters of two cases', 'aB'],
+    ['letters and commas', 'a,'],
+    ['axis tags without a tuple', 'wght,ital'],
+    ['tuples', 'ital,wght@0,400;'],
+  ])('%s', (_case, unit) => {
+    const url = (size: number) =>
+      `https://fonts.googleapis.com/css2?family=${unit.repeat(Math.ceil(size / unit.length))}`;
+    expectLinearGrowth(
+      () => sanitizeUrl(url(8 * 1024)),
+      () => sanitizeUrl(url(64 * 1024)),
+    );
+  });
+});
+
+describe('allowlisted query values keep no address marker', () => {
+  it.each([
+    ['https://www.google.com/recaptcha/api.js?hl=alice@intranet', 'hl'],
+    ['https://x.test/p?hl=alice(at)intranet', 'hl'],
+    ['https://x.test/p?display=alice@corp', 'display'],
+    ['https://maps.googleapis.com/maps/api/js?libraries=alice(at)intranet', 'libraries'],
+    ['https://fonts.googleapis.com/css2?family=Roboto@alice', 'family'],
+    ['https://fonts.googleapis.com/css2?family=alice@intranet', 'family'],
+    ['https://fonts.googleapis.com/css2?family=Roboto:alice@intranet', 'family'],
+  ])('%s', (url, key) => {
+    expect(sanitizeUrl(url)).toContain(`${key}=${REDACTED}`);
+    expect(sanitizeUrl(url)).not.toContain('alice');
+  });
+});
 
 describe('ordinary URLs keep their meaning', () => {
   it.each([
@@ -166,6 +219,58 @@ describe('the query', () => {
     expect(sanitizeUrl(expected)).toBe(expected);
   });
 
+  // an allowed name keeps a setting; a value with an ID-like run is a visitor's
+  it.each([
+    ['a UUID', 'http://h.test/p?hl=123e4567-e89b-12d3-a456-426614174000', `http://h.test/p?hl=${REDACTED}`],
+    ['a base64 token', 'http://h.test/p?render=Xk2mQ9pLw8eR1tZ3aB4cD5', `http://h.test/p?render=${REDACTED}`],
+    ['a timestamp', 'http://h.test/p?en=1730291234567', `http://h.test/p?en=${REDACTED}`],
+    ['a hex id', 'http://h.test/p?ver=4f3a9c1d2e7b4a9f', `http://h.test/p?ver=${REDACTED}`],
+    [
+      'a hex id in a font family',
+      'http://h.test/css?family=4f3a9c1d2e7b4a9f',
+      `http://h.test/css?family=${REDACTED}`,
+    ],
+    [
+      'a number in a font family',
+      'http://h.test/css?family=Roboto:4711234567',
+      `http://h.test/css?family=${REDACTED}`,
+    ],
+    [
+      'a UUID in a matrix parameter',
+      'http://h.test/a;hl=123e4567-e89b-12d3-a456-426614174000/b',
+      `http://h.test/a;hl=${REDACTED}/b`,
+    ],
+    ['counterexample: a language', 'http://h.test/p?hl=de-DE', 'http://h.test/p?hl=de-DE'],
+    [
+      'counterexample: fonts with axes',
+      'http://h.test/css2?family=Roboto:ital,wght@0,400;1,700&display=swap',
+      'http://h.test/css2?family=Roboto%3Aital%2Cwght%400%2C400%3B1%2C700&display=swap',
+    ],
+    [
+      'counterexample: fonts of the first version',
+      'http://h.test/css?family=Open+Sans:400,700i|Lato',
+      'http://h.test/css?family=Open+Sans%3A400%2C700i%7CLato',
+    ],
+    [
+      'counterexample: a tag id',
+      'http://h.test/gtag/js?id=G-ABCDEF1234',
+      'http://h.test/gtag/js?id=G-ABCDEF1234',
+    ],
+    [
+      'counterexample: a container id',
+      'http://h.test/gtm.js?id=GTM-K7X9ABC',
+      'http://h.test/gtm.js?id=GTM-K7X9ABC',
+    ],
+    [
+      'counterexample: a version',
+      'http://h.test/a.js?ver=6.4.2&v=2.1.0',
+      'http://h.test/a.js?ver=6.4.2&v=2.1.0',
+    ],
+  ])('an allowed name keeps no id: %s', (_case, input, expected) => {
+    expect(sanitizeUrl(input)).toBe(expected);
+    expect(sanitizeUrl(expected)).toBe(expected);
+  });
+
   it('the allowlist it is given decides, for query and matrix names alike', () => {
     const allow = new Set(['ev', 'hl']);
     expect(sanitizeUrl('http://h.test/p?ev=PageView&hl=de&x=1', allow)).toBe(
@@ -193,5 +298,20 @@ describe('mailto: recipients are masked, headers dropped', () => {
     [`mailto:alice@${M}?subject=x`, `mailto:${REDACTED}@${M}`],
   ])('%s', (input, expected) => {
     expect(expectStable(input)).toBe(expected);
+  });
+});
+
+it.each(['?', '=', '&', '#', '://'])('redacts a nested query delimiter %s', (delimiter) => {
+  const value = `prefix${delimiter}suffix`;
+  const url = new URL('https://a.test/');
+  url.searchParams.set('hl', value);
+  expect(decodeURIComponent(sanitizeUrl(url.href))).toBe('https://a.test/?hl=[redacted]');
+});
+
+describe('nested queries in allowed values', () => {
+  it.each(['family', 'hl', 'id'])('redacts %s', (key) => {
+    expect(sanitizeUrl(`https://fonts.googleapis.com/css2?${key}=Roboto%3Fuid%3Dsecret`)).toBe(
+      `https://fonts.googleapis.com/css2?${key}=[redacted]`,
+    );
   });
 });
