@@ -29,6 +29,7 @@ node node_modules/playwright-core/cli.js install --no-shell chromium
 corepack pnpm typecheck && corepack pnpm lint
 corepack pnpm test:unit          # L0–L1, без браузера и сети; `corepack pnpm test` запускает только их
 corepack pnpm test:integration   # L2: настоящий Chromium, локальные серверы, без интернета
+corepack pnpm test:changed       # только затронутые тесты: merge-base с main + незакоммиченное
 corepack pnpm build && corepack pnpm test:e2e   # build пишет и schema/report.schema.json из zod
 corepack pnpm registry           # перегенерировать таблицу вариантов в README.md
 corepack pnpm env:example        # перегенерировать .env.example из схемы настроек (env:example:check — проверка)

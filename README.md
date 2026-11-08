@@ -1003,6 +1003,7 @@ Den vollständigen Baum und die Architektur beschreibt [docs/architecture.md](do
 | `corepack pnpm test`                                | Unit-Tests (dasselbe wie `test:unit`)                                 |
 | `corepack pnpm test:integration`                    | Integrationstests mit echtem Chromium                                 |
 | `corepack pnpm test:e2e`                            | End-to-End-Tests gegen das gebaute CLI                                |
+| `corepack pnpm test:changed`                        | Nur betroffene Tests (siehe [Tests](#tests))                          |
 | `corepack pnpm test:live`                           | Live-Tests gegen echte Websites (nie Teil von `test`)                 |
 | `corepack pnpm registry` und `registry:check`       | Variantentabelle in diesem README erzeugen bzw. auf Abweichung prüfen |
 | `corepack pnpm env:example` und `env:example:check` | `.env.example` aus dem Einstellungsschema erzeugen bzw. prüfen        |
@@ -1020,6 +1021,13 @@ Den vollständigen Baum und die Architektur beschreibt [docs/architecture.md](do
 
 Eine Datei: `corepack pnpm vitest run test/unit/core/evaluation/gate.test.ts`. Der Docker-Teil von L3 ist optional:
 `DSGVO_E2E_IMAGE=dsgvo-check:dev corepack pnpm vitest run --project e2e test/e2e/docker.e2e.test.ts`.
+
+**Betroffene Tests.** `corepack pnpm test:changed` wählt Tests über den Importgraphen von Vitest plus bekannte Abhängigkeiten
+ohne Import (Kataloge in `test/data`, Fixtures, das gestartete CLI). Verglichen wird mit der Merge-Base von `main`; dazu kommen
+noch nicht committete Änderungen und neue Dateien. Optionen: `--project <name>` (mehrfach; Standard: unit, integration,
+e2e), `--base <ref>`, `--files <pfad>` (mehrfach), `--list` (nur anzeigen) und `--all`; Vitest-Optionen folgen nach `--`.
+Ein voller Lauf erfolgt, wenn sich Konfiguration, Lockfile, Workflows, Dockerfile oder eine Datei ohne Zuordnung ändert.
+In der CI laufen Pull Requests nur mit den betroffenen Tests, Pushes auf `main` mit allen.
 
 **Parallele Läufe.** Testdateien laufen parallel, standardmäßig mit einem Worker je logischem Kern. `DSGVO_TEST_WORKERS`
 (Zahl oder Anteil der Kerne, z. B. `4` oder `50%`) überschreibt das; setzen lässt es sich in der Umgebung oder in

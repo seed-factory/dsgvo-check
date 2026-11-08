@@ -37,6 +37,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e --passWithNoTests",
+    "test:changed": "node scripts/test-impact/main.ts",
     "test:live": "vitest run --project live --passWithNoTests",
     "canary": "node scripts/canary/main.ts",
     "canary:summary": "node scripts/canary/main.ts summary",

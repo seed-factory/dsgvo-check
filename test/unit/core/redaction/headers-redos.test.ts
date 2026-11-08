@@ -154,6 +154,9 @@ describe('other header parsers scale with untrusted values', () => {
     ['referrer-policy', (n) => `"${', '.repeat(n / 2)}`],
     ['location', (n) => 'a'.repeat(n)],
     ['x-trace', (n) => 'a'.repeat(n)],
+    ['content-security-policy', (n) => `report-uri ${'a '.repeat(n / 2)}`],
+    ['content-security-policy', (n) => `report-uri ${'%40 '.repeat(n / 3)}`],
+    ['content-security-policy', (n) => `script-src ${'a.example.test '.repeat(n / 15)}`],
   ])('%s: %#', (name, build) => {
     expectLinear((n) => stored(name, build(n)));
   });
@@ -339,29 +342,26 @@ describe('product headers: 64 KiB values are read in linear time', () => {
 });
 
 describe('the long-value parsers stop once the output passes the limit', () => {
-  const best = (run: () => unknown) => {
-    run();
-    return Math.min(
-      ...Array.from({ length: 7 }, () => {
-        const start = performance.now();
-        run();
-        return performance.now() - start;
-      }),
-    );
+  /** Tokens past the limit never reach the URL parser; timing cannot show it, the whole-value passes of CSP grow linearly. */
+  const parserCalls = (name: string, value: string): number => {
+    let calls = 0;
+    stored(name, value, (url) => {
+      calls++;
+      return sanitizeUrl(url);
+    });
+    return calls;
   };
 
   it.each<[string, string, (n: number) => string]>([
-    ['content-security-policy', 'bare words', (n) => `report-uri ${'a '.repeat(n / 2)}`],
-    ['content-security-policy', 'encoded @', (n) => `report-uri ${'%40 '.repeat(n / 3)}`],
-    ['content-security-policy', 'queries', (n) => `report-uri ${'? '.repeat(n / 2)}`],
-    ['content-security-policy', 'hosts', (n) => `script-src ${'a.example.test '.repeat(n / 15)}`],
+    ['content-security-policy', 'queries in one directive', (n) => `report-uri ${'? '.repeat(n / 2)}`],
+    ['content-security-policy', 'one query per directive', (n) => 'report-uri ?;'.repeat(n / 13)],
     ['link', 'encoded targets', (n) => '<%>'.repeat(n / 3)],
     ['link', 'empty targets', (n) => '<>'.repeat(n / 2)],
-  ])('%s: %s, a value 8 times as long costs the same', (name, _what, build) => {
-    const small = best(() => stored(name, build(SIZE / 8)));
-    const large = best(() => stored(name, build(SIZE)));
-    expect(large).toBeLessThan(Math.max(small * 3, 2));
+  ])('%s: %s, a value 8 times as long reaches the URL parser as often', (name, _what, build) => {
+    const calls = parserCalls(name, build(SIZE / 8));
 
+    expect(calls).toBeGreaterThan(0);
+    expect(parserCalls(name, build(SIZE))).toBe(calls);
     const record = stored(name, build(SIZE));
     expect(record.truncated).toBe(true);
     expect(record.value).toHaveLength(MAX_HEADER_VALUE);

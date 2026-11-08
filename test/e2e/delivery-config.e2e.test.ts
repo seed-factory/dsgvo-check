@@ -158,7 +158,14 @@ describe('workflows', () => {
       .join('\n');
 
     expect(ci.jobs.test.strategy, 'no Node version matrix').toBeUndefined();
-    for (const cmd of ['typecheck', 'lint', 'test:unit', 'test:integration', 'build', 'test:e2e']) {
+    for (const cmd of [
+      'typecheck',
+      'lint',
+      'test:changed --project unit',
+      'test:changed --project integration',
+      'build',
+      'test:changed --project e2e',
+    ]) {
       expect(runs).toContain(`corepack pnpm ${cmd}`);
     }
   });
@@ -182,14 +189,14 @@ describe('workflows', () => {
     const steps = ciSteps();
     const runs = steps.map((step) => step.run ?? '').join('\n');
     const index = (cmd: string) => steps.findIndex((step) => step.run?.includes(cmd));
-    const integration = steps[index('corepack pnpm test:integration')] as Step;
+    const integration = steps[index('corepack pnpm test:changed --project integration')] as Step;
 
     expect(runs).toContain('install --with-deps --no-shell chromium');
     expect(runs).toContain('docker build');
     expect(integration.env?.DSGVO_CHECK_TEST_SANDBOX).toBe('require');
     expect(index('kernel.apparmor_restrict_unprivileged_userns=0')).toBeGreaterThanOrEqual(0);
     expect(index('kernel.apparmor_restrict_unprivileged_userns=0')).toBeLessThan(
-      index('corepack pnpm test:integration'),
+      index('corepack pnpm test:changed --project integration'),
     );
   });
 
