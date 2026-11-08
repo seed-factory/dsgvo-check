@@ -12,7 +12,7 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Что строим и почему             | [specs/dsgvo-check_TZ.md](specs/dsgvo-check_TZ.md), [README.md](README.md)                                                                 |
 | Архитектура одним взглядом      | [docs/architecture.md](docs/architecture.md)                                                                                               |
-| Контракты, модули, поля         | [docs/architecture.md](docs/architecture.md); схемы в `src/core/snapshot` и `src/core/report`                                              |
+| Контракты, модули, поля         | контракты и модули — [docs/architecture.md](docs/architecture.md); поля — схемы в `src/core/snapshot` и `src/core/report`                  |
 | Поведение проверок, `messageId` | `src/checks/**` и их тесты; варианты — `test/data/ruleset`                                                                                 |
 | Тексты находок и стоп-слова     | `test/data/texts/**`; правило 3 ниже и `test/unit/core/data/stopwords.test.ts`                                                             |
 | Тесты, CI, Docker, Action       | [README.md](README.md), разделы «Entwicklung», «Docker», «CI-Integration»                                                                  |

@@ -14,7 +14,7 @@ const rows = Object.entries(loadRuleset().checks).map(([id, check]) => [
   ...SEVERITIES.map((severity) => {
     const names = Object.entries(check.variants)
       .filter(([, v]) => v.severity === severity)
-      .map(([name, v]) => `\`${name}\`${v.locked ? '²' : ''}`);
+      .map(([name, v]) => `\`${name}\`${v.locked ? ' (fest)' : ''}`);
     return names.length > 0 ? names.join(', ') : '—';
   }),
 ]);
