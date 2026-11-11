@@ -38,6 +38,7 @@ export const RULES: Rule[] = [
     ['docs/**', 'specs/**', 'AGENTS.md', 'CLAUDE.md', 'LICENSE', '.gitignore', '.editorconfig'],
     'no test reads it',
   ),
+  none(['.github/CODEOWNERS'], 'repository ownership metadata'),
 
   code(['src/**/*.ts', 'test/**/*.ts', 'scripts/**/*.ts']),
 
