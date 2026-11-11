@@ -20,6 +20,10 @@ canary/sites.yaml
 tmp-profile*/
 dsgvo-check-profile-*/
 
+# editors
+.idea/
+.openidea/
+
 # env, os, logs
 .env
 .env.*
