@@ -67,7 +67,7 @@ ui:
     {interner Fehler} report-write-failed {Bericht konnte nicht vollständig geschrieben werden} strict-inconclusive
     {strenger Modus: Prüfung {check} nicht eindeutig} strict-sandbox-off {strenger Modus: Sandbox ausgeschaltet}
     strict-egress-unverified {strenger Modus: Region nicht geprüft} other {{reason}}}
-  # Nutzungshinweise for `--help` and the project README (section `## Nutzungshinweise`).
+  # Nutzungshinweise for `--help` and the README.de.md (section `## Nutzungshinweise`).
   usageNotes.title: "Nutzungshinweise"
   usageNotes: >-
     dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites

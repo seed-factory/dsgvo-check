@@ -3,6 +3,16 @@
  * texts, a legal note and violation/clean/inconclusive|error fixtures; every fixture declares `$expect` and is executed.
  */
 import { execFileSync } from 'node:child_process';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { allChecks } from '../../../../src/checks/index.ts';
@@ -27,12 +37,42 @@ describe('registry completeness', () => {
     expect(completenessProblems(new CheckRegistry(allChecks).all(), data())).toEqual([]);
   });
 
-  it('the variant table in README.md is generated from the current ruleset', () => {
+  it('the variant tables in both README files are generated from the current ruleset', () => {
+    expect(readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8')).toContain(
+      '`banner-not-recognized` (locked)',
+    );
+    expect(readFileSync(path.join(REPO_ROOT, 'README.de.md'), 'utf8')).toContain(
+      '`banner-not-recognized` (fest)',
+    );
     expect(() =>
       execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts/emit-registry.ts'), '--check'], {
         stdio: 'pipe',
       }),
     ).not.toThrow();
+  });
+
+  it.each(['README.md', 'README.de.md'])('detects a stale registry table in %s', (file) => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'registry-test-'));
+    try {
+      mkdirSync(path.join(root, 'scripts'));
+      copyFileSync(
+        path.join(REPO_ROOT, 'scripts/emit-registry.ts'),
+        path.join(root, 'scripts/emit-registry.ts'),
+      );
+      symlinkSync(path.join(REPO_ROOT, 'src'), path.join(root, 'src'), 'dir');
+      for (const name of ['README.md', 'README.de.md']) {
+        copyFileSync(path.join(REPO_ROOT, name), path.join(root, name));
+      }
+      const command = [path.join(root, 'scripts/emit-registry.ts'), '--check'];
+      expect(() => execFileSync(process.execPath, command, { stdio: 'pipe' })).not.toThrow();
+      const doc = path.join(root, file);
+      writeFileSync(doc, readFileSync(doc, 'utf8').replace('`banner-not-recognized`', '`stale-variant`'));
+      expect(() => execFileSync(process.execPath, command, { stdio: 'pipe' })).toThrow(
+        `The variant table in ${file} is out of date`,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 # Architecture
 
-Start with the [scan overview](../README.md#ablauf-eines-scans) for the user flow, the
+Start with the [scan overview](../README.md#how-a-scan-works) for the user flow, the
 [scan reference](scan-reference.md) for edge cases, or the [development guide](development.md) for tests and CI.
 
 ## Pipeline
@@ -74,7 +74,7 @@ whether the decision applies on each control page before treating its requests a
   DKIM lookups use the same per-domain budget after MX, SPF and DMARC. The saved selector plan distinguishes an
   unqueried selector from a missing key. [DNS collector](../src/collectors/dns/)
 
-[Traffic inventory and request limits](../README.md#was-der-scanner-sendet)
+[Traffic inventory and request limits](../README.md#what-the-scanner-sends)
 
 ## Contracts
 
@@ -160,4 +160,4 @@ Set defaults, bounds and descriptions in [config/schema.ts](../src/core/config/s
 determines the environment variable name. Run `corepack pnpm env:example` after editing the schema.
 Collectors read `ctx.config`, while checks receive their thresholds through `ctx.thresholds`.
 The `DSGVO_TEST_WORKERS` setting belongs to the test runner.
-[User-facing settings](../README.md#einstellungen) · [Generated environment reference](../.env.example)
+[User-facing settings](../README.md#settings) · [Generated environment reference](../.env.example)

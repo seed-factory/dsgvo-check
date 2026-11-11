@@ -7,7 +7,7 @@
 # finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect only, unresolved link,
 # category-only or ambiguous text, a policy statement next to its own counterpart, non-identifier storage, consent
 # cookie UID, CONNECT only, Pur-Abo). These stay null until the customer maps them.
-# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
+# The variant table in README.md and README.de.md (sections "What is checked" and "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   CONSENT-01:
     gating: true

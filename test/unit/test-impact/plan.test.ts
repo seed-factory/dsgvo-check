@@ -6,6 +6,7 @@ import { CLI_PROCESS_TESTS } from '../../../scripts/test-impact/rules.ts';
 const files = [
   'src/checks/dns/mail-01.ts',
   'README.md',
+  'README.de.md',
   'test/data/routing.yaml',
   'test/e2e/cli.e2e.test.ts',
   'test/e2e/delivery-config.e2e.test.ts',
@@ -59,8 +60,8 @@ describe('planRun', () => {
     expect(plan.mode === 'selective' && plan.related).toContain('src/checks/dns/removed.ts');
   });
 
-  it('runs only the readers of the README', () => {
-    const plan = planRun(['README.md'], ctx);
+  it.each(['README.md', 'README.de.md'])('runs only the readers of %s', (file) => {
+    const plan = planRun([file], ctx);
 
     expect(plan).toEqual({
       mode: 'selective',
@@ -69,7 +70,7 @@ describe('planRun', () => {
         'test/unit/core/evaluation/registry-completeness.test.ts',
         'test/unit/scan/robustness.test.ts',
       ],
-      reasons: ['README.md: text read by tests'],
+      reasons: [`${file}: text read by tests`],
     });
   });
 

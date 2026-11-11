@@ -84,7 +84,7 @@ export const RULES: Rule[] = [
     'test/integration/reporters/pdf-timeout.test.ts',
   ]),
 
-  readers(['README.md'], 'text read by tests', [
+  readers(['README.md', 'README.de.md'], 'text read by tests', [
     'test/e2e/traffic-docs.e2e.test.ts',
     'test/unit/scan/robustness.test.ts',
     'test/unit/core/evaluation/registry-completeness.test.ts',

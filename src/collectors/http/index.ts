@@ -412,7 +412,7 @@ async function probeFinalHost(
     kind: 'tls',
     class: 'T',
     target: `${t.host}:${t.port}`,
-    // Same purpose as the TLS collector's handshakes (README.md, section "Was der Scanner sendet", lists the purposes).
+    // Same purpose as the TLS collector's handshakes (README.md, section "What the scanner sends", lists the purposes).
     purpose: 'certificate',
   }));
   return { endpoints, probes };

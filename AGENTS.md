@@ -6,7 +6,7 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 
 Приоритет: решение заказчика → [ТЗ](specs/dsgvo-check_TZ.md) → [каталог проверок](specs/dsgvo-check_katalog-proverok.md) → `test/data/ruleset` и код с его тестами → [README.md](README.md) и [docs/architecture.md](docs/architecture.md).
 
-Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в [README.md](README.md) (раздел «Was geprüft wird») генерируется из него.
+Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в [README.md](README.md) (раздел «What is checked») генерируется из него.
 
 | Нужно                           | Где смотреть                                                                                                                               |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -15,9 +15,9 @@ dsgvo-check — пассивный CLI-сканер на TypeScript и Playwrigh
 | Контракты, модули, поля         | контракты и модули — [docs/architecture.md](docs/architecture.md); поля — схемы в `src/core/snapshot` и `src/core/report`                  |
 | Поведение проверок, `messageId` | `src/checks/**` и их тесты; варианты — `test/data/ruleset`                                                                                 |
 | Тексты находок и стоп-слова     | `test/data/texts/**`; правило 3 ниже и `test/unit/core/data/stopwords.test.ts`                                                             |
-| Тесты, CI, Docker, Action       | [README.md](README.md), разделы «Entwicklung», «Docker», «CI-Integration»                                                                  |
+| Тесты, CI, Docker, Action       | [README.md](README.md), разделы «Development», «Docker», «CI integration»                                                                  |
 | Словари, сигнатуры, селекторы   | `test/data/{cmp,legal,browser,http,services}`; перечень — в [docs/architecture.md](docs/architecture.md), раздел «Словари и сопоставления» |
-| Устройство прототипа            | [README.md](README.md): примечание о статусе и раздел «Grenzen»                                                                            |
+| Устройство прототипа            | [README.md](README.md): примечание о статусе и раздел «Limitations»                                                                        |
 
 Решение противоречит этим документам — остановись и спроси. Документ «под код» молча не переписывай.
 
@@ -66,4 +66,4 @@ node dist/cli.js report <report.json> --format html,pdf
    - dns: строки в `test/unit/checks/dns/fixtures.ts`;
    - http: JSON в `test/fixtures/snapshots/http/<ID>/`.
 
-Имена вариантов запланированной проверки бери из таблицы «Geplante Prüfungen» в [README.md](README.md). После `corepack pnpm registry` проверка переходит в таблицу реализованных.
+Имена вариантов запланированной проверки бери из таблицы «Planned checks» в [README.md](README.md). После `corepack pnpm registry` проверка переходит в таблицу реализованных.

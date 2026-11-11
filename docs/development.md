@@ -85,7 +85,7 @@ Use `--run-id` to resume and `--reanalyze <runId>` to evaluate saved snapshots o
 by default. Run `node scripts/canary/main.ts --help` for all options.
 
 - Use one entry per registrable domain, with a factual selection reason. The corpus covers organizations.
-- Runs follow the standard passive [traffic limits](../README.md#was-der-scanner-sendet) and log blocks as observed.
+- Runs follow the standard passive [traffic limits](../README.md#what-the-scanner-sends) and log blocks as observed.
   The default is three workers and a five-second pause between sites per worker. The limits are five workers and
   a minimum pause of 1.5 seconds.
 - Keep the corpus and results local. Delete raw results after evaluation and retain the anonymized summary.

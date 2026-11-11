@@ -416,7 +416,7 @@ describe('Nutzungshinweise', () => {
     const de = uiText(loadTexts('de'), 'usageNotes', { version: '<version>' }).replace(/\s+/g, ' ');
     const phaseC =
       'Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach der Annahme im Banner lädt.';
-    const readme = readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+    const readme = readFileSync(path.join(REPO_ROOT, 'README.de.md'), 'utf8');
     const section = readme.slice(readme.indexOf('## Nutzungshinweise'), readme.indexOf('## Entwicklung'));
     const flat = section.replace(/`/g, '').replace(/\s+/g, ' ');
 
@@ -426,6 +426,14 @@ describe('Nutzungshinweise', () => {
     // The README paragraph is the de text of test/data/texts (modulo markdown backticks and typographic quotes).
     const plain = (t: string) => t.replace(/[`„“]/g, '').replace(/\s+/g, ' ');
     expect(plain(section)).toContain(plain(de));
+  });
+
+  it('en: the README usage notes match the data text', () => {
+    const en = uiText(loadTexts('en'), 'usageNotes', { version: '<version>' });
+    const readme = readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+    const section = readme.slice(readme.indexOf('## Usage notes'), readme.indexOf('## Development'));
+    const plain = (text: string) => text.replace(/[`„“”"]/g, '').replace(/\s+/g, ' ');
+    expect(plain(section)).toContain(plain(en));
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * The traffic that README.md lists under "Was der Scanner sendet" matches the class T probes the collectors send, so a
+ * The traffic that the READMEs list under their traffic sections matches the class T probes the collectors send, so a
  * site owner asking "what did you send us?" gets a list without a missing or invented probe. No network, no build.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -52,9 +52,26 @@ const DESCRIBED: Record<string, RegExp> = {
     /ein Handshake je Host-Variante \(höchstens 3\).*Nach einer Umleitung auf eine andere Domain kommen höchstens 3 weitere für den Host am Ende der Umleitung und seine `www\.`- und Apex-Varianten hinzu/,
 };
 
-describe('README.md section "Was der Scanner sendet" describes the probes the scanner sends', () => {
-  const readme = read('README.md');
-  const from = readme.indexOf('\n## Was der Scanner sendet');
+const EN_DESCRIBED: Record<string, RegExp> = {
+  'robots.txt': /`robots\.txt`/,
+  sitemap: /at most 2 sitemap requests/,
+  'redirect-chain':
+    /the redirect chains from `http:\/\/` and `https:\/\/` for the target host and its `www\.` and apex variants, plus the chain on a port explicitly specified in the target URL/,
+  'security-headers:': /one request each to the legal notice and privacy policy linked from the homepage/,
+  'form-twin':
+    /after the browser, at most \d+ requests \(`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`\):.*?first to the `http:\/\/` addresses of pages where phase A saw a form;.*?both only if `http:\/\/` on their host serves content without redirecting to https: one GET each, without following a redirect or submitting anything/,
+  'permalink-twin':
+    /with the remaining budget to the `http:\/\/` addresses of posts and articles linked by visited pages as permalinks \(`rel="bookmark"`\) that the browser did not visit;.*?both only if `http:\/\/` on their host serves content without redirecting to https: one GET each, without following a redirect or submitting anything/,
+  certificate:
+    /one handshake per host variant \(at most 3\).*After a redirect to another domain, at most 3 more are added for the final host and its `www\.` and apex variants/,
+};
+
+describe.each([
+  { file: 'README.de.md', heading: 'Was der Scanner sendet', described: DESCRIBED, lang: 'de' },
+  { file: 'README.md', heading: 'What the scanner sends', described: EN_DESCRIBED, lang: 'en' },
+])('$file traffic section describes the probes the scanner sends', ({ file, heading, described, lang }) => {
+  const readme = read(file);
+  const from = readme.indexOf(`\n## ${heading}`);
   const section = readme.slice(from, readme.indexOf('\n## ', from + 1));
   const flat = section.replace(/\s+/g, ' ');
 
@@ -75,23 +92,33 @@ describe('README.md section "Was der Scanner sendet" describes the probes the sc
 
   it('every probe purpose in the collectors is described', () => {
     for (const purpose of probePurposes()) {
-      expect(Object.keys(DESCRIBED), `undocumented probe "${purpose}"`).toContain(purpose);
-      expect(flat).toMatch(DESCRIBED[purpose] as RegExp);
+      expect(Object.keys(described), `undocumented probe "${purpose}"`).toContain(purpose);
+      expect(flat).toMatch(described[purpose] as RegExp);
     }
   });
 
   it('names DNS lookups with the real query budgets, also of the further mail domains and the DKIM selectors', () => {
-    expect(flat).toContain(`höchstens ${DNS_QUERY_BUDGET} Abfragen`);
-    expect(flat).toMatch(/MX-, SPF-, DMARC- und DKIM-Abfragen/);
     const { mailDomainQueryBudget, maxMailDomains, dkimMaxSelectors } = DEFAULT_CONFIG.dns;
-    expect(flat).toContain(`je höchstens ${mailDomainQueryBudget} weitere`);
-    expect(flat).toContain(`bis zu ${maxMailDomains} E-Mail-Domains aus dem Impressum`);
-    expect(flat).toContain(`je E-Mail-Domain höchstens ${dkimMaxSelectors} Selektoren`);
+    if (lang === 'de') {
+      expect(flat).toContain(`höchstens ${DNS_QUERY_BUDGET} Abfragen`);
+      expect(flat).toMatch(/MX-, SPF-, DMARC- und DKIM-Abfragen/);
+      expect(flat).toContain(`je höchstens ${mailDomainQueryBudget} weitere`);
+      expect(flat).toContain(`bis zu ${maxMailDomains} E-Mail-Domains aus dem Impressum`);
+      expect(flat).toContain(`je E-Mail-Domain höchstens ${dkimMaxSelectors} Selektoren`);
+    } else {
+      expect(flat).toContain(`At most ${DNS_QUERY_BUDGET} queries`);
+      expect(flat).toMatch(/MX, SPF, DMARC and DKIM queries/);
+      expect(flat).toContain(`at most ${mailDomainQueryBudget} more each`);
+      expect(flat).toContain(`up to ${maxMailDomains} email domains from the legal notice`);
+      expect(flat).toContain(`at most ${dkimMaxSelectors} selectors per email domain`);
+    }
   });
 
   it('names the budget of the http:// addresses of pages with a form and of permalinks', () => {
     expect(flat).toContain(
-      `nach dem Browser höchstens ${DEFAULT_CONFIG.http.formTwinPages} Anfragen (\`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES\`)`,
+      lang === 'de'
+        ? `nach dem Browser höchstens ${DEFAULT_CONFIG.http.formTwinPages} Anfragen (\`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES\`)`
+        : `after the browser, at most ${DEFAULT_CONFIG.http.formTwinPages} requests (\`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES\`)`,
     );
   });
 

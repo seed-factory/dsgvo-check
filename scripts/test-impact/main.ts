@@ -1,4 +1,4 @@
-/** Runs only the Vitest files that a change can affect; see the "Entwicklung" section of README.md. */
+/** Runs only the Vitest files that a change can affect; see the "Development" section of README.md. */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';

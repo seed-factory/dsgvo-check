@@ -63,7 +63,7 @@ ui:
     report-write-failed {report could not be written completely} strict-inconclusive {strict mode: check {check}
     inconclusive} strict-sandbox-off {strict mode: sandbox disabled} strict-egress-unverified {strict mode: region not
     verified} other {{reason}}}
-  # Usage notes for `--help` and the project README (section `## Nutzungshinweise`).
+  # Usage notes for `--help` and the README.md (section `## Usage notes`).
   usageNotes.title: "Usage notes"
   usageNotes: >-
     dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about

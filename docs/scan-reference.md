@@ -100,7 +100,7 @@ Alle zutreffenden Gründe stehen in `report.json` unter `summary.exitReasons`, n
 
 ## Browserablauf
 
-Phasen und Ablauf im Überblick stehen im [README](../README.md#ablauf-eines-scans).
+Phasen und Ablauf im Überblick stehen im [README](../README.md#how-a-scan-works).
 Die folgenden Abschnitte beschreiben Seitenauswahl, Abbrüche und Details der Bannererkennung.
 
 ### Seiten in Phase A
@@ -382,7 +382,7 @@ Prüfungen `inconclusive`, nicht zu Befunden.
   Rechenzentrum außerhalb der EU kann andere Ergebnisse liefern. Der Prototyp prüft den Standort nicht selbst. Mit
   `--strict` und ohne `--assume-region` endet ein Scan mit CONSENT-Prüfungen daher mit Exit-Code 2
   (`strict:egress-unverified`), sofern kein Befund Exit-Code 1 auslöst.
-- **20 implementierte Prüfungen.** Die [geplanten Prüfungen](../README.md#geplante-prüfungen) fehlen. Im Berichtsschema sind
+- **20 implementierte Prüfungen.** Die [geplanten Prüfungen](../README.md#planned-checks) fehlen. Im Berichtsschema sind
   Baseline und Suppressions vorgesehen, die Logik dazu fehlt. Es gibt keine JUnit-Ausgabe und keine SOCKS-Proxys.
 
 ### Keine Werte

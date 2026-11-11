@@ -1,32 +1,31 @@
 # dsgvo-check
 
+English | [Deutsch](README.de.md)
+
 [![CI](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml)
-[![Lizenz: Apache-2.0](https://img.shields.io/badge/Lizenz-Apache--2.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-dsgvo-check beobachtet, was eine Website lädt und speichert, wie ihr Einwilligungsbanner funktioniert und
-wie HTTP, TLS und E-Mail eingerichtet sind. Der Exit-Code macht die Ergebnisse in CI auswertbar.
-Die Berichte dokumentieren technische Beobachtungen. Die rechtliche Bewertung liegt bei den Betreibern.
+dsgvo-check observes what a website loads and stores, how its consent banner works, and how HTTP, TLS and email are configured. The exit code makes the results usable in CI. Reports document technical observations; legal assessment is the responsibility of site operators.
 
-**Stand** · Prototyp 0.1.0 aus dem Quellcode. Die Berichtstexte tragen die Kennzeichnung „Textentwurf“.
+**Status** · Prototype 0.1.0 from source. Report texts are marked “Draft text”.
 
-- [Schnellstart](#schnellstart)
-- [So läuft ein Scan ab](#ablauf-eines-scans)
-- [Banner mit Beispielen](#banner)
-- [Prüfungen und Befunde](#was-geprüft-wird)
-- [CI und Docker](#ci-integration)
-- [Konfiguration und Exit-Codes](#konfiguration)
-- [Netzwerk und Grenzen](#was-der-scanner-sendet)
-- [Entwicklung](#entwicklung)
+- [Quick start](#quick-start)
+- [How a scan works](#how-a-scan-works)
+- [Banner examples](#banner)
+- [Checks and findings](#what-is-checked)
+- [CI and Docker](#ci-integration)
+- [Configuration and exit codes](#configuration)
+- [Network and limitations](#what-the-scanner-sends)
+- [Development](#development)
 
-## Schnellstart
+## Quick start
 
-### Voraussetzungen
+### Prerequisites
 
-- Node.js 26 oder neuer. CI testet mit Node.js 26.
-- Corepack für die in [package.json](package.json) festgelegte pnpm-Version. Bei Bedarf einmalig
-  `npm install --global corepack@0.36.0` ausführen.
-- Chromium (Chrome for Testing). Der Installationsschritt unten lädt die passende Version.
-- Docker als Alternative zur lokalen Installation. [Zum Docker-Start](#docker)
+- Node.js 26 or later. CI tests with Node.js 26.
+- Corepack for the pnpm version specified in [package.json](package.json). If needed, run `npm install --global corepack@0.36.0` once.
+- Chromium (Chrome for Testing). The installation step below downloads the matching version.
+- Docker as an alternative to local installation. [Start with Docker](#docker)
 
 ### Installation
 
@@ -38,54 +37,48 @@ node node_modules/playwright-core/cli.js install --no-shell chromium
 corepack pnpm build
 ```
 
-Unter Linux installiert `node dist/cli.js install --with-deps` mit Root-Rechten die fehlenden Systembibliotheken.
+On Linux, `node dist/cli.js install --with-deps` installs missing system libraries with root privileges.
 
-### Erster Scan
+### First scan
 
 ```sh
 node dist/cli.js https://www.example.de/ --format console,json,html --out ./dsgvo-check-report
 ```
 
-Ersetze die Beispieladresse durch deine Website. Ein typischer Scan dauert 1–3 Minuten.
+Replace the example address with your website. A typical scan takes 1–3 minutes.
 
-| Format    | Ergebnis                                             |
-| --------- | ---------------------------------------------------- |
-| `console` | Kurzfassung im Terminal                              |
-| `json`    | `report.json` mit Befunden und vollständigen Belegen |
-| `html`    | `report.html` als eigenständige Datei                |
-| `summary` | `summary.md` für CI                                  |
-| `pdf`     | `report.pdf` aus derselben HTML-Ansicht              |
+| Format    | Result                                            |
+| --------- | ------------------------------------------------- |
+| `console` | Summary in the terminal                           |
+| `json`    | `report.json` with findings and complete evidence |
+| `html`    | `report.html` as a standalone file                |
+| `summary` | `summary.md` for CI                               |
+| `pdf`     | `report.pdf` from the same HTML view              |
 
-### Bericht lesen
+### Reading the report
 
-Öffne `report.html` für den Überblick über Befunde, unklare Ergebnisse, empfohlene Maßnahmen und beobachtete
-Dienste. Darunter stehen die Belege pro Prüfung. Mit `--detail brief` bleibt bei HTML und PDF nur die Kurzfassung.
-Die Aufnahme von Bannerbildern ist zum Schutz von Besucherdaten ausgesetzt. Der Scan erfasst weiterhin die
-Merkmale des Banners.
+Open `report.html` for an overview of findings, inconclusive results, recommended actions and observed services. Evidence for each check follows below. With `--detail brief`, HTML and PDF retain only the summary. Banner screenshots are suspended to protect visitor data. The scan still captures banner characteristics.
 
-![Kurzbericht aus einem lokalen Testdatensatz mit einem Tracking-Befund vor der Einwilligung](docs/images/report-preview.png)
+![Summary report from a local test dataset with a tracking finding before consent](docs/images/report-preview.png)
 
-### Bericht erneut ausgeben
+### Re-exporting a report
 
 ```sh
 node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lang de --out ./report-export
 ```
 
-`report` verwendet den vorhandenen JSON-Bericht. Ohne Flags schreibt der Befehl HTML auf Deutsch neben die
-JSON-Datei. Die Einstellungen `DSGVO_CHECK_REPORT_FORMATS` und `DSGVO_CHECK_REPORT_LANG` ändern diese Standards.
-Bei einem PDF-Druckfehler bleiben JSON und der Scan-Exit-Code erhalten. Ungültiges Eingabe-JSON ergibt Exit-Code 2.
+`report` uses the existing JSON report. Without flags, the command writes HTML in German next to the JSON file. `DSGVO_CHECK_REPORT_FORMATS` and `DSGVO_CHECK_REPORT_LANG` change these defaults. If PDF printing fails, the JSON and scan exit code remain available. Invalid input JSON results in exit code 2.
 
-### Snapshot speichern und neu auswerten
+### Saving and re-evaluating a snapshot
 
 ```sh
 node dist/cli.js https://www.example.de/ --save-snapshot scan.snapshot.json
 node dist/cli.js --from-snapshot scan.snapshot.json --checks HDR-01,TLS-02 --format console
 ```
 
-Ein Snapshot speichert die redigierten Beobachtungen zur späteren Auswertung ohne Netzwerk. Der neue Bericht
-nennt die ursprüngliche Aufnahmezeit. `scan.evaluatedAt` gibt im JSON die neue Auswertungszeit an.
+A snapshot stores redacted observations for later evaluation without network access. The new report states the original capture time. `scan.evaluatedAt` gives the new evaluation time in JSON.
 
-## Ablauf eines Scans
+## How a scan works
 
 ```mermaid
 flowchart LR
@@ -95,134 +88,125 @@ flowchart LR
     Checks --> Report["Berichte und Exit-Code"]
 ```
 
-Die Collectors erfassen technische Fakten. Sie entfernen sensible Daten vor dem Speichern. Die Prüfungen lesen
-den Snapshot und liefern Befunde. `--fail-on` bestimmt, ab welcher Stufe ein Befund CI fehlschlagen lässt.
+Collectors capture technical facts and remove sensitive data before storage. Checks read the snapshot and return findings. `--fail-on` determines the severity at which a finding fails CI.
 
-| Browserphase        | Was passiert                                                                                                            |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| A · Vor der Auswahl | Chromium beobachtet die Startseite, Rechtstexte und ausgewählte Unterseiten.                                            |
-| B · Ablehnen        | Ein passender Adapter klickt auf Ablehnen und prüft, ob die Entscheidung nach dem Neuladen und auf Kontrollseiten gilt. |
-| C · Akzeptieren     | Ein frisches Profil akzeptiert und besucht die Kontrollseiten zum Vergleich.                                            |
+| Browser phase        | What happens                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| A · Before selection | Chromium observes the homepage, legal pages and selected subpages.                                           |
+| B · Reject           | A matching adapter clicks reject and checks whether the decision persists after reload and on control pages. |
+| C · Accept           | A fresh profile accepts and visits the control pages for comparison.                                         |
 
-Jede Phase startet mit einem eigenen Browserprofil. Inhalte weiter unten auf einer Seite werden durch
-Vergrößern des Browserfensters sichtbar. Dabei löst der Scanner keine Scroll-Eingabe aus.
+Each phase starts with its own browser profile. Content lower down a page becomes visible by enlarging the browser window. The scanner does not trigger scroll input.
 
-[Seitenauswahl, Abbrüche und Zertifikatfehler](docs/scan-reference.md#browserablauf) ·
-[Architektur für die Entwicklung](docs/architecture.md)
+[Page selection, aborts and certificate errors](docs/scan-reference.md#browserablauf) · [Architecture for development](docs/architecture.md)
 
 ### Banner
 
-Eine Consent-Management-Plattform (CMP) zeigt das Einwilligungsbanner. dsgvo-check hat Adapter für Borlabs,
-Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub, Shopware 6, Wix und TYPO3 cookieman.
+A consent management platform (CMP) displays the consent banner. dsgvo-check has adapters for Borlabs, Cookiebot, Complianz, Usercentrics, CCM19, Real Cookie Banner, CookieHub, Shopware 6, Wix and TYPO3 cookieman.
 
-**Cookiebot** · Der Adapter kann „Ablehnen“ auf der ersten Ebene wählen.
+**Cookiebot** · The adapter can select “Reject” on the first layer.
 
-![Cookiebot-Testbanner mit den Schaltflächen zum Ablehnen und Akzeptieren](docs/images/banner-cookiebot.png)
+![Cookiebot test banner with reject and accept buttons](docs/images/banner-cookiebot.png)
 
-**Wix** · Der Adapter kann in den Einstellungen speichern, wenn nur notwendige Kategorien eingeschaltet sind.
+**Wix** · The adapter can save in settings when only necessary categories are enabled.
 
-![Wix-Testbanner mit ausgeschalteten optionalen Kategorien](docs/images/banner-wix-settings.png)
+![Wix test banner with optional categories disabled](docs/images/banner-wix-settings.png)
 
-Die Bilder zeigen lokale Testnachbildungen. Weitere Beispiele sind die [erste Wix-Ebene](docs/images/banner-wix-first-layer.png)
-und ein [blockierendes Usercentrics-Banner ohne direkte Ablehnung](docs/images/banner-usercentrics.png).
+The images show local test replicas. Further examples are the [first Wix layer](docs/images/banner-wix-first-layer.png) and a [blocking Usercentrics banner without direct rejection](docs/images/banner-usercentrics.png).
 
-Ein unbekanntes Banner bleibt ohne Klick. CONSENT-04 meldet „Banner nicht erkannt“ als `info`.
-[Erkennung, Klickpfade und Bestätigung](docs/scan-reference.md#banner)
+An unknown banner is left untouched. CONSENT-04 reports “Banner not recognized” as `info`. [Detection, click paths and confirmation](docs/scan-reference.md#banner)
 
-## Was geprüft wird
+## What is checked
 
-Die Browser-Prüfungen beobachten unter anderem diese typischen Situationen.
+The browser checks observe typical situations including these:
 
-- Eine Website lädt eine Schrift oder ein YouTube-Vorschaubild, bevor der Besucher den Banner bedient.
-- Ein Tracking-Dienst sendet nach bestätigter Ablehnung auf einer Kontrollseite weiter Anfragen.
-- Eine verlinkte Datenschutzerklärung ist erreichbar, erwähnt aber einen beobachteten Dienst nicht.
+- A website loads a font or a YouTube thumbnail before the visitor interacts with the banner.
+- A tracking service continues sending requests on a control page after confirmed rejection.
+- A linked privacy policy is reachable but does not mention an observed service.
 
-| ID         | Beobachtung                                                                                                       |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| CONSENT-01 | Anfragen an Dritte und Tracking-Hits vor einer Interaktion mit dem Banner                                         |
-| CONSENT-02 | Cookies und Web Storage vor Interaktion (Namen, Flags, Laufzeit; **keine Werte**)                                 |
-| CONSENT-03 | Tracking ohne erkennbares Einwilligungsbanner                                                                     |
-| CONSENT-04 | Erste Banner-Ebene: „Ablehnen“ gleichrangig zu „Akzeptieren“?                                                     |
-| CONSENT-05 | Was nach einem bestätigten „Ablehnen“ weiter gesendet oder gespeichert wird                                       |
-| TRACK-01   | Dienste-Inventar je Zeitpunkt: vor Interaktion, nach Ablehnung, nach Zustimmung                                   |
-| EMBED-01   | Schriften von Drittservern (z. B. Google Fonts)                                                                   |
-| EMBED-02   | Karten (z. B. Google Maps) ohne Zwei-Klick-Lösung                                                                 |
-| EMBED-03   | Videos und Vorschaubilder (z. B. YouTube, Vimeo) ohne Zwei-Klick-Lösung                                           |
-| LEGAL-01   | Impressum und Datenschutzerklärung: verlinkt, erreichbar, nicht vom Banner verdeckt                               |
-| LEGAL-02   | Bezeichnungen früherer Rechtslage im Text (z. B. TMG, RStV, TTDSG, Privacy Shield)                                |
-| PRIV-01    | Werden beobachtete Dienste in der Datenschutzerklärung genannt?                                                   |
-| PRIV-02    | Angaben der Datenschutzerklärung (z. B. „Fonts lokal“) im Abgleich mit den Anfragen                               |
-| HDR-01     | Sicherheits-Header: HSTS, CSP, Einbettungsschutz, `nosniff`, Referrer-/Permissions-Policy                         |
-| HDR-02     | Softwareversionen in Headern wie `Server` und `X-Powered-By`                                                      |
-| TLS-01     | Umleitung von http auf https; Formulare auf http-Seiten, auch verlinkter Beiträge; Links auf eigene http-Adressen |
-| TLS-02     | Zertifikat: gültig, vollständige Kette, Restlaufzeit relativ zur Gesamtlaufzeit                                   |
-| MAIL-01    | DMARC-Eintrag und Richtlinie, auch der Zieldomain und der E-Mail-Domains im Impressum                             |
-| MAIL-02    | SPF-Eintrag (statisch ausgewertet), zusammen mit DMARC derselben Domain                                           |
-| MAIL-03    | DKIM-Schlüssel auf den geprüften Selektoren und ihre RSA-Länge, je E-Mail-Domain                                  |
+| ID         | Observation                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------- |
+| CONSENT-01 | Third-party requests and tracking hits before interaction with the banner                             |
+| CONSENT-02 | Cookies and Web Storage before interaction (names, flags, lifetime; **no values**)                    |
+| CONSENT-03 | Tracking without a recognizable consent banner                                                        |
+| CONSENT-04 | First banner layer: is “Reject” on equal footing with “Accept”?                                       |
+| CONSENT-05 | What continues to be sent or stored after confirmed “Reject”                                          |
+| TRACK-01   | Service inventory at each point: before interaction, after rejection, after consent                   |
+| EMBED-01   | Fonts from third-party servers (e.g. Google Fonts)                                                    |
+| EMBED-02   | Maps (e.g. Google Maps) without a two-click solution                                                  |
+| EMBED-03   | Videos and thumbnails (e.g. YouTube, Vimeo) without a two-click solution                              |
+| LEGAL-01   | Legal notice and privacy policy: linked, reachable, not covered by the banner                         |
+| LEGAL-02   | References to previous legislation in text (e.g. TMG, RStV, TTDSG, Privacy Shield)                    |
+| PRIV-01    | Are observed services named in the privacy policy?                                                    |
+| PRIV-02    | Privacy policy statements (e.g. “fonts local”) compared with requests                                 |
+| HDR-01     | Security headers: HSTS, CSP, framing protection, `nosniff`, Referrer/Permissions Policy               |
+| HDR-02     | Software versions in headers such as `Server` and `X-Powered-By`                                      |
+| TLS-01     | Redirect from http to https; forms on http pages, including linked posts; links to own http addresses |
+| TLS-02     | Certificate: valid, complete chain, remaining lifetime relative to total lifetime                     |
+| MAIL-01    | DMARC record and policy, including for the target domain and email domains in the legal notice        |
+| MAIL-02    | SPF record (statically evaluated), together with DMARC for the same domain                            |
+| MAIL-03    | DKIM keys on the checked selectors and their RSA length, per email domain                             |
 
-### Varianten
+### Variants
 
-Jede Prüfung kann mehrere Varianten melden; die Meldungs-ID eines Befunds ist `<Prüfung>.<Variante>`.
+Each check can report several variants; a finding's message ID is `<Prüfung>.<Variante>`.
 
-- Die Tabelle zeigt den Standard-Schweregrad jeder Variante. Sie wird aus `test/data/ruleset` erzeugt.
-- Mittlere Konfidenz begrenzt einen Befund auf `warning`, niedrige auf `info`.
-- **(fest)** heißt `locked`: Die Variante wird nicht angehoben und zählt nicht für `--fail-on`; die Prüfung bleibt
-  `inconclusive`.
+- The table shows the default severity of each variant. It is generated from `test/data/ruleset`.
+- Medium confidence limits a finding to `warning`, low confidence to `info`.
+- **(locked)** means `locked`: the variant is not raised and does not count toward `--fail-on`; the check remains `inconclusive`.
 
 <!-- registry:begin: generated from test/data/ruleset by `corepack pnpm registry`, do not edit -->
-| ID           | `critical`                                                          | `warning`                                                                                                               | `info`                                                                                                              |
-| ------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `CONSENT-01` | `tracking-completed`                                                | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                                     |
-| `CONSENT-02` | `tracking-identifier-stored`                                        | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                            |
-| `CONSENT-03` | `no-banner-strong-tracking`                                         | `no-banner-consent-services`                                                                                            | —                                                                                                                   |
-| `CONSENT-04` | `blocking-no-reject`, `close-means-accept`, `nonblocking-no-reject` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized` (fest), `cmp-not-supported` (fest) |
-| `CONSENT-05` | `tracking-after-reject`                                             | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                                         |
-| `TRACK-01`   | —                                                                   | —                                                                                                                       | `service-inventory`                                                                                                 |
-| `EMBED-01`   | —                                                                   | `fonts-loaded`, `fonts-in-embed-frame`                                                                                  | `preconnect-only`                                                                                                   |
-| `EMBED-02`   | —                                                                   | `maps-loaded`                                                                                                           | —                                                                                                                   |
-| `EMBED-03`   | —                                                                   | `video-loaded`                                                                                                          | —                                                                                                                   |
-| `LEGAL-01`   | `document-not-found`, `links-broken`                                | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                                        |
-| `LEGAL-02`   | —                                                                   | —                                                                                                                       | `outdated-reference`                                                                                                |
-| `PRIV-01`    | —                                                                   | `not-named`                                                                                                             | `category-only`, `ambiguous-match`, `named-in-cmp-only`                                                             |
-| `PRIV-02`    | `contradiction-replicated`                                          | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                                 |
-| `MAIL-01`    | —                                                                   | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                                         |
-| `MAIL-02`    | —                                                                   | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                                        |
-| `MAIL-03`    | —                                                                   | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                               |
-| `HDR-01`     | —                                                                   | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                                    |
-| `HDR-02`     | —                                                                   | —                                                                                                                       | `version-header`                                                                                                    |
-| `TLS-01`     | `https-unavailable`, `form-on-http-page`                            | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                              |
-| `TLS-02`     | `certificate-invalid`                                               | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                                    |
+| ID           | `critical`                                                          | `warning`                                                                                                               | `info`                                                                                                                  |
+| ------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `CONSENT-01` | `tracking-completed`                                                | `library-loaded`, `first-party-proxy`, `cookieless-ping`                                                                | `third-party-resource`, `unknown-host`, `request-not-completed`                                                         |
+| `CONSENT-02` | `tracking-identifier-stored`                                        | `unknown-third-party-persistent`                                                                                        | `unknown-first-party-persistent`, `cmp-cookie-with-uid`, `storage-rejected-or-attempted`                                |
+| `CONSENT-03` | `no-banner-strong-tracking`                                         | `no-banner-consent-services`                                                                                            | —                                                                                                                       |
+| `CONSENT-04` | `blocking-no-reject`, `close-means-accept`, `nonblocking-no-reject` | `reject-not-actionable`, `reject-ineffective`, `consent-without-action`                                                 | `reject-as-link`, `no-choice-at-first-layer`, `pur-abo`, `banner-not-recognized` (locked), `cmp-not-supported` (locked) |
+| `CONSENT-05` | `tracking-after-reject`                                             | `cookieless-ping-after-reject`                                                                                          | `connect-only-after-reject`                                                                                             |
+| `TRACK-01`   | —                                                                   | —                                                                                                                       | `service-inventory`                                                                                                     |
+| `EMBED-01`   | —                                                                   | `fonts-loaded`, `fonts-in-embed-frame`                                                                                  | `preconnect-only`                                                                                                       |
+| `EMBED-02`   | —                                                                   | `maps-loaded`                                                                                                           | —                                                                                                                       |
+| `EMBED-03`   | —                                                                   | `video-loaded`                                                                                                          | —                                                                                                                       |
+| `LEGAL-01`   | `document-not-found`, `links-broken`                                | `provider-details-without-link`, `link-missing-on-some-pages`, `reachable-via-intermediate`, `footer-covered-by-banner` | `unresolved`                                                                                                            |
+| `LEGAL-02`   | —                                                                   | —                                                                                                                       | `outdated-reference`                                                                                                    |
+| `PRIV-01`    | —                                                                   | `not-named`                                                                                                             | `category-only`, `ambiguous-match`, `named-in-cmp-only`                                                                 |
+| `PRIV-02`    | `contradiction-replicated`                                          | `contradiction-single`                                                                                                  | `wording-to-review`                                                                                                     |
+| `MAIL-01`    | —                                                                   | `record-not-found`, `policy-none`, `record-invalid`                                                                     | `weak-option`, `legacy-pct`                                                                                             |
+| `MAIL-02`    | —                                                                   | `record-not-found`, `permissive-qualifier`, `record-invalid`, `softfail-without-enforcement`                            | `softfail-with-enforcement`, `ptr-mechanism`                                                                            |
+| `MAIL-03`    | —                                                                   | `key-too-short`, `given-selector-missing`                                                                               | `selectors-not-found`                                                                                                   |
+| `HDR-01`     | —                                                                   | `hsts-missing`, `anti-framing-missing`, `referrer-policy-permissive`                                                    | `header-missing`                                                                                                        |
+| `HDR-02`     | —                                                                   | —                                                                                                                       | `version-header`                                                                                                        |
+| `TLS-01`     | `https-unavailable`, `form-on-http-page`                            | `no-redirect`, `client-side-redirect-only`, `internal-http-link`                                                        | `redirect-chain-detail`, `internal-http-link-upgraded`                                                                  |
+| `TLS-02`     | `certificate-invalid`                                               | `chain-incomplete`, `certificate-expiring`                                                                              | `certificate-expiry-approaching`                                                                                        |
 <!-- registry:end -->
 
-### Geplante Prüfungen
+### Planned checks
 
-Diese Prüfungen sind spezifiziert, aber noch nicht umgesetzt. Die Tabelle nennt die geplanten Varianten.
+These checks are specified but not yet implemented. The table lists the planned variants.
 
-| ID                   | Thema                                      | `critical`                      | `warning`                                                                    | `info`                                              | Ohne Befund (`reason`)   |
-| -------------------- | ------------------------------------------ | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------ |
-| `EMBED-04`           | CAPTCHA                                    | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                 | —                        |
-| `EMBED-05`           | Widgets                                    | —                               | `widget-loaded`                                                              | —                                                   | —                        |
-| `CONSENT-06`         | Consent Mode                               | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                   | `not-observable`         |
-| `VULN-01`, `VULN-02` | CMS-Kern; Plugins, Themes und Bibliotheken | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                   | `source-unavailable`     |
-| `TLS-03`             | Mixed Content                              | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                             | —                        |
-| `TLS-04`             | TLS 1.0/1.1                                | —                               | `legacy-protocol-accepted`                                                   | —                                                   | `handshake-inconclusive` |
-| `DNS-01`             | CAA und DNSSEC                             | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                  | —                        |
-| `HDR-02`             | Cookie-Attribute                           | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`      | —                        |
-| `ADMIN-01`           | Öffentliche WordPress-Angaben              | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                  | —                        |
-| `FILE-01`            | Dienstdateien                              | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                        | —                        |
-| `SEC-01`             | `security.txt`                             | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete` | —                        |
-| `BFSG-01`            | Automatische Zugänglichkeitssignale        | —                               | —                                                                            | `axe-rule-observed`                                 | —                        |
-| `PERF-01`            | Performance im Labor                       | —                               | —                                                                            | `lab-metrics`                                       | —                        |
+| ID                   | Topic                                   | `critical`                      | `warning`                                                                    | `info`                                              | No finding (`reason`)    |
+| -------------------- | --------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------ |
+| `EMBED-04`           | CAPTCHA                                 | —                               | `captcha-without-form`                                                       | `captcha-with-form`                                 | —                        |
+| `EMBED-05`           | Widgets                                 | —                               | `widget-loaded`                                                              | —                                                   | —                        |
+| `CONSENT-06`         | Consent Mode                            | `google-granted-despite-denied` | `default-granted`, `hit-before-default`                                      | —                                                   | `not-observable`         |
+| `VULN-01`, `VULN-02` | CMS core; plugins, themes and libraries | `version-listed-kev-or-preauth` | `version-listed`, `eol-major`                                                | `version-unknown`                                   | `source-unavailable`     |
+| `TLS-03`             | Mixed Content                           | —                               | `active-mixed-content-blocked`, `passive-upgrade-failed`, `form-action-http` | `passive-auto-upgraded`                             | —                        |
+| `TLS-04`             | TLS 1.0/1.1                             | —                               | `legacy-protocol-accepted`                                                   | —                                                   | `handshake-inconclusive` |
+| `DNS-01`             | CAA and DNSSEC                          | —                               | `dnssec-bogus`                                                               | `caa-not-found`, `dnssec-unsigned`                  | —                        |
+| `HDR-02`             | Cookie attributes                       | —                               | `session-cookie-attributes`                                                  | `cookie-attributes`, `cookie-samesite-missing`      | —                        |
+| `ADMIN-01`           | Public WordPress information            | —                               | `users-and-xmlrpc-exposed`                                                   | `partial-exposure`                                  | —                        |
+| `FILE-01`            | Service files                           | `sensitive-signature`           | `exposed-file`                                                               | `minor-file`                                        | —                        |
+| `SEC-01`             | `security.txt`                          | —                               | —                                                                            | `security-txt-not-found`, `security-txt-incomplete` | —                        |
+| `BFSG-01`            | Automatic accessibility signals         | —                               | —                                                                            | `axe-rule-observed`                                 | —                        |
+| `PERF-01`            | Lab performance                         | —                               | —                                                                            | `lab-metrics`                                       | —                        |
 
-- **VULN-01, VULN-02:** Die Stufen gelten bei exakt bestimmter Version; bei einem Versionsbereich liegt jede Variante
-  eine Stufe niedriger.
-- **ADMIN-01, FILE-01:** nur auf ausdrücklichen Wunsch (Opt-in); der Prototyp sendet solche Anfragen nicht.
-- **BFSG-01, PERF-01:** zählen nicht für `--fail-on` (`gating: false`).
+- **VULN-01, VULN-02:** Severities apply when the version is determined exactly; for a version range each variant is one level lower.
+- **ADMIN-01, FILE-01:** only on explicit request (opt-in); the prototype does not send such requests.
+- **BFSG-01, PERF-01:** do not count toward `--fail-on` (`gating: false`).
 
-## CI-Integration
+## CI integration
 
-Führe den Scan in einem separaten Job mit Leserechten und ohne Secrets aus. Die Integrationen verwenden
-`ghcr.io/seed-factory/dsgvo-check:<Version>`. Die Beispiele setzen ein veröffentlichtes Tag und Image voraus.
+Run the scan in a separate job with read permissions and no secrets. The integrations use `ghcr.io/seed-factory/dsgvo-check:<Version>`. The examples require a published tag and image.
 
 ### GitHub Action
 
@@ -239,9 +223,7 @@ jobs:
           fail-on: critical
 ```
 
-Der Schritt liefert `exit-code` sowie die Pfade für JSON, HTML und PDF. Die Job Summary und der
-Artefakt-Upload sind standardmäßig aktiv. [Alle Eingaben und Ausgaben](action.yml) ·
-[Beispiel mit absichtlich fehlschlagendem Job](examples/github-failing/README.md)
+The step provides `exit-code` and paths for JSON, HTML and PDF. The job summary and artifact upload are enabled by default. [All inputs and outputs](action.yml) · [Example with an intentionally failing job](examples/github-failing/README.md)
 
 ### GitLab CI
 
@@ -254,10 +236,9 @@ variables:
   DSGVO_CHECK_URL: https://staging.example.de/
 ```
 
-Das [Template](templates/gitlab/dsgvo-check.gitlab-ci.yml) definiert den Job `dsgvo-check` (Stage `test`, läuft nur
-bei gesetztem `DSGVO_CHECK_URL`). Den Wert für `integrity` nennt die Zusammenfassung des Release-Workflows.
+The [template](templates/gitlab/dsgvo-check.gitlab-ci.yml) defines the `dsgvo-check` job (stage `test`, runs only when `DSGVO_CHECK_URL` is set). The release workflow summary provides the `integrity` value.
 
-Das Template sichert das Berichtsverzeichnis 14 Tage lang als Artefakt. [Template und Variablen](templates/gitlab/dsgvo-check.gitlab-ci.yml)
+The template retains the report directory as an artifact for 14 days. [Template and variables](templates/gitlab/dsgvo-check.gitlab-ci.yml)
 
 ### Docker
 
@@ -274,114 +255,90 @@ docker run --rm --user "$(id -u):$(id -g)" --env HOME=/tmp \
 
 ### Isolation
 
-Im Image bildet der Container die Sandbox (`--sandbox container`). Der Lauf oben nutzt ein schreibgeschütztes
-Dateisystem, eingeschränkte Rechte und Ressourcenlimits. `/out` muss für die beim Start verwendete UID schreibbar
-sein. Ohne `--user` läuft das Image als UID 10001. Lokal verwendet Chromium standardmäßig seine eigene Sandbox.
+In the image, the container provides the sandbox (`--sandbox container`). The run above uses a read-only filesystem, restricted privileges and resource limits. `/out` must be writable by the UID used at startup. Without `--user`, the image runs as UID 10001. Locally, Chromium uses its own sandbox by default.
 
-## Konfiguration
+## Configuration
 
-### Optionen
+### Options
 
-`node dist/cli.js --help` zeigt alle Optionen. Die folgenden Optionen decken die häufigsten Aufrufe ab.
+`node dist/cli.js --help` shows all options. The following cover the most common uses.
 
-| Option        | Standard               | Wirkung                                          |
-| ------------- | ---------------------- | ------------------------------------------------ |
-| `--fail-on`   | `critical`             | `critical`, `warning` oder `none`                |
-| `--format`    | `console,json`         | Kommagetrennte Ausgabeformate                    |
-| `--out`       | `./dsgvo-check-report` | Ausgabeverzeichnis                               |
-| `--max-pages` | `6`                    | Seitenbudget der Phase A                         |
-| `--timeout`   | `8m`                   | Globales Zeitlimit, etwa `90s`                   |
-| `--checks`    | alle                   | Kommagetrennte Prüfungs-IDs                      |
-| `--lang`      | `de`                   | Berichtssprache `de` oder `en`                   |
-| `--detail`    | `full`                 | Detailstufe `full` oder `brief` für HTML und PDF |
+| Option        | Default                | Effect                                          |
+| ------------- | ---------------------- | ----------------------------------------------- |
+| `--fail-on`   | `critical`             | `critical`, `warning` or `none`                 |
+| `--format`    | `console,json`         | Comma-separated output formats                  |
+| `--out`       | `./dsgvo-check-report` | Output directory                                |
+| `--max-pages` | `6`                    | Phase A page budget                             |
+| `--timeout`   | `8m`                   | Global time limit, e.g. `90s`                   |
+| `--checks`    | all                    | Comma-separated check IDs                       |
+| `--lang`      | `de`                   | Report language `de` or `en`                    |
+| `--detail`    | `full`                 | Detail level `full` or `brief` for HTML and PDF |
 
-### Einstellungen
+### Settings
 
-Der Scanner läuft mit sinnvollen Standardwerten. Ein CLI-Flag hat Vorrang vor der Umgebungsvariable. Danach folgen die lokale `.env` und der Standardwert.
-Mit Docker übergibst du Variablen per `--env` oder `--env-file`.
-[Alle Variablen mit Standardwerten und Grenzen](.env.example)
+The scanner runs with sensible defaults. A CLI flag takes precedence over the environment variable, followed by the local `.env` and the default value. With Docker, pass variables using `--env` or `--env-file`. [All variables with defaults and limits](.env.example)
 
-### Exit-Codes
+### Exit codes
 
-| Code | Bedeutung                                                                                                  |
-| ---- | ---------------------------------------------------------------------------------------------------------- |
-| `0`  | Kein Befund erreicht die Schwelle.                                                                         |
-| `1`  | Mindestens ein Befund erreicht die Schwelle.                                                               |
-| `2`  | Der Scan oder die Berichtsausgabe scheiterte, eine relevante Prüfung war fehlerhaft oder `--strict` griff. |
+| Code | Meaning                                                                           |
+| ---- | --------------------------------------------------------------------------------- |
+| `0`  | No finding reaches the threshold.                                                 |
+| `1`  | At least one finding reaches the threshold.                                       |
+| `2`  | The scan or report output failed, a relevant check failed, or `--strict` applied. |
 
-Ein nicht durchgeführter Scan oder Schreibfehler hat Vorrang vor einem Befund. Ein Befund hat Vorrang vor
-einem einzelnen Prüfungsfehler und vor `--strict`. `--fail-on none` lässt die Schwelle und Prüfungsfehler
-bei der Auswertung des Exit-Codes außer Betracht. Die übrigen Scan-Fehler und `--strict` wirken weiterhin.
+A scan that was not performed or a write error takes precedence over a finding. A finding takes precedence over a single check error and over `--strict`. `--fail-on none` disregards the threshold and check errors when evaluating the exit code. Other scan errors and `--strict` still apply.
 
-[Alle Exit-Gründe und ihr Vorrang](docs/scan-reference.md#exit-gründe)
+[All exit reasons and their precedence](docs/scan-reference.md#exit-gründe)
 
-## Was der Scanner sendet
+## What the scanner sends
 
-Der Scanner schickt Browser-Navigationen und die folgenden Standardanfragen, sonst nichts. Wer als Betreiber wissen
-will, was bei ihm angekommen ist, findet es hier vollständig.
+The scanner sends browser navigations and the following standard requests, nothing else. This is the complete list for site operators who want to know what reached their site.
 
-**Browser:** Navigationen der Phasen A, B und C (siehe [Seiten in Phase A](docs/scan-reference.md#seiten-in-phase-a)), eine nach der anderen
-mit mindestens 1,5 s Pause. Bei einem abgelehnten Zertifikat der Ziel-URL gehen sie an das Ziel ihrer
-HTTP-Weiterleitung, nicht zusätzlich.
+**Browser:** navigations in phases A, B and C (see [pages in phase A](docs/scan-reference.md#seiten-in-phase-a)), one at a time with at least 1.5 s between them. If the target URL's certificate is rejected, they go to the target of its HTTP redirect, not additionally.
 
-**HTTP**, höchstens 2 Anfragen pro Sekunde und Host:
+**HTTP**, at most 2 requests per second per host:
 
-- `robots.txt` des Ursprungs der Startseite;
-- höchstens 2 Sitemap-Anfragen (die Sitemap oder ein Sitemap-Index und eine Kind-Sitemap), nur wenn die Links der
-  Startseite das Seitenbudget nicht füllen;
-- die Umleitungsketten von `http://` und `https://` für den Zielhost und seine `www.`- und Apex-Varianten, dazu die
-  Kette auf einem in der Ziel-URL ausdrücklich genannten Port;
-- je eine Anfrage an die von der Startseite verlinkten Seiten Impressum und Datenschutzerklärung (nur gleiche Website,
-  für die Sicherheits-Header und Versionsangaben);
-- für TLS-01 nach dem Browser höchstens 3 Anfragen (`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`):
-  - zuerst an die `http://`-Adressen von Seiten, auf denen Phase A ein Formular gesehen hat;
-  - mit dem Rest des Budgets an die `http://`-Adressen von Beiträgen und Artikeln, die die besuchten Seiten als
-    Permalink (`rel="bookmark"`) verlinken und die der Browser nicht besucht hat;
-  - beides nur, wenn `http://` ihres Hosts ohne Umleitung auf https ausliefert: je ein GET, ohne einer Weiterleitung zu
-    folgen und ohne etwas abzusenden, keine Wiederholung und nach 429 oder 503 keine weitere Anfrage an diesen Host.
+- `robots.txt` from the homepage origin;
+- at most 2 sitemap requests (the sitemap or a sitemap index and a child sitemap), only if homepage links do not fill the page budget;
+- the redirect chains from `http://` and `https://` for the target host and its `www.` and apex variants, plus the chain on a port explicitly specified in the target URL;
+- one request each to the legal notice and privacy policy linked from the homepage (same website only, for security headers and version information);
+- for TLS-01 after the browser, at most 3 requests (`DSGVO_CHECK_HTTP_FORM_TWIN_PAGES`):
+  - first to the `http://` addresses of pages where phase A saw a form;
+  - with the remaining budget to the `http://` addresses of posts and articles linked by visited pages as permalinks (`rel="bookmark"`) that the browser did not visit;
+  - both only if `http://` on their host serves content without redirecting to https: one GET each, without following a redirect or submitting anything, no retry, and no further request to that host after 429 or 503.
 
-**TLS:** ein Handshake je Host-Variante (höchstens 3), um das Zertifikat zu lesen. Nach einer Umleitung auf eine andere
-Domain kommen höchstens 3 weitere für den Host am Ende der Umleitung und seine `www.`- und Apex-Varianten hinzu.
+**TLS:** one handshake per host variant (at most 3) to read the certificate. After a redirect to another domain, at most 3 more are added for the final host and its `www.` and apex variants.
 
-**DNS:** MX-, SPF-, DMARC- und DKIM-Abfragen beim Resolver des prüfenden Rechners, nicht bei der Website.
+**DNS:** MX, SPF, DMARC and DKIM queries to the scanning machine's resolver, not to the website.
 
-- Für die gescannte Domain höchstens 60 Abfragen.
-- Nach dem Browser je höchstens 30 weitere für die Domain, auf die die Startseite weiterleitet, und für bis zu 2
-  E-Mail-Domains aus dem Impressum.
-- DKIM: je E-Mail-Domain höchstens 8 Selektoren (`<selector>._domainkey.<domain>`), nach den übrigen Abfragen und
-  innerhalb desselben Budgets.
+- At most 60 queries for the scanned domain.
+- After the browser, at most 30 more each for the domain the homepage redirects to and for up to 2 email domains from the legal notice.
+- DKIM: at most 8 selectors per email domain (`<selector>._domainkey.<domain>`), after the other queries and within the same budget.
 
-**Nicht gesendet** werden Anfragen auf offene Dateien oder Admin-Oberflächen, Logins und Formulare. Bot-Schutz,
-CAPTCHAs und Geo-Sperren umgeht der Scanner nie: Eine blockierte Website wird als blockiert vermerkt und nicht mit
-Tricks erneut aufgerufen.
+**Not sent:** requests for exposed files or admin interfaces, logins and forms. The scanner never bypasses bot protection, CAPTCHAs or geo-blocks: a blocked website is recorded as blocked and is not retried with tricks.
 
-User-Agent und die IP-Adresse, die Drittanbieter in Phase C sehen: siehe [Nutzungshinweise](#nutzungshinweise). Der
-User-Agent bleibt auch dann unverändert, wenn ein Einwilligungsbanner ihn deshalb für einen Crawler hält und sich nicht
-öffnet; der Bericht nennt das (siehe [Banner](#banner)).
+For the User-Agent and the IP address third parties see in phase C, see [Usage notes](#usage-notes). The User-Agent remains unchanged even if a consent banner therefore treats it as a crawler and does not open; the report states this (see [Banner](#banner)).
 
-## Grenzen
+## Limitations
 
-- Ein Scan ist eine Stichprobe für eine Browserkonfiguration, einen Standort und die tatsächlich besuchten Seiten.
-- Bot-Schutz, Geo-Signale und nicht überprüfbare Zustände können Prüfungen `inconclusive` machen.
-- Der Snapshot enthält weder Cookie-Werte noch Werte aus Web Storage oder TC-Strings, auch in gehashter Form.
-  URL-Parameter und Header folgen Positivlisten. [Was gespeichert wird](docs/scan-reference.md#keine-werte)
-- Die Netzwerkprüfung filtert private, Loopback-, Link-Local- und Metadaten-Adressen bei der Zielprüfung und
-  Dokumentnavigation. Subressourcen, DNS-Rebinding und das Ziel hinter einem Proxy liegen außerhalb dieser Grenze.
-  Nutze eine isolierte Umgebung ohne Zugriff auf sensible interne Dienste.
-- Eine leere Befundliste bestätigt keine Rechtskonformität. [Grenzen der einzelnen Prüfungen](docs/scan-reference.md#einzelne-prüfungen)
+- A scan is a sample for one browser configuration, one location and the pages actually visited.
+- Bot protection, geo signals and states that cannot be checked can make checks `inconclusive`.
+- The snapshot contains neither cookie values nor Web Storage values or TC-Strings, even in hashed form. URL parameters and headers follow allowlists. [What is stored](docs/scan-reference.md#keine-werte)
+- The network check filters private, loopback, link-local and metadata addresses during target validation and document navigation. Subresources, DNS rebinding and the target behind a proxy are outside this boundary. Use an isolated environment without access to sensitive internal services.
+- An empty list of findings does not confirm legal compliance. [Limits of individual checks](docs/scan-reference.md#einzelne-prüfungen)
 
-## Nutzungshinweise
+## Usage notes
 
-`dsgvo-check` ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
-Dritter sind nicht zur Veröffentlichung vorgesehen. HTTP-Anfragen des Scanners tragen den User-Agent
-`dsgvo-check/<version> (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)`; der Browser
-meldet sich als Chrome mit demselben Token. TLS-Verbindungsaufbauten und DNS-Abfragen tragen keinen User-Agent.
-Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach
-der Annahme im Banner lädt. Mit `--proxy` laufen DNS-Abfragen direkt über den Resolver, nicht über den Proxy.
+dsgvo-check is intended for checking your own websites or websites you manage on behalf of others; reports about
+third-party websites are not intended for publication. HTTP requests of the scanner carry the User-Agent
+“dsgvo-check/<version> (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)”; the browser
+identifies as Chrome with the same token. TLS handshakes and DNS queries carry no User-Agent. Phase C discloses
+the scanning machine's IP address to the third parties whose resources the website loads after acceptance
+in the banner. With `--proxy`, DNS queries go directly to the resolver, not through the proxy.
 
-Derselbe Text steht in `dsgvo-check --help` (Quelle: `test/data/texts/de/core.yaml`, Schlüssel `usageNotes`).
+The same text appears in `dsgvo-check --help` (source: `test/data/texts/en/core.yaml`, key `usageNotes`).
 
-## Entwicklung
+## Development
 
 ```sh
 corepack pnpm typecheck
@@ -394,21 +351,16 @@ corepack pnpm test:e2e
 
 ### Tests
 
-Unit-Tests benötigen weder Browser noch Netzwerk. Integrationstests und E2E-Tests nutzen lokale Server.
-`corepack pnpm test:changed` wählt Tests anhand des Diffs zu `main` aus.
-[Teststufen, CI und lokale Testumgebung](docs/development.md#tests)
+Unit tests need neither a browser nor network access. Integration and E2E tests use local servers. `corepack pnpm test:changed` selects tests based on the diff to `main`. [Test levels, CI and local test environment](docs/development.md#tests)
 
 ### Canary
 
-Canary misst die Abdeckung und Zuverlässigkeit des Scanners an einer privaten Stichprobe.
-`corepack pnpm canary --dry-run` zeigt den Plan ohne Scan. Ein Live-Lauf braucht `--confirm`.
-[Vorbereitung, Auswertung und Regeln](docs/development.md#canary)
+Canary measures scanner coverage and reliability against a private sample. `corepack pnpm canary --dry-run` shows the plan without scanning. A live run requires `--confirm`. [Preparation, evaluation and rules](docs/development.md#canary)
 
-### Beitragen
+### Contributing
 
-[Architektur und Modulübersicht](docs/architecture.md) · [Entwicklungsbefehle und Release](docs/development.md) ·
-[Projektregeln und neue Prüfungen](AGENTS.md)
+[Architecture and modules](docs/architecture.md) · [Development commands and release](docs/development.md) · [Project rules and new checks](AGENTS.md)
 
-## Lizenz
+## License
 
 Apache-2.0. [LICENSE](LICENSE) · [NOTICE](NOTICE)

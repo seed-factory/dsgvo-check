@@ -4,7 +4,7 @@
 # ptr, softfail accepted by BSI TR-03182 under DMARC enforcement) do not. info mappings stay null until the customer
 # maps them. MAIL-03 selectors-not-found keeps the catalog code: the catalog row describes exactly that case
 # ("not found on any of the common selectors").
-# The variant table in README.md (section "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
+# The variant table in README.md and README.de.md (sections "What is checked" and "Was geprüft wird") is generated from these files (`corepack pnpm registry`).
 checks:
   MAIL-01:
     gating: true
