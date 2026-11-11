@@ -1,0 +1,29 @@
+# Settings of the in-page banner probe (src/cmp/page/probe.ts) that follow how banners are built.
+probe:
+  # Attributes the probe tries, in this order, to build the selector that clicks a button: the first one that identifies
+  # the element alone wins, after the id. Test hooks and vendor markup (Usercentrics `data-action-type`, Borlabs
+  # `data-cookie-*`) come first, then generic attributes.
+  selectorAttributes:
+    - data-testid
+    - data-action-type
+    - data-cookie-refuse
+    - data-cookie-accept-all
+    - data-role
+    - name
+    - aria-label
+  # id/class names of a banner container (case-insensitive regex fragments). With one of them, a box with a single consent
+  # keyword can be a banner. Stricter than browser/dom.yaml `bannerNames`: "cmp" and "gdpr" name wrappers of content
+  # management and of policy pages too, "dsgvo" a policy wrapper.
+  bannerContainerNames:
+    - cookie
+    - consent
+    - einwillig
+    - borlabs
+    - cybot
+    - usercentrics
+    - cmplz
+    - complianz
+    - ccm19
+    - cookiehub
+    - real-cookie-banner
+    - rcb-

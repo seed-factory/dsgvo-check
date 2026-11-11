@@ -1,0 +1,270 @@
+# Finding texts (de), module dns. ICU-like templates: {param}, {n, plural, …}, {x, select, …}.
+# Keys are the variants of test/data/ruleset (`<checkId>.<variant>`). Wording: "beobachtet", "nicht gefunden in …" —
+# no legal verdicts (stop-word test). Textentwurf.
+draft: true
+messages:
+  MAIL-01.record-not-found:
+    title: >-
+      Kein DMARC-Eintrag gefunden{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})} final {
+      (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Für {domain} wurde kein DMARC-Eintrag gefunden (abgefragt: _dmarc {scope, select, contact {bei {mailDomain}}
+      final {bei {mailDomain}} other {beim gescannten Host}} und entlang des DNS Tree Walk nach RFC 9989).{inherited,
+      select, psd { Beobachtet wurde nur eine Richtlinie der übergeordneten Public-Suffix-Domain.} other {}} Ohne
+      eigene DMARC-Richtlinie können Empfänger gefälschte Absenderadressen dieser Domain nicht anhand einer
+      veröffentlichten Vorgabe abweisen. Orientierung (BSI TR-03182): DMARC-Eintrag mit p=quarantine oder p=reject und
+      einer rua-Adresse veröffentlichen.{scope, select, contact { Die Domain {mailDomain} stammt aus einer
+      E-Mail-Adresse, die im Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain}
+      weiter.} other {}}
+  MAIL-01.policy-none:
+    title: >-
+      DMARC im Beobachtungsmodus (p=none){scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})}
+      final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      {noRua, select, yes {Der DMARC-Eintrag von {domain} enthält p=none und kein rua-Tag. Damit werden keine
+      aggregierten Berichte angefordert, und Empfänger erhalten keine Vorgabe, gefälschte Nachrichten abzuweisen oder
+      zurückzuhalten. Orientierung (BSI TR-03182): eine rua-Adresse ergänzen, die Berichte auswerten und dann auf
+      p=quarantine oder p=reject umstellen.} other {Der DMARC-Eintrag von {domain} enthält p=none. Damit werden nur
+      Berichte angefordert; Empfänger erhalten keine Vorgabe, gefälschte Nachrichten abzuweisen oder zurückzuhalten.
+      Orientierung (BSI TR-03182): nach Auswertung der Berichte auf p=quarantine oder p=reject umstellen.}}{scope,
+      select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.}
+      final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-01.record-invalid:
+    title: >-
+      DMARC-Eintrag nicht auswertbar{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})} final {
+      (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Für {domain} wurde ein DMARC-Eintrag beobachtet, den Empfänger nicht wie vorgesehen auswerten können ({reason,
+      select, multiple-records {mehrere DMARC-Einträge unter demselben Namen} version-not-first {v=DMARC1 steht nicht
+      am Anfang} p-missing {das Tag p fehlt} p-invalid {ungültiger Wert für p} other {Syntaxfehler}}). Empfänger
+      ignorieren solche Einträge oder behandeln sie wie p=none.{scope, select, contact { Die Domain {mailDomain}
+      stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.} final { Die Startseite leitet auf die
+      Domain {mailDomain} weiter.} other {}}
+  MAIL-01.weak-option:
+    title: >-
+      {kind, select, null-mx {DMARC ohne p=reject bei einer Domain ohne E-Mail-Empfang} other {{count, plural, one
+      {DMARC-Option} other {DMARC-Optionen}} mit eingeschränkter Wirkung}}{scope, select, contact { (E-Mail-Domain aus
+      dem Impressum: {mailDomain})} final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      {kind, select, null-mx {{domain} veröffentlicht einen Null-MX-Eintrag (RFC 7505) und nimmt damit keine E-Mails
+      an. {policy, select, missing {Ein eigener DMARC-Eintrag wurde nicht gefunden.} none {Der DMARC-Eintrag enthält
+      p=none.} quarantine {Der DMARC-Eintrag enthält p=quarantine.} other {Der DMARC-Eintrag ist nicht auswertbar.}}
+      Für Domains ohne E-Mail-Verkehr wird DMARC mit p=reject empfohlen (M3AAWG), damit Nachrichten mit gefälschtem
+      Absender abgewiesen werden.} other {Im DMARC-Eintrag von {domain} {count, plural, one {wurde eine Option} other
+      {wurden # Optionen}} mit eingeschränkter Wirkung beobachtet:{spNone, select, yes { sp=none – für Absender unter
+      Subdomains wird trotz p={policy} keine Durchsetzung angefordert.} other {}}{testing, select, yes { t=y –
+      Testmodus nach RFC 9989, Empfänger wenden p={policy} nur abgeschwächt an.} other {}}{noRua, select, yes { kein
+      rua-Tag – ohne aggregierte Berichte (RFC 9990) ist nicht erkennbar, welche Server im Namen der Domain E-Mails
+      versenden.} other {}}}}{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im
+      Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-01.legacy-pct:
+    title: >-
+      DMARC-Eintrag mit Legacy-Tag pct={pct}{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})}
+      final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Der DMARC-Eintrag von {domain} enthält das Tag pct={pct}. Es stammt aus RFC 7489 und ist in RFC 9989 entfallen;
+      die Richtlinie wurde nach RFC 9989 ausgewertet. Empfänger, die das Tag noch auswerten, wenden p={policy} nur auf
+      {pct} % der Nachrichten an.{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse,
+      die im Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-02.record-not-found:
+    title: >-
+      Kein SPF-Eintrag gefunden{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})} final {
+      (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Für {domain} wurde kein TXT-Eintrag mit v=spf1 gefunden. Empfänger können damit nicht prüfen, welche Server
+      E-Mails im Namen der Domain versenden dürfen.{nullMx, select, yes { Die Domain veröffentlicht einen
+      Null-MX-Eintrag (RFC 7505); für Domains ohne E-Mail-Versand wird v=spf1 -all empfohlen (M3AAWG).} other {}}
+      Orientierung (BSI TR-03182): SPF-Eintrag mit den genutzten Versandservern und abschließendem -all (oder ~all bei
+      durchgesetztem DMARC) veröffentlichen.{scope, select, contact { Die Domain {mailDomain} stammt aus einer
+      E-Mail-Adresse, die im Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain}
+      weiter.} other {}}
+  MAIL-02.permissive-qualifier:
+    title: >-
+      SPF ohne Ausschluss nicht gelisteter Server{scope, select, contact { (E-Mail-Domain aus dem Impressum:
+      {mailDomain})} final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Der SPF-Eintrag von {domain} {qualifier, select, +all {endet mit +all. Damit ist jeder Server als Absender für
+      die Domain zugelassen; SPF bietet so keinen Schutz vor gefälschten Absendern.} ?all {endet mit ?all. Für nicht
+      gelistete Server ergibt sich das Ergebnis neutral; Empfänger erhalten keine Aussage, dass solche Server nicht
+      berechtigt sind.} other {enthält keinen all-Mechanismus. Für nicht gelistete Server ergibt sich das Ergebnis
+      neutral; Empfänger erhalten keine Aussage, dass solche Server nicht berechtigt sind.}}{nullMx, select, yes { Die
+      Domain veröffentlicht einen Null-MX-Eintrag (RFC 7505); für Domains ohne E-Mail-Versand wird v=spf1 -all
+      empfohlen (M3AAWG).} other {}}{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse,
+      die im Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-02.record-invalid:
+    title: >-
+      SPF-Eintrag nicht auswertbar{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})} final {
+      (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Bei der statischen Auswertung des SPF-Eintrags von {domain} wurde {reason, select, multiple-records
+      {festgestellt, dass {count} TXT-Einträge mit v=spf1 veröffentlicht sind} syntax {ein Syntaxfehler im Eintrag
+      festgestellt} too-many-lookups {festgestellt, dass mehr als 10 DNS-Abfragen über include, a, mx, ptr, exists und
+      redirect nötig sind} void-lookups {festgestellt, dass mehr als 2 DNS-Abfragen ohne Ergebnis bleiben} loop {eine
+      Schleife über include oder redirect festgestellt} include-no-record {festgestellt, dass ein per include
+      eingebundener Name keinen SPF-Eintrag hat} redirect-no-record {festgestellt, dass das redirect-Ziel keinen
+      SPF-Eintrag hat} include-multiple-records {festgestellt, dass ein per include eingebundener Name mehrere
+      SPF-Einträge hat} redirect-multiple-records {festgestellt, dass das redirect-Ziel mehrere SPF-Einträge hat}
+      other {ein Fehler im Eintrag festgestellt}}. Nach RFC 7208 ist das ein permanenter Fehler (permerror); Empfänger
+      werten SPF dann nicht aus. Bis zum Abbruch gezählte DNS-Abfragen: {lookups}.{scope, select, contact { Die Domain
+      {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.} final { Die Startseite leitet
+      auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-02.softfail-without-enforcement:
+    title: >-
+      SPF ~all ohne durchgesetztes DMARC{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})}
+      final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Der SPF-Eintrag von {domain} endet mit ~all (softfail). Eine anwendbare DMARC-Richtlinie mit p=quarantine oder
+      p=reject wurde im ausgewerteten Suchpfad nicht gefunden ({dmarcPolicy, select, none {der DMARC-Eintrag enthält
+      p=none} invalid {der DMARC-Eintrag ist nicht auswertbar} other {ein DMARC-Eintrag wurde nicht gefunden}}). Ohne
+      DMARC-Durchsetzung werden nicht berechtigte Absender in der Regel nur markiert, nicht abgewiesen. Orientierung
+      (BSI TR-03182): DMARC mit p=quarantine oder p=reject veröffentlichen oder SPF mit -all abschließen.{scope,
+      select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.}
+      final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-02.softfail-with-enforcement:
+    title: >-
+      SPF ~all bei durchgesetztem DMARC{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})}
+      final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Der SPF-Eintrag von {domain} endet mit ~all (softfail). DMARC ist mit p={dmarcPolicy} veröffentlicht und
+      bestimmt die Behandlung nicht berechtigter Absender; BSI TR-03182 lässt diese Kombination zu. Hinweis zur
+      Information.{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum
+      beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-02.ptr-mechanism:
+    title: >-
+      SPF verwendet den Mechanismus ptr{scope, select, contact { (E-Mail-Domain aus dem Impressum: {mailDomain})}
+      final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Der SPF-Eintrag von {domain} enthält ptr. RFC 7208 rät davon ab (langsam und unzuverlässig); manche Empfänger
+      werten ptr nicht aus.{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im
+      Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-03.key-too-short:
+    title: >-
+      DKIM-Schlüssel mit {bits} Bit unter dem Selektor {selector}{scope, select, contact { (E-Mail-Domain aus dem
+      Impressum: {mailDomain})} final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Unter {selector}._domainkey.{domain} ist ein RSA-Schlüssel mit {bits} Bit veröffentlicht. {belowRfc, select, yes
+      {Nach RFC 8301 werten Empfänger Signaturen mit RSA-Schlüsseln unter 1024 Bit nicht als gültig; damit signierte
+      Nachrichten gelten als nicht signiert.} other {RFC 8301 verlangt mindestens 1024 Bit und empfiehlt 2048 Bit; als
+      Untergrenze sind für diesen Scan {minBits} Bit eingestellt.}} Je kürzer der Schlüssel, desto geringer ist der
+      Aufwand, aus dem öffentlichen den privaten Schlüssel zu berechnen und Signaturen für die Domain zu erzeugen.
+      Orientierung (RFC 8301): RSA-Schlüssel mit mindestens 2048 Bit verwenden.{scope, select, contact { Die Domain
+      {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.} final { Die Startseite leitet
+      auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-03.given-selector-missing:
+    title: >-
+      Kein DKIM-Schlüssel unter den erwarteten Selektoren{scope, select, contact { (E-Mail-Domain aus dem Impressum:
+      {mailDomain})} final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Für {domain} wurde unter {provider, select, operator {den in der Konfiguration angegebenen Selektoren}
+      microsoft-365 {den Selektoren, mit denen Microsoft 365 signiert (erkannt an MX-Eintrag und SPF-include)} other
+      {den Selektoren, mit denen der erkannte Mail-Anbieter signiert}} ({selectors}) kein DKIM-Schlüssel gefunden, und
+      auf keinem der {count} geprüften Selektoren wurde ein Schlüssel beobachtet. Ohne veröffentlichten Schlüssel
+      können Empfänger DKIM-Signaturen dieser Domain nicht prüfen; DMARC kann sich dann nur auf SPF stützen.
+      Selektoren sind frei wählbar: Ein Schlüssel unter einem anderen Namen ist mit diesen Abfragen nicht sichtbar.
+      Orientierung (BSI TR-03182): DKIM-Signatur beim Mail-Anbieter aktivieren und den öffentlichen Schlüssel im DNS
+      veröffentlichen.{scope, select, contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im
+      Impressum beobachtet wurde.} final { Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+  MAIL-03.selectors-not-found:
+    title: >-
+      Kein DKIM-Schlüssel auf den geprüften Selektoren{scope, select, contact { (E-Mail-Domain aus dem Impressum:
+      {mailDomain})} final { (Domain nach Weiterleitung: {mailDomain})} other {}}
+    body: >-
+      Für {domain} wurde auf {count, plural, one {dem geprüften Selektor} other {den # geprüften Selektoren}}
+      ({selectors}) kein veröffentlichter DKIM-Schlüssel gefunden. Selektoren sind frei wählbar; ein Schlüssel unter
+      einem anderen Selektor ist mit diesen Abfragen nicht sichtbar.{provider, select, google-workspace { Google
+      Workspace schlägt den Selektor „google“ vor, das Präfix kann aber geändert werden.} other {}} Ist der verwendete
+      Selektor bekannt, kann er für weitere Scans in DSGVO_CHECK_DNS_DKIM_SELECTORS angegeben werden. Umgekehrt belegt
+      ein veröffentlichter Schlüssel nicht, dass E-Mails signiert werden. Hinweis zur Information.{scope, select,
+      contact { Die Domain {mailDomain} stammt aus einer E-Mail-Adresse, die im Impressum beobachtet wurde.} final {
+      Die Startseite leitet auf die Domain {mailDomain} weiter.} other {}}
+legalNotes:
+  MAIL-01:
+    text: >-
+      Technischer Standard, keine unmittelbare Rechtsnorm: DMARC nach RFC 9989 sowie BSI TR-03108-1 und TR-03182.
+      Mittelbarer Bezug: Art. 32 DSGVO (geeignete technische Maßnahmen zur Sicherheit der Verarbeitung); ob eine
+      bestimmte Maßnahme geboten ist, hängt vom Einzelfall ab.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  MAIL-02:
+    text: >-
+      Technischer Standard, keine unmittelbare Rechtsnorm: SPF nach RFC 7208, bewertet zusammen mit DMARC nach BSI
+      TR-03182. Mittelbarer Bezug: Art. 32 DSGVO; ob eine bestimmte Maßnahme geboten ist, hängt vom Einzelfall ab. Aus
+      dem SPF-Eintrag folgt keine Aussage über den tatsächlichen E-Mail-Versand.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  MAIL-03:
+    text: >-
+      Technischer Standard, keine unmittelbare Rechtsnorm: DKIM nach RFC 6376, Schlüssellängen nach RFC 8301, bewertet
+      zusammen mit DMARC nach BSI TR-03182. Mittelbarer Bezug: Art. 32 DSGVO; ob eine bestimmte Maßnahme geboten ist,
+      hängt vom Einzelfall ab. Selektoren sind frei wählbar: Ein nicht gefundener Schlüssel belegt nicht, dass keiner
+      veröffentlicht ist, und ein veröffentlichter Schlüssel belegt nicht, dass E-Mails signiert werden.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+
+# Handlungsempfehlungen je Variante: kurz, konkret, ohne rechtliche Wertung. Vorlagen wie die Befundtexte, mit den
+# Parametern des Befunds; auf der ersten Seite teilen sich die Befunde einer Meldung einen Eintrag, ein abweichender
+# Parameter ist dort eine Liste und landet in einem select im Zweig other.
+actions:
+  # One staged path in every DMARC text: reports (rua) first, then their review, then p=quarantine or p=reject.
+  MAIL-01.record-not-found:
+    text: >-
+      Veröffentlichen Sie für {domain} beim DNS- oder Mail-Anbieter der Domain einen DMARC-Eintrag mit einer
+      rua-Adresse für Berichte (für die Auswertung zunächst mit p=none), werten Sie die Berichte aus und stellen Sie
+      die Richtlinie dann auf p=quarantine oder p=reject um.
+  MAIL-01.policy-none:
+    text: >-
+      {noRua, select, yes {Ergänzen Sie im DMARC-Eintrag von {domain} eine rua-Adresse für Berichte, werten Sie die
+      Berichte aus und stellen Sie die Richtlinie dann auf p=quarantine oder p=reject um.} other {Werten Sie die
+      DMARC-Berichte von {domain} aus und stellen Sie die Richtlinie dann auf p=quarantine oder p=reject um.}}
+  MAIL-01.record-invalid:
+    text: >-
+      Korrigieren Sie den DMARC-Eintrag von {domain}, sodass genau ein gültiger Eintrag unter _dmarc veröffentlicht
+      ist.
+  MAIL-01.weak-option:
+    text: >-
+      {kind, select, null-mx {{policy, select, missing {Veröffentlichen Sie für die Domain, die keine E-Mails
+      empfängt, einen DMARC-Eintrag mit p=reject.} other {Stellen Sie den DMARC-Eintrag der Domain, die keine E-Mails
+      empfängt, auf p=reject um.}}} other {Passen Sie den DMARC-Eintrag von {domain} beim DNS-Anbieter an.{noRua,
+      select, yes { Ergänzen Sie eine rua-Adresse, damit aggregierte Berichte ankommen, und werten Sie diese aus.}
+      other {}}{spNone, select, yes { Entfernen Sie sp=none oder setzen Sie sp auf quarantine oder reject.} other
+      {}}{testing, select, yes { Entfernen Sie t=y, sobald der Testbetrieb abgeschlossen ist.} other {}}}}
+  MAIL-01.legacy-pct:
+    text: "Entfernen Sie das veraltete Tag pct aus dem DMARC-Eintrag von {domain}, wenn es nicht mehr gebraucht wird."
+  MAIL-02.record-not-found:
+    text: >-
+      Veröffentlichen Sie für {domain} einen SPF-Eintrag, der die Server auflistet, die E-Mails für die Domain
+      versenden dürfen.
+  MAIL-02.permissive-qualifier:
+    text: >-
+      Ändern Sie das Ende des SPF-Eintrags von {domain} auf -all oder ~all, damit nicht gelistete Server nicht als
+      Absender gelten.
+  MAIL-02.record-invalid:
+    text: >-
+      Korrigieren Sie den SPF-Eintrag von {domain}, sodass genau ein gültiger Eintrag mit v=spf1 veröffentlicht ist.
+  MAIL-02.softfail-without-enforcement:
+    text: >-
+      Für {domain}: {dmarcPolicy, select, none {Stellen Sie die DMARC-Richtlinie nach Auswertung der Berichte auf
+      p=quarantine oder p=reject um oder schließen Sie SPF mit -all ab.} invalid {Korrigieren Sie den DMARC-Eintrag
+      und setzen Sie p=quarantine oder p=reject, oder schließen Sie SPF mit -all ab.} other {Richten Sie DMARC
+      schrittweise ein (Berichte auswerten, dann p=quarantine oder p=reject) oder schließen Sie SPF mit -all ab.}}
+  MAIL-02.softfail-with-enforcement:
+    text: "Kein Handlungsbedarf, solange DMARC mit quarantine oder reject aktiv bleibt."
+  MAIL-02.ptr-mechanism:
+    text: "Ersetzen Sie ptr im SPF-Eintrag von {domain} durch konkrete ip4-, ip6- oder include-Angaben."
+  MAIL-03.key-too-short:
+    text: >-
+      Erzeugen Sie für {domain} einen neuen RSA-Schlüssel mit mindestens 2048 Bit, veröffentlichen Sie ihn unter einem
+      neuen Selektor und stellen Sie die Signatur darauf um; ziehen Sie danach den Schlüssel unter {selector} mit
+      leerem p= zurück.
+  MAIL-03.given-selector-missing:
+    text: >-
+      Aktivieren Sie für {domain} die DKIM-Signatur beim Mail-Anbieter und veröffentlichen Sie die dort angezeigten
+      DNS-Einträge für {selectors}{provider, select, microsoft-365 { (bei Microsoft 365 zwei CNAME-Einträge, die auf
+      die Schlüssel des Mandanten zeigen)} other {}}.
+  MAIL-03.selectors-not-found:
+    text: >-
+      Prüfen Sie beim Mail-Anbieter von {domain}, ob DKIM-Signaturen aktiv sind und der öffentliche Schlüssel im DNS
+      steht; geben Sie den verwendeten Selektor für weitere Scans in DSGVO_CHECK_DNS_DKIM_SELECTORS an.

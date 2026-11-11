@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Complianz-Simulator: Region, Einwilligungsart und Version mit Daten</title>
+<!-- The page writes the plugin's object: a region with a query and an address, a consent type with a parameter, a
+     version with a query (markers zq7). The simulator shows no banner outside the region `eu`. -->
+<script>
+  var complianz = { prefix: 'cmplz_', region: 'eu?cid=zq7abc&mail=zq7alice@example.test', consenttype: 'optin&uid=zq7u', version: '7.1.0?sid=zq7v', sim: { reject: true, wall: false } };
+</script>
+<script src="/wp-content/plugins/complianz-gdpr/cookiebanner/js/complianz.min.js?ver=7.1.0" defer></script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Praxis</h1><p>Willkommen.</p></main>
+</body>
+</html>

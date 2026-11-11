@@ -1,0 +1,255 @@
+# Finding texts (en), module http. ICU-like templates: {param}, {n, plural, one {…} other {…}}, {x, select, …}.
+# Keys are the variants of test/data/ruleset (`<checkId>.<variant>`). Wording: "observed", "not found in …" — no
+# legal verdicts (stop-word test). Draft until reviewed.
+draft: true
+messages:
+  # HDR-01
+  HDR-01.hsts-missing:
+    title: "HSTS header not found"
+    body: >-
+      {problem, select, absent {The Strict-Transport-Security (HSTS) header was not found in the HTTPS response of
+      {url}} other {A Strict-Transport-Security header without effect was observed in the HTTPS response of {url}
+      ({problem, select, max-age-zero {max-age=0} no-max-age {no valid max-age} other {invalid syntax}})}}{count,
+      plural, one {} other { (# pages affected)}}. Without effective HSTS a later visit via http:// can happen
+      unencrypted before the redirect to https applies. Recommendation: send Strict-Transport-Security with a
+      max-age of at least one year, e.g. max-age=31536000.
+  HDR-01.anti-framing-missing:
+    title: "No protection against framing by other sites (clickjacking)"
+    body: >-
+      Neither X-Frame-Options (DENY or SAMEORIGIN) nor the CSP directive frame-ancestors was found in the headers of
+      the response of {url}{count, plural, one {} other { (# pages affected)}}.{hint, select, meta-csp { The
+      frame-ancestors directive is only present in a meta tag, where browsers ignore it.} other {}}
+      Recommendation: send X-Frame-Options: SAMEORIGIN or Content-Security-Policy: frame-ancestors 'self' as an HTTP
+      header.
+  HDR-01.referrer-policy-permissive:
+    title: "Referrer-Policy passes on full URLs"
+    body: >-
+      The Referrer-Policy "{policy}" was observed in the response of {url}{count, plural, one {} other { (# pages
+      affected)}}. Full addresses of visited pages (including path and parameters) may be sent to third parties.
+      Recommendation: strict-origin-when-cross-origin or stricter.
+  HDR-01.header-missing:
+    # The front page lists several missing headers in one entry; they reach the `other` branch as a list.
+    title: >-
+      {mechanism, select, content-security-policy {Header {header} not found} x-content-type-options {Header
+      {header} not found} permissions-policy {Header {header} not found} referrer-policy {Header {header} not
+      found} other {Headers {header} not found}}
+    body: >-
+      {mechanism, select, x-content-type-options {X-Content-Type-Options: nosniff} other {The header {header}}} was
+      not found in the response of {url}{count, plural, one {} other { (# pages affected)}}. {mechanism, select,
+      content-security-policy {A CSP limits which scripts and resources may be loaded. Recommendation: introduce a
+      CSP step by step, starting with Content-Security-Policy-Report-Only.} x-content-type-options
+      {Recommendation: send the header with the value nosniff.} permissions-policy {It limits access of embedded
+      content to camera, microphone or location. Recommendation: disable unused features, e.g. camera=(),
+      microphone=(), geolocation=().} referrer-policy {Browsers then apply their default (usually
+      strict-origin-when-cross-origin). Recommendation: set the policy explicitly.} other {Recommendation: review
+      the header configuration.}}
+  # HDR-02: one finding per (header, product, version); the collector stores only the product/version pairs.
+  HDR-02.version-header:
+    title: "Software version in header {header}"
+    body: >-
+      The header {header} was observed in the response of {url}{count, plural, one {} other { (# pages
+      affected)}}. It names {product} version {version}. Anyone who requests the page can read which software in
+      which version runs on the server. This message does not check whether vulnerabilities are known for that
+      version. Recommendation: turn off the version in the server configuration, e.g. expose_php = Off (PHP),
+      ServerTokens Prod (Apache) or server_tokens off (nginx).
+  # TLS-01
+  TLS-01.https-unavailable:
+    title: "Content only usable via http"
+    body: >-
+      {downgrade, select, yes {{url} redirects via https back to http; {page} serves content unencrypted via http.}
+      other {{redirected, select, yes {{url} only redirects to {page} (also http), which serves content unencrypted
+      via http.} other {{url} serves content unencrypted via http.}}}} Via https, {host} was {reason, select,
+      unavailable {not reachable} invalid {only reachable with an invalid certificate} other {not usable}}. Page
+      views and inputs are therefore transmitted unencrypted. Recommendation: install a valid certificate and
+      redirect http permanently (301 or 308) to https.
+  # `count` pages of one host served over http with a form; `url` is the first, `action` where its first form sends;
+  # `permalinks` of them are the http addresses of posts the visited pages link as permalinks (absent in older reports).
+  TLS-01.form-on-http-page:
+    title: "Form on an http page"
+    body: >-
+      {count, plural, one {A form served via unencrypted http was observed on {url}} other {Forms were observed on #
+      pages served via unencrypted http, first on {url}}}{downgrade, select, yes { (the redirect leads via https back
+      to http)} other {}}.{permalinks, plural, =0 {} one { {count, plural, one {The page} other {One of these pages}}
+      was requested as the http address of a post or article that the visited pages link as its permalink
+      (rel="bookmark"); the browser did not visit it.} other { # of these pages were requested as the http addresses
+      of posts or articles that the visited pages link as their permalinks (rel="bookmark"); the browser did not visit
+      them.}}{hasAction, select, yes { {count, plural, one {It sends} other {The first one sends}} its input to
+      {action}.} other {}} {count, plural, one {The form was} other {The forms were}} not filled in or submitted.
+      Inputs may be transmitted unencrypted. Recommendation: serve the page via https only and redirect http to https.
+  TLS-01.no-redirect:
+    title: "No redirect from http to https"
+    body: >-
+      {downgrade, select, yes {{url} redirects via https back to http; {page} serves content via http,} other
+      {{redirected, select, yes {{url} only redirects to {page} (also http), which serves content via http,} other
+      {{url} serves content via http and does not redirect to https,}}}} although {host} is reachable via https.
+      Visitors opening the address with http:// stay on the unencrypted page. Recommendation: redirect http
+      permanently (301 or 308) to https on the same host.
+  TLS-01.client-side-redirect-only:
+    title: "Redirect to https only in the page content"
+    body: >-
+      {redirected, select, yes {{url} only redirects to {page} (also http). That page does} other {{url} does}}
+      not redirect to https with an HTTP status code but only in the page content ({kind, select, meta {meta
+      refresh} js {JavaScript} other {page content}}). Until then the page is loaded unencrypted. Recommendation:
+      server-side redirect with 301 or 308.
+  TLS-01.redirect-chain-detail:
+    title: >-
+      {reason, select, other-host {Redirect from http straight to another host} http-first-hop {Redirect to https
+      via a detour} other {Redirect from http not directly to https on the same host}}
+    body: >-
+      {reason, select, other-host {The first redirect of {url} leads to {location} (another host); https on {host}
+      itself is skipped.} other {The first redirect of {url} leads to {location}; https is only reached
+      afterwards.}} The HSTS preload list expects a direct redirect to https on the same host.
+  # Same-site links of the pages whose href asks for http://; `httpState` is what the http probe of the linked host saw.
+  TLS-01.internal-http-link:
+    title: "Link to an http address of the site itself"
+    body: >-
+      {count, plural, one {On {page}, a link} other {On # pages, a link}}{hasText, select, yes { (“{text}”)} other
+      {}} points to {href}{links, plural, one {} other { (# links to http addresses of {host} in total)}}{visible,
+      select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
+      banner area} other {}}} other {}}. Clicking it requests the page over unencrypted http. {httpState, select,
+      served {{host} serves a page at http:// and does not redirect to https with an HTTP status code.} unknown
+      {Whether {host} redirects http:// to https could not be determined during the scan.} other {Whether {host}
+      redirects http:// to https was not checked: the scan only queries the given address, www and the domain
+      itself.}} Recommendation: change the link to https{httpState, select, served { and redirect http permanently
+      to https} other {}}.
+  TLS-01.internal-http-link-upgraded:
+    title: "Link to an http address that redirects to https"
+    body: >-
+      {count, plural, one {On {page}, a link} other {On # pages, a link}}{hasText, select, yes { (“{text}”)} other
+      {}} points to {href}{links, plural, one {} other { (# links to http addresses of {host} in total)}}{visible,
+      select, no {; the link was not visible when the page was read{region, select, banner {, it sits in the consent
+      banner area} other {}}} other {}}. Clicking it first requests the page over unencrypted http; {host} then
+      redirects to {location}. An effective Strict-Transport-Security header (HSTS), with which browsers send later
+      requests over https right away, was not found in the https responses of {hstsHost} on the redirect path.
+      Recommendation: change the link to https.
+  # TLS-02
+  TLS-02.certificate-invalid:
+    title: "Certificate of {host} not valid"
+    body: >-
+      Certificate verification for {host} ({trustStore, select, node-bundled {Mozilla root store of the Node.js
+      version used} system {system certificate store} test {test certificate authority} other {{trustStore}}})
+      found:{expired, select, yes { The certificate expired on {notAfter}.} other {}}{notYetValid, select, yes { The
+      certificate was not yet valid at the time of the scan.} other {}}{nameMismatch, select, yes { {nameSource,
+      select, san {The certificate is not issued for {host} but for: {names}.} cn {The certificate contains no
+      subject alternative names; only its CN field names {names}. Browsers check the host name against the subject
+      alternative names only.} other {The certificate does not name any host.}} This is typical for a
+      default certificate of the hosting provider.} other {}}{selfSigned, select, yes { The certificate is
+      self-signed.} other {}}{untrustedRoot, select, yes { The certificate chain (issuer: {issuer}) does not end at
+      a known root authority.} other {}}{otherError, select, yes { Verification failed ({error}).} other {}}
+      Browsers usually show a warning page or block the visit. Recommendation: install a valid certificate for
+      {host} and check the automatic renewal.
+  TLS-02.chain-incomplete:
+    title: "Certificate chain of {host} incomplete"
+    body: >-
+      {host} sends its certificate chain without the required intermediate certificate (issuer: {issuer}). Current
+      browsers usually complete the chain themselves; other clients such as older devices, apps or scripts abort the
+      connection. Recommendation: serve the full chain including all intermediate certificates.
+  TLS-02.certificate-expiring:
+    title: "Certificate of {host} expires soon"
+    body: >-
+      The TLS certificate of {host} expires on {notAfter} ({daysLeft, plural, one {# day left} other {# days left}}
+      of a lifetime of {lifetimeDays} days). Recommendation: check the automatic renewal.
+  TLS-02.certificate-expiry-approaching:
+    title: "Certificate of {host} expires shortly"
+    body: >-
+      The TLS certificate of {host} expires on {notAfter} ({daysLeft, plural, one {# day left} other {# days left}}
+      of a lifetime of {lifetimeDays} days). Recommendation: check the automatic renewal.
+  # Raised by the HTTP collector: only the headers HDR-01 and HDR-02 read are missing, the browser may still evaluate
+  # the page.
+  diagnostic.SCAN-HTTP-BLOCKED:
+    title: "Security headers not evaluated: access blocked"
+    body: >-
+      {count, plural, one {The direct HTTP request for {page} was} other {The direct HTTP requests for # pages
+      ({pages}) were}} answered by an access block or challenge instead of the website; the security and version
+      headers of {count, plural, one {this page were} other {these pages were}} not evaluated.
+legalNotes:
+  HDR-01:
+    text: >-
+      Art. 32 and Art. 25 GDPR require technical measures according to the state of the art; Section 19(4) TDDDG
+      obliges providers of digital services to take precautions against unauthorised access. Security headers are a
+      widespread technical standard. Which measure is appropriate in a given case depends on the risk.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  HDR-02:
+    text: >-
+      Art. 32 GDPR requires technical measures according to the state of the art. A version in a header is not a
+      security gap by itself; it does show third parties which software in which version is in use. Whether a named
+      version has known vulnerabilities is not assessed by this check.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+  TLS-01:
+    text: >-
+      Section 19(4) sentence 3 TDDDG names the use of an encryption method recognised as secure as a precaution;
+      Art. 32(1)(a) GDPR names encryption as a measure. For purely static pages without inputs the assessment is
+      contested.
+    status: contested
+    reviewedAt: null
+    reviewBy: null
+  TLS-02:
+    text: >-
+      Transport encryption in the sense of Art. 32 GDPR and Section 19(4) TDDDG only takes effect for visitors with
+      a valid certificate; with an invalid certificate browsers block the page or the visitor has to bypass a
+      warning.
+    status: technical
+    reviewedAt: null
+    reviewBy: null
+
+# Recommended action per variant: short, concrete, no legal assessment. Templates like the messages, formatted with
+# the finding's params; on the front page the findings of one message share an entry, where a param that differs
+# between them is a list and reaches the `other` branch of a select.
+actions:
+  HDR-01.hsts-missing:
+    text: "Send the Strict-Transport-Security header with a sensible max-age, for example through your web server configuration."
+  HDR-01.anti-framing-missing:
+    text: "Set the X-Frame-Options header or the CSP directive frame-ancestors on your web server so that other sites cannot embed your page."
+  HDR-01.referrer-policy-permissive:
+    text: "Set the Referrer-Policy to a more restrictive value, for example strict-origin-when-cross-origin."
+  # One finding per header; several findings of the front page share the `other` branch with the list of headers.
+  HDR-01.header-missing:
+    text: >-
+      {mechanism, select, content-security-policy {Introduce a Content-Security-Policy step by step: first as the
+      header Content-Security-Policy-Report-Only, then, once the reports have been reviewed, as
+      Content-Security-Policy.} x-content-type-options {Set the header X-Content-Type-Options with the value nosniff
+      in your web server configuration.} permissions-policy {Set the header Permissions-Policy in your web server
+      configuration and disable features you do not use, for example camera=(), microphone=(), geolocation=().}
+      referrer-policy {Set the header Referrer-Policy in your web server configuration, for example to
+      strict-origin-when-cross-origin.} other {Add the headers {header} to your web server configuration; the full
+      report suggests suitable values.}}
+  HDR-02.version-header:
+    text: >-
+      Turn off the version in your server configuration, for example with expose_php = Off (PHP), ServerTokens Prod
+      (Apache) or server_tokens off (nginx).
+  TLS-01.https-unavailable:
+    text: "Set up a valid certificate for the site and serve it exclusively over https."
+  TLS-01.form-on-http-page:
+    text: "Serve pages with forms over https only and redirect http to https permanently."
+  TLS-01.no-redirect:
+    text: "Set up a permanent redirect (301 or 308) from http to https on the same host on your web server."
+  TLS-01.client-side-redirect-only:
+    text: "Redirect to https on the server with a 301 status code instead of only in the page content."
+  TLS-01.redirect-chain-detail:
+    text: >-
+      {reason, select, other-host {If the domain is to be added to the HSTS preload list: redirect http first to
+      https on the same host (with a valid certificate) and only from there to the other host.} http-first-hop
+      {Redirect http directly to https on the same host in the first step, without an intermediate http step.}
+      other {Redirect http to https on the same host in the first step; any further redirects only after that.}}
+  TLS-01.internal-http-link:
+    text: "Change links to your own pages to https or relative addresses and redirect http permanently to https."
+  TLS-01.internal-http-link-upgraded:
+    text: "Change the links to https and send the Strict-Transport-Security header on {hstsHost}."
+  TLS-02.certificate-invalid:
+    text: >-
+      {reason, select, expired {Renew the certificate and check that automatic renewal works.} not-yet-valid
+      {Check the start of the certificate's validity and the server clock.} name-mismatch {Set up a certificate for
+      each affected host that contains its name, for example through your hosting provider.} self-signed {Replace
+      the self-signed certificate with one from a recognised certificate authority.} untrusted-root {Use a
+      certificate from a recognised certificate authority and serve the full chain.} other {Renew the certificate
+      or fix the configuration so that browsers accept it without a warning.}}
+  TLS-02.chain-incomplete:
+    text: "Install the full certificate chain, including the intermediate certificate, on the server."
+  TLS-02.certificate-expiring:
+    text: "Renew the certificate now and check that automatic renewal works."
+  TLS-02.certificate-expiry-approaching:
+    text: "Check that automatic renewal of the certificate is set up and will run in time."

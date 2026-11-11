@@ -1,0 +1,198 @@
+# Payment providers and CDNs / static hosting. Format: see _catalog.yaml.
+services:
+  # payment
+  - id: stripe
+    name: Stripe
+    category: payment
+    policyRelevance: required
+    provider: { name: "Stripe Payments Europe, Limited", country: IE }
+    parent: { name: "Stripe, Inc.", country: US }
+    dpfEntity: { name: "Stripe, Inc." }
+    domains: [stripe.com, stripe.network]
+    otherCookies: [__stripe_mid, __stripe_sid, m@stripe.network]
+    aliasesDe: [Stripe]
+    aliasesEn: [Stripe]
+
+  - id: paypal
+    name: PayPal
+    category: payment
+    policyRelevance: required
+    provider: { name: "PayPal (Europe) S.à r.l. et Cie, S.C.A.", country: LU }
+    parent: { name: "PayPal Holdings, Inc.", country: US }
+    dpfEntity: { name: "PayPal, Inc." }
+    domains: [paypal.com, paypalobjects.com]
+    otherCookies:
+      [ts@paypal.com, ts_c@paypal.com, tsrce@paypal.com, x-pp-s@paypal.com, nsid@paypal.com, l7_az@paypal.com]
+    aliasesDe: [PayPal]
+    aliasesEn: [PayPal]
+    companyAliases: [PayPal (Europe), PayPal Europe]
+
+  - id: klarna
+    name: Klarna
+    category: payment
+    policyRelevance: required
+    provider: { name: Klarna Bank AB (publ), country: SE }
+    domains: [klarna.com, klarnacdn.net, klarnaservices.com, klarnaevt.com]
+    aliasesDe: [Klarna]
+    aliasesEn: [Klarna]
+
+  - id: mollie
+    name: Mollie
+    category: payment
+    policyRelevance: required
+    provider: { name: Mollie B.V., country: NL }
+    domains: [mollie.com]
+    aliasesDe: [Mollie]
+    aliasesEn: [Mollie]
+
+  # cdn / static hosting
+  - id: jsdelivr
+    name: jsDelivr
+    category: cdn
+    policyRelevance: optional
+    domains: [jsdelivr.net]
+    aliasesDe: [jsDelivr]
+    aliasesEn: [jsDelivr]
+
+  - id: cdnjs
+    name: cdnjs (Cloudflare)
+    category: cdn
+    policyRelevance: optional
+    parent: { name: "Cloudflare, Inc.", country: US }
+    dpfEntity: { name: "Cloudflare, Inc." }
+    domains: [cdnjs.cloudflare.com]
+    aliasesDe: [cdnjs]
+    aliasesEn: [cdnjs]
+
+  - id: cloudflare-cdn
+    name: Cloudflare
+    category: cdn
+    policyRelevance: optional
+    parent: { name: "Cloudflare, Inc.", country: US }
+    dpfEntity: { name: "Cloudflare, Inc." }
+    domains: [cloudflare.com, cloudflare.net]
+    aliasesDe: [Cloudflare]
+    aliasesEn: [Cloudflare]
+
+  - id: unpkg
+    name: unpkg
+    category: cdn
+    policyRelevance: optional
+    domains: [unpkg.com]
+    aliasesDe: [unpkg]
+    aliasesEn: [unpkg]
+
+  - id: google-hosted-libraries
+    name: Google Hosted Libraries
+    category: cdn
+    policyRelevance: optional
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [ajax.googleapis.com]
+    aliasesDe: [Google Hosted Libraries]
+    aliasesEn: [Google Hosted Libraries]
+
+  - id: jquery-cdn
+    name: jQuery CDN
+    category: cdn
+    policyRelevance: optional
+    domains: [code.jquery.com]
+    aliasesDe: [jQuery CDN]
+    aliasesEn: [jQuery CDN]
+
+  - id: bootstrapcdn
+    name: BootstrapCDN
+    category: cdn
+    policyRelevance: optional
+    domains: [bootstrapcdn.com]
+    aliasesDe: [BootstrapCDN]
+    aliasesEn: [BootstrapCDN]
+
+  - id: amazon-cloudfront
+    name: Amazon CloudFront
+    category: cdn
+    policyRelevance: optional
+    provider: { name: Amazon Web Services EMEA SARL, country: LU }
+    parent: { name: "Amazon.com, Inc.", country: US }
+    dpfEntity: { name: "Amazon.com, Inc." }
+    domains: [cloudfront.net]
+    aliasesDe: [Amazon CloudFront, CloudFront, Amazon Web Services]
+    aliasesEn: [Amazon CloudFront, CloudFront, Amazon Web Services]
+
+  - id: amazon-web-services
+    name: Amazon Web Services (S3)
+    category: cdn
+    policyRelevance: optional
+    provider: { name: Amazon Web Services EMEA SARL, country: LU }
+    parent: { name: "Amazon.com, Inc.", country: US }
+    dpfEntity: { name: "Amazon.com, Inc." }
+    domains: [amazonaws.com]
+    aliasesDe: [Amazon Web Services, Amazon S3]
+    aliasesEn: [Amazon Web Services, Amazon S3]
+
+  - id: fastly
+    name: Fastly
+    category: cdn
+    policyRelevance: optional
+    parent: { name: "Fastly, Inc.", country: US }
+    domains: [fastly.net, fastlylb.net]
+    aliasesDe: [Fastly]
+    aliasesEn: [Fastly]
+
+  - id: akamai
+    name: Akamai
+    category: cdn
+    policyRelevance: optional
+    parent: { name: Akamai Technologies Inc., country: US }
+    domains: [akamaihd.net, akamaized.net, akamai.net, akamaiedge.net]
+    aliasesDe: [Akamai]
+    aliasesEn: [Akamai]
+
+  - id: bunny-cdn
+    name: bunny.net CDN
+    category: cdn
+    policyRelevance: optional
+    provider: { name: BunnyWay d.o.o., country: SI }
+    domains: [b-cdn.net, bunnycdn.com, bunny.net]
+    aliasesDe: [bunny.net, BunnyCDN]
+    aliasesEn: [bunny.net, BunnyCDN]
+
+  # Scripts, fonts and images of sites built with Wix. `ssr-caching` records how the page was rendered and expires
+  # within minutes.
+  - id: wix
+    name: Wix
+    category: cdn
+    policyRelevance: optional
+    domains: [parastorage.com, wixstatic.com]
+    otherCookies: [ssr-caching]
+    aliasesDe: [Wix, Wix.com]
+    aliasesEn: [Wix, Wix.com]
+    companyAliases: [Wix.com Ltd, Wix.com Ltd.]
+
+  - id: wordpress-org-cdn
+    name: WordPress.org (Emoji/CDN)
+    category: cdn
+    policyRelevance: optional
+    domains: [s.w.org]
+    aliasesDe: [WordPress.org, s.w.org]
+    aliasesEn: [WordPress.org]
+
+  - id: wordpress-com-cdn
+    name: WordPress.com CDN (Jetpack)
+    category: cdn
+    policyRelevance: optional
+    parent: { name: Automattic Inc., country: US }
+    domains: [i0.wp.com, i1.wp.com, i2.wp.com, i3.wp.com, s0.wp.com, c0.wp.com]
+    aliasesDe: [Jetpack, WordPress.com]
+    aliasesEn: [Jetpack, WordPress.com]
+
+  # Avatars by e-mail hash on comment forms (WordPress default); not a CDN in the strict sense.
+  - id: gravatar
+    name: Gravatar
+    category: cdn
+    policyRelevance: required
+    parent: { name: Automattic Inc., country: US }
+    domains: [gravatar.com]
+    aliasesDe: [Gravatar]
+    aliasesEn: [Gravatar]

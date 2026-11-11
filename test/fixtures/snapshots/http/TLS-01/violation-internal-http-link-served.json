@@ -1,0 +1,122 @@
+{
+  "$description": "Hidden links in the consent banner container to http://www.example.test/impressum and /datenschutz on two pages; http of www serves 50 KB without a redirect: one finding for the host, next to the entry finding no-redirect",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "internal-http-link",
+      "no-redirect"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-www-http",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 200,
+            "bodyBytes": 50000,
+            "bodyKind": "html",
+            "hasForm": false
+          }
+        ],
+        "startUrl": "http://www.example.test/"
+      },
+      {
+        "id": "chain-www-https",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "https://www.example.test/"
+      },
+      {
+        "id": "chain-apex-http",
+        "hostVariant": "apex",
+        "outcome": "connection-refused",
+        "startUrl": "http://example.test/",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED"
+        }
+      }
+    ],
+    "requestsIssued": 3
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "dom": {
+              "links": [
+                {
+                  "href": "http://www.example.test/impressum",
+                  "hrefKind": "http",
+                  "region": "banner",
+                  "visible": false,
+                  "inShadowDom": false,
+                  "text": "Impressum",
+                  "sameSite": true
+                },
+                {
+                  "href": "http://www.example.test/datenschutz",
+                  "hrefKind": "http",
+                  "region": "banner",
+                  "visible": false,
+                  "inShadowDom": false,
+                  "text": "Datenschutz",
+                  "sameSite": true
+                }
+              ]
+            },
+            "url": "https://www.example.test/"
+          },
+          {
+            "role": "other",
+            "order": 1,
+            "dom": {
+              "links": [
+                {
+                  "href": "http://www.example.test/impressum",
+                  "hrefKind": "http",
+                  "region": "banner",
+                  "visible": false,
+                  "inShadowDom": false,
+                  "text": "Impressum",
+                  "sameSite": true
+                },
+                {
+                  "href": "http://www.example.test/datenschutz",
+                  "hrefKind": "http",
+                  "region": "banner",
+                  "visible": false,
+                  "inShadowDom": false,
+                  "text": "Datenschutz",
+                  "sameSite": true
+                }
+              ]
+            },
+            "url": "https://www.example.test/kontakt"
+          }
+        ]
+      }
+    ]
+  }
+}

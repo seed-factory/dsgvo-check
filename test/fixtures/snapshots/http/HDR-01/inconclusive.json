@@ -1,0 +1,23 @@
+{
+  "$description": "Start page did not answer in time: headers cannot be evaluated",
+  "$expect": { "status": "inconclusive", "variants": [], "reason": "timeout" },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": null,
+        "headers": [],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "error": { "code": "timeout", "message": "Headers Timeout Error" }
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

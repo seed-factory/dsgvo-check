@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Schwebende einzeilige Leiste am Ende einer sehr langen Seite</title>
+<style>body{font-family:sans-serif;margin:0} .item{height:2px}
+.cookie-note{position:fixed;left:16px;right:16px;bottom:16px;background:#222;color:#fff;padding:8px 16px;z-index:50}
+.cookie-note button{padding:4px 12px;margin-left:8px}</style>
+</head>
+<body>
+<main id="catalog"><h1>Beispiel Katalog</h1></main>
+<script>
+  // More elements than the probe scans in document order, all before the banner; the bar is one line high and floats
+  // above the bottom edge, between the rows of the hit grid.
+  const catalog = document.getElementById('catalog');
+  for (let i = 0; i < 7000; i++) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    catalog.appendChild(item);
+  }
+</script>
+<div class="cookie-note">
+  <span>Diese Website nutzt Cookies und Tracking von Drittanbietern.</span>
+  <button type="button">Ablehnen</button>
+  <button type="button">Akzeptieren</button>
+</div>
+</body>
+</html>

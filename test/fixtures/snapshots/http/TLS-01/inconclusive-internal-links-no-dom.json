@@ -1,0 +1,67 @@
+{
+  "$description": "The browser was skipped (certificate refused): the links of the pages are not observed, the http entries are still evaluated (no-redirect of www)",
+  "$expect": {
+    "status": "partial",
+    "variants": [
+      "no-redirect"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-www-http",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 200,
+            "bodyBytes": 50000,
+            "bodyKind": "html",
+            "hasForm": false
+          }
+        ],
+        "startUrl": "http://www.example.test/"
+      },
+      {
+        "id": "chain-www-https",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ],
+        "startUrl": "https://www.example.test/"
+      },
+      {
+        "id": "chain-apex-http",
+        "hostVariant": "apex",
+        "outcome": "connection-refused",
+        "startUrl": "http://example.test/",
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connect ECONNREFUSED"
+        }
+      }
+    ],
+    "requestsIssued": 3
+  },
+  "collection": {
+    "browser": {
+      "status": "skipped",
+      "reason": "tls-blocked",
+      "durationMs": 0
+    }
+  }
+}

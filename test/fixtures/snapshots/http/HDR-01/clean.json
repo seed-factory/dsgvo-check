@@ -1,0 +1,30 @@
+{
+  "$description": "All mechanisms present; anti-framing via frame-ancestors in the CSP header",
+  "$expect": { "status": "completed", "variants": [] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": 200,
+        "headers": [
+          { "name": "strict-transport-security", "value": "max-age=63072000; includeSubDomains; preload" },
+          { "name": "content-security-policy", "value": "default-src 'self'; frame-ancestors 'self'" },
+          { "name": "x-content-type-options", "value": "nosniff" },
+          { "name": "referrer-policy", "value": "strict-origin-when-cross-origin" },
+          { "name": "permissions-policy", "value": "camera=(), geolocation=()" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

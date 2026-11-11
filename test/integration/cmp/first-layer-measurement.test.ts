@@ -1,0 +1,96 @@
+/**
+ * How the first screen is measured (Cookiebot simulator): hidden vendor toggles must not push the visible buttons out
+ * of the measurement, lost candidates are reported, and a banner that never settles is reported, not judged mid-animation.
+ */
+import { describe, expect, it } from 'vitest';
+import { extract, loadLexicon, waitForBanner } from '../../../src/cmp/index.ts';
+import { classifyFirstLayer } from '../../utils/classify.ts';
+import { CMP_WAIT_MS, decideAndAct, useCmpServer } from './helpers.ts';
+
+describe('first-layer measurement (Cookiebot simulator)', () => {
+  const env = useCmpServer(['cmp/cookiebot', 'cmp/generic']);
+  const lexicon = loadLexicon();
+
+  /** Opens `file` of the Cookiebot simulator and waits until the CMP is recognized (with `banner`, also its banner). */
+  const openCookiebot = (file: string, opts?: { banner?: boolean }) =>
+    env.openRecognized(`https://www.cookiebot.test/${file}`, 'cookiebot', opts);
+
+  describe('button limit', () => {
+    it('45 hidden vendor toggles before the visible buttons: reject and accept are measured and clicked', async () => {
+      const { page, adapter } = await openCookiebot('many-vendors.html');
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      const facts = await extract(page, adapter, 'first-screen', { phase: 'B' });
+
+      const reject = facts.firstLayer.buttons.find((b) => b.name === 'Ablehnen');
+      expect(reject?.vendorRole).toBe('reject');
+      expect(reject?.actionableAtFirstScreen).toBe(true);
+      expect(facts.firstLayer.buttons.length).toBeLessThanOrEqual(40);
+      // The dropped buttons are hidden second-layer toggles: no first-layer candidate was lost.
+      expect(facts.firstLayer.buttonsTruncated ?? false).toBe(false);
+      const cls = classifyFirstLayer(facts, lexicon);
+      expect(cls.variant).toBe('ok');
+      expect(cls.targets?.reject?.name).toBe('Ablehnen');
+      expect(cls.targets?.accept?.name).toBe('Alle zulassen');
+    });
+
+    it('counterexample: the ordinary banner is not flagged as truncated', async () => {
+      const { page, adapter } = await openCookiebot('', { banner: true });
+
+      const facts = await extract(page, adapter, 'first-screen');
+
+      expect(facts.firstLayer.buttonsTruncated ?? false).toBe(false);
+    });
+
+    it('more first-layer candidates than the limit (generic bar with 60 visible links): flagged as truncated', async () => {
+      const { page } = await env.open('https://www.generic.test/many-controls.html');
+
+      const facts = await extract(page, null, 'first-screen');
+
+      expect(facts.detection.method).toBe('heuristic');
+      expect(facts.firstLayer.buttons.length).toBe(40);
+      expect(facts.firstLayer.buttonsTruncated).toBe(true);
+    });
+  });
+
+  describe('appearance animation', () => {
+    it('dialog slides in over 1.2 s: the first screen is measured settled, the reject is actionable and clicked', async () => {
+      const { page, adapter } = await openCookiebot('animated.html');
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      const { facts, click } = await decideAndAct(page, adapter, 'reject');
+
+      expect(facts.firstLayer.geometryUnsettled ?? false).toBe(false);
+      const reject = facts.firstLayer.buttons.find((b) => b.name === 'Ablehnen');
+      expect(reject?.vendorRole).toBe('reject');
+      expect(reject?.actionableAtFirstScreen).toBe(true);
+      const cls = classifyFirstLayer(facts, lexicon);
+      expect(cls.variant).toBe('ok');
+      expect(cls.targets?.reject).not.toBeNull();
+      expect(click.clicked).toBe(true);
+    });
+
+    it('counterexample: a settled dialog below the viewport is still reject-not-actionable', async () => {
+      const { page, adapter } = await openCookiebot('offscreen.html');
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      const facts = await extract(page, adapter, 'first-screen');
+
+      expect(facts.firstLayer.geometryUnsettled ?? false).toBe(false);
+      const cls = classifyFirstLayer(facts, lexicon);
+      expect(cls.variant).toBe('reject-not-actionable');
+      expect(cls.targets?.reject).toBeNull();
+    });
+
+    it('a dialog that keeps moving is bounded to about 2 s and reported as unsettled', async () => {
+      const { page, adapter } = await openCookiebot('wobble.html');
+      const t0 = Date.now();
+
+      expect(await waitForBanner(page, adapter, { timeoutMs: CMP_WAIT_MS })).toBe(true);
+
+      expect(Date.now() - t0).toBeLessThan(5000);
+      const facts = await extract(page, adapter, 'first-screen');
+      expect(facts.firstLayer.geometryUnsettled).toBe(true);
+    });
+  });
+});

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Popup beim Klick</title>
+</head>
+<body>
+  <main><h1>Willkommen</h1></main>
+  <div id="stub-cmp" role="dialog" aria-label="Cookie-Einstellungen"
+       style="position:fixed;left:0;right:0;bottom:0;height:150px;background:#fff;border-top:2px solid #333;padding:16px;z-index:1000">
+    <p>Wir verwenden Cookies.</p>
+    <button id="stub-accept" type="button">Alle akzeptieren</button>
+    <button id="stub-reject" type="button">Ablehnen</button>
+  </div>
+  <script>
+    // Hand-written stub banner (see browser/cmp-stub); the reject click opens a window to the metadata address.
+    (function () {
+      function has(v) { return document.cookie.split('; ').indexOf('stub_consent=' + v) >= 0; }
+      window.StubCmp = { state: function () { return has('granted') ? 'granted' : has('denied') ? 'denied' : 'unknown'; } };
+      function hide() { document.getElementById('stub-cmp').style.display = 'none'; }
+      if (has('granted') || has('denied')) { hide(); return; }
+      document.getElementById('stub-reject').addEventListener('click', function () {
+        document.cookie = 'stub_consent=denied; path=/; max-age=31536000';
+        hide();
+        window.open('http://169.254.169.254/latest/meta-data/via-click');
+      });
+      document.getElementById('stub-accept').addEventListener('click', function () {
+        document.cookie = 'stub_consent=granted; path=/; max-age=31536000';
+        hide();
+      });
+    })();
+  </script>
+</body>
+</html>
