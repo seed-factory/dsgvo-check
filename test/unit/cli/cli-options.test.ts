@@ -101,21 +101,56 @@ describe('a value outside its allowed set is passed on as `invalid`', () => {
   });
 });
 
-describe('--detail', () => {
+describe('--profile and --lang lists', () => {
   const rawOf = (...args: string[]) => {
     const program = buildProgram().action(() => undefined);
     program.parse(['https://example.test', ...args], { from: 'user' });
     return program.opts() as Parameters<typeof toScanOptions>[1];
   };
 
-  it('defaults to full and accepts brief', () => {
-    expect(rawOf()).toMatchObject({ detail: 'full' });
-    expect(rawOf('--detail', 'brief')).toMatchObject({ detail: 'brief' });
+  it('--profile defaults to developer', () => {
+    expect(rawOf()).toMatchObject({ profile: 'developer' });
+    expect(rawOf('--profile', 'owner,developer')).toMatchObject({ profile: 'owner,developer' });
   });
 
-  it('is refused as an invalid option when it is neither full nor brief', () => {
-    const options = toScanOptions('https://example.test', rawOf('--detail', 'verbose'));
-    expect(options.invalid).toEqual({ option: '--detail', value: 'verbose' });
-    expect(toScanOptions('https://example.test', rawOf('--detail', 'brief')).invalid).toBeUndefined();
+  it.each([
+    [['--profile', 'developer,owner'], undefined],
+    [['--profile', 'verbose'], { option: '--profile', value: 'verbose' }],
+    [['--profile', 'owner,full'], { option: '--profile', value: 'full' }],
+    [['--profile', ','], { option: '--profile', value: ',' }],
+    [['--lang', 'de,en'], undefined],
+    [['--lang', 'de,fr'], { option: '--lang', value: 'fr' }],
+    [['--lang', ''], { option: '--lang', value: '' }],
+    [['--profile', 'x', '--lang', 'fr'], { option: '--lang', value: 'fr' }],
+    [['--profile', 'x', '--sandbox', 'maybe'], { option: '--profile', value: 'x' }],
+  ])('%j → %j', (args, invalid) => {
+    expect(toScanOptions('https://example.test', rawOf(...args)).invalid).toEqual(invalid);
+  });
+
+  it('the first language of --lang is the language of the scan', () => {
+    expect(toScanOptions('https://example.test', rawOf('--lang', 'en,de')).lang).toBe('en');
+    expect(toScanOptions('https://example.test', rawOf('--lang', 'de,en')).lang).toBe('de');
+  });
+});
+
+describe('targets', () => {
+  const parsed = (...args: string[]) => {
+    const program = buildProgram();
+    let urls: string[] = [];
+    program.action((u: string[]) => {
+      urls = u;
+    });
+    program.parse(args, { from: 'user' });
+    return { urls, opts: program.opts() };
+  };
+
+  it('takes several URLs and a targets file', () => {
+    expect(parsed('https://a.test/', 'https://b.test/', '--format', 'json').urls).toEqual([
+      'https://a.test/',
+      'https://b.test/',
+    ]);
+    const withFile = parsed('--targets', 'sites.txt');
+    expect(withFile.urls).toEqual([]);
+    expect(withFile.opts).toMatchObject({ targets: 'sites.txt' });
   });
 });

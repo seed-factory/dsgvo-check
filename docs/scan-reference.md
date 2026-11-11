@@ -13,7 +13,9 @@ Für den Einstieg siehe [README](../README.md), für Code und Datenflüsse [Arch
 ## Optionen
 
 `dsgvo-check --help` zeigt alle Optionen für den Standardbefehl Scan. Hilfe zu den Unterbefehlen geben
-`dsgvo-check report --help` und `dsgvo-check install --help`.
+`dsgvo-check report --help` und `dsgvo-check install --help`. Statt einer URL lassen sich mehrere angeben. Der Befehl
+`report` nimmt dieselben Listen für `--profile` und `--lang`. Das Layout bei mehreren Websites beschreibt die
+[README](../README.de.md#mehrere-websites-prüfen).
 
 | Option | Standard | Bedeutung |
 | --- | --- | --- |
@@ -30,8 +32,9 @@ Für den Einstieg siehe [README](../README.md), für Code und Datenflüsse [Arch
 | `--save-snapshot <file>` | – | Rohdaten speichern |
 | `--from-snapshot <file>` | – | Snapshot ohne Netz neu auswerten (die URL entfällt) |
 | `--checks <ids>` | alle | Nur diese Prüfungen, z. B. `EMBED-01,HDR-01` |
-| `--lang de\|en` | `de` | Sprache des Berichts |
-| `--detail full\|brief` | `full` | HTML und PDF: `full` mit Belegen für Entwickler, `brief` kurz, mit Handlungsempfehlungen für Betreiber |
+| `--lang <liste>` | `de` | `de`, `en` oder beide, kommagetrennt. Die erste Sprache gilt für Scan, JSON, Konsole und `summary.md` |
+| `--profile <liste>` | `developer` | HTML und PDF: `developer` mit Belegen für Entwickler, `owner` kurz, mit Handlungsempfehlungen für Betreiber, oder beide, kommagetrennt |
+| `--targets <datei>` | – | Datei mit einer URL pro Zeile (`#`-Kommentare und Leerzeilen werden ignoriert) |
 | `--verbose` | aus | Ausführliche Logs auf stderr |
 
 ## Einstellungen

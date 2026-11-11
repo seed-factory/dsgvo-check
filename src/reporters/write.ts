@@ -7,6 +7,7 @@ import { DEFAULT_DATA_DIR, loadTexts } from '../core/data/load.ts';
 import { uiText } from '../core/data/messages.ts';
 import type { ExitCode } from '../core/evaluation/gate.ts';
 import {
+  PROFILE_DETAIL,
   REPORT_FILES,
   type ReportDetail,
   type ReporterContext,
@@ -37,12 +38,22 @@ const RENDERERS = { json: renderJson, html: renderHtml, summary: renderSummary }
 const FILE_FORMATS = ['json', 'html', 'summary'] as const;
 type FileFormat = (typeof FILE_FORMATS)[number];
 
+/** One rendering of report.html and report.pdf. */
+export interface ReportVariant {
+  lang: Lang;
+  detail: ReportDetail;
+  dir: string;
+}
+
 export interface WriteOptions {
   outDir: string;
   formats: ReportFormat[];
+  /** Language of report.json, summary.md and the console text. */
   lang: Lang;
-  /** Level of detail of the HTML and the PDF; the `report.detail` setting when absent. */
+  /** Level of detail of the HTML and the PDF without `variants`; the first profile of the settings when absent. */
   detail?: ReportDetail;
+  /** Renderings of report.html and report.pdf; one in `outDir` in `lang` and `detail` when absent. */
+  variants?: ReportVariant[];
   color?: boolean;
   dataDir?: string;
   /** Directory containing source artifacts when reissuing a saved report. */
@@ -54,13 +65,18 @@ export interface WriteOptions {
   outputConsole?: (text: string) => Promise<void>;
 }
 
-function reporterContext(opts: WriteOptions, outDir: string): ReporterContext {
+function reporterContext(
+  opts: WriteOptions,
+  outDir: string,
+  lang: Lang,
+  detail: ReportDetail,
+): ReporterContext {
   return {
-    texts: loadTexts(opts.lang, opts.dataDir ?? DEFAULT_DATA_DIR),
-    lang: opts.lang,
+    texts: loadTexts(lang, opts.dataDir ?? DEFAULT_DATA_DIR),
+    lang,
     outDir: path.resolve(opts.artifactsDir ?? outDir),
     color: opts.color ?? false,
-    detail: opts.detail ?? opts.config?.report.detail ?? 'full',
+    detail,
     dataDir: opts.dataDir,
     limits: reporterLimits(opts.config),
   };
@@ -126,24 +142,43 @@ async function writePdf(
 /** Writes the requested report files to `outDir` (json first); a failed write sets exit code 2 and the JSON is rewritten with the updated summary when possible. */
 export async function writeReports(result: ScanResult, opts: WriteOptions): Promise<WriteResult> {
   const outDir = path.resolve(opts.outDir);
-  const ctx = reporterContext(opts, outDir);
+  const profile = opts.config?.report.profiles[0];
+  const detail = opts.detail ?? (profile ? PROFILE_DETAIL[profile] : 'full');
+  const ctx = reporterContext(opts, outDir, opts.lang, detail);
+  const variants = (opts.variants ?? [{ lang: opts.lang, detail, dir: outDir }]).map((v) => ({
+    dir: path.resolve(v.dir),
+    ctx: reporterContext(opts, outDir, v.lang, v.detail),
+  }));
   const written: string[] = [];
   const errors: WriteResult['errors'] = [];
   const warnings: string[] = [];
 
-  // The HTML is rendered once and shared by the html file and the PDF.
-  let renderedHtml: string | undefined;
-  const html = () => (renderedHtml ??= renderHtml(result.report, ctx));
+  // The HTML of a variant is shared by its html file and its PDF.
+  const htmlOf = new Map<string, string>();
+  const html = (v: (typeof variants)[number]) => {
+    const cached = htmlOf.get(v.dir);
+    if (cached !== undefined) return cached;
+    const rendered = renderHtml(result.report, v.ctx);
+    htmlOf.set(v.dir, rendered);
+    return rendered;
+  };
 
-  const writeOne = async (format: FileFormat) => {
-    const file = path.join(outDir, REPORT_FILES[format]);
+  const writeFileTo = async (dir: string, name: string, render: () => string) => {
+    const file = path.join(dir, name);
     try {
-      await mkdir(outDir, { recursive: true });
-      const content = format === 'html' ? html() : RENDERERS[format](result.report, ctx);
-      await writeFile(file, content);
+      await mkdir(dir, { recursive: true });
+      await writeFile(file, render());
       if (!written.includes(file)) written.push(file);
     } catch (err) {
       errors.push({ path: file, message: errorMessage(err) });
+    }
+  };
+
+  const writeOne = async (format: FileFormat) => {
+    if (format === 'html') {
+      for (const v of variants) await writeFileTo(v.dir, REPORT_FILES.html, () => html(v));
+    } else {
+      await writeFileTo(outDir, REPORT_FILES[format], () => RENDERERS[format](result.report, ctx));
     }
   };
 
@@ -164,14 +199,17 @@ export async function writeReports(result: ScanResult, opts: WriteOptions): Prom
   if (consoleText && opts.outputConsole) await opts.outputConsole(consoleText);
 
   if (opts.formats.includes('pdf')) {
-    const file = path.join(outDir, REPORT_FILES.pdf);
-    try {
-      await writePdf(file, html, ctx, opts);
-      written.push(file);
-    } catch {
-      await rm(file, { force: true }).catch(() => undefined);
-      await rm(`${file}.tmp`, { force: true }).catch(() => undefined);
-      warnings.push(uiText(ctx.texts, 'report.pdf.skipped'));
+    for (const v of variants) {
+      const file = path.join(v.dir, REPORT_FILES.pdf);
+      try {
+        await writePdf(file, () => html(v), v.ctx, opts);
+        written.push(file);
+      } catch {
+        await rm(file, { force: true }).catch(() => undefined);
+        await rm(`${file}.tmp`, { force: true }).catch(() => undefined);
+        const warning = uiText(ctx.texts, 'report.pdf.skipped');
+        if (!warnings.includes(warning)) warnings.push(warning);
+      }
     }
   }
 

@@ -48,7 +48,7 @@ describe('optional PDF output', () => {
 
   it.each([
     ['the option', { detail: 'brief' as const }, undefined],
-    ['the setting', {}, parseConfigInput({ report: { detail: 'brief' } })],
+    ['the setting', {}, parseConfigInput({ report: { profiles: ['owner'] } })],
   ])('prints and writes the brief report from %s; the JSON is the same', async (_name, detail, config) => {
     const outDir = outputDir();
     vi.mocked(renderPdf).mockResolvedValue(Buffer.from('%PDF-1.7\n'));
@@ -76,7 +76,7 @@ describe('optional PDF output', () => {
         formats: ['html'],
         lang: 'en',
         detail: 'full',
-        config: parseConfigInput({ report: { detail: 'brief' } }),
+        config: parseConfigInput({ report: { profiles: ['owner'] } }),
       },
     );
     expect(readFileSync(path.join(outDir, 'report.html'), 'utf8')).toContain('class="evidence"');

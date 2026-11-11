@@ -79,6 +79,30 @@ describe('report command regenerates reports without scanning', () => {
     expect(readFileSync(source, 'utf8')).toBe(original);
   });
 
+  it('writes every language and profile below <lang>/<profile>/ and no PDF unless asked', async () => {
+    const run = await runReport([
+      reportFile(),
+      '--format',
+      'html',
+      '--profile',
+      'developer,owner',
+      '--lang',
+      'de,en',
+    ]);
+
+    expect(run.code, run.stderr).toBe(0);
+    for (const lang of ['de', 'en']) {
+      for (const profile of ['developer', 'owner']) {
+        const dir = path.join(run.outDir, lang, profile);
+        const html = readFileSync(path.join(dir, 'report.html'), 'utf8');
+        expect(html).toContain(`<html lang="${lang}">`);
+        expect(html).toContain(profile === 'owner' ? 'front-brief' : 'front-full');
+        expectNoFile(dir, 'report.pdf');
+      }
+    }
+    expectNoFile(run.outDir, 'report.html');
+  });
+
   describe('takes the defaults of its options from the settings', () => {
     it('DSGVO_CHECK_REPORT_LANG sets the language, a flag beats it', async () => {
       const source = reportFile();

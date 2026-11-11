@@ -12,8 +12,8 @@ const target = 'https://example.test/\n::set-output name=x::y';
 describe('CLI URL input containing a workflow command on a new line', () => {
   it('passes the complete URL as one positional argument without interpreting its contents', async () => {
     let parsedTarget: string | undefined;
-    const program = buildProgram().action((url: string) => {
-      parsedTarget = url;
+    const program = buildProgram().action((urls: string[]) => {
+      parsedTarget = urls[0];
     });
     await program.parseAsync([target, '--format', 'console,json', '--lang', 'en'], { from: 'user' });
 

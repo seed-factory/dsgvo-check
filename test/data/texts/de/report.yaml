@@ -453,7 +453,7 @@ ui:
   report.pdf.page: Seite
   report.cli.description: Einen gespeicherten JSON-Bericht erneut ausgeben
   report.cli.formats: "Ausgabeformate: console,json,html,summary,pdf (PDF nur auf Anfrage)"
-  report.cli.detail: "Detailgrad von HTML und PDF: full (mit Belegen) oder brief (kurz, in einfachen Worten)"
-  report.cli.language: "Sprache des Berichts: de|en"
+  report.cli.profile: "Berichtsprofile von HTML und PDF, kommagetrennt: developer (mit Belegen), owner (kurz, in einfachen Worten)"
+  report.cli.language: "Sprache des Berichts, kommagetrennte Liste aus de|en; die erste gilt für Scan, JSON, Konsole und summary.md"
   report.cli.output: Ausgabeverzeichnis
   report.cli.invalid: Der JSON-Bericht oder die Berichtsoptionen sind ungültig oder werden nicht unterstützt.

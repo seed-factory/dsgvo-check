@@ -9,6 +9,14 @@ export type ReportFormat = (typeof REPORT_FORMATS)[number];
 export const REPORT_DETAILS = ['full', 'brief'] as const;
 export type ReportDetail = (typeof REPORT_DETAILS)[number];
 
+export const REPORT_PROFILES = ['developer', 'owner'] as const;
+export type ReportProfile = (typeof REPORT_PROFILES)[number];
+/** Renderer detail of each profile: the developer report keeps the evidence, the owner report the plain summary. */
+export const PROFILE_DETAIL: Readonly<Record<ReportProfile, ReportDetail>> = {
+  developer: 'full',
+  owner: 'brief',
+};
+
 /** File names inside `--out`. */
 export const REPORT_FILES: Readonly<Record<Exclude<ReportFormat, 'console'>, string>> = {
   json: 'report.json',

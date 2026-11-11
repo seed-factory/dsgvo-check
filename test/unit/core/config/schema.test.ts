@@ -15,6 +15,7 @@ describe('built-in defaults', () => {
     ['scan', 'proxy', null],
     ['scan', 'abortGraceMs', 10_000],
     ['scan', 'reportWriteReserveMs', 30_000],
+    ['scan', 'maxTargets', 20],
     ['scan', 'tlsFallback', 'http-redirect'],
     ['browser', 'sandbox', 'require'],
     ['browser', 'launchTimeoutMs', 60_000],
@@ -80,7 +81,7 @@ describe('built-in defaults', () => {
     ['legal', 'impressumMinGroups', 3],
     ['legal', 'policyClaimMinContexts', 2],
     ['report', 'formats', ['console', 'json']],
-    ['report', 'detail', 'full'],
+    ['report', 'profiles', ['developer']],
     ['report', 'outDir', './dsgvo-check-report'],
     ['report', 'lang', 'de'],
     ['report', 'summaryMaxFindings', 50],
@@ -162,6 +163,7 @@ describe('field list', () => {
     'impressumMinGroups',
     'policyClaimMinContexts',
     'dkimMaxSelectors',
+    'maxTargets',
   ]);
   it('names the unit of every number: _MS, _BYTES, _DAYS, _PX, _BITS, a count or a share', () => {
     for (const f of fields.filter((x) => x.kind === 'int' || x.kind === 'number')) {
@@ -211,6 +213,10 @@ describe('validation', () => {
     [{ scan: { maxPages: 0 } }],
     [{ scan: { maxPages: 51 } }],
     [{ scan: { timeoutMs: 0 } }],
+    [{ scan: { maxTargets: 0 } }],
+    [{ scan: { maxTargets: 101 } }],
+    [{ report: { profiles: [] } }],
+    [{ report: { profiles: ['brief'] } }],
     [{ scan: { failOn: 'error' } }],
     [{ scan: { proxy: 'https://proxy.example:3128' } }],
     [{ scan: { proxy: 'socks5://proxy.example' } }],
@@ -255,6 +261,17 @@ describe('validation', () => {
     [{ browser: { unknown: 1 } }],
   ])('rejects %j', (input) => {
     expect(bad(input)).not.toBeNull();
+  });
+
+  it('reads the target limit and the report profiles from their variables', () => {
+    expect(envName('scan', 'maxTargets')).toBe('DSGVO_CHECK_SCAN_MAX_TARGETS');
+    expect(envName('report', 'profiles')).toBe('DSGVO_CHECK_REPORT_PROFILES');
+    const { config } = resolveConfig({
+      env: { DSGVO_CHECK_SCAN_MAX_TARGETS: '100', DSGVO_CHECK_REPORT_PROFILES: 'owner,developer' },
+    });
+    expect(config.scan.maxTargets).toBe(100);
+    expect(config.report.profiles).toEqual(['owner', 'developer']);
+    expect(ConfigSchema.parse({ scan: { maxTargets: 1 } }).scan.maxTargets).toBe(1);
   });
 
   it('accepts the legal thresholds at their bounds and hands them to the checks', () => {

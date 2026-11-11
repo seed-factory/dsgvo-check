@@ -13,11 +13,11 @@ import { loadTexts, type Texts } from './core/data/load.ts';
 import { uiText } from './core/data/messages.ts';
 import { buildFailedReport } from './core/report/build.ts';
 import {
-  REPORT_DETAILS,
   REPORT_FILES,
   REPORT_FORMATS,
-  type ReportDetail,
+  REPORT_PROFILES,
   type ReportFormat,
+  type ReportProfile,
 } from './core/report/reporter.ts';
 import {
   AssumeRegionSchema,
@@ -32,7 +32,7 @@ import {
   SCHEMA_VERSION,
 } from './core/report/schema.ts';
 import { formatDuration, parseDuration } from './core/runtime/duration.ts';
-import { errorMessage } from './core/runtime/errors.ts';
+import { errorMessage, InvalidInputError } from './core/runtime/errors.ts';
 import { createLogger } from './core/runtime/logger.ts';
 import { TOOL_VERSION } from './core/runtime/version.ts';
 import { redactTarget } from './core/url/url.ts';
@@ -40,6 +40,7 @@ import { renderJson } from './reporters/json.ts';
 import { type WriteResult, writeReports } from './reporters/write.ts';
 import { type ScanResult, scan } from './scan.ts';
 import type { ScanOptions } from './scan-options.ts';
+import { parseList, parseTargetList, planTargets, reportVariants, type SiteTarget } from './targets.ts';
 
 interface RawOptions {
   failOn: string;
@@ -50,7 +51,8 @@ interface RawOptions {
   proxy?: string;
   assumeRegion?: string;
   lang: string;
-  detail: string;
+  profile: string;
+  targets?: string;
   strict?: boolean;
   sandbox: string;
   screenshots: boolean;
@@ -76,10 +78,7 @@ async function exit(code: number): Promise<never> {
 
 /** `--format` list: unique formats, and the first unknown one, if any. */
 function parseFormats(raw: string): { formats: ReportFormat[]; bad: string | undefined } {
-  const list = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const list = parseList(raw);
   return {
     formats: [...new Set(list)] as ReportFormat[],
     bad: list.find((f) => !FORMATS.has(f as ReportFormat)),
@@ -109,7 +108,7 @@ export function toScanOptions(
     // Without the flag the proxy of the settings applies.
     ...(raw.proxy === undefined ? {} : { proxy: raw.proxy }),
     assumeRegion: (raw.assumeRegion ?? null) as ScanOptions['assumeRegion'],
-    lang: raw.lang as Lang,
+    lang: parseList(raw.lang)[0] as Lang,
     strict: Boolean(raw.strict),
     sandbox: raw.sandbox as SandboxMode,
     insideContainer: insideContainer(),
@@ -141,16 +140,24 @@ function parseTimeoutOrNaN(raw: string): number {
   }
 }
 
-/** The first option whose value is outside its allowed set; `--format` is checked first. */
+/** The first option whose value is outside its allowed set, checked in the order of the options below. */
 function firstInvalidOption(raw: RawOptions, badFormat: string | undefined): InvalidOption | undefined {
   if (badFormat) return { option: '--format', value: badFormat };
-  const choices: ReadonlyArray<{ option: string; value: string | undefined; allowed: readonly string[] }> = [
+  const lists: ReadonlyArray<{ option: string; value: string; allowed: readonly string[] }> = [
     { option: '--lang', value: raw.lang, allowed: LangSchema.options },
-    { option: '--detail', value: raw.detail, allowed: REPORT_DETAILS },
+    { option: '--profile', value: raw.profile, allowed: REPORT_PROFILES },
+  ];
+  const choices: ReadonlyArray<{ option: string; value: string | undefined; allowed: readonly string[] }> = [
     { option: '--sandbox', value: raw.sandbox, allowed: SandboxModeSchema.options },
     // Optional: absent (or empty) is allowed.
     { option: '--assume-region', value: raw.assumeRegion || undefined, allowed: AssumeRegionSchema.options },
   ];
+  for (const { option, value, allowed } of lists) {
+    const entries = parseList(value);
+    if (entries.length === 0) return { option, value };
+    const bad = entries.find((e) => !allowed.includes(e));
+    if (bad !== undefined) return { option, value: bad };
+  }
   for (const { option, value, allowed } of choices) {
     if (value !== undefined && !allowed.includes(value)) return { option, value };
   }
@@ -235,14 +242,15 @@ export function loadCliSettings(
   }
 }
 
-async function runScan(url: string | undefined, raw: RawOptions, settings: CliSettings): Promise<never> {
-  const opts = toScanOptions(url, raw, settings.config);
+async function runScan(urls: string[], raw: RawOptions, settings: CliSettings): Promise<never> {
+  const opts = toScanOptions(urls[0], raw, settings.config);
   const lang = opts.lang === 'en' ? 'en' : 'de';
   const outDir = path.resolve(raw.out);
+  const multiSite = urls.length > 1 || raw.targets !== undefined;
   // The target in the minimal failed reports written here is redacted like in scan().
-  const target = url ? redactTarget(url) : (raw.fromSnapshot ?? '');
+  const firstTarget = multiSite ? '' : urls[0] ? redactTarget(urls[0]) : (raw.fromSnapshot ?? '');
   const writeFailed: FailedReportWriter = (code, params, reason) =>
-    writeFailedSync(outDir, target, code, params, reason, lang);
+    writeFailedSync(outDir, firstTarget, code, params, reason, lang);
 
   if (opts.invalid) return failBeforeScan(writeFailed, 'invalid-cli-option', { ...opts.invalid });
   if (settings.error) {
@@ -254,27 +262,111 @@ async function runScan(url: string | undefined, raw: RawOptions, settings: CliSe
     return failBeforeScan(writeFailed, 'sandbox-container-outside-image', {});
   }
 
+  let fileUrls: string[] | null = null;
+  if (raw.targets !== undefined) {
+    try {
+      fileUrls = parseTargetList(readFileSync(raw.targets, 'utf8'));
+    } catch (err) {
+      return failBeforeScan(writeFailed, 'targets-unreadable', {
+        file: raw.targets,
+        message: errorMessage(err),
+      });
+    }
+  }
+  let targets: SiteTarget[];
+  try {
+    targets = planTargets({
+      urls,
+      fileUrls,
+      outDir: raw.out,
+      maxTargets: settings.config.scan.maxTargets,
+      snapshot: Boolean(raw.saveSnapshot || raw.fromSnapshot),
+    });
+  } catch (err) {
+    if (err instanceof InvalidInputError) return failBeforeScan(writeFailed, err.code, err.params);
+    throw err;
+  }
+
   const texts = loadTexts(lang);
   for (const n of settings.notes) await write(process.stderr, `${uiText(texts, n.key, n.params)}\n`);
 
-  installAbortHandlers(writeFailed);
-  const watchdogDeadline = startWatchdog(opts, settings.config, writeFailed);
+  const current = { writeFailed };
+  installAbortHandlers(() => current.writeFailed);
 
-  const result = await scan(opts);
-  const written = await writeReports(result, {
-    outDir,
-    formats: opts.formats ?? settings.config.report.formats,
-    lang,
-    detail: raw.detail as ReportDetail,
-    color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
-    pdf: { sandbox: opts.sandbox },
-    config: settings.config,
-    watchdogDeadline,
-    outputConsole: (text) => write(process.stdout, text),
-  });
+  const exitCodes: number[] = [];
+  for (const [index, target] of targets.entries()) {
+    if (multiSite) {
+      if (index > 0) await sleep(settings.config.browser.navigationPauseMs);
+      const url = redactTarget(target.url);
+      await write(
+        process.stderr,
+        `${uiText(texts, 'console.siteStart', { index: index + 1, total: targets.length, url })}\n`,
+      );
+    }
+    exitCodes.push(await scanSite(target, raw, settings, texts, current));
+  }
 
-  await printScanOutcome(result, written, opts.sandbox, texts);
-  return exit(written.exitCode);
+  if (multiSite) {
+    for (const [index, target] of targets.entries()) {
+      const url = redactTarget(target.url);
+      await write(
+        process.stderr,
+        `${uiText(texts, 'console.siteExit', { url, code: exitCodes[index] as number })}\n`,
+      );
+    }
+  }
+  return exit(Math.max(...exitCodes));
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Scans one site and writes its reports; the run goes on after a failure and the site gets exit code 2. */
+async function scanSite(
+  target: SiteTarget,
+  raw: RawOptions,
+  settings: CliSettings,
+  texts: Texts,
+  current: { writeFailed: FailedReportWriter },
+): Promise<number> {
+  const opts = toScanOptions(target.url, { ...raw, out: target.outDir }, settings.config);
+  const lang = opts.lang === 'en' ? 'en' : 'de';
+  const siteDir = path.resolve(target.outDir);
+  const name = target.url ? redactTarget(target.url) : (raw.fromSnapshot ?? '');
+  current.writeFailed = (code, params, reason) => writeFailedSync(siteDir, name, code, params, reason, lang);
+
+  const langs = parseList(raw.lang) as Lang[];
+  const profiles = parseList(raw.profile) as ReportProfile[];
+  const variants = reportVariants(siteDir, langs, profiles);
+  const formats = opts.formats ?? settings.config.report.formats;
+  const watchdog = startWatchdog(
+    opts,
+    settings.config,
+    current.writeFailed,
+    formats.includes('pdf') ? variants.length : 0,
+  );
+
+  try {
+    const result = await scan(opts);
+    const written = await writeReports(result, {
+      outDir: siteDir,
+      formats,
+      lang,
+      variants,
+      color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
+      pdf: { sandbox: opts.sandbox },
+      config: settings.config,
+      watchdogDeadline: watchdog.deadline,
+      outputConsole: (text) => write(process.stdout, text),
+    });
+    await printScanOutcome(result, written, opts.sandbox, texts);
+    return written.exitCode;
+  } catch (err) {
+    const message = current.writeFailed('internal-error', { message: errorMessage(err) }, 'internal-error');
+    process.stderr.write(`dsgvo-check: ${message}\n`);
+    return 2;
+  } finally {
+    watchdog.stop();
+  }
 }
 
 /** Writes the minimal failed report for a code and returns the user-facing message. */
@@ -291,11 +383,11 @@ function failBeforeScan(
   return exit(2);
 }
 
-/** A signal or a crash still leaves a failed report behind before the process ends. */
-function installAbortHandlers(writeFailed: FailedReportWriter): void {
+/** A signal or a crash still leaves a failed report of the site in progress behind before the process ends. */
+function installAbortHandlers(writeFailed: () => FailedReportWriter): void {
   const onSignal = (sig: string) => {
     process.stderr.write(`dsgvo-check: ${sig} received, aborting\n`);
-    writeFailed('interrupted', { signal: sig }, 'internal-error');
+    writeFailed()('interrupted', { signal: sig }, 'internal-error');
     process.exit(2);
   };
   process.once('SIGINT', () => onSignal('SIGINT'));
@@ -303,7 +395,7 @@ function installAbortHandlers(writeFailed: FailedReportWriter): void {
 
   const crash = (err: unknown) => {
     process.stderr.write(`dsgvo-check: internal error: ${errorMessage(err)}\n`);
-    writeFailed('internal-error', { message: errorMessage(err) }, 'internal-error');
+    writeFailed()('internal-error', { message: errorMessage(err) }, 'internal-error');
     process.exit(2);
   };
   process.on('unhandledRejection', crash);
@@ -311,20 +403,27 @@ function installAbortHandlers(writeFailed: FailedReportWriter): void {
 }
 
 /**
- * Last-resort timer: --timeout plus the reserve for writing reports. scan() itself stops collectors at the deadline.
- * Returns the deadline so that the report writers can hold to it.
+ * Last-resort timer of one site: --timeout plus the reserve for writing reports plus one more PDF print per extra
+ * variant. scan() itself stops collectors at the deadline. `deadline` lets the report writers hold to it.
  */
-function startWatchdog(opts: ScanOptions, config: Config, writeFailed: FailedReportWriter): number {
+function startWatchdog(
+  opts: ScanOptions,
+  config: Config,
+  writeFailed: FailedReportWriter,
+  pdfPrints: number,
+): { deadline: number; stop: () => void } {
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? (opts.timeoutMs as number) : config.scan.timeoutMs;
-  const watchdogMs = timeoutMs + config.scan.reportWriteReserveMs;
+  const watchdogMs =
+    timeoutMs + config.scan.reportWriteReserveMs + Math.max(0, pdfPrints - 1) * config.pdf.timeoutMs;
   const deadline = Date.now() + watchdogMs;
 
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     process.stderr.write('dsgvo-check: watchdog timeout, aborting\n');
     writeFailed('watchdog-timeout', {}, 'internal-error');
     process.exit(2);
-  }, watchdogMs).unref();
-  return deadline;
+  }, watchdogMs);
+  timer.unref();
+  return { deadline, stop: () => clearTimeout(timer) };
 }
 
 /** Only an explicit `off` weakens the measurement; `container` relies on the hardened image instead. */
@@ -357,12 +456,14 @@ async function printScanOutcome(
 interface ReportOptions {
   format: string;
   lang: string;
-  detail: string;
+  profile: string;
   out?: string;
 }
 
 async function runReport(file: string, raw: ReportOptions, settings: CliSettings): Promise<never> {
-  const lang = raw.lang === 'en' ? 'en' : 'de';
+  const langs = parseList(raw.lang);
+  const profiles = parseList(raw.profile);
+  const lang = langs[0] === 'en' ? 'en' : 'de';
   const texts = loadTexts(lang);
   if (settings.error) {
     const problems = describeProblems(settings.error, lang);
@@ -377,10 +478,11 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
 
   const { formats, bad } = parseFormats(raw.format);
   try {
-    const validDetail = (REPORT_DETAILS as readonly string[]).includes(raw.detail);
     if (
-      !LangSchema.safeParse(raw.lang).success ||
-      !validDetail ||
+      langs.length === 0 ||
+      !langs.every((l) => LangSchema.safeParse(l).success) ||
+      profiles.length === 0 ||
+      !profiles.every((p) => (REPORT_PROFILES as readonly string[]).includes(p)) ||
       formats.length === 0 ||
       bad !== undefined
     ) {
@@ -388,14 +490,15 @@ async function runReport(file: string, raw: ReportOptions, settings: CliSettings
     }
     const report = readReportFile(file);
     const inputDir = path.dirname(path.resolve(file));
+    const outDir = raw.out ?? inputDir;
 
     const written = await writeReports(
       { report, snapshot: null, exitCode: 0 },
       {
-        outDir: raw.out ?? inputDir,
+        outDir,
         formats,
         lang,
-        detail: raw.detail as ReportDetail,
+        variants: reportVariants(outDir, langs as Lang[], profiles as ReportProfile[]),
         artifactsDir: inputDir,
         pdf: { sandbox: settings.config.browser.sandbox },
         config: settings.config,
@@ -490,7 +593,8 @@ function addScanCommand(program: Command, texts: Texts, settings: CliSettings): 
     .name('dsgvo-check')
     .description(uiText(texts, 'cli.description'))
     .version(TOOL_VERSION, '-V, --version')
-    .argument('[url]', uiText(texts, 'cli.url'))
+    .argument('[url...]', uiText(texts, 'cli.url'))
+    .option('--targets <file>', uiText(texts, 'cli.targets'))
     .option('--fail-on <level>', uiText(texts, 'cli.failOn'), config.scan.failOn)
     .option('--format <list>', uiText(texts, 'report.cli.formats'), config.report.formats.join(','))
     .option('--out <dir>', uiText(texts, 'cli.out'), config.report.outDir)
@@ -499,8 +603,8 @@ function addScanCommand(program: Command, texts: Texts, settings: CliSettings): 
     // No default shown: the proxy of the settings may hold credentials.
     .option('--proxy <url>', uiText(texts, 'cli.proxy'))
     .option('--assume-region <region>', uiText(texts, 'cli.assumeRegion'))
-    .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
-    .option('--detail <level>', uiText(texts, 'report.cli.detail'), config.report.detail)
+    .option('--lang <list>', uiText(texts, 'report.cli.language'), config.report.lang)
+    .option('--profile <list>', uiText(texts, 'report.cli.profile'), config.report.profiles.join(','))
     .option('--strict', uiText(texts, 'cli.strict'))
     .option('--sandbox <mode>', uiText(texts, 'cli.sandbox'), config.browser.sandbox)
     .option('--no-screenshots', uiText(texts, 'cli.noScreenshots'))
@@ -511,13 +615,13 @@ function addScanCommand(program: Command, texts: Texts, settings: CliSettings): 
     .addHelpText('after', configNotes)
     .addHelpText('after', usageNotes)
     .showHelpAfterError()
-    .action(async (url: string | undefined, raw: RawOptions) => {
-      if (!url && !raw.fromSnapshot) {
+    .action(async (urls: string[], raw: RawOptions) => {
+      if (urls.length === 0 && raw.targets === undefined && !raw.fromSnapshot) {
         program.outputHelp({ error: true });
         process.stderr.write(`\ndsgvo-check: ${uiText(texts, 'cli.urlMissing')}\n`);
         return exit(2);
       }
-      return runScan(url, raw, settings);
+      return runScan(urls, raw, settings);
     });
 }
 
@@ -533,8 +637,8 @@ function addReportCommand(program: Command, texts: Texts, settings: CliSettings)
     .command('report <report.json>')
     .description(uiText(texts, 'report.cli.description'))
     .option('--format <list>', uiText(texts, 'report.cli.formats'), reportFormats.join(','))
-    .option('--lang <lang>', uiText(texts, 'report.cli.language'), config.report.lang)
-    .option('--detail <level>', uiText(texts, 'report.cli.detail'), config.report.detail)
+    .option('--lang <list>', uiText(texts, 'report.cli.language'), config.report.lang)
+    .option('--profile <list>', uiText(texts, 'report.cli.profile'), config.report.profiles.join(','))
     .option('--out <dir>', uiText(texts, 'report.cli.output'))
     .action((file: string, raw: ReportOptions) => runReport(file, raw, settings));
 }

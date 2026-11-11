@@ -7,7 +7,7 @@
  * of a text (`config.problem.<id>` in test/data/texts), see problems.ts: no wording lives in code.
  */
 import { z } from 'zod';
-import { REPORT_DETAILS, REPORT_FORMATS } from '../report/reporter.ts';
+import { REPORT_FORMATS, REPORT_PROFILES } from '../report/reporter.ts';
 import { FailOnSchema, LangSchema, type MessageParams, SandboxModeSchema } from '../report/schema.ts';
 import { envName } from './names.ts';
 import { REASON } from './problems.ts';
@@ -60,6 +60,7 @@ const scan = z.strictObject({
     `Reserve on top of the global timeout for writing reports; the watchdog ends the process after timeout plus reserve. Must cover ${envName('scan', 'abortGraceMs')} plus ${envName('pdf', 'timeoutMs')}.`,
     1,
   ),
+  maxTargets: int(20, 'Sites one run scans, one after another (CLI: several URLs or --targets).', 1, 100),
   tlsFallback: z.enum(TLS_FALLBACK_MODES).default('http-redirect').meta({
     description:
       'Certificate of the target not accepted: http-redirect runs the browser checks on the host its plain-http address redirects to, when every certificate on that way was accepted; off skips the browser checks.',
@@ -306,15 +307,15 @@ const report = z.strictObject({
     .meta({
       description: `Report formats, comma-separated: ${REPORT_FORMATS.join(', ')} (CLI: --format, also of the report command, which writes html while this is not set).`,
     }),
-  detail: z.enum(REPORT_DETAILS).default('full').meta({
-    description:
-      'Level of detail of report.html and report.pdf: full (findings with evidence) or brief (plain summary and action points). JSON, console and summary.md are not affected (CLI: --detail, also of the report command).',
+  profiles: z.array(z.enum(REPORT_PROFILES)).min(1).default(['developer']).meta({
+    description: `Report profiles of report.html and report.pdf, comma-separated: developer (findings with evidence), owner (plain summary and action points). With more than one profile or language each goes to <lang>/<profile>/ below the site's directory; JSON, console and summary.md are written once (CLI: --profile, also of the report command).`,
   }),
   outDir: z.string().min(1).default('./dsgvo-check-report').meta({
     description: 'Directory for reports and artifacts (CLI: --out).',
   }),
   lang: LangSchema.default('de').meta({
-    description: 'Language of the report texts (CLI: --lang, also of the report command).',
+    description:
+      'Language of the report texts (CLI: --lang, also of the report command). --lang also takes a comma-separated list; its first language is used for the scan, JSON, console and summary.md.',
   }),
   summaryMaxFindings: int(50, 'Findings listed in summary.md (the Job Summary); more are counted.', 1, 1_000),
   summaryMaxBytes: int(524_288, 'Size above which summary.md is cut.', 10_240, 5_242_880),

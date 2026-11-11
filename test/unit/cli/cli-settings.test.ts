@@ -31,7 +31,7 @@ describe('settings from the environment', () => {
         DSGVO_CHECK_REPORT_FORMATS: 'json,html',
         DSGVO_CHECK_REPORT_OUT_DIR: 'reports',
         DSGVO_CHECK_REPORT_LANG: 'en',
-        DSGVO_CHECK_REPORT_DETAIL: 'brief',
+        DSGVO_CHECK_REPORT_PROFILES: 'owner,developer',
         DSGVO_CHECK_BROWSER_SANDBOX: 'off',
       },
       tmpdir(),
@@ -43,7 +43,7 @@ describe('settings from the environment', () => {
       format: 'json,html',
       out: 'reports',
       lang: 'en',
-      detail: 'brief',
+      profile: 'owner,developer',
       sandbox: 'off',
     });
     expect(parse(settings, '--max-pages', '5', '--timeout', '90s', '--fail-on', 'none').opts()).toMatchObject(
@@ -63,7 +63,7 @@ describe('settings from the environment', () => {
       maxPages: '6',
       timeout: '8m',
       lang: 'de',
-      detail: 'full',
+      profile: 'developer',
       sandbox: 'require',
     });
   });
@@ -142,14 +142,14 @@ describe('the report command follows the settings', () => {
   const settingsOf = (env: Record<string, string>) => loadCliSettings(env, tmpdir());
 
   it('without settings it renders html in German, as it always did', async () => {
-    expect(await reportOpts(builtInSettings())).toEqual({ format: 'html', lang: 'de', detail: 'full' });
+    expect(await reportOpts(builtInSettings())).toEqual({ format: 'html', lang: 'de', profile: 'developer' });
   });
 
-  it('DSGVO_CHECK_REPORT_DETAIL is the default level of detail; the flag beats it', async () => {
-    const s = settingsOf({ DSGVO_CHECK_REPORT_DETAIL: 'brief' });
-    expect(await reportOpts(s)).toMatchObject({ detail: 'brief' });
-    expect(await reportOpts(s, '--detail', 'full')).toMatchObject({ detail: 'full' });
-    expect(parse(s, '--detail', 'full').opts()).toMatchObject({ detail: 'full' });
+  it('DSGVO_CHECK_REPORT_PROFILES is the default profile list; the flag beats it', async () => {
+    const s = settingsOf({ DSGVO_CHECK_REPORT_PROFILES: 'owner' });
+    expect(await reportOpts(s)).toMatchObject({ profile: 'owner' });
+    expect(await reportOpts(s, '--profile', 'developer,owner')).toMatchObject({ profile: 'developer,owner' });
+    expect(parse(s, '--profile', 'developer').opts()).toMatchObject({ profile: 'developer' });
   });
 
   it('DSGVO_CHECK_REPORT_LANG is the default language; the flag beats it', async () => {
@@ -172,7 +172,7 @@ describe('the report command follows the settings', () => {
 
   it('other report settings leave html as the default: the scan default is console and json', async () => {
     const s = settingsOf({ DSGVO_CHECK_REPORT_LANG: 'en', DSGVO_CHECK_REPORT_OUT_DIR: 'reports' });
-    expect(await reportOpts(s)).toEqual({ format: 'html', lang: 'en', detail: 'full' });
+    expect(await reportOpts(s)).toEqual({ format: 'html', lang: 'en', profile: 'developer' });
   });
 
   it('the environment beats .env for the language and the formats', async () => {
@@ -184,13 +184,30 @@ describe('the report command follows the settings', () => {
     expect(await reportOpts(loadCliSettings({}, dir))).toEqual({
       format: 'html,pdf',
       lang: 'en',
-      detail: 'full',
+      profile: 'developer',
     });
     expect(
       await reportOpts(
         loadCliSettings({ DSGVO_CHECK_REPORT_LANG: 'de', DSGVO_CHECK_REPORT_FORMATS: 'json' }, dir),
       ),
-    ).toEqual({ format: 'json', lang: 'de', detail: 'full' });
+    ).toEqual({ format: 'json', lang: 'de', profile: 'developer' });
+  });
+});
+
+describe('DSGVO_CHECK_SCAN_MAX_TARGETS', () => {
+  it.each([
+    ['1', true],
+    ['100', true],
+    ['0', false],
+    ['101', false],
+  ])('%s is %s', (value, valid) => {
+    const s = loadCliSettings({ DSGVO_CHECK_SCAN_MAX_TARGETS: value }, tmpdir());
+    expect(s.error === null).toBe(valid);
+    if (valid) expect(s.config.scan.maxTargets).toBe(Number(value));
+  });
+
+  it('defaults to 20', () => {
+    expect(builtInSettings().config.scan.maxTargets).toBe(20);
   });
 });
 

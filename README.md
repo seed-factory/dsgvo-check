@@ -2,9 +2,6 @@
 
 English | [Deutsch](README.de.md)
 
-[![CI](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-
 dsgvo-check observes what a website loads and stores, how its consent banner works, and how HTTP, TLS and email are configured. The exit code makes the results usable in CI. Reports document technical observations; legal assessment is the responsibility of site operators.
 
 **Status** · Prototype 0.1.0 from source. Report texts are marked “Draft text”.
@@ -57,17 +54,56 @@ Replace the example address with your website. A typical scan takes 1–3 minute
 
 ### Reading the report
 
-Open `report.html` for an overview of findings, inconclusive results, recommended actions and observed services. Evidence for each check follows below. With `--detail brief`, HTML and PDF retain only the summary. Banner screenshots are suspended to protect visitor data. The scan still captures banner characteristics.
+Open `report.html` for an overview of findings, inconclusive results, recommended actions and observed services. Evidence for each check follows below. `--profile developer` (the default) keeps the evidence. With `--profile owner`, HTML and PDF retain only the summary. Banner screenshots are suspended to protect visitor data. The scan still captures banner characteristics.
 
 ![Summary report from a local test dataset with a tracking finding before consent](docs/images/report-preview.png)
 
 ### Re-exporting a report
 
 ```sh
-node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lang de --out ./report-export
+node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --profile owner --lang de --out ./report-export
 ```
 
-`report` uses the existing JSON report. Without flags, the command writes HTML in German next to the JSON file. `DSGVO_CHECK_REPORT_FORMATS` and `DSGVO_CHECK_REPORT_LANG` change these defaults. If PDF printing fails, the JSON and scan exit code remain available. Invalid input JSON results in exit code 2.
+`report` uses the existing JSON report. Without flags, the command writes the developer HTML in German next to the JSON file. `DSGVO_CHECK_REPORT_FORMATS`, `DSGVO_CHECK_REPORT_PROFILES` and `DSGVO_CHECK_REPORT_LANG` change these defaults. If PDF printing fails, the JSON and scan exit code remain available. Invalid input JSON results in exit code 2.
+
+### Scanning several sites
+
+```sh
+node dist/cli.js --targets sites.txt --profile developer,owner --lang de,en --format console,json,html,pdf --out ./audit
+```
+
+`sites.txt` holds one URL per line. Blank lines and `#` comments are ignored. You can also pass several URLs on the command line.
+
+```text
+# shops
+https://www.example.de/
+https://shop.example.com/
+```
+
+```text
+audit/
+└── www.example.de/
+    ├── report.json
+    ├── de/
+    │   ├── developer/   report.html, report.pdf
+    │   └── owner/       report.html, report.pdf
+    └── en/
+        ├── developer/   report.html, report.pdf
+        └── owner/       report.html, report.pdf
+```
+
+| Topic            | Behavior                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| Order            | Sites are scanned one after another, with the usual navigation pause between them.                      |
+| Directories      | One directory per site, named after the host. With an explicit port: `<host>_<port>`.                   |
+| Single URL       | A single URL without `--targets` keeps the single-site layout (`<out>/report.json`).                    |
+| HTML and PDF     | With one profile and one language they stay in the site directory. Otherwise: `<lang>/<profile>/`.      |
+| JSON, console    | `report.json`, console output and `summary.md` appear once per site, in the first language of `--lang`. |
+| Exit code        | The highest exit code of all sites.                                                                     |
+| Failed site      | It gets a failed report. The run continues with the next site.                                          |
+| Limit            | At most 20 sites. `DSGVO_CHECK_SCAN_MAX_TARGETS` sets the limit (1–100).                                |
+| Snapshots        | `--save-snapshot` and `--from-snapshot` work only with a single URL.                                    |
+| `report` command | Accepts the same `--profile` and `--lang` lists.                                                        |
 
 ### Saving and re-evaluating a snapshot
 
@@ -263,16 +299,19 @@ In the image, the container provides the sandbox (`--sandbox container`). The ru
 
 `node dist/cli.js --help` shows all options. The following cover the most common uses.
 
-| Option        | Default                | Effect                                          |
-| ------------- | ---------------------- | ----------------------------------------------- |
-| `--fail-on`   | `critical`             | `critical`, `warning` or `none`                 |
-| `--format`    | `console,json`         | Comma-separated output formats                  |
-| `--out`       | `./dsgvo-check-report` | Output directory                                |
-| `--max-pages` | `6`                    | Phase A page budget                             |
-| `--timeout`   | `8m`                   | Global time limit, e.g. `90s`                   |
-| `--checks`    | all                    | Comma-separated check IDs                       |
-| `--lang`      | `de`                   | Report language `de` or `en`                    |
-| `--detail`    | `full`                 | Detail level `full` or `brief` for HTML and PDF |
+One or more URLs can be given. `--targets` reads them from a file instead.
+
+| Option        | Default                | Effect                                                                                    |
+| ------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| `--targets`   | none                   | File with one URL per line                                                                |
+| `--fail-on`   | `critical`             | `critical`, `warning` or `none`                                                           |
+| `--format`    | `console,json`         | Comma-separated output formats                                                            |
+| `--out`       | `./dsgvo-check-report` | Output directory                                                                          |
+| `--max-pages` | `6`                    | Phase A page budget                                                                       |
+| `--timeout`   | `8m`                   | Global time limit, e.g. `90s`                                                             |
+| `--checks`    | all                    | Comma-separated check IDs                                                                 |
+| `--lang`      | `de`                   | `de`, `en` or both, comma-separated. The first is used for JSON, console and `summary.md` |
+| `--profile`   | `developer`            | `developer` with evidence, `owner` short summary, or both, comma-separated (HTML and PDF) |
 
 ### Settings
 
@@ -321,7 +360,9 @@ For the User-Agent and the IP address third parties see in phase C, see [Usage n
 
 ## Limitations
 
-- A scan is a sample for one browser configuration, one location and the pages actually visited.
+- The report shows the site as seen by desktop Chromium on a first visit, with German locale and time zone (`de-DE`, `Europe/Berlin`). Other browsers and mobile layouts are not covered.
+- Consent banners and trackers often depend on the IP location. Run scans from Germany or the EEA and pass `--assume-region de`.
+- Only the pages actually visited are covered (`--max-pages`).
 - Bot protection, geo signals and states that cannot be checked can make checks `inconclusive`.
 - The snapshot contains neither cookie values nor Web Storage values or TC-Strings, even in hashed form. URL parameters and headers follow allowlists. [What is stored](docs/scan-reference.md#keine-werte)
 - The network check filters private, loopback, link-local and metadata addresses during target validation and document navigation. Subresources, DNS rebinding and the target behind a proxy are outside this boundary. Use an isolated environment without access to sensitive internal services.

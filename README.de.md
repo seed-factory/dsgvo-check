@@ -2,9 +2,6 @@
 
 [English](README.md) | Deutsch
 
-[![CI](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/seed-factory/dsgvo-check/actions/workflows/ci.yml)
-[![Lizenz: Apache-2.0](https://img.shields.io/badge/Lizenz-Apache--2.0-blue.svg)](LICENSE)
-
 dsgvo-check beobachtet, was eine Website lädt und speichert, wie ihr Einwilligungsbanner funktioniert und
 wie HTTP, TLS und E-Mail eingerichtet sind. Der Exit-Code macht die Ergebnisse in CI auswertbar.
 Die Berichte dokumentieren technische Beobachtungen. Die rechtliche Bewertung liegt bei den Betreibern.
@@ -61,7 +58,8 @@ Ersetze die Beispieladresse durch deine Website. Ein typischer Scan dauert 1–3
 ### Bericht lesen
 
 Öffne `report.html` für den Überblick über Befunde, unklare Ergebnisse, empfohlene Maßnahmen und beobachtete
-Dienste. Darunter stehen die Belege pro Prüfung. Mit `--detail brief` bleibt bei HTML und PDF nur die Kurzfassung.
+Dienste. Darunter stehen die Belege pro Prüfung. `--profile developer` (Standard) behält die Belege. Mit
+`--profile owner` bleibt bei HTML und PDF nur die Kurzfassung.
 Die Aufnahme von Bannerbildern ist zum Schutz von Besucherdaten ausgesetzt. Der Scan erfasst weiterhin die
 Merkmale des Banners.
 
@@ -70,12 +68,53 @@ Merkmale des Banners.
 ### Bericht erneut ausgeben
 
 ```sh
-node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --lang de --out ./report-export
+node dist/cli.js report ./dsgvo-check-report/report.json --format html,pdf --profile owner --lang de --out ./report-export
 ```
 
-`report` verwendet den vorhandenen JSON-Bericht. Ohne Flags schreibt der Befehl HTML auf Deutsch neben die
-JSON-Datei. Die Einstellungen `DSGVO_CHECK_REPORT_FORMATS` und `DSGVO_CHECK_REPORT_LANG` ändern diese Standards.
+`report` verwendet den vorhandenen JSON-Bericht. Ohne Flags schreibt der Befehl den Entwicklerbericht als HTML auf
+Deutsch neben die JSON-Datei. Die Einstellungen `DSGVO_CHECK_REPORT_FORMATS`, `DSGVO_CHECK_REPORT_PROFILES` und
+`DSGVO_CHECK_REPORT_LANG` ändern diese Standards.
 Bei einem PDF-Druckfehler bleiben JSON und der Scan-Exit-Code erhalten. Ungültiges Eingabe-JSON ergibt Exit-Code 2.
+
+### Mehrere Websites prüfen
+
+```sh
+node dist/cli.js --targets sites.txt --profile developer,owner --lang de,en --format console,json,html,pdf --out ./audit
+```
+
+`sites.txt` enthält eine URL pro Zeile. Leerzeilen und `#`-Kommentare werden ignoriert. Mehrere URLs lassen sich
+auch direkt auf der Kommandozeile angeben.
+
+```text
+# Shops
+https://www.example.de/
+https://shop.example.com/
+```
+
+```text
+audit/
+└── www.example.de/
+    ├── report.json
+    ├── de/
+    │   ├── developer/   report.html, report.pdf
+    │   └── owner/       report.html, report.pdf
+    └── en/
+        ├── developer/   report.html, report.pdf
+        └── owner/       report.html, report.pdf
+```
+
+| Thema                | Verhalten                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Reihenfolge          | Die Websites werden nacheinander geprüft, mit der üblichen Navigationspause dazwischen.                           |
+| Verzeichnisse        | Ein Verzeichnis pro Website, benannt nach dem Host. Bei ausdrücklichem Port: `<host>_<port>`.                     |
+| Einzelne URL         | Eine einzelne URL ohne `--targets` behält das bisherige Layout.                                                   |
+| HTML und PDF         | Bei einem Profil und einer Sprache bleiben sie im Verzeichnis der Website. Sonst: `<sprache>/<profil>/`.          |
+| JSON, Konsole        | `report.json`, Konsolenausgabe und `summary.md` entstehen einmal pro Website, in der ersten Sprache von `--lang`. |
+| Exit-Code            | Der höchste Exit-Code aller Websites.                                                                             |
+| Gescheiterte Website | Sie erhält einen fehlgeschlagenen Bericht. Der Lauf geht mit der nächsten Website weiter.                         |
+| Grenze               | Höchstens 20 Websites. `DSGVO_CHECK_SCAN_MAX_TARGETS` ändert die Grenze (1–100).                                  |
+| Snapshots            | `--save-snapshot` und `--from-snapshot` gehen nur mit einer einzelnen URL.                                        |
+| Befehl `report`      | Nimmt dieselben Listen für `--profile` und `--lang`.                                                              |
 
 ### Snapshot speichern und neu auswerten
 
@@ -286,16 +325,19 @@ sein. Ohne `--user` läuft das Image als UID 10001. Lokal verwendet Chromium sta
 
 `node dist/cli.js --help` zeigt alle Optionen. Die folgenden Optionen decken die häufigsten Aufrufe ab.
 
-| Option        | Standard               | Wirkung                                          |
-| ------------- | ---------------------- | ------------------------------------------------ |
-| `--fail-on`   | `critical`             | `critical`, `warning` oder `none`                |
-| `--format`    | `console,json`         | Kommagetrennte Ausgabeformate                    |
-| `--out`       | `./dsgvo-check-report` | Ausgabeverzeichnis                               |
-| `--max-pages` | `6`                    | Seitenbudget der Phase A                         |
-| `--timeout`   | `8m`                   | Globales Zeitlimit, etwa `90s`                   |
-| `--checks`    | alle                   | Kommagetrennte Prüfungs-IDs                      |
-| `--lang`      | `de`                   | Berichtssprache `de` oder `en`                   |
-| `--detail`    | `full`                 | Detailstufe `full` oder `brief` für HTML und PDF |
+Es lassen sich eine oder mehrere URLs angeben. `--targets` liest sie stattdessen aus einer Datei.
+
+| Option        | Standard               | Wirkung                                                                                 |
+| ------------- | ---------------------- | --------------------------------------------------------------------------------------- |
+| `--targets`   | keine                  | Datei mit einer URL pro Zeile                                                           |
+| `--fail-on`   | `critical`             | `critical`, `warning` oder `none`                                                       |
+| `--format`    | `console,json`         | Kommagetrennte Ausgabeformate                                                           |
+| `--out`       | `./dsgvo-check-report` | Ausgabeverzeichnis                                                                      |
+| `--max-pages` | `6`                    | Seitenbudget der Phase A                                                                |
+| `--timeout`   | `8m`                   | Globales Zeitlimit, etwa `90s`                                                          |
+| `--checks`    | alle                   | Kommagetrennte Prüfungs-IDs                                                             |
+| `--lang`      | `de`                   | `de`, `en` oder beide, kommagetrennt. Die erste gilt für JSON, Konsole und `summary.md` |
+| `--profile`   | `developer`            | `developer` mit Belegen, `owner` Kurzfassung oder beide, kommagetrennt (HTML und PDF)   |
 
 ### Einstellungen
 
@@ -363,7 +405,11 @@ User-Agent bleibt auch dann unverändert, wenn ein Einwilligungsbanner ihn desha
 
 ## Grenzen
 
-- Ein Scan ist eine Stichprobe für eine Browserkonfiguration, einen Standort und die tatsächlich besuchten Seiten.
+- Der Bericht zeigt die Website so, wie ein Desktop-Chromium sie beim ersten Besuch sieht, mit deutscher Sprache und
+  Zeitzone (`de-DE`, `Europe/Berlin`). Andere Browser und mobile Layouts sind nicht abgedeckt.
+- Consent-Banner und Tracker hängen oft vom Standort der IP-Adresse ab. Scans aus Deutschland oder dem EWR starten
+  und `--assume-region de` angeben.
+- Abgedeckt sind nur die tatsächlich besuchten Seiten (`--max-pages`).
 - Bot-Schutz, Geo-Signale und nicht überprüfbare Zustände können Prüfungen `inconclusive` machen.
 - Der Snapshot enthält weder Cookie-Werte noch Werte aus Web Storage oder TC-Strings, auch in gehashter Form.
   URL-Parameter und Header folgen Positivlisten. [Was gespeichert wird](docs/scan-reference.md#keine-werte)

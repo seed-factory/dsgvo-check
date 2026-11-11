@@ -434,7 +434,7 @@ ui:
   report.pdf.page: Page
   report.cli.description: Reissue a saved JSON report
   report.cli.formats: "Output formats: console,json,html,summary,pdf (PDF on request only)"
-  report.cli.detail: "Level of detail of HTML and PDF: full (with evidence) or brief (short, in plain words)"
-  report.cli.language: "Report language: de|en"
+  report.cli.profile: "Report profiles of HTML and PDF, comma-separated: developer (with evidence), owner (short, in plain words)"
+  report.cli.language: "Report language, comma-separated list of de|en; the first one is used for the scan, JSON, console and summary.md"
   report.cli.output: Output directory
   report.cli.invalid: The JSON report or report options are invalid or unsupported.
