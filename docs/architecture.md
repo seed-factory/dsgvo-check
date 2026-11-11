@@ -122,7 +122,7 @@ public [check API](../src/core/api.ts), which exposes the shared types and pure 
 
 Browser checks share [consent signals](../src/checks/browser/signals.ts), [document selection](../src/checks/browser/documents.ts),
 [evidence](../src/checks/browser/evidence.ts) and [embedding attribution](../src/checks/browser/embed-frame.ts).
-[Contract example](../test/unit/core/evaluation/contract-example.test.ts) · [Adding a check](../AGENTS.md#как-добавить-проверку)
+[Contract example](../test/unit/core/evaluation/contract-example.test.ts) · [Adding a check](../AGENTS.md#adding-a-check)
 
 ### Report
 
@@ -131,7 +131,7 @@ The [report schema](../src/core/report/schema.ts) covers full and failed scans. 
 The PDF renderer prints the same HTML that the HTML reporter writes.
 [Report template](../test/data/report/report.html) · [Renderer contract](../src/core/report/reporter.ts)
 
-<a name="словари-и-сопоставления"></a>
+<a name="dictionaries-and-matching"></a>
 
 ## Dictionaries and matching
 
@@ -152,7 +152,7 @@ Use [dataSection](../src/core/data/parse.ts) to validate dictionary sections. Co
 `loadSection`, checks use `ctx.data`, and scripts evaluated in the browser receive the required data as arguments.
 [Section coverage test](../test/unit/core/data/sections.test.ts) · [Service routing](../test/data/routing.yaml)
 
-<a name="настройки"></a>
+<a name="settings"></a>
 
 ## Settings
 

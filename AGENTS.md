@@ -1,69 +1,69 @@
-# AGENTS.md — правила для агентов, которые работают с кодом dsgvo-check
+# AGENTS.md — rules for agents working on dsgvo-check code
 
-dsgvo-check — пассивный CLI-сканер на TypeScript и Playwright: ищет на сайтах признаки нарушений DSGVO/TDDDG/DDG и базовые проблемы безопасности, по найденному роняет CI. В репозитории прототип и утверждённые документы релиза 1.0.
+dsgvo-check is a passive CLI scanner in TypeScript and Playwright: it looks for signs of DSGVO/TDDDG/DDG violations and basic security problems on websites, and fails CI based on its findings. The repository contains a prototype and the approved 1.0 release documents.
 
-## Где правда
+## Sources of truth
 
-Приоритет: решение заказчика → [ТЗ](specs/dsgvo-check_TZ.md) → [каталог проверок](specs/dsgvo-check_katalog-proverok.md) → `test/data/ruleset` и код с его тестами → [README.md](README.md) и [docs/architecture.md](docs/architecture.md).
+Priority: customer decision → [specification](specs/dsgvo-check_TZ.md) → [check catalog](specs/dsgvo-check_check-catalog.md) → `test/data/ruleset` and the code with its tests → [README.md](README.md) and [docs/architecture.md](docs/architecture.md).
 
-Исключение — варианты реализованных проверок: имена, уровни по умолчанию, `locked` и `crm` задаёт `test/data/ruleset/de-2026/*.yaml`. Таблица в [README.md](README.md) (раздел «What is checked») генерируется из него.
+Exception: for variants of implemented checks, names, default levels, `locked` and `crm` are defined by `test/data/ruleset/de-2026/*.yaml`. The table in [README.md](README.md) (the “What is checked” section) is generated from it.
 
-| Нужно                           | Где смотреть                                                                                                                               |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Что строим и почему             | [specs/dsgvo-check_TZ.md](specs/dsgvo-check_TZ.md), [README.md](README.md)                                                                 |
-| Архитектура одним взглядом      | [docs/architecture.md](docs/architecture.md)                                                                                               |
-| Контракты, модули, поля         | контракты и модули — [docs/architecture.md](docs/architecture.md); поля — схемы в `src/core/snapshot` и `src/core/report`                  |
-| Поведение проверок, `messageId` | `src/checks/**` и их тесты; варианты — `test/data/ruleset`                                                                                 |
-| Тексты находок и стоп-слова     | `test/data/texts/**`; правило 3 ниже и `test/unit/core/data/stopwords.test.ts`                                                             |
-| Тесты, CI, Docker, Action       | [README.md](README.md), разделы «Development», «Docker», «CI integration»                                                                  |
-| Словари, сигнатуры, селекторы   | `test/data/{cmp,legal,browser,http,services}`; перечень — в [docs/architecture.md](docs/architecture.md), раздел «Словари и сопоставления» |
-| Устройство прототипа            | [README.md](README.md): примечание о статусе и раздел «Limitations»                                                                        |
+| Need                                | Where to look                                                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| What we are building and why        | [specs/dsgvo-check_TZ.md](specs/dsgvo-check_TZ.md), [README.md](README.md)                                                                 |
+| Architecture at a glance            | [docs/architecture.md](docs/architecture.md)                                                                                               |
+| Contracts, modules, fields          | Contracts and modules — [docs/architecture.md](docs/architecture.md); fields — schemas in `src/core/snapshot` and `src/core/report`        |
+| Check behavior, `messageId`         | `src/checks/**` and their tests; variants — `test/data/ruleset`                                                                            |
+| Finding texts and stop words        | `test/data/texts/**`; rule 3 below and `test/unit/core/data/stopwords.test.ts`                                                             |
+| Tests, CI, Docker, Action           | [README.md](README.md), “Development”, “Docker”, “CI integration” sections                                                                 |
+| Dictionaries, signatures, selectors | `test/data/{cmp,legal,browser,http,services}`; list — in [docs/architecture.md](docs/architecture.md), “Dictionaries and matching” section |
+| How the prototype works             | [README.md](README.md): status note and “Limitations” section                                                                              |
 
-Решение противоречит этим документам — остановись и спроси. Документ «под код» молча не переписывай.
+If a decision contradicts these documents, stop and ask. Do not silently rewrite a document to match the code.
 
-## Команды
+## Commands
 
 ```bash
 corepack pnpm install
 node node_modules/playwright-core/cli.js install --no-shell chromium
 corepack pnpm typecheck && corepack pnpm lint
-corepack pnpm test:unit          # L0–L1, без браузера и сети; `corepack pnpm test` запускает только их
-corepack pnpm test:integration   # L2: настоящий Chromium, локальные серверы, без интернета
-corepack pnpm test:changed       # только затронутые тесты: merge-base с main + незакоммиченное
-corepack pnpm build && corepack pnpm test:e2e   # build пишет и schema/report.schema.json из zod
-corepack pnpm registry           # перегенерировать таблицу вариантов в README.md
-corepack pnpm env:example        # перегенерировать .env.example из схемы настроек (env:example:check — проверка)
+corepack pnpm test:unit          # L0–L1, no browser or network; `corepack pnpm test` runs only these
+corepack pnpm test:integration   # L2: real Chromium, local servers, no internet
+corepack pnpm test:changed       # only affected tests: merge-base with main + uncommitted changes
+corepack pnpm build && corepack pnpm test:e2e   # build also writes schema/report.schema.json from zod
+corepack pnpm registry           # regenerate the variants table in README.md
+corepack pnpm env:example        # regenerate .env.example from the settings schema (env:example:check checks it)
 node dist/cli.js https://example.test --format console,json,html
 node dist/cli.js report <report.json> --format html,pdf
 ```
 
-Версии зависимостей запинены точно (`.npmrc`: `save-exact=true`). Новая зависимость — только с пермиссивной лицензией (MIT, Apache-2.0, BSD, ISC, MPL-2.0). NC-, SA- и GPL-данные в поставку не попадают.
+Dependency versions are pinned exactly (`.npmrc`: `save-exact=true`). A new dependency must have a permissive license (MIT, Apache-2.0, BSD, ISC, MPL-2.0). NC, SA and GPL data are not shipped.
 
-## Жёсткие правила
+## Hard rules
 
-1. **Только пассивно.** Без логинов, отправки форм, перебора, обхода CAPTCHA и бот-защиты. FILE-01 и ADMIN-01 — только opt-in класс E. Навигации — по одной, пауза ≥ 1,5 с; HTTP-пробы — ≤ 2 запросов/с на хост. User-Agent честный, со ссылкой на репозиторий.
-2. **Никаких значений.** Значения cookies, Web Storage и TC-String не попадают в снимок, отчёт, логи и исключения — ни открыто, ни хешем. Query редактируется до `[redacted]` (кроме allowlist), `mailto:` — до домена. Редактирует коллектор до записи.
-3. **Факт, а не правовая оценка.** Пользовательские строки лежат только в `test/data/texts/**`. Формулировки: «beobachtet», «nicht gefunden in …». Стоп-слова (verstößt, rechtswidrig, unzulässig, DSGVO-konform, illegal, violates…) проверяет тест. `crmCode` (`T1_…`) выводится только в JSON.
-4. **Проверки — чистые функции.** `src/checks/**` импортирует только `src/core/api.ts` и типы: без Playwright, undici и `node:*` I/O (проверяет тест графа импортов). Уровни, gating и `crmCode` — данные в `test/data/ruleset`, а не код.
-5. **Нераспознанный баннер → `info` «Banner nicht erkannt».** CONSENT-04 выше `info` выдают только собственные адаптеры CMP при распознавании `high`. Бот- и гео-сигналы переводят проверки в `inconclusive`, а не в находку.
-6. **Тесты обязательны.** Каждый вариант проверки покрыт фикстурами `violation`, `clean`, `inconclusive` и контрпримером (тест полноты реестра). Unit- и интеграционные тесты не ходят в интернет. Живые сайты — только в `test/live/**` (по умолчанию не запускается) и в канарейке.
-7. **Результаты сканов чужих сайтов не коммитятся и не публикуются.** `canary/results/` и `dsgvo-check-report*` лежат в `.gitignore`.
-8. **Git.** Не коммить и не пушь без явной просьбы.
-9. **Комментарии объясняют причину.** Без номеров ревью, раундов и канареек, имён моделей, тегов владельцев, декоративных разделителей и меток удалённых решений.
-10. **Доставка короткая.** Разбор и проверка входов — в TypeScript. YAML и shell только запускают контейнер, изолируют его и передают отчёты в CI. В `uses:` — теги версий; образ — `ghcr.io/seed-factory/dsgvo-check:<версия из package.json>`.
-11. **Тесты описывают поведение.** В именах файлов и сценариев нет истории ревью. Однотипные случаи объединяются в таблицы без потери уникальных входов и требований правила 6.
-12. **Новые пороги, таймауты и лимиты — в схему настроек.** Поле в `src/core/config/schema.ts` с умолчанием, границами и описанием (имя переменной `DSGVO_CHECK_<РАЗДЕЛ>_<ИМЯ>`, единица в имени: `_MS`, `_BYTES`, `_DAYS`), затем `corepack pnpm env:example`. Умолчание равно прежнему значению, `.env` остаётся необязательным. Коллектор берёт значение из `ctx.config`, проверка — из `ctx.thresholds` и не импортирует конфиг. Паузы правила 1 в схеме можно только ужесточать. Константы протоколов (SPF, DMARC) и защитные пределы (редактирование, размеры разбора чужого содержимого) остаются в коде.
-13. **Словари — в `test/data/`, логика — в коде.** Всё, что меняется вместе с внешним миром (слова и фразы, имена параметров и cookies, сигнатуры бот-защиты и WAF, селекторы и признаки CMP, пути и расширения страниц), лежит в YAML рядом с `cmp/lexicon.yaml` и `legal/links.yaml`, а не в константах. У каждого ключа верхнего уровня есть zod-схема (`dataSection` из `src/core/data/parse.ts`), а файл попадает в `test/unit/core/data/sections.test.ts`. Коллектор берёт значения через `loadSection`, проверка — из `ctx.data` (`data: ['<каталог>']`) и той же чистой схемы, код страницы (`in-page/`, `cmp/page/`) получает их аргументом `evaluate`. В коде остаются таблицы логики (сопоставления внутренних типов, коды ошибок Node и Chromium, словарь протоколов HTTP/TLS/DNS, стандартная разметка) и всё, что защищает приватность: allowlist query и заголовков в `src/core/url` и `src/core/redaction`, скрытые поля в `report-view.ts`.
+1. **Passive only.** No logins, form submissions, brute force, or bypassing CAPTCHA and bot protection. FILE-01 and ADMIN-01 are opt-in class E only. Navigate one at a time, with a pause of ≥ 1.5 s; HTTP probes: ≤ 2 requests/s per host. Use an honest User-Agent with a link to the repository.
+2. **No values.** Cookie, Web Storage and TC-String values must not enter the snapshot, report, logs or exceptions, either in clear text or as hashes. Redact query to `[redacted]` (except the allowlist), and `mailto:` to the domain. The collector redacts before writing.
+3. **Fact, not legal assessment.** User-facing strings live only in `test/data/texts/**`. Wording: “beobachtet”, “nicht gefunden in …”. A test checks stop words (verstößt, rechtswidrig, unzulässig, DSGVO-konform, illegal, violates…). `crmCode` (`T1_…`) is output only in JSON.
+4. **Checks are pure functions.** `src/checks/**` imports only `src/core/api.ts` and types: no Playwright, undici or `node:*` I/O (checked by the import graph test). Levels, gating and `crmCode` are data in `test/data/ruleset`, not code.
+5. **Unrecognized banner → `info` “Banner nicht erkannt”.** Only dedicated CMP adapters issue CONSENT-04 above `info` when recognition is `high`. Bot and geo signals make checks `inconclusive`, not a finding.
+6. **Tests are mandatory.** Every check variant is covered by `violation`, `clean`, `inconclusive` and counterexample fixtures (registry completeness test). Unit and integration tests do not access the internet. Live sites are allowed only in `test/live/**` (not run by default) and in the canary.
+7. **Results of scans of other people's sites are not committed or published.** `canary/results/` and `dsgvo-check-report*` are in `.gitignore`.
+8. **Git.** Do not commit or push without an explicit request.
+9. **Comments explain why.** No review, round or canary numbers, model names, owner tags, decorative separators or labels for removed solutions.
+10. **Keep delivery short.** Input parsing and validation are in TypeScript. YAML and shell only launch the container, isolate it and pass reports to CI. Use version tags in `uses:`; the image is `ghcr.io/seed-factory/dsgvo-check:<version from package.json>`.
+11. **Tests describe behavior.** File and scenario names contain no review history. Similar cases are combined into tables without losing unique inputs or the requirements of rule 6.
+12. **New thresholds, timeouts and limits go in the settings schema.** Add a field to `src/core/config/schema.ts` with a default, bounds and description (variable name `DSGVO_CHECK_<SECTION>_<NAME>`, unit in the name: `_MS`, `_BYTES`, `_DAYS`), then run `corepack pnpm env:example`. The default equals the previous value, and `.env` remains optional. The collector takes the value from `ctx.config`, the check from `ctx.thresholds` and does not import the config. Pauses in rule 1 may only be made stricter in the schema. Protocol constants (SPF, DMARC) and protective limits (redaction, parsing sizes for external content) remain in code.
+13. **Dictionaries go in `test/data/`, logic in code.** Everything that changes with the outside world (words and phrases, parameter and cookie names, bot protection and WAF signatures, CMP selectors and indicators, page paths and extensions) lives in YAML alongside `cmp/lexicon.yaml` and `legal/links.yaml`, not in constants. Every top-level key has a zod schema (`dataSection` from `src/core/data/parse.ts`), and the file is included in `test/unit/core/data/sections.test.ts`. The collector obtains values through `loadSection`, the check from `ctx.data` (`data: ['<directory>']`) and the same pure schema, and page code (`in-page/`, `cmp/page/`) receives them as an `evaluate` argument. Logic tables (internal type mappings, Node and Chromium error codes, HTTP/TLS/DNS protocol vocabulary, standard markup) and everything that protects privacy remain in code: the query and header allowlist in `src/core/url` and `src/core/redaction`, and hidden fields in `report-view.ts`.
 
-## Как добавить проверку
+## Adding a check
 
-Образец чистой проверки — [contract-example.test.ts](test/unit/core/evaluation/contract-example.test.ts).
+An example of a pure check is [contract-example.test.ts](test/unit/core/evaluation/contract-example.test.ts).
 
-1. Создай `src/checks/<module>/<id>.ts` и добавь строку в `src/checks/<module>/index.ts`.
-2. Добавь варианты с уровнем и `crm` (код каталога или `null`) в `test/data/ruleset/de-2026/<module>.yaml` и тексты в `test/data/texts/{de,en}/<module>.yaml`. Затем выполни `corepack pnpm registry`.
-3. Добавь фикстуры:
-   - browser: сценарий `test/unit/checks/browser/scenarios/<id>.ts` и строка в `scenarios/index.ts`;
-   - dns: строки в `test/unit/checks/dns/fixtures.ts`;
-   - http: JSON в `test/fixtures/snapshots/http/<ID>/`.
+1. Create `src/checks/<module>/<id>.ts` and add a line to `src/checks/<module>/index.ts`.
+2. Add variants with level and `crm` (catalog code or `null`) to `test/data/ruleset/de-2026/<module>.yaml` and texts to `test/data/texts/{de,en}/<module>.yaml`. Then run `corepack pnpm registry`.
+3. Add fixtures:
+   - browser: scenario `test/unit/checks/browser/scenarios/<id>.ts` and a line in `scenarios/index.ts`;
+   - dns: lines in `test/unit/checks/dns/fixtures.ts`;
+   - http: JSON in `test/fixtures/snapshots/http/<ID>/`.
 
-Имена вариантов запланированной проверки бери из таблицы «Planned checks» в [README.md](README.md). После `corepack pnpm registry` проверка переходит в таблицу реализованных.
+Take the variant names for a planned check from the “Planned checks” table in [README.md](README.md). After `corepack pnpm registry`, the check moves to the implemented table.

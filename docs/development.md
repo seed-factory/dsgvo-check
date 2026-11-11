@@ -30,7 +30,7 @@ bundler. Runtime dictionaries and report templates in `test/data/` ship with the
 `corepack pnpm vitest run test/unit/core/evaluation/gate.test.ts`.
 
 Check fixtures cover findings, clean and inconclusive results, and counterexamples. The registry tests verify that
-every implemented variant has coverage. [Fixture locations](../AGENTS.md#как-добавить-проверку)
+every implemented variant has coverage. [Fixture locations](../AGENTS.md#adding-a-check)
 
 ### Affected tests
 

@@ -2,7 +2,7 @@
 # Draft until signed off by the customer (_profile.yaml). The confidence cap applies on top (medium ≤ warning,
 # low ≤ info). `locked: true` marks levels that overrides must not raise (banner not recognised, CMP not supported;
 # AGENTS.md rule 5); enforcement belongs to core.
-# crm: code from specs/dsgvo-check_katalog-proverok.md or explicit null, JSON report only. null: "Banner nicht
+# crm: code from specs/dsgvo-check_check-catalog.md or explicit null, JSON report only. null: "Banner nicht
 # erkannt" / "CMP nicht unterstützt" and info variants that only record a weaker technical signal the catalog
 # finding does not describe (no response, unknown host, CDN/payment/CMP resource, preconnect only, unresolved link,
 # category-only or ambiguous text, a policy statement next to its own counterpart, non-identifier storage, consent

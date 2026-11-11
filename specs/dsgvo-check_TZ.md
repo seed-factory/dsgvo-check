@@ -1,82 +1,82 @@
-# dsgvo-check — ТЗ
+# dsgvo-check — specification
 
-Open-source сканер, который проверяет сайт на нарушения DSGVO и базовые проблемы безопасности и роняет CI, если нашёл критичное.
+An open-source scanner that checks a site for DSGVO violations and basic security problems and fails CI if it finds anything critical.
 
 ---
 
-## Обязательно
+## Required
 
-Без этого релиза нет. Всё остальное — на твоё усмотрение.
+There is no release without these. Everything else is up to you.
 
-| Что | Как должно работать |
+| What | How it should work |
 |---|---|
-| Запуск одной командой | `<tool> https://example.de` — без конфига, с разумными умолчаниями |
-| Встраивание в CI | Готовый GitHub Action и шаблон для GitLab CI. Остальные CI — через Docker-образ |
-| Код возврата | `0` — порог не превышен, `1` — превышен, `2` — сканер сам упал. Порог настраивается: `--fail-on critical\|warning` |
-| JSON-отчёт | Стабильная схема: ID проверки, уровень, доказательство (URL, запрос, cookie, заголовок, DNS-запись), `crmCode` из каталога |
-| Человеческий отчёт | Сводка в консоли. HTML — если успеешь |
-| Расширяемость | Новая проверка добавляется без правок ядра |
-| Тесты | Для каждой проверки — фикстура с нарушением и чистая. CI самого проекта зелёный |
-| README | Как запустить локально и в CI, какие проверки есть |
+| Single-command launch | `<tool> https://example.de` — no config, with reasonable defaults |
+| CI integration | A ready-made GitHub Action and a GitLab CI template. Other CI systems use the Docker image |
+| Exit code | `0` — threshold not exceeded, `1` — exceeded, `2` — the scanner itself crashed. Configurable threshold: `--fail-on critical\|warning` |
+| JSON report | Stable schema: check ID, level, evidence (URL, request, cookie, header, DNS record), `crmCode` from the catalog |
+| Human-readable report | Console summary. HTML if time permits |
+| Extensibility | A new check can be added without changes to the core |
+| Tests | For each check, a fixture with a violation and a clean fixture. The project's own CI is green |
+| README | How to run locally and in CI, which checks are available |
 
 ---
 
-## Свобода выбора
+## Freedom of choice
 
-| Что | Решаешь ты |
+| What | You decide |
 |---|---|
-| Язык | Любой, как тебе будет удобно, (в разумных пределах) |
-| Архитектура | Любая. Важно только, чтобы проверки были независимыми модулями |
-| Браузер | Playwright или что угодно, что умеет перехватывать сеть и кликать баннер |
-| База уязвимостей для VULN | Любой открытый источник с подходящей лицензией |
-| Количество проверок | Сколько успеешь. Порядок — по каталогу: P0 → P1 → P2 |
+| Language | Any, whichever is convenient for you (within reason) |
+| Architecture | Any. The only important thing is that checks are independent modules |
+| Browser | Playwright or anything that can intercept network traffic and click the banner |
+| Vulnerability database for VULN | Any open source with a suitable license |
+| Number of checks | As many as time permits. Order follows the catalog: P0 → P1 → P2 |
 
 ---
 
-## Проверки
+## Checks
 
-[Каталог проверок](dsgvo-check_katalog-proverok.md)
+[Check catalog](dsgvo-check_check-catalog.md)
 
 ---
 
-## Ограничения
+## Constraints
 
-| Нельзя | Почему |
+| Prohibited | Why |
 |---|---|
-| Активные атаки: перебор, инъекции, обход авторизации | Сканер запускают по чужим сайтам — только пассивные проверки |
-| Долбить сайт | Ограничение частоты, честный User-Agent со ссылкой на репозиторий |
-| Юридические выводы в отчёте | Формулировка «nicht gefunden in der Datenschutzerklärung», а не «verstößt gegen DSGVO». Дисклеймер в отчёте (отчет я доделаю, чтобы все было в рамках прав ЕС) |
-| Ложный CONSENT-04 на неизвестном баннере | Не распознал — пиши `info` «Banner nicht erkannt» |
+| Active attacks: brute force, injections, authorization bypass | The scanner runs against other people's sites — passive checks only |
+| Hammering the site | Rate limiting, an honest User-Agent with a link to the repository |
+| Legal conclusions in the report | Wording “nicht gefunden in der Datenschutzerklärung”, not “verstößt gegen DSGVO”. Disclaimer in the report (I will finish the report so that everything complies with EU law) |
+| False CONSENT-04 on an unknown banner | If it is not recognized, output `info` “Banner nicht erkannt” |
 
 ---
 
-## Этапы
+## Stages
 
-| Этап | Что сдаёшь |
+| Stage | Deliverable |
 |---|---|
-| 0 · Разведка | Таблица аналогов (Website Evidence Collector, HTTP Observatory, testssl.sh, ZAP baseline и что найдёшь): что умеют, чего нет. Выбранный стек и источник базы CVE |
-| 1 · Каркас | CLI, JSON, коды возврата, первая проверка каждого модуля, Docker-образ |
-| 2 · CI | GitHub Action и GitLab-шаблон, пример репозитория, где Action роняет сборку |
-| 3 · Проверки | Столько, сколько успеешь, по приоритету каталога |
-| 4 · Релиз | |
+| 0 · Research | Comparison table of similar tools (Website Evidence Collector, HTTP Observatory, testssl.sh, ZAP baseline and anything else you find): what they can and cannot do. Selected stack and CVE database source |
+| 1 · Skeleton | CLI, JSON, exit codes, first check for each module, Docker image |
+| 2 · CI | GitHub Action and GitLab template, example repository where the Action fails the build |
+| 3 · Checks | As many as time permits, in catalog priority order |
+| 4 · Release | |
 
 ---
 
-## От нас
+## From us
 
-| Что | Когда |
+| What | When |
 |---|---|
-| Репозиторий и доступы | До старта |
-| Немецкие тексты находок и дисклеймер | К этапу 3 - я передаю на вычетку и подготовку текста |
-| Ревью pull requests | По ходу, в течение пары дней |
-| 10 реальных сайтов для сверки | К этапу 3 |
-| Страница проекта на seed-factory.com | К релизу |
+| Repository and access | Before the start |
+| German finding texts and disclaimer | By stage 3 - I will pass them on for proofreading and text preparation |
+| Pull request reviews | Throughout, within a couple of days |
+| 10 real sites for comparison | By stage 3 |
+| Project page on seed-factory.com | By release |
 
 ---
 
-## Как работаем
+## How we work
 
-| Параметр | Условие |
+| Parameter | Condition |
 |---|---|
-| Лицензия | MIT или Apache-2.0 |
-| Название | `dsgvo-check` — рабочее, можно предложить своё |
+| License | MIT or Apache-2.0 |
+| Name | `dsgvo-check` is a working name; you may propose your own |
