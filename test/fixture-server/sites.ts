@@ -1,0 +1,452 @@
+/**
+ * Fixture sites keyed by their directory under test/fixture-server/sites/. `hosts` maps a hostname to its docroot, `tls`
+ * the certificate kind per host (default valid), `routes` are fixed responses, `fileHeaders` per-file response headers.
+ */
+import type { CertKind } from '../utils/certs.ts';
+import type { RouteSpec } from './server.ts';
+
+export interface SiteConfig {
+  hosts: Record<string, string>;
+  tls?: Record<string, CertKind>;
+  routes?: RouteSpec[];
+  fileHeaders?: Record<string, Record<string, string | string[]>>;
+}
+
+const html = { 'content-type': 'text/html; charset=utf-8' };
+const js = { 'content-type': 'application/javascript; charset=utf-8' };
+const gaCollect: RouteSpec = { host: 'www.google-analytics.com', path: '/g/collect', status: 204 };
+/** Google Fonts stylesheet and font file under the docroots `fonts` and `gstatic`, readable cross-origin. */
+const fontFiles: Record<string, Record<string, string>> = {
+  'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+  'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+    'content-type': 'font/woff2',
+    'access-control-allow-origin': '*',
+  },
+};
+
+/**
+ * `pages` of another docroot served as `host`'s own, with and without the trailing slash as a directory would be, so
+ * that sites with the same pages keep one copy of them.
+ */
+const sharedPages = (host: string, docroot: string, pages: string[]): RouteSpec[] =>
+  pages.map((page) => ({
+    host,
+    path: `^/${page}/?$`,
+    pathRegex: true,
+    headers: html,
+    file: `${docroot}/${page}/index.html`,
+  }));
+
+/** The Impressum and privacy policy of browser/clean, which the other small browser sites share. */
+export const cleanLegalPages = (host = 'www.example.test'): RouteSpec[] =>
+  sharedPages(host, 'browser/clean/www', ['impressum', 'datenschutz']);
+
+/** How long the Shopware simulator's offcanvas takes to answer, so its "accept all" records the answer this late. */
+export const SHOPWARE_ACCEPT_DELAY_MS = 1_500;
+
+/** A storefront host with the Shopware simulator of cmp/shopware: its script and its slow offcanvas, as its own files. */
+const shopwareStorefront = (host: string): RouteSpec[] => [
+  { host, path: '/js/cookie-permission.js', headers: js, file: 'cmp/shopware/www/js/cookie-permission.js' },
+  {
+    host,
+    path: '/cookie/offcanvas',
+    headers: html,
+    file: 'cmp/shopware/www/cookie/offcanvas',
+    delayMs: SHOPWARE_ACCEPT_DELAY_MS,
+  },
+];
+
+export const SITES: Record<string, SiteConfig> = {
+  'browser/clean': { hosts: { 'www.example.test': 'www' } },
+  'browser/cmp-stub': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.googletagmanager.com': 'gtm',
+      'www.google.com': 'google',
+      'fonts.googleapis.com': 'fonts',
+      'fonts.gstatic.com': 'gstatic',
+    },
+    routes: [gaCollect, ...cleanLegalPages()],
+    fileHeaders: {
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+      'google/maps/embed': html,
+      ...fontFiles,
+    },
+  },
+  // The start page is on the apex host, the contact page with a map on www.
+  'browser/control-origin': {
+    hosts: { 'example.test': 'apex', 'www.example.test': 'www', 'www.google.com': 'google' },
+    fileHeaders: { 'google/maps/embed': html },
+  },
+  'browser/cookies': {
+    hosts: { 'www.example.test': 'www' },
+    routes: [
+      {
+        host: 'tracker.example.net',
+        path: '/pixel.gif',
+        status: 200,
+        headers: {
+          'content-type': 'image/gif',
+          'set-cookie': ['uid=SECRET_3P_VALUE_7; Path=/; SameSite=None; Secure; Max-Age=86400'],
+        },
+        body: '',
+      },
+      ...cleanLegalPages(),
+    ],
+    fileHeaders: {
+      'www/index.html': {
+        'set-cookie': [
+          'sid=SECRET_HTTP_VALUE_1; Path=/; HttpOnly; Secure; SameSite=Lax',
+          'pref=SECRET_HTTP_VALUE_2; Path=/; Max-Age=86400',
+        ],
+      },
+    },
+  },
+  'browser/dse': { hosts: { 'www.example.test': 'www' } },
+  'browser/fatal': {
+    hosts: {},
+    tls: { 'expired.example.test': 'expired' },
+    routes: [
+      {
+        host: 'blocked.example.test',
+        path: '/',
+        status: 403,
+        headers: { ...html, 'cf-mitigated': 'challenge', server: 'cloudflare' },
+        body: '<!doctype html><html><head><title>Just a moment...</title></head><body><p>Checking your browser</p></body></html>',
+      },
+      {
+        host: 'down.example.test',
+        path: '/',
+        status: 503,
+        headers: html,
+        body: '<!doctype html><title>503</title><p>Wartung</p>',
+      },
+      {
+        host: 'expired.example.test',
+        path: '/',
+        status: 200,
+        headers: html,
+        body: '<!doctype html><title>ok</title>',
+      },
+      {
+        host: 'throttled.example.test',
+        path: '/',
+        status: 429,
+        headers: { 'retry-after': '0', ...html },
+        body: '<!doctype html><title>429</title><p>Zu viele Anfragen</p>',
+      },
+      {
+        host: 'slow.example.test',
+        path: '/',
+        status: 200,
+        delayMs: 60000,
+        headers: html,
+        body: '<!doctype html><title>slow</title>',
+      },
+    ],
+  },
+  'browser/fonts': {
+    hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
+    routes: cleanLegalPages(),
+    fileHeaders: fontFiles,
+  },
+  // The policy states the Google Fonts are local; every page loads them from Google (PRIV-02).
+  'browser/fonts-claim': {
+    hosts: { 'www.example.test': 'www', 'fonts.googleapis.com': 'fonts', 'fonts.gstatic.com': 'gstatic' },
+    fileHeaders: {
+      'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+    },
+  },
+  // The same statement is true: the site serves its own font; only the Google Maps frame loads Google Fonts.
+  'browser/fonts-local': {
+    hosts: { 'www.example.test': 'www', 'www.google.com': 'google', 'fonts.googleapis.com': 'fonts' },
+    fileHeaders: {
+      'google/maps/embed': html,
+      'fonts/css': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+    },
+  },
+  'browser/ga4': {
+    hosts: { 'www.example.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    routes: [gaCollect, ...cleanLegalPages()],
+    fileHeaders: { 'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' } },
+  },
+  // A map far below the first screen of Kontakt whose frame loads a Google font, a page taller than the largest reveal,
+  // and a stub banner that takes scrolling as consent.
+  'browser/lazy-embed': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.google.com': 'google',
+      'fonts.gstatic.com': 'gstatic',
+      'www.googletagmanager.com': 'gtm',
+    },
+    routes: [gaCollect],
+    fileHeaders: {
+      'google/maps/embed': html,
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+      'gtm/gtag/js': { 'content-type': 'application/javascript; charset=utf-8' },
+    },
+  },
+  'browser/maps': {
+    hosts: { 'www.example.test': 'www', 'www.google.com': 'google' },
+    routes: cleanLegalPages(),
+    fileHeaders: { 'google/maps/embed': html },
+  },
+  'browser/no-legal': { hosts: { 'www.example.test': 'www' } },
+  // A site under /de/ with language roots, a map on Kontakt, a video thumbnail on the history page, Google Fonts on
+  // every page and a stub CMP whose 4x4 helper frame sits above the page.
+  'browser/page-coverage': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.google.com': 'google',
+      'fonts.googleapis.com': 'fonts',
+      'fonts.gstatic.com': 'gstatic',
+      'consent.example.net': 'consent',
+    },
+    routes: [
+      {
+        host: 'i1.ytimg.com',
+        path: '/vi/fixture/hqdefault.jpg',
+        status: 200,
+        headers: { 'content-type': 'image/jpeg' },
+        body: '',
+      },
+    ],
+    fileHeaders: {
+      'google/maps/embed': html,
+      'fonts/css2': { 'content-type': 'text/css; charset=utf-8', 'access-control-allow-origin': '*' },
+      'gstatic/s/roboto/v30/fixture-roboto.woff2': {
+        'content-type': 'font/woff2',
+        'access-control-allow-origin': '*',
+      },
+    },
+  },
+  'browser/selection': { hosts: { 'www.example.test': 'www' }, routes: cleanLegalPages() },
+  'browser/ssrf': {
+    hosts: {
+      'www.example.test': 'www',
+      'intranet.example.test': 'intranet',
+      'popup.example.test': 'popup',
+      'popup-click.example.test': 'popup-click',
+      'frames.other.test': 'nested',
+    },
+    routes: [
+      {
+        host: 'redir.example.test',
+        path: '/',
+        status: 302,
+        headers: { location: 'http://169.254.169.254/latest/meta-data/' },
+      },
+      ...cleanLegalPages(),
+    ],
+  },
+  'browser/throttle': {
+    hosts: { 'www.example.test': 'www', 'busy.example.test': 'busy' },
+    routes: [
+      {
+        host: 'www.example.test',
+        path: '/impressum/',
+        status: 429,
+        headers: { 'retry-after': '1', ...html },
+        body: '<!doctype html><html lang="de"><title>429</title><p>Zu viele Anfragen</p></html>',
+      },
+      {
+        host: 'busy.example.test',
+        path: '^/img-\\d\\.png$',
+        pathRegex: true,
+        status: 503,
+        headers: { 'retry-after': '0', 'content-type': 'text/plain' },
+        body: 'busy',
+      },
+    ],
+  },
+  'browser/video': {
+    hosts: {
+      'www.example.test': 'www',
+      'www.youtube-nocookie.com': 'nocookie',
+      'i.ytimg.com': 'ytimg',
+    },
+    routes: [{ host: 'www.youtube-nocookie.com', path: '/youtubei/v1/log_event', status: 204 }],
+    fileHeaders: { 'nocookie/embed/fixture-a': html, 'nocookie/embed/fixture-b': html },
+  },
+  // details.html loads the Google tags its Cookie-Details name, and links the legal pages of browser/clean.
+  'cmp/borlabs': {
+    hosts: { 'www.borlabs.test': 'www', 'www.googletagmanager.com': 'gtm' },
+    routes: cleanLegalPages('www.borlabs.test'),
+    fileHeaders: { 'gtm/gtag/js': js },
+  },
+  'cmp/ccm19': { hosts: { 'www.ccm19.test': 'www', 'cloud.ccm19.de': 'ccm' } },
+  'cmp/complianz': { hosts: { 'www.complianz.test': 'www' } },
+  'cmp/cookiebot': { hosts: { 'www.cookiebot.test': 'www', 'consent.cookiebot.com': 'cb' } },
+  'cmp/cookiehub': { hosts: { 'www.cookiehub.test': 'www', 'cdn.cookiehub.eu': 'ch' } },
+  'cmp/cookieman': { hosts: { 'www.cookieman.test': 'www', 'stats.cookieman.test': 'stats' } },
+  'cmp/generic': { hosts: { 'www.generic.test': 'www', 'consent.unknown-cmp.test': 'frame' } },
+  'cmp/real-cookie-banner': { hosts: { 'www.rcb.test': 'www' } },
+  'cmp/shops': {
+    hosts: { 'www.animated-shop.test': 'animated', 'www.vendors-shop.test': 'vendors' },
+    routes: sharedPages('www.vendors-shop.test', 'cmp/shops/animated', [
+      'impressum',
+      'kontakt',
+      'datenschutz',
+    ]),
+  },
+  'cmp/shopware': {
+    hosts: { 'www.shopware.test': 'www', 'stats.shopware.test': 'stats' },
+    routes: shopwareStorefront('www.shopware.test').filter((r) => r.path === '/cookie/offcanvas'),
+  },
+  'cmp/usercentrics': {
+    hosts: { 'www.usercentrics.test': 'www', 'web.cmp.usercentrics.eu': 'uc3', 'app.usercentrics.eu': 'uc2' },
+  },
+  'cmp/wix': {
+    hosts: { 'www.wix.test': 'www', 'static.parastorage.com': 'parastorage', 'stats.wix.test': 'stats' },
+  },
+  'core/smoke': {
+    hosts: { 'www.example.test': 'www', 'www.google-analytics.com': 'ga', 'fonts.googleapis.com': 'fonts' },
+    tls: {
+      'expired.example.test': 'expired',
+      'selfsigned.example.test': 'self-signed',
+      'wrongname.example.test': 'wrong-name',
+    },
+    routes: [
+      {
+        host: 'example.test',
+        scheme: 'http',
+        path: '/',
+        status: 301,
+        headers: { location: 'https://www.example.test/' },
+      },
+      {
+        host: 'www.example.test',
+        path: '/set-cookie',
+        status: 200,
+        headers: {
+          'set-cookie': ['fixture_session=abc; Path=/; HttpOnly', 'fixture_pref=1; Path=/; Max-Age=3600'],
+          'content-type': 'text/plain',
+        },
+        body: 'ok',
+      },
+      gaCollect,
+    ],
+    fileHeaders: {
+      'fonts/css2': { 'content-type': 'text/css; charset=utf-8' },
+      'www/index.html': {
+        'strict-transport-security': 'max-age=31536000',
+        'x-content-type-options': 'nosniff',
+      },
+    },
+  },
+  'pipeline/consent-shop': {
+    hosts: {
+      'www.consent-shop.test': 'ok',
+      'www.leaky-shop.test': 'leaky',
+      'www.blocking-shop.test': 'blocking',
+      'www.late-shop.test': 'late',
+      'www.notice-shop.test': 'notice',
+    },
+  },
+  // Small Shopware storefronts on the cookie bar simulator of cmp/shopware; the leaky one also sends Google Ads hits.
+  'pipeline/shopware-shop': {
+    hosts: {
+      'www.shopware-shop.test': 'ok',
+      'www.shopware-leaky-shop.test': 'leaky',
+      'www.shopware-noanswer-shop.test': 'no-answer',
+      'www.shopware-denyflag-shop.test': 'deny-flag',
+      'www.shopware-answered-shop.test': 'answered',
+    },
+    routes: [
+      ...shopwareStorefront('www.shopware-shop.test'),
+      ...shopwareStorefront('www.shopware-leaky-shop.test'),
+      ...shopwareStorefront('www.shopware-noanswer-shop.test'),
+      ...shopwareStorefront('www.shopware-denyflag-shop.test'),
+      ...shopwareStorefront('www.shopware-answered-shop.test'),
+      { host: 'www.googleadservices.com', path: '^/pagead/', pathRegex: true, status: 204 },
+    ],
+  },
+  // A small Wix site on the Wix banner simulator of cmp/wix, which serves its script and tracker. The shops without a
+  // first-layer reject differ in their settings layer; the leaky one also loads the Google tag and, on Kontakt, a map.
+  'pipeline/wix-shop': {
+    hosts: {
+      'www.wix-shop.test': 'decline',
+      'www.wix-nodecline-shop.test': 'no-decline',
+      'www.wix-unreadable-shop.test': 'policy-throws',
+      'www.wix-leaky-shop.test': 'leaky',
+      'www.wix-nodecline-leaky-shop.test': 'no-decline-leaky',
+      'www.wix-preselected-shop.test': 'no-decline-preselected',
+      'www.wix-unsaved-shop.test': 'no-decline-unsaved',
+      'www.google.com': 'google',
+    },
+    fileHeaders: { 'google/maps/embed': html },
+  },
+  // Shops on the cookieman simulator of cmp/cookieman with the start page on the bare domain and every other page on
+  // www: one sets the answer cookie for the start host only, the other for the whole domain.
+  'pipeline/cookieman-shop': {
+    hosts: {
+      'cookieman-shop.test': 'host-only',
+      'www.cookieman-shop.test': 'www',
+      'shared-cookieman-shop.test': 'shared',
+      'www.shared-cookieman-shop.test': 'www',
+    },
+    routes: [
+      'cookieman-shop.test',
+      'www.cookieman-shop.test',
+      'shared-cookieman-shop.test',
+      'www.shared-cookieman-shop.test',
+    ].map((host) => ({
+      host,
+      path: '/js/cookieman.js',
+      headers: js,
+      file: 'cmp/cookieman/www/js/cookieman.js',
+    })),
+  },
+  // An Impressum whose addresses are on another mail domain: one only as a mailto recipient, one in the text, one on
+  // a free-mail provider; the privacy policy names a processor's address.
+  'pipeline/mail-contact': { hosts: { 'www.example.test': 'www' } },
+  // The start page moves to another domain; www.example.test has no docroot of its own.
+  'pipeline/mail-redirect': {
+    hosts: { 'www.example-final.test': 'final' },
+    routes: [
+      {
+        host: 'www.example.test',
+        path: '.*',
+        pathRegex: true,
+        status: 301,
+        headers: { location: 'https://www.example-final.test/' },
+      },
+    ],
+  },
+  'pipeline/passive': {
+    hosts: { 'www.example.test': 'www', 'example.test': 'www' },
+    routes: [
+      {
+        host: 'www.example.test',
+        scheme: 'http',
+        path: '.*',
+        pathRegex: true,
+        status: 301,
+        headers: { location: 'https://www.example.test/' },
+      },
+      {
+        host: 'example.test',
+        scheme: 'http',
+        path: '.*',
+        pathRegex: true,
+        status: 301,
+        headers: { location: 'https://example.test/' },
+      },
+      {
+        host: 'example.test',
+        scheme: 'https',
+        path: '.*',
+        pathRegex: true,
+        status: 301,
+        headers: { location: 'https://www.example.test/' },
+      },
+    ],
+  },
+};

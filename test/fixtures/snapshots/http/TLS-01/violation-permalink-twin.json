@@ -1,0 +1,129 @@
+{
+  "$description": "http:// of www serves the start page without a redirect; phase A visited only the start page, which links the post https://www.example.test/2025/02/beitrag/ as its permalink (rel=\"bookmark\" on the post date); the post's http:// address, requested after the browser, answers 200 with a comment form that sends to http://www.example.test/wp-comments-post.php: critical form-on-http-page naming the action and the post, beside the root's no-redirect",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "form-on-http-page",
+      "no-redirect"
+    ]
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-target-http",
+        "startUrl": "http://www.example.test/",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 200,
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "hasForm": false,
+            "forms": [],
+            "formInspection": "complete"
+          }
+        ]
+      },
+      {
+        "id": "chain-target-https",
+        "startUrl": "https://www.example.test/",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ]
+      }
+    ],
+    "documents": [
+      {
+        "url": "https://www.example.test/",
+        "chainId": "chain-target-https",
+        "foundVia": "target"
+      }
+    ],
+    "requestsIssued": 3,
+    "twins": [
+      {
+        "page": "https://www.example.test/2025/02/beitrag/",
+        "url": "http://www.example.test/2025/02/beitrag/",
+        "source": "permalink",
+        "linkedFrom": "https://www.example.test/",
+        "outcome": "ok",
+        "hop": {
+          "url": "http://www.example.test/2025/02/beitrag/",
+          "status": 200,
+          "bodyBytes": 91000,
+          "bodyKind": "html",
+          "hasForm": true,
+          "forms": [
+            {
+              "action": "http://www.example.test/wp-comments-post.php",
+              "actionScheme": "http",
+              "method": "post"
+            }
+          ],
+          "formInspection": "complete"
+        }
+      }
+    ],
+    "formTwinStage": {
+      "budget": 3,
+      "candidates": 0,
+      "permalinkCandidates": 1,
+      "durationMs": 620
+    }
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "url": "https://www.example.test/",
+            "dom": {
+              "links": [
+                {
+                  "href": "https://www.example.test/2025/02/beitrag/",
+                  "hrefKind": "https",
+                  "text": "14. März 2025",
+                  "region": "main",
+                  "visible": true,
+                  "inShadowDom": false,
+                  "sameSite": true,
+                  "rel": "bookmark",
+                  "permalink": true
+                }
+              ],
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

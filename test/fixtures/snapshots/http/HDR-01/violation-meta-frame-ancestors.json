@@ -1,0 +1,30 @@
+{
+  "$description": "Counterexample: frame-ancestors only in a meta CSP does not count as anti-framing; everything else is set",
+  "$expect": { "status": "completed", "variants": ["anti-framing-missing"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": 200,
+        "headers": [
+          { "name": "strict-transport-security", "value": "max-age=31536000" },
+          { "name": "content-security-policy", "value": "default-src 'self'" },
+          { "name": "x-content-type-options", "value": "nosniff" },
+          { "name": "referrer-policy", "value": "strict-origin-when-cross-origin" },
+          { "name": "permissions-policy", "value": "camera=()" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [{ "name": "content-security-policy", "value": "frame-ancestors 'none'" }],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

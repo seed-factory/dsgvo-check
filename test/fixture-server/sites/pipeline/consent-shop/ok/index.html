@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Start – Muster Shop GmbH</title>
+  <script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="00000000-sim0-0000-0000-000000000000" data-sim-variant="reject"></script>
+  <script>
+    // Hand-written fixture: load the (fake) Google tag only after statistics consent.
+    (function () {
+      var loaded = false;
+      function check() {
+        if (loaded) return;
+        if (window.Cookiebot && window.Cookiebot.consent && window.Cookiebot.consent.statistics) {
+          loaded = true;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=G-TEST123';
+          document.head.appendChild(s);
+          return;
+        }
+        setTimeout(check, 100);
+      }
+      check();
+    })();
+  </script>
+</head>
+<body>
+  <nav><a href="/">Start</a> · <a href="/kontakt/">Kontakt</a></nav>
+  <main>
+    <h1>Willkommen im Muster Shop</h1>
+    <p>Handgemachte Beispielprodukte aus Berlin.</p>
+    <p style="height:1600px"></p>
+  </main>
+  <footer>
+    <a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutzerklärung</a> · <a href="/kontakt/">Kontakt</a>
+  </footer>
+</body>
+</html>

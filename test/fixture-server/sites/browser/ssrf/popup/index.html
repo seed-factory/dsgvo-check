@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Popups</title>
+</head>
+<body>
+  <main><h1>Popups ohne Nutzeraktion</h1></main>
+  <script>
+    // A scanned page may try to make the scanner fetch internal addresses through new windows.
+    window.open('http://169.254.169.254/latest/meta-data/via-popup');
+    window.open('https://intranet.example.test/via-popup');
+    var f = document.createElement('form');
+    f.target = '_blank';
+    f.method = 'get';
+    f.action = 'http://169.254.169.254/latest/meta-data/via-form';
+    document.body.appendChild(f);
+    f.submit();
+  </script>
+</body>
+</html>

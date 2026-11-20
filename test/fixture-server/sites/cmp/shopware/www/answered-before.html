@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Shopware-Simulator: Antwort schon gespeichert, Leiste trotzdem sichtbar</title>
+<script>
+  window.salesChannelId = '0a1b2c3d4e5f60718293a4b5c6d7e8f9';
+  window.router = { 'frontend.cookie.offcanvas': '/cookie/offcanvas' };
+</script>
+<script>
+  // An answer from before the scan: the click changes nothing the state could show.
+  document.cookie = 'cookie-preference=1; path=/; max-age=2592000; SameSite=Lax';
+</script>
+<script src="/js/cookie-permission.js" data-sim-bar="always"></script>
+<style>
+  body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}
+  .cookie-permission-container{display:none;position:fixed;left:0;right:0;bottom:0;z-index:1100;background:#fff;color:#222;box-shadow:0 -2px 8px rgba(0,0,0,.2);padding:12px 24px;font-size:14px}
+  .cookie-permission-container .btn{margin:4px;padding:8px 14px;border:0;background:#0042a0;color:#fff;font-size:14px}
+</style>
+</head>
+<body>
+<main><h1>Beispiel Elektrohandel</h1><p>Willkommen im Onlineshop.</p></main>
+<footer><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></footer>
+<div class="cookie-permission-container" data-cookie-permission="true">
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col cookie-permission-content">
+        Wir nutzen Cookies für den Betrieb des Shops und, mit Ihrer Erlaubnis, für Statistiken. <a data-ajax-modal="true" data-url="/widgets/cms/0a1b2c3d" href="/widgets/cms/0a1b2c3d" title="Mehr Informationen">Mehr Informationen ...</a>
+      </div>
+      <div class="col-12 col-md-auto d-flex justify-content-center flex-wrap cookie-permission-actions">
+        <span class="cookie-permission-button js-cookie-permission-button">
+          <button type="submit" class="btn btn-primary">
+            Nur technisch notwendige
+          </button>
+        </span>
+        <span class="js-cookie-configuration-button">
+          <button type="submit" class="btn btn-primary">
+            Konfigurieren
+          </button>
+        </span>
+        <span class="js-cookie-accept-all-button">
+          <button type="submit" class="btn btn-primary">
+            Alle Cookies akzeptieren
+          </button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

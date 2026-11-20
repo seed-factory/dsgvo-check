@@ -1,0 +1,14 @@
+{
+  "$description": "Form on an http page (and no redirect)",
+  "$expect": { "status": "completed", "variants": ["form-on-http-page", "no-redirect"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [
+      { "id": "chain-http", "hostVariant": "target", "host": "www.example.de", "scheme": "http", "startUrl": "http://www.example.de/", "hops": [ { "url": "http://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "hasForm": true } ], "final": { "url": "http://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "hasForm": true }, "outcome": "ok" }, { "id": "chain-https", "hostVariant": "target", "host": "www.example.de", "scheme": "https", "startUrl": "https://www.example.de/", "hops": [ { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" } ], "final": { "url": "https://www.example.de/", "status": 200, "headers": [], "setCookieNames": [], "durationMs": 20, "requestedAt": "2026-10-30T12:00:00.000Z", "bodyBytes": 20000, "bodyKind": "html", "tlsAuthorized": true, "tlsAuthorizationError": null, "tlsProtocol": "TLSv1.3" }, "outcome": "ok" }
+    ],
+    "documents": [],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

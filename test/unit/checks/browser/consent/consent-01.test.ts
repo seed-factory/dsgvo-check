@@ -1,0 +1,599 @@
+import { describe, expect, it } from 'vitest';
+import { consent01 } from '../../../../../src/checks/browser/consent-01.ts';
+import { loadTexts } from '../../../../../src/core/data/load.ts';
+import { renderMessage } from '../../../../../src/core/data/messages.ts';
+import type { Observation } from '../../../../../src/core/evaluation/check.ts';
+import type { RequestRecord } from '../../../../../src/core/snapshot/browser.ts';
+import { loadServiceCatalog } from '../../../../../src/derive/catalog.ts';
+import { named } from '../../../../utils/named-rows.ts';
+import { observationsOf, runCheck } from '../../../../utils/snapshot-builder.ts';
+import type { SiteSpec } from '../helpers.ts';
+import {
+  CONTACT,
+  click,
+  cmpFacts,
+  cmpWith,
+  consentPages,
+  controlPageFacts,
+  phase,
+  req,
+  SHOP_HOST,
+  START,
+  site,
+} from '../helpers.ts';
+import { SCENARIOS } from '../scenarios/index.ts';
+
+const scenario = (file: string) => SCENARIOS['CONSENT-01']!.find((s) => s.file === file)!.build();
+const run = (phases: SiteSpec['phases'], extra: SiteSpec = {}) =>
+  runCheck(consent01, site({ phases, ...extra }));
+
+describe('CONSENT-01 requests before interaction', () => {
+  it('violation: GA4 hit with identifier → one observation per service, replicated in B before the click', () => {
+    const r = runCheck(consent01, scenario('violation-ga4-hit.json'));
+    expect(r.status).toBe('completed');
+    const [o] = observationsOf(r);
+    expect(observationsOf(r)).toHaveLength(1);
+    expect(o).toMatchObject({
+      variant: 'tracking-completed',
+      confidence: 'high',
+      subject: 'google-analytics',
+      serviceId: 'google-analytics',
+      category: 'analytics',
+      phases: ['A', 'B'],
+      replicated: true,
+      provider: { name: 'Google Ireland Limited', country: 'IE' },
+      parent: { name: 'Google LLC', country: 'US' },
+      classification: { source: 'catalog', datasetVersion: loadServiceCatalog().version },
+      params: { service: 'Google Analytics', requestCount: 3 },
+    });
+    expect(o?.evidence[0]).toMatchObject({
+      type: 'request',
+      delivery: 'sent',
+      result: { kind: 'response' },
+      features: { identifier: { kind: 'stored-match' } },
+    });
+  });
+
+  it('counterexample: only an unknown third-party domain → unknown-host (info), aggregated per eTLD+1', () => {
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://cdn.unknown-widget.net/a.js'),
+          req('b', 'https://img.unknown-widget.net/b.png', { resourceType: 'image', pageUrl: CONTACT }),
+        ],
+      }),
+    ]);
+    const obs = observationsOf(r);
+    expect(obs).toHaveLength(1);
+    expect(obs[0]).toMatchObject({
+      variant: 'unknown-host',
+      subject: 'unknown:unknown-widget.net',
+      classification: { source: 'none' },
+      params: { service: 'unknown-widget.net', requestCount: 2, pageCount: 2 },
+    });
+    expect(obs[0]?.serviceId).toBeUndefined();
+  });
+
+  const gaHit = (id: string, p: Partial<RequestRecord> = {}) =>
+    req(id, 'https://region1.google-analytics.com/g/collect?v=2&tid=G-1&cid=[redacted]&en=page_view', {
+      resourceType: 'ping',
+      ...p,
+    });
+  const deniedPing = (p: Partial<RequestRecord> = {}) =>
+    req('a', 'https://www.google-analytics.com/g/collect?v=2&gcs=G100&cid=[redacted]', {
+      resourceType: 'ping',
+      identifierPresent: true,
+      identifierNames: ['cid'],
+      ...p,
+    });
+  const gptJs = req('b', 'https://securepubads.g.doubleclick.net/tag/js/gpt.js');
+  const adManagerLibrary = [{ subject: 'google-ad-manager', variant: 'library-loaded' }];
+
+  // Each row lists every observation of phase A in order, so their number is asserted as well.
+  const REQUEST_CASES: Array<{
+    name: string;
+    requests: RequestRecord[];
+    expected: Array<Partial<Observation>>;
+  }> = [
+    {
+      name: 'counterexample: GTM library without a hit → library-loaded (warning), not a tracking hit',
+      requests: [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')],
+      expected: [{ variant: 'library-loaded', category: 'tag-manager', serviceId: 'google-tag-manager' }],
+    },
+    {
+      name: 'counterexample: request blocked by CSP/browser → request-not-confirmed (info)',
+      requests: [
+        req('a', 'https://region1.google-analytics.com/g/collect?cid=[redacted]', {
+          state: 'blocked-by-browser',
+          identifierPresent: true,
+          status: undefined,
+        }),
+      ],
+      expected: [{ variant: 'request-not-completed' }],
+    },
+    {
+      name: 'GAM compression dictionary (resourceType other) and gpt.js → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/pagead/managed/dict/abc/def', {
+          resourceType: 'other',
+        }),
+        gptJs,
+      ],
+      expected: adManagerLibrary,
+    },
+    {
+      name: 'an `other` request on a path without a signature and gpt.js → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/pcs/anything', { resourceType: 'other' }),
+        gptJs,
+      ],
+      expected: adManagerLibrary,
+    },
+    {
+      name: 'counterexample: an ad request through fetch is still a hit (cookieless-ping without identifier)',
+      requests: [
+        req('a', 'https://securepubads.g.doubleclick.net/gampad/ads?iu=x', { resourceType: 'fetch' }),
+      ],
+      expected: [{ variant: 'cookieless-ping' }],
+    },
+    {
+      name: 'Piano identity, experience and checkout calls over xhr/fetch (EU and non-EU hosts) → library-loaded, not cookieless-ping',
+      requests: [
+        req('a', 'https://id.piano.io/api/v1/identity/login/token?aid=x', { resourceType: 'xhr' }),
+        req('b', 'https://experience.piano.io/xbuilder/experience/execute?aid=x', { resourceType: 'fetch' }),
+        req('c', 'https://buy.piano.io/checkout/offer/show', { resourceType: 'fetch' }),
+      ],
+      expected: [{ subject: 'piano', variant: 'library-loaded', params: { identifierKind: 'none' } }],
+    },
+    {
+      name: 'counterexample: the Piano engagement ping is still a hit (cookieless-ping without identifier)',
+      requests: [req('a', 'https://c2.piano.io/page/track/engagement', { resourceType: 'xhr' })],
+      expected: [{ variant: 'cookieless-ping' }],
+    },
+    {
+      name: 'a Chartbeat ping or ScorecardResearch beacon before the interaction → cookieless-ping, not tracking-completed',
+      requests: [
+        req('a', 'https://ping.chartbeat.net/ping?h=example.de&p=%2F', { resourceType: 'image' }),
+        req('b', 'https://sb.scorecardresearch.com/b?c1=2&c2=1000', { resourceType: 'image' }),
+      ],
+      expected: [
+        {
+          subject: 'chartbeat',
+          category: 'analytics',
+          variant: 'cookieless-ping',
+          params: { identifierKind: 'none' },
+        },
+        {
+          subject: 'scorecardresearch',
+          category: 'analytics',
+          variant: 'cookieless-ping',
+          params: { identifierKind: 'none' },
+        },
+      ],
+    },
+    {
+      name: 'the Tealium library (utag.js) → library-loaded; a Chartbeat strategy call is no hit (counterexamples)',
+      requests: [
+        req('a', 'https://tags.tiqcdn.com/utag/acme/main/prod/utag.js', { resourceType: 'script' }),
+        req('b', 'https://mab.chartbeat.com/mab_strategy/example.de/', { resourceType: 'xhr' }),
+      ],
+      expected: [
+        { subject: 'chartbeat', category: 'analytics', variant: 'library-loaded' },
+        { subject: 'tealium', category: 'tag-manager', variant: 'library-loaded' },
+      ],
+    },
+    {
+      name: 'a GA4 hit issued by a service worker and answered by the network is tracking-completed, not request-not-completed',
+      requests: [
+        gaHit('a', {
+          fromServiceWorker: true,
+          state: 'completed',
+          delivery: 'sent',
+          result: { kind: 'response', status: 200 },
+          provenance: 'network',
+          matchesStoredIdentifier: true,
+          identifierPresent: true,
+          identifierNames: ['cid'],
+        }),
+      ],
+      expected: [{ variant: 'tracking-completed' }],
+    },
+    {
+      name: 'counterexample: the answer itself came from the service worker → request-not-completed',
+      requests: [
+        gaHit('a', {
+          fromServiceWorker: true,
+          state: 'from-sw',
+          provenance: 'service-worker',
+          matchesStoredIdentifier: true,
+          identifierPresent: true,
+          identifierNames: ['cid'],
+        }),
+      ],
+      expected: [{ variant: 'request-not-completed' }],
+    },
+    {
+      name: 'a redacted `cid` key with an empty value before redaction is no identifier → cookieless-ping',
+      requests: [gaHit('a', { identifierPresent: false })],
+      expected: [{ variant: 'cookieless-ping', params: { identifierKind: 'none' } }],
+    },
+    {
+      name: 'a per-load identifier (generic `uuid`, no stored match, no catalog param) → cookieless-ping (warning)',
+      requests: [
+        req('a', 'https://in.hotjar.com/api/v2/client', {
+          resourceType: 'xhr',
+          identifierPresent: true,
+          identifierNames: ['uuid'],
+        }),
+      ],
+      expected: [
+        { variant: 'cookieless-ping', category: 'session-recording', params: { identifierKind: 'per-load' } },
+      ],
+    },
+    {
+      name: 'response headers received, then the body aborted (beacon on navigation) → still a completed hit',
+      requests: [
+        gaHit('a', {
+          identifierPresent: true,
+          identifierNames: ['cid'],
+          state: 'failed',
+          status: 204,
+          delivery: 'sent',
+          result: { kind: 'failed', errorText: 'net::ERR_ABORTED' },
+        }),
+      ],
+      expected: [{ variant: 'tracking-completed' }],
+    },
+    {
+      name: 'Consent Mode denied does not hide a stored identifier match → tracking-completed',
+      requests: [deniedPing({ matchesStoredIdentifier: true })],
+      expected: [
+        {
+          variant: 'tracking-completed',
+          params: { identifierKind: 'stored-match', consentModeDenied: true },
+        },
+      ],
+    },
+    {
+      name: 'counterexample: denied ping whose `cid` is only a catalog param (per-load in Consent Mode) → cookieless-ping',
+      requests: [deniedPing()],
+      expected: [{ variant: 'cookieless-ping', params: { consentModeDenied: true } }],
+    },
+    {
+      name: 'a main-frame navigation to a third party (redirect via CMP or SSO) is no request finding',
+      requests: [
+        req('a', 'https://consent.cookiebot.com/redirect', { resourceType: 'document', isNavigation: true }),
+        req('b', 'https://connect.facebook.net/en_US/fbevents.js', {
+          resourceType: 'document',
+          isNavigation: true,
+          isMainFrame: true,
+        }),
+      ],
+      expected: [],
+    },
+    {
+      name: 'first-party proxy (tag gateway) → first-party-proxy with medium confidence',
+      requests: [
+        req('a', `${START}metrics/g/collect?v=2&tid=G-1&cid=[redacted]`, { identifierPresent: true }),
+      ],
+      expected: [{ variant: 'first-party-proxy', confidence: 'medium', subject: 'google-analytics' }],
+    },
+    {
+      name: 'routing: fonts, maps and video belong to EMBED-* and are not reported here; first-party assets never',
+      requests: [
+        req('a', 'https://fonts.gstatic.com/s/x.woff2', { resourceType: 'font' }),
+        req('b', 'https://www.google.com/maps/embed?pb=[redacted]', { resourceType: 'document' }),
+        req('c', 'https://www.youtube-nocookie.com/embed/abc', { resourceType: 'document' }),
+        req('d', `${START}app.js`),
+      ],
+      expected: [],
+    },
+  ];
+  it.each(named(REQUEST_CASES))('%s', (_name, { requests, expected }) => {
+    expect(observationsOf(run([phase('A', { requests })]))).toMatchObject(expected);
+  });
+
+  it.each<[string, Partial<RequestRecord>]>([
+    ['stored-match', { identifierNames: ['cid'], matchesStoredIdentifier: true }],
+    ['persistent-param', { identifierNames: ['cid'] }],
+    ['user-supplied', { identifierNames: ['gclid'] }],
+  ])('persistent identifier %s → tracking-completed', (kind, p) => {
+    const r = run([phase('A', { requests: [gaHit('a', { identifierPresent: true, ...p })] })]);
+    expect(observationsOf(r).map((o) => [o.variant, o.params.identifierKind])).toEqual([
+      ['tracking-completed', kind],
+    ]);
+  });
+
+  it.each([
+    ['cdn', 'https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js', 'jsdelivr'],
+    ['payment', 'https://js.stripe.com/v3/', 'stripe'],
+    ['consent-provider', 'https://consent.cookiebot.com/uc.js', 'cookiebot'],
+    ['monitoring', 'https://browser.sentry-cdn.com/7.0.0/bundle.min.js', 'sentry'],
+  ])(
+    '%s before interaction → third-party-resource (info), not library-loaded',
+    (category, url, serviceId) => {
+      const r = run([phase('A', { requests: [req('a', url)] })]);
+      expect(observationsOf(r).map((o) => [o.variant, o.category, o.serviceId])).toEqual([
+        ['third-party-resource', category, serviceId],
+      ]);
+    },
+  );
+
+  it('start page hit without an observed phase B → no `replicated` claim either way', () => {
+    const r = run([
+      phase('A', { requests: [gaHit('a', { identifierPresent: true, identifierNames: ['cid'] })] }),
+      phase('B', { status: 'skipped', pages: [] }),
+    ]);
+    const [o] = observationsOf(r);
+    expect(o?.variant).toBe('tracking-completed');
+    expect(o?.replicated).toBeUndefined();
+  });
+
+  it('requests after the click in B and in C are not "before interaction"; A not replicated in B → replicated: false', () => {
+    const r = run([
+      phase('A', { requests: [req('a', 'https://connect.facebook.net/en_US/fbevents.js')] }),
+      phase('B', {
+        click: click('reject'),
+        requests: [
+          req('b', 'https://www.facebook.com/tr/?id=1&fbp=[redacted]', { phase: 'B', afterClick: true }),
+        ],
+      }),
+    ]);
+    const obs = observationsOf(r);
+    expect(obs).toHaveLength(1);
+    expect(obs[0]).toMatchObject({ variant: 'library-loaded', phases: ['A'], replicated: false });
+  });
+
+  it('no phase A → inconclusive', () => {
+    expect(run([phase('A', { status: 'skipped', pages: [] })])).toMatchObject({
+      status: 'inconclusive',
+      reason: 'no-pre-consent-observation',
+    });
+  });
+
+  it('missing browser section with collector skipped → skipped', () => {
+    const snap = site();
+    const { browser: _b, derived: _d, ...rest } = snap;
+    const r = runCheck(consent01, {
+      ...rest,
+      collection: { browser: { status: 'skipped', reason: 'tls-blocked', durationMs: 0 } },
+    });
+    expect(r).toMatchObject({ status: 'skipped', reason: 'tls-blocked' });
+  });
+});
+
+describe('CONSENT-01 texts name what was counted', () => {
+  const body = (lang: 'de' | 'en', variant: string, params: Record<string, unknown>) =>
+    renderMessage(loadTexts(lang), `CONSENT-01.${variant}`, params as never).body;
+
+  it('unknown-host: the request count covers every host of the domain, and the text names them all', () => {
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://cdn.unknown-widget.net/a.js'),
+          req('b', 'https://cdn.unknown-widget.net/b.js'),
+          req('c', 'https://cdn.unknown-widget.net/c.js'),
+          req('d', 'https://img.unknown-widget.net/d.png', { resourceType: 'image' }),
+        ],
+      }),
+    ]);
+    const [o] = observationsOf(r);
+    expect(o?.params).toMatchObject({
+      service: 'unknown-widget.net',
+      host: 'cdn.unknown-widget.net',
+      hosts: 'cdn.unknown-widget.net, img.unknown-widget.net',
+      hostCount: 2,
+      requestCount: 4,
+    });
+    expect(body('de', 'unknown-host', o!.params)).toContain(
+      'wurden 4 Anfragen an 2 Hosts der Domain unknown-widget.net (cdn.unknown-widget.net, img.unknown-widget.net) beobachtet; sie wurden keinem Dienst des Dienstekatalogs zugeordnet',
+    );
+    expect(body('en', 'unknown-host', o!.params)).toContain(
+      '4 requests to 2 hosts of the domain unknown-widget.net (cdn.unknown-widget.net, img.unknown-widget.net) were observed',
+    );
+  });
+
+  it('unknown-host with one request: singular verb, the host named', () => {
+    const [o] = observationsOf(
+      run([phase('A', { requests: [req('a', 'https://cdn.unknown-widget.net/a.js')] })]),
+    );
+    expect(body('de', 'unknown-host', o!.params)).toContain(
+      'wurde 1 Anfrage an den Host cdn.unknown-widget.net beobachtet; sie wurde keinem Dienst',
+    );
+    expect(body('en', 'unknown-host', o!.params)).toContain(
+      '1 request to the host cdn.unknown-widget.net was observed',
+    );
+  });
+
+  it('third-party-resource names only the category of its service', () => {
+    const [o] = observationsOf(
+      run([phase('A', { requests: [req('a', 'https://browser.sentry-cdn.com/7.0.0/bundle.min.js')] })]),
+    );
+    expect(o).toMatchObject({
+      variant: 'third-party-resource',
+      params: { category: 'monitoring', requestCount: 1 },
+    });
+    const de = body('de', 'third-party-resource', o!.params);
+    expect(de).toContain('wurde 1 Anfrage an Sentry');
+    expect(de).toContain('(Kategorie laut Dienstekatalog: Fehleranalyse)');
+    expect(de).not.toMatch(/Zahlungsdienst|Einwilligungsverwaltung/);
+    expect(body('en', 'third-party-resource', o!.params)).toContain(
+      '1 request to Sentry (browser.sentry-cdn.com) was observed',
+    );
+  });
+
+  it('without any banner the text does not speak of an interaction with it', () => {
+    const requests = [req('a', 'https://www.googletagmanager.com/gtm.js?id=GTM-ABC')];
+    const [none] = observationsOf(run([phase('A', { requests })]));
+    expect(none?.params.bannerFound).toBe(false);
+    expect(body('de', 'library-loaded', none!.params)).toMatch(
+      /^Vor jeder Interaktion \(kein Einwilligungsbanner gefunden\)/,
+    );
+    expect(body('en', 'library-loaded', none!.params)).toMatch(
+      /^Before any interaction \(no consent banner found\)/,
+    );
+
+    const [seen] = observationsOf(
+      run([phase('A', { requests })], { cmp: cmpWith({ phase: 'B', facts: [cmpFacts()] }) }),
+    );
+    expect(seen?.params.bannerFound).toBe(true);
+    expect(body('de', 'library-loaded', seen!.params)).toMatch(
+      /^Vor einer Interaktion mit dem Einwilligungsbanner/,
+    );
+  });
+
+  it('a font file of a host outside the catalog is left to EMBED-01; the other requests of the host stay', () => {
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://cdn.booking-widget.example/v1/sdk.js'),
+          req('b', 'https://cdn.booking-widget.example/fonts/Display-Regular.ttf', { resourceType: 'font' }),
+        ],
+      }),
+    ]);
+    expect(observationsOf(r).map((o) => [o.variant, o.params.requestCount])).toEqual([['unknown-host', 1]]);
+  });
+
+  it('a tracker inside the frame of an embedded map: attributed to the tracker, linked to the map finding', () => {
+    const frame = {
+      frameId: 'A-f2',
+      isMainFrame: false,
+      frameUrl: 'https://www.google.com/maps/embed?pb=[redacted]',
+    };
+    const r = run([
+      phase('A', {
+        requests: [
+          req('a', 'https://www.google.com/maps/embed?pb=[redacted]', {
+            ...frame,
+            isNavigation: true,
+            resourceType: 'document',
+            pageUrl: CONTACT,
+          }),
+          req(
+            'b',
+            'https://region1.google-analytics.com/g/collect?v=2&tid=G-MAP1&cid=[redacted]&en=page_view',
+            {
+              ...frame,
+              resourceType: 'ping',
+              identifierPresent: true,
+              identifierNames: ['cid'],
+              pageUrl: CONTACT,
+            },
+          ),
+          req('c', 'https://helper.unknown-host.example/t.js', { ...frame, pageUrl: CONTACT }),
+        ],
+      }),
+    ]);
+    const obs = observationsOf(r);
+    // The unknown helper host of the frame is part of the map (EMBED-02), not a host of the site.
+    expect(obs.map((o) => o.subject)).toEqual(['google-analytics']);
+    expect(obs[0]).toMatchObject({
+      params: { embeddedCount: 1, embeddedIn: 'Google Maps' },
+      related: [{ checkId: 'EMBED-02', subject: 'google-maps', relation: 'embedded-in' }],
+    });
+    expect(body('de', obs[0]!.variant, obs[0]!.params)).toContain(
+      '1 dieser Anfragen stammte aus dem Rahmen des eingebetteten Dienstes Google Maps.',
+    );
+  });
+});
+
+// The browser's request limit counts every phase; CONSENT-01 reads phases A and B, so only a limit reached before phase C
+// limits it. Phase C starts only while the limit is not reached, so only a phase C that started rules that out.
+describe('CONSENT-01 and the request limit', () => {
+  type PhaseSpec = Partial<Parameters<typeof phase>[1]>;
+  const clicked: PhaseSpec = { click: click('reject') };
+  // Without an adapter banner phase B clicks nothing and phase C is skipped without starting.
+  const unrecognized: PhaseSpec = { status: 'partial', reason: 'cmp-not-recognized' };
+  const capped = (c: PhaseSpec | null, b: PhaseSpec, truncated: boolean) => {
+    const s = site({
+      phases: [
+        phase('A', { requests: [req('A-1', `${START}app.js`)] }),
+        phase('B', { ...b, requests: [req('B-1', `${START}app.js`, { phase: 'B' })] }),
+        ...(c ? [phase('C', { ...(c.status === 'skipped' ? {} : { click: click('accept') }), ...c })] : []),
+      ],
+    });
+    if (s.browser) s.browser.requestCap = { limit: 3, issued: truncated ? 9 : 2, truncated };
+    return s;
+  };
+  const limitations = (c: PhaseSpec | null, b: PhaseSpec = clicked, truncated = true) =>
+    runCheck(consent01, capped(c, b, truncated)).outcome?.limitations ?? [];
+
+  it.each([
+    ['the limit was reached in phase C', { status: 'partial', reason: 'request-cap' }, clicked],
+    ['phase C ran to the end', { status: 'completed' }, clicked],
+    ['phase C found no accept button', { status: 'partial', reason: 'no-accept-button' }, clicked],
+    ['phase C ran out of time after it started', { status: 'partial', reason: 'timeout' }, clicked],
+    ['phase C failed after it started', { status: 'failed', reason: 'exception' }, clicked],
+    [
+      'phase C started and recognized no banner',
+      { status: 'partial', reason: 'cmp-not-recognized' },
+      clicked,
+    ],
+  ] as const)('phase C started (%s): the limit does not limit CONSENT-01', (_name, c, b) => {
+    expect(limitations(c, b)).toEqual([]);
+  });
+
+  it.each([
+    ['phase C did not start because of it', { status: 'skipped', reason: 'request-cap' }, clicked],
+    ['phase C did not start for lack of time', { status: 'skipped', reason: 'time-budget' }, clicked],
+    ['the scan ran out of time before phase C', { status: 'skipped', reason: 'timeout' }, clicked],
+    ['phase C did not start after a 429', { status: 'skipped', reason: 'throttled' }, clicked],
+    [
+      'phase B recognized no banner, so phase C did not start',
+      { status: 'skipped', reason: 'cmp-not-recognized' },
+      unrecognized,
+    ],
+    ['phase C was not run', null, clicked],
+  ] as const)('the limit may have cut phase A or B (%s): CONSENT-01 is limited', (_name, c, b) => {
+    expect(limitations(c, b)).toEqual(['request-cap-truncated']);
+  });
+
+  it('counterexample: below the limit no phase C record limits CONSENT-01', () => {
+    expect(limitations({ status: 'skipped', reason: 'cmp-not-recognized' }, unrecognized, false)).toEqual([]);
+    expect(limitations(null, clicked, false)).toEqual([]);
+  });
+});
+
+describe('CONSENT-01 and control pages where the decision of the click is not in effect', () => {
+  const OTHER = `${SHOP_HOST}/kontakt`;
+  const gaHit = (id: string, ph: 'B' | 'C', pageUrl: string) =>
+    req(id, 'https://region1.google-analytics.com/g/collect?v=2&tid=G-1&cid=[redacted]&en=page_view', {
+      phase: ph,
+      afterClick: true,
+      resourceType: 'ping',
+      identifierPresent: true,
+      identifierNames: ['cid'],
+      pageUrl,
+    });
+
+  it.each<[string, boolean]>([
+    ['the banner shows again on the control page', false],
+    ['counterexample: the control page reads the stored decision back', true],
+  ])('%s: a hit there after the click is no request before the interaction', (_case, inEffect) => {
+    const r = run(
+      [
+        phase('A', { requests: [req('A-1', `${START}app.js`)] }),
+        phase('B', {
+          click: click('reject'),
+          reloaded: true,
+          pages: consentPages('B', [OTHER]),
+          requests: [gaHit('B-1', 'B', OTHER)],
+        }),
+        phase('C', {
+          click: click('accept'),
+          pages: consentPages('C', [OTHER]),
+          requests: [gaHit('C-1', 'C', OTHER)],
+        }),
+      ],
+      {
+        cmp: cmpWith(
+          { phase: 'B', facts: [cmpFacts(), controlPageFacts(OTHER, 'B', inEffect)] },
+          { phase: 'C', facts: [cmpFacts({ phase: 'C' }), controlPageFacts(OTHER, 'C', inEffect)] },
+        ),
+      },
+    );
+    // CONSENT-01 rests on phase A and on phase B before the click; the visits after a click are no context of it.
+    expect(r).toMatchObject({ status: 'completed', outcome: { limitations: [] } });
+    expect(observationsOf(r)).toEqual([]);
+  });
+});

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Wix-Simulator: Plattform-API ohne Cookie-Banner</title>
+<script>
+  // The platform answers with its default policy even where the site shows no banner.
+  window.consentPolicyManager = {
+    getCurrentConsentPolicy: function () {
+      return {
+        defaultPolicy: true,
+        policy: { essential: true, functional: false, analytics: false, advertising: false, dataToThirdParty: false },
+      };
+    },
+  };
+</script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Restaurant</h1><p>Willkommen.</p></main>
+<footer><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></footer>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# Ruleset profile metadata. Severity and CRM tables live in browser.yaml / http.yaml / dns.yaml.
+profile:
+  id: de-2026
+  version: "2026.10.0"
+  rechtsstand: "2026-10-30"
+  # Draft until signed off by the customer; .github/scripts/release.ts refuses to release while true.
+  draft: true

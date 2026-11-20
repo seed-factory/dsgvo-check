@@ -1,0 +1,6 @@
+{
+  "$description": "Self-signed default certificate of the hoster without subject alternative names: the CN names it",
+  "$expect": { "status": "completed", "variants": ["certificate-invalid"] },
+  "tls": { "endpoints": [ { "id": "tls-target", "hostVariant": "target", "host": "www.example.de", "port": 443, "servername": "www.example.de", "ip": "203.0.113.10", "family": 4, "outcome": "handshake", "protocol": "TLSv1.3", "cipher": null, "authorized": false, "authorizationError": "DEPTH_ZERO_SELF_SIGNED_CERT", "hostnameMatches": false, "chainComplete": true, "trustStore": "node-bundled", "chain": [{ "subject": "C=DE, O=Example Hosting, CN=default.hoster.example", "issuer": "C=DE, O=Example Hosting, CN=default.hoster.example", "subjectAltNames": [], "notBefore": "2026-06-01T00:00:00.000Z", "notAfter": "2050-06-01T00:00:00.000Z", "serialNumber": "0B", "fingerprint256": "AA:CC", "isCa": false, "selfSigned": true }], "observedAt": "2026-10-30T12:00:00.000Z" } ], "errors": [] },
+  "http": { "userAgent": "dsgvo-check/test", "chains": [], "documents": [], "requestsIssued": 0, "throttled": false, "errors": [] }
+}

@@ -1,0 +1,210 @@
+# Designations of a former legal situation that LEGAL-02 looks for in the Impressum and the privacy policy: laws that
+# were replaced or renamed, adequacy decisions the CJEU declared invalid, a repealed directive. Only the wording is
+# observed; whether a mention matters is not judged. The dates are part of the data: a reference whose `since` lies
+# after the scan date is not looked for.
+#
+# Matching (src/checks/browser/legal-02.ts): the text of each document part is split into sentences (abbreviations
+# below, single letters and numbers of up to three digits followed by a dot end no sentence). A sentence and every term
+# are normalised like the legal-link lexicon (NFKC, lower case, ä→ae ö→oe ü→ue ß→ss, everything that is not a letter or
+# digit becomes a space, so "§ 5 TMG" is "5 tmg" and "95/46/EG" is "95 46 eg") and compared as whole words in a row,
+# so "TMG" does not match "STMG". A term ending in `*` lets its last word continue ("Telemediengesetz*" also matches
+# "Telemediengesetzes"). A mention counts unless its own sentence holds a historical cue or a successor term of the
+# same reference: "§ 5 DDG (vormals § 5 TMG)" and "§ 5 TMG bzw. § 5 DDG" are not counted, a separate sentence that
+# uses the old designation still is.
+#
+# Per reference:
+#   id          stable kebab-case code; with the document kind it is the subject of the finding
+#   label       the designation as the finding names it
+#   terms       spellings of the designation; spellings that normalise alike ("Privacy-Shield") are the same term
+#   successors  spellings of what replaced it; only context, never a mention themselves
+#   reason      `replaced`, `renamed`, `invalidated` (adequacy decision declared invalid, `ruling` names the case) or
+#               `repealed`
+#   replacedBy  the current designation
+#   since       date of the change (YYYY-MM-DD)
+#
+# Neither a successor nor a cue may occur inside a term (the schema refuses it), or no mention could ever count. Plain
+# "BDSG" is no reference: the current law has the same name, only an explicit old version ("BDSG a. F.") is one.
+#
+# Schema: `outdatedReferencesSection` in src/collectors/browser/legal/sections.ts.
+outdatedReferences:
+  version: "2026.11.1"
+
+  references:
+    - id: tmg
+      label: Telemediengesetz (TMG)
+      terms: [TMG, Telemediengesetz*, Telemedien-Gesetz*]
+      successors: [DDG, Digitale-Dienste-Gesetz*]
+      reason: replaced
+      replacedBy: Digitale-Dienste-Gesetz (DDG)
+      since: "2024-05-14"
+      ruling: null
+
+    - id: rstv
+      label: Rundfunkstaatsvertrag (RStV)
+      terms:
+        [RStV, Rundfunkstaatsvertrag*, Rundfunk-Staatsvertrag*, Staatsvertrag für Rundfunk und Telemedien]
+      successors: [MStV, Medienstaatsvertrag*, Medien-Staatsvertrag*]
+      reason: replaced
+      replacedBy: Medienstaatsvertrag (MStV)
+      since: "2020-11-07"
+      ruling: null
+
+    - id: ttdsg
+      label: Telekommunikation-Telemedien-Datenschutz-Gesetz (TTDSG)
+      terms:
+        [
+          TTDSG,
+          Telekommunikation-Telemedien-Datenschutz-Gesetz*,
+          Telekommunikations-Telemedien-Datenschutz-Gesetz*,
+          Telekommunikation-Telemedien-Datenschutzgesetz*,
+          Telekommunikations-Telemedien-Datenschutzgesetz*,
+        ]
+      successors:
+        [
+          TDDDG,
+          Telekommunikation-Digitale-Dienste-Datenschutz-Gesetz*,
+          Telekommunikation-Digitale-Dienste-Datenschutzgesetz*,
+        ]
+      reason: renamed
+      replacedBy: Telekommunikation-Digitale-Dienste-Datenschutz-Gesetz (TDDDG)
+      since: "2024-05-14"
+      ruling: null
+
+    - id: privacy-shield
+      label: EU-US Privacy Shield
+      # The domain of the former participant list ("privacyshield.gov") is one word after normalisation.
+      terms: [Privacy Shield*, PrivacyShield*, Datenschutzschild*, Datenschutz-Schild*]
+      successors: [Data Privacy Framework*, DPF, Datenschutzrahmen*, Datenschutz-Rahmen*]
+      reason: invalidated
+      replacedBy: EU-U.S. Data Privacy Framework
+      since: "2020-07-16"
+      ruling: C-311/18 (Schrems II)
+
+    - id: safe-harbor
+      label: Safe Harbor
+      terms: [Safe Harbor*, Safe Harbour*, SafeHarbor*]
+      # Its successors in either language: the Privacy Shield, then the Data Privacy Framework.
+      successors:
+        [
+          Privacy Shield*,
+          PrivacyShield*,
+          Datenschutzschild*,
+          Datenschutz-Schild*,
+          Data Privacy Framework*,
+          DPF,
+          Datenschutzrahmen*,
+          Datenschutz-Rahmen*,
+        ]
+      reason: invalidated
+      replacedBy: EU-U.S. Data Privacy Framework
+      since: "2015-10-06"
+      ruling: C-362/14 (Schrems I)
+
+    - id: directive-95-46
+      label: Datenschutzrichtlinie 95/46/EG
+      terms: [95/46/EG, 95/46/EC, 95/46/EWG]
+      # The full title of the DSGVO ends "zur Aufhebung der Richtlinie 95/46/EG".
+      successors:
+        [DSGVO, DS-GVO, GDPR, 2016/679, Datenschutz-Grundverordnung*, General Data Protection Regulation]
+      reason: repealed
+      replacedBy: Datenschutz-Grundverordnung (DSGVO)
+      since: "2018-05-25"
+      ruling: null
+
+    - id: bdsg-old
+      label: BDSG a. F.
+      terms: [BDSG a. F., BDSG aF, BDSG alt, BDSG alte Fassung, BDSG alter Fassung]
+      successors: [BDSG n. F., BDSG nF, BDSG neu, BDSG neue Fassung, BDSG neuer Fassung]
+      reason: replaced
+      replacedBy: BDSG in der ab 2018-05-25 geltenden Fassung
+      since: "2018-05-25"
+      ruling: null
+
+  # Words that mark a sentence as speaking of the former situation ("wurde für ungültig erklärt", "vormals"). A word
+  # ending in `*` may continue.
+  historicalCues:
+    de:
+      [
+        ungültig*,
+        unwirksam*,
+        aufgehoben,
+        Aufhebung,
+        außer Kraft,
+        nicht mehr,
+        ehemals,
+        ehemalig*,
+        früher*,
+        vormals,
+        vormalig*,
+        bisherig*,
+        Nachfolger*,
+        abgelöst,
+        Ablösung,
+        ersetzt,
+        Wegfall,
+        weggefallen,
+        gekippt,
+        Schrems,
+        EuGH,
+        C-311/18,
+        C-362/14,
+      ]
+    en:
+      [
+        invalid*,
+        annulled,
+        struck down,
+        no longer,
+        former*,
+        previous*,
+        replaced,
+        superseded,
+        successor*,
+        repeal*,
+        CJEU,
+      ]
+
+  # Abbreviations whose dot ends no sentence: "§ 5 TMG bzw. § 5 DDG" is one sentence. A sentence may start with a
+  # capital letter, "§" or a digit, so the abbreviations that precede a paragraph or a number in legal texts belong here.
+  abbreviations:
+    de:
+      [
+        abs,
+        anh,
+        anl,
+        art,
+        aufl,
+        bd,
+        bspw,
+        buchst,
+        bzw,
+        ca,
+        co,
+        dr,
+        erwg,
+        erwgr,
+        evtl,
+        ff,
+        gem,
+        ggf,
+        ggfs,
+        inc,
+        inkl,
+        insb,
+        kap,
+        lit,
+        ltd,
+        nr,
+        rn,
+        sog,
+        str,
+        tel,
+        tz,
+        uabs,
+        usw,
+        var,
+        vgl,
+        ziff,
+        zzgl,
+      ]
+    en: [approx, co, corp, eg, etc, ie, inc, ltd, no, para, sec, vs]

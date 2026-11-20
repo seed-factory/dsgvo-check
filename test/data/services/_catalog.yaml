@@ -1,0 +1,300 @@
+# dsgvo-check service catalog. Own data, Apache-2.0, compiled from vendor documentation and well-known
+# public hostnames. No content from EasyList/EasyPrivacy, NC- or GPL-licensed lists.
+# Services live in the other files of this directory (`services:` arrays are concatenated by the loader).
+#
+# Entry fields (src/derive/catalog.ts validates them strictly; the same goes for the top-level keys below):
+# id, name, category, policyRelevance (required|optional|none)
+# provider {name, country} – contracting party for EEA customers according to the catalog; omitted when not
+# verified from vendor documentation ("laut Dienstekatalog", never a finding)
+# parent {name, country} – group parent
+# dpfEntity {name} – organisation to look up in the DPF list; listed/checkedAt stay null until checked
+# domains – hosts or domain suffixes (longest suffix wins)
+# signatures – {id, hosts?, hostPatterns?, anyHost?, path (regex), query? {param: regex}, kind, stage?,
+# integration?, identifierParams?}; vendor-host signature > any-host signature > domain. `hostPatterns` are anchored
+# regexes of a whole host name for vendor hosts that vary by country; listed hosts are tried first
+# selfHostable – the service may run on the site's own host (no first-party proxy)
+# cookies / storageKeys – tracking identifiers (`name`, glob `name_*`, optional `@cookie-domain` or `@origin-host`)
+# otherCookies / otherStorageKeys – known cookies and storage entries of the service that are not identifiers
+# aliasesDe / aliasesEn / companyAliases – PRIV-01 matching levels named > company > domain; the category level
+# uses `categories` below
+#
+# Draft: providers, aliases and the allowlist need review by the customer.
+catalog:
+  name: dsgvo-check-services
+  version: "0.2.0"
+  date: "2026-10-30"
+  license: Apache-2.0
+  attribution: "dsgvo-check service catalogue, © dsgvo-check contributors, Apache-2.0"
+
+# Parameter names (lower case) of identifiers that arrive with the visit and are not generated per page load: ad-click
+# ids and a user id. A request that carries one is classified `user-supplied`, not `per-load`.
+userSuppliedParams:
+  - user_id
+  - userid
+  - gclid
+  - dclid
+  - gbraid
+  - wbraid
+  - msclkid
+  - fbclid
+  - ttclid
+  - li_fat_id
+
+# Google Consent Mode: the community-documented letters of the `gcd` request value (position 3 = ad storage, position 5 =
+# analytics storage). `gcs` (G1 plus 1 granted / 0 denied) needs no table.
+consentMode:
+  gcdDenied: [p, q, m, u]
+  gcdGranted: [t, r, n, v]
+
+# Category description terms for PRIV-01 (`category` match level), de and en.
+categories:
+  analytics:
+    de:
+      [
+        Webanalyse,
+        Webanalysedienst,
+        Analysedienst,
+        Analysetool,
+        Analyse-Tool,
+        Reichweitenmessung,
+        Statistikdienst,
+        Nutzungsanalyse,
+        Webtracking,
+      ]
+    en: [web analytics, analytics service, analytics tool]
+  ads:
+    de:
+      [
+        Werbenetzwerk,
+        Werbedienst,
+        Werbepartner,
+        Remarketing,
+        Retargeting,
+        Conversion-Tracking,
+        Konversionsmessung,
+        Online-Marketing,
+      ]
+    en: [advertising network, advertising partner, remarketing, retargeting, conversion tracking]
+  session-recording:
+    de: [Sitzungsaufzeichnung, Session-Recording, Heatmap, Heatmaps, Mausbewegungen]
+    en: [session recording, session replay, heatmap, heatmaps]
+  tag-manager:
+    de: [Tag-Manager, Tag Manager, Tagmanager, Tag-Management]
+    en: [tag manager, tag management]
+  cdn:
+    de: [Content Delivery Network, Content-Delivery-Network]
+    en: [content delivery network]
+  payment:
+    de: [Zahlungsdienstleister, Zahlungsdienst, Zahlungsanbieter, Payment-Anbieter]
+    en: [payment service provider, payment provider]
+  consent-provider:
+    de:
+      [
+        Consent-Management,
+        Einwilligungsverwaltung,
+        Einwilligungsmanagement,
+        Consent-Tool,
+        Cookie-Consent-Tool,
+      ]
+    en: [consent management platform, consent management]
+  fonts:
+    de: [Webfonts, Web Fonts, Web-Schriftarten, Schriftarten]
+    en: [web fonts, webfonts]
+  maps:
+    de: [Kartendienst, Kartenmaterial, Landkarten, Online-Karten, Anfahrtskarte]
+    en: [map service, maps service, online maps]
+  video:
+    de: [Videoplattform, Video-Plattform, Videodienst, eingebettete Videos]
+    en: [video platform, embedded videos]
+  captcha:
+    de: [Captcha, Spam-Schutz, Spamschutz, Bot-Schutz]
+    en: [captcha, spam protection, bot protection]
+  widget:
+    de: [Widget, Widgets, eingebettete Inhalte]
+    en: [widget, widgets, embedded content]
+  social:
+    de: [soziale Netzwerke, Social Media, Social-Media-Plugins, Social Plugins]
+    en: [social media, social networks, social plugins]
+  reviews:
+    de: [Bewertungsplattform, Bewertungsportal, Kundenbewertungen, Bewertungs-Widget, Bewertungssystem]
+    en: [review platform, customer reviews]
+  chat:
+    de: [Live-Chat, Livechat, Chat-Tool, Chatdienst, Chat-Widget, Chatbot]
+    en: [live chat, chat widget, chatbot]
+  monitoring:
+    de: [Fehleranalyse, Fehlerüberwachung, Fehlerprotokollierung, Performance-Monitoring]
+    en: [error monitoring, error tracking, crash reporting]
+  unknown:
+    de: []
+    en: []
+
+# CONSENT-02 allowlist: entries are "nicht bewertet (Allowlist v<version>)" – this is NOT a statement that
+# they are necessary. Name globs, case-insensitive. `security` (bot protection) is also included
+# classes consent/session/load-balancer/csrf/language and needs customer approval.
+allowlist:
+  version: "2"
+  cookies:
+    consent:
+      - CookieConsent
+      - CookieConsentBulkSetting-*
+      - CookieConsentBulkTicket
+      - borlabs-cookie
+      - borlabs-cookie-*
+      - cmplz_*
+      - complianz_*
+      - real_cookie_banner*
+      - rcb-*
+      - ccm_consent
+      - ccm_consent_*
+      - cookiehub
+      - OptanonConsent
+      - OptanonAlertBoxClosed
+      - uc_*
+      - euconsent-v2
+      - euconsent
+      - __cmpcc*
+      - __cmpconsent*
+      - didomi_token
+      - cookieyes-consent
+      - CookieLawInfoConsent
+      - cookielawinfo-checkbox-*
+      - viewed_cookie_policy
+      - moove_gdpr_popup
+      - cookie_notice_accepted
+      - cookie-agreed
+      - cookie-agreed-*
+      - cookieconsent_status
+      - cc_cookie
+      - klaro
+      - mtm_consent
+      - mtm_consent_removed
+      - mtm_cookie_consent
+      - __hs_opt_out
+      - __hs_do_not_track
+      - __hs_cookie_cat_pref
+      - _iub_cs-*
+      - usprivacy
+      - SOCS
+      # Consent state of consentmanager, Sourcepoint and Google Funding Choices. `*` also covers the
+      # `_expire` companions. __cmpiuid and consentUUID are visitor identifiers and stay out (cmp-cookie-with-uid).
+      # Sourcepoint is listed by the observed names: `_sp_v1_*` would also cover `_sp_v1_uid`, presumed to be an
+      # identifier (not yet checked against vendor documentation, required for each pattern).
+      - __cmpcpc*
+      - __cmpcvc*
+      - __cmpiab*
+      - __cmpcccx*
+      - __cmpfcc*
+      - _sp_su
+      - _sp_v1_ss
+      - _sp_v1_p
+      - _sp_v1_data
+      - FCCDCF
+      - FCNEC
+    session:
+      - PHPSESSID
+      - PHPSESSID_*
+      - JSESSIONID
+      - ASP.NET_SessionId
+      - ASPSESSIONID*
+      - CFID
+      - CFTOKEN
+      - laravel_session
+      - ci_session
+      - connect.sid
+      - session
+      - sessionid
+      - session-*
+      - _session_id
+      - SESS*
+      - SSESS*
+      - wordpress_test_cookie
+      - fe_typo_user
+      - be_typo_user
+      - PrestaShop-*
+      - frontend
+      - frontend_cid
+      - OCSESSID
+      - JTLSHOP
+      - sw-states
+      - sid
+    load-balancer:
+      - AWSALB
+      - AWSALBCORS
+      - AWSALBTG
+      - AWSALBTGCORS
+      - AWSELB
+      - AWSELBCORS
+      - BIGipServer*
+      - SERVERID
+      - ROUTEID
+      - ARRAffinity
+      - ARRAffinitySameSite
+      - TiPMix
+      - x-ms-routing-name
+      - lidc
+    csrf:
+      - XSRF-TOKEN
+      - CSRF-TOKEN
+      - csrftoken
+      - csrf_token
+      - csrf
+      - _csrf
+      - __RequestVerificationToken
+      - __Host-csrf*
+    language:
+      - lang
+      - language
+      - locale
+      - pll_language
+      - wp-wpml_current_language
+      - _icl_current_language
+      - i18n_redirected
+      - NEXT_LOCALE
+      - qtrans_front_language
+    security:
+      - __cf_bm
+      - cf_clearance
+      - _cfuvid
+      - __cfruid
+      - __cflb
+      - cf_chl_*
+      - incap_ses_*
+      - visid_incap_*
+      - nlbi_*
+      - ak_bmsc
+      - bm_sv
+      - bm_sz
+      - bm_mi
+      - _abck
+      - TS01*
+  storage:
+    consent:
+      - uc_settings
+      - uc_ui_version
+      - uc_user_interaction
+      - ucData
+      - borlabs-cookie*
+      - BorlabsCookie*
+      - cmplz_*
+      - CookieConsent
+      - real_cookie_banner*
+      - rcb-*
+      - ccm_consent*
+      - cookiehub
+      - didomi_token
+      - euconsent-v2
+      - OptanonConsent
+      - _iub_cs-*
+      - klaro
+      - cookieyes-consent
+      - __cmpconsent*
+      # Consentmanager state (same names as the cookies above), Usercentrics v3 (`ucData_<settingsId>`)
+      # and Sourcepoint local state. `__cmpiuid` stays out (identifier).
+      - __cmpcpc*
+      - __cmpcvc*
+      - __cmpiab*
+      - __cmpcccx*
+      - __cmpfcc*
+      - ucData_*
+      - _sp_local_state
+      - _sp_non_keyed_local_state

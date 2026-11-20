@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Cookie-Leiste als Landmarke (aside, complementary, banner, Dialog in nav)</title>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#222;color:#fff;padding:16px;z-index:50}
+.bar button{padding:8px 14px;margin-right:8px}</style>
+</head>
+<body>
+<main><h1>Beispiel Blog</h1><p>Willkommen.</p></main>
+<script>
+  // Which landmark holds the bar comes from ?as=…; the bar itself is the same in every variant.
+  var as = new URLSearchParams(location.search).get('as') || 'aside';
+  var inner = '<p>Diese Website nutzt Cookies und Tracking von Drittanbietern.</p>' +
+    '<button type="button">Ablehnen</button><button type="button">Akzeptieren</button>';
+  var html = {
+    aside: '<aside class="bar" aria-label="Cookie-Hinweis">' + inner + '</aside>',
+    complementary: '<div class="bar" role="complementary">' + inner + '</div>',
+    banner: '<div class="bar" role="banner" aria-label="Cookie Notice">' + inner + '</div>',
+    'dialog-in-nav': '<nav aria-label="Hinweise"><div class="bar" role="dialog" aria-label="Cookies">' + inner + '</div></nav>',
+    'links-in-aside': '<aside class="bar" aria-label="Rechtliches"><p>Datenschutz und Cookies</p>' +
+      '<a href="/datenschutz.html">Datenschutzerklärung</a> <a href="/cookies.html">Cookie-Einstellungen</a></aside>'
+  }[as];
+  document.body.insertAdjacentHTML('beforeend', html);
+</script>
+</body>
+</html>

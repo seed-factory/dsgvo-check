@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Nur DOM-Signal eines Adapters, eigener Banner sichtbar, daneben fremder Dialog</title>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}
+#CybotCookiebotDialog{position:fixed;left:0;right:0;bottom:0;background:#222;color:#fff;padding:16px;z-index:50}
+#CybotCookiebotDialog button{padding:8px 14px;margin-right:8px}
+.news{position:fixed;left:50%;top:120px;width:560px;margin-left:-280px;background:#fff;border:1px solid #999;padding:16px;z-index:60}</style>
+</head>
+<body>
+<main><h1>Beispiel Verlag</h1></main>
+<div id="CybotCookiebotDialog">
+  <p>Diese Website nutzt Cookies und Tracking von Drittanbietern.</p>
+  <button type="button" id="CybotCookiebotDialogBodyButtonDecline">Ablehnen</button>
+  <button type="button" id="CybotCookiebotDialogBodyButtonAccept">Alle zulassen</button>
+</div>
+<div role="dialog" aria-modal="true" aria-label="Newsletter" class="news">
+  <p>Newsletter: Ihre Einwilligung und die Datenschutzerklärung finden Sie unten.</p>
+  <input type="text" aria-label="E-Mail">
+  <button type="button">Anmelden</button>
+  <button type="button">Später</button>
+</div>
+</body>
+</html>

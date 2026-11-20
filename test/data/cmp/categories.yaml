@@ -1,0 +1,17 @@
+# Consent category names that CMP APIs report for strictly necessary processing. CONSENT-04 does not count them as
+# "granted without action". Entries are regular-expression fragments, matched case-insensitively against the whole name.
+essentialCategories:
+  - necessary
+  - essential
+  - required
+  - technical
+  - "strictly[-_ ]?necessary"
+  - "technically[-_ ]?necessary"
+  - functional
+  - "functionality(_storage)?"
+  - "security(_storage)?"
+  - notwendig
+  - essenziell
+  - essentiell
+  - erforderlich
+  - "technisch[-_ ]?notwendig"

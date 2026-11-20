@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Unbekannter Banner (Shadow DOM)</title></head>
+<body>
+<main style="min-height:2400px"><h1>Beispiel Kanzlei</h1></main>
+<consent-box></consent-box>
+<script>
+  const host = document.querySelector('consent-box');
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML =
+    '<div role="dialog" aria-modal="true" aria-label="Einwilligung" style="position:fixed;inset:20% 25%;background:#fff;color:#111;padding:20px;z-index:10">' +
+    '<p>Wir verarbeiten personenbezogene Daten mit Cookies. Ihre Einwilligung ist freiwillig.</p>' +
+    '<button type="button">Alle akzeptieren</button> <button type="button">Ablehnen</button></div>';
+</script>
+</body>
+</html>

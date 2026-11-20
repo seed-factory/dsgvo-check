@@ -1,0 +1,27 @@
+{
+  "$description": "A version only in the markup (meta generator, a meta http-equiv named X-Powered-By) is no response header",
+  "$expect": { "status": "completed", "variants": [] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "server", "value": "[redacted]", "productVersions": [] }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [{ "name": "x-powered-by", "value": "[redacted]" }],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

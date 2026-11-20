@@ -1,0 +1,249 @@
+# Core UI strings, disclaimer and diagnostics. Draft texts: "Textentwurf" until reviewed.
+draft: true
+ui:
+  disclaimer: >-
+    Dieser Bericht beschreibt technische Beobachtungen eines automatisierten, passiven Scans zum angegebenen
+    Zeitpunkt. Er ist keine Rechtsberatung und keine rechtliche Bewertung.
+  # Further paragraphs of the disclaimer. src/core/data/disclaimer.ts renders each conditional paragraph only when
+  # its condition holds in the report, so the text stays true; `noFinding`, `dependence`, `data` and `usage` always.
+  # The HTML report shows each paragraph under a label (`report.notice.label`).
+  disclaimer.noFinding: Wenn zu einer Prüfung kein Befund vorliegt, bedeutet das nicht, dass eine Anforderung erfüllt ist.
+  disclaimer.dependence: >-
+    Ergebnisse können von Standort, Zeitpunkt, Konfiguration des Einwilligungsbanners und der Erkennung als
+    automatisierter Besucher abhängen.
+  # Every paragraph gets `detail`: `brief` is the report for the site owner, which names no command-line options.
+  disclaimer.data: >-
+    Werte von Cookies, Web-Storage-Einträgen und Consent-Strings werden weder im Klartext noch als Prüfsumme
+    gespeichert; Query-Parameter in URLs werden bis auf eine Positivliste durch „[redacted]“ ersetzt.
+  disclaimer.screenshots: >-
+    Der Scan hat ein Bildschirmfoto des Bannerbereichs aufgenommen{detail, select, brief {} other { (abschaltbar mit
+    --no-screenshots)}}. Aufgenommen wird nur ein Ausschnitt des ersten Bildschirms vor jeder Interaktion und nur, wenn
+    der Bannerbereich eindeutig abgrenzbar ist und höchstens die Hälfte des Viewports einnimmt. Das Bild liegt als
+    Beleg im Berichtsverzeichnis und kann Inhalte der Website enthalten.
+  disclaimer.bannerNotRecognized: >-
+    Das Einwilligungsbanner konnte keinem unterstützten Anbieter zugeordnet werden. Prüfungen, die von der Erkennung
+    abhängen, wurden nicht abschließend ausgewertet. Ein nicht erkanntes Banner ist nicht gleichbedeutend mit einem
+    fehlenden Banner.
+  disclaimer.botOrGeo: >-
+    Das Einwilligungsbanner hat den Scan als automatisierten Zugriff oder als Zugriff von außerhalb seiner Zielregion
+    behandelt. Die betroffenen Prüfungen ({checks}) wurden als nicht auswertbar eingestuft; das Verhalten der Website
+    gegenüber Besuchern kann abweichen.
+  disclaimer.egressUnknown: >-
+    Die Region, aus der der Scan durchgeführt wurde, ist nicht bekannt. Websites können ihr Verhalten nach der Region
+    des Besuchers steuern; Beobachtungen zu Einwilligungsbannern gelten daher nur für die tatsächliche Messumgebung.
+  disclaimer.egressAsserted: >-
+    Die Egress-Region „{region, select, eea {EWR} de {Deutschland} other {{region}}}“ beruht auf einer
+    Nutzerangabe{detail, select, brief {} other { (--assume-region)}} und wurde vom Scanner nicht geprüft.
+  disclaimer.proxy: >-
+    Der Scan lief über einen Proxy{detail, select, brief {} other { (--proxy)}}. Standort und Region des Proxys wurden
+    vom Scanner nicht geprüft.
+  disclaimer.sandboxOff: >-
+    Der Browser wurde ohne Chromium-Sandbox ausgeführt{detail, select, brief {} other { (--sandbox off)}}. Dies
+    betrifft die Isolation der Messumgebung, nicht die Ergebnisse.
+  disclaimer.incomplete: >-
+    {status, select, failed {Der Scan wurde nicht durchgeführt} other {Der Scan wurde nicht vollständig
+    durchgeführt}}{hasReasons, select, true { (Gründe: {reasons})} other {}}. Nicht abgeschlossene Prüfungen sind im
+    Bericht mit ihrem Status gekennzeichnet; bereits erhobene Beobachtungen bleiben erhalten.
+  # `verified` false: the accept click took place, but the CMP state did not confirm it.
+  disclaimer.phaseC: >-
+    {detail, select, brief {Der Scan hat im Einwilligungsbanner zugestimmt} other {Phase C (Annahme im
+    Einwilligungsbanner) wurde durchgeführt}}. Dabei wird die IP-Adresse des prüfenden Rechners an die Drittanbieter
+    übermittelt, deren Ressourcen die Website nach der Annahme lädt.{verified, select, false { Das Banner hat die
+    Annahme nicht vollständig bestätigt; Beobachtungen „nach Zustimmung“ sind daher nur eingeschränkt
+    aussagekräftig.} other {}}
+  disclaimer.phaseCFailed: >-
+    Die Annahme im Einwilligungsbanner{detail, select, brief {} other { (Phase C)}} konnte nicht ausgelöst werden;
+    Beobachtungen „nach Zustimmung“ liegen daher nicht vor.
+  disclaimer.draft: "Textentwurf – die Texte dieses Berichts sind noch nicht juristisch geprüft."
+  disclaimer.usage: >-
+    dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
+    Dritter sind nicht zur Veröffentlichung vorgesehen. Die Software wird unter der Apache License 2.0 ohne
+    Gewährleistung bereitgestellt.
+  # Exit reasons in words (`summary.exitReasons`): `code` without the check id, which is `check`; `reason` as stored.
+  exitReason: >-
+    {code, select, threshold {Befunde ab der eingestellten Schwelle} check-error {Prüfung {check} fehlgeschlagen}
+    unreachable {Website nicht erreichbar} blocked {Zugriff blockiert} timeout {Zeitlimit erreicht}
+    sandbox-unavailable {Chromium-Sandbox nicht verfügbar} invalid-input {ungültige Eingabe} internal-error
+    {interner Fehler} report-write-failed {Bericht konnte nicht vollständig geschrieben werden} strict-inconclusive
+    {strenger Modus: Prüfung {check} nicht eindeutig} strict-sandbox-off {strenger Modus: Sandbox ausgeschaltet}
+    strict-egress-unverified {strenger Modus: Region nicht geprüft} other {{reason}}}
+  # Nutzungshinweise for `--help` and the README.de.md (section `## Nutzungshinweise`).
+  usageNotes.title: "Nutzungshinweise"
+  usageNotes: >-
+    dsgvo-check ist für die Prüfung eigener oder im Auftrag betreuter Websites bestimmt; Berichte über Websites
+    Dritter sind nicht zur Veröffentlichung vorgesehen. HTTP-Anfragen des Scanners tragen den User-Agent
+    „dsgvo-check/{version} (passive DSGVO/security check; https://github.com/seed-factory/dsgvo-check)“; der Browser
+    meldet sich als Chrome mit demselben Token. TLS-Verbindungsaufbauten und DNS-Abfragen tragen keinen User-Agent.
+    Phase C übermittelt die IP-Adresse des prüfenden Rechners an die Drittanbieter, deren Ressourcen die Website nach
+    der Annahme im Banner lädt. Mit --proxy laufen DNS-Abfragen direkt über den Resolver, nicht über den Proxy.
+  console.title: "dsgvo-check {version} – Bericht für {target}"
+  console.draftStamp: "Textentwurf"
+  console.status.complete: "Scan vollständig"
+  console.status.partial: "Scan teilweise durchgeführt"
+  console.failed: "Scan nicht durchgeführt: {message} ({code})"
+  # Reason of a scan that the global timeout ended before the start page was captured (src/scan.ts).
+  failure.scan-timeout: "Globales Zeitlimit (--timeout {seconds} s) erreicht, bevor die Startseite in Phase A vollständig erfasst war."
+  failure.browser-no-handover: "Globales Zeitlimit (--timeout {seconds} s) erreicht. Der Browser-Kollektor hat danach keine Daten übergeben; ob die Startseite erfasst war, ist nicht bekannt."
+  # Reasons of a failed scan (`scan.failure.code`), thrown by src/scan.ts, src/cli.ts, src/core/url/url.ts and the collectors.
+  failure.target-missing: "Keine Ziel-URL angegeben."
+  failure.target-invalid-url: "Ungültige URL: {url}"
+  failure.target-unsupported-scheme: "Nur http(s)-URLs werden unterstützt: {scheme}"
+  failure.targets-unreadable: "Zieldatei konnte nicht gelesen werden: {file} ({message})"
+  failure.targets-too-many: "Zu viele Ziele: {count} (Grenze {max}, DSGVO_CHECK_SCAN_MAX_TARGETS)."
+  failure.targets-duplicate: "Zwei Ziele teilen sich das Berichtsverzeichnis {dir}."
+  failure.targets-snapshot: "--save-snapshot und --from-snapshot gehen nur mit einer URL und ohne --targets."
+  failure.target-credentials: "Zugangsdaten in der URL sind nicht erlaubt."
+  failure.invalid-duration: "Ungültige Dauer: {value}"
+  failure.invalid-fail-on: "Ungültiger Wert für --fail-on: {value}"
+  failure.invalid-max-pages: "Ungültiger Wert für --max-pages: {value}"
+  failure.invalid-timeout: "Ungültiger Wert für --timeout: {value}"
+  failure.invalid-proxy: "Ungültige Proxy-URL (nur http:// wird unterstützt)."
+  failure.invalid-cli-option: "Ungültiger Wert für {option}: {value}"
+  # `problems`: `NAME=Wert (Quelle): Grund`, getrennt durch Semikolon; Werte geheimer Einstellungen fehlen.
+  failure.invalid-config: "Ungültige Einstellung(en): {problems}"
+  failure.target-nxdomain: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
+  failure.target-dns-error: "Zielhost {host} konnte nicht aufgelöst werden ({code})."
+  failure.target-not-public: "Zielhost {host} löst nur auf nicht-öffentliche Adressen auf; der Scan ist nur für öffentliche Websites vorgesehen."
+  failure.target-mixed-addresses: "Zielhost {host} löst neben öffentlichen auch auf nicht-öffentliche Adressen auf ({addresses}); der Scan ist nur für öffentliche Websites vorgesehen."
+  failure.snapshot-unreadable: "Snapshot {file} ist nicht lesbar: {message}"
+  failure.snapshot-invalid: "Snapshot {file} hat kein unterstütztes Format."
+  failure.unknown-check: "Unbekannte Prüfung(en) in --checks: {checks}"
+  failure.locked-override: "Diese Varianten sind nicht überschreibbar: {variants}"
+  failure.start-page-unresolved: "{redirected, select, yes {Die Startseite leitet auf einen Host weiter, dessen Name nicht aufgelöst werden kann.} other {Der Name des Hosts der Startseite kann nicht aufgelöst werden.}}"
+  failure.start-page-not-public: "{redirected, select, yes {Die Startseite leitet auf eine nicht-öffentliche Adresse weiter; der Scan wurde abgebrochen.} other {Der Host der Startseite löst auf eine nicht-öffentliche Adresse auf; der Scan wurde abgebrochen.}}"
+  failure.start-page-unreachable: "Die Startseite konnte nicht geladen werden ({reason})."
+  failure.start-page-5xx: "Die Startseite antwortet wiederholt mit HTTP {status}."
+  failure.start-page-blocked: "Die Startseite zeigt eine Sperr- oder Prüfseite ({signals})."
+  failure.browser-not-installed: "Chromium ist nicht installiert. Bitte „dsgvo-check install“ ausführen."
+  failure.sandbox-failed: "Die Chromium-Sandbox konnte nicht gestartet werden (z. B. AppArmor-Einschränkung für User Namespaces oder ein Docker-Profil, das sie sperrt). Möglichkeiten: die Systemeinstellung selbst anpassen oder ausdrücklich --sandbox off setzen.{container, select, yes { Im Docker-Image gilt standardmäßig „--sandbox container“; lassen Sie die Option weg.} other {}}"
+  failure.sandbox-container-outside-image: "--sandbox container (DSGVO_CHECK_BROWSER_SANDBOX=container) ist nur im dsgvo-check-Docker-Image erlaubt, wo der gehärtete Container die Isolation übernimmt. Außerhalb des Images require oder bewusst off verwenden."
+  failure.browser-launch-failed: "Chromium konnte nicht gestartet werden: {message}"
+  failure.interrupted: "Abbruch durch {signal}"
+  failure.watchdog-timeout: "Zeitlimit inklusive Reserve überschritten"
+  failure.internal-error: "Interner Fehler: {message}"
+  # Help of the scan and install commands (src/cli.ts; --help is always German).
+  cli.description: "Passiver Scan einer Website auf DSGVO/TDDDG/DDG-Indizien und grundlegende Sicherheitsprobleme."
+  cli.url: "Eine oder mehrere Ziel-URLs (http/https); bei mehreren bekommt jede Website ein eigenes Verzeichnis unter --out"
+  cli.targets: "Datei mit einer Ziel-URL pro Zeile (leere Zeilen und #-Kommentare werden ignoriert); jede Website bekommt ein eigenes Verzeichnis unter --out"
+  cli.urlMissing: "Ziel-URL fehlt."
+  cli.failOn: "Schwelle für Exit-Code 1: critical|warning|none"
+  cli.out: Ausgabeverzeichnis
+  cli.maxPages: maximale Seitenzahl in Phase A
+  cli.timeout: "globales Zeitlimit, z. B. 8m, 90s"
+  cli.proxy: "HTTP-Proxy (http://, CONNECT) für Browser, HTTP und TLS"
+  cli.assumeRegion: "Standort laut Nutzerangabe: eea|de"
+  cli.strict: nicht eindeutige Ergebnisse, Sandbox off und ungeprüfte Region führen zu Exit-Code 2
+  cli.sandbox: "Chromium-Sandbox: require|off|container (container nur im Docker-Image)"
+  cli.noScreenshots: Bannerbilder deaktivieren (Aufnahme ist ausgesetzt)
+  cli.saveSnapshot: Rohdaten-Snapshot speichern
+  cli.fromSnapshot: Snapshot neu auswerten, ohne die Website aufzurufen
+  cli.checks: "nur diese Prüfungen, z. B. EMBED-01,HDR-01"
+  cli.verbose: ausführliche Logs auf stderr
+  cli.configNotes.title: "Einstellungen"
+  cli.configNotes: >-
+    Schwellen, Zeitlimits und Grenzen lassen sich ohne Flags über Umgebungsvariablen der Form
+    DSGVO_CHECK_<ABSCHNITT>_<NAME> oder über eine Datei .env im aktuellen Verzeichnis setzen (Vorlage: .env.example im
+    Repository). Vorrang: Flag, Umgebungsvariable, .env, Standardwert. Ohne Konfiguration gelten die Standardwerte.
+  cli.install: Chromium (Chrome for Testing) für playwright-core herunterladen
+  cli.installWithDeps: "Systemabhängigkeiten installieren (Linux, benötigt Root)"
+  console.duration: "Dauer: {seconds} s"
+  console.counts: "Befunde: {critical} kritisch · {warning} Warnung · {info} Hinweis"
+  console.noFindings: "Keine Befunde beobachtet. Das ist keine Bestätigung, dass Anforderungen erfüllt sind."
+  console.severity.critical: "KRITISCH"
+  console.severity.warning: "WARNUNG"
+  console.severity.info: "HINWEIS"
+  console.pages: "Seiten"
+  console.confidence.medium: "Zuordnung mit mittlerer Sicherheit – bitte manuell prüfen"
+  console.confidence.low: "Zuordnung mit geringer Sicherheit – bitte manuell prüfen"
+  console.checks: "Prüfungen: {total} · abgeschlossen {completed} · teilweise {partial} · nicht eindeutig {inconclusive} · nicht anwendbar {notApplicable} · übersprungen {skipped} · Fehler {error}"
+  console.diagnostic: "Diagnose"
+  console.exit: "Exit-Code {code} ({reasons})"
+  console.reportWritten: "Bericht gespeichert: {path}"
+  console.reportWriteFailed: "Bericht konnte nicht geschrieben werden: {path} ({message})"
+  console.siteStart: "Website {index} von {total}: {url}"
+  console.siteExit: "{url}: Exit-Code {code}"
+  console.sandboxOff: "Achtung: Chromium-Sandbox ist ausgeschaltet (--sandbox off)."
+  console.configFile: "Einstellungen aus {path} gelesen: {count}"
+  console.configUnknown: "Unbekannte Einstellungen ignoriert: {names}"
+  # Grund einer abgelehnten Einstellung, hinter `NAME=Wert (Quelle): `; Ids und Parameter: src/core/config/problems.ts.
+  config.source.environment: "Umgebung"
+  config.source.config: "config-Option"
+  config.source.default: "Standardwert"
+  config.problem.integer: "erwartet eine ganze Zahl"
+  config.problem.number: "erwartet eine Zahl"
+  config.problem.min: "muss mindestens {min} sein"
+  config.problem.above: "muss größer als {min} sein"
+  config.problem.max: "darf höchstens {max} sein"
+  config.problem.floor: "muss mindestens {min} sein: nur strengere Werte sind erlaubt, der Scan bleibt passiv"
+  config.problem.items-min: "braucht mindestens {min, plural, one {# Eintrag} other {# Einträge}}"
+  config.problem.length-min: "braucht mindestens {min} Zeichen"
+  config.problem.option: "erlaubt sind: {options}"
+  config.problem.type: "falscher Typ, erwartet: {expected}"
+  config.problem.unknown-keys: "unbekannte Schlüssel: {keys}"
+  config.problem.proxy-scheme: "nur http://-Proxys (HTTP CONNECT) werden unterstützt"
+  config.problem.dns-server: "erwartet Host, Host:Port oder [IPv6]:Port"
+  config.problem.dkim-selector: "erwartet einen DKIM-Selektor oder Domain/Selektor, z. B. selector1 oder example.de/selector1"
+  config.problem.dwell-order: "darf nicht unter {other} ({value}) liegen"
+  config.problem.tls-days-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.tls-share-order: "darf {other} ({value}) nicht überschreiten"
+  config.problem.report-reserve: "muss {first} plus {second} ({value}) abdecken, sonst beendet der Watchdog den Prozess, während Berichte geschrieben werden"
+  config.problem.unreadable: "Datei nicht lesbar ({code})"
+  config.problem.invalid: "ungültiger Wert"
+messages:
+  # `cause` user-agent: the CMP's own crawler test (`test` names it) matched the scanner's User-Agent and kept its
+  # dialog closed; any other value or none: another direct bot signal of the CMP (`signal`).
+  diagnostic.SCAN-BOTMODE:
+    title: >-
+      {cause, select, user-agent {Einwilligungsbanner öffnet sich nicht für den User-Agent des Scanners} other
+      {Einwilligungsbanner verhält sich wie gegenüber einem Bot}}
+    body: >-
+      {cause, select, user-agent {Das Einwilligungsbanner behandelt Browser, deren User-Agent auf sein
+      Erkennungsmuster für Crawler ({test}) passt, als Bot und öffnet ihnen sein Banner nicht. Der User-Agent des
+      Scanners passt auf dieses Muster; das Banner blieb im Scan geschlossen. Ein Besucher mit einem üblichen Browser
+      sieht das Banner womöglich. Betroffene Prüfungen sind nicht eindeutig.} other {Das Banner hat ein direktes
+      Bot-Signal geliefert ({signal}). Betroffene Prüfungen sind nicht eindeutig.}}
+  diagnostic.SCAN-GEO:
+    title: "Einwilligungsbanner meldet einen Standort außerhalb des EWR"
+    body: "Das Banner hat ein Standort-Signal geliefert ({signal}). Betroffene Prüfungen sind nicht eindeutig."
+  diagnostic.SCAN-UNREACHABLE:
+    title: "Website nicht erreichbar"
+    body: "Die Startseite konnte nicht geladen werden."
+  diagnostic.SCAN-BLOCKED:
+    title: "Zugriff blockiert"
+    body: "{count, plural, one {Der Zugriff auf {page} wurde} other {Der Zugriff auf # Seiten ({pages}) wurde}} durch eine Zugriffssperre oder Challenge eingeschränkt; {count, plural, one {die Seite wurde} other {die Seiten wurden}} nicht inhaltlich ausgewertet."
+  diagnostic.SCAN-TIMEOUT:
+    title: "Zeitlimit erreicht"
+    body: "{count, plural, =0 {Das globale Zeitlimit wurde erreicht; bereits erfasste Beobachtungen bleiben im Bericht enthalten.} one {Das globale Zeitlimit wurde erreicht. Eine Prüfung wurde nicht vollständig abgeschlossen; bereits erfasste Beobachtungen bleiben im Bericht enthalten.} other {Das globale Zeitlimit wurde erreicht. # Prüfungen wurden nicht vollständig abgeschlossen; bereits erfasste Beobachtungen bleiben im Bericht enthalten.}}"
+  # `fallback`: why the browser did not continue on the target of the plain-http redirect (absent in older snapshots).
+  # `signals`: the labels of the bot or WAF protection signals of the target (`fallback` bot-protection only).
+  diagnostic.SCAN-TLS-BLOCKED:
+    title: >-
+      Browser-Prüfungen nicht ausgeführt: Zertifikat ungültig{fallback, select, bot-protection {, Ziel der
+      HTTP-Weiterleitung mit Bot- oder WAF-Schutz ({signals})} other {}}
+    body: >-
+      Das Zertifikat von {host} wurde bei der TLS-Prüfung nicht als gültig angenommen. Der Browser hat die Website
+      deshalb nicht aufgerufen; Einwilligung, Tracking, eingebettete Dienste und Rechtstexte wurden nicht
+      geprüft.{fallback, select, none { Eine Weiterleitung der unverschlüsselten Adresse auf einen anderen Host mit
+      gültigem Zertifikat und abrufbarer Seite wurde nicht beobachtet.} same-host { Die unverschlüsselte Adresse
+      leitet auf HTTPS desselben Hosts weiter.} invalid { Die unverschlüsselte Adresse leitet auf einen anderen Host
+      weiter; dabei wurde nicht jedes Zertifikat als gültig bestätigt.} blocked { Die unverschlüsselte Adresse {via}
+      leitet auf {url} weiter; dort hat der Browser keine auswertbare Seite erhalten.} bot-protection { Die
+      unverschlüsselte Adresse {via} leitet auf {url} weiter; dort hat der Browser keine auswertbare Seite erhalten:
+      Das Ziel antwortete mit dem Signal eines Bot- oder WAF-Schutzes ({signals}). Der Scanner versucht nicht, einen
+      solchen Schutz zu umgehen.} off { Die Fortsetzung auf dem Ziel der HTTP-Weiterleitung ist ausgeschaltet
+      (DSGVO_CHECK_SCAN_TLS_FALLBACK=off).} other {}}
+  diagnostic.SCAN-TLS-FALLBACK:
+    title: Browser-Prüfungen auf dem Ziel der HTTP-Weiterleitung ausgeführt
+    body: >-
+      Das Zertifikat von {host} wurde bei der TLS-Prüfung nicht als gültig angenommen. Die unverschlüsselte Adresse
+      {via} leitet auf {url} weiter; jedes Zertifikat auf diesem Weg wurde als gültig angenommen. Einwilligung,
+      Tracking, eingebettete Dienste und Rechtstexte wurden deshalb dort geprüft, nicht auf {host}.
+  diagnostic.SCAN-SANDBOX-OFF:
+    title: "Chromium-Sandbox ausgeschaltet"
+    body: "Der Browser lief ohne Sandbox (--sandbox off)."
+  diagnostic.SCAN-THROTTLED:
+    title: "Anfragen gedrosselt"
+    body: "Der Zielhost antwortete wiederholt mit 429 oder 503. Die betroffene Erfassung ist unvollständig."
+  diagnostic.SCAN-PRIVATE-REQUEST-BLOCKED:
+    title: "Navigation durch Netzwerkregel blockiert"
+    body: "Die Netzwerkregel des Scanners hat {count, plural, one {eine Navigation} other {# Navigationen}} blockiert: {addressClass}.{unresolved, plural, =0 {} other { Name nicht auflösbar: Die lokale Namensauflösung lieferte keine Adresse{hasLookupCodes, select, true {, Resolver-Fehler: {lookupCodes}} other {}}.}}{nonPublic, plural, =0 {} other { Private Adresse: Das Ziel liegt in einem nicht-öffentlichen Adressbereich.}} Betroffene Dokumente wurden nicht abgerufen.{recovered, plural, =0 {} one { Eine weitere Navigation wurde zunächst blockiert und nach Wiederholung geladen.} other { # weitere Navigationen wurden zunächst blockiert und nach Wiederholung geladen.}}"

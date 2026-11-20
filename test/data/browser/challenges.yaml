@@ -1,0 +1,41 @@
+# Bot and WAF challenge pages: what a page that blocks the scanner looks like (start page → SCAN-BLOCKED, subpage → not
+# evaluable). Facts only; the scanner never solves or bypasses a challenge. `kind` is one of cloudflare, akamai, captcha,
+# waf-block; `signal` is the label stored in the snapshot. Patterns are regular expression sources.
+challenges:
+  # A response header that marks a challenge. `status` limits it to that HTTP status; an empty value counts only with
+  # `allowEmptyValue`. The HTTP collector reads these too (it has no DOM): a challenged document → SCAN-HTTP-BLOCKED, and
+  # HDR-01 does not judge its headers.
+  headers:
+    - { name: cf-mitigated, kind: cloudflare, signal: header:cf-mitigated }
+    - { name: x-datadome, kind: captcha, signal: header:x-datadome, status: 403, allowEmptyValue: true }
+    # Vercel Firewall and its bot challenge (often status 429, value `challenge` or `deny`).
+    - { name: x-vercel-mitigated, kind: waf-block, signal: header:x-vercel-mitigated }
+
+  # Script URLs of the page (case-sensitive).
+  scripts:
+    - { pattern: "/cdn-cgi/challenge-platform/", kind: cloudflare, signal: "script:challenge-platform" }
+    - { pattern: 'captcha-delivery\.com', kind: captcha, signal: "script:datadome" }
+    - { pattern: "_Incapsula_Resource", kind: waf-block, signal: "script:incapsula" }
+
+  # Page title (case-insensitive); only short pages are tested, a long article may carry such words.
+  titles:
+    - { pattern: "^just a moment", kind: cloudflare, signal: "title:just a moment" }
+    - { pattern: 'attention required!? \| cloudflare', kind: cloudflare, signal: "title:attention required" }
+    - { pattern: "^(access denied|zugriff verweigert)$", kind: akamai, signal: "title:access denied" }
+    - { pattern: "sucuri website firewall", kind: waf-block, signal: "title:sucuri" }
+    - { pattern: "^(ddos-guard|ddos protection)", kind: waf-block, signal: "title:ddos-guard" }
+    - {
+        pattern: "^(are you a robot|captcha|human verification|bot verification)",
+        kind: captcha,
+        signal: "title:captcha",
+      }
+
+  # Visible text (case-insensitive); short pages only.
+  texts:
+    - { pattern: "incapsula incident id", kind: waf-block, signal: "text:incapsula" }
+    - { pattern: 'reference #\d+\.[0-9a-f]+', kind: akamai, signal: "text:akamai-reference" }
+    - {
+        pattern: "checking (if the site connection is secure|your browser)",
+        kind: cloudflare,
+        signal: "text:checking-browser",
+      }

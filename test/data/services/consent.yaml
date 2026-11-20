@@ -1,0 +1,149 @@
+# Consent management platforms (category consent-provider). Self-hosted CMPs (Borlabs Cookie, Complianz,
+# Real Cookie Banner) load from the site itself; their consent cookies are in the allowlist (_catalog.yaml).
+# Format: see _catalog.yaml.
+services:
+  - id: cookiebot
+    name: Cookiebot
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: Usercentrics A/S, country: DK }
+    domains: [cookiebot.com, cookiebot.eu]
+    aliasesDe: [Cookiebot]
+    aliasesEn: [Cookiebot]
+    companyAliases: [Cybot A/S]
+
+  - id: usercentrics
+    name: Usercentrics
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: Usercentrics GmbH, country: DE }
+    domains: [usercentrics.eu, usercentrics.com]
+    aliasesDe: [Usercentrics]
+    aliasesEn: [Usercentrics]
+
+  # The self-hosted CCM19 serves its app from `<install directory>/public/` of any host, with the API key and the site
+  # domain in the query.
+  - id: ccm19
+    name: CCM19
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: Papoo Software & Media GmbH, country: DE }
+    domains: [ccm19.de]
+    selfHostable: true
+    signatures:
+      - id: self-hosted-app
+        anyHost: true
+        path: '/public/app\.js$'
+        query: { apiKey: "", domain: "" }
+        kind: library
+        stage: loaded
+      - id: self-hosted-style
+        anyHost: true
+        path: '/public/app\.css$'
+        query: { apiKey: "", domain: "" }
+        kind: stylesheet
+        stage: loaded
+      - id: self-hosted-api
+        anyHost: true
+        path: "/public/(widget|cron|page_check/report|statistics/consent)$"
+        query: { apiKey: "", domain: "" }
+        kind: resource
+      - id: self-hosted-icon
+        anyHost: true
+        path: "/public/settings-icon$"
+        query: { user: "", domain: "" }
+        kind: image
+        stage: loaded
+    aliasesDe: [CCM19]
+    aliasesEn: [CCM19]
+
+  - id: cookiehub
+    name: CookieHub
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: CookieHub ehf., country: IS }
+    domains: [cookiehub.net, cookiehub.eu, cookiehub.com]
+    aliasesDe: [CookieHub]
+    aliasesEn: [CookieHub]
+
+  # ⚠ Borlabs Cookie runs on the site's own host; requests to borlabs.io are rare (licence/service API).
+  - id: borlabs-cookie
+    name: Borlabs Cookie
+    category: consent-provider
+    policyRelevance: optional
+    domains: [borlabs.io]
+    aliasesDe: [Borlabs Cookie, Borlabs]
+    aliasesEn: [Borlabs Cookie]
+
+  - id: consentmanager
+    name: consentmanager
+    category: consent-provider
+    policyRelevance: optional
+    domains: [consentmanager.net, consentmanager.de]
+    aliasesDe: [consentmanager, consentmanager.net]
+    aliasesEn: [consentmanager]
+
+  - id: onetrust
+    name: OneTrust
+    category: consent-provider
+    policyRelevance: optional
+    parent: { name: OneTrust LLC, country: US }
+    domains: [cookielaw.org, onetrust.com, cookiepro.com]
+    aliasesDe: [OneTrust, CookiePro]
+    aliasesEn: [OneTrust, CookiePro]
+
+  - id: didomi
+    name: Didomi
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: Didomi SAS, country: FR }
+    domains: [privacy-center.org, didomi.io]
+    aliasesDe: [Didomi]
+    aliasesEn: [Didomi]
+
+  - id: iubenda
+    name: iubenda
+    category: consent-provider
+    policyRelevance: optional
+    provider: { name: iubenda s.r.l., country: IT }
+    domains: [iubenda.com]
+    aliasesDe: [iubenda]
+    aliasesEn: [iubenda]
+
+  # Without `anyHost` signatures, first-party proxies of these CMPs stay unclassified. CMP recognition
+  # stays with the adapters in src/cmp.
+  - id: sourcepoint
+    name: Sourcepoint
+    category: consent-provider
+    policyRelevance: optional
+    domains: [privacy-mgmt.com]
+    signatures:
+      - id: unified-js
+        hosts: [cdn.privacy-mgmt.com]
+        path: '^/unified/.+\.js$'
+        kind: library
+        stage: loaded
+      - id: consent-api
+        hosts: [cdn.privacy-mgmt.com]
+        path: "^/(consent|wrapper)/"
+        kind: resource
+    aliasesDe: [Sourcepoint]
+    aliasesEn: [Sourcepoint]
+
+  - id: funding-choices
+    name: Google Funding Choices
+    category: consent-provider
+    policyRelevance: optional
+    domains: [fundingchoicesmessages.google.com]
+    signatures:
+      - id: loader
+        hosts: [fundingchoicesmessages.google.com]
+        path: "^/i/(pub-[0-9]+|[0-9]+)$"
+        kind: library
+        stage: loaded
+      - id: element-log
+        hosts: [fundingchoicesmessages.google.com]
+        path: "^/el/"
+        kind: resource
+    aliasesDe: [Funding Choices, Google Funding Choices]
+    aliasesEn: [Funding Choices, Google Funding Choices]

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><title>iframe mit einer Cookie-Leiste (ein Stichwort, Einstellungen oder Akzeptieren)</title></head>
+<body style="margin:0">
+<main style="min-height:2400px;padding:24px"><h1>Beispiel Hotel</h1><p>Willkommen.</p></main>
+<script>
+  // How the iframe sits in this page comes from ?frame=…, and ?nested=1 puts the bar one frame deeper (?nested=tall: in
+  // an inner iframe taller than the outer one, so the bar lies below the outer iframe); ?bar=accept shows the bar with
+  // an accept button instead of the settings button.
+  var params = new URLSearchParams(location.search);
+  var styles = {
+    shown: 'position:fixed;left:0;bottom:0;width:100%;height:200px',
+    'display-none': 'position:fixed;left:0;bottom:0;width:100%;height:200px;display:none',
+    'visibility-hidden': 'position:fixed;left:0;bottom:0;width:100%;height:200px;visibility:hidden',
+    'opacity-zero': 'position:fixed;left:0;bottom:0;width:100%;height:200px;opacity:0',
+    'zero-size': 'position:fixed;left:0;bottom:0;width:0;height:0',
+    'below-first-screen': 'position:absolute;left:0;top:2000px;width:100%;height:200px',
+    // Only the top 100 px of an 800 px iframe reach the first screen; its bar sits at its bottom, below the screen.
+    'partly-below': 'position:absolute;left:0;top:calc(100vh - 100px);width:100%;height:800px',
+    // Only the bottom 200 px of an 800 px iframe reach the first screen, with its bar.
+    'partly-above': 'position:fixed;left:0;top:-600px;width:100%;height:800px',
+    'top-strip': 'position:fixed;left:0;top:0;width:100%;height:200px',
+    // An iframe twice as large as the first screen, shown at half its size: its bar shows at the bottom of the screen.
+    'scaled-half': 'position:fixed;left:0;top:0;width:200%;height:200%;transform:scale(.5);transform-origin:0 0',
+    // The same by CSS zoom, under which the iframe's percentages count in its own, halved pixels.
+    'zoomed-half': 'position:fixed;left:0;top:0;width:100%;height:100%;zoom:.5',
+    // An iframe as high as the first screen, shown at twice its size: its bar lies below the screen.
+    'scaled-double': 'position:fixed;left:0;top:0;width:50%;height:100%;transform:scale(2);transform-origin:0 0',
+    // A 200 px iframe at the bottom whose content starts inside a 20 px border and a 10 px padding.
+    bordered: 'position:fixed;left:0;bottom:0;width:1000px;height:200px;border:20px solid #333;padding:10px'
+  };
+  var variant = params.get('frame') || 'shown';
+  var frame = document.createElement('iframe');
+  frame.title = 'Hinweis';
+  var bar = params.get('bar') === 'accept' ? 'one-keyword-accept.html' : 'one-keyword-settings.html';
+  var nested = params.get('nested');
+  var wrapper = 'wrapper.html?bar=' + bar + (nested === 'tall' ? '&inner=tall' : '');
+  frame.src = 'https://consent.unknown-cmp.test/' + (nested ? wrapper : bar);
+  frame.style.cssText = 'border:0;z-index:100;' + (styles[variant] || styles.shown);
+  document.body.appendChild(frame);
+</script>
+</body>
+</html>

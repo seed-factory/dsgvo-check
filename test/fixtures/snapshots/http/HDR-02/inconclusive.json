@@ -1,0 +1,28 @@
+{
+  "$description": "An older snapshot stored the product headers by name only ([redacted], no productVersions): the version is unknown, not absent",
+  "$expect": { "status": "inconclusive", "variants": [], "reason": "values-not-stored" },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "server", "value": "[redacted]" },
+          { "name": "x-powered-by", "value": "[redacted]" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

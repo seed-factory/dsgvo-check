@@ -1,0 +1,45 @@
+{
+  "$description": "Referrer-Policy unsafe-url on the Impressum only; start page is clean",
+  "$expect": { "status": "completed", "variants": ["referrer-policy-permissive"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": 200,
+        "headers": [
+          { "name": "strict-transport-security", "value": "max-age=31536000" },
+          { "name": "x-frame-options", "value": "DENY" },
+          { "name": "content-security-policy", "value": "default-src 'self'" },
+          { "name": "x-content-type-options", "value": "nosniff" },
+          { "name": "referrer-policy", "value": "no-referrer" },
+          { "name": "permissions-policy", "value": "camera=()" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": []
+      },
+      {
+        "role": "impressum",
+        "url": "https://www.example.de/impressum",
+        "finalUrl": "https://www.example.de/impressum",
+        "status": 200,
+        "headers": [
+          { "name": "strict-transport-security", "value": "max-age=31536000" },
+          { "name": "x-frame-options", "value": "DENY" },
+          { "name": "content-security-policy", "value": "default-src 'self'" },
+          { "name": "x-content-type-options", "value": "nosniff" },
+          { "name": "referrer-policy", "value": "unsafe-url" },
+          { "name": "permissions-policy", "value": "camera=()" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": []
+      }
+    ],
+    "requestsIssued": 3,
+    "throttled": false,
+    "errors": []
+  }
+}

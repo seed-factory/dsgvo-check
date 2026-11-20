@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Kurze Seite: Banner überdeckt die Fußzeile</title>
+<style>html,body{height:100%;margin:0;font-family:sans-serif}
+body{display:flex;flex-direction:column}
+main{flex:1;padding:24px}
+footer{padding:24px;background:#eee}
+.notice{position:fixed;left:0;right:0;bottom:0;height:90px;background:#222;color:#fff;padding:12px 24px;z-index:50;box-sizing:border-box}
+.notice button{padding:8px 14px;margin-right:8px}</style>
+</head>
+<body>
+<main><h1>Beispiel Kanzlei</h1></main>
+<footer><a href="/impressum.html">Impressum</a> · <a href="/datenschutz.html">Datenschutzerklärung</a></footer>
+<div class="notice">
+  <p style="margin:0 0 8px">Diese Seite nutzt Cookies und Tracking von Drittanbietern.</p>
+  <button type="button">Akzeptieren</button>
+  <button type="button">Ablehnen</button>
+</div>
+</body>
+</html>

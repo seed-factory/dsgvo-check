@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Cookie-Leiste, die der Besucher nicht sieht</title>
+<style>body{font-family:sans-serif;margin:0} main{position:relative;background:#fff;min-height:2400px;padding:24px}
+.bar{position:fixed;left:0;right:0;bottom:0;height:120px;background:#fff;border-top:1px solid #ccc;padding:16px;z-index:50}</style>
+</head>
+<body>
+<main><h1>Beispiel Shop</h1><p>Willkommen.</p></main>
+<script>
+  // How the bar is hidden comes from ?hide=…; `none` shows it.
+  var hide = new URLSearchParams(location.search).get('hide') || 'none';
+  var inner = '<p>Wir verwenden Cookies.</p><button type="button">Akzeptieren</button><button type="button">Ablehnen</button>';
+  var css = {
+    none: '',
+    'clip-path': 'clip-path:inset(50%)',
+    behind: 'z-index:-1'
+  }[hide];
+  var html = hide === 'sr-only-dialog'
+    ? '<div role="dialog" style="position:absolute;top:10px;left:10px;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Cookie-Hinweis</div>'
+    : '<div class="bar" style="' + css + '">' + inner + '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+</script>
+</body>
+</html>

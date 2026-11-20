@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Complianz-Simulator: Knöpfe mit Daten in den Attributen</title>
+<!-- The banner of the region `eu`, whose buttons the page marks up with data once the simulator rendered them (markers
+     zq7 and two hex ids): an id, a class token and a test hook of the kind a selector is built from, a name with a URL,
+     a role token that is no role, an id with a query around the buttons; a class token whose hex run a zero-width space
+     splits and a test hook with a fullwidth at sign; the consent type and the version carry data too. Their own classes
+     still identify the buttons. -->
+<script>
+  var complianz = { prefix: 'cmplz_', region: 'eu', consenttype: 'optin&uid=zq7u', version: '7.1.0?sid=zq7v', sim: { reject: true, wall: false } };
+  document.addEventListener('DOMContentLoaded', function () {
+    var deny = document.querySelector('.cmplz-deny');
+    var accept = document.querySelector('.cmplz-accept');
+    if (!deny || !accept) return;
+    deny.id = 'cid-9f86d081884c7d659a2feaa0c55ad015';
+    deny.classList.add('uid-5f4dcc3b5aa765d61d8327deb882cf99');
+    deny.setAttribute('name', 'https://x.test/?uid=zq7name');
+    deny.setAttribute('role', '?cid=zq7role button');
+    accept.setAttribute('data-testid', 'accept?sid=zq7tid');
+    accept.classList.add('?token=zq7cls');
+    accept.classList.add('zq7-9f86d081884c7d6\u200b59a2feaa0c55ad0');
+    deny.setAttribute('data-testid', 'max.mustermann\uff20zq7mail.test');
+    document.querySelector('.cmplz-buttons').id = 'buttons?sid=zq7anc&x=1';
+  });
+</script>
+<script src="/wp-content/plugins/complianz-gdpr/cookiebanner/js/complianz.min.js?ver=7.1.0" defer></script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Praxis</h1><p>Willkommen.</p></main>
+</body>
+</html>

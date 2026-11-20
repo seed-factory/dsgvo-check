@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Beispiel GmbH</title>
+</head>
+<body>
+  <main><h1>Cookies</h1></main>
+  <img src="https://tracker.example.net/pixel.gif?uid=SECRET_QUERY_VALUE_8&amp;id=site-1" width="1" height="1" alt="">
+  <script>
+    document.cookie = 'js_cookie=SECRET_JS_VALUE_3; path=/; max-age=3600';
+    document.cookie = 'tmp_probe=SECRET_TMP_VALUE_4; path=/';
+    document.cookie = 'tmp_probe=; path=/; max-age=0';
+    localStorage.setItem('ls_key', 'SECRET_LS_VALUE_5');
+    sessionStorage.setItem('ss_key', 'SECRET_SS_VALUE_6');
+    indexedDB.open('idb_test_db', 1);
+  </script>
+  <footer>
+    <a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutzerklärung</a>
+  </footer>
+</body>
+</html>

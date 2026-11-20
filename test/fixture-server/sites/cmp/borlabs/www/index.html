@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Borlabs-Simulator: v3 mit Ablehnen</title>
+<script>
+  var borlabsCookieConfig = {
+    settings: {
+      dialogGeoIpActive: false,
+      cookiesForBots: true,
+      respectDoNotTrack: false,
+      dialogShowDialogAfterUserInteraction: false,
+      dialogHideDialogOnPages: ['https://www.borlabs.test/impressum.html']
+    },
+    sim: { reject: true }
+  };
+</script>
+<script src="/wp-content/plugins/borlabs-cookie/assets/javascript/borlabs-cookie.min.js?ver=3.2.1" defer></script>
+<style>body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}</style>
+</head>
+<body>
+<main><h1>Beispiel Handwerk GmbH</h1><p>Willkommen.</p></main>
+<footer><a href="/impressum.html">Impressum</a> · <a href="/datenschutz.html">Datenschutz</a></footer>
+</body>
+</html>

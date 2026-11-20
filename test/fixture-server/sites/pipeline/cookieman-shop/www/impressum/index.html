@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Impressum – Beispiel Manufaktur</title>
+<!-- Hand-written fixture: a page on www of the cookieman shops. The (fake) Google tag loads on every visit, whatever the banner answer. -->
+<style>
+  body{font-family:sans-serif;margin:0} main{min-height:2400px;padding:24px}
+  body.modal-open{overflow:hidden}
+  .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:1050;overflow-x:hidden;overflow-y:auto;outline:0}
+  .modal-dialog{max-width:800px;margin:40px auto;display:flex;align-items:center;min-height:calc(100% - 80px)}
+  .modal-content{background:#fff;color:#222;width:100%;border-radius:4px;font-size:14px}
+  .modal-header{margin:0;padding:16px;font-size:18px;border-bottom:1px solid #ddd}
+  .modal-body{padding:16px}
+  .modal-footer{padding:12px 16px;border-top:1px solid #ddd;text-align:right}
+  .modal-backdrop{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1040;background:#000;opacity:.5}
+  .btn{margin:4px;padding:8px 14px;border:1px solid #6c757d;background:#fff;color:#333;font-size:14px}
+  .btn-success{background:#1e7e34;border-color:#1e7e34;color:#fff}
+  .collapse{display:none}
+</style>
+<script src="/js/cookieman.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST123"></script>
+</head>
+<body>
+<main><h1>Impressum</h1><p>Angaben gemäß § 5 DDG: Beispiel Manufaktur GmbH, Musterweg 3, 10115 Berlin. Vertreten durch die Geschäftsführung. Kontakt: Telefon 030 000000, E-Mail info@manufaktur.test. Registergericht Amtsgericht Berlin, HRB 000000.</p></main>
+<footer><a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutzerklärung</a> · <a href="/kontakt/">Kontakt</a></footer>
+<div id="cookieman-modal" data-cookieman-showonce="1" data-cookieman-settings="{&quot;groups&quot;:{&quot;mandatory&quot;:{&quot;preselected&quot;:&quot;1&quot;,&quot;disabled&quot;:&quot;1&quot;,&quot;trackingObjects&quot;:[&quot;CookieConsent&quot;,&quot;fe_typo_user&quot;]},&quot;marketing&quot;:{&quot;respectDnt&quot;:&quot;1&quot;,&quot;trackingObjects&quot;:[&quot;FixtureStats&quot;]}},&quot;trackingObjects&quot;:{&quot;CookieConsent&quot;:{&quot;show&quot;:{&quot;CookieConsent&quot;:{&quot;duration&quot;:&quot;1&quot;,&quot;durationUnit&quot;:&quot;year&quot;,&quot;type&quot;:&quot;cookie_http+html&quot;,&quot;provider&quot;:&quot;Website&quot;}}},&quot;fe_typo_user&quot;:{&quot;show&quot;:{&quot;fe_typo_user&quot;:{&quot;duration&quot;:&quot;&quot;,&quot;durationUnit&quot;:&quot;session&quot;,&quot;type&quot;:&quot;cookie_http&quot;,&quot;provider&quot;:&quot;Website&quot;}}},&quot;FixtureStats&quot;:{&quot;show&quot;:{&quot;_fixture_stats&quot;:{&quot;duration&quot;:&quot;2&quot;,&quot;durationUnit&quot;:&quot;years&quot;,&quot;type&quot;:&quot;cookie_http+html&quot;,&quot;provider&quot;:&quot;Fixture&quot;}}}}}" class="modal fade" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <h5 class="modal-header" id="cookieman-modal-title">Über Cookies</h5>
+      <div class="modal-body">
+        <p>Wir setzen Cookies ein: notwendige für den Betrieb der Seite und, wenn Sie zustimmen, weitere zur Verbesserung unserer Inhalte. Ihre Einwilligung können Sie jederzeit widerrufen. Mehr dazu in der <a href="/datenschutz/">Datenschutzerklärung</a> und im <a href="/impressum/">Impressum</a>.</p>
+        <button class="btn btn-secondary btn-sm float-right collapsed" type="button" data-toggle="collapse" data-target="#cookieman-settings" aria-expanded="false" aria-controls="cookieman-settings">
+          Einstellungen
+        </button>
+        <div class="collapse" id="cookieman-settings">
+          <form data-cookieman-form="" class="mt-3">
+            <div id="cookieman-acco">
+              <div class="card"><div class="card-header" id="cookieman-acco-h-mandatory">
+                <input type="checkbox" name="mandatory" checked="checked" disabled="disabled">
+                <a href="" data-toggle="collapse" data-target="#cookieman-acco-mandatory" role="button">Notwendig</a>
+              </div></div>
+              <div class="card"><div class="card-header" id="cookieman-acco-h-marketing">
+                <input type="checkbox" name="marketing">
+                <a href="" data-toggle="collapse" data-target="#cookieman-acco-marketing" role="button">Marketing</a>
+              </div></div>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button data-cookieman-accept-none="" data-cookieman-save="" class="btn btn-outline-secondary">
+          Alle Cookies ablehnen
+        </button>
+        <button data-cookieman-save="" class="btn btn-outline-secondary" style="display: none">
+          Speichern
+        </button>
+        <button data-cookieman-accept-all="" data-cookieman-save="" class="btn btn-success">
+          Alle Cookies akzeptieren
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

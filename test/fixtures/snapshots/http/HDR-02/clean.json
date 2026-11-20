@@ -1,0 +1,27 @@
+{
+  "$description": "Server names nginx without a version and there is no X-Powered-By: no version header",
+  "$expect": { "status": "completed", "variants": [] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "server", "value": "[redacted]", "productVersions": [] }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

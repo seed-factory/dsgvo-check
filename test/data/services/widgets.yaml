@@ -1,0 +1,218 @@
+# Widgets, reviews, chat and social embeds. Format: see _catalog.yaml.
+services:
+  - id: elfsight
+    name: Elfsight
+    category: widget
+    policyRelevance: required
+    domains: [elfsight.com, elfsightcdn.com]
+    aliasesDe: [Elfsight]
+    aliasesEn: [Elfsight]
+
+  - id: calendly
+    name: Calendly
+    category: widget
+    policyRelevance: required
+    parent: { name: Calendly LLC, country: US }
+    domains: [calendly.com]
+    aliasesDe: [Calendly]
+    aliasesEn: [Calendly]
+
+  - id: dirs21
+    name: DIRS21
+    category: widget
+    policyRelevance: required
+    domains: [dirs21.de]
+    aliasesDe: [DIRS21]
+    aliasesEn: [DIRS21]
+
+  - id: weglot
+    name: Weglot
+    category: widget
+    policyRelevance: required
+    domains: [weglot.com, weglot.io]
+    aliasesDe: [Weglot]
+    aliasesEn: [Weglot]
+
+  - id: google-translate
+    name: Google Translate (Website-Widget)
+    category: widget
+    policyRelevance: required
+    provider: { name: Google Ireland Limited, country: IE }
+    parent: { name: Google LLC, country: US }
+    dpfEntity: { name: Google LLC }
+    domains: [translate.googleapis.com, translate.google.com]
+    aliasesDe: [Google Translate, Google Übersetzer]
+    aliasesEn: [Google Translate]
+
+  - id: trustindex
+    name: Trustindex
+    category: reviews
+    policyRelevance: required
+    provider: { name: Trustindex Kft., country: HU }
+    domains: [trustindex.io]
+    aliasesDe: [Trustindex]
+    aliasesEn: [Trustindex]
+
+  - id: provenexpert
+    name: ProvenExpert
+    category: reviews
+    policyRelevance: required
+    provider: { name: Expert Systems AG, country: DE }
+    domains: [provenexpert.com, provenexpert.net]
+    aliasesDe: [ProvenExpert]
+    aliasesEn: [ProvenExpert]
+
+  - id: trustpilot
+    name: Trustpilot
+    category: reviews
+    policyRelevance: required
+    provider: { name: Trustpilot A/S, country: DK }
+    domains: [trustpilot.com, trustpilot.net]
+    aliasesDe: [Trustpilot]
+    aliasesEn: [Trustpilot]
+
+  - id: trusted-shops
+    name: Trusted Shops
+    category: reviews
+    policyRelevance: required
+    domains: [trustedshops.com, trustedshops.de, trustedshops.eu, etrusted.com]
+    aliasesDe: [Trusted Shops, Trustbadge]
+    aliasesEn: [Trusted Shops, Trustbadge]
+
+  - id: intercom
+    name: Intercom
+    category: chat
+    policyRelevance: required
+    parent: { name: "Intercom, Inc.", country: US }
+    domains: [intercom.io, intercomcdn.com, intercomassets.com]
+    cookies: [intercom-id-*, intercom-device-id-*]
+    otherCookies: [intercom-session-*]
+    aliasesDe: [Intercom]
+    aliasesEn: [Intercom]
+
+  - id: zendesk
+    name: Zendesk
+    category: chat
+    policyRelevance: required
+    parent: { name: "Zendesk, Inc.", country: US }
+    domains: [zdassets.com, zendesk.com, zopim.com, zopim.io]
+    aliasesDe: [Zendesk, Zendesk Chat, Zopim]
+    aliasesEn: [Zendesk, Zendesk Chat]
+
+  - id: tawk-to
+    name: tawk.to
+    category: chat
+    policyRelevance: required
+    domains: [tawk.to]
+    cookies: [twk_uuid_*]
+    otherCookies: [TawkConnectionTime, twk_idm_key]
+    aliasesDe: [tawk.to]
+    aliasesEn: [tawk.to]
+
+  - id: tidio
+    name: Tidio
+    category: chat
+    policyRelevance: required
+    domains: [tidio.co, tidiochat.com]
+    aliasesDe: [Tidio]
+    aliasesEn: [Tidio]
+
+  - id: userlike
+    name: Userlike
+    category: chat
+    policyRelevance: required
+    provider: { name: Userlike UG (haftungsbeschränkt), country: DE }
+    domains: [userlike.com, userlike-cdn-widgets.s3-eu-west-1.amazonaws.com]
+    aliasesDe: [Userlike]
+    aliasesEn: [Userlike]
+
+  - id: facebook
+    name: Facebook
+    category: social
+    policyRelevance: required
+    provider: { name: Meta Platforms Ireland Limited, country: IE }
+    parent: { name: "Meta Platforms, Inc.", country: US }
+    dpfEntity: { name: "Meta Platforms, Inc." }
+    domains: [facebook.com, facebook.net, fbcdn.net, fb.com]
+    signatures:
+      - id: sdk
+        hosts: [connect.facebook.net]
+        path: '/sdk(/xfbml\.[a-z.]+)?\.js$'
+        kind: library
+        stage: loaded
+      - id: plugins
+        hosts: [facebook.com]
+        path: "^/(v[0-9.]+/)?plugins/"
+        kind: embed
+        stage: loaded
+        integration: iframe
+    cookies: [fr@facebook.com, datr@facebook.com, sb@facebook.com]
+    aliasesDe: [Facebook, Facebook Social Plugins, Facebook-Plugin]
+    aliasesEn: [Facebook, Facebook Social Plugins]
+    companyAliases: [Meta Platforms Ireland Ltd, Facebook Ireland Limited, Facebook Ireland Ltd]
+
+  - id: instagram
+    name: Instagram
+    category: social
+    policyRelevance: required
+    provider: { name: Meta Platforms Ireland Limited, country: IE }
+    parent: { name: "Meta Platforms, Inc.", country: US }
+    dpfEntity: { name: "Meta Platforms, Inc." }
+    domains: [instagram.com, cdninstagram.com]
+    signatures:
+      - id: embed-js
+        hosts: [instagram.com]
+        path: '^/embed\.js$'
+        kind: library
+        stage: loaded
+      - id: embed
+        hosts: [instagram.com]
+        path: "/embed/?$"
+        kind: embed
+        stage: loaded
+        integration: iframe
+    cookies: [ig_did@instagram.com, mid@instagram.com]
+    aliasesDe: [Instagram]
+    aliasesEn: [Instagram]
+    companyAliases: [Meta Platforms Ireland Ltd, Facebook Ireland Limited]
+
+  - id: linkedin
+    name: LinkedIn
+    category: social
+    policyRelevance: required
+    provider: { name: LinkedIn Ireland Unlimited Company, country: IE }
+    parent: { name: Microsoft Corporation, country: US }
+    dpfEntity: { name: LinkedIn Corporation }
+    domains: [linkedin.com, licdn.com]
+    aliasesDe: [LinkedIn]
+    aliasesEn: [LinkedIn]
+    companyAliases: [LinkedIn Ireland]
+
+  - id: pinterest
+    name: Pinterest
+    category: social
+    policyRelevance: required
+    provider: { name: Pinterest Europe Limited, country: IE }
+    parent: { name: "Pinterest, Inc.", country: US }
+    dpfEntity: { name: "Pinterest, Inc." }
+    domains: [pinterest.com, pinimg.com, pinterest.de]
+    aliasesDe: [Pinterest]
+    aliasesEn: [Pinterest]
+
+  - id: x-embed
+    name: X (Twitter)
+    category: social
+    policyRelevance: required
+    provider: { name: Twitter International Unlimited Company, country: IE }
+    domains: [platform.twitter.com, syndication.twitter.com, twitter.com, x.com, twimg.com]
+    aliasesDe: [Twitter, X (Twitter), X Corp]
+    aliasesEn: [Twitter, X (Twitter), X Corp]
+
+  - id: addtoany
+    name: AddToAny
+    category: social
+    policyRelevance: required
+    parent: { name: AddToAny LLC, country: US }
+    domains: [addtoany.com]
+    aliasesDe: [AddToAny]
+    aliasesEn: [AddToAny]

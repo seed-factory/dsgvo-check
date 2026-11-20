@@ -1,0 +1,15 @@
+*
+!package.json
+!pnpm-lock.yaml
+!.npmrc
+!tsconfig.json
+!tsconfig.build.json
+!src
+!src/**
+!test/data
+!test/data/**
+!scripts
+scripts/**
+!scripts/emit-schema.ts
+!LICENSE
+!NOTICE

@@ -1,0 +1,28 @@
+# Routing as data: service category → check that owns the gating finding.
+# Assess drops observations of owner checks whose category belongs to another owner.
+# Independent axes (not routed): CONSENT-02 storage, CONSENT-03 no banner, CONSENT-05 after reject, TRACK-01 inventory,
+# PRIV-02 policy statement against the observation.
+version: 1
+owners:
+  analytics: CONSENT-01
+  ads: CONSENT-01
+  session-recording: CONSENT-01
+  tag-manager: CONSENT-01
+  cdn: CONSENT-01
+  payment: CONSENT-01
+  consent-provider: CONSENT-01
+  unknown: CONSENT-01
+  # Error/performance monitoring such as Sentry: part of CONSENT-01's "remainder".
+  monitoring: CONSENT-01
+  fonts: EMBED-01
+  maps: EMBED-02
+  video: EMBED-03
+  captcha: EMBED-04
+  widget: EMBED-05
+  social: EMBED-05
+  reviews: EMBED-05
+  chat: EMBED-05
+# Prototype note: EMBED-04 and EMBED-05 are not in the prototype scope (BRIEF), so observations of captcha, widget,
+# social, reviews and chat categories are dropped from CONSENT-01 and only appear in CONSENT-02, CONSENT-03 and
+# PRIV-01. Routing them to CONSENT-01 meanwhile is a customer decision (minor release, "Baseline changes"). Video
+# loads are reported by EMBED-03; what a player stores stays CONSENT-02, linked to it as the same service.

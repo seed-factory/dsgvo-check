@@ -1,0 +1,27 @@
+{
+  "$description": "Start page over https without any security header: one observation per mechanism",
+  "$expect": {
+    "status": "completed",
+    "variants": ["anti-framing-missing", "header-missing", "hsts-missing"]
+  },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": 200,
+        "headers": [{ "name": "content-type", "value": "text/html; charset=utf-8" }],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 3,
+    "throttled": false,
+    "errors": []
+  }
+}

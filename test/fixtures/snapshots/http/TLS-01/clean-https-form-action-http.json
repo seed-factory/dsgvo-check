@@ -1,0 +1,114 @@
+{
+  "$description": "Counterexample: the contact page is served over https, its form sends to http://www.example.test/senden; http:// of www redirects to https, so no http:// address is requested. A form that sends to http from an https page is not TLS-01 (planned as TLS-03 form-action-http)",
+  "$expect": {
+    "status": "completed",
+    "variants": []
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-target-http",
+        "startUrl": "http://www.example.test/",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 301,
+            "location": "https://www.example.test/",
+            "bodyBytes": 0,
+            "bodyKind": "empty"
+          },
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ]
+      },
+      {
+        "id": "chain-target-https",
+        "startUrl": "https://www.example.test/",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ]
+      }
+    ],
+    "documents": [
+      {
+        "url": "https://www.example.test/",
+        "chainId": "chain-target-https",
+        "foundVia": "target"
+      }
+    ],
+    "requestsIssued": 3,
+    "twins": [],
+    "formTwinStage": {
+      "budget": 3,
+      "candidates": 0,
+      "durationMs": 0
+    }
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "url": "https://www.example.test/",
+            "dom": {
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                }
+              ]
+            }
+          },
+          {
+            "url": "https://www.example.test/kontakt/",
+            "role": "contact",
+            "order": 1,
+            "dom": {
+              "forms": [
+                {
+                  "action": "http://www.example.test/senden",
+                  "actionScheme": "http",
+                  "method": "post",
+                  "visible": true,
+                  "fieldCount": 5,
+                  "hasPasswordField": false,
+                  "hasEmailField": true,
+                  "takesInput": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

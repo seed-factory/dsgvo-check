@@ -1,0 +1,42 @@
+{
+  "$description": "X-Powered-By names PHP/7.2.34 on the start page and the Impressum: one info finding with both pages; nginx without a version names nothing",
+  "$expect": { "status": "completed", "variants": ["version-header"] },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.test/",
+        "finalUrl": "https://www.example.test/",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "server", "value": "[redacted]", "productVersions": [] },
+          { "name": "x-powered-by", "value": "[redacted]", "productVersions": [{ "product": "PHP", "version": "7.2.34" }] }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      },
+      {
+        "role": "impressum",
+        "url": "https://www.example.test/impressum",
+        "finalUrl": "https://www.example.test/impressum",
+        "status": 200,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "x-powered-by", "value": "[redacted]", "productVersions": [{ "product": "PHP", "version": "7.2.34" }] }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "tlsAuthorized": true,
+        "tlsAuthorizationError": null
+      }
+    ],
+    "requestsIssued": 2,
+    "throttled": false,
+    "errors": []
+  }
+}

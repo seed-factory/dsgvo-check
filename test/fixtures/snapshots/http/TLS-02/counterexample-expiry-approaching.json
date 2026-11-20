@@ -1,0 +1,68 @@
+{
+  "$description": "Counterexample: 100-day certificate with 20 days left is only info certificate-expiry-approaching",
+  "$expect": {
+    "status": "completed",
+    "variants": [
+      "certificate-expiry-approaching"
+    ]
+  },
+  "tls": {
+    "endpoints": [
+      {
+        "id": "tls-target",
+        "hostVariant": "target",
+        "host": "www.example.de",
+        "port": 443,
+        "servername": "www.example.de",
+        "ip": "203.0.113.10",
+        "family": 4,
+        "outcome": "handshake",
+        "protocol": "TLSv1.3",
+        "cipher": null,
+        "authorized": true,
+        "authorizationError": null,
+        "hostnameMatches": true,
+        "chainComplete": true,
+        "trustStore": "node-bundled",
+        "chain": [
+          {
+            "subject": "CN=www.example.de",
+            "issuer": "CN=Example CA R1, O=Example CA",
+            "subjectAltNames": [
+              "DNS:www.example.de",
+              "DNS:example.de"
+            ],
+            "notBefore": "2026-08-11T12:00:00.000Z",
+            "notAfter": "2026-11-19T12:00:00.000Z",
+            "serialNumber": "0A",
+            "fingerprint256": "AA:BB",
+            "isCa": false,
+            "selfSigned": false
+          }
+        ],
+        "observedAt": "2026-10-30T12:00:00.000Z"
+      },
+      {
+        "id": "tls-apex",
+        "hostVariant": "apex",
+        "host": "example.de",
+        "port": 443,
+        "servername": "example.de",
+        "ip": "203.0.113.10",
+        "family": 4,
+        "outcome": "connection-refused",
+        "protocol": null,
+        "cipher": null,
+        "authorized": false,
+        "authorizationError": null,
+        "hostnameMatches": null,
+        "chainComplete": null,
+        "trustStore": "node-bundled",
+        "chain": [],
+        "observedAt": "2026-10-30T12:00:00.000Z"
+      }
+    ],
+    "errors": []
+  },
+  "http": {}
+}

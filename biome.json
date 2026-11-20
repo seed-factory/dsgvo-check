@@ -1,0 +1,94 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": false
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!**/dsgvo-check-report*",
+      "!**/canary/results",
+      "!**/schema/report.schema.json",
+      "!**/pnpm-lock.yaml",
+      "!**/test/data/report",
+      "!**/docs",
+      "!**/specs",
+      "!**/test/fixtures/snapshots/**/*.json",
+      "!**/test/fixtures/reports/*.json",
+      "!**/test/unit/core/__snapshots__/*.json",
+      "!**/test/fixture-server/sites",
+      "!**/test/fixtures/cmp"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 110
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error"
+      },
+      "suspicious": {
+        "noConsole": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/checks/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "playwright-core": "Checks are pure: no browser access.",
+                  "undici": "Checks are pure: no network access.",
+                  "node:fs": "Checks are pure: no I/O.",
+                  "node:fs/promises": "Checks are pure: no I/O.",
+                  "node:net": "Checks are pure: no I/O.",
+                  "node:tls": "Checks are pure: no I/O.",
+                  "node:dns": "Checks are pure: no I/O.",
+                  "node:dns/promises": "Checks are pure: no I/O.",
+                  "node:http": "Checks are pure: no I/O.",
+                  "node:https": "Checks are pure: no I/O.",
+                  "node:child_process": "Checks are pure: no I/O."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

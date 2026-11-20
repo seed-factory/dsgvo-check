@@ -1,0 +1,26 @@
+{
+  "$description": "The start page answered with a WAF challenge (429, x-vercel-mitigated): the headers are the protection's, not the site's",
+  "$expect": { "status": "inconclusive", "variants": [], "reason": "blocked" },
+  "http": {
+    "userAgent": "dsgvo-check/test",
+    "chains": [],
+    "documents": [
+      {
+        "role": "start",
+        "url": "https://www.example.de/",
+        "finalUrl": "https://www.example.de/",
+        "status": 429,
+        "headers": [
+          { "name": "content-type", "value": "text/html; charset=utf-8" },
+          { "name": "x-vercel-mitigated", "value": "[redacted]" }
+        ],
+        "setCookieNames": [],
+        "metaHttpEquiv": [],
+        "error": { "code": "blocked", "message": "waf-block: header:x-vercel-mitigated", "phase": "http", "url": "https://www.example.de/" }
+      }
+    ],
+    "requestsIssued": 1,
+    "throttled": false,
+    "errors": []
+  }
+}

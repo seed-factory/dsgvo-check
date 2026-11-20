@@ -1,0 +1,131 @@
+{
+  "$description": "http:// of www answers with a stub of 420 bytes (no finding of its own); the http:// address of the article with a comment form redirects with 301 to its https address: no form is served over http",
+  "$expect": {
+    "status": "completed",
+    "variants": []
+  },
+  "target": {
+    "input": "https://www.example.test/",
+    "url": "https://www.example.test/",
+    "scheme": "https",
+    "host": "www.example.test",
+    "etld1": "example.test",
+    "finalUrl": "https://www.example.test/",
+    "finalHost": "www.example.test"
+  },
+  "http": {
+    "chains": [
+      {
+        "id": "chain-target-http",
+        "startUrl": "http://www.example.test/",
+        "hops": [
+          {
+            "url": "http://www.example.test/",
+            "status": 200,
+            "bodyBytes": 420,
+            "bodyKind": "html",
+            "hasForm": false,
+            "forms": [],
+            "formInspection": "complete"
+          }
+        ]
+      },
+      {
+        "id": "chain-target-https",
+        "startUrl": "https://www.example.test/",
+        "hops": [
+          {
+            "url": "https://www.example.test/",
+            "bodyBytes": 20000,
+            "bodyKind": "html",
+            "tlsAuthorized": true,
+            "tlsAuthorizationError": null,
+            "tlsProtocol": "TLSv1.3"
+          }
+        ]
+      }
+    ],
+    "documents": [
+      {
+        "url": "https://www.example.test/",
+        "chainId": "chain-target-https",
+        "foundVia": "target"
+      }
+    ],
+    "requestsIssued": 3,
+    "twins": [
+      {
+        "page": "https://www.example.test/post-1/",
+        "url": "http://www.example.test/post-1/",
+        "outcome": "ok",
+        "hop": {
+          "url": "http://www.example.test/post-1/",
+          "status": 301,
+          "location": "https://www.example.test/post-1/",
+          "bodyBytes": 0,
+          "bodyKind": "empty"
+        }
+      }
+    ],
+    "formTwinStage": {
+      "budget": 3,
+      "candidates": 1,
+      "durationMs": 40
+    }
+  },
+  "browser": {
+    "phases": [
+      {
+        "phase": "A",
+        "pages": [
+          {
+            "url": "https://www.example.test/",
+            "dom": {
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                }
+              ]
+            }
+          },
+          {
+            "url": "https://www.example.test/post-1/",
+            "role": "other",
+            "order": 2,
+            "dom": {
+              "forms": [
+                {
+                  "action": "https://www.example.test/",
+                  "actionScheme": "https",
+                  "method": "get",
+                  "visible": true,
+                  "fieldCount": 2,
+                  "hasPasswordField": false,
+                  "hasEmailField": false,
+                  "takesInput": false
+                },
+                {
+                  "action": "https://www.example.test/wp-comments-post.php",
+                  "actionScheme": "https",
+                  "method": "post",
+                  "visible": true,
+                  "fieldCount": 5,
+                  "hasPasswordField": false,
+                  "hasEmailField": true,
+                  "takesInput": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
